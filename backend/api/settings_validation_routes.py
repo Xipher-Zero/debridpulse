@@ -27,6 +27,7 @@ from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.version import read_version
+from integrations.definition import verification_fingerprint, verification_proof
 from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
@@ -37,6 +38,8 @@ from transfers.storage import StorageReason, StorageState
 
 
 router = APIRouter()
+
+ALLDEBRID_NAMESPACE = "alldebrid"
 
 
 _LEGAL_DOCUMENTS = {
@@ -379,6 +382,63 @@ def _browse_directory(path: Path, capacity, *, purpose: str = "download") -> Dir
     return DirectoryBrowseResponse(current=current, parent=parent, children=rows)
 
 
+# ── Verification evidence: what a Test proves about SAVED configuration ──────
+#
+# A Test is not a configuration writer and never becomes one. What it may do is
+# state truth about evidence:
+#
+#   * it hands back an opaque proof of exactly the material it exercised, which
+#     the Save that promotes that draft can present (and which the generic
+#     acceptance owner validates against what was actually saved);
+#   * if the material it exercised IS the current saved configuration, there is
+#     no unsaved draft being promoted, so the outcome is recorded immediately --
+#     success establishes verification, failure retires a proof that has stopped
+#     being true rather than leaving the provider claiming ``Verified``.
+#
+# A Test of a draft that is not the saved configuration matches no saved
+# subject, so it can neither verify nor revoke anything.
+
+
+async def _record_verification_outcome(application: ApplicationService, integration_id: str,
+                                       fingerprint: str, ok: bool):
+    """Persist the outcome of a Test about the CURRENT saved configuration.
+
+    It takes the same narrow config-write lock every other settings mutation
+    uses, and it needs no admission of its own: these are POST routes, so the
+    application mutation-admission middleware is already holding
+    ``application_operation()`` for the whole request.
+
+    Returns the integration's canonical PUBLIC projection when durable evidence
+    actually changed, so the caller can publish the accepted state through the
+    one neutral acceptance seam -- the header must not keep reporting
+    ``Configured`` about a configuration this very request just proved. ``None``
+    means nothing changed and there is nothing to publish.
+    """
+    from core.config import apply_settings, config_write_lock, load_settings, save_settings
+    from integrations.configuration import public_integrations, record_verification_outcome
+
+    definition = next((item for item in application.definitions if item.id == integration_id), None)
+    if definition is None:
+        return None
+    async with config_write_lock():
+        updated = record_verification_outcome(load_settings(), definition, fingerprint, ok)
+        if updated is None:
+            return None
+        # Evidence is metadata ABOUT canonical configuration, not configuration:
+        # nothing routable, native or lifecycle-bound changed, so this persists
+        # and republishes the document without a reconfigure.
+        save_settings(updated)
+        apply_settings(updated)
+        return public_integrations(updated, application.definitions).get(integration_id)
+
+
+def _accepted(integration_id: str, projection) -> dict:
+    """The neutral acceptance envelope, or nothing when nothing was accepted."""
+    if not projection:
+        return {}
+    return {"integration_id": integration_id, "integration": projection}
+
+
 def _resolve_secret_candidate(candidate: str, stored: str, *, clear: bool) -> str:
     """Resolve a redacted Settings secret without persisting draft state.
 
@@ -485,7 +545,8 @@ async def get_alldebrid_runtime_status(application: ApplicationService = Depends
 
 
 @router.post("/settings/validate-alldebrid")
-async def validate_alldebrid(payload: AllDebridValidationRequest):
+async def validate_alldebrid(payload: AllDebridValidationRequest,
+                             application: ApplicationService = Depends(get_application)):
     alldebrid = alldebrid_canonical_options(get_settings())
     if payload.clear_api_key:
         api_key = ""
@@ -494,18 +555,25 @@ async def validate_alldebrid(payload: AllDebridValidationRequest):
     if not api_key:
         raise HTTPException(400, "No API key configured or entered")
 
+    # Exactly what this request authenticates with, in the shape the AllDebrid
+    # definition declares as its verification material.
+    fingerprint = verification_fingerprint({"api_key": api_key, "agent": str(alldebrid.agent or "")})
     try:
         service = AllDebridService(api_key, alldebrid.agent)
         user = await service.get_user()
-        user_data = user.get("user", user)
-        return {
-            "ok": True,
-            "username": user_data.get("username", ""),
-            "isPremium": user_data.get("isPremium", False),
-            "premiumUntil": user_data.get("premiumUntil", user_data.get("premium_until", 0)),
-        }
     except Exception as exc:
+        await _record_verification_outcome(application, ALLDEBRID_NAMESPACE, fingerprint, False)
         raise HTTPException(502, _safe_failure(exc)) from exc
+    accepted = await _record_verification_outcome(application, ALLDEBRID_NAMESPACE, fingerprint, True)
+    user_data = user.get("user", user)
+    return {
+        "ok": True,
+        "username": user_data.get("username", ""),
+        "isPremium": user_data.get("isPremium", False),
+        "premiumUntil": user_data.get("premiumUntil", user_data.get("premium_until", 0)),
+        "verification": verification_proof(fingerprint),
+        **_accepted(ALLDEBRID_NAMESPACE, accepted),
+    }
 
 
 @router.post("/settings/validate-discord")
@@ -635,13 +703,27 @@ async def test_usenet_server(payload: UsenetServerDraft,
         existing = find_server(admin.options, payload.server_id)
         if existing is not None:
             password = existing.password
+    host = payload.host.strip()
+    # Exactly what this request connects with, in the shape the Usenet
+    # definition declares as one server's verification material.
+    fingerprint = verification_fingerprint({
+        "host": host, "port": int(payload.port), "ssl": bool(payload.ssl),
+        "username": str(payload.username or ""), "password": str(password or ""),
+        "connections": int(payload.connections)})
     try:
-        return await admin.test_server(
-            host=payload.host.strip(), port=payload.port, ssl=payload.ssl,
+        result = await admin.test_server(
+            host=host, port=payload.port, ssl=payload.ssl,
             username=payload.username, password=password, connections=payload.connections,
         )
     except Exception as exc:
+        await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, False)
         raise HTTPException(502, _safe_failure(exc)) from exc
+    ok = bool(result.get("ok")) if isinstance(result, dict) else bool(result)
+    accepted = await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, ok)
+    envelope = _accepted(USENET_NAMESPACE, accepted)
+    if not ok:
+        return {**result, **envelope}
+    return {**result, "verification": verification_proof(fingerprint), **envelope}
 
 
 @router.get("/usenet/drift")

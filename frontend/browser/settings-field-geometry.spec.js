@@ -54,6 +54,7 @@ async function usenetServerCard(page) {
       : route.fallback()));
   await page.goto('/');
   await openSettings(page, 'sources');
+  await revealUsenet(page);
   const card = page.locator('[data-usenet-collection] [data-usenet-server-id]');
   await expect(card).toHaveCount(1);
   await card.locator('[data-usenet-advanced-toggle]').click();
@@ -158,3 +159,15 @@ test('the clear-stored-password checkbox is optically centred on its label text'
   await page.keyboard.press('Space');
   await expect(box).not.toBeChecked();
 });
+
+/* The Usenet card renders COLLAPSED: expansion is LOCAL presentation state,
+ * never a projection of enabled/configured/verified state. The server
+ * collection lives inside its body, so opening it through the canonical
+ * disclosure is how this spec reaches the collection -- exactly as an
+ * operator does, and writing no canonical state. */
+async function revealUsenet(page) {
+  const card = page.locator('.dp-settings-provider-card--usenet');
+  const disclosure = card.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(card.locator(':scope > .card-body')).toBeVisible();
+}

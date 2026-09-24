@@ -28,10 +28,24 @@ PROVIDER_STATUS = read("ui-provider-status.js")
 
 
 def body(source: str, name: str) -> str:
-    """One top-level function body, by name, without its neighbours."""
+    """One top-level function body, by name, without its neighbours.
+
+    The parameter list is skipped before the brace scan begins: a destructured
+    parameter carries braces of its own, which would otherwise terminate the
+    body at the end of the signature.
+    """
     start = source.index(f"function {name}(")
+    depth, cursor = 0, source.index("(", start)
+    for index in range(cursor, len(source)):
+        if source[index] == "(":
+            depth += 1
+        elif source[index] == ")":
+            depth -= 1
+            if depth == 0:
+                cursor = index
+                break
     depth = 0
-    for index in range(start, len(source)):
+    for index in range(source.index("{", cursor), len(source)):
         if source[index] == "{":
             depth += 1
         elif source[index] == "}":
@@ -307,3 +321,111 @@ def test_downloads_tuning_cards_carry_the_same_protocol_identity():
     assert "protocolIcon(protocol)" in tuning
     assert "dp-settings-protocol-icon" not in tuning, \
         "Downloads builds its own identity markup instead of using the composer"
+
+
+# --- G. Sources & Providers final corrective pass (Defects 1, 2, 4, 5) --------
+#
+# Expansion is LOCAL PRESENTATION STATE. Enabled state, configured state and
+# verified state are canonical truth about the provider; none of them is an
+# opinion about whether a card is open. These contracts hold the separation at
+# the source, where a rendered measurement cannot prove "and nowhere else".
+
+
+def test_a_provider_card_never_derives_its_disclosure_from_canonical_state():
+    card = body(SETTINGS, "providerCard")
+    assert "settingsDisclosure(bodyId, false," in card, \
+        "the card still opens itself from canonical state"
+    assert "${enabled ? '' : ' hidden'}" not in card, \
+        "the card body visibility is still a projection of enabled state"
+    assert "!headerOnly && !enabled" not in card
+
+
+def test_the_state_renderer_no_longer_owns_ordinary_disclosure_state():
+    renderer = body(SETTINGS, "renderIntegrationState")
+    assert "if (enabled) setDisclosureExpanded(disclosure, true);" not in renderer, \
+        "an accepted enable still expands the card on every render"
+
+
+def test_the_only_automatic_expansion_is_an_accepted_enable_of_an_unconfigured_provider():
+    handler = body(SETTINGS, "providerEnableChanged")
+    assert "setDisclosureExpanded(" in handler, \
+        "enabling an unconfigured provider no longer opens it for configuration"
+    assert ".configured" in handler, \
+        "the expansion is not conditioned on the provider being unconfigured"
+    # It follows the ACCEPTED canonical state, never the operator's click.
+    assert "state.settings?.integrations?.[identity]" in handler
+
+
+def test_general_sources_uses_the_one_canonical_disclosure_primitive():
+    group = body(SETTINGS, "groupCard")
+    assert "settingsDisclosure(" in group, \
+        "the group card grew its own disclosure markup"
+    assert SETTINGS.count("function settingsDisclosure(") == 1
+    assert SETTINGS.count("function setDisclosureExpanded(") == 1
+    panel = body(SETTINGS, "sourcesPanel")
+    general = panel[panel.index("const generalSources = groupCard("):]
+    assert "collapsible: true" in general[:general.index(");")], \
+        "General Sources is not collapsible through the canonical primitive"
+    external = panel[panel.index("const externalProviders = groupCard("):]
+    assert "collapsible" not in external[:external.index(");")], \
+        "External Providers was made collapsible by this pass"
+
+
+def test_the_provider_header_reports_exactly_the_three_configuration_states():
+    status = body(SETTINGS, "providerStatus")
+    assert "'Unconfigured'" in status and "'Configured'" in status and "'Verified'" in status
+    for redundant in ("'Enabled'", "'Disabled'", "Provider configured", "Configuration required"):
+        assert redundant not in status, f"the header still repeats {redundant}"
+    # Verified is read from canonical truth, never remembered locally.
+    card = body(SETTINGS, "providerCard")
+    assert "entry.verified" in card
+    for forbidden in ("localStorage", "sessionStorage"):
+        assert forbidden not in SETTINGS, f"{forbidden} became a verification authority"
+
+
+def test_the_three_states_use_the_canonical_state_colour_variables():
+    provider_state = read("ui-provider-state.css")
+    assert 'data-tone="error"' in provider_state and "var(--dp-state-error)" in provider_state
+    assert 'data-tone="warning"' in provider_state and "var(--dp-state-caution)" in provider_state
+    assert 'data-tone="success"' in provider_state and "var(--dp-state-success)" in provider_state
+
+
+def test_an_accepted_scoped_mutation_publishes_through_the_one_synchronisation_owner():
+    """Defect 4: the acceptance helpers wrote only ``state.settings``, so the
+    provider-status renderer -- which reads ``settingsData`` -- kept serving
+    pre-mutation state until an unrelated Apply Settings performed a fresh GET."""
+    for helper in ("adoptIntegration", "adoptIntegrationGroup", "adoptTransferPolicy"):
+        source = body(SETTINGS, helper)
+        assert "syncGlobalSettings(" in source, f"{helper} bypasses the one settings owner"
+        assert "state.settings = " not in source, f"{helper} still writes a second cache"
+    assert SETTINGS.count("function syncGlobalSettings(") == 1
+    # And no compensating re-read was introduced to paper over it.
+    handler = body(SETTINGS, "providerEnableChanged")
+    assert "GET" not in handler, "a compensating settings GET was added after the toggle"
+
+
+def test_one_neutral_acceptance_seam_serves_every_owner_of_provider_configuration():
+    """Usenet server cards are their own canonical writer; the header must
+    converge with no Apply Settings, no reload and no poll."""
+    usenet = read("ui-settings-usenet-servers.js")
+    assert "debridpulse:integration-accepted" in usenet
+    assert "debridpulse:integration-accepted" in SETTINGS
+    assert usenet.count("dispatchEvent") == 1, "more than one publication seam exists"
+    # Convergence is published, never polled. (ui-settings-page.js keeps one
+    # pre-existing interval, the OIDC sign-in popup watcher; this pass adds none.)
+    assert "setInterval" not in usenet
+    assert SETTINGS.count("setInterval") == 1
+    # Neutral: the seam carries the identity the response states.
+    assert "integration_id" in usenet
+
+
+def test_an_open_gate_with_no_participating_member_is_reported_as_red():
+    """Defect 5: ``mixed`` told the operator that some members still
+    participate. None do. It must read red -- without pretending the master
+    itself is off, which is a different and still-meaningful state."""
+    aggregate = body(PROVIDER_STATUS, "aggregateState")
+    assert "if (!enabled.length) return 'mixed';" not in aggregate
+    assert "'unavailable'" in aggregate, "no neutral zero-participant state exists"
+    dot = body(PROVIDER_STATUS, "dotClass")
+    assert "unavailable:'error'" in dot.replace(" ", ""), \
+        "the zero-participant state is not mapped to the existing red presentation"

@@ -44,30 +44,36 @@ def test_usenet_is_the_first_card_under_external_providers():
     assert "groupCard('External Providers', usenetCard + provider," in panel
 
 
-def test_disabled_usenet_renders_collapsed_and_enabling_auto_expands():
+def test_usenet_renders_collapsed_and_only_an_accepted_enable_can_open_it():
     """Both behaviors come from the ONE shared provider-card owner.
 
-    `providerCard` renders an expandable card collapsed while disabled, and the
-    card's presentation follows the COMMITTED enable state -- DP 1.0.13 work
-    item A made the toggle an immediate canonical operational control, so the
-    expansion follows what the server accepted, not the operator's click.
+    `providerCard` renders every expandable card collapsed -- navigation is not
+    an opinion about what should be open, and enabled state is not expansion
+    state. The single automatic expansion belongs to the operator ACTION that
+    admits a provider with nothing configured, and it still follows what the
+    server accepted rather than the operator's click.
     """
     card = SETTINGS[SETTINGS.index("function providerCard("):SETTINGS.index("function sourcesPanel(")]
     assert "dp-settings-provider-card--collapsed" in card
-    assert "${enabled ? '' : ' hidden'}" in card
+    assert "settingsDisclosure(bodyId, false," in card
+    assert "${enabled ? '' : ' hidden'}" not in card
     behavior = SETTINGS[SETTINGS.index("function renderIntegrationState("):
                         SETTINGS.index("function bindEvents", SETTINGS.index("function renderIntegrationState("))]
-    assert "if (enabled) setDisclosureExpanded(disclosure, true);" in behavior
+    assert "if (enabled) setDisclosureExpanded(disclosure, true);" not in behavior
     assert "state.settings?.integrations?.[identity]" in behavior
+    handler = SETTINGS[SETTINGS.index("async function providerEnableChanged("):
+                       SETTINGS.index("function adoptIntegrationGroup(")]
+    assert "setDisclosureExpanded(" in handler and ".configured" in handler
     # Usenet opts into that premium card shape.
     from integrations.usenet.definition import definition as usenet
     assert usenet.presentation.premium is True
 
 
-def test_enabled_but_unconfigured_usenet_reports_configuration_required():
+def test_enabled_but_unconfigured_usenet_reports_unconfigured():
     status = SETTINGS[SETTINGS.index("function providerStatus("):
                       SETTINGS.index("function providerCard(")]
-    assert "if (enabled && !configured) return {text: 'Configuration required'" in status
+    assert "{text: 'Unconfigured', tone: 'error'}" in status
+    assert "Configuration required" not in status
 
 
 def test_usenet_is_not_enabled_until_an_operator_turns_it_on():

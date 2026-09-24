@@ -9,7 +9,10 @@ input of ``migrate_legacy_settings``, which runs once while a persisted file is
 loaded and folds them into the canonical namespaces. Nothing else reads them, and
 nothing regenerates them.
 """
-from integrations.definition import IntegrationGroupSettings, IntegrationSettings
+from integrations.definition import (
+    IntegrationGroupSettings, IntegrationSettings, supersede_verification_proofs,
+    verification_proves,
+)
 from transfers.runtime_limits import ExecutionRuntimeLimits, LEGACY_INPUT_FIELDS as RUNTIME_LIMIT_LEGACY_FIELDS
 from transfers.settings import TransferSettings, LEGACY_INPUT_FIELDS as TRANSFER_POLICY_LEGACY_FIELDS
 
@@ -248,7 +251,9 @@ def normalize_settings(settings, definitions, *, previous=None):
             # Never decided before: the integration's own opt-in default wins.
             enabled = definition.default_enabled
         priority = older.priority if isinstance(older, IntegrationSettings) and "priority" not in entry.model_fields_set else entry.priority
-        namespaces[definition.id] = IntegrationSettings(enabled=enabled, priority=priority, options=validated)
+        namespaces[definition.id] = IntegrationSettings(
+            enabled=enabled, priority=priority, options=validated,
+            verification=_carried_verification(definition, entry, older, validated))
     return settings.model_copy(update={
         "integrations": namespaces,
         "integration_groups": normalize_groups(settings, definitions),
@@ -257,6 +262,103 @@ def normalize_settings(settings, definitions, *, previous=None):
         "execution_runtime_limits": _merged_namespace(
             ExecutionRuntimeLimits, getattr(previous, "execution_runtime_limits", None), settings.execution_runtime_limits),
     })
+
+
+def _carried_verification(definition, entry, older, validated: dict) -> dict:
+    """The verification evidence the namespace being saved is entitled to keep.
+
+    ONE owner for this, here, rather than a copy in every mutation route:
+
+    * a scoped route rebuilds ``IntegrationSettings`` from the values it wrote,
+      so its entry carries no evidence and the PREVIOUS namespace is the source;
+    * the load path has no previous namespace, so the persisted entry is;
+    * evidence that no longer describes the configuration actually being saved
+      is RETIRED here, which is what makes ``verified`` derived truth instead of
+      a flag somebody has to remember to clear. A verification-relevant change
+      therefore drops the proof; an unrelated change in the same namespace
+      cannot, because its fingerprint did not move.
+
+    It is never taken from client input: the only surfaces that accept a
+    namespace from a request rebuild it field by field, and the whole-settings
+    route carries the previous canonical namespaces forward wholesale.
+    """
+    carried = dict(entry.verification or {})
+    if not carried and isinstance(older, IntegrationSettings):
+        carried = dict(older.verification or {})
+    if not carried:
+        return {}
+    current = definition.verification_fingerprints(validated)
+    return {subject: fingerprint for subject, fingerprint in carried.items()
+            if subject in current and current[subject][0] == fingerprint}
+
+
+def accept_verification(settings, definition, proofs):
+    """Record evidence for every subject of the SAVED configuration that one of
+    ``proofs`` attests.
+
+    The browser never states that something is verified. It may only carry back
+    an opaque proof this server minted for the draft this server tested, and
+    the fingerprint is re-derived HERE from the configuration that was actually
+    saved -- so a proof of a different draft, a forged token, or an asserted
+    boolean matches nothing and establishes nothing.
+    """
+    tokens = [str(proof) for proof in (proofs or []) if proof]
+    entry = (settings.integrations or {}).get(definition.id)
+    if not tokens or not isinstance(entry, IntegrationSettings):
+        return settings
+    evidence = dict(entry.verification or {})
+    for subject, (fingerprint, _required) in definition.verification_fingerprints(entry.options).items():
+        if evidence.get(subject) == fingerprint:
+            continue
+        if any(verification_proves(token, fingerprint) for token in tokens):
+            evidence[subject] = fingerprint
+    if evidence == (entry.verification or {}):
+        return settings
+    return settings.model_copy(update={"integrations": {
+        **settings.integrations,
+        definition.id: entry.model_copy(update={"verification": evidence})}})
+
+
+def record_verification_outcome(settings, definition, fingerprint: str, ok: bool):
+    """Commit or retire evidence for a subject of the CURRENT SAVED configuration.
+
+    A Test whose material is not the saved configuration matches no subject, so
+    it neither verifies nor revokes anything -- a failed Test of an unsaved
+    draft can never take down a different saved configuration's proof. A Test of
+    exactly the saved configuration does both: success is durable proof (nothing
+    unsaved is being promoted), and failure retires a proof that has stopped
+    being true rather than leaving the provider claiming ``Verified``.
+
+    Returns the updated settings, or ``None`` when nothing changed.
+    """
+    if not ok:
+        # The failure is the newest truth about this material, so it retires
+        # every successful proof minted for it earlier. This happens BEFORE any
+        # question of which saved subject matches: a proof is evidence about
+        # material, so a failed Test of an unsaved draft must still stop that
+        # draft's own older proof from being presented to a later Save. Without
+        # it, a Save could replay a pre-failure proof and restore Verified for a
+        # configuration this server has just proven broken.
+        supersede_verification_proofs(fingerprint)
+    entry = (settings.integrations or {}).get(definition.id)
+    if not isinstance(entry, IntegrationSettings):
+        return None
+    matched = [subject for subject, (current, _required)
+               in definition.verification_fingerprints(entry.options).items()
+               if current == fingerprint]
+    if not matched:
+        return None
+    evidence = dict(entry.verification or {})
+    for subject in matched:
+        if ok:
+            evidence[subject] = fingerprint
+        else:
+            evidence.pop(subject, None)
+    if evidence == (entry.verification or {}):
+        return None
+    return settings.model_copy(update={"integrations": {
+        **settings.integrations,
+        definition.id: entry.model_copy(update={"verification": evidence})}})
 
 
 def public_integrations(settings, definitions):
@@ -276,6 +378,10 @@ def public_integrations(settings, definitions):
             "name": definition.name if definition else None,
             "kind": definition.kind if definition else None,
             "configured": definition.configured(entry.options) if definition else False,
+            # Derived, never stored as a flag: the current saved
+            # verification-relevant configuration is covered by successful test
+            # evidence. The evidence itself stays internal.
+            "verified": definition.verified(entry.options, entry.verification) if definition else False,
             "presentation": definition.presentation.public() if definition else {},
             "options": definition.public_options(entry.options) if definition else {},
         }

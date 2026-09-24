@@ -62,8 +62,15 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
     # the executor-tuning cards and placed immediately after the title.
     assert "dp-settings-disclosure" in CARDS
     assert "settingsDisclosure(" in CARDS
-    assert "Configuration required" in CARDS
-    assert "Provider configured" in CARDS
+    # DP 1.0.13 Sources & Providers final corrective pass: the header reports
+    # the three CONFIGURATION states and never repeats what the Enable toggle
+    # beside it already says. ``Verified`` is durable canonical truth about the
+    # current saved configuration, not a local memory of a Test.
+    assert "Unconfigured" in CARDS
+    assert "Configured" in CARDS
+    assert "Verified" in CARDS
+    assert "Configuration required" not in CARDS
+    assert "Provider configured" not in CARDS
     assert "const dirty =" in CARDS
     assert "controlSignature(" in CARDS
 

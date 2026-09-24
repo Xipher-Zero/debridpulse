@@ -212,11 +212,59 @@
     card.dataset.commitInstance = String(id || '');
   }
 
+  /* Proof of what a successful Test of THIS card actually exercised.
+   *
+   * Opaque, server-minted and page-lifetime only -- see the same carriage in
+   * ui-settings-page.js. The card never claims its server is verified; it only
+   * hands the proof back with the write that saves what was tested, and the
+   * backend accepts it solely for the configuration it actually saved. */
+  const tested = new WeakMap();
+
+  function rememberTestedDraft(card, proof) {
+    if (!proof) return;
+    tested.set(card, [...(tested.get(card) || []).slice(-3), String(proof)]);
+  }
+
+  const testedDraftProofs = card => tested.get(card) || [];
+
+  /* Hygiene only, never authority: the server supersedes the proofs it minted
+   * for material a Test has just failed, so keeping them would only present
+   * tokens it will refuse. */
+  const forgetTestedDrafts = card => tested.delete(card);
+
+  /* The ONE neutral publication of an accepted canonical mutation.
+   *
+   * A server write can change the provider's derived `configured` / `verified`
+   * state, which this file does not present. So every accepted response is
+   * published once, carrying the identity and public projection the backend
+   * stated, and whoever else renders that provider converges from it -- with no
+   * per-integration callback, no second settings cache, no page rerender that
+   * would destroy a pending draft, and no polling. */
+  function publishAccepted(result) {
+    const integration = result?.integration;
+    const identity = String(result?.integration_id || '');
+    if (integration && identity) {
+      document.dispatchEvent(new CustomEvent('debridpulse:integration-accepted',
+        {detail: {integration_id: identity, integration}}));
+    }
+    return result;
+  }
+
   /* The ONE per-record request. Every class of control on a card reaches the
    * canonical namespace through this, so a record has exactly one writer and a
    * request carries only what that control changed. */
   function requestServerWrite(card, values) {
-    return api('PUT', `/usenet/servers/${encodeURIComponent(serverId(card))}`, values, 30000);
+    return api('PUT', `/usenet/servers/${encodeURIComponent(serverId(card))}`,
+               withTestedDrafts(card, values), 30000)
+      .then(publishAccepted);
+  }
+
+  /* A request carries only what its control changed. Proof of a successful
+   * Test is added ONLY when there is one to present, so an ordinary field
+   * commit stays byte-for-byte the request it always was. */
+  function withTestedDrafts(card, values) {
+    const proofs = testedDraftProofs(card);
+    return proofs.length ? {...values, verification: proofs} : values;
   }
 
   /* An owner-driven write -- the immediate SSL toggle, the gated credential,
@@ -542,7 +590,8 @@
     // Published BEFORE the request is awaited, so a removal raised in this
     // window can wait for the id instead of acting without one.
     const minted = (async () => {
-      const result = await api('POST', '/usenet/servers', server, 30000);
+      const result = publishAccepted(await api(
+        'POST', '/usenet/servers', withTestedDrafts(card, server), 30000));
       // The record now exists, so the card's controls acquire their canonical
       // identity BEFORE their accepted baselines are recorded under it.
       if (result?.server_id) adoptServerId(card, result.server_id);
@@ -593,7 +642,7 @@
     if (minting) await minting;
     const id = serverId(card);
     try {
-      if (id) await api('DELETE', `/usenet/servers/${encodeURIComponent(id)}`, null, 30000);
+      if (id) publishAccepted(await api('DELETE', `/usenet/servers/${encodeURIComponent(id)}`, null, 30000));
       card.remove();
       reindex(host);
       toast(`${name} removed`, 'success');
@@ -618,9 +667,16 @@
         username: server.username, password: server.password || '',
         connections: server.connections, server_id: serverId(card) || null,
       }, 60000);
+      if (result?.ok) rememberTestedDraft(card, result.verification);
+      else forgetTestedDrafts(card);
+      // A Test of exactly the SAVED server configuration settles this
+      // provider's durable verification, in either direction; whatever the
+      // backend accepted is published through the same one seam.
+      publishAccepted(result);
       toast(result?.message || (result?.ok ? 'Connection successful' : 'Test failed'),
             result?.ok ? 'success' : 'error');
     } catch (error) {
+      forgetTestedDrafts(card);
       toast(`Test failed: ${error?.message || error}`, 'error');
     } finally {
       busy(button, false);

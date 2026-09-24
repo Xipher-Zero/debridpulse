@@ -57,7 +57,7 @@
   const statusHost = () => document.getElementById('provider-status-list');
 
   function dotClass(state) {
-    return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unknown:'check', checking:'check', mixed:'warn', disabled:'error'})[state] || 'check';
+    return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unknown:'check', checking:'check', mixed:'warn', unavailable:'error', disabled:'error'})[state] || 'check';
   }
 
   /* The group's one reported state.
@@ -66,19 +66,19 @@
    * gate is OPEN the existing health model runs unchanged, so a member with a
    * real health state still decides the colour.
    *
-   * `disabled` belongs to the GATE, not to the members: an open gate whose
-   * members are all switched off is still an admitted family whose members are
-   * disabled -- which is `mixed`, the same answer as one member off, because
-   * "one or more members disabled" does not stop being true when the number
-   * reaches all of them. Reporting that as `disabled` made an open gate
-   * indistinguishable from a closed one, which is the whole distinction the
-   * master exists to draw. A group with no members at all has nothing to
-   * report and stays `disabled`. */
+   * `disabled` belongs to the GATE, not to the members, and `unavailable` is
+   * what an open gate with NO participating member reports. The distinction
+   * matters in both directions: calling the empty open gate `disabled` would
+   * make it indistinguishable from a closed one, which is the whole thing the
+   * master exists to express -- but calling it `mixed` claimed that some
+   * members still work, and none do, so the family cannot acquire anything.
+   * Both are red; neither impersonates the other. A group with no members at
+   * all likewise has nothing that could participate. */
   function aggregateState(entries, gateEnabled = true) {
     if (gateEnabled === false) return 'disabled';
-    if (!entries.length) return 'disabled';
+    if (!entries.length) return 'unavailable';
     const enabled = entries.filter(entry => entry.enabled);
-    if (!enabled.length) return 'mixed';
+    if (!enabled.length) return 'unavailable';
     if (enabled.length !== entries.length) return 'mixed';
     if (enabled.some(entry => ['unhealthy', 'auth_required'].includes(entry.state))) return 'unhealthy';
     if (enabled.some(entry => entry.state === 'unconfigured')) return 'unconfigured';

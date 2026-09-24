@@ -23,7 +23,21 @@ async function openSettings(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
+  await revealGeneralSources(page);
 }
+
+/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+ * state, never a projection of enabled/configured/verified state. Opening one
+ * through the canonical disclosure writes no canonical state, so this spec
+ * never depends on another spec's enable/disable timing against the shared
+ * backend. The General Sources members live inside that group's body. */
+async function revealGeneralSources(page) {
+  const group = page.locator('.dp-settings-general-sources');
+  const disclosure = group.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(group.locator('.dp-settings-provider-card--general-http')).toBeVisible();
+}
+
 const integrationInput = (page, identity) => page.locator(`[data-integration-enabled="${identity}"]`);
 const integrationControl = (page, identity) => page.locator(`label[for="dp-settings-integration-${identity}-enabled"]`);
 async function setIntegrationChecked(page, identity, value) {
@@ -37,6 +51,10 @@ async function saveSettings(page) {
   await page.locator('#view-settings [data-action="save"]').click();
   expect((await responsePromise).ok()).toBeTruthy();
   await expect(page.locator('#view-settings [data-action="save"]')).toBeEnabled();
+  // Apply Settings re-renders the whole Settings view, which returns every
+  // expandable card to its collapsed default. Re-open the group this spec
+  // operates, through the same canonical disclosure.
+  await revealGeneralSources(page);
 }
 
 const CARDS = [

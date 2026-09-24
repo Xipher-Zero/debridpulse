@@ -112,8 +112,28 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     assert "clear_api_key" in validation
     assert "clear_webhook" in validation
 
-    for forbidden in ("save_settings", "apply_settings", "persistNonAuth", "PUT /settings"):
+    for forbidden in ("persistNonAuth", "PUT /settings"):
         assert forbidden not in validation
+
+    # A validation route never persists the CANDIDATE it tested. It may record
+    # the OUTCOME of a test about the configuration that is already saved --
+    # DP 1.0.13 Sources & Providers final corrective pass, Defect 3: a
+    # successful test of exactly the saved configuration establishes durable
+    # verification, and a failed one retires a proof that has stopped being
+    # true rather than leaving the provider claiming "Verified". That is
+    # metadata about canonical configuration, never canonical configuration.
+    #
+    # So the ban is on a second persistence path, not on the word: there is
+    # exactly ONE save site in this file, it is that outcome recorder, and what
+    # it writes is whatever the generic evidence owner returned -- never
+    # anything assembled from the request.
+    assert validation.count("save_settings(") == 1
+    assert validation.count("apply_settings(") == 1
+    recorder = validation[validation.index("async def _record_verification_outcome("):]
+    recorder = recorder[:recorder.index("\ndef ")]
+    assert "save_settings(updated)" in recorder
+    assert "record_verification_outcome(load_settings(), definition, fingerprint, ok)" in recorder
+    assert "payload" not in recorder and "api_key" not in recorder
 
     assert "from api.settings_validation_routes import router as settings_validation_router" in main
     assert 'app.include_router(settings_validation_router, prefix="/api")' in main

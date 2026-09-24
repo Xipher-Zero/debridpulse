@@ -67,6 +67,7 @@ test('editing a server display name opens the DP modal and never a browser promp
   await serveUsenet(page);
   await page.goto('/');
   await openSettings(page, 'sources');
+  await revealUsenet(page);
   await expect(page.locator('[data-usenet-collection] [data-usenet-server-id]')).toHaveCount(1);
 
   const nativeCalls = [];
@@ -229,3 +230,15 @@ test('header flavour copy is geometrically centred on the full card header', asy
   expect(sources.length).toBe(4);
   for (const offset of sources) expect(Math.abs(offset)).toBeLessThan(1);
 });
+
+/* The Usenet card renders COLLAPSED: expansion is LOCAL presentation state,
+ * never a projection of enabled/configured/verified state. The server
+ * collection lives inside its body, so opening it through the canonical
+ * disclosure is how this spec reaches the collection -- exactly as an
+ * operator does, and writing no canonical state. */
+async function revealUsenet(page) {
+  const card = page.locator('.dp-settings-provider-card--usenet');
+  const disclosure = card.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(card.locator(':scope > .card-body')).toBeVisible();
+}

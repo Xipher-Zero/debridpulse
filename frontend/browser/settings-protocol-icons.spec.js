@@ -69,7 +69,21 @@ async function openSettings(page, tab) {
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await page.locator(`#view-settings [data-tab="${tab}"]`).click();
   await expect(page.locator(`.dp-settings-panel[data-panel="${tab}"]`)).toBeVisible();
+  if (tab === 'sources') await revealGeneralSources(page);
 }
+
+/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+ * state, never a projection of enabled/configured/verified state. Opening one
+ * through the canonical disclosure writes no canonical state, so this spec
+ * never depends on another spec's enable/disable timing against the shared
+ * backend. The General Sources members live inside that group's body. */
+async function revealGeneralSources(page) {
+  const group = page.locator('.dp-settings-general-sources');
+  const disclosure = group.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(group.locator('.dp-settings-provider-card--general-http')).toBeVisible();
+}
+
 
 const blocks = (page, tab) => page.evaluate(tab => {
   const panel = document.querySelector(`.dp-settings-panel[data-panel="${tab}"]`);

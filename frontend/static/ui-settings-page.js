@@ -192,6 +192,15 @@
     }
   }
 
+  /* The ONE Settings synchronisation owner.
+   *
+   * There are two references to the Settings document -- this page's
+   * ``state.settings`` and the application-wide ``settingsData`` that the
+   * provider-status renderer reads -- and exactly one function that moves
+   * either of them. An accepted scoped mutation that updated only the first
+   * left the status panel serving pre-mutation state until an unrelated Apply
+   * Settings happened to perform a fresh GET, which is why every acceptance
+   * helper publishes through here rather than assigning its own copy. */
   function syncGlobalSettings(data) {
     state.settings = data;
     try { settingsData = data; } catch (_) {}
@@ -341,19 +350,30 @@
         <div class="card-body">${body}</div>
       </section>`;
   }
+  /* A group card. ``collapsible`` is the smallest generic opt-in there can be:
+   * it renders the SAME canonical disclosure chip in the same place a provider
+   * card does, closed, addressing the body through ``aria-controls`` -- so the
+   * one disclosure behaviour already bound in bindEvents() serves it without
+   * knowing it is a group. No second component, no duplicated markup, and no
+   * group becomes collapsible without asking. */
   function groupCard(title, body, options = {}) {
     const titleMarkup = options.titlePrefix
       ? `<span class="card-title dp-settings-card-title--with-icon">${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span></span>`
       : `<span class="card-title">${html(title)}</span>`;
+    const safe = String(options.groupId || title).replace(/[^a-z0-9_-]/gi, '-');
+    const bodyId = `dp-settings-group-body-${safe}`;
+    const disclosure = options.collapsible
+      ? settingsDisclosure(bodyId, false, `${title} sources`) : '';
+    const header = options.action || disclosure;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
         options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}>
-        <div class="card-header${options.action ? ' dp-settings-card-header' : ''}">
-          ${options.action ? `<span class="dp-settings-card-title-group">${titleMarkup}</span>` : titleMarkup}
-          ${options.action ? `<div class="dp-settings-card-header-center"></div>
-          <div class="dp-settings-card-header-controls">${options.action}</div>` : ''}
+        <div class="card-header${header ? ' dp-settings-card-header' : ''}">
+          ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
+          ${header ? `<div class="dp-settings-card-header-center"></div>
+          <div class="dp-settings-card-header-controls">${options.action || ''}</div>` : ''}
         </div>
-        <div class="card-body dp-settings-group-body">${body}</div>
+        <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}" hidden` : ''}>${body}</div>
       </section>`;
   }
 
@@ -506,10 +526,28 @@
   // Provider card: the title (with its premium mark), the configuration status,
   // the collapse control and the Enable toggle are all part of the card's own
   // markup. Behavior (collapse / status refresh) is bound by bindEvents().
-  function providerStatus(enabled, configured) {
-    if (!enabled && configured) return {text: 'Provider configured', tone: 'info'};
-    if (enabled && !configured) return {text: 'Configuration required', tone: 'warning'};
-    return {text: '', tone: 'none'};
+  /* The provider header's CONFIGURATION report, and only that.
+   *
+   * The Enable toggle immediately to its right already says whether the
+   * provider participates, so this never repeats it. What it adds is the pair
+   * of things the toggle cannot say: whether there is a usable SAVED
+   * configuration at all, and whether that exact saved configuration has been
+   * proven to work.
+   *
+   *   Unconfigured  nothing usable is saved, and the operator has admitted the
+   *                 provider -- so it cannot do the job it was just admitted
+   *                 for. A provider that is switched off and unconfigured is
+   *                 not a problem and says nothing.
+   *   Configured    saved and usable, but the current saved configuration has
+   *                 no successful test behind it.
+   *   Verified      the current saved configuration IS covered by successful
+   *                 test evidence. Durable canonical truth from the backend;
+   *                 this function only reports it. */
+  function providerStatus(enabled, configured, verified) {
+    if (configured) {
+      return verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+    }
+    return enabled ? {text: 'Unconfigured', tone: 'error'} : {text: '', tone: 'none'};
   }
 
   // headerOnly renders the whole card as its header -- title, centered
@@ -517,6 +555,7 @@
   function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerOnly = false}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
+    const verified = !!entry.verified;
     const premium = !!entry.presentation?.premium;
     const safe = String(identity).replace(/[^a-z0-9_-]/gi, '-');
     const enable = integrationHeaderToggle(identity, enabled, displayName, 'dp-settings-provider-header-enable');
@@ -527,9 +566,12 @@
     const bodyId = `dp-settings-provider-body-${safe}`;
     // headerOnly renders the whole card as its header (Direct Sources): no
     // body, therefore no disclosure and no configuration-status region.
-    const disclosure = headerOnly ? '' : settingsDisclosure(bodyId, enabled, 'provider configuration');
-    const status = headerOnly ? null : providerStatus(enabled, configured);
-    const collapsed = !headerOnly && !enabled;
+    // Every expandable card renders CLOSED. Arriving at Sources & Providers is
+    // not an opinion about what should be open, and enabled/configured/verified
+    // state is canonical truth about the provider, never about the card.
+    const disclosure = headerOnly ? '' : settingsDisclosure(bodyId, false, 'provider configuration');
+    const status = headerOnly ? null : providerStatus(enabled, configured, verified);
+    const collapsed = !headerOnly;
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${className}${collapsed ? ' dp-settings-provider-card--collapsed' : ''}" data-provider-configured="${configured}">
         <div class="card-header dp-settings-card-header">
@@ -539,7 +581,7 @@
             ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>`
             : ''}${enable}</div>
         </div>${headerOnly ? '' : `
-        <div class="card-body" id="${bodyId}"${enabled ? '' : ' hidden'}>${body}</div>`}
+        <div class="card-body" id="${bodyId}" hidden>${body}</div>`}
       </section>`;
   }
 
@@ -769,6 +811,7 @@
       titlePrefix: protocolIcon(groupId),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
+      collapsible: true,
     });
     return externalProviders + generalSources;
   }
@@ -1737,12 +1780,15 @@
     if (input) input.checked = enabled;
     const disclosure = card.querySelector('.dp-settings-disclosure');
     if (disclosure) {
+      // Converging canonical truth is not a reason to OPEN a card: enabled
+      // state is not expansion state. Withdrawing a provider does put its
+      // configuration away again -- unless the operator has edits in it, which
+      // this must never discard.
       const baseline = providerBaselines.get(card) || [];
       const dirty = baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
-      if (enabled) setDisclosureExpanded(disclosure, true);
-      else if (!dirty) setDisclosureExpanded(disclosure, false);
+      if (!enabled && !dirty) setDisclosureExpanded(disclosure, false);
     }
-    const status = providerStatus(enabled, !!entry.configured);
+    const status = providerStatus(enabled, !!entry.configured, !!entry.verified);
     const node = card.querySelector('.dp-settings-provider-config-status');
     if (node) {
       node.textContent = status.text;
@@ -1776,7 +1822,16 @@
         {enabled: desired}, 15000);
       adoptIntegration(identity, result);
       renderIntegrationState(card, identity);
-      const committed = state.settings?.integrations?.[identity]?.enabled !== false;
+      // The ONE automatic expansion in Sources & Providers, and it belongs to
+      // the operator's ACTION rather than to rendering: admitting a provider
+      // that has nothing configured leaves it unable to do the job it was just
+      // admitted for, so its configuration is put in front of them. It follows
+      // the state the server ACCEPTED, never the click.
+      const accepted = state.settings?.integrations?.[identity] || {};
+      if (accepted.enabled !== false && !accepted.configured) {
+        setDisclosureExpanded(card.querySelector('.dp-settings-disclosure'), true);
+      }
+      const committed = accepted.enabled !== false;
       notify(`${integrationDisplayName(card, identity)} ${committed ? 'enabled' : 'disabled'}`, 'success');
     } catch (error) {
       // Nothing optimistic is left lying: the control and the card return to
@@ -1799,8 +1854,8 @@
 
   function adoptIntegrationGroup(groupId, result) {
     const {ok, group_id, ...entry} = result || {};
-    state.settings = {...state.settings,
-      integration_groups: {...state.settings?.integration_groups, [groupId]: entry}};
+    syncGlobalSettings({...state.settings,
+      integration_groups: {...state.settings?.integration_groups, [groupId]: entry}});
   }
 
   /* The group master, on the same immediate path as every member toggle.
@@ -2083,12 +2138,13 @@
   // settings echo) sees the value the server accepted.
   function adoptIntegration(identity, result) {
     const {ok, ...entry} = result || {};
-    state.settings = {...state.settings, integrations: {...state.settings?.integrations, [identity]: entry}};
+    syncGlobalSettings({...state.settings,
+      integrations: {...state.settings?.integrations, [identity]: entry}});
   }
 
   function adoptTransferPolicy(result) {
     const {ok, last_apply_error, ...policy} = result || {};
-    state.settings = {...state.settings, transfer_policy: policy};
+    syncGlobalSettings({...state.settings, transfer_policy: policy});
   }
 
   /* A control's committed value, in the shape its canonical namespace holds.
@@ -2158,6 +2214,40 @@
     });
   }
 
+  /* Proof of what a successful Test actually exercised.
+   *
+   * This is NOT verification state and it is NOT authority. It is an opaque
+   * token the SERVER minted for the draft the SERVER tested, held only so the
+   * Save that promotes that draft can present it; the server then re-derives
+   * the fingerprint from the configuration it actually saved and accepts the
+   * token only for that. A token for a draft the operator has since changed
+   * matches nothing, so testing A and saving B stays Configured.
+   *
+   * Page-lifetime only: never stored, never read back as truth, and the page
+   * is not worse off without it -- the operator simply tests again.
+   */
+  const testedDrafts = new Map();
+
+  function rememberTestedDraft(identity, proof) {
+    if (!proof) return;
+    testedDrafts.set(identity, [...(testedDrafts.get(identity) || []).slice(-3), String(proof)]);
+  }
+
+  const testedDraftProofs = identity => testedDrafts.get(identity) || [];
+
+  /* Hygiene only, never authority: a Test that failed means the server has
+   * already superseded the proofs it minted for that material, so holding them
+   * would only send tokens it will refuse. The server remains the authority on
+   * whether any proof is still valid. */
+  const forgetTestedDrafts = identity => testedDrafts.delete(identity);
+
+  /* A request carries only what it is about. Proof of a successful Test is
+   * added ONLY when there is one to present. */
+  function withTestedDrafts(identity, body) {
+    const proofs = testedDraftProofs(identity);
+    return proofs.length ? {...body, verification: proofs} : body;
+  }
+
   /* Is there gated AllDebrid state waiting to be committed? A typed API key
    * and an armed Clear Stored API Key are both pending INTENT and nothing
    * else until the localized Save runs. */
@@ -2211,7 +2301,8 @@
     setBusy(button, true, 'Saving…');
     try {
       const result = await request('PATCH', '/integrations/alldebrid/configuration',
-        {options: apiKey ? {api_key: apiKey} : {}, clear_secrets: clears}, 15000);
+        withTestedDrafts('alldebrid',
+          {options: apiKey ? {api_key: apiKey} : {}, clear_secrets: clears}), 15000);
       adoptIntegration('alldebrid', result);
       const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
       if (card) {
@@ -2374,6 +2465,12 @@
       const draft = kind === 'aria2' ? undefined : connectionTestPayload(kind);
       const result = await request('POST', endpoints[kind], draft, 20000);
       if (kind === 'alldebrid') {
+        rememberTestedDraft('alldebrid', result.verification);
+        // A Test of exactly the SAVED configuration establishes durable
+        // verification, so the header must stop saying Configured about a
+        // configuration this action just proved. Published through the one
+        // acceptance seam, like every other accepted canonical change.
+        publishAccepted(result);
         notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
       } else if (kind === 'aria2') {
         notify(`aria2 ${result.version ? `v${result.version}` : 'online'}`, 'success');
@@ -2381,6 +2478,7 @@
         notify('Discord notification sent', 'success');
       }
     } catch (error) {
+      if (kind === 'alldebrid') forgetTestedDrafts('alldebrid');
       notify(`${labels[kind]}: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);
@@ -2805,6 +2903,43 @@
   // app.js owns generic navigation and calls this canonical Settings entry point.
   window.loadSettings = load;
   try { loadSettings = load; } catch (_) {}
+
+  /* The ONE neutral acceptance seam.
+   *
+   * This page is not the only canonical writer of provider configuration: a
+   * Usenet server card writes its own records, and a saved, removed or
+   * credentialed server can change that provider's derived ``configured`` and
+   * ``verified`` state. When any such owner's scoped mutation is ACCEPTED it
+   * publishes the integration's own identity and canonical public projection,
+   * and this page adopts it exactly as it adopts the ones it issues itself --
+   * through the same single synchronisation owner, re-rendering only that
+   * provider's header state.
+   *
+   * It names no integration, so another owner needs no new callback; it
+   * re-renders no page, so no pending draft is destroyed; and it polls for
+   * nothing.
+   */
+  /* Publish an accepted canonical projection a response carried. The seam
+   * below is the one consumer; a response that accepted nothing publishes
+   * nothing. */
+  function publishAccepted(result) {
+    const identity = String(result?.integration_id || '');
+    const integration = result?.integration;
+    if (!identity || !integration) return;
+    document.dispatchEvent(new CustomEvent('debridpulse:integration-accepted',
+      {detail: {integration_id: identity, integration}}));
+  }
+
+  document.addEventListener('debridpulse:integration-accepted', event => {
+    const identity = String(event.detail?.integration_id || '');
+    const projection = event.detail?.integration;
+    if (!identity || !projection || !state.settings) return;
+    adoptIntegration(identity, projection);
+    const card = root()?.querySelector(`[data-integration-enabled="${identity}"]`)
+      ?.closest('.dp-settings-provider-card');
+    if (card) renderIntegrationState(card, identity);
+    try { window.DPProviderStatus?.refresh(); } catch (_) {}
+  });
 
   registerCommitScopes();
   window.DPSettingsPage = Object.freeze({load});

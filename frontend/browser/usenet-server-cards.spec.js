@@ -37,11 +37,22 @@ async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
 }
 
-async function openSources(page) {
+/* Arrive at Sources & Providers with the Usenet card OPEN.
+ *
+ * Every expandable card is collapsed on navigation -- expansion is local
+ * presentation state, never a projection of enabled/configured/verified state
+ * -- so reaching this collection means opening the card, exactly as the
+ * operator does, through the one canonical disclosure. This whole spec is
+ * about the server collection inside that card, so opening it is part of
+ * "get to the collection" rather than something each case restates.
+ *
+ * `expand: false` is for the one case that is ABOUT the collapsed arrival. */
+async function openSources(page, {expand = true} = {}) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await page.locator('#view-settings [data-tab="sources"]').click();
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
+  if (expand) await expandUsenet(page);
 }
 
 const usenetCard = page => page.locator('.dp-settings-provider-card--usenet');
@@ -126,9 +137,18 @@ async function enableUsenet(page) {
       return s.integrations.usenet.enabled;
     }).toBe(true);
   }
-  // The enabled card is expanded, so its controls are operable.
-  await expect(page.locator('.dp-settings-provider-card--usenet'))
-    .not.toHaveClass(/dp-settings-provider-card--collapsed/);
+  await expandUsenet(page);
+}
+
+/* Expansion is LOCAL PRESENTATION STATE, never a projection of enabled,
+ * configured or verified state, so a card an earlier case already enabled
+ * still renders collapsed. These cases operate the card's controls, so they
+ * open it through the one canonical disclosure the operator uses. */
+async function expandUsenet(page) {
+  const card = page.locator('.dp-settings-provider-card--usenet');
+  const disclosure = card.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(card).not.toHaveClass(/dp-settings-provider-card--collapsed/);
 }
 
 async function clearToasts(page) {
@@ -210,8 +230,27 @@ test.afterEach(async ({page}) => { await resetServers(page); });
 
 // --- the collection, its records and their credentials -----------------
 
-test('enabling Usenet expands the card and offers a single Add Server tile', async ({page}) => {
+/* The ONE automatic expansion in Sources & Providers: an operator who admits
+ * a provider that has nothing configured is immediately shown what to
+ * configure. Navigation never does this, and re-rendering never does this. */
+test('enabling an unconfigured Usenet expands the card and offers a single Add Server tile', async ({page}) => {
+  // Back to disabled, then navigate: the card is collapsed on arrival.
+  await page.locator('label[for="dp-settings-integration-usenet-enabled"]').click();
+  await expect.poll(async () =>
+    (await page.request.get('/api/settings').then(r => r.json())).integrations.usenet.enabled).toBe(false);
+  await page.reload();
+  await openSources(page, {expand: false});
+  await expect(usenetCard(page)).toHaveClass(/dp-settings-provider-card--collapsed/);
+  await expect(usenetCard(page).locator('.dp-settings-provider-config-status')).toBeHidden();
+
+  // The accepted enable of an UNCONFIGURED provider opens it.
+  await page.locator('label[for="dp-settings-integration-usenet-enabled"]').click();
+  await expect.poll(async () =>
+    (await page.request.get('/api/settings').then(r => r.json())).integrations.usenet.enabled).toBe(true);
   await expect(usenetCard(page)).not.toHaveClass(/dp-settings-provider-card--collapsed/);
+  const header = usenetCard(page).locator('.dp-settings-provider-config-status');
+  await expect(header).toHaveText('Unconfigured');
+  await expect(header).toHaveAttribute('data-tone', 'error');
   await expect(addTile(page)).toBeVisible();
   await expect(serverCards(page)).toHaveCount(0);
   // Enabled but unconfigured is never reported ready.

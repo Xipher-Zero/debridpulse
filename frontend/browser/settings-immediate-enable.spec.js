@@ -21,8 +21,23 @@ async function openSources(page) {
 const persisted = async (page, id) =>
   (await page.request.get('/api/settings').then(r => r.json())).integrations[id]?.enabled;
 
+/* Sources & Providers cards arrive COLLAPSED: expansion is local presentation
+ * state, never a projection of enabled/configured/verified state. A General
+ * Sources member toggle lives inside that group's body, so operating one means
+ * opening the card first -- exactly what the operator does, through the one
+ * canonical disclosure. The master's own toggle is in the header and is always
+ * reachable. */
+async function reveal(page, id) {
+  const label = page.locator(`label[for="dp-settings-integration-${id}-enabled"]`);
+  if (await label.isVisible()) return;
+  const disclosure = page.locator('.dp-settings-general-sources .dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(label).toBeVisible();
+}
+
 /** Click the toggle the way an operator does: on its label. */
 async function flip(page, id) {
+  await reveal(page, id);
   await page.locator(`label[for="dp-settings-integration-${id}-enabled"]`).click();
 }
 

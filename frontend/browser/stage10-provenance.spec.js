@@ -7,7 +7,21 @@ async function openSettings(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
+  await revealGeneralSources(page);
 }
+
+/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+ * state, never a projection of enabled/configured/verified state. Opening one
+ * through the canonical disclosure writes no canonical state, so this spec
+ * never depends on another spec's enable/disable timing against the shared
+ * backend. The General Sources members live inside that group's body. */
+async function revealGeneralSources(page) {
+  const group = page.locator('.dp-settings-general-sources');
+  const disclosure = group.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(group.locator('.dp-settings-provider-card--general-http')).toBeVisible();
+}
+
 async function primaryTextColor(page) {
   return page.evaluate(() => {
     const probe = document.createElement('span');
@@ -37,6 +51,10 @@ async function saveSettings(page) {
   await page.locator('#view-settings [data-action="save"]').click();
   const response = await responsePromise;
   expect(response.ok()).toBeTruthy();
+  // Apply Settings re-renders the whole Settings view, which returns every
+  // expandable card to its collapsed default. Re-open the group this spec
+  // operates, through the same canonical disclosure.
+  await revealGeneralSources(page);
 }
 function listFixture(overrides = {}) {
   return {

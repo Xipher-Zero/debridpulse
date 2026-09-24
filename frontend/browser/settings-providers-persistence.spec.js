@@ -40,6 +40,18 @@ async function revealAllDebrid(page) {
   await expect(card.locator(':scope > .card-body')).toBeVisible();
 }
 
+/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+ * state, never a projection of enabled/configured/verified state. Opening one
+ * through the canonical disclosure writes no canonical state, so this spec
+ * never depends on another spec's enable/disable timing against the shared
+ * backend. The General Sources members live inside that group's body. */
+async function revealGeneralSources(page) {
+  const group = page.locator('.dp-settings-general-sources');
+  const disclosure = group.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(group.locator('.dp-settings-provider-card--general-http')).toBeVisible();
+}
+
 /** Open the AllDebrid card's Additional Settings disclosure. */
 async function openAdditional(page) {
   const details = page.locator('.dp-settings-provider-card--alldebrid .dp-settings-additional');
@@ -351,6 +363,7 @@ test('an edited field is committed before Test reads the form', async ({page}) =
 test('the provider Enable toggle stays immediate and is never replayed by the footer',
   async ({page}) => {
     const before = (await settings(page)).integrations.general_http.enabled;
+    await revealGeneralSources(page);
     await page.locator('label[for="dp-settings-integration-general_http-enabled"]').click();
     await expect.poll(async () => (await settings(page)).integrations.general_http.enabled)
       .toBe(!before);

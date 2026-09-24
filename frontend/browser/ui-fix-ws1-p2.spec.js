@@ -18,7 +18,8 @@ async function loadBaseSettings(page) {
   return page.evaluate(() => JSON.parse(JSON.stringify(settingsData)));
 }
 
-function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = true, extraProviders = {}} = {}) {
+function fixture(base, {adEnabled = true, adConfigured = false, adVerified = false,
+                        httpEnabled = true, extraProviders = {}} = {}) {
   const result = clone(base);
   result.integrations ||= {};
   result.integrations.alldebrid = {
@@ -28,6 +29,10 @@ function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = tr
     name: 'AllDebrid',
     kind: 'provider',
     configured: adConfigured,
+    // Durable canonical truth published by the backend: the CURRENT SAVED
+    // verification-relevant configuration is covered by successful test
+    // evidence. The page renders it; it never decides it.
+    verified: adConfigured && adVerified,
     presentation: {
       status_name: 'AllDebrid', premium: true,
       status_endpoint: '/integration-status/alldebrid', static_status: null, display_order: 10,
@@ -44,6 +49,7 @@ function fixture(base, {adEnabled = true, adConfigured = false, httpEnabled = tr
     name: 'HTTP & HTTPS',
     kind: 'provider',
     configured: true,
+    verified: false,
     presentation: {
       status_name: 'General Downloads', premium: false,
       status_endpoint: null, static_status: 'healthy', display_order: 100,
@@ -201,26 +207,37 @@ test('WS1-P2 Provider Status is neutral across enabled-provider combinations', a
   expect(statusText).not.toContain('disabled');
 });
 
-test('WS1-P2 premium card implements the exact persisted four-state matrix', async ({ page }) => {
+/* The Enable toggle beside the status already says whether the provider
+ * participates, so the status never repeats it. What it reports is the only
+ * thing the toggle cannot: whether there is a usable SAVED configuration, and
+ * whether that exact saved configuration has been proven to work.
+ *
+ * Expansion is local presentation state. Navigating to Sources & Providers
+ * renders every card collapsed, whatever the provider's canonical state. */
+test('WS1-P2 premium card implements the exact persisted three-state status matrix', async ({ page }) => {
   const base = await loadBaseSettings(page);
   const router = await installStatefulSettings(page, fixture(base, {adEnabled:false, adConfigured:false}));
   const cases = [
-    {enabled:false, configured:false, expanded:false, status:''},
-    {enabled:false, configured:true, expanded:false, status:'Provider configured', tone:'info'},
-    {enabled:true, configured:false, expanded:true, status:'Configuration required', tone:'warning'},
-    {enabled:true, configured:true, expanded:true, status:''},
+    {enabled:false, configured:false, verified:false, status:''},
+    {enabled:false, configured:true, verified:false, status:'Configured', tone:'warning'},
+    {enabled:false, configured:true, verified:true, status:'Verified', tone:'success'},
+    {enabled:true, configured:false, verified:false, status:'Unconfigured', tone:'error'},
+    {enabled:true, configured:true, verified:false, status:'Configured', tone:'warning'},
+    {enabled:true, configured:true, verified:true, status:'Verified', tone:'success'},
   ];
 
   for (const item of cases) {
-    router.set(fixture(base, {adEnabled:item.enabled, adConfigured:item.configured}));
+    router.set(fixture(base, {adEnabled:item.enabled, adConfigured:item.configured,
+                              adVerified:item.verified}));
     await page.reload();
     await openSources(page);
     const card = page.locator('.dp-settings-provider-card--alldebrid');
     const body = card.locator(':scope > .card-body');
     const disclosure = card.locator('.dp-settings-disclosure');
     const status = card.locator('.dp-settings-provider-config-status');
-    await expect(disclosure).toHaveAttribute('aria-expanded', item.expanded ? 'true' : 'false');
-    if (item.expanded) await expect(body).toBeVisible(); else await expect(body).toBeHidden();
+    // Never expanded on navigation, whatever the provider's canonical state.
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(body).toBeHidden();
     if (item.status) {
       await expect(status).toBeVisible();
       await expect(status).toHaveText(item.status);
@@ -260,7 +277,7 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
 
   await setProviderEnabled(card, true);
   await expect(body).toBeVisible();
-  await expect(status).toHaveText('Configuration required');
+  await expect(status).toHaveText('Unconfigured');
 
   await setProviderEnabled(card, false);
   await expect(body).toBeVisible();
@@ -283,21 +300,26 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   body = card.locator(':scope > .card-body');
   status = card.locator('.dp-settings-provider-config-status');
   await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
-  await expect(status).toBeHidden();
+  // Saved, but no successful test covers this exact saved credential.
+  await expect(status).toHaveText('Configured');
 
   await setProviderEnabled(card, false);
   await expect(body).toBeHidden();
-  await expect(status).toHaveText('Provider configured');
+  await expect(status).toHaveText('Configured');
 
   await applySettings(page);
   card = page.locator('.dp-settings-provider-card--alldebrid');
   body = card.locator(':scope > .card-body');
   status = card.locator('.dp-settings-provider-config-status');
   await expect(body).toBeHidden();
-  await expect(status).toHaveText('Provider configured');
+  await expect(status).toHaveText('Configured');
 
+  // Enabling a provider that IS configured has nothing to ask the operator
+  // for, so it opens nothing: the only automatic expansion belongs to an
+  // accepted enable of an UNCONFIGURED provider.
   await setProviderEnabled(card, true);
-  await expect(body).toBeVisible();
+  await expect(body).toBeHidden();
+  await card.locator('.dp-settings-disclosure').click();
   await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
 });
 
@@ -347,16 +369,20 @@ test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark
   };
 
   await assertGeometry(1440);
-  const warningColor = await status.evaluate(node => getComputedStyle(node).color);
-  const cautionColor = await page.evaluate(() => {
+  // The status carries the canonical state colour for what it reports, never a
+  // palette of its own. This fixture is enabled + unconfigured, which is the
+  // error state: the provider was admitted and cannot do the job.
+  const statusColor = await status.evaluate(node => getComputedStyle(node).color);
+  const errorColor = await page.evaluate(() => {
     const node = document.createElement('span');
-    node.style.color = 'var(--dp-state-caution)';
+    node.style.color = 'var(--dp-state-error)';
     document.body.appendChild(node);
     const value = getComputedStyle(node).color;
     node.remove();
     return value;
   });
-  expect(warningColor).toBe(cautionColor);
+  await expect(status).toHaveText('Unconfigured');
+  expect(statusColor).toBe(errorColor);
 
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
@@ -375,7 +401,7 @@ test('WS1-P2 cross-surface regression keeps persisted card state distinct from r
   await openSources(page);
   let card = page.locator('.dp-settings-provider-card--alldebrid');
   await expect(card.locator(':scope > .card-body')).toBeHidden();
-  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Provider configured');
+  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Configured');
 
   router.set(fixture(base, {adEnabled:true, adConfigured:false, httpEnabled:false}));
   await page.reload();
@@ -384,6 +410,6 @@ test('WS1-P2 cross-surface regression keeps persisted card state distinct from r
   await expect(page.locator('#provider-status-list [data-provider-id="alldebrid"]')).toHaveAttribute('data-provider-state', 'unconfigured');
   await openSources(page);
   card = page.locator('.dp-settings-provider-card--alldebrid');
-  await expect(card.locator(':scope > .card-body')).toBeVisible();
-  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Configuration required');
+  await expect(card.locator(':scope > .card-body')).toBeHidden();
+  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Unconfigured');
 });

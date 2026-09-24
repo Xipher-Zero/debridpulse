@@ -42,8 +42,14 @@ async function enableUsenet(page) {
   }
   await expect.poll(async () =>
     (await page.request.get('/api/settings').then(r => r.json())).integrations.usenet.enabled).toBe(true);
-  await expect(page.locator('.dp-settings-provider-card--usenet'))
-    .not.toHaveClass(/dp-settings-provider-card--collapsed/);
+  // Expansion is local presentation state, never a projection of enabled
+  // state, so a card an earlier case already enabled still arrives collapsed.
+  // These cases measure the card's contents, so they open it the way the
+  // operator does -- through the one canonical disclosure.
+  const card = page.locator('.dp-settings-provider-card--usenet');
+  const disclosure = card.locator('.dp-settings-disclosure');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await expect(card).not.toHaveClass(/dp-settings-provider-card--collapsed/);
 }
 
 /* Every rendered row of the server collection, measured against the

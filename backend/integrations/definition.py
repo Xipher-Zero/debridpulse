@@ -1,4 +1,8 @@
 """Configuration metadata shared by modular integration definitions."""
+import hashlib
+import hmac
+import json
+import secrets
 from dataclasses import dataclass, replace
 from typing import Callable, Optional, Protocol, runtime_checkable
 
@@ -10,6 +14,109 @@ class IntegrationSettings(BaseModel):
     priority: int = 0
     options: dict = Field(default_factory=dict, repr=False)
     clear_secrets: list[str] = Field(default_factory=list, exclude=True)
+    # Durable verification evidence: ``{subject id: fingerprint}``, one entry
+    # per independently testable unit of this namespace whose CURRENT SAVED
+    # verification-relevant configuration a successful Test has covered.
+    #
+    # It lives here, with the canonical configuration it describes, because
+    # that is the only place it can stay true: a reload must not lose it, and a
+    # configuration change must not leave it standing. Current truth is
+    # DERIVED -- does a stored fingerprint still describe what is saved? --
+    # rather than a second flag somebody has to remember to clear.
+    #
+    # It is internal. ``public_integrations`` publishes only the derived
+    # ``verified`` fact; a fingerprint is never served, logged or displayed.
+    verification: dict[str, str] = Field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class VerificationSubject:
+    """One independently testable unit of an integration's configuration.
+
+    ``material`` is EXACTLY what that integration's Test exercises -- no more,
+    so unrelated tuning cannot revoke a proof, and no less, so a proof cannot
+    survive a change to something it actually depended on. Only the integration
+    whose Test it is can say what that material is.
+
+    ``required`` is participation: a unit that cannot take part (a disabled
+    news server) keeps its evidence but never blocks the aggregate answer.
+    """
+    id: str
+    material: dict
+    required: bool = True
+
+
+# The process-local key the transient Test -> Save proof is minted under.
+#
+# The existing UI can test a credential before it is saved, so a successful
+# Test of a draft has to be carryable into the Save that promotes it. What the
+# browser carries is an opaque HMAC of the fingerprint the SERVER computed for
+# what the SERVER actually tested; the server then re-derives the fingerprint
+# from the configuration it has just saved and accepts the proof only for that.
+# A browser can therefore never assert that something is verified, only present
+# evidence that the server itself produced.
+#
+# Deliberately not persisted and deliberately not shared: a proof is a
+# short-lived carrier, never durable truth. Durable truth is the fingerprint.
+_PROOF_KEY = secrets.token_bytes(32)
+
+# How many times a Test of a given material has FAILED, which is what makes a
+# proof supersedable rather than eternal.
+#
+# A proof says "this server tested this material and it worked". The newest
+# truth about a material wins, so a failure has to invalidate every proof
+# minted for it beforehand -- otherwise:
+#
+#     successful Test A  -> proof P
+#     failed Test A      -> durable evidence retired
+#     Save A carrying P  -> P still validates -> Verified restored
+#
+# and a configuration the server has just proven broken could advertise itself
+# as verified. Binding the proof to the material's current failure count makes
+# every earlier proof stop validating the moment that count moves, and a proof
+# minted by the NEXT successful Test validates again.
+#
+# Keyed by fingerprint, so superseding one material never disturbs another.
+# It grows only on failure, which is operator-driven and rare, and it is
+# process-local for the same reason the key is: a proof is never durable truth.
+_PROOF_EPOCHS: dict[str, int] = {}
+
+
+def verification_fingerprint(material) -> str:
+    """A deterministic, order-independent digest of verification material.
+
+    Never reversible to the credential it covers, never published, and never
+    compared against anything but another fingerprint of the same shape.
+    """
+    payload = json.dumps(material, sort_keys=True, separators=(",", ":"), default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def verification_proof(fingerprint: str) -> str:
+    """The opaque token a successful Test hands back for what it tested.
+
+    Bound to the material AND to how many times that material has since been
+    proven broken, so a proof cannot outlive a later contradicting failure.
+    """
+    fingerprint = str(fingerprint)
+    carrier = f"{fingerprint}:{_PROOF_EPOCHS.get(fingerprint, 0)}"
+    return hmac.new(_PROOF_KEY, carrier.encode("ascii"), hashlib.sha256).hexdigest()
+
+
+def supersede_verification_proofs(fingerprint: str) -> None:
+    """Retire every proof minted for this material before now.
+
+    Called when a Test of the material FAILS -- whether or not that material is
+    the saved configuration, because a proof is evidence about material, not
+    about whichever namespace happens to hold it.
+    """
+    fingerprint = str(fingerprint)
+    _PROOF_EPOCHS[fingerprint] = _PROOF_EPOCHS.get(fingerprint, 0) + 1
+
+
+def verification_proves(proof, fingerprint: str) -> bool:
+    """Whether ``proof`` is this server's own CURRENT attestation of ``fingerprint``."""
+    return hmac.compare_digest(str(proof or ""), verification_proof(fingerprint))
 
 
 class IntegrationGroupSettings(BaseModel):
@@ -174,6 +281,12 @@ class IntegrationDefinition:
     # so. An integration that requires explicit opt-in declares ``False``; it
     # applies only when neither persisted state nor the request sets ``enabled``.
     default_enabled: bool = True
+    # What this integration's own Test actually proves, as the verification
+    # subjects of one saved namespace: ``(options model) -> (VerificationSubject, ...)``.
+    # Declared by the integration, because only it knows what its Test
+    # exercises; generic configuration code never branches on an integration.
+    # ``None`` means this integration has no verification concept at all.
+    verification_subjects: Optional[Callable[[BaseModel], tuple]] = None
     # Every durable provider/executor identity this configuration owner covers.
     # A paired integration registers more than one implementation, so its
     # configuration owns more than one durable identity; leaving this empty
@@ -221,6 +334,27 @@ class IntegrationDefinition:
             result[key + "_configured"] = bool(result.get(key))
             result[key] = ""
         return result
+
+    def verification_fingerprints(self, options: dict) -> dict:
+        """``{subject id: (fingerprint, required)}`` for one saved namespace."""
+        if self.verification_subjects is None:
+            return {}
+        return {subject.id: (verification_fingerprint(subject.material), bool(subject.required))
+                for subject in self.verification_subjects(self.options_model(**options))}
+
+    def verified(self, options: dict, evidence) -> bool:
+        """Is the CURRENT SAVED configuration covered by successful evidence?
+
+        Every participating subject must be covered. Nothing participating
+        means there is nothing to have proven, which is Unconfigured -- never
+        Verified.
+        """
+        required = {subject: fingerprint for subject, (fingerprint, needed)
+                    in self.verification_fingerprints(options).items() if needed}
+        if not required:
+            return False
+        stored = evidence or {}
+        return all(stored.get(subject) == fingerprint for subject, fingerprint in required.items())
 
     def configured(self, options: dict) -> bool:
         """Return persisted configuration presence without exposing secret data.

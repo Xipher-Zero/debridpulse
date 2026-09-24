@@ -1655,6 +1655,11 @@ class IntegrationConfigurationUpdate(BaseModel):
     enabled: bool | None = None
     priority: int | None = None
     clear_secrets: list[str] = Field(default_factory=list)
+    # Opaque proofs a successful Test handed back for what it actually tested.
+    # NEVER a claim that something is verified: the fingerprint is re-derived
+    # server-side from the configuration this request saves, and a proof is
+    # accepted only for that. A forged or asserted token matches nothing.
+    verification: list[str] = Field(default_factory=list)
 
 
 def _integration_definition(application: ApplicationService, integration_id: str):
@@ -1687,6 +1692,7 @@ async def patch_integration_configuration(
     ever been used) is still enforced for an integration's ownership fields;
     it is not exempt merely because this is a scoped route."""
     definition = _integration_definition(application, integration_id)
+    from integrations.configuration import accept_verification
     async with application.application_operation():
         # The narrow config-write lock (specification sections 9.5, 13.8)
         # serializes this load-modify-save critical section -- including the
@@ -1720,6 +1726,10 @@ async def patch_integration_configuration(
             # whole-settings route already threads through for exactly this
             # reason -- a scoped route is not exempt from it.
             clean = normalize_settings(current, application.definitions, previous=previous)
+            # A draft the operator tested before saving it may be verified by
+            # the Save that promotes it -- but only after the generic owner has
+            # proven the proof describes the configuration just saved.
+            clean = accept_verification(clean, definition, body.verification)
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
@@ -2126,12 +2136,16 @@ class UsenetServerUpdate(BaseModel):
     enabled: bool | None = None
     display_name: str | None = None
     clear_password: bool = False
+    # See ``IntegrationConfigurationUpdate.verification``: the same opaque
+    # Test -> Save carriage, through the same generic acceptance owner.
+    verification: list[str] = Field(default_factory=list)
 
     def values(self) -> dict:
-        return self.model_dump(exclude_none=True, exclude={"clear_password"})
+        return self.model_dump(exclude_none=True,
+                               exclude={"clear_password", "verification"})
 
 
-async def _mutate_usenet_servers(application: ApplicationService, mutate):
+async def _mutate_usenet_servers(application: ApplicationService, mutate, verification=()):
     """Apply one per-server mutation to the ONE canonical namespace.
 
     Load -> mutate -> validate -> save -> reconfigure -> apply natively, all
@@ -2140,7 +2154,7 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate):
     ``(new_options, payload)``.
     """
     from core.config import config_write_lock, get_settings, load_settings, save_settings, apply_settings
-    from integrations.configuration import normalize_settings, public_integrations
+    from integrations.configuration import accept_verification, normalize_settings, public_integrations
     from integrations.definition import IntegrationSettings
     from integrations.usenet.definition import UsenetOptions
     from integrations.usenet.servers import ServerMutationError
@@ -2163,6 +2177,8 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate):
                 options=updated.model_dump(),
             )}
             clean = normalize_settings(current, application.definitions, previous=previous)
+            clean = accept_verification(
+                clean, _integration_definition(application, USENET_NAMESPACE), verification)
             # The SAME canonical ownership fence every other settings mutation
             # passes through: a server change that could abandon owned native
             # work is refused here, not re-implemented in Usenet code.
@@ -2175,7 +2191,15 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate):
             application.configure()
             applied = await application.apply_integration_configuration(USENET_NAMESPACE)
     public = public_integrations(clean, application.definitions).get(USENET_NAMESPACE, {})
-    return {"ok": True, **payload, "servers": public.get("options", {}).get("servers", []),
+    # The accepted canonical public projection of this integration, published
+    # once. A server write can change the provider's derived ``configured`` and
+    # ``verified`` state, and this module is not the only owner of how that is
+    # presented -- so the response states the identity and the projection, and
+    # the neutral acceptance seam carries them to whoever else renders them.
+    # ``servers`` remains the same projection's own server list, not a second
+    # copy of it.
+    return {"ok": True, **payload, "integration_id": USENET_NAMESPACE, "integration": public,
+            "servers": public.get("options", {}).get("servers", []),
             **({"native": applied.public()} if applied is not None else {})}
 
 
@@ -2190,7 +2214,7 @@ async def create_usenet_server(payload: UsenetServerUpdate,
                                          clear_password=payload.clear_password)
         return updated, {"server_id": created.id}
 
-    return await _mutate_usenet_servers(application, mutate)
+    return await _mutate_usenet_servers(application, mutate, payload.verification)
 
 
 @router.put("/usenet/servers/{server_id}")
@@ -2209,7 +2233,7 @@ async def update_usenet_server(server_id: str, payload: UsenetServerUpdate,
                              clear_password=payload.clear_password),
                 {"server_id": server_id})
 
-    return await _mutate_usenet_servers(application, mutate)
+    return await _mutate_usenet_servers(application, mutate, payload.verification)
 
 
 @router.delete("/usenet/servers/{server_id}")

@@ -2,7 +2,9 @@
 from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME
-from integrations.definition import IntegrationDefinition, IntegrationPresentation
+from integrations.definition import (
+    IntegrationDefinition, IntegrationPresentation, VerificationSubject,
+)
 from transfers.applicability import ProviderApplicability
 
 
@@ -34,6 +36,24 @@ def canonical_options(settings) -> AllDebridOptions:
     return AllDebridOptions(**(getattr(entry, "options", None) or {}))
 
 
+def _verification_subjects(options: AllDebridOptions):
+    """What the AllDebrid connection Test actually proves.
+
+    It authenticates the account credential under the application identity the
+    request is made with, and that is the whole of it. Local request rate
+    limiting decides nothing about whether the credential authenticates, so a
+    change to it must not revoke a proof that it was never part of.
+
+    One subject: the account is either reachable with this credential or it is
+    not. With no credential there is nothing to have proven.
+    """
+    api_key = str(options.api_key or "").strip()
+    if not api_key:
+        return ()
+    return (VerificationSubject("credential", {"api_key": api_key,
+                                               "agent": str(options.agent or "")}),)
+
+
 def build(options, environment):
     from providers.alldebrid.provider import AllDebridProvider
     provider = AllDebridProvider(
@@ -54,6 +74,7 @@ definition = IntegrationDefinition(
                    ("alldebrid_rate_limit_per_minute", "rate_limit_per_minute")),
     legacy_upgrade=_upgrade_legacy_options,
     required_options=frozenset({"api_key"}),
+    verification_subjects=_verification_subjects,
     presentation=IntegrationPresentation(
         status_name="AllDebrid",
         premium=True,

@@ -75,8 +75,20 @@
   text-align: center;
 }
 
+/* The three configuration states, in the canonical state vocabulary the rest
+   of the application already uses -- no badge system and no palette of its
+   own: Unconfigured is an error, Configured is a caution, Verified is a
+   success. */
+#view-settings .dp-settings-provider-config-status[data-tone="error"] {
+  color: var(--dp-state-error);
+}
+
 #view-settings .dp-settings-provider-config-status[data-tone="warning"] {
   color: var(--dp-state-caution);
+}
+
+#view-settings .dp-settings-provider-config-status[data-tone="success"] {
+  color: var(--dp-state-success);
 }
 
 #view-settings .dp-settings-provider-config-status[hidden] {
@@ -84,7 +96,8 @@
   display: block !important;
 }
 
-#view-settings .dp-settings-provider-card > .card-body[hidden] {
+#view-settings .dp-settings-provider-card > .card-body[hidden],
+#view-settings .dp-settings-group-card > .card-body[hidden] {
   display: none !important;
 }
 

@@ -17,34 +17,39 @@ from uuid import uuid4
 
 from pydantic import BaseModel, Field
 
-from integrations.definition import IntegrationDefinition, IntegrationPresentation
+from integrations.definition import (
+    IntegrationDefinition, IntegrationPresentation, VerificationSubject,
+)
+
+def _field(item, name, default):
+    return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
+
+
+def server_usable(item) -> bool:
+    """Could this one news server actually acquire?
+
+    Enabled, addressable, and allowed at least one connection. A server with
+    zero connections cannot acquire anything, so counting it would report
+    Usenet ready when it is not. Configurations written before the floor
+    existed can still carry 0, so this is checked here rather than trusted from
+    validation alone.
+
+    One predicate, used both to decide whether Usenet is configured at all and
+    to decide which servers have to be covered before it is verified.
+    """
+    if not _field(item, "enabled", True):
+        return False
+    if not str(_field(item, "host", "") or "").strip():
+        return False
+    try:
+        return int(_field(item, "connections", 0) or 0) >= MIN_CONNECTIONS
+    except (TypeError, ValueError):
+        return False
+
 
 def usable_servers(options: dict) -> int:
-    """News servers that could actually acquire: enabled, addressable, and
-    allowed at least one connection.
-
-    A server with zero connections cannot acquire anything, so counting it
-    would report Usenet ready when it is not. Configurations written before
-    the floor existed can still carry 0, so this is checked here rather than
-    trusted from validation alone.
-    """
-    def field(item, name, default):
-        return item.get(name, default) if isinstance(item, dict) else getattr(item, name, default)
-
-    servers = (options or {}).get("servers") or []
-    usable = 0
-    for item in servers:
-        if not field(item, "enabled", True):
-            continue
-        if not str(field(item, "host", "") or "").strip():
-            continue
-        try:
-            if int(field(item, "connections", 0) or 0) < MIN_CONNECTIONS:
-                continue
-        except (TypeError, ValueError):
-            continue
-        usable += 1
-    return usable
+    """How many news servers could actually acquire."""
+    return sum(1 for item in ((options or {}).get("servers") or []) if server_usable(item))
 
 
 # SABnzbd 5.1.3 `config.py ConfigServer` allows 0..500. DebridPulse's floor is
@@ -164,6 +169,29 @@ class UsenetOptions(BaseModel):
         return result
 
 
+def _verification_subjects(options: UsenetOptions):
+    """What a Usenet Test actually proves, per news server.
+
+    The Test is per server and exercises exactly the connection material below
+    -- the same values ``/usenet/servers/test`` sends. Display name, priority
+    and acquisition tuning are not part of a connection proof and must not
+    revoke one; they would only belong here if the Test started validating
+    them, which it does not.
+
+    EVERY saved server is a subject, so switching one off and on again does not
+    throw away a proof that is still true. Only a server that can actually
+    participate is REQUIRED, so a disabled or unusable one never blocks the
+    aggregate answer for the servers that do.
+    """
+    return tuple(VerificationSubject(
+        server.id,
+        {"host": str(server.host or "").strip(), "port": int(server.port),
+         "ssl": bool(server.ssl), "username": str(server.username or ""),
+         "password": str(server.password or ""), "connections": int(server.connections)},
+        server_usable(server),
+    ) for server in options.servers)
+
+
 def build(options: UsenetOptions, environment):
     """Build BOTH halves of the pairing from one canonical configuration.
 
@@ -222,6 +250,9 @@ definition = IntegrationDefinition(
     # "Configured" is decided by `configured_options` below, not by presence
     # of a field: an internal service existing is never configuration.
     required_options=frozenset(),
+    # Usenet is verified only when every PARTICIPATING news server is covered
+    # by a successful test of its current connection configuration.
+    verification_subjects=_verification_subjects,
     # Usenet is off until an operator turns it on: enabling it is what makes
     # both the provider and the SAB-backed executor participate.
     default_enabled=False,
