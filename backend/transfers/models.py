@@ -333,6 +333,13 @@ class ArtifactFingerprint:
 
 @dataclass(frozen=True)
 class TransferCandidate:
+    """One executable acquisition option.
+
+    ``relative_path`` is the collection-root-relative member path a manifest
+    child was stamped with (see :class:`SourceEntry`); core prepends the durable
+    transfer root exactly once in
+    ``transfers._engine_base.TransferEngine._materialize``.
+    """
     name: str
     endpoints: tuple[Endpoint, ...]
     expected_bytes: int = 0
@@ -390,6 +397,13 @@ class FileManifestEntry:
 
     Carries no URL, endpoint, signed token, header, credential, provider-native
     decision, selection flag, timeout, or executor information.
+
+    ``relative_path`` is the member path INSIDE the transfer collection root and
+    never contains the root itself (``Disc 1/track01.flac``, never
+    ``Album/Disc 1/track01.flac``). Interpreting a provider-native collection
+    wrapper is the provider translation boundary's job; core owns the canonical
+    root (``torrents.name``) and applies it exactly once when it allocates a
+    child FILE target.
     """
     name: str
     relative_path: str
@@ -431,7 +445,13 @@ class ResolutionResult:
 
 @dataclass(frozen=True)
 class SourceEntry:
-    """Metadata for an unresolved manifest member; never dispatched as a candidate."""
+    """Metadata for an unresolved manifest member; never dispatched as a candidate.
+
+    ``relative_path`` uses the same collection-root-relative coordinate system as
+    :class:`FileManifestEntry` -- the two must agree exactly, or explicit file
+    selection cannot reconcile an early choice against the executable manifest
+    (``transfers.file_selection.reconcile_executable_subset``).
+    """
     name: str
     expected_bytes: int
     relative_path: str

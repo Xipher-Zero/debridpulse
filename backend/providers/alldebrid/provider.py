@@ -5,11 +5,11 @@ from dataclasses import replace
 from functools import wraps
 from urllib.parse import urlsplit
 
-from providers.alldebrid.client import AllDebridService, API_V4, flatten_files
+from providers.alldebrid.client import AllDebridService, API_V4
 from services.network_safety import validate_provider_download_url
 from providers.alldebrid.translation import (
-    cache_presence_from_upload, file_manifest_from_files_response, observation_from_native,
-    resource_from_native, translate_error,
+    cache_presence_from_upload, collection_root_name, file_manifest_from_files_response,
+    native_members, observation_from_native, resource_from_native, translate_error,
 )
 from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
@@ -148,7 +148,8 @@ class AllDebridProvider:
                                          stage=Stage.CANDIDATE_PREPARATION)
             except TransferError:
                 files = None
-            tree = file_manifest_from_files_response(files, native_id)
+            tree = file_manifest_from_files_response(files, native_id,
+                                                     root_name=observation.name)
             if tree is not None:
                 observation = replace(observation, file_manifest=tree)
         return observation
@@ -165,19 +166,27 @@ class AllDebridProvider:
 
     @normalized_boundary(Stage.CANDIDATE_PREPARATION)
     async def manifest(self, resource: ProviderResource) -> tuple[SourceEntry, ...]:
+        """Executable members, in the SAME collection-root-relative coordinate
+        system the early ``FileManifest`` already published.
+
+        ``/v4/magnet/files`` carries no name fact of its own, so the
+        authoritative root name comes from this provider's own resource
+        context, which its observations enrich (``translation.with_root_name``).
+        """
         native_id = self._native_id(resource)
+        root_name = collection_root_name(resource)
         records = await self._call(self.client.get_magnet_files, [native_id], stage=Stage.CANDIDATE_PREPARATION)
         entries = []
         try:
             for record in records:
                 if str(record.get("id")) != native_id:
                     continue
-                for file in flatten_files(record.get("files") or []):
-                    source = str(file["link"])
-                    request = TransferRequest(urlsplit(source).scheme, source, str(file["name"]),
+                for member in native_members(record.get("files") or [], root_name=root_name,
+                                             require_link=True):
+                    request = TransferRequest(urlsplit(member.link).scheme, member.link, member.name,
                                               preferred_provider=self.descriptor.id)
-                    entries.append(SourceEntry(str(file["name"]), int(file.get("size") or 0),
-                                               str(file.get("path") or file["name"]), request))
+                    entries.append(SourceEntry(member.name, member.expected_bytes,
+                                               member.relative_path, request))
         except Exception as exc:
             raise TransferError(translate_error(exc, stage=Stage.CANDIDATE_PREPARATION,
                                                 secrets=self._secrets)) from None

@@ -6,7 +6,7 @@ import pytest
 from providers.alldebrid.client import AllDebridAPIError
 from providers.alldebrid.provider import AllDebridProvider
 from providers.alldebrid.translation import (
-    file_manifest_from_files_response, observation_from_native, translate_error,
+    file_manifest_from_files_response, observation_from_native, resource_from_native, translate_error,
 )
 from transfers.errors import Category, Retryability, TransferError
 from transfers.models import (
@@ -117,9 +117,14 @@ async def test_upload_resource_identity_is_separate_from_transfer_and_native_id(
     client = AsyncMock()
     client.upload_magnet.return_value = {"id": "123", "statusCode": 4, "name": "payload"}
     result = await AllDebridProvider(client=client).resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:test"))
-    assert result.observation.resource.id != "123"
-    assert result.observation.resource.context == {"id": "123"}
-    assert result.observation.resource.ownership == Ownership.CREATED
+    resource = result.observation.resource
+    assert resource.id != "123"
+    assert resource.context["id"] == "123"
+    assert resource.ownership == Ownership.CREATED
+    # Canonical resource identity is derived from the native id alone, so the
+    # provider may enrich its own opaque context (here with the authoritative
+    # root name it just observed) without ever renaming the resource.
+    assert resource.id == resource_from_native({"id": "123"}).id
 
 
 @pytest.mark.asyncio

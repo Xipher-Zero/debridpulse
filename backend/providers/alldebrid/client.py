@@ -265,25 +265,3 @@ class AllDebridService:
 
     async def close(self):
         pass
-
-
-def flatten_files(nodes: List[Dict], prefix: str = "") -> List[Dict]:
-    """Recursively flatten the nested file tree from /v4/magnet/files."""
-    result = []
-    for node in nodes:
-        if node is None:
-            continue
-        name = node.get("n", "")
-        current = f"{prefix}/{name}".strip("/") if name else prefix
-        if "l" in node:
-            result.append({
-                "name": name,
-                "path": current or name,
-                "size": node.get("s", 0),
-                "link": validate_provider_download_url(
-                    node["l"], context="magnet file download link"
-                ),
-            })
-        elif "e" in node and isinstance(node["e"], list):
-            result.extend(flatten_files(node["e"], current))
-    return result

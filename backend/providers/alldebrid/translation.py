@@ -8,13 +8,14 @@ Provider output is factual; recovery policy is owned by the universal core.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import replace
+from dataclasses import dataclass, replace
 import re
 from uuid import NAMESPACE_URL, uuid5
 
 import aiohttp
 
 from providers.alldebrid.client import AllDebridAPIError
+from services.network_safety import validate_provider_download_url
 from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
@@ -143,47 +144,134 @@ def resource_from_native(native: dict, *, ownership: Ownership = Ownership.OBSER
                             uuid5(NAMESPACE_URL, f"alldebrid:resource:{native_id}").hex)
 
 
-def _manifest_entries(nodes, prefix: str = "") -> list[FileManifestEntry]:
-    """Flatten AllDebrid's nested file representation into neutral entries.
+# The canonical neutral manifest contract this boundary must satisfy:
+# ``FileManifestEntry.relative_path`` / ``SourceEntry.relative_path`` describe the
+# member path INSIDE the collection root and never contain the root itself --
+# ``transfers._engine_base.TransferEngine._materialize`` applies the durable
+# transfer root exactly once when it allocates a child FILE target.
 
-    Reads only ``n`` (name), ``s`` (size) and ``e`` (child list). Any download
-    link (``l``) or capability URL on a native node is discarded here.
+
+@dataclass(frozen=True)
+class NativeMember:
+    """One leaf of an AllDebrid native file tree, already collection-root-relative."""
+    name: str
+    relative_path: str
+    expected_bytes: int
+    link: str = ""
+
+
+def _unwrap_collection_root(nodes: list[dict], root_name: str) -> list[dict]:
+    """Terminate AllDebrid's own collection wrapper at this boundary.
+
+    A BitTorrent multi-file torrent declares ``info.name`` as the single
+    directory every member path is stored under. AllDebrid reports that same
+    string as the magnet's authoritative ``filename`` and reports that same
+    directory as the top-level node of its file tree, so the wrapper is
+    identified by two of the provider's OWN authoritative facts and nothing
+    else: the tree has exactly one top-level node, that node is a directory
+    (it carries a child list ``e``), and its native name is exactly the
+    provider's authoritative name for this resource.
+
+    Exactly one level is ever removed, and every case these native facts
+    cannot decide leaves the tree untouched: no authoritative name (the
+    provider's ``noname`` placeholder is not one), more than one top-level
+    node, a top-level leaf (a single-file torrent, whose ``info.name`` IS the
+    file), or any inexact match. Nothing here infers a wrapper from the core
+    transfer name, from a prefix shared by every member, or from a first
+    directory merely because there is only one -- a real member directory
+    such as ``Disc 1`` is removed only when ``Disc 1`` genuinely is this
+    resource's own name, in which case it genuinely is the collection root.
     """
-    entries: list[FileManifestEntry] = []
-    for node in nodes or ():
+    if not root_name or len(nodes) != 1:
+        return nodes
+    only = nodes[0]
+    children = only.get("e")
+    if not isinstance(children, list):
+        return nodes
+    if str(only.get("n") or only.get("name") or "").strip() != root_name:
+        return nodes
+    return [node for node in children if isinstance(node, dict)]
+
+
+def _flatten(nodes: list[dict], prefix: str, require_link: bool) -> list[NativeMember]:
+    members: list[NativeMember] = []
+    for node in nodes:
         if not isinstance(node, dict):
             continue
         name = str(node.get("n") or node.get("name") or "").strip()
         children = node.get("e")
         current = f"{prefix}/{name}".strip("/") if name else prefix
         if isinstance(children, list):
-            entries.extend(_manifest_entries(children, current))
+            members.extend(_flatten(children, current, require_link))
             continue
         if not name:
             continue
+        link = ""
+        if require_link:
+            if "l" not in node:
+                continue
+            # The provider-issued download capability is validated here, at the
+            # one native boundary, before it can reach any consumer. A node that
+            # DOES claim a link but carries an unusable one is a malformed native
+            # payload and fails loudly, exactly as it did before this boundary had
+            # a single owner -- it is never silently dropped from the manifest.
+            link = validate_provider_download_url(node["l"], context="magnet file download link")
         try:
             size = max(0, int(node.get("s") or node.get("size") or 0))
         except (TypeError, ValueError, OverflowError):
             size = 0
-        entries.append(FileManifestEntry(name, current or name, size))
-    return entries
+        members.append(NativeMember(name, current or name, size, link))
+    return members
 
 
-def file_manifest_from_native(native: dict) -> FileManifest | None:
+def native_members(nodes, *, root_name: str = "", require_link: bool = False) -> tuple[NativeMember, ...]:
+    """THE AllDebrid native file-tree interpreter.
+
+    One owner for both neutral surfaces: the early selectable ``FileManifest``
+    and the executable ``SourceEntry`` manifest derive their member paths from
+    this function alone, so the two can never drift onto different coordinate
+    systems and explicit file selection keeps reconciling
+    (``transfers.file_selection.reconcile_executable_subset``).
+
+    ``require_link`` selects the capability-bearing surface: a leaf that claims
+    no native download link at all is skipped, and one that claims an unusable
+    link fails. With it off the native ``l`` value is never even read, so no
+    capability URL can leak into the neutral early manifest. The member PATH is
+    computed identically either way.
+
+    A node carrying a child list ``e`` is a directory on BOTH surfaces. The two
+    superseded flatteners disagreed here -- the executable one tested ``l``
+    first and would have called such a node a file -- and that disagreement is
+    resolved in favour of the early surface's rule, because early and executable
+    member paths must be identical for explicit selection to reconcile.
+    """
+    prepared = [node for node in (nodes or ()) if isinstance(node, dict)]
+    return tuple(_flatten(_unwrap_collection_root(prepared, root_name), "", require_link))
+
+
+def file_manifest_from_native(native: dict, *, root_name: str | None = None) -> FileManifest | None:
     """Neutral early FileManifest from a status record's file tree, or ``None``.
 
     Absent/empty tree yields ``None``: the provider reports no selectable
-    manifest until it has a complete authoritative tree.
+    manifest until it has a complete authoritative tree. ``root_name`` defaults
+    to this same record's own authoritative name.
     """
-    entries = _manifest_entries(native.get("files"))
+    name = _native_name(native) if root_name is None else root_name
+    entries = [FileManifestEntry(member.name, member.relative_path, member.expected_bytes)
+               for member in native_members(native.get("files"), root_name=name)]
     return FileManifest(tuple(entries)) if entries else None
 
 
-def file_manifest_from_files_response(records, native_id: str) -> FileManifest | None:
-    """Neutral FileManifest from a /magnet/files response (links discarded)."""
+def file_manifest_from_files_response(records, native_id: str, *, root_name: str = "") -> FileManifest | None:
+    """Neutral FileManifest from a /magnet/files response (links discarded).
+
+    That endpoint carries no name fact of its own, so the caller supplies the
+    authoritative root name it already observed for the same resource.
+    """
     for record in records or ():
         if isinstance(record, dict) and str(record.get("id")) == str(native_id):
-            entries = _manifest_entries(record.get("files"))
+            entries = [FileManifestEntry(member.name, member.relative_path, member.expected_bytes)
+                       for member in native_members(record.get("files"), root_name=root_name)]
             if entries:
                 return FileManifest(tuple(entries))
     return None
@@ -221,6 +309,32 @@ def _native_name(native: dict) -> str:
     """The authoritative native name, or ``""`` when the provider has none yet."""
     name = str(native.get("filename") or native.get("name") or "").strip()
     return "" if name.casefold() == _UNRESOLVED_NATIVE_NAME else name
+
+
+# Provider-owned native state on the provider's own resource. Core treats
+# ``ProviderResource.context`` as opaque and never reads this key; it exists so
+# that ``/v4/magnet/files`` -- which carries no name fact of its own -- can be
+# interpreted with the authoritative torrent name the status record did carry.
+_ROOT_NAME_CONTEXT = "root_name"
+
+
+def with_root_name(resource: ProviderResource, name: str) -> ProviderResource:
+    """Enrich a provider-owned resource with AllDebrid's authoritative root name.
+
+    Canonical resource identity is untouched: ``resource.id`` is
+    ``uuid5("alldebrid:resource:<native id>")`` and does not depend on
+    ``context``, so a later observation enriches the SAME resource rather than
+    creating another one. An absent name -- including the neutralized ``noname``
+    placeholder -- is the absence of a fact and never overwrites a known one.
+    """
+    if not name or str(resource.context.get(_ROOT_NAME_CONTEXT) or "") == name:
+        return resource
+    return replace(resource, context={**dict(resource.context), _ROOT_NAME_CONTEXT: name})
+
+
+def collection_root_name(resource: ProviderResource) -> str:
+    """The authoritative root name carried on a provider-owned resource, if any."""
+    return str(resource.context.get(_ROOT_NAME_CONTEXT) or "").strip()
 
 
 def observation_from_native(native: dict, *, resource: ProviderResource | None = None,
@@ -273,6 +387,6 @@ def observation_from_native(native: dict, *, resource: ProviderResource | None =
     if request is None and re.fullmatch(r"[a-f0-9]{40}", fingerprint):
         request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + fingerprint,
                                   name, fingerprint, "alldebrid")
-    return ProviderObservation(resource, state, name,
+    return ProviderObservation(with_root_name(resource, name), state, name,
                                fingerprint, progress, error, request,
-                               file_manifest=file_manifest_from_native(native))
+                               file_manifest=file_manifest_from_native(native, root_name=name))

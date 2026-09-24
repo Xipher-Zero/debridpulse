@@ -6,10 +6,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from providers.alldebrid.client import (
-    AllDebridService,
-    flatten_files,
-)
+from providers.alldebrid.client import AllDebridService
+from providers.alldebrid.translation import native_members
 from services.network_safety import validate_provider_download_url
 from postprocessors.archive.extractor import (
     _extract_7z_to,
@@ -76,9 +74,11 @@ async def test_unlock_link_validates_delayed_provider_target():
 
 
 def test_magnet_file_capability_is_validated_before_materialization():
+    # The one AllDebrid native-tree interpreter validates every provider-issued
+    # download capability on the executable surface.
     with pytest.raises(Exception, match="non-public"):
-        flatten_files(
-            [{"n": "payload.bin", "s": 1, "l": "http://127.0.0.1/payload"}]
+        native_members(
+            [{"n": "payload.bin", "s": 1, "l": "http://127.0.0.1/payload"}], require_link=True,
         )
 
 

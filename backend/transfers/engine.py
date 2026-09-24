@@ -229,7 +229,20 @@ class TransferEngine(_RecoveryTransferEngine):
                     )
                     if gate != fs.SelectionGate.PROCEED:
                         return first_commitment
-                entries = await provider.manifest(record.resource)
+                # The freshly observed provider resource, not the one frozen
+                # onto the request row at its first resolution attempt:
+                # ``transfer_requests.resource`` is written by
+                # ``TransferRepository.resolution()`` and inventory adoption
+                # only, never refreshed by ``resource_observation()``, so it can
+                # lag behind whatever the provider has since learned about the
+                # SAME canonical resource. Core has already accepted
+                # ``observation.resource`` as the durable binding two statements
+                # above; handing the provider back its own latest statement is
+                # the only self-consistent input for the executable manifest.
+                # Entirely provider-agnostic: core never inspects the opaque
+                # ``context``, and a provider whose ``observe()`` returns the
+                # resource unchanged sees no difference at all.
+                entries = await provider.manifest(observation.resource)
                 entries = tuple({
                     _engine_base.codec.dump(entry): entry for entry in entries
                 }.values())

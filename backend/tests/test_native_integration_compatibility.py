@@ -20,7 +20,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from providers.alldebrid.client import AllDebridService, flatten_files
+from providers.alldebrid.client import AllDebridService
+from providers.alldebrid.translation import native_members
 from executors.aria2.client import Aria2Service, Aria2DownloadStatus, Aria2RPCError, Aria2ConnectionError
 
 
@@ -29,13 +30,16 @@ from executors.aria2.client import Aria2Service, Aria2DownloadStatus, Aria2RPCEr
 # ═════════════════════════════════════════════════════════════════════════════
 
 class NativeManifestTests(unittest.TestCase):
-    def test_flatten_files_preserves_nested_path(self):
+    def test_native_members_preserve_nested_path(self):
+        """Member hierarchy below the collection root is never flattened away.
+        ``Season 01`` is not this resource's own name, so it is a member
+        directory, not the collection wrapper."""
         nodes = [{"n": "Season 01", "e": [
             {"n": "Episode 01.mkv", "s": 123, "l": "https://example.invalid/1"},
         ]}]
-        flat = flatten_files(nodes)
+        flat = native_members(nodes, root_name="Some Show", require_link=True)
         self.assertEqual(len(flat), 1)
-        self.assertEqual(flat[0]["path"], "Season 01/Episode 01.mkv")
+        self.assertEqual(flat[0].relative_path, "Season 01/Episode 01.mkv")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
