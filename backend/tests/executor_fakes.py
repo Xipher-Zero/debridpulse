@@ -45,8 +45,12 @@ class LedgerProvider:
     async def resolve(self, request):
         name, _, shape = str(request.payload).partition(":")
         kind = MaterializationKind.COLLECTION if shape == "collection" else MaterializationKind.FILE
+        # A payload naming a relative path resolves to the nested destination
+        # core would build for it, so path-scaffolding behavior is provable
+        # without a manifest.
         return ResolutionResult(ResourceState.AVAILABLE, (TransferCandidate(
             request.name or name, (), expected_bytes=4 if kind == MaterializationKind.FILE else 0,
+            relative_path=name if "/" in name else "",
             provider_id=self.descriptor.id, materialization=kind,
             accepted_input_methods=self.input_methods,
         ),))

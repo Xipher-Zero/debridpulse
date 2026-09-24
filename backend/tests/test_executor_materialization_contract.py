@@ -360,3 +360,175 @@ async def test_retry_attempt_inherits_its_artifacts_material_ownership(tmp_path,
     assert row["target_initially_absent"] == 0                # material was present at its admission...
     assert row["material_owner_attempt_id"] == first.attempt_id  # ...and is DebridPulse's own lineage
     assert await core.repository.execution_owns_target(second)
+
+
+# ---------------------------------------------------------------------------
+# Deleted transfers: incomplete material the stopped execution positively owns
+# ---------------------------------------------------------------------------
+
+
+async def _restarted(core):
+    """A fresh engine over the same durable state: nothing in-memory survives."""
+    from transfers.convergence_engine import TransferEngine
+    from transfers.recovery_repository import TransferRepository
+
+    engine = TransferEngine(TransferRepository(), core.registry, download_root=core.engine.root,
+                            policy=core.engine.policy, clock=lambda: core.now[0])
+    await engine.initialize()
+    return engine
+
+
+async def _cleanup_state(attempt_id):
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT cleanup_state FROM execution_attempts WHERE id=?", (attempt_id,))
+    return row["cleanup_state"] if row else None
+
+
+async def _preallocated(core, payload="single", content=b"\x00" * 16):
+    """An admitted execution that has since created its own partial target."""
+    transfer = await submit_ledger(core, payload)
+    artifact = await artifact_of(core, transfer.id)
+    assert artifact.execution is not None
+    assert await core.repository.execution_owns_target(artifact.execution)
+    target = Path(artifact.target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(content)
+    core.executor.run(artifact.execution)
+    return transfer, artifact
+
+
+async def test_deleting_a_transfer_retires_the_incomplete_material_its_execution_owns(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core)
+    assert Path(artifact.target).exists()
+
+    await core.engine.delete(transfer.id)
+
+    assert not Path(artifact.target).exists()
+    assert await _cleanup_state(artifact.execution.attempt_id) == "complete"
+
+
+async def test_deleting_a_transfer_never_removes_material_its_execution_does_not_own(tmp_path, monkeypatch):
+    from transfers.models import TransferRequest
+
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer = await core.engine.submit((TransferRequest("ledger", "single", name="single"),))
+    await core.engine.resolve_pending()
+    artifact = await artifact_of(core, transfer.id)
+    target = Path(artifact.target)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(b"operator material")          # pre-dates the execution
+    await core.engine.reconcile_executions()
+    artifact = await artifact_of(core, transfer.id)
+    assert artifact.execution is not None
+    assert not await core.repository.execution_owns_target(artifact.execution)
+    core.executor.run(artifact.execution)
+
+    await core.engine.delete(transfer.id)
+
+    assert target.read_bytes() == b"operator material"
+    assert await _cleanup_state(artifact.execution.attempt_id) == "complete"
+
+
+async def test_unconfirmed_native_stop_preserves_owned_material_and_keeps_cleanup_pending(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core)
+    core.executor.cancel_mode = "unconfirmed"
+
+    await core.engine.delete(transfer.id)
+
+    assert Path(artifact.target).exists()
+    assert await _cleanup_state(artifact.execution.attempt_id) in {"pending", "blocked"}
+
+
+async def test_pending_cleanup_retires_owned_material_after_restart(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core)
+    core.executor.cancel_mode = "unconfirmed"
+    await core.engine.delete(transfer.id)
+    assert Path(artifact.target).exists()
+
+    restarted = await _restarted(core)
+    core.executor.cancel_mode = "confirm"
+    core.now[0] += 1000
+    await restarted.reconcile_executions()
+
+    assert not Path(artifact.target).exists()
+    assert await _cleanup_state(artifact.execution.attempt_id) == "complete"
+
+
+async def test_retaining_the_provider_resource_still_reclaims_owned_local_material(tmp_path, monkeypatch):
+    """``remote=False`` withholds provider-resource deletion only. It says
+    nothing about material a deleted local execution owns."""
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core)
+
+    await core.engine.delete(transfer.id, remote=False)
+
+    assert not Path(artifact.target).exists()
+    assert await _cleanup_state(artifact.execution.attempt_id) == "complete"
+
+
+async def test_deleting_a_completed_transfer_never_sweeps_its_delivered_payload(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer = await submit_ledger(core, "single")
+    artifact = await artifact_of(core, transfer.id)
+    core.executor.finish_file(artifact.execution, artifact.target)
+    assert (await _complete(core, transfer.id)).state == TransferState.COMPLETED
+
+    await core.engine.delete(transfer.id)
+
+    assert Path(artifact.target).read_bytes() == b"done"
+
+
+async def test_retiring_an_owned_target_prunes_only_the_empty_scaffolding_it_left(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core, "Transfer/A/B/file.bin")
+    target = Path(artifact.target)
+    assert target.parent.name == "B"
+
+    await core.engine.delete(transfer.id)
+
+    assert not target.exists()
+    assert not (core.root / "Transfer").exists()
+    assert core.root.is_dir()
+
+
+async def test_scaffolding_pruning_never_follows_a_symlinked_ancestor(tmp_path, monkeypatch):
+    """A symlinked ancestor is a boundary, not a directory to walk through.
+
+    The owned target is still reclaimed -- it is a real file and the execution
+    owns it -- but the directory the link points at belongs to whoever created
+    it, so pruning stops at the link rather than reaching through it and
+    leaving the link dangling."""
+    core = await ledger_core(tmp_path, monkeypatch)
+    root = Path(core.engine.root).resolve()
+    root.mkdir(parents=True, exist_ok=True)
+    real = root / "real"
+    real.mkdir()
+    (root / "link").symlink_to(real, target_is_directory=True)
+
+    transfer, artifact = await _preallocated(core, "link/file.bin")
+    assert Path(artifact.target) == root / "link" / "file.bin"
+    assert (real / "file.bin").exists()
+
+    await core.engine.delete(transfer.id)
+
+    assert not (real / "file.bin").exists()   # the owned target is still reclaimed
+    assert real.is_dir()                      # the linked-to directory is never pruned
+    assert (root / "link").is_symlink()       # the link is neither followed nor removed
+    assert root.is_dir()
+
+
+async def test_scaffolding_pruning_stops_at_the_first_directory_holding_other_material(tmp_path, monkeypatch):
+    core = await ledger_core(tmp_path, monkeypatch)
+    transfer, artifact = await _preallocated(core, "Transfer/A/B/file.bin")
+    keep = Path(artifact.target).parent / "keep.bin"
+    keep.write_bytes(b"unrelated")
+
+    await core.engine.delete(transfer.id)
+
+    assert not Path(artifact.target).exists()
+    assert keep.read_bytes() == b"unrelated"
+    assert keep.parent.is_dir()
+    assert (core.root / "Transfer" / "A").is_dir()

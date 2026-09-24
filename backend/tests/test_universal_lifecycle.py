@@ -13,8 +13,8 @@ from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
     CleanupAuthority, ExecutionObservation, ExecutionRequest, ExecutionState,
-    OutcomeKind, Ownership, ResolutionResult, ResourceState, TransferOutcome,
-    TransferRequest, TransferState,
+    OutcomeKind, Ownership, ProviderObservation, ProviderResource, ResolutionResult, ResourceState,
+    TransferOutcome, TransferRequest, TransferState,
     SourceIdentity, ArtifactFingerprint,
 )
 from transfers.policy import TransferPolicy
@@ -165,6 +165,70 @@ async def test_provider_preparation_and_manifest_do_not_define_local_progress(co
     assert artifact.target.endswith("Parcel/folder/payload.bin")
     assert artifact.execution is not None
     assert (await core.repository.get(transfer.id)).state == TransferState.TRANSFERRING
+
+
+async def _unresolved_root(core, payload="box"):
+    """A bound root resource the provider cannot yet name."""
+    unresolved = replace(core.provider.parcel(payload).observation, name="")
+    core.provider.responses = [ResolutionResult(ResourceState.PREPARING, observation=unresolved)]
+    core.provider.resources[unresolved.resource.id] = unresolved
+    return unresolved
+
+
+@pytest.mark.asyncio
+async def test_late_provider_root_name_converges_through_ordinary_observation(core):
+    """A root name the provider resolves only after binding is an ordinary
+    lifecycle fact: it converges on the observation that carries it, without
+    waiting for the resource to become AVAILABLE."""
+    unresolved = await _unresolved_root(core)
+    transfer = await submit(core, "box", "provisional")
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).name == "provisional"
+
+    core.provider.resources[unresolved.resource.id] = replace(unresolved, name="Resolved Root Name")
+    core.now[0] += 1000
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).name == "Resolved Root Name"
+
+
+@pytest.mark.asyncio
+async def test_bound_resource_reconciliation_converges_a_stale_root_name(core):
+    """The already-bound resource path (restart/requeue reconciliation) accepts
+    the same name fact as ordinary polling: a transfer whose durable name is
+    still provisional converges the moment that path observes the resource."""
+    unresolved = await _unresolved_root(core)
+    transfer = await submit(core, "box", "provisional")
+    await core.engine.tick()
+    assert (await core.repository.get(transfer.id)).name == "provisional"
+
+    core.provider.resources[unresolved.resource.id] = replace(unresolved, name="Resolved Root Name")
+    record = (await core.repository.requests(transfer.id))[0]
+    assert record.parent_id is None and record.resource is not None
+    await core.engine._resolve(replace(record, state="pending"))
+    assert (await core.repository.get(transfer.id)).name == "Resolved Root Name"
+
+
+@pytest.mark.asyncio
+async def test_child_observation_never_renames_the_parent(core):
+    """A member's own name is never the root request's name."""
+    root = replace(core.provider.parcel(state=ResourceState.AVAILABLE).observation, name="")
+    core.provider.resources[root.resource.id] = root
+    child_resource = ProviderResource(core.provider.descriptor.id, {"box_ticket": "member"},
+                                      Ownership.CREATED, id=f"{core.provider.descriptor.id}:member")
+    child = ProviderObservation(child_resource, ResourceState.PREPARING, "Child File Name")
+    core.provider.resources[child_resource.id] = child
+    core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE, observation=root),
+                               ResolutionResult(ResourceState.PREPARING, observation=child)]
+
+    transfer = await submit(core, "box", "provisional")
+    for _ in range(3):
+        core.now[0] += 1000
+        await core.engine.tick()
+
+    records = await core.repository.requests(transfer.id)
+    assert any(item.parent_id is not None and item.resource is not None
+               and item.resource.id == child_resource.id for item in records)
+    assert (await core.repository.get(transfer.id)).name == "provisional"
 
 
 @pytest.mark.asyncio

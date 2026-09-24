@@ -210,6 +210,19 @@ def cache_presence_from_upload(native: dict) -> CachePresence:
     return CachePresence.UNKNOWN
 
 
+# AllDebrid's own vocabulary for "this torrent's metadata is not resolved yet":
+# the native filename it reports until the real name is known. It is a
+# provider-native placeholder, not a name, so it is neutralized here at the
+# translation boundary and core never learns the string.
+_UNRESOLVED_NATIVE_NAME = "noname"
+
+
+def _native_name(native: dict) -> str:
+    """The authoritative native name, or ``""`` when the provider has none yet."""
+    name = str(native.get("filename") or native.get("name") or "").strip()
+    return "" if name.casefold() == _UNRESOLVED_NATIVE_NAME else name
+
+
 def observation_from_native(native: dict, *, resource: ProviderResource | None = None,
                             request: TransferRequest | None = None) -> ProviderObservation:
     resource = resource or resource_from_native(native)
@@ -256,11 +269,10 @@ def observation_from_native(native: dict, *, resource: ProviderResource | None =
         if error.category == Category.UNMAPPED_PROVIDER_ERROR:
             state = ResourceState.UNKNOWN
     fingerprint = str(native.get("hash") or "").lower()
+    name = _native_name(native)
     if request is None and re.fullmatch(r"[a-f0-9]{40}", fingerprint):
         request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + fingerprint,
-                                  str(native.get("filename") or native.get("name") or ""),
-                                  fingerprint, "alldebrid")
-    return ProviderObservation(resource, state,
-                               str(native.get("filename") or native.get("name") or ""),
+                                  name, fingerprint, "alldebrid")
+    return ProviderObservation(resource, state, name,
                                fingerprint, progress, error, request,
                                file_manifest=file_manifest_from_native(native))

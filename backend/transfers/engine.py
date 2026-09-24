@@ -88,6 +88,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.resource_observation(
                     record.transfer_id, previous.resource, previous.state,
                 )
+                await self._converge_root_observation_name(record, previous)
                 previous_error = previous.error or None
                 restartable = previous.state in {ResourceState.EXPIRED, ResourceState.ABSENT} or (
                     previous.state == ResourceState.UNAVAILABLE
@@ -178,6 +179,7 @@ class TransferEngine(_RecoveryTransferEngine):
             await self.repository.resource_observation(
                 record.transfer_id, observation.resource, observation.state,
             )
+            await self._converge_root_observation_name(record, observation)
             if not await self._live(record.transfer_id, admission=True):
                 return first_commitment
             # Fail-closed materialization guard. Whatever path bound this

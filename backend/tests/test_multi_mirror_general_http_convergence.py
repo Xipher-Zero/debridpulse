@@ -2748,7 +2748,7 @@ async def test_cleanup_failure_never_rewrites_verification_history(tmp_path, mon
 
     retired = []
 
-    def failing_retire(root, plan, footprint, *, owned):
+    def failing_retire(root, plan, footprint, *, owned, prune_empty_parents=False):
         retired.append((str(plan.target), tuple(str(item) for item in footprint.transient_paths)))
         raise TransferError(NormalizedError(Domain.LOCAL_RESOURCE, Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP))
 

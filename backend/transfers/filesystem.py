@@ -428,15 +428,50 @@ def _remove_tree(path: str) -> None:
     shutil.rmtree(path)
 
 
+def _prune_empty_parents(base: Path, target: Path) -> None:
+    """Reclaim the empty directory scaffolding a retired FILE target leaves.
+
+    ``rmdir`` semantics only, never recursive: the first directory that still
+    holds anything at all -- a sibling artifact, another transfer's work,
+    operator material -- ends the walk and is left exactly as it was. The
+    configured download root is a boundary and is never removed.
+
+    The ancestor chain is established LEXICALLY, before anything is removed,
+    and a symlinked component ends it. Resolving first would defeat exactly
+    that check: resolution has already traversed the link, so what is then
+    inspected is the real directory the link points at, never the link -- and
+    pruning that directory would delete material outside this plan's own path
+    and strand the link. A chain that does not lexically reach the download
+    root prunes nothing.
+    """
+    ancestors = []
+    current = target.parent
+    while current != base:
+        if not current.is_relative_to(base) or current == current.parent or current.is_symlink():
+            return
+        ancestors.append(current)
+        current = current.parent
+    for directory in ancestors:
+        try:
+            directory.rmdir()
+        except OSError:
+            return
+
+
 def retire_materialization(root: str, plan: MaterializationPlan, footprint: ExecutionFootprint, *,
-                           owned: bool) -> None:
+                           owned: bool, prune_empty_parents: bool = False) -> None:
     """Retire an execution's invalid or superseded material inside download
     storage -- ONLY under positive durable ownership (``owned``: the
     execution's material authority, established at admission). Without it
     nothing is deleted: not the FILE target, not a COLLECTION root, not any
     declared transient file or tree. With it: the FILE target or the dedicated
     COLLECTION root (recursively), plus every declared transient file and
-    tree. Removal never follows a symlink."""
+    tree. Removal never follows a symlink.
+
+    ``prune_empty_parents`` additionally reclaims the empty path scaffolding a
+    removed FILE target leaves behind (see ``_prune_empty_parents``). A
+    COLLECTION plan already owns its dedicated root, which this function
+    removes whole, so it is unaffected."""
     if not owned:
         return
     base = Path(root).resolve()
@@ -454,6 +489,8 @@ def retire_materialization(root: str, plan: MaterializationPlan, footprint: Exec
             _remove_tree(item)
         if plan.kind == MaterializationKind.FILE:
             Path(boundary).unlink(missing_ok=True)
+            if prune_empty_parents:
+                _prune_empty_parents(base, Path(boundary))
         else:
             _remove_tree(boundary)
     except OSError as exc:

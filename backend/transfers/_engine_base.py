@@ -120,8 +120,8 @@ from transfers.filesystem import (
 from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
-    ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
-    ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
+    ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
+    ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, InputChallenge,
     InputOrigin, InputRequirement, MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation,
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
@@ -1094,8 +1094,7 @@ class TransferEngine:
         elif result.candidates:
             await self._materialize(record, result.candidates)
         elif result.observation:
-            if result.observation.name and record.parent_id is None:
-                await self.repository.rename(record.transfer_id, safe_name(result.observation.name))
+            await self._converge_root_observation_name(record, result.observation)
             if result.observation.state == ResourceState.AVAILABLE:
                 return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
@@ -1111,6 +1110,29 @@ class TransferEngine:
             record.parent_id is None
             and Capability.FILE_MANIFEST in provider.descriptor.capabilities
         )
+
+    async def _converge_root_observation_name(self, record: RequestRecord,
+                                              observation: ProviderObservation | None) -> None:
+        """THE acceptance of a bound provider's authoritative name for a ROOT request.
+
+        A provider resolves the name of what it is preparing on its own
+        schedule, so the fact can arrive with the first resolution, with any
+        later observation while the resource is still preparing, once it is
+        available, or on the reconciliation that follows a restart. Every one
+        of those paths funnels through here, which is what makes ``torrents.name``
+        converge on whichever observation actually carries the fact instead of
+        depending on when it happened to arrive; it remains the one canonical
+        root name, with no second store and no presentation-side repair.
+
+        Two facts are deliberately not names: a member observation describes
+        only itself and never renames the root it belongs to, and an empty
+        name is the absence of a fact, which never overwrites what is stored.
+        Provider-native placeholders for "not resolved yet" are normalized to
+        that empty fact at their own provider's translation boundary.
+        """
+        if observation is None or record.parent_id is not None or not observation.name:
+            return
+        await self.repository.rename(record.transfer_id, safe_name(observation.name))
 
     async def _secure_root_selection(self, record: RequestRecord, provider, observation: ProviderObservation | None,
                                      *, resource=None):
@@ -1784,21 +1806,64 @@ class TransferEngine:
                 cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
 
 
-    async def _retire_execution_owned_material(self, artifact, work: ExecutionWork, footprint: ExecutionFootprint) -> None:
-        """Retire the invalid material a rejected execution itself created --
-        its FILE target or its dedicated COLLECTION root, plus its declared
-        transient paths -- through the one hardened cleanup owner. Verification
-        failure is not the authority -- the caller has already proven positive
-        execution ownership. The verification failure is already durable; a
-        cleanup failure is logged and changes nothing about it."""
+    async def _retire_execution_owned_material(self, artifact, work: ExecutionWork, footprint: ExecutionFootprint,
+                                               *, prune_empty_parents=False, required=False) -> None:
+        """Retire the material an execution itself created -- its FILE target
+        or its dedicated COLLECTION root, plus its declared transient paths --
+        through the one hardened cleanup owner. The caller has already proven
+        positive execution ownership; this method never infers it.
+
+        ``required`` says whether retirement is part of an obligation the
+        caller still owes. Verification rejection does not owe one: that
+        failure is already durable and a cleanup failure changes nothing about
+        it, so it is logged. A deleted transfer's cleanup does owe one -- the
+        space is not reclaimed until the material is gone -- so its failure
+        propagates and the caller keeps the obligation open."""
         try:
             await asyncio.to_thread(retire_materialization, self.root, work.materialization, footprint,
-                                    owned=True)
+                                    owned=True, prune_empty_parents=prune_empty_parents)
         except (TransferError, OSError) as exc:
+            if required:
+                raise
             logger.warning(
                 "execution-owned invalid material could not be retired transfer=%s artifact=%s: %s",
                 artifact.transfer_id, artifact.id, type(exc).__name__,
             )
+
+    async def _retire_deleted_execution_material(self, executor, attempt: ExecutionAttempt) -> None:
+        """Reclaim the incomplete material a DELETED transfer's now-stopped
+        execution positively owns.
+
+        Ordering is the invariant, not an optimization: the caller reaches here
+        only once it has positively observed that the native writer stopped, so
+        nothing can still be writing what is removed. Ownership is the durable
+        admission-time fact and nothing else -- never a file's name, size, age,
+        path shape, provider or executor -- so material that pre-dated the
+        execution, or that a newer attempt now owns, is not this execution's to
+        retire and survives untouched.
+
+        Delivered payload is out of scope twice over: a verified artifact's
+        attempt is no longer a live writer and is never handed to cleanup at
+        all, and a completed artifact is skipped outright here. Cancellation
+        semantics are unchanged -- only an explicitly DELETED parent reclaims
+        local material. Anything that cannot be reconstructed from durable
+        attempt facts raises instead of guessing, which leaves the caller's
+        cleanup obligation open for the existing retry cadence.
+        """
+        transfer = await self.repository.get(attempt.transfer_id)
+        if transfer is None or transfer.state != TransferState.DELETED:
+            return
+        if not await self.repository.execution_owns_target(attempt.handle):
+            return
+        artifact = await self._current_artifact(attempt.transfer_id, attempt.artifact_id)
+        if artifact is not None and artifact.state == "completed":
+            return
+        if artifact is None or attempt.candidate is None:
+            raise TransferError(self._error(Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP, domain=Domain.CLEANUP,
+                                            retryability=Retryability.AFTER_RESOURCE_CHANGE))
+        work = self._work(artifact, attempt.candidate, attempt.handle.attempt_id)
+        await self._retire_execution_owned_material(artifact, work, self._footprint(executor, work),
+                                                    prune_empty_parents=True, required=True)
 
     async def _aggregate(self, transfer_id: int):
         """DP 1.0.12 recovery leveling, Sections 21-22: the decision and the
@@ -2024,6 +2089,7 @@ class TransferEngine:
                 handle = observed.handle
                 await self.repository.execution(observed)
                 if observed.stopped:
+                    await self._retire_deleted_execution_material(executor, replace(attempt, handle=handle))
                     await self.repository.execution_cleanup_complete(handle.attempt_id)
                     continue
                 if observed.error is not None:
@@ -2058,6 +2124,7 @@ class TransferEngine:
                         retryability=Retryability.BACKOFF,
                     ))
 
+                await self._retire_deleted_execution_material(executor, replace(attempt, handle=handle))
                 await self.repository.execution_cleanup_complete(handle.attempt_id)
             except Exception as exc:
                 error = self._executor_cleanup_exception(handle.executor_id, exc)

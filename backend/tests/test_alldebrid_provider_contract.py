@@ -180,6 +180,22 @@ def test_explicit_status_code_wins_over_ready_flag():
     assert result.state == ResourceState.PREPARING
 
 
+@pytest.mark.parametrize("native_name", ["noname", " noname ", "NoName"])
+def test_unresolved_native_placeholder_is_not_a_name_fact(native_name):
+    """AllDebrid reports its own unresolved-metadata placeholder until the
+    torrent's real name is known. That placeholder is provider-native
+    vocabulary, so it is neutralized here, at the translation boundary, and
+    never reaches core as an authoritative root-name fact."""
+    result = observation_from_native({"id": "9", "statusCode": 1, "filename": native_name})
+    assert result.name == ""
+    assert result.request is None or result.request.name == ""
+
+
+def test_resolved_native_name_is_an_authoritative_name_fact():
+    result = observation_from_native({"id": "9", "statusCode": 1, "filename": "Actual Torrent Name"})
+    assert result.name == "Actual Torrent Name"
+
+
 def test_status_with_nested_files_becomes_neutral_manifest_without_links():
     result = observation_from_native({"id": "9", "statusCode": 4, "files": _NESTED_FILES})
     manifest = result.file_manifest
