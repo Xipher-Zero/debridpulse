@@ -7,11 +7,37 @@
  * persists exclusively through the one canonical namespace
  * (`integrations.usenet`); there is no second settings store.
  *
- * Each card addresses ONE canonical server by its stable id, so saving a card
- * never persists another card's unsaved edits and removing a card never
- * disturbs a survivor. A blank password is simply omitted from the request,
- * which the backend reads as "keep this server's stored credential"; erasing
- * one requires the explicit clear control. No secret is ever held here.
+ * Each card addresses ONE canonical server by its stable id, so a write to one
+ * record never touches another and removing a card never disturbs a survivor.
+ * A blank password is simply omitted from the request, which the backend reads
+ * as "keep this server's stored credential"; erasing one requires the explicit
+ * clear control. No secret is ever held here.
+ *
+ * Usenet owns NO notification system. The RESULT of Save / Test / Remove is
+ * reported by the application's one canonical toast owner, exactly like every
+ * other operator-visible action. What survives here is inline FIELD
+ * VALIDATION -- a different thing, which explains a missing or malformed value
+ * on this card and never reports the outcome of an operation.
+ *
+ * A card is NOT a credential transaction. Every control on it is classified by
+ * ITS OWN semantics and risk, exactly like every other Settings control -- a
+ * field does not become gated merely because a password shares its card:
+ *
+ *   host / port / username / connections / priority /
+ *   articles per request / timeout          changed-blur
+ *   SSL                                     immediate (the mutation IS the act)
+ *   password, Clear Stored Password         gated-save, committed by Save
+ *   display name                            committed when its dialog accepts
+ *   Test / Remove / Add Server              explicit-action
+ *
+ * The generic behaviour -- baseline, dirty comparison, per-record
+ * serialization, stale-response protection, convergence and rollback -- belongs
+ * to ui-settings-persistence.js; this file only DECLARES the classes and says
+ * how one record is written.
+ *
+ * A card with no canonical id yet is the one deliberate exception. There is no
+ * record for a field to be written to, so nothing commits until its Save mints
+ * the record; from that moment the card joins the universal model.
  */
 (function () {
   'use strict';
@@ -28,6 +54,19 @@
     if (!node) return '';
     return node.type === 'checkbox' ? node.checked : node.value;
   }
+
+  /* The display name the operator has explicitly CHOSEN right now -- '' while
+   * the name is still derived from Host. */
+  function overrideName(card) {
+    return card.dataset.usenetNameOverride === '1'
+      ? String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
+      : '';
+  }
+
+  /* Cards whose creation write is in flight. A card has no canonical identity
+   * in that window, so anything that must reach the record -- above all its
+   * REMOVAL -- has to be able to wait for the id rather than act without one. */
+  const creations = new WeakMap();
 
   function readCard(card) {
     const password = String(fieldValue(card, 'password') || '');
@@ -46,9 +85,7 @@
       articles_per_request: Math.min(20, Math.max(1, Number(fieldValue(card, 'articles_per_request')) || 2)),
       timeout_seconds: Math.min(240, Math.max(20, Number(fieldValue(card, 'timeout_seconds')) || 60)),
       enabled: true,
-      display_name: card.dataset.usenetNameOverride === '1'
-        ? String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
-        : '',
+      display_name: overrideName(card),
       clear_password: !!card.querySelector('[data-usenet-clear-password]')?.checked,
     };
     // A blank field is an absent field: the stored credential is preserved.
@@ -66,12 +103,68 @@
 
   function followSslPort(card) {
     const port = card.querySelector('[data-usenet-field="port"]');
-    if (!port) return;
+    if (!port) return false;
     const current = Number(port.value);
     const secure = !!fieldValue(card, 'ssl');
     // Never overwrite a deliberate, non-conventional port.
     if (current === SSL_PORT || current === PLAIN_PORT || !current) {
-      port.value = String(secure ? SSL_PORT : PLAIN_PORT);
+      const next = String(secure ? SSL_PORT : PLAIN_PORT);
+      const changed = port.value !== next;
+      port.value = next;
+      return changed;
+    }
+    return false;
+  }
+
+  /* The act performed on a card that is not a record yet.
+   *
+   * Nothing can be written, so what is remembered is the EXACT payload this
+   * act would have written -- never the form state the card happens to hold
+   * when the record finally exists. A value typed afterwards is a different
+   * intent and is not folded into this one. Performing the act again simply
+   * replaces it: the latest act is the operator's intent.
+   */
+  const pendingSsl = new WeakMap();
+
+  function deferSsl(card, control) {
+    const moved = followSslPort(card);
+    const node = card.querySelector('[data-usenet-field="port"]');
+    const sent = {ssl: !!control.checked};
+    if (moved && node) {
+      sent.port = committedValue('port', node.value);
+      // The port this act moved is part of the act, and the act is later than
+      // anything the port crossed before it.
+      window.DPSettingsPersistence.supersede(node, node.value);
+    }
+    pendingSsl.set(card, sent);
+  }
+
+  /* SSL is an ordinary reversible toggle: switching transport IS the intended
+   * action, so it commits immediately, on the same discipline as every other
+   * immediate control -- the visible state can never report something the
+   * server has not accepted. The conventional port it just followed travels
+   * with it, because that is one operator action, not two. */
+  async function sslChanged(card, control) {
+    if (!serverId(card)) { deferSsl(card, control); return; }
+    await window.DPSettingsPersistence.settle(card);
+    const secure = !!control.checked;
+    const node = card.querySelector('[data-usenet-field="port"]');
+    const previousPort = node ? node.value : '';
+    const sent = {ssl: secure};
+    if (followSslPort(card) && node) sent.port = committedValue('port', node.value);
+    control.disabled = true;
+    try {
+      converge(card, await writeServer(card, sent), sent);
+    } catch (error) {
+      // Nothing optimistic is left lying -- but only where the operator has
+      // not moved on: a control they have changed since keeps their value.
+      if (control.checked === secure) control.checked = !secure;
+      if (node && 'port' in sent && String(node.value) === String(sent.port)) {
+        node.value = previousPort;
+      }
+      toast(`Could not update ${serverName(card)}: ${error?.message || error}`, 'error');
+    } finally {
+      control.disabled = false;
     }
   }
 
@@ -85,12 +178,153 @@
     label.textContent = String(fieldValue(card, 'host') || '').trim() || 'New server';
   }
 
-  function status(card, message, tone) {
-    const node = card.querySelector('[data-usenet-status]');
+  /* Inline field validation. It never reports an operation result. */
+  function validation(card, message) {
+    const node = card.querySelector('[data-usenet-validation]');
     if (!node) return;
     node.textContent = message || '';
     node.hidden = !message;
-    node.dataset.tone = tone || '';
+  }
+
+  /* The operator-facing name of one card, for the action results below. */
+  function serverName(card) {
+    return String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
+      || String(fieldValue(card, 'host') || '').trim()
+      || 'server';
+  }
+
+  /* An action in flight simply cannot be started again. There is no progress
+   * message: a second notification surface is exactly what this file no
+   * longer owns. */
+  function busy(button, running) {
+    if (button) button.disabled = !!running;
+  }
+
+  const SERVER_SCOPE = 'usenet-server';
+  const NUMERIC_FIELDS = new Set(['port', 'connections', 'priority',
+                                  'articles_per_request', 'timeout_seconds']);
+
+  /* The canonical id lives in BOTH vocabularies: this file's, and the
+   * persistence owner's record identity. One assignment site keeps them
+   * inseparable. */
+  function adoptServerId(card, id) {
+    card.dataset.usenetServerId = String(id || '');
+    card.dataset.commitInstance = String(id || '');
+  }
+
+  /* The ONE per-record request. Every class of control on a card reaches the
+   * canonical namespace through this, so a record has exactly one writer and a
+   * request carries only what that control changed. */
+  function requestServerWrite(card, values) {
+    return api('PUT', `/usenet/servers/${encodeURIComponent(serverId(card))}`, values, 30000);
+  }
+
+  /* An owner-driven write -- the immediate SSL toggle, the gated credential,
+   * the renamed display name -- queued on the SAME per-record lane the field
+   * commits use, so two writes to one record can never overlap. A field commit
+   * is already running ON that lane, so it issues the request directly;
+   * queueing it behind itself would deadlock the record. */
+  function writeServer(card, values) {
+    return window.DPSettingsPersistence.perform(SERVER_SCOPE, serverId(card),
+      () => requestServerWrite(card, values));
+  }
+
+  function committedValue(key, raw) {
+    if (key === 'ssl') return raw === true || raw === '1';
+    if (!NUMERIC_FIELDS.has(key)) return String(raw ?? '');
+    const parsed = parseInt(String(raw), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  const recordFrom = (result, id) =>
+    (result?.servers || []).find(item => String(item.id) === String(id));
+
+  /* Converge the controls THIS action wrote on what the server accepted.
+   *
+   * Settling before dispatch orders everything that existed before the
+   * request; it says nothing about an edit made while the request was in
+   * flight. So two rules apply, and only to the keys in `sent`:
+   *
+   *   - the BASELINE always becomes the accepted value, so what the server
+   *     already holds is never mistaken for a pending change;
+   *   - the visible value is replaced only while the control still holds
+   *     exactly what this action sent. A newer draft stays, is now dirty
+   *     against that baseline, and commits on its own blur.
+   *
+   * A control this action did not write is never touched at all, so an older
+   * response can neither overwrite nor silently swallow a newer edit. */
+  function converge(card, result, sent) {
+    const server = recordFrom(result, serverId(card));
+    if (!server) return;
+    for (const [key, dispatched] of Object.entries(sent || {})) {
+      // A credential is never projected back into the browser.
+      if (key === 'password' || !(key in server)) continue;
+      const node = card.querySelector(`[data-usenet-field="${key}"]`);
+      if (!node) continue;
+      const accepted = server[key];
+      const shown = node.type === 'checkbox' ? node.checked : node.value;
+      if (String(shown) === String(dispatched)) {
+        if (node.type === 'checkbox') node.checked = !!accepted;
+        else node.value = String(accepted ?? '');
+      }
+      window.DPSettingsPersistence.accept(node, accepted);
+    }
+    card.dataset.usenetPasswordConfigured = server.password_configured ? '1' : '0';
+    refreshGate(card);
+  }
+
+  /* The display name is the rename dialog's own control, so only that action
+   * converges it. A derived name follows the CURRENT host, never the host this
+   * response happens to carry. */
+  function convergeName(card, result) {
+    const server = recordFrom(result, serverId(card));
+    const label = card.querySelector('[data-usenet-display-name]');
+    if (!server || !label) return;
+    const override = String(server.display_name || '').trim();
+    card.dataset.usenetNameOverride = override ? '1' : '0';
+    if (override) label.textContent = override;
+    else refreshDerivedName(card);
+  }
+
+  /* One ordinary field of one record. The canonical persistence owner decides
+   * WHEN this runs; this only says what the write is. */
+  function registerServerScope() {
+    window.DPSettingsPersistence.defineScope(SERVER_SCOPE, {
+      commit: async ({key, draft, control, instance}) => {
+        const card = control.closest('[data-usenet-server-id]');
+        const result = await requestServerWrite(card, {[key]: committedValue(key, draft)});
+        const server = recordFrom(result, instance);
+        const value = server ? server[key] : undefined;
+        if (value === undefined || value === null) return draft;
+        return typeof value === 'boolean' ? (value ? '1' : '0') : String(value);
+      },
+    });
+  }
+
+  /* A completed gated mutation consumes only the intent it DISPATCHED.
+   *
+   * The same rule scoped convergence applies to ordinary controls: compare the
+   * control against what was actually sent, and reset it only while it still
+   * represents that. A credential typed, or a Clear confirmation armed, after
+   * dispatch is NEWER intent -- it stays on screen, keeps the gate open and is
+   * committed by the next Save, so an older response can never erase it. */
+  function consumeGatedIntent(card, dispatched) {
+    const field = card.querySelector('[data-usenet-field="password"]');
+    if (field && field.value === dispatched.password) field.value = '';
+    const gate = card.querySelector('[data-usenet-clear-password]');
+    if (gate && gate.checked === dispatched.clear) gate.checked = false;
+  }
+
+  /* Save is offered only while there is gated state to commit. A card that is
+   * not yet a record is the exception: its Save is what creates it. */
+  function gatedIntent(card) {
+    return !!String(fieldValue(card, 'password') || '')
+      || !!card.querySelector('[data-usenet-clear-password]')?.checked;
+  }
+
+  function refreshGate(card) {
+    const button = card.querySelector('[data-usenet-action="save"]');
+    if (button) button.disabled = !!serverId(card) && !gatedIntent(card);
   }
 
   /* A brand-new card carries an EMPTY canonical id: the backend mints one when
@@ -101,7 +335,8 @@
     // locally unique one; the backend mints the record id on first Save.
     const advancedId = `dp-usenet-advanced-new-${(blankCard.sequence = (blankCard.sequence || 0) + 1)}`;
     wrapper.innerHTML = `
-      <div class="dp-usenet-server" data-usenet-server-id="" data-usenet-password-configured="0"
+      <div class="dp-usenet-server" data-usenet-server-id="" data-commit-instance=""
+           data-usenet-password-configured="0"
            data-usenet-name-override="0">
         <div class="dp-usenet-server-head">
           <span class="dp-usenet-server-name" data-usenet-display-name>New server</span>
@@ -113,17 +348,17 @@
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
             <span class="form-label">Host</span>
-            <input class="input" type="text" data-usenet-field="host" value="" autocomplete="off"
+            <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="" autocomplete="off"
                    placeholder="news.example.com">
           </label>
           <label class="dp-usenet-field dp-usenet-field--port">
             <span class="form-label">Port</span>
-            <input class="input" type="number" min="1" max="65535" data-usenet-field="port" value="563">
+            <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port" value="563">
           </label>
           <label class="dp-usenet-ssl toggle-row">
             <span class="tl">SSL</span>
             <span class="toggle">
-              <input type="checkbox" data-usenet-field="ssl" checked>
+              <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" checked>
               <span class="ttrack"></span>
             </span>
           </label>
@@ -131,13 +366,13 @@
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
             <span class="form-label">Username</span>
-            <input class="input" type="text" data-usenet-field="username" value="" autocomplete="off">
+            <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="" autocomplete="off">
           </label>
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
             <span class="form-label">Password</span>
-            <input class="input" type="password" data-usenet-field="password" value=""
+            <input class="input" type="password" data-usenet-field="password" data-commit="gated-save" value=""
                    autocomplete="off" placeholder="Password">
           </label>
         </div>
@@ -153,12 +388,12 @@
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
                 <span class="form-label">Connections</span>
-                <input class="input" type="number" min="1" max="500" data-usenet-field="connections"
+                <input class="input" type="number" min="1" max="500" data-usenet-field="connections" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="connections"
                        value="8">
               </label>
               <label class="dp-usenet-field">
                 <span class="form-label">Priority</span>
-                <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
+                <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
                        value="0">
               </label>
             </div>
@@ -166,12 +401,12 @@
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
                 <span class="form-label">Articles per Request</span>
-                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request"
+                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="articles_per_request"
                        value="2">
               </label>
               <label class="dp-usenet-field">
                 <span class="form-label">Server Timeout (seconds)</span>
-                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds"
+                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="timeout_seconds"
                        value="60">
               </label>
             </div>
@@ -183,7 +418,7 @@
           <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
         </div>
-        <p class="dp-usenet-server-status" role="status" aria-live="polite" data-usenet-status hidden></p>
+        <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
     return wrapper.firstElementChild;
   }
@@ -195,25 +430,146 @@
     if (tile) host.appendChild(tile);
   }
 
-  /* Exactly one card is written, addressed by its canonical id. */
-  async function save(host, card) {
-    const server = readCard(card);
-    if (!server.host) { status(card, 'A server host is required.', 'error'); return; }
-    status(card, 'Saving…', 'info');
+  /* The card's gated commit boundary -- the credential and its Clear
+   * confirmation, and nothing else. Ordinary fields persisted themselves when
+   * the operator left them; they are deliberately absent here so pressing Save
+   * can never re-write a value nobody touched. */
+  async function save(host, card, button) {
+    // One deterministic path: whatever field commit this click's blur started
+    // is finished before the gated payload is read.
+    await window.DPSettingsPersistence.settle(card);
+    if (!serverId(card)) return createServer(host, card, button);
+
+    const secret = String(fieldValue(card, 'password') || '');
+    const clear = !!card.querySelector('[data-usenet-clear-password]')?.checked;
+    if (!secret && !clear) return;
+    const name = serverName(card);
+    busy(button, true);
     try {
-      const id = serverId(card);
-      const result = id
-        ? await api('PUT', `/usenet/servers/${encodeURIComponent(id)}`, server, 30000)
-        : await api('POST', '/usenet/servers', server, 30000);
-      if (!id && result?.server_id) card.dataset.usenetServerId = String(result.server_id);
-      // The credential is now stored, so the card stops holding it.
-      const field = card.querySelector('[data-usenet-field="password"]');
-      if (field) field.value = '';
-      const clear = card.querySelector('[data-usenet-clear-password]');
-      if (clear) clear.checked = false;
-      status(card, nativeMessage(result) || 'Saved.', result?.native?.applied === false ? 'error' : 'ok');
+      const values = {clear_password: clear};
+      if (secret) values.password = secret;
+      const result = await writeServer(card, values);
+      // Only the intent this write carried is consumed; anything the operator
+      // entered while it was in flight is still pending.
+      consumeGatedIntent(card, {password: secret, clear});
+      // This action wrote no ordinary control, so it converges none.
+      converge(card, result, {});
+      const native = nativeMessage(result);
+      toast(native || `${name} credential saved`, native ? 'warn' : 'success');
     } catch (error) {
-      status(card, `Could not save: ${error?.message || error}`, 'error');
+      toast(`Could not save ${name}: ${error?.message || error}`, 'error');
+    } finally {
+      busy(button, false);
+      refreshGate(card);
+    }
+  }
+
+  /* The handoff out of "pending creation" into the canonical record.
+   *
+   * A card stays interactive while its record is being minted, so the operator
+   * can express intent AFTER the creation write is dispatched and BEFORE the
+   * id arrives. In that window nothing can be written: there is no record. The
+   * moment there is one, everything they did is carried onto it in its own
+   * semantic order -- ordinary fields by the canonical persistence owner,
+   * because their commit boundary was already crossed; SSL immediately,
+   * because performing it IS the act; the display name because its dialog
+   * already committed it. Each is carried only where the card still differs
+   * from what the creation actually established, so nothing untouched is
+   * rewritten. (The credential is the one exception, and it is already
+   * correct: a password typed in that window stays pending for its own Save.)
+   */
+  async function resumeCreation(card, result, dispatchedName) {
+    const accepted = recordFrom(result, serverId(card));
+    if (!accepted) return;
+    // In the order the operator performed them: the immediate act first, then
+    // the boundaries their ordinary fields crossed -- a port boundary crossed
+    // AFTER the act must win over the port that act carried.
+    await resumeSsl(card, accepted);
+    window.DPSettingsPersistence.resume(card);
+    await resumeName(card, result, accepted, dispatchedName);
+  }
+
+  /* The SSL act performed while the record was being minted. It is an
+   * immediate control: it cannot wait for a blur the operator has no reason to
+   * make. What replays is the payload the act ITSELF carried -- reconstructing
+   * it from the card's current values would fold in a later, uncommitted draft
+   * and persist something that crossed no boundary. */
+  async function resumeSsl(card, accepted) {
+    const sent = pendingSsl.get(card);
+    pendingSsl.delete(card);
+    if (!sent) return;
+    // The creation already established exactly this: there is nothing to write.
+    if (sent.ssl === !!accepted.ssl
+        && (!('port' in sent) || String(sent.port) === String(accepted.port))) return;
+    const control = card.querySelector('[data-usenet-field="ssl"]');
+    const node = card.querySelector('[data-usenet-field="port"]');
+    try {
+      converge(card, await writeServer(card, sent), sent);
+    } catch (error) {
+      if (control && control.checked === sent.ssl) control.checked = !!accepted.ssl;
+      if (node && 'port' in sent && String(node.value) === String(sent.port)) {
+        node.value = String(accepted.port ?? '');
+      }
+      toast(`Could not update ${serverName(card)}: ${error?.message || error}`, 'error');
+    }
+  }
+
+  /* A name chosen while the record was being minted is newer than the one the
+   * creation carried, so the creation response must not project over it. */
+  async function resumeName(card, result, accepted, dispatchedName) {
+    if (!card.querySelector('[data-usenet-display-name]')) return;
+    const chosen = overrideName(card);
+    // Nothing newer: the creation response is this control's truth.
+    if (chosen === String(dispatchedName || '')) { convergeName(card, result); return; }
+    try {
+      convergeName(card, await writeServer(card, {display_name: chosen}));
+    } catch (error) {
+      convergeName(card, {servers: [accepted]});
+      toast(`Could not rename ${serverName(card)}: ${error?.message || error}`, 'error');
+    }
+  }
+
+  /* Record CREATION -- the one place a whole card is written at once, because
+   * until the backend mints an id there is no record for a field to belong to.
+   * From the moment it returns, the card is an ordinary member of the
+   * universal persistence model. */
+  async function createServer(host, card, button) {
+    const server = readCard(card);
+    if (!server.host) { validation(card, 'A server host is required.'); return; }
+    validation(card, '');
+    const name = serverName(card);
+    busy(button, true);
+    // Published BEFORE the request is awaited, so a removal raised in this
+    // window can wait for the id instead of acting without one.
+    const minted = (async () => {
+      const result = await api('POST', '/usenet/servers', server, 30000);
+      // The record now exists, so the card's controls acquire their canonical
+      // identity BEFORE their accepted baselines are recorded under it.
+      if (result?.server_id) adoptServerId(card, result.server_id);
+      return result;
+    })();
+    creations.set(card, minted.catch(() => null));
+    try {
+      const result = await minted;
+      // A credential typed while the record was being minted is newer intent:
+      // the freshly created record keeps it pending for its own Save.
+      consumeGatedIntent(card, {password: server.password || '',
+                                clear: !!server.clear_password});
+      converge(card, result, server);
+      // The operator asked for this card to go while it was being minted.
+      // Removal owns the outcome from here; carrying intent onto a record that
+      // is about to be deleted would be noise, and claiming it was saved would
+      // be untrue.
+      if (card.dataset.usenetRemoving === '1') return;
+      await resumeCreation(card, result, server.display_name);
+      const native = nativeMessage(result);
+      toast(native || `${name} saved`, native ? 'warn' : 'success');
+    } catch (error) {
+      toast(`Could not save ${name}: ${error?.message || error}`, 'error');
+    } finally {
+      creations.delete(card);
+      busy(button, false);
+      refreshGate(card);
     }
   }
 
@@ -225,39 +581,58 @@
     return '';
   }
 
-  async function removeCard(host, card) {
+  /* Removal is serialized behind creation. A card removed while its record is
+   * being minted cannot simply vanish: the creation write is already on its
+   * way, so removal waits for the id and deletes the record it mints. A
+   * backend record with no card is never an acceptable outcome. */
+  async function removeCard(host, card, button) {
+    const name = serverName(card);
+    busy(button, true);
+    card.dataset.usenetRemoving = '1';
+    const minting = creations.get(card);
+    if (minting) await minting;
     const id = serverId(card);
-    status(card, 'Removing…', 'info');
     try {
       if (id) await api('DELETE', `/usenet/servers/${encodeURIComponent(id)}`, null, 30000);
       card.remove();
       reindex(host);
+      toast(`${name} removed`, 'success');
     } catch (error) {
-      status(card, `Could not remove: ${error?.message || error}`, 'error');
+      delete card.dataset.usenetRemoving;
+      busy(button, false);
+      toast(`Could not remove ${name}: ${error?.message || error}`, 'error');
     }
   }
 
-  async function test(host, card) {
+  /* An explicit action on the card's CURRENT draft, including a password the
+   * operator has typed but not yet saved. It commits nothing. */
+  async function test(host, card, button) {
+    await window.DPSettingsPersistence.settle(card);
     const server = readCard(card);
-    if (!server.host) { status(card, 'A server host is required.', 'error'); return; }
-    status(card, 'Testing…', 'info');
+    if (!server.host) { validation(card, 'A server host is required.'); return; }
+    validation(card, '');
+    busy(button, true);
     try {
       const result = await api('POST', '/usenet/servers/test', {
         host: server.host, port: server.port, ssl: server.ssl,
         username: server.username, password: server.password || '',
         connections: server.connections, server_id: serverId(card) || null,
       }, 60000);
-      status(card, result?.message || (result?.ok ? 'Connection successful.' : 'Test failed.'),
-             result?.ok ? 'ok' : 'error');
+      toast(result?.message || (result?.ok ? 'Connection successful' : 'Test failed'),
+            result?.ok ? 'success' : 'error');
     } catch (error) {
-      status(card, `Test failed: ${error?.message || error}`, 'error');
+      toast(`Test failed: ${error?.message || error}`, 'error');
+    } finally {
+      busy(button, false);
     }
   }
 
   /* The rename dialog is the application's, never the browser's: a native
    * prompt bypasses the visual, focus and accessibility contract the rest of
-   * Settings honours. Persistence is unchanged -- the name stays card-local UI
-   * state until this card's own Save. */
+   * Settings honours. Accepting the dialog IS this field's commit boundary:
+   * the display name is an ordinary, non-secret value, so it persists as soon
+   * as the operator chooses it -- unless the card is not yet a record, in which
+   * case it travels with the creation write. */
   async function rename(card) {
     const label = card.querySelector('[data-usenet-display-name]');
     if (!label) return;
@@ -275,8 +650,21 @@
     });
     if (next === null) return;
     const trimmed = next.trim();
+    const previous = {override: card.dataset.usenetNameOverride, text: label.textContent};
     card.dataset.usenetNameOverride = trimmed ? '1' : '0';
     label.textContent = trimmed || derived || 'New server';
+    if (!serverId(card)) return;
+    await window.DPSettingsPersistence.settle(card);
+    try {
+      const result = await writeServer(card, {display_name: trimmed});
+      // Only this action's own control is converged.
+      converge(card, result, {});
+      convergeName(card, result);
+    } catch (error) {
+      card.dataset.usenetNameOverride = previous.override;
+      label.textContent = previous.text;
+      toast(`Could not rename ${serverName(card)}: ${error?.message || error}`, 'error');
+    }
   }
 
   /* The per-server Advanced region keeps the normal card compact. It is a
@@ -307,7 +695,9 @@
     const card = action.closest('[data-usenet-server-id]');
     if (kind === 'add') {
       event.preventDefault();
-      host.insertBefore(blankCard(), action);
+      const created = host.insertBefore(blankCard(), action);
+      window.DPSettingsPersistence.adopt(created);
+      refreshGate(created);
       reindex(host);
       host.querySelector('[data-usenet-server-id]:last-of-type [data-usenet-field="host"]')?.focus();
       return;
@@ -315,11 +705,11 @@
     if (!card) return;
     event.preventDefault();
     if (kind === 'remove') {
-      void removeCard(host, card);
+      void removeCard(host, card, action);
     } else if (kind === 'save') {
-      void save(host, card);
+      void save(host, card, action);
     } else if (kind === 'test') {
-      void test(host, card);
+      void test(host, card, action);
     } else if (kind === 'rename') {
       void rename(card);
     }
@@ -328,26 +718,43 @@
   function onInput(event) {
     const host = collection();
     if (!host || !host.contains(event.target)) return;
-    const field = event.target.dataset?.usenetField;
-    if (field !== 'host' && field !== 'ssl') return;
     const card = event.target.closest('[data-usenet-server-id]');
     if (!card) return;
+    const field = event.target.dataset?.usenetField;
     if (field === 'host') refreshDerivedName(card);
-    else followSslPort(card);
+    else if (field === 'password') refreshGate(card);
   }
 
+  /* SSL and the Clear confirmation are the card's two `change` controls: one
+   * commits immediately, the other only arms the gate. */
+  function onChange(event) {
+    const host = collection();
+    if (!host || !host.contains(event.target)) return;
+    const card = event.target.closest('[data-usenet-server-id]');
+    if (!card) return;
+    if (event.target.dataset?.usenetField === 'ssl') void sslChanged(card, event.target);
+    else if (event.target.matches('[data-usenet-clear-password]')) refreshGate(card);
+  }
+
+  /* Every render re-establishes the canonical baseline for this collection's
+   * record-scoped controls and the state of each card's gate. */
   function bind() {
     const host = collection();
-    if (!host || host.dataset.dpUsenetOwner === '1') return;
+    if (!host) return;
+    window.DPSettingsPersistence.adopt(host);
+    for (const card of cards(host)) refreshGate(card);
+    if (host.dataset.dpUsenetOwner === '1') return;
     host.dataset.dpUsenetOwner = '1';
     reindex(host);
   }
 
+  registerServerScope();
   document.addEventListener('click', onClick);
   document.addEventListener('input', onInput);
+  document.addEventListener('change', onChange);
   document.addEventListener('debridpulse:settings-rendered', bind);
   document.addEventListener('DOMContentLoaded', bind, {once: true});
   bind();
 
-  window.DPUsenetServers = Object.freeze({readCard, refreshDerivedName, followSslPort});
+  window.DPUsenetServers = Object.freeze({readCard, refreshDerivedName, followSslPort, gatedIntent});
 })();

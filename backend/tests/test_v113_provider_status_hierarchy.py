@@ -1,9 +1,14 @@
-"""DP 1.0.13 post-Usenet corrective pass, work item L.
+"""DP 1.0.13 Provider Status tiers.
 
-Provider Status presents three tiers -- Premium Services, Premium, General --
-driven entirely by neutral, integration-owned presentation metadata. The
-renderer never names an integration, and ordering is derived from the ordering
-metadata that already exists.
+Provider Status presents two tiers -- Premium Services, then General -- driven
+entirely by neutral, integration-owned presentation metadata. The standalone
+``premium_family`` tier is retired: Usenet belongs to GENERAL, whose first two
+positions are permanently reserved (Usenet, then General Sources). The renderer
+never names an integration, and ordering is derived from the ordering metadata
+that already exists.
+
+The reserved-position invariant and the retired tier's absence are owned by
+``test_v113_settings_interaction_foundation.py``.
 """
 import re
 from pathlib import Path
@@ -18,12 +23,12 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 STATUS_JS = (STATIC / "ui-provider-status.js").read_text(encoding="utf-8")
 STATUS_CSS = (STATIC / "ui-shell-provider-status.css").read_text(encoding="utf-8")
 
-PREMIUM_SERVICE, PREMIUM_FAMILY, GENERAL_FAMILY = "premium_service", "premium_family", "general_family"
+PREMIUM_SERVICE, GENERAL_FAMILY = "premium_service", "general_family"
 
 
 # --- neutral metadata ------------------------------------------------------
 
-def test_presentation_metadata_can_express_the_three_neutral_tiers():
+def test_presentation_metadata_can_express_the_neutral_tiers():
     presentation = IntegrationPresentation()
     assert presentation.status_tier is None
     assert presentation.status_tier_label is None
@@ -34,16 +39,15 @@ def test_presentation_metadata_can_express_the_three_neutral_tiers():
 def test_every_current_integration_declares_its_tier():
     assert alldebrid_definition.presentation.status_tier == PREMIUM_SERVICE
     assert alldebrid_definition.presentation.status_tier_label == "Premium Services"
-    assert usenet_definition.presentation.status_tier == PREMIUM_FAMILY
-    assert usenet_definition.presentation.status_tier_label == "Premium"
-    for definition in (general_http_definition, general_ftp_definition):
+    for definition in (usenet_definition, general_http_definition, general_ftp_definition):
         assert definition.presentation.status_tier == GENERAL_FAMILY
         assert definition.presentation.status_tier_label == "General"
 
 
 def test_tier_order_is_deterministic_and_derived_from_existing_ordering_metadata():
-    """Premium Services -> Premium -> General falls out of display_order; no
-    tier-order table and no renderer switch exists."""
+    """Premium Services -> General falls out of display_order, and inside
+    GENERAL so does Usenet -> General Sources; no tier-order table and no
+    renderer switch exists."""
     orders = {d.id: d.presentation.display_order for d in
               (alldebrid_definition, usenet_definition, general_http_definition, general_ftp_definition)}
     assert orders["alldebrid"] < orders["usenet"] < orders["general_http"] <= orders["general_ftp"]

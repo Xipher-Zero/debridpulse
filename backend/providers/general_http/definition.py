@@ -18,7 +18,9 @@ definition = IntegrationDefinition(
     presentation=IntegrationPresentation(
         status_name="HTTP & HTTPS",
         static_status="healthy",
-        display_order=100,
+        # The GENERAL tier's second reserved position, after Usenet (20) and
+        # below the presentation default (100) that a later entry inherits.
+        display_order=30,
         status_group="direct_sources",
         status_group_label="General Sources",
         status_tier="general_family",

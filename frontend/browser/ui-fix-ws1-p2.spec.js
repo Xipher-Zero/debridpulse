@@ -137,6 +137,17 @@ async function applySettings(page) {
   await expect(apply).toBeEnabled();
 }
 
+/* DP 1.0.13: an AllDebrid credential is GATED-SAVE state. Typing a key is
+ * pending intent; the card's own Save is its commit boundary, and the footer
+ * deliberately writes no AllDebrid namespace at all. */
+async function saveAllDebridCredentials(page) {
+  const save = page.locator('.dp-settings-provider-card--alldebrid [data-action="save-alldebrid"]');
+  await expect(save).toBeEnabled();
+  await save.click();
+  // The gate is consumed once the accepted state becomes the new baseline.
+  await expect(save).toBeDisabled();
+}
+
 async function setProviderEnabled(card, enabled) {
   const input = card.locator('input[data-integration-enabled="alldebrid"]');
   if ((await input.isChecked()) !== enabled) {
@@ -264,7 +275,9 @@ test('WS1-P2 disclosure and staged Enable controls remain independent and protec
   await disclosure.press('Enter');
   await expect(body).toBeVisible();
   await setProviderEnabled(card, true);
-  await applySettings(page);
+  // The staged key survived every disclosure/Enable interaction above and is
+  // committed here, by its own gated Save, not by the page footer.
+  await saveAllDebridCredentials(page);
 
   card = page.locator('.dp-settings-provider-card--alldebrid');
   body = card.locator(':scope > .card-body');

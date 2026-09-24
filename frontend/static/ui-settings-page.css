@@ -400,16 +400,43 @@
 /* Secondary provider/engine tuning lives in native disclosures rather than
    nested cards. Native details/summary keeps collapsed state accessible and
    requires no additional runtime state or event ownership. */
-#view-settings .dp-settings-additional {
+/* The provider card's secondary-configuration row.
+   ONE grid row holds the Additional Settings disclosure and the card's action
+   group, so the actions never occupy a dedicated band of their own. Collapsed
+   the two are one centred row; expanded, the actions bottom-align with the
+   last row of the option grid, which is where the disclosure's own box ends.
+   The open state is read from the disclosure itself -- no measured offset, no
+   absolute positioning, no margin compensation. */
+#view-settings .dp-settings-provider-advanced {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 16px;
+  align-items: center;
+  /* The divider and the rhythm above it belong to the ROW, so it spans the
+     card rather than only the disclosure's column. */
   margin-top: 14px;
   border-top: 1px solid var(--dp-divider);
+}
+
+#view-settings .dp-settings-provider-advanced:has(> details[open]) {
+  align-items: end;
+}
+
+#view-settings .dp-settings-provider-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+#view-settings .dp-settings-additional {
+  min-width: 0;
 }
 
 #view-settings .dp-settings-additional > summary {
   min-height: 42px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 12px;
   list-style: none;
   color: var(--dp-text-secondary);

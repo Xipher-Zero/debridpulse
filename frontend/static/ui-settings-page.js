@@ -62,6 +62,28 @@
     alldebrid_api_key: {integration: 'alldebrid', option: 'api_key'},
   });
 
+  /* The Sources & Providers page's CHANGED-BLUR controls.
+   *
+   * One declaration of which canonical namespace owns each ordinary control
+   * and which option inside it the control is. ui-settings-persistence.js owns
+   * every generic behaviour (baseline, dirty comparison, serialization,
+   * stale-response protection, convergence, rollback); this table is the page
+   * DECLARING what a control commits to, never a second implementation of the
+   * machinery.
+   *
+   * Secrets, destructive confirmations and participation toggles are
+   * deliberately absent: a credential is gated-save and a participation
+   * toggle is immediate because of what they ARE, not because of the page
+   * they appear on. A control absent from this table keeps the page's existing
+   * deferred (Apply Settings) semantics until its own page is migrated. */
+  const CHANGED_BLUR_FIELDS = Object.freeze({
+    alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
+    poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
+    upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
+    upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
+    full_sync_interval_minutes: {scope: 'settings-document', option: 'full_sync_interval_minutes'},
+  });
+
   function oidcStatePresentation(auth, available = auth?.oidc_available) {
     if (!auth?.oidc_configured) {
       return auth?.oidc_enabled
@@ -203,7 +225,11 @@
   function input(key, label, value, options = {}) {
     const id = fieldId(key);
     const type = options.type || 'text';
+    // The control declares its commit class; the canonical persistence owner
+    // supplies the behaviour (CHANGED_BLUR_FIELDS).
+    const commit = CHANGED_BLUR_FIELDS[key];
     const attrs = [
+      commit ? `data-commit="changed-blur" data-commit-key="${html(key)}" data-commit-scope="${html(commit.scope)}"` : '',
       options.min != null ? `min="${html(options.min)}"` : '',
       options.max != null ? `max="${html(options.max)}"` : '',
       options.step != null ? `step="${html(options.step)}"` : '',
@@ -366,14 +392,16 @@
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
     const masked = CONFIGURED_SECRET_MASK;
+    // A secret is never committed by leaving the field: entering one is
+    // pending intent until the card's own Save.
     const hint = configured
-      ? 'Enter a new API key to replace the stored key when you click Apply Settings. Leave this field blank to keep the current key.'
-      : 'Enter your AllDebrid API key. It will be saved only when you click Apply Settings.';
+      ? 'Enter a new API key to replace the stored key, then choose Save. Leave this field blank to keep the current key.'
+      : 'Enter your AllDebrid API key, then choose Save.';
     return `
       <div class="dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}">
         <div class="dp-settings-field dp-settings-alldebrid-key-field">
           <label class="form-label" for="${id}">API Key</label>
-          <input class="input" id="${id}" data-setting="${key}" type="password" value=""
+          <input class="input" id="${id}" data-setting="${key}" data-commit="gated-save" type="password" value=""
                  placeholder="${configured ? masked : 'Your AllDebrid API key'}" autocomplete="off">
           <div class="dp-settings-alldebrid-key-meta">
             <span class="form-hint">${hint}</span>
@@ -384,7 +412,7 @@
           <label class="dp-settings-clear-secret dp-settings-clear-secret--alldebrid">
             <span>
               <b>Clear stored API Key</b>
-              <small>Remove the saved API key when you click Apply Settings.</small>
+              <small>Remove the saved API key when you choose Save.</small>
             </span>
             <input type="checkbox" data-clear-secret="${key}">
           </label>` : ''}
@@ -529,6 +557,7 @@
     const configured = !!server.password_configured;
     return `
       <div class="dp-usenet-server" data-usenet-server-id="${html(server.id || '')}"
+           data-commit-instance="${html(server.id || '')}"
            data-usenet-password-configured="${server.password_configured ? '1' : '0'}"
            data-usenet-name-override="${override ? '1' : '0'}">
         <div class="dp-usenet-server-head">
@@ -541,18 +570,18 @@
         <div class="dp-usenet-row dp-usenet-row--host">
           <label class="dp-usenet-field dp-usenet-field--host">
             <span class="form-label">Host</span>
-            <input class="input" type="text" data-usenet-field="host" value="${html(server.host || '')}"
+            <input class="input" type="text" data-usenet-field="host" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="host" value="${html(server.host || '')}"
                    autocomplete="off" placeholder="news.example.com">
           </label>
           <label class="dp-usenet-field dp-usenet-field--port">
             <span class="form-label">Port</span>
-            <input class="input" type="number" min="1" max="65535" data-usenet-field="port"
+            <input class="input" type="number" min="1" max="65535" data-usenet-field="port" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="port"
                    value="${html(String(server.port ?? 563))}">
           </label>
           <label class="dp-usenet-ssl toggle-row">
             <span class="tl">SSL</span>
             <span class="toggle">
-              <input type="checkbox" data-usenet-field="ssl" ${checked(server.ssl !== false)}>
+              <input type="checkbox" data-usenet-field="ssl" data-commit="immediate" ${checked(server.ssl !== false)}>
               <span class="ttrack"></span>
             </span>
           </label>
@@ -560,18 +589,18 @@
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
             <span class="form-label">Username</span>
-            <input class="input" type="text" data-usenet-field="username" value="${html(server.username || '')}" autocomplete="off">
+            <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="${html(server.username || '')}" autocomplete="off">
           </label>
         </div>
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
             <span class="form-label">Password</span>
-            <input class="input" type="password" data-usenet-field="password" value=""
+            <input class="input" type="password" data-usenet-field="password" data-commit="gated-save" value=""
                    autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
           </label>
         </div>${configured ? `
         <label class="dp-settings-inline-check dp-usenet-clear-password">
-          <input type="checkbox" data-usenet-clear-password>
+          <input type="checkbox" data-usenet-clear-password data-commit="gated-save">
           <span>Clear the stored password for this server</span>
         </label>` : ''}
         <div class="dp-usenet-advanced" data-usenet-advanced>
@@ -586,12 +615,12 @@
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
                 <span class="form-label">Connections</span>
-                <input class="input" type="number" min="1" max="500" data-usenet-field="connections"
+                <input class="input" type="number" min="1" max="500" data-usenet-field="connections" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="connections"
                        value="${html(String(server.connections ?? 8))}">
               </label>
               <label class="dp-usenet-field">
                 <span class="form-label">Priority</span>
-                <input class="input" type="number" min="0" max="99" data-usenet-field="priority"
+                <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
                        value="${html(String(server.priority ?? 0))}">
               </label>
             </div>
@@ -599,12 +628,12 @@
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
                 <span class="form-label">Articles per Request</span>
-                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request"
+                <input class="input" type="number" min="1" max="20" data-usenet-field="articles_per_request" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="articles_per_request"
                        value="${html(String(server.articles_per_request ?? 2))}">
               </label>
               <label class="dp-usenet-field">
                 <span class="form-label">Server Timeout (seconds)</span>
-                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds"
+                <input class="input" type="number" min="20" max="240" data-usenet-field="timeout_seconds" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="timeout_seconds"
                        value="${html(String(server.timeout_seconds ?? 60))}">
               </label>
             </div>
@@ -616,7 +645,7 @@
           <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
         </div>
-        <p class="dp-usenet-server-status" role="status" aria-live="polite" data-usenet-status hidden></p>
+        <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
   }
 
@@ -655,38 +684,42 @@
     const provider = providerCard('alldebrid', 'AllDebrid', `
       <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
-      <details class="dp-settings-additional">
-        <summary><span>Additional Settings</span></summary>
-        <div class="dp-settings-additional-body">
-          ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
-            type: 'number', min: 0, max: 300,
-            hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
-          })}
-          ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
-            type: 'number', min: 10,
-            hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
-          })}
-          ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
-            type: 'number', min: 0, max: 1440,
-            hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
-          })}
-          ${input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
-            type: 'number', min: 0, max: 20,
-            hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
-          })}
-          ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
-            type: 'number', min: 0, max: 1440,
-            hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
-          })}
+      <div class="dp-settings-provider-advanced">
+        <details class="dp-settings-additional">
+          <summary><span>Additional Settings</span></summary>
+          <div class="dp-settings-additional-body">
+            ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
+              type: 'number', min: 0, max: 300,
+              hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
+            })}
+            ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
+              type: 'number', min: 10,
+              hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
+            })}
+            ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
+              type: 'number', min: 0, max: 1440,
+              hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
+            })}
+            ${input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
+              type: 'number', min: 0, max: 20,
+              hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
+            })}
+            ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
+              type: 'number', min: 0, max: 1440,
+              hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
+            })}
+          </div>
+        </details>
+        <div class="dp-settings-provider-actions">
+          <button class="btn btn-ghost" type="button" data-action="test-alldebrid">
+            <span class="dp-settings-action-chip" aria-hidden="true">
+              <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+            </span>
+            <span>Test</span>
+          </button>
+          <button class="btn btn-success" type="button" data-action="save-alldebrid" disabled
+                  aria-label="Save AllDebrid credentials">Save</button>
         </div>
-      </details>
-      <div class="dp-settings-provider-actions">
-        <button class="btn btn-ghost" type="button" data-action="test-alldebrid">
-          <span class="dp-settings-action-chip" aria-hidden="true">
-            <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-          </span>
-          <span>Test</span>
-        </button>
       </div>
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
@@ -1633,6 +1666,9 @@
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
+    // Whatever was just rendered FROM canonical state IS the accepted baseline.
+    window.DPSettingsPersistence.adopt(view);
+    refreshGatedSave();
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
@@ -1823,6 +1859,7 @@
 
     view.addEventListener('input', event => {
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
+      if (event.target.matches('[data-setting="alldebrid_api_key"]')) refreshGatedSave();
     });
 
     view.addEventListener('change', event => {
@@ -1831,6 +1868,7 @@
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
+      if (event.target.matches('[data-clear-secret="alldebrid_api_key"]')) refreshGatedSave();
     });
 
     view.addEventListener('click', event => {
@@ -1851,6 +1889,7 @@
       const action = button.dataset.action;
       if (action === 'save') saveCurrent(button);
       else if (action === 'test-alldebrid') testConnection('alldebrid', button);
+      else if (action === 'save-alldebrid') saveAllDebridCredentials(button);
       else if (action === 'test-aria2') testConnection('aria2', button);
       else if (action === 'test-discord') testConnection('discord', button);
       else if (action === 'clear-avatar') clearAvatar();
@@ -1954,29 +1993,15 @@
     };
   }
 
-  // Participation is NOT part of this payload: the header Enable toggle is an
-  // immediate canonical operational control with its own committed write
-  // (providerEnableChanged), and a second deferred writer would let a stale
-  // page snapshot overwrite it.
-  function allDebridConfigurationPayload() {
-    const current = allDebridOf(state.settings);
-    return {
-      options: {
-        api_key: valueOf('alldebrid_api_key'),
-        rate_limit_per_minute: intOf('alldebrid_rate_limit_per_minute', current.rate_limit_per_minute ?? 60),
-      },
-      clear_secrets: scopedClears('alldebrid'),
-    };
-  }
-
   function usenetConfigurationPayload() {
     // The server collection is deliberately absent: ui-settings-usenet-servers.js
     // is its sole writer, so a stale page snapshot can never overwrite a server
     // the operator just saved. One namespace, one writer per field. There is no
     // service address or credential here: the acquisition service is internal.
     const current = usenetOf(state.settings);
-    // Participation has its own immediate canonical write; see
-    // allDebridConfigurationPayload.
+    // Participation has its own immediate canonical write
+    // (providerEnableChanged); a second deferred writer would let a stale page
+    // snapshot overwrite it.
     return {
       options: {
         operation_timeout_seconds: intOf('usenet_operation_timeout_seconds',
@@ -1990,35 +2015,34 @@
     };
   }
 
+  /* Only the transfer-policy fields the footer still owns.
+   *
+   * The Sources & Providers policy controls -- provider poll interval, upload
+   * retry count and retry delay -- are locally owned changed-blur controls and
+   * are deliberately absent, so this partial write can never replay a rendered
+   * value over the newer value their own commit already persisted. */
   function transferPolicyPayload() {
     const current = policyOf(state.settings);
     return {
       max_concurrent_executions: intOf('aria2_max_active_downloads', current.max_concurrent_executions ?? 3),
       execution_retry_count: intOf('aria2_error_retry_count', current.execution_retry_count ?? 3),
       execution_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', current.execution_retry_delay_seconds ?? 60),
-      resolution_retry_count: intOf('upload_fail_retry_count', current.resolution_retry_count ?? 3),
-      resolution_retry_delay_minutes: intOf('upload_fail_retry_delay_minutes', current.resolution_retry_delay_minutes ?? 5),
-      provider_poll_interval_seconds: intOf('poll_interval_seconds', current.provider_poll_interval_seconds ?? 30),
       stalled_timeout_hours: intOf('stuck_download_timeout_hours', current.stalled_timeout_hours ?? 6),
     };
   }
 
   function nonAuthPayload() {
-    const current = {...(state.settings || {})};
     // Canonical namespaces are never part of the whole-settings write, and the
     // read-only compatibility names the server derived from them are never
     // echoed back (the server lists exactly which names those are).
-    delete current.integrations;
-    delete current.integration_groups;
-    delete current.transfer_policy;
-    delete current.execution_runtime_limits;
-    for (const name of current.compatibility_fields || []) delete current[name];
-    delete current.compatibility_fields;
+    const current = settingsDocument(state.settings);
     return {
       ...current,
       // Integration-owned secret clears travel with their own scoped request.
       clear_secrets: clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control]),
-      full_sync_interval_minutes: intOf('full_sync_interval_minutes', 5),
+      // Locally owned (changed-blur): carried forward from the canonical
+      // document this write was built on, never re-read from the page.
+      full_sync_interval_minutes: Number(current.full_sync_interval_minutes ?? 5),
 
       download_folder: valueOf('download_folder', current.download_folder || '/download'),
       min_free_disk_gb: floatOf('min_free_disk_gb', 0),
@@ -2067,10 +2091,154 @@
     state.settings = {...state.settings, transfer_policy: policy};
   }
 
+  /* A control's committed value, in the shape its canonical namespace holds.
+   * A number control that cannot be read as a number is submitted as one
+   * anyway, so the server -- the only authority on a field's bounds -- rejects
+   * it and the persistence owner rolls the control back. */
+  function committedValue(key, raw) {
+    const field = fieldFor(key);
+    if (!field || field.type !== 'number') return String(raw ?? '');
+    const parsed = parseInt(String(raw), 10);
+    return Number.isNaN(parsed) ? 0 : parsed;
+  }
+
+  /* The WRITABLE whole-settings document: the canonical namespaces are written
+   * only through their own scoped surfaces, and the read-only compatibility
+   * names the server derives from them are never echoed back. */
+  function settingsDocument(source) {
+    const document = {...(source || {})};
+    delete document.integrations;
+    delete document.integration_groups;
+    delete document.transfer_policy;
+    delete document.execution_runtime_limits;
+    for (const name of document.compatibility_fields || []) delete document[name];
+    delete document.compatibility_fields;
+    return document;
+  }
+
+  /* How each canonical namespace a changed-blur control can belong to is
+   * written. Every scope dispatches exactly ONE scoped mutation carrying only
+   * the field that changed, and adopts exactly what the server accepted. */
+  function registerCommitScopes() {
+    const persistence = window.DPSettingsPersistence;
+
+    persistence.defineScope('integration:alldebrid', {
+      commit: async ({key, draft}) => {
+        const option = CHANGED_BLUR_FIELDS[key].option;
+        const result = await request('PATCH', '/integrations/alldebrid/configuration',
+          {options: {[option]: committedValue(key, draft)}}, 15000);
+        adoptIntegration('alldebrid', result);
+        return String(allDebridOf(state.settings)[option] ?? draft);
+      },
+    });
+
+    persistence.defineScope('transfer-policy', {
+      commit: async ({key, draft}) => {
+        const option = CHANGED_BLUR_FIELDS[key].option;
+        const result = await request('PATCH', '/transfer-policy',
+          {[option]: committedValue(key, draft)}, 15000);
+        adoptTransferPolicy(result);
+        return String(policyOf(state.settings)[option] ?? draft);
+      },
+    });
+
+    persistence.defineScope('settings-document', {
+      // The whole-settings surface has no partial write, so one field is
+      // committed as a read-modify-write against FRESHLY read canonical truth
+      // -- never against the rendered page, which would replay unrelated
+      // drafts, and never against a cached document, which could be stale.
+      commit: async ({key, draft}) => {
+        const option = CHANGED_BLUR_FIELDS[key].option;
+        const canonical = await request('GET', '/settings', null, 15000);
+        const result = await request('PUT', '/settings',
+          {...settingsDocument(canonical), clear_secrets: [], [option]: committedValue(key, draft)}, 15000);
+        syncGlobalSettings(result);
+        return String(result?.[option] ?? draft);
+      },
+    });
+  }
+
+  /* Is there gated AllDebrid state waiting to be committed? A typed API key
+   * and an armed Clear Stored API Key are both pending INTENT and nothing
+   * else until the localized Save runs. */
+  function allDebridGatedIntent() {
+    return !!valueOf('alldebrid_api_key') || scopedClears('alldebrid').length > 0;
+  }
+
+  function refreshGatedSave() {
+    const button = root()?.querySelector('[data-action="save-alldebrid"]');
+    if (button) button.disabled = !allDebridGatedIntent();
+  }
+
+  /* A completed gated mutation consumes only the intent it DISPATCHED.
+   *
+   * The credential row is re-rendered because the accepted state changes what
+   * it must show -- whether a key is present, and therefore whether the Clear
+   * control exists at all. Anything the operator entered after dispatch is
+   * NEWER intent, so it is carried across that re-render: it stays visible,
+   * keeps Save offered, and is committed by the next Save. An older response
+   * can never erase it. */
+  function consumeAllDebridIntent(card, dispatched) {
+    const field = fieldFor('alldebrid_api_key');
+    const pendingKey = field && String(field.value ?? '') !== dispatched.apiKey
+      ? String(field.value ?? '') : '';
+    const gate = card.querySelector('[data-clear-secret="alldebrid_api_key"]');
+    const pendingClear = !!gate && gate.checked && gate.checked !== dispatched.clear;
+
+    const row = card.querySelector('.dp-settings-alldebrid-key-row');
+    if (row) row.outerHTML = allDebridApiKeyField(!!allDebridOf(state.settings).api_key_configured);
+
+    const replaced = fieldFor('alldebrid_api_key');
+    if (replaced) replaced.value = pendingKey;
+    const replacedGate = card.querySelector('[data-clear-secret="alldebrid_api_key"]');
+    if (replacedGate) replacedGate.checked = pendingClear;
+  }
+
+  /* The explicit commit boundary for gated AllDebrid state.
+   *
+   * It writes only the credential namespace, through the same canonical
+   * integration surface every other AllDebrid write uses, and serializes no
+   * unrelated Settings state. On success the accepted canonical state becomes
+   * the new baseline: the markup owner re-renders the credential row it owns,
+   * which consumes the draft secret and the confirmation gate together. */
+  async function saveAllDebridCredentials(button) {
+    // One deterministic path: whatever changed-blur commit this click's blur
+    // started has finished before the gated payload is read.
+    await window.DPSettingsPersistence.settle(root());
+    const apiKey = valueOf('alldebrid_api_key');
+    const clears = scopedClears('alldebrid');
+    if (!apiKey && !clears.length) return;
+    setBusy(button, true, 'Saving…');
+    try {
+      const result = await request('PATCH', '/integrations/alldebrid/configuration',
+        {options: apiKey ? {api_key: apiKey} : {}, clear_secrets: clears}, 15000);
+      adoptIntegration('alldebrid', result);
+      const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
+      if (card) {
+        // Only the intent this write carried is consumed.
+        consumeAllDebridIntent(card, {apiKey, clear: clears.length > 0});
+        renderIntegrationState(card, 'alldebrid');
+      }
+      notify('AllDebrid credentials saved', 'success');
+      try { window.DPProviderStatus?.refresh(); } catch (_) {}
+    } catch (error) {
+      notify(error.message, 'error');
+    } finally {
+      setBusy(button, false);
+      refreshGatedSave();
+    }
+  }
+
   async function persistNonAuth({renderAfter = true, quiet = false} = {}) {
     const active = state.activeTab;
+    // Canonical truth is read immediately before the write: the footer carries
+    // forward every field it does not itself own, and a locally persisted
+    // value must never be overwritten by an older copy of itself.
+    syncGlobalSettings(await request('GET', '/settings', null, 15000));
     adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
-    adoptIntegration('alldebrid', await request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload(), 15000));
+    // AllDebrid is absent: its ordinary control is changed-blur and its
+    // credential state is gated behind the card's own Save, so the footer owns
+    // no AllDebrid mutation at all.
     adoptIntegration('usenet', await request('PATCH', '/integrations/usenet/configuration', usenetConfigurationPayload(), 15000));
     // Direct Sources carry only their own generic Enable, which is an immediate
     // canonical operational control -- nothing about them is deferred to here.
@@ -2153,6 +2321,9 @@
   }
 
   async function saveCurrent(button) {
+    // One deterministic path: every pending changed-blur commit is finished
+    // before the footer reads the form.
+    await window.DPSettingsPersistence.settle(root());
     if (state.activeTab === 'authentication') {
       await persistAuth(button);
       return;
@@ -2188,6 +2359,9 @@
   }
 
   async function testConnection(kind, button) {
+    // An explicit action reads the CURRENT draft, and never races a blur that
+    // the same click started.
+    await window.DPSettingsPersistence.settle(root());
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
       aria2: '/settings/test-aria2',
@@ -2632,5 +2806,6 @@
   window.loadSettings = load;
   try { loadSettings = load; } catch (_) {}
 
+  registerCommitScopes();
   window.DPSettingsPage = Object.freeze({load});
 })();

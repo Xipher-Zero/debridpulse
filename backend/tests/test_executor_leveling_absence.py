@@ -236,11 +236,14 @@ def test_no_settings_surface_keeps_a_shadow_boolean_for_committed_enablement():
     # from a page-level mirror of the operator's click.
     assert "state.settings?.integrations?.[identity]" in settings
     assert not re.search(r"(?:pendingEnabled|enabledDraft|_enabledState|desiredEnabled)\b", settings)
-    # The whole-settings write carries no participation field at all.
-    for name in ("allDebridConfigurationPayload", "usenetConfigurationPayload"):
+    # The whole-settings write carries no participation field at all. AllDebrid
+    # has no deferred payload at all any more: its ordinary control is
+    # changed-blur and its credential state is gated behind the card's own Save.
+    for name in ("usenetConfigurationPayload",):
         body = settings[settings.index(f"function {name}("):]
         body = body[:body.index("\n  }") + 4]
         assert "enabled" not in body, name
+    assert "function allDebridConfigurationPayload(" not in settings
 
 
 def test_no_integration_is_named_in_the_shared_enable_path():

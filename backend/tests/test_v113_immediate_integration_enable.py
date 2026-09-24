@@ -188,9 +188,12 @@ def test_a_failed_enable_mutation_restores_committed_state_and_reports_it():
 
 def test_apply_settings_no_longer_owns_integration_enablement():
     """No second enable writer may survive beside the immediate control."""
-    for name in ("allDebridConfigurationPayload", "usenetConfigurationPayload"):
+    for name in ("usenetConfigurationPayload",):
         body = _function(name)
         assert "enabled" not in body, f"{name} still carries a deferred enable write"
+    # AllDebrid has no deferred payload at all: the footer owns no AllDebrid
+    # mutation, so it cannot carry a participation field either.
+    assert "function allDebridConfigurationPayload(" not in SETTINGS_JS
     persist = _function("persistNonAuth")
     assert "data-integration-enabled" not in persist
     assert "enabled: !!enabled.checked" not in persist

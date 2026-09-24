@@ -56,9 +56,15 @@ def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -
     assert "setDot(" not in test_connection
 
 
-def test_apply_settings_is_the_only_general_non_auth_settings_commit_boundary() -> None:
+def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() -> None:
     runtime = read(RUNTIME)
-    assert runtime.count("request('PUT', '/settings'") == 1
+    # Two writers of the whole-settings surface, and only two: the deferred
+    # footer payload, and the canonical single-field settings-document commit
+    # (which reads canonical truth and overrides exactly one field).
+    assert runtime.count("request('PUT', '/settings'") == 2
+    scope = section(runtime, "function registerCommitScopes", "function allDebridGatedIntent")
+    assert scope.count("request('PUT', '/settings'") == 1
+    assert "[option]: committedValue(key, draft)" in scope
     assert runtime.count("persistNonAuth(") == 2  # declaration + Apply Settings path
 
     save_current = section(runtime, "async function saveCurrent", "function connectionTestPayload")
@@ -78,8 +84,8 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
 
     expected = (
         "Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.",
-        "Enter a new API key to replace the stored key when you click Apply Settings. Leave this field blank to keep the current key.",
-        "Remove the saved API key when you click Apply Settings.",
+        "Enter a new API key to replace the stored key, then choose Save. Leave this field blank to keep the current key.",
+        "Remove the saved API key when you choose Save.",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
         "How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.",
         "How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.",

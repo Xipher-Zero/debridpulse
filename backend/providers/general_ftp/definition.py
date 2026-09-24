@@ -18,7 +18,9 @@ definition = IntegrationDefinition(
     presentation=IntegrationPresentation(
         status_name="FTP & SFTP",
         static_status="healthy",
-        display_order=110,
+        # The second member of the General Sources group; the GROUP renders at
+        # its first member's position, so this only orders it within the group.
+        display_order=31,
         status_group="direct_sources",
         status_group_label="General Sources",
         status_tier="general_family",

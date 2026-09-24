@@ -9,10 +9,14 @@
   margin-bottom: 14px;
 }
 
-/* Servers pack left and wrap; the Add tile always trails the last server. */
+/* The centre of the available card viewport is the layout origin: cards
+   expand outward from it, and the Add tile always trails the last server.
+   Centring is the flex line's own behaviour, so it survives a narrower
+   viewport -- every wrapped row centres itself, with no measured offset. */
 .dp-usenet-servers {
   display: flex;
   flex-wrap: wrap;
+  justify-content: center;
   align-items: stretch;
   gap: 12px;
 }
@@ -162,9 +166,15 @@
   text-align: center;
 }
 
-.dp-usenet-server-status { margin: 8px 0 0; text-align: center; font-size: .85rem; }
-.dp-usenet-server-status[data-tone="ok"] { color: var(--dp-ok, #4ade80); }
-.dp-usenet-server-status[data-tone="error"] { color: var(--dp-error, #f87171); }
+/* Inline FIELD validation only -- a missing or malformed value on this card.
+   The RESULT of Save / Test / Remove belongs to the canonical toast owner;
+   Usenet owns no notification system. */
+.dp-usenet-field-validation {
+  margin: 8px 0 0;
+  text-align: center;
+  font-size: .85rem;
+  color: var(--dp-state-error);
+}
 
 /* The Add tile matches a populated card's footprint and centres its
  * plus + label as one group, vertically and horizontally. */

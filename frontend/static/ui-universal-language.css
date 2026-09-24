@@ -358,6 +358,12 @@ textarea.input { resize: vertical; }
   color: var(--dp-state-error);
   box-shadow: none;
 }
+:is(.btn-success, .dp-btn--success) {
+  border-color: color-mix(in srgb, var(--dp-state-success) 34%, transparent);
+  background: var(--dp-state-success-bg);
+  color: var(--dp-state-success);
+  box-shadow: none;
+}
 :is(.btn-warn, .dp-btn--caution) {
   border-color: color-mix(in srgb, var(--dp-state-caution) 34%, transparent);
   background: var(--dp-state-caution-bg);
@@ -495,6 +501,7 @@ textarea.input { resize: vertical; }
 .btn-warn:hover { background: rgba(234,179,8,.2); border-color: rgba(234,179,8,.5); }
 .btn-danger:hover { background: rgba(239,68,68,.22); }
 .btn-blue:hover { background: rgba(59,130,246,.25); }
+.btn-success:hover { background: color-mix(in srgb, var(--dp-state-success) 22%, transparent); }
 body.light :disabled { opacity: .55; }
 body.light :is(.dp-field, .input)::placeholder,
 body.light select.input::placeholder,

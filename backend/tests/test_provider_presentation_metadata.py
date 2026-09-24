@@ -39,7 +39,7 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "premium": False,
         "status_endpoint": None,
         "static_status": "healthy",
-        "display_order": 100,
+        "display_order": 30,
         "status_group": "direct_sources",
         "status_group_label": "General Sources",
         "status_tier": "general_family",

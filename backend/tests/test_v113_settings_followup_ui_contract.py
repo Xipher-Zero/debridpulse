@@ -158,9 +158,15 @@ def test_the_group_master_mutation_is_immediate_and_scoped():
 
 
 def test_the_broad_settings_payload_never_carries_the_group_namespace():
-    payload = body(SETTINGS, "nonAuthPayload")
-    assert "delete current.integration_groups;" in payload, \
+    # The writable whole-settings document has one owner (settingsDocument),
+    # shared by the footer payload and by the single-field settings-document
+    # commit, so the canonical namespaces are stripped in exactly one place.
+    document = body(SETTINGS, "settingsDocument")
+    assert "delete document.integration_groups;" in document, \
         "Apply Settings can replay a stale group master"
+    assert "delete document.integrations;" in document
+    assert "delete document.transfer_policy;" in document
+    assert "settingsDocument(state.settings)" in body(SETTINGS, "nonAuthPayload")
 
 
 def test_provider_status_composes_the_gate_with_the_existing_health_model():

@@ -26,7 +26,7 @@ const USENET_FIXTURE = {
   enabled: true, priority: 0, name: 'Usenet', kind: 'provider_executor', configured: true,
   presentation: {status_name: 'Usenet', premium: true, status_endpoint: null,
     static_status: 'healthy', display_order: 20, status_group: null, status_group_label: null,
-    status_tier: 'premium_family', status_tier_label: 'Premium'},
+    status_tier: 'general_family', status_tier_label: 'General'},
   options: {
     operation_timeout_seconds: 30, article_cache_megabytes: 1024,
     direct_write: true, max_acquisition_retries: 3,

@@ -82,7 +82,7 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "function updateModeState" not in runtime
     assert "function aria2RpcSecretFields" not in runtime
 
-    payload = runtime[runtime.index("function aria2ConfigurationPayload"):runtime.index("function allDebridConfigurationPayload")]
+    payload = runtime[runtime.index("function aria2ConfigurationPayload"):runtime.index("function usenetConfigurationPayload")]
     options = payload[payload.index("options: {"):payload.index("},")]
     assert set(re.findall(r"^\s+(\w+):", options, re.M)) == ARIA2_PAYLOAD_OPTIONS
     assert "clear_secrets" not in payload

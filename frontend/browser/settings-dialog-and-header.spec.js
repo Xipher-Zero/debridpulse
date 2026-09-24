@@ -22,7 +22,7 @@ const USENET_FIXTURE = {
   enabled: true, priority: 0, name: 'Usenet', kind: 'provider_executor', configured: true,
   presentation: {status_name: 'Usenet', premium: true, status_endpoint: null,
     static_status: 'healthy', display_order: 20, status_group: null, status_group_label: null,
-    status_tier: 'premium_family', status_tier_label: 'Premium'},
+    status_tier: 'general_family', status_tier_label: 'General'},
   options: {
     operation_timeout_seconds: 30, article_cache_megabytes: 1024,
     direct_write: true, max_acquisition_retries: 3,
@@ -37,11 +37,27 @@ const USENET_FIXTURE = {
 
 async function serveUsenet(page) {
   const live = await page.request.get('/api/settings').then(response => response.json());
-  const document_ = {...live, integrations: {...live.integrations, usenet: USENET_FIXTURE}};
+  const fixture = JSON.parse(JSON.stringify(USENET_FIXTURE));
+  const document_ = {...live, integrations: {...live.integrations, usenet: fixture}};
   await page.route(url => url.pathname === '/api/settings', route =>
     (route.request().method() === 'GET'
       ? route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(document_)})
       : route.fallback()));
+
+  /* The served record needs the canonical per-record write surface it implies:
+   * a server card's ordinary fields -- the display name among them -- persist
+   * themselves through `PUT /usenet/servers/{id}`, so the fixture answers that
+   * write the way the backend does, merging only the supplied fields. */
+  await page.route(url => /^\/api\/usenet\/servers\/[^/]+$/.test(url.pathname), route => {
+    if (route.request().method() !== 'PUT') return route.fallback();
+    const [server] = fixture.options.servers;
+    const body = route.request().postDataJSON() || {};
+    for (const [key, value] of Object.entries(body)) {
+      if (key !== 'clear_password' && key !== 'password') server[key] = value;
+    }
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(
+      {ok: true, server_id: server.id, servers: [server]})});
+  });
 }
 
 // --- B: the rename dialog is the application's, never the browser's -------

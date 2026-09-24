@@ -234,13 +234,15 @@ definition = IntegrationDefinition(
         # A real readiness check: an enabled-but-unconfigured Usenet integration
         # must never render as ready, which a static status could not express.
         status_endpoint="/integration-status/usenet",
-        # Usenet is an aggregate premium acquisition FAMILY, not a named premium
-        # account service: the operator configures news servers, and the panel
-        # reports one Usenet readiness for all of them.
-        status_tier="premium_family",
-        status_tier_label="Premium",
-        # Ordered after the named premium services and before the general
-        # families; tier order is derived from this, so nothing else declares it.
+        # Usenet is an aggregate acquisition FAMILY, not a named premium account
+        # service: the operator configures news servers, and the panel reports
+        # one Usenet readiness for all of them. It belongs to the GENERAL tier,
+        # whose first two positions are permanently reserved -- Usenet, then
+        # General Sources -- with both declared below the presentation model's
+        # default order, so any later GENERAL integration naturally follows
+        # both without anything declaring a tier order.
+        status_tier="general_family",
+        status_tier_label="General",
         display_order=20,
     ),
 )

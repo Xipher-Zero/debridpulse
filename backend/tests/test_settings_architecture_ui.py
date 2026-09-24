@@ -277,11 +277,16 @@ def test_non_auth_serializer_never_writes_a_canonical_namespace_or_flat_alias():
     runtime = source(SETTINGS_PAGE_JS)
     serializer = runtime[runtime.index("function nonAuthPayload()"):runtime.index("// Each scoped surface answers")]
     assert "...current" in serializer
+    # The writable whole-settings document has ONE owner, shared by this
+    # serializer and by the single-field settings-document commit.
+    assert "settingsDocument(state.settings)" in serializer
+    document = runtime[runtime.index("function settingsDocument("):]
+    document = document[:document.index("\n  }") + 4]
     for namespace in ("integrations", "transfer_policy", "execution_runtime_limits"):
-        assert f"delete current.{namespace};" in serializer
+        assert f"delete document.{namespace};" in document
     # The read-only compatibility names are dropped using the list the server
     # supplies, never a list kept in the page.
-    assert "for (const name of current.compatibility_fields || []) delete current[name];" in serializer
+    assert "for (const name of document.compatibility_fields || []) delete document[name];" in document
     # Integration-owned secret clears travel with their own scoped request.
     assert "clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control])" in serializer
     # None of the canonicalized fields is re-added as an override of the
@@ -321,19 +326,27 @@ def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
     namespace mutations, never through the whole-settings snapshot."""
     runtime = source(SETTINGS_PAGE_JS)
     assert "function aria2ConfigurationPayload()" in runtime
-    assert "function allDebridConfigurationPayload()" in runtime
     assert "function transferPolicyPayload()" in runtime
     persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("async function persistAuth")]
     assert "request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload()" in persist
-    assert "request('PATCH', '/integrations/alldebrid/configuration', allDebridConfigurationPayload()" in persist
     assert "request('PATCH', '/transfer-policy', transferPolicyPayload()" in persist
     policy = runtime[runtime.index("function transferPolicyPayload()"):runtime.index("function nonAuthPayload()")]
     for canonical in (
         "max_concurrent_executions", "execution_retry_count", "execution_retry_delay_seconds",
-        "resolution_retry_count", "resolution_retry_delay_minutes", "provider_poll_interval_seconds",
         "stalled_timeout_hours",
     ):
         assert f"{canonical}:" in policy
+    # The Sources & Providers policy fields are locally owned changed-blur
+    # controls; they are written through the SAME scoped surface, one field at
+    # a time, and are deliberately absent from the deferred payload so it can
+    # never replay them.
+    blur = runtime[runtime.index("const CHANGED_BLUR_FIELDS"):]
+    blur = blur[:blur.index("});") + 3]
+    for canonical in ("provider_poll_interval_seconds", "resolution_retry_count",
+                      "resolution_retry_delay_minutes"):
+        assert canonical not in policy, canonical
+        assert canonical in blur, canonical
+    assert "'/transfer-policy'" in runtime[runtime.index("function registerCommitScopes("):]
 
 
 def test_settings_is_one_master_card_with_internal_header_body_and_footer():

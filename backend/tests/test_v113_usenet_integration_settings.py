@@ -130,8 +130,8 @@ def test_presentation_uses_a_real_readiness_endpoint_not_a_static_status():
     # before the general families (100+). The Settings card order is owned
     # separately by ui-settings-page.js and is unaffected.
     assert presentation.display_order == 20
-    assert presentation.status_tier == "premium_family"
-    assert presentation.status_tier_label == "Premium"
+    assert presentation.status_tier == "general_family"
+    assert presentation.status_tier_label == "General"
 
 
 def test_display_name_defaults_to_derived_from_host():
