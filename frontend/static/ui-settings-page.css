@@ -300,16 +300,31 @@
   padding-block: var(--dp-card-padding-compact, 14px);
 }
 
-/* Two settings, one line. Each is the shared inline field, so the row itself
-   states only how the two sit beside one another -- the three-row spine the
-   zones used to share is gone with the stacked grammar that needed it. */
+/* Two settings, one CENTRED bounded island -- the same relationship container
+   and the same padding density as the accepted Extraction behaviour island, so
+   the two surfaces speak one visual language. Content-bounded, never stretched
+   across the card. Each setting is the shared inline field; the island states
+   only how the two sit beside one another. */
 #view-settings .dp-settings-download-engine-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   flex-wrap: wrap;
-  gap: 18px 48px;
-  margin-top: 0;
+  gap: 18px 44px;
+  width: max-content;
+  /* Bounded by what these two settings need -- a readable path field and a job
+     count -- not by a width chosen to make them fit. */
+  max-width: min(100%, 1040px);
+  margin: 0 auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
+/* A hint is a sentence: bound the informational stacks so the island's width
+   is decided by its controls rather than by its longest sentence. */
+#view-settings .dp-settings-download-engine-row .dp-settings-inline-field-info {
+  max-width: 200px;
 }
 
 #view-settings .dp-settings-download-path-stack,
@@ -321,22 +336,23 @@
   display: none !important;
 }
 
-/* The folder is the one control here with a variable-length value, so it takes
-   the row's spare width -- bounded, because a path field wide enough to read
-   is not a field as wide as the card happens to be. */
+/* The folder is the one control here with a variable-length value, so it is
+   the wider of the two -- bounded, because a path field wide enough to read is
+   not a field as wide as the card happens to be. */
 #view-settings .dp-settings-download-folder-field {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
 #view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-width: 0;
-  max-width: 460px;
+  width: 380px;
+  max-width: 100%;
 }
 
-/* The path and its Browse action are one compound control, so the pair fills
-   that bounded room together rather than sitting at content width inside it. */
+/* Path and Browse are ONE compound field, so the pair fills the bounded room
+   above together rather than sitting at content width inside it. */
 #view-settings .dp-settings-download-folder-field .dp-settings-directory-field-control {
   flex: 1 1 auto;
   min-width: 0;
@@ -351,17 +367,11 @@
   text-align: center;
 }
 
-/* Download Folder + Browse read as ONE compound control: a single seam between
-   them rather than a button floating beside a field, and one shared height
-   taken from the input itself so neither is the taller of the two. */
-#view-settings .dp-settings-download-engine-row .dp-settings-directory-field-control {
-  align-items: stretch;
-  gap: 6px;
-}
-
-#view-settings .dp-settings-download-engine-row .dp-settings-directory-field-browse {
-  align-self: stretch;
+/* Inside the field's border the action is a compact chip, not a full-height
+   button pretending to be part of the frame. */
+#view-settings .dp-action-field > .dp-settings-directory-field-browse {
   min-height: 0;
+  padding-block: 4px;
 }
 
 #view-settings .dp-settings-clear-secret {
@@ -1012,13 +1022,15 @@
 
   /* One setting per line, each keeping its own inline title/hint + control. */
   #view-settings .dp-settings-download-engine-row {
+    width: auto;
     align-items: stretch;
     flex-direction: column;
     gap: 14px;
   }
 
   #view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
-    max-width: none;
+    width: auto;
+    flex: 1 1 auto;
   }
 
   #view-settings .dp-settings-master-footer {

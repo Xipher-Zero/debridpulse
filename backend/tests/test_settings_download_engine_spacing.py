@@ -22,7 +22,9 @@ def test_download_engine_spacing_is_owned_by_canonical_settings_stylesheet():
     )
     assert selector in settings
     base_rule = settings.split(selector, 1)[1].split("}", 1)[0]
-    assert "margin-top: 0;" in base_rule
+    # DP 1.0.13: the row is a centred island, so its own margin states the
+    # centring; what matters is that no external layer adds spacing back.
+    assert "margin: 0 auto;" in base_rule
     assert "margin-top: 18px;" not in base_rule
 
     # A responsive media-query rule legitimately reuses the canonical selector

@@ -10,7 +10,13 @@
   min-width: 0;
 }
 
-#view-settings .dp-settings-directory-field-control {
+/* The BARE pairing: the path field and a Browse button standing beside it,
+   each with its own border. A directory control that opted into the universal
+   compound field (.dp-action-field, ui-universal-language.css) is arranged by
+   that material instead -- Browse lives inside the field's border there, so
+   this outer-gap/alignment statement would be describing a relationship that
+   no longer exists. */
+#view-settings .dp-settings-directory-field-control:not(.dp-action-field) {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -266,7 +272,9 @@
     white-space: normal;
   }
 
-  #view-settings .dp-settings-directory-field-control {
+  /* Stacked, the bare button takes the field's full width. The embedded
+     compound field has no stacking to do -- its action is inside the border. */
+  #view-settings .dp-settings-directory-field-control:not(.dp-action-field) {
     align-items: stretch;
   }
 }

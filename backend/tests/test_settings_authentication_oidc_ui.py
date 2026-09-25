@@ -4,17 +4,35 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / "frontend" / "static"
 AUTH_CSS = STATIC / "ui-settings-authentication.css"
+SETTINGS_JS = STATIC / "ui-settings-page.js"
 
 
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_oidc_clear_secret_helper_collapses_unused_lower_half_of_input_slot():
+def test_clearing_the_stored_oidc_secret_is_one_confirmed_action_not_a_deferred_checkbox():
+    """Erasing a credential is an explicit confirmed act, with ONE path.
+
+    The former checkbox armed a clear that only happened at Apply, which meant a
+    destructive intent could sit latent in the page and be carried by an
+    unrelated save. Both the checkbox and its clear-on-save payload are gone.
+    """
     css = read(AUTH_CSS)
-    assert "--dp-oidc-clear-copy-line: 13.75px;" in css
-    assert "line-height: var(--dp-oidc-clear-copy-line);" in css
-    assert "margin-top: calc(7px - ((var(--dp-input-height) - var(--dp-oidc-clear-copy-line)) / 2));" in css
+    js = read(SETTINGS_JS)
+
+    assert "dp-settings-oidc-clear-secret" not in css
+    assert "--dp-oidc-clear-copy-line" not in css
+    assert "dp-auth-clear-oidc-secret" not in js
+    assert "clear-on-save" not in js
+
+    # One button, one canonical confirmation, one canonical clear.
+    assert 'data-action="clear-oidc-secret"' in js
+    assert "async function clearOidcSecret(button)" in js
+    assert js.count("async function clearOidcSecret(") == 1
+    assert "window.DPSettingsModal.confirm({" in js
+    assert "writeAuthentication({clear_oidc_client_secret: true})" in js
+    assert js.count("clear_oidc_client_secret") == 1
 
 
 def test_oidc_access_separator_is_strengthened_without_added_weight_or_accent():

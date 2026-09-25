@@ -99,7 +99,10 @@ test('representative pre-existing Settings fields use the same canonical datum',
     ['downloads', 'dp-settings-field-download-folder'],
     ['notifications', 'dp-settings-field-discord-username'],
     ['maintenance', 'dp-settings-field-backup-interval-hours'],
-    ['authentication', 'dp-settings-field-auth-username'],
+    // DP 1.0.13: Username joined the inline grammar with the rest of the
+    // Authentication card. The allowlists keep the stacked full-width field,
+    // so they are what carries the datum on this tab.
+    ['authentication', 'dp-settings-field-oidc-allowed-subjects'],
   ];
   let checked = 0;
   for (const [tab, id] of cases) {

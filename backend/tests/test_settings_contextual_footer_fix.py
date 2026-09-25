@@ -37,6 +37,6 @@ def test_downloads_carries_no_footer_action_and_no_deferred_apply_contract():
     assert 'data-context-action="downloads"' not in page
     # The footer's deferred controls are hidden on a field-boundary tab; the
     # Apply infrastructure itself remains for the tabs that still need it.
-    assert "const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction'])" in page
+    assert "const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'authentication'])" in page
     assert "[data-deferred-apply], .dp-settings-save-hint" in page
     assert 'data-action="save" data-deferred-apply' in page

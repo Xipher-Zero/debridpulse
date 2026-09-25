@@ -333,9 +333,11 @@ def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
     assert "function aria2ConfigurationPayload()" not in runtime
     assert "function usenetConfigurationPayload()" not in runtime
     assert "function transferPolicyPayload()" not in runtime
-    persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("async function persistAuth")]
+    persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("/* One authentication write")]
     assert "/integrations/" not in persist
     assert "/transfer-policy" not in persist
+    # Authentication joined the same contract: the footer writes none of it.
+    assert "/auth/config" not in persist
     scopes = runtime[runtime.index("function registerCommitScopes("):]
     assert "'/transfer-policy'" in scopes
     assert "`/integrations/${identity}/configuration`" in runtime

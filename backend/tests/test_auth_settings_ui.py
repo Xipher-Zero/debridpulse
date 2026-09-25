@@ -82,11 +82,19 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
     assert "/auth-settings.js" not in bootstrap
     assert "/auth-ux.js" not in bootstrap
     assert "function authenticationPanel(" in module
-    assert "function authPayload()" in module
-    assert "function persistAuth(" in module
     assert "window.DPSettingsPage = Object.freeze({load});" in module
     assert "baseRenderSettings" not in module
     assert "removeLegacyAuthenticationControls" not in module
+
+    # Authentication is a field-boundary tab: every control commits through the
+    # canonical persistence owner's auth-config scope, and one write carries one
+    # field. There is no whole-form authentication payload and no deferred Apply
+    # path left to build or replay one.
+    assert "function authPayload()" not in module
+    assert "function persistAuth(" not in module
+    assert "FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'authentication'])" in module
+    assert "persistence.defineScope('auth-config'" in module
+    assert "function writeAuthentication(changes)" in module
 
 
 

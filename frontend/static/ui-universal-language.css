@@ -200,7 +200,11 @@ body.light :is(.dp-metric-card, .metric-card, .stat-card, .dash-hero-stat, .dash
 :is(.dp-metric-card, .metric-card, .stat-card)[data-c="purple"] { --c: var(--dp-accent-purple-bright); }
 
 /* ── Fields / search / selects ───────────────────────────────────────── */
-:is(.dp-field, .input),
+/* ``.dp-action-field`` is a field that holds a trailing action -- Copy,
+   Browse -- INSIDE its own border. It is a FIELD, so it takes its material
+   from this same rule rather than restating it; only its arrangement differs,
+   and that is declared below. */
+:is(.dp-field, .input, .dp-action-field),
 select.input,
 textarea.input {
   width: 100%;
@@ -218,19 +222,57 @@ textarea.input {
   transition: border-color .14s ease, box-shadow .14s ease, background-color .14s ease;
 }
 
-body.light :is(.dp-field, .input),
+body.light :is(.dp-field, .input, .dp-action-field),
 body.light select.input,
 body.light textarea.input {
   box-shadow: inset 0 1px rgba(255,255,255,.85);
 }
 
-:is(.dp-field, .input):hover {
+:is(.dp-field, .input, .dp-action-field):hover {
   border-color: var(--dp-border-strong);
 }
-:is(.dp-field, .input):focus {
+/* The compound field has no focus of its own -- the control inside it does --
+   so it mirrors that control's focused material and nothing else. */
+:is(.dp-field, .input):focus,
+.dp-action-field:focus-within {
   border-color: color-mix(in srgb, var(--dp-accent-purple-bright) 72%, var(--dp-border-strong));
   box-shadow: var(--dp-focus-ring);
   background: var(--dp-field-surface);
+}
+
+/* The action is the control's SIBLING inside one field border, never
+   something floating over it: text physically ends where the action begins,
+   so nothing here has to guess how wide the action is -- a width the font
+   decides and a stylesheet cannot know. */
+.dp-action-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  padding-block: 0;
+  padding-inline: 0 4px;
+}
+
+/* Inside it the control is drawn bare, so the pair reads as one field while
+   the control keeps its own focus, caret, selection and horizontal scroll. */
+.dp-action-field > :is(.input, .dp-field) {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dp-action-field > :is(.input, .dp-field):focus {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.dp-action-field > .btn {
+  flex: 0 0 auto;
 }
 :is(.dp-field, .input)::placeholder {
   color: var(--dp-text-muted);

@@ -178,157 +178,97 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   overflow-wrap: anywhere;
 }
 
+/* One bounded, CENTRED island beneath the KPI row: what a browser session is
+   and how long it lasts, read together. Same relationship container and the
+   same padding density as the accepted Extraction behaviour island. */
 #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
   min-width: 0;
-  width: 100%;
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(270px, 1.15fr) minmax(260px, .9fr) auto;
-  align-items: start;
-  gap: 24px;
-  margin-top: 14px;
-}
-
-#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row > .dp-settings-status {
-  min-width: 0;
-  align-self: center;
-  margin: 0;
-}
-
-#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime {
-  min-width: 0;
-  margin: 0;
-}
-
-#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-label {
-  display: block;
-  margin-bottom: 7px;
-}
-
-#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-lifetime > .form-hint {
-  display: block;
-  margin-top: 7px;
-  line-height: 1.4;
-}
-
-#view-settings .dp-settings-auth-session-actions {
-  min-width: max-content;
-  display: grid;
-  grid-template-rows: auto var(--dp-input-height);
-  align-items: start;
-  justify-items: end;
-  justify-self: end;
-  gap: 0;
-  margin: 0;
-}
-
-#view-settings .dp-settings-auth-session-action-control {
-  min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+  width: max-content;
+  max-width: min(100%, 880px);
+  margin: 14px auto 0;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-auth-session-action-control .btn {
+#view-settings .dp-settings-auth-session-row > .dp-settings-inline-field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* The logout action lives inside the sessions field, at its trailing edge.
+   Being a flex SIBLING of the count is what keeps the two apart: nothing here
+   reserves a guessed width for a button whose size the font decides. */
+#view-settings .dp-settings-auth-session-count > .dp-settings-inline-field-action .btn {
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-oidc-card .dp-settings-auth-public-base-field {
-  margin-top: 0;
+#view-settings .dp-settings-auth-session-count-value {
+  min-width: 0;
+  color: var(--dp-text-primary);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Username & Password ------------------------------------------------------ */
-#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-label {
-  display: block;
-  margin-bottom: 7px;
-}
-
-#view-settings .dp-settings-username-password-card .dp-settings-auth-credentials-row > .dp-settings-field > .form-hint {
-  display: block;
-  margin-top: 7px;
-  line-height: 1.4;
-}
-
+/* Two settings on one line, each the shared inline field. Clear Stored
+   Password is the password field's own trailing action, so it shares that
+   field's centre line without any spacer row pretending to be a label. */
 #view-settings .dp-settings-auth-credentials-row {
   min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr) auto;
-  align-items: start;
-  gap: 28px;
-}
-
-#view-settings .dp-settings-auth-credentials-row > .dp-settings-field {
-  min-width: 0;
-  margin: 0;
-}
-
-/* The destructive action owns the same label/control vertical tracks as the
-   two field sandwiches. The small button is centered inside an input-height
-   control slot, so its centerline matches both form fields exactly. */
-#view-settings .dp-settings-auth-password-actions {
-  min-width: max-content;
-  display: grid;
-  grid-template-rows: auto var(--dp-input-height);
-  align-items: start;
-  justify-items: end;
-  justify-self: end;
-  gap: 0;
-  margin: 0;
-}
-
-#view-settings .dp-settings-auth-action-label {
-  display: block;
-  visibility: hidden;
-  margin-bottom: 7px;
-  pointer-events: none;
-  user-select: none;
-}
-
-#view-settings .dp-settings-auth-action-control {
-  min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px 44px;
 }
 
-#view-settings .dp-settings-auth-action-control .btn {
+#view-settings .dp-settings-auth-credentials-row > .dp-settings-inline-field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-auth-username-field .input {
+  width: 200px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-auth-password-field .input {
+  width: 240px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-auth-password-field > .dp-settings-inline-field-action .btn {
   white-space: nowrap;
 }
 
 /* API Access --------------------------------------------------------------- */
+/* One column: the disclosure, when there is one, then the lifecycle actions.
+   DebridPulse puts actions on the right, so that is where they sit. */
 #view-settings .dp-settings-api-token-layout {
   min-width: 0;
   width: 100%;
-  display: grid;
-  grid-template-columns: minmax(0, auto);
-  grid-template-rows: var(--dp-input-height) auto;
-  justify-content: center;
-  justify-items: center;
-  align-items: center;
-  column-gap: 36px;
-  row-gap: 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 14px;
 }
 
 #view-settings .dp-settings-api-token-actions {
   min-width: 0;
   min-height: var(--dp-input-height);
-  grid-column: 1;
-  grid-row: 1;
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   gap: 8px;
   margin: 0;
-}
-
-#view-settings .dp-settings-api-token-status {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: center;
-  margin: 0;
-  color: var(--dp-text-muted);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
 }
 
 /* Keep every Generate/Rotate busy and resting label on exactly one footprint. */
@@ -346,60 +286,79 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   white-space: nowrap;
 }
 
-/* When a one-time token exists, use explicit shared grid rows so the button
-   centerline and readonly token field centerline are identical. */
-#view-settings .dp-settings-api-token-layout.has-token {
-  grid-template-columns: minmax(300px, auto) minmax(520px, 1fr);
-  grid-template-rows: auto var(--dp-input-height) auto;
-  justify-content: stretch;
-  justify-items: stretch;
-  row-gap: 0;
-}
-
-#view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
-  grid-column: 1;
-  grid-row: 2;
-  justify-self: center;
-}
-
-#view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
-  grid-column: 1;
-  grid-row: 3;
-  justify-self: center;
-  margin-top: 7px;
+/* The one-time disclosure.
+   Warning and value are ONE unit inside a gold container, in the Settings
+   caution language -- important, not destructive. The container exists only
+   while a freshly minted token is being shown, so the card itself is never
+   permanently urgent. */
+#view-settings .dp-settings-api-token-disclosure {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 55%, var(--dp-border-default));
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-state-caution-bg);
+  padding: 13px 15px 15px;
 }
 
 #view-settings .dp-settings-api-token-warning {
   min-width: 0;
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  justify-self: start;
-  margin: 0 0 7px 3px;
-  color: var(--dp-accent, var(--accent));
-  font-size: 11px;
+  margin: 0;
+  color: var(--dp-state-caution);
+  font-size: 11.5px;
+  font-weight: 750;
   line-height: 1.4;
 }
 
+/* The value spans the disclosure; Copy is embedded through the one shared
+   compound-field primitive, exactly as the OIDC Callback URL Copy is. */
 #view-settings .dp-settings-api-token-field {
   min-width: 0;
-  min-height: var(--dp-input-height);
   width: 100%;
-  grid-column: 2;
-  grid-row: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
 }
 
-#view-settings .dp-settings-api-token-field .input {
-  min-width: 0;
-  flex: 1 1 auto;
+#view-settings .dp-settings-api-token-field > .input {
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
 }
 
-#view-settings .dp-settings-api-token-field .btn {
-  flex: 0 0 auto;
+#view-settings .dp-settings-api-token-field > .btn {
   white-space: nowrap;
+}
+
+/* Persistent stored-token status, beside Enable in the card header. */
+#view-settings .dp-settings-auth-header-actions {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 14px;
+}
+
+#view-settings .dp-settings-auth-header-actions > .dp-settings-auth-header-enable {
+  justify-self: auto;
+}
+
+#view-settings .dp-settings-auth-token-ready {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-success) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--dp-state-success) 13%, transparent);
+  color: var(--dp-state-success);
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: .03em;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+#view-settings .dp-settings-auth-token-ready[hidden] {
+  display: none;
 }
 
 @media (max-width: 1280px) {
@@ -412,19 +371,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
-    grid-template-columns: minmax(190px, 1fr) minmax(230px, 1.1fr) minmax(230px, .9fr) auto;
-    gap: 18px;
-  }
-
+  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
   #view-settings .dp-settings-auth-credentials-row {
-    grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.2fr) auto;
-    gap: 22px;
-  }
-
-  #view-settings .dp-settings-api-token-layout.has-token {
-    grid-template-columns: minmax(300px, auto) minmax(420px, 1fr);
-    column-gap: 28px;
+    gap: 16px 28px;
   }
 }
 
@@ -441,6 +390,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     text-align: left;
   }
 
+  #view-settings .dp-settings-auth-header-actions,
   #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
   }
@@ -449,64 +399,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  #view-settings .dp-settings-auth-session-actions {
-    grid-template-rows: auto;
-    justify-self: end;
-  }
-
-  #view-settings .dp-settings-auth-session-actions .dp-settings-auth-action-label {
-    display: none;
-  }
-
+  /* Stacked, each setting keeps its own inline title/hint + control, and the
+     island stops being content-bounded because there is only one column. */
+  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
   #view-settings .dp-settings-auth-credentials-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 16px;
-  }
-
-  #view-settings .dp-settings-auth-password-actions {
-    justify-self: end;
-  }
-
-  #view-settings .dp-settings-auth-action-label {
-    display: none;
-  }
-
-  #view-settings .dp-settings-auth-password-actions {
-    grid-template-rows: auto;
-  }
-
-  #view-settings .dp-settings-api-token-layout.has-token {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: var(--dp-input-height) auto auto var(--dp-input-height);
-    row-gap: 7px;
-  }
-
-  #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-actions {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  #view-settings .dp-settings-api-token-layout.has-token .dp-settings-api-token-status {
-    grid-column: 1;
-    grid-row: 2;
-    margin-top: 0;
-  }
-
-  #view-settings .dp-settings-api-token-warning {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-    margin: 8px 0 0 3px;
-  }
-
-  #view-settings .dp-settings-api-token-field {
-    grid-column: 1;
-    grid-row: 4;
+    width: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
   }
 }
 
@@ -517,11 +417,11 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   position: relative;
   display: block;
   min-width: 0;
-  width: 100%;
 }
 
 #view-settings .dp-settings-auth-duration-control > .input {
-  width: 100%;
+  width: 128px;
+  max-width: 100%;
   padding-inline-end: 62px;
 }
 
@@ -535,30 +435,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1;
   pointer-events: none;
   user-select: none;
-}
-
-/* Callback is OIDC reference information, not Authentication Status. */
-#view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
-  width: clamp(420px, 30%, 640px);
-  max-width: 100%;
-  margin: 18px auto 0;
-}
-
-#view-settings .dp-settings-auth-callback-field > .form-label {
-  display: block;
-  margin-bottom: 7px;
-}
-
-#view-settings .dp-settings-auth-callback-field > .form-hint {
-  display: block;
-  margin-top: 7px;
-  line-height: 1.4;
-}
-
-@media (max-width: 900px) {
-  #view-settings .dp-settings-oidc-card .dp-settings-auth-callback-field {
-    width: 100%;
-  }
 }
 
 /* Canonical Authentication continuation: OIDC presentation belongs to Authentication. */
@@ -588,8 +464,12 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   justify-self: end;
 }
 
+/* An explicit 1fr column. Without it the auto column is sized to the widest
+   item's max-content, and a content-bounded island's own `max-width: 100%`
+   then resolves against that overgrown track instead of the card. */
 #view-settings .dp-settings-oidc-grouped-card > .card-body {
   display: grid;
+  grid-template-columns: minmax(0, 1fr);
   gap: 20px;
 }
 
@@ -604,113 +484,112 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1.4;
 }
 
-#view-settings .dp-settings-oidc-row {
+/* ── The OIDC body ────────────────────────────────────────────────────────
+   Three restrained relationship groups -- outward-facing identity, client
+   credentials, protocol details -- with the issuer endpoint floating free
+   between the first two, because it is the one authority the others describe.
+   Each group is content-bounded and centred; none of them is a card. */
+#view-settings .dp-settings-oidc-group {
   min-width: 0;
-  width: 100%;
-  display: grid;
-  align-items: start;
-  gap: 28px;
-}
-
-#view-settings .dp-settings-oidc-row > .dp-settings-field {
-  min-width: 0;
-  width: 100%;
-  margin: 0;
-}
-
-/* Use horizontal space according to expected content rather than giving every
-   value a full-width row. */
-#view-settings .dp-settings-oidc-row--origin {
-  grid-template-columns: minmax(0, 1.85fr) minmax(380px, 1fr);
-}
-
-#view-settings .dp-settings-oidc-row--identity {
-  grid-template-columns: minmax(260px, .72fr) minmax(0, 1.68fr);
-}
-
-#view-settings .dp-settings-oidc-row--credentials {
-  grid-template-columns: minmax(300px, .8fr) minmax(420px, 1.2fr) auto;
-}
-
-#view-settings .dp-settings-oidc-row--protocol {
-  grid-template-columns: minmax(0, 1.65fr) minmax(280px, .85fr);
-}
-
-/* The callback is no longer a floating centered reference field; it is the
-   derived half of the Public Base URL relationship. */
-#view-settings .dp-settings-oidc-grouped-card .dp-settings-auth-callback-field {
-  width: 100%;
-  max-width: none;
-  margin: 0;
-}
-
-/* Clearing a stored OIDC secret remains a clear-on-Apply choice, but now owns
-   the third control slot in the Client ID / Client Secret row. */
-#view-settings .dp-settings-oidc-clear-secret-action {
-  --dp-oidc-clear-copy-line: 13.75px;
-  min-width: max-content;
-  display: grid;
-  grid-template-rows: auto var(--dp-input-height) auto;
-  align-items: start;
-  justify-items: end;
-  justify-self: end;
-  gap: 0;
-  margin: 0;
-}
-
-#view-settings .dp-settings-oidc-clear-secret-spacer {
-  display: block;
-  visibility: hidden;
-  margin-bottom: 7px;
-  pointer-events: none;
-  user-select: none;
-}
-
-#view-settings .dp-settings-oidc-clear-secret-control {
-  min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-oidc-clear-secret {
+#view-settings .dp-settings-oidc-group > .dp-settings-inline-field {
+  flex: 0 1 auto;
   min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-  margin: 0;
-  color: var(--dp-text-primary);
-  cursor: pointer;
 }
 
-#view-settings .dp-settings-oidc-clear-secret-copy {
-  color: var(--dp-text-primary);
-  font-size: 11px;
-  font-weight: 700;
-  line-height: var(--dp-oidc-clear-copy-line);
+/* A hint is a sentence, not a single line: bound the informational stack so
+   the group's width is decided by how much room its CONTROLS need, not by how
+   long its longest sentence happens to be. */
+#view-settings .dp-settings-oidc-group .dp-settings-inline-field-info,
+#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info,
+#view-settings .dp-settings-auth-session-row .dp-settings-inline-field-info {
+  max-width: 200px;
+}
+
+#view-settings .dp-settings-oidc-issuer-field .dp-settings-inline-field-info {
+  max-width: 300px;
+}
+
+/* Control widths follow what each value IS, not the space that happens to
+   exist: a provider name is short, a callback URL is not. */
+#view-settings .dp-settings-oidc-provider-field .input {
+  width: 180px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-auth-public-base-field .input {
+  width: 240px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-auth-callback-field > .dp-settings-inline-field-control {
+  flex: 0 1 auto;
+  min-width: 0;
+  width: 300px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-oidc-client-id-field .input {
+  width: 230px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-oidc-client-secret-field .input {
+  width: 200px;
+  max-width: 100%;
+}
+
+#view-settings .dp-settings-oidc-client-secret-field > .dp-settings-inline-field-action .btn {
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-oidc-clear-secret > input {
-  flex: 0 0 auto;
-  margin: 0;
+#view-settings .dp-settings-oidc-scopes-field .input {
+  width: 240px;
+  max-width: 100%;
 }
 
-#view-settings .dp-settings-oidc-clear-secret-hint {
-  max-width: 220px;
-  /* The checkbox copy is centered in an input-height slot. Collapse the
-     unused lower half of that slot so helper copy starts at the normal 7px
-     helper gap without moving the checkbox off the neighboring field centerline. */
-  margin-top: calc(7px - ((var(--dp-input-height) - var(--dp-oidc-clear-copy-line)) / 2));
-  color: var(--dp-text-muted);
-  font-size: 10px;
-  line-height: 1.35;
-  text-align: right;
+#view-settings .dp-settings-oidc-group-claim-field .input {
+  width: 150px;
+  max-width: 100%;
 }
 
-/* Access-control policy is one coherent section. The policy title/toggle now
-   lives in the section heading rather than consuming a separate body row. */
+/* The identity-provider authority endpoint: centred, unbordered, and given
+   about 70% of the body so it reads as the central statement between the
+   group above it and the group below. */
+#view-settings .dp-settings-oidc-issuer-band {
+  min-width: 0;
+  width: 70%;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+#view-settings .dp-settings-oidc-issuer-field {
+  justify-content: space-between;
+}
+
+#view-settings .dp-settings-oidc-issuer-field > .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-oidc-issuer-field .input {
+  width: 100%;
+}
+
+/* Access-control policy is one coherent section: the policy decision, then
+   the allowlists it can defer to. */
 #view-settings .dp-settings-oidc-access {
   min-width: 0;
   display: grid;
@@ -721,40 +600,37 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 #view-settings .dp-settings-oidc-section-heading {
   min-width: 0;
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  display: flex;
   align-items: center;
-  gap: 18px;
 }
 
 #view-settings .dp-settings-oidc-section-title {
-  justify-self: start;
   color: var(--dp-text-primary);
   font-weight: 700;
   line-height: 1.25;
 }
 
-#view-settings .dp-settings-oidc-section-copy {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: min(620px, 44%);
-  transform: translate(-50%, -50%);
-  color: var(--dp-text-muted);
-  font-size: 11px;
-  line-height: 1.4;
-  text-align: center;
+/* The policy island: an explicit decision, so it is bounded, centred and
+   tinted differently from the neutral configuration groups above it -- and
+   small, because it holds one choice. */
+#view-settings .dp-settings-oidc-policy-island {
+  min-width: 0;
+  width: max-content;
+  max-width: min(100%, 760px);
+  margin-inline: auto;
+  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 30%, var(--dp-divider));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--dp-accent-purple-bright) 6%, transparent);
+  padding: 14px 20px 15px;
 }
 
-#view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
+#view-settings .dp-settings-oidc-policy-island > .dp-settings-oidc-allow-all {
   width: auto;
   min-width: 0;
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  justify-content: flex-end;
-  justify-self: end;
-  gap: 10px;
+  justify-content: space-between;
+  gap: 32px;
   margin: 0 !important;
   padding: 0;
   border: 0;
@@ -762,14 +638,20 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle-info {
-  display: block;
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-width: 0;
+  max-width: 540px;
+  display: block;
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle-info .tl {
   display: block;
-  white-space: nowrap;
+}
+
+#view-settings .dp-settings-oidc-allow-all .toggle-info .td {
+  display: block;
+  margin-top: 3px;
+  line-height: 1.4;
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle {
@@ -801,16 +683,12 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
   }
 
-  #view-settings .dp-settings-oidc-row {
-    gap: 22px;
+  #view-settings .dp-settings-oidc-group {
+    gap: 16px 28px;
   }
 
-  #view-settings .dp-settings-oidc-row--origin {
-    grid-template-columns: minmax(0, 1.6fr) minmax(340px, 1fr);
-  }
-
-  #view-settings .dp-settings-oidc-section-copy {
-    width: min(500px, 40%);
+  #view-settings .dp-settings-oidc-issuer-band {
+    width: 85%;
   }
 }
 
@@ -827,39 +705,25 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     text-align: left;
   }
 
-  #view-settings .dp-settings-oidc-row--origin,
-  #view-settings .dp-settings-oidc-row--identity,
-  #view-settings .dp-settings-oidc-row--credentials,
-  #view-settings .dp-settings-oidc-row--protocol,
-  #view-settings .dp-settings-oidc-allowlists,
-  #view-settings .dp-settings-oidc-section-heading {
+  #view-settings .dp-settings-oidc-allowlists {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  #view-settings .dp-settings-oidc-clear-secret-action,
-  #view-settings .dp-settings-oidc-section-title,
-  #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
-    justify-self: start;
-  }
-
-  #view-settings .dp-settings-oidc-section-copy {
-    position: static;
+  /* Stacked, each setting keeps its own inline title/hint + control. */
+  #view-settings .dp-settings-oidc-group {
     width: auto;
-    transform: none;
-    justify-self: start;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
   }
 
-  #view-settings .dp-settings-oidc-clear-secret-control,
-  #view-settings .dp-settings-oidc-clear-secret {
-    justify-content: flex-start;
+  #view-settings .dp-settings-oidc-issuer-band,
+  #view-settings .dp-settings-oidc-policy-island {
+    width: auto;
+    max-width: none;
   }
 
-  #view-settings .dp-settings-oidc-clear-secret-hint,
-  #view-settings .dp-settings-oidc-section-copy {
-    text-align: left;
-  }
-
-  #view-settings .dp-settings-oidc-section-heading {
-    gap: 6px;
+  #view-settings .dp-settings-oidc-policy-island > .dp-settings-oidc-allow-all {
+    gap: 16px;
   }
 }

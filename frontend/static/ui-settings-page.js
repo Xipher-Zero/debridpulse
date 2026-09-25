@@ -142,6 +142,35 @@
     extract_delete_archive: {scope: 'settings-document', option: 'extract_delete_archive', commit: 'immediate'},
     extract_max_concurrent: {scope: 'settings-document', option: 'extract_max_concurrent'},
     extraction_password: {scope: 'settings-document', option: 'extraction_password', redacted: true},
+
+    // Authentication -- the /auth/config namespace. An ordinary authentication
+    // value is an ordinary value: it crosses one of the same two boundaries
+    // every other Settings control uses, through one scope that writes exactly
+    // the field that changed. Derived and environment-managed values -- the
+    // effective public base URL, the derived Callback URL, KPI state, the
+    // session count -- are absent because nothing writes them. ``redacted``
+    // marks a secret, whose accepted presentation is always blank; it is not a
+    // different commit class and not a different write.
+    auth_password_enabled: {scope: 'auth-config', option: 'auth_password_enabled', commit: 'immediate'},
+    auth_username: {scope: 'auth-config', option: 'auth_username'},
+    auth_password: {scope: 'auth-config', option: 'auth_password', redacted: true},
+    auth_session_lifetime_hours: {scope: 'auth-config', option: 'auth_session_lifetime_hours'},
+    auth_oidc_enabled: {scope: 'auth-config', option: 'auth_oidc_enabled', commit: 'immediate'},
+    oidc_provider_name: {scope: 'auth-config', option: 'oidc_provider_name'},
+    public_base_url: {scope: 'auth-config', option: 'public_base_url'},
+    oidc_issuer_url: {scope: 'auth-config', option: 'oidc_issuer_url'},
+    oidc_client_id: {scope: 'auth-config', option: 'oidc_client_id'},
+    oidc_client_secret: {scope: 'auth-config', option: 'oidc_client_secret', redacted: true},
+    oidc_scopes: {scope: 'auth-config', option: 'oidc_scopes'},
+    oidc_group_claim: {scope: 'auth-config', option: 'oidc_group_claim'},
+    oidc_allow_all: {scope: 'auth-config', option: 'oidc_allow_all', commit: 'immediate'},
+    oidc_allowed_subjects: {scope: 'auth-config', option: 'oidc_allowed_subjects'},
+    oidc_allowed_emails: {scope: 'auth-config', option: 'oidc_allowed_emails'},
+    oidc_allowed_groups: {scope: 'auth-config', option: 'oidc_allowed_groups'},
+
+    // API Access participation, written by its own canonical endpoint. Same
+    // boundary, same owner, same rollback -- only the scope differs.
+    api_token_enabled: {scope: 'api-token', option: 'enabled', commit: 'immediate'},
   });
 
   /* The commit attributes a declared control carries, or nothing at all for a
@@ -307,17 +336,27 @@
     const type = options.type || 'text';
     // The control declares its commit class; the canonical persistence owner
     // supplies the behaviour (COMMIT_FIELDS).
+    // ``commit: false`` is how a caller renders a value this page does not own
+    // the writing of -- one the environment manages, or one derived from
+    // another field. Such a control is never enrolled in persistence at all,
+    // rather than enrolled and then never written.
     const attrs = [
-      commitAttributes(key),
+      options.commit === false ? '' : commitAttributes(key),
       options.min != null ? `min="${html(options.min)}"` : '',
       options.max != null ? `max="${html(options.max)}"` : '',
       options.step != null ? `step="${html(options.step)}"` : '',
       options.placeholder ? `placeholder="${html(options.placeholder)}"` : '',
       options.readonly ? 'readonly' : '',
       options.autocomplete ? `autocomplete="${html(options.autocomplete)}"` : '',
+      options.maxlength != null ? `maxlength="${html(options.maxlength)}"` : '',
+      options.ariaLabel ? `aria-label="${html(options.ariaLabel)}"` : '',
     ].filter(Boolean).join(' ');
-    const control =
+    const bare =
       `<input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>`;
+    // A field-local action lives inside the field, through the one primitive.
+    const control = options.embedAction
+      ? embeddedActionField(bare, options.embedAction, options.controlClass)
+      : bare;
     // The SAME control, in whichever of the two Settings field grammars the
     // caller asked for. Nothing about the control -- its bounds, its commit
     // class, its identity -- differs between them.
@@ -338,7 +377,7 @@
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <textarea class="input" id="${id}" data-setting="${html(key)}" rows="${options.rows || 3}" ${options.placeholder ? `placeholder="${html(options.placeholder)}"` : ''}>${html(value)}</textarea>
+        <textarea class="input" id="${id}" data-setting="${html(key)}" rows="${options.rows || 3}" ${options.placeholder ? `placeholder="${html(options.placeholder)}"` : ''} ${commitAttributes(key)}>${html(value)}</textarea>
         ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}
       </div>`;
   }
@@ -398,11 +437,26 @@
    * What a caller does own is how much room its control deserves: a path, a
    * credential and a job count are not the same control, and nothing here
    * forces them to a common width. */
+  /* A field that holds a trailing action INSIDE its own border.
+   *
+   * OIDC Callback Copy, the one-time token Copy and Download Folder Browse are
+   * the same arrangement, so they are composed once here. The material and the
+   * arrangement both belong to the universal field language (.dp-action-field
+   * in ui-universal-language.css); this page states neither. */
+  function embeddedActionField(control, action, className = '') {
+    return `<div class="dp-action-field${className ? ` ${className}` : ''}">${control}${action}</div>`;
+  }
+
   function inlineField(id, label, hint, control, {className = '', action = ''} = {}) {
+    // A READING -- a derived count, a status value -- has no control to label,
+    // so it takes the same grammar with a plain caption instead of a <label>.
+    const title = id
+      ? `<label class="form-label" for="${id}">${html(label)}</label>`
+      : `<span class="form-label">${html(label)}</span>`;
     return `
       <div class="dp-settings-inline-field${className ? ` ${className}` : ''}">
         <div class="dp-settings-inline-field-info">
-          <label class="form-label" for="${id}">${html(label)}</label>
+          ${title}
           ${hint ? `<span class="form-hint">${hint}</span>` : ''}
         </div>
         <div class="dp-settings-inline-field-control">${control}</div>${
@@ -505,9 +559,20 @@
 
   // Directory-valued field with its Browse control (the picker itself is owned
   // by ui-settings-directory-picker.js, opened from the Browse button).
-  function directoryField(key, label, value, {hint, browseAction, browseLabel, inline, className}) {
+  /* ``embedAction`` puts Browse INSIDE the field's own border, through the
+   * shared embedded-action primitive: the action becomes a sibling of the
+   * control within one compound field, so path text ends where the button
+   * begins and nothing is positioned over anything. It is opt-in because only
+   * the caller knows whether its surface asked for that treatment; Browse
+   * itself is identical either way -- same action, same directory-picker
+   * owner, same persistence. */
+  function directoryField(key, label, value, {hint, browseAction, browseLabel, inline, className, embedAction}) {
     const id = fieldId(key);
-    const control = `<div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>`;
+    const path = `<input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}>`;
+    const browse = `<button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button>`;
+    const control = embedAction
+      ? embeddedActionField(path, browse, 'dp-settings-directory-field-control')
+      : `<div class="dp-settings-directory-field-control">${path}${browse}</div>`;
     if (inline) {
       return inlineField(id, label, hint, control,
         {className: ['dp-settings-directory-field', className].filter(Boolean).join(' ')});
@@ -1280,13 +1345,13 @@
     const policy = policyOf(s);
     const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
     const delivery = card('Download Location & Limits', `
-      <div class="dp-settings-download-engine-row">
+      <div class="dp-settings-download-engine-row" role="group" aria-label="Download location and limits">
         <div class="dp-settings-download-path-stack">
           ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
             hint: 'Where DebridPulse saves downloads.',
             browseAction: 'browse-download-folder',
             browseLabel: 'Browse server directories for Download Folder',
-            inline: true, className: 'dp-settings-download-folder-field',
+            inline: true, embedAction: true, className: 'dp-settings-download-folder-field',
           })}
         </div>
         <div class="dp-settings-download-limit">
@@ -1472,7 +1537,7 @@
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable ${html(extraClass)}" for="${id}">
         <span class="toggle-info"><span class="tl">Enable</span></span>
         <span class="toggle">
-          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)}>
+          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)} ${commitAttributes(key)}>
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -1482,19 +1547,15 @@
     const id = fieldId('oidc_allow_all');
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-oidc-allow-all" for="${id}">
-        <span class="toggle-info"><span class="tl">Allow Any Authenticated OIDC Identity</span></span>
+        <span class="toggle-info">
+          <span class="tl">Allow Any Authenticated OIDC Identity</span>
+          <span class="td">Accept every identity the provider authenticates, or leave this off to restrict sign-in to the allowlists below.</span>
+        </span>
         <span class="toggle">
-          <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)}>
+          <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)} ${commitAttributes('oidc_allow_all')}>
           <span class="ttrack"></span>
         </span>
       </label>`;
-  }
-
-  function mechanismLabel(value) {
-    const raw = String(value || '').trim();
-    if (raw === 'password_session') return 'Password Session';
-    if (raw === 'oidc_session') return 'OIDC Session';
-    return raw || 'Open / anonymous';
   }
 
   function settingsActive() {
@@ -1593,8 +1654,8 @@
   }
 
   function updateOidcCallbackPreview() {
-    const source = byId('dp-auth-public-base-url');
-    const input = byId('dp-auth-oidc-callback');
+    const source = fieldFor('public_base_url');
+    const input = fieldFor('oidc_callback_url');
     const button = root()?.querySelector('button[data-action="copy-oidc-callback"]');
     const field = input?.closest('.dp-settings-auth-callback-field');
     if (!source || !input || !button || !field) return;
@@ -1607,8 +1668,8 @@
   }
 
   async function copyOidcCallback() {
-    const source = byId('dp-auth-public-base-url');
-    const input = byId('dp-auth-oidc-callback');
+    const source = fieldFor('public_base_url');
+    const input = fieldFor('oidc_callback_url');
     const callback = callbackFromPublicBase(source?.value);
     if (!input || !callback) return;
 
@@ -1633,23 +1694,11 @@
     notify('Select and copy the callback URL manually', 'info');
   }
 
+  /* The live-probe result is nothing but one more piece of canonical auth
+     state, so it is painted by the same painter as every other reading. */
   function applyOidcRuntimeStatus(auth, available) {
-    if (!settingsActive() || !auth?.oidc_enabled || !auth?.oidc_configured) return;
-    const kpi = Array.from(root()?.querySelectorAll('.dp-settings-auth-kpi') || []).find(node => {
-      return text(node.querySelector('.dhs-label')?.textContent).trim() === 'OIDC State';
-    });
-    const value = kpi?.querySelector('.dhs-val');
-    if (!kpi || !value) return;
-    const presentation = oidcStatePresentation(auth, available);
-    value.replaceChildren(document.createTextNode(presentation.primary));
-    if (presentation.secondary) {
-      value.appendChild(document.createElement('br'));
-      const secondary = document.createElement('span');
-      secondary.className = 'dp-settings-auth-kpi-secondary';
-      secondary.textContent = presentation.secondary;
-      value.appendChild(secondary);
-    }
-    kpi.dataset.c = presentation.tone;
+    if (!settingsActive()) return;
+    paintAuthKpis({...auth, oidc_available: available});
   }
 
   async function probeOidcRuntime(auth, generation) {
@@ -1676,7 +1725,167 @@
     return authGeneration;
   }
 
-  function authStatusCard(a) {
+  const authLinesValue = values => (Array.isArray(values) ? values.join('\n') : '');
+
+  /* The ONE projection of canonical authentication state onto a control.
+   *
+   * The /auth/config payload names STATUS ("password_enabled", "username");
+   * the update it accepts names CONFIGURATION ("auth_password_enabled",
+   * "auth_username"). This is the single place the two meet, and it is used
+   * both to RENDER a control and to report what a commit accepted -- so the
+   * markup and the persistence owner's baseline can never disagree about what
+   * "unchanged" means. A secret projects to blank: the browser is never told
+   * what is stored. */
+  const AUTH_CONTROL_VALUES = Object.freeze({
+    auth_password_enabled: a => (a?.password_enabled ? '1' : '0'),
+    auth_username: a => text(a?.username),
+    auth_password: () => '',
+    auth_session_lifetime_hours: a => String(a?.session_lifetime_hours || 12),
+    auth_oidc_enabled: a => (a?.oidc_enabled ? '1' : '0'),
+    oidc_provider_name: a => text(a?.oidc_provider_name || 'OpenID Connect'),
+    public_base_url: a => text(a?.public_base_url),
+    oidc_issuer_url: a => text(a?.oidc_issuer_url),
+    oidc_client_id: a => text(a?.oidc_client_id),
+    oidc_client_secret: () => '',
+    oidc_scopes: a => (Array.isArray(a?.oidc_scopes) ? a.oidc_scopes.join(' ') : ''),
+    oidc_group_claim: a => text(a?.oidc_group_claim || 'groups'),
+    oidc_allow_all: a => (a?.oidc_allow_all ? '1' : '0'),
+    oidc_allowed_subjects: a => authLinesValue(a?.oidc_allowed_subjects),
+    oidc_allowed_emails: a => authLinesValue(a?.oidc_allowed_emails),
+    oidc_allowed_groups: a => authLinesValue(a?.oidc_allowed_groups),
+  });
+
+  function authControlValue(key, auth) {
+    const read = AUTH_CONTROL_VALUES[key];
+    return read ? read(auth) : '';
+  }
+
+  const AUTH_BOOLEANS = Object.freeze(['auth_password_enabled', 'auth_oidc_enabled', 'oidc_allow_all']);
+  const AUTH_LINE_LISTS = Object.freeze(['oidc_allowed_subjects', 'oidc_allowed_emails', 'oidc_allowed_groups']);
+
+  /* A committed draft in the shape the /auth/config update holds: a boolean, a
+   * whole number of hours, a scope list, a line list, or a string. Bounds are
+   * NOT applied here -- the server is the only authority on them, so an
+   * out-of-range value is rejected and the persistence owner rolls the control
+   * back, exactly as every other Settings number behaves. */
+  function authCommittedValue(key, draft) {
+    if (AUTH_BOOLEANS.includes(key)) return draft === true || draft === '1';
+    if (key === 'auth_session_lifetime_hours') {
+      const parsed = Number.parseInt(String(draft ?? '').trim(), 10);
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+    if (key === 'oidc_scopes') {
+      return String(draft ?? '').split(/[\s,]+/).map(value => value.trim()).filter(Boolean);
+    }
+    if (AUTH_LINE_LISTS.includes(key)) {
+      return String(draft ?? '').split('\n').map(value => value.trim()).filter(Boolean);
+    }
+    return String(draft ?? '');
+  }
+
+  /* The ONE open-mode gate.
+   *
+   * Turning off the last interactive mechanism intentionally opens DebridPulse
+   * and its API to anyone who can reach it. That is a property of the ACT, not
+   * of the page or of any one control, so every act that can perform it -- the
+   * two Enable toggles and the confirmed password clear alike -- asks here. */
+  async function confirmOpenMode({password, oidc}) {
+    if (!state.auth?.authentication_required || password || oidc) return true;
+    return window.DPSettingsModal.confirm({
+      title: 'Disable interactive authentication?',
+      message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
+      confirmLabel: 'Continue to Open Mode',
+      tone: 'warning',
+    });
+  }
+
+  function authorizeAuthCommit(key, value) {
+    if (key !== 'auth_password_enabled' && key !== 'auth_oidc_enabled') return Promise.resolve(true);
+    return confirmOpenMode({
+      password: key === 'auth_password_enabled' ? !!value : !!state.auth?.password_enabled,
+      oidc: key === 'auth_oidc_enabled' ? !!value : !!state.auth?.oidc_enabled,
+    });
+  }
+
+  /* Canonical authentication state accepted WITHOUT re-rendering the page.
+   *
+   * A field commit lands while the operator is still working, so re-rendering
+   * would discard every draft they have not yet left. The accepted payload
+   * becomes canonical state and the readings derived from it are repainted in
+   * place by the one painter below. */
+  function adoptAuthentication(auth) {
+    const generation = acceptAuth(auth, {probe: false});
+    paintAuthDerived();
+    void probeOidcRuntime(state.auth, generation);
+    return generation;
+  }
+
+  function paintAuthKpis(a) {
+    const view = root();
+    if (!view) return;
+    for (const item of authKpiItems(a)) {
+      const kpi = view.querySelector(`.dp-settings-auth-kpi[data-auth-kpi="${item.id}"]`);
+      const value = kpi?.querySelector('.dhs-val');
+      if (!kpi || !value) continue;
+      value.replaceChildren(document.createTextNode(item.value));
+      if (item.secondary) {
+        value.appendChild(document.createElement('br'));
+        const secondary = document.createElement('span');
+        secondary.className = 'dp-settings-auth-kpi-secondary';
+        secondary.textContent = item.secondary;
+        value.appendChild(secondary);
+      }
+      kpi.dataset.c = item.tone;
+    }
+  }
+
+  /* The ONE in-place projection of canonical authentication state.
+   *
+   * Every node it touches was rendered by authStatusCard/authenticationPanel
+   * from this same state through these same helpers; this repaints exactly
+   * those DERIVED readings after a commit. It creates no markup, owns no
+   * layout, and introduces no value the markup owner does not already state. */
+  function paintAuthDerived() {
+    const view = root();
+    if (!view) return;
+    const a = state.auth || {};
+    paintAuthKpis(a);
+
+    const sessions = view.querySelector('[data-auth-session-count]');
+    if (sessions) sessions.textContent = String(a.session_count ?? 0);
+
+    const clearPasswordButton = view.querySelector('[data-action="clear-password"]');
+    if (clearPasswordButton) clearPasswordButton.disabled = !a.password_configured;
+    const clearSecretButton = view.querySelector('[data-action="clear-oidc-secret"]');
+    if (clearSecretButton) clearSecretButton.disabled = !a.oidc_client_secret_configured;
+
+    // Token Ready is canonical STORED-token state. It is never derived from
+    // whether a token value is on screen, and never from the one-time
+    // disclosure block, which exists only for the moment of disclosure.
+    const tokenReady = view.querySelector('[data-auth-token-ready]');
+    if (tokenReady) tokenReady.hidden = !a.api_token_configured;
+    const generate = view.querySelector('[data-action="generate-token"]');
+    if (generate) generate.textContent = a.api_token_configured ? 'Rotate Token' : 'Generate Token';
+    const revoke = view.querySelector('[data-action="clear-token"]');
+    if (revoke) revoke.disabled = !a.api_token_configured;
+
+    const passwordField = fieldFor('auth_password');
+    if (passwordField) passwordField.placeholder = passwordPlaceholder(a);
+    const secretField = fieldFor('oidc_client_secret');
+    if (secretField) secretField.placeholder = clientSecretPlaceholder(a);
+  }
+
+  const passwordPlaceholder = a => (a?.password_configured
+    ? 'Stored password configured. Blank keeps it.'
+    : 'Set a password before enabling');
+
+  const clientSecretPlaceholder = a => (a?.oidc_client_secret_configured
+    ? 'Stored Client Secret Configured. Blank keeps it.'
+    : 'Optional for public clients');
+
+  /* The four status readings, as data. ONE derivation, used both by the markup
+   * that first renders them and by the painter that repaints them in place. */
+  function authKpiItems(a) {
     const modeRaw = String(a.mode || 'Unknown');
     const modeValue = modeRaw === 'OIDC'
       ? 'OpenID Connect'
@@ -1723,75 +1932,80 @@
       tokenTone = 'red';
     }
 
-    const items = [
-      ['Authentication Mode', modeValue, modeTone],
-      ['Username & Password', passwordValue, passwordTone],
-      ['OIDC State', oidcState.primary, oidcState.tone, oidcState.secondary],
-      ['API Token', tokenValue, tokenTone],
+    return [
+      {id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone, secondary: ''},
+      {id: 'password', label: 'Username & Password', value: passwordValue, tone: passwordTone, secondary: ''},
+      {id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary},
+      {id: 'token', label: 'API Token', value: tokenValue, tone: tokenTone, secondary: ''},
     ];
+  }
+
+  function authStatusCard(a) {
     const lifetimeId = fieldId('auth_session_lifetime_hours');
 
     return card('Authentication Status', `
       <div class="dp-settings-status-grid dp-settings-auth-kpi-grid">
-        ${items.map(([label, value, tone, secondary = '']) => `
-          <div class="dash-hero-stat dp-settings-auth-kpi" data-c="${html(tone)}">
+        ${authKpiItems(a).map(item => `
+          <div class="dash-hero-stat dp-settings-auth-kpi" data-auth-kpi="${html(item.id)}" data-c="${html(item.tone)}">
             <div class="dhs-body">
-              <div class="dhs-label">${html(label)}</div>
-              <div class="dhs-val">${html(value)}${secondary ? `<br><span class="dp-settings-auth-kpi-secondary">${html(secondary)}</span>` : ''}</div>
+              <div class="dhs-label">${html(item.label)}</div>
+              <div class="dhs-val">${html(item.value)}${item.secondary ? `<br><span class="dp-settings-auth-kpi-secondary">${html(item.secondary)}</span>` : ''}</div>
             </div>
           </div>`).join('')}
       </div>
-      <div class="dp-settings-auth-session-row">
-        <div class="dp-settings-status"><b>Active Browser Sessions</b><span>${html(a.session_count ?? 0)}</span></div>
-        <div class="dp-settings-status"><b>Current Authentication Mechanism</b><span>${html(mechanismLabel(a.current_session_mechanism))}</span></div>
-        <div class="dp-settings-field dp-settings-auth-session-lifetime dp-settings-auth-session-lifetime-polished">
-          <label class="form-label" for="${lifetimeId}">Browser Session Lifetime</label>
-          <span class="dp-settings-auth-duration-control">
+      <div class="dp-settings-auth-session-row" role="group" aria-label="Browser session information and controls">
+        ${inlineField('', 'Active Browser Sessions', 'Browser logins currently holding a valid session.',
+          `<span class="dp-settings-auth-session-count-value" data-auth-session-count>${html(a.session_count ?? 0)}</span>`,
+          {
+            className: 'dp-settings-auth-session-count',
+            action: '<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session">Log Out Current Session</button>',
+          })}
+        ${inlineField(lifetimeId, 'Browser Session Lifetime',
+          'How long a browser login remains valid before sign-in is required again.',
+          `<span class="dp-settings-auth-duration-control">
             <input class="input" id="${lifetimeId}" data-setting="auth_session_lifetime_hours" type="number"
-                   min="1" max="168" value="${html(a.session_lifetime_hours || 12)}" aria-label="Browser Session Lifetime in hours">
+                   min="1" max="168" value="${html(a.session_lifetime_hours || 12)}"
+                   aria-label="Browser Session Lifetime in hours" ${commitAttributes('auth_session_lifetime_hours')}>
             <span class="dp-settings-auth-duration-unit" aria-hidden="true">hours</span>
-          </span>
-          <span class="form-hint">How long a browser login remains valid before sign-in is required again.</span>
-        </div>
-        <div class="dp-settings-actions dp-settings-auth-session-actions">
-          <span class="form-label dp-settings-auth-action-label" aria-hidden="true">&nbsp;</span>
-          <span class="dp-settings-auth-session-action-control">
-            <button class="btn btn-ghost btn-sm" type="button" data-action="logout-session">Log Out Current Session</button>
-          </span>
-        </div>
+          </span>`,
+          {className: 'dp-settings-auth-session-lifetime'})}
       </div>
     `, {className: 'dp-settings-auth-status-card'});
   }
 
   function authenticationPanel(a) {
     const externalBase = a.public_base_url_env_override ? (a.public_base_url_effective || '') : (a.public_base_url || '');
-    const publicBaseReadonly = !!a.public_base_url_env_override;
-    const provider = a.oidc_provider_name || 'OpenID Connect';
+    const publicBaseManaged = !!a.public_base_url_env_override;
     const scopes = Array.isArray(a.oidc_scopes) ? a.oidc_scopes.join(' ') : '';
     const lines = values => Array.isArray(values) ? values.join('\n') : '';
     const callback = callbackFromPublicBase(externalBase) || '';
-    const usernameField = fieldClass(input('auth_username', 'Username', a.username || '', {
+
+    const usernameField = input('auth_username', 'Username', a.username || '', {
+      inline: true,
       autocomplete: 'username',
       placeholder: 'operator',
       hint: 'Username used for browser and HTTP Basic authentication.',
-    }), 'dp-settings-auth-username-field');
+      className: 'dp-settings-auth-username-field',
+    });
+
+    /* The stored password is never projected into the browser: this field is
+     * always rendered blank, so blank IS its canonical baseline and leaving it
+     * untouched crosses no commit boundary at all. Erasing the stored password
+     * is the separate confirmed action beside it, never an inference from an
+     * empty field. */
+    const passwordField = input('auth_password', 'New Password', '', {
+      inline: true,
+      type: 'password',
+      autocomplete: 'new-password',
+      maxlength: 4096,
+      placeholder: passwordPlaceholder(a),
+      hint: 'Leave blank to keep the current password. Enter a new password to replace it.',
+      className: 'dp-settings-auth-password-field',
+      action: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>`,
+    });
 
     const credentials = card('Username & Password', `
-      <div class="dp-settings-auth-credentials-row">
-        ${usernameField}
-        <div class="dp-settings-field">
-          <label class="form-label" for="dp-auth-new-password">New Password</label>
-          <input class="input" id="dp-auth-new-password" type="password" maxlength="4096" autocomplete="new-password"
-                 placeholder="${html(a.password_configured ? 'Stored password configured. Blank keeps it.' : 'Set a password before enabling')}">
-          <span class="form-hint">Leave blank to keep the current password. Enter a new password to replace it.</span>
-        </div>
-        <div class="dp-settings-actions dp-settings-auth-password-actions">
-          <span class="form-label dp-settings-auth-action-label" aria-hidden="true">&nbsp;</span>
-          <span class="dp-settings-auth-action-control">
-            <button class="btn btn-danger btn-sm" type="button" data-action="clear-password" ${a.password_configured ? '' : 'disabled'}>Clear Stored Password</button>
-          </span>
-        </div>
-      </div>
+      <div class="dp-settings-auth-credentials-row">${usernameField}${passwordField}</div>
     `, {
       className: 'dp-settings-username-password-card',
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
@@ -1799,68 +2013,78 @@
       action: authHeaderToggle('auth_password_enabled', a.password_enabled),
     });
 
-    const publicBase = `
-      <div class="dp-settings-field dp-settings-auth-public-base-field dp-settings-oidc-sandwich">
-        <label class="form-label" for="dp-auth-public-base-url">Public DebridPulse Base URL</label>
-        <input class="input" id="dp-auth-public-base-url" value="${html(externalBase)}"
-               placeholder="https://download.example.com" ${publicBaseReadonly ? 'readonly' : ''}>
-        <span class="form-hint">${publicBaseReadonly
-          ? 'Managed by PUBLIC_BASE_URL. Used for secure browser sessions and OIDC callback generation.'
-          : 'Externally reachable HTTPS address used for secure browser sessions and OIDC callback generation.'}</span>
-      </div>`;
-
-    const callbackField = `
-      <div class="dp-settings-field dp-settings-auth-callback-field dp-settings-oidc-sandwich ${callback ? '' : 'is-callback-unavailable'}">
-        <label class="form-label" for="dp-auth-oidc-callback">OIDC Callback URL</label>
-        <div class="dp-settings-inline-field dp-settings-oidc-callback-control">
-          <input class="input" id="dp-auth-oidc-callback" value="${html(callback)}" readonly aria-readonly="true" autocomplete="off"
-                 placeholder="${callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.'}">
-          <button class="btn btn-ghost btn-sm" type="button" data-action="copy-oidc-callback"
-                  aria-label="Copy OIDC Callback URL" ${callback ? '' : 'disabled'}>Copy</button>
-        </div>
-        <span class="form-hint">Copy this exact URL into your identity provider's redirect/callback URI configuration.</span>
-      </div>`;
-
-    const providerField = fieldClass(input('oidc_provider_name', 'Provider Name', provider, {
+    const providerField = input('oidc_provider_name', 'Provider Name', a.oidc_provider_name || 'OpenID Connect', {
+      inline: true,
       hint: 'Name shown on the sign-in page.',
-    }), 'dp-settings-oidc-sandwich');
-    const issuerField = fieldClass(input('oidc_issuer_url', 'Issuer URL', a.oidc_issuer_url || '', {
+      className: 'dp-settings-oidc-provider-field',
+    });
+
+    /* PUBLIC_BASE_URL, when the environment sets it, is the deployment's
+     * value and not this page's to write -- so the control is not enrolled in
+     * persistence at all, rather than enrolled and then never written. */
+    const publicBaseField = input('public_base_url', 'Public DebridPulse Base URL', externalBase, {
+      inline: true,
+      commit: !publicBaseManaged,
+      readonly: publicBaseManaged,
+      placeholder: 'https://download.example.com',
+      hint: publicBaseManaged
+        ? 'Managed by PUBLIC_BASE_URL. Used for secure browser sessions and OIDC callback generation.'
+        : 'Externally reachable HTTPS address used for secure browser sessions and OIDC callback generation.',
+      className: 'dp-settings-auth-public-base-field',
+    });
+
+    /* Derived from Public Base URL, so it is a reading rather than a setting:
+     * read-only, and never enrolled in persistence. */
+    const callbackField = input('oidc_callback_url', 'OIDC Callback URL', callback, {
+      inline: true,
+      commit: false,
+      readonly: true,
+      autocomplete: 'off',
+      placeholder: callback ? '' : 'Set Public DebridPulse Base URL to display the Callback URL.',
+      hint: "Copy this exact URL into your identity provider's redirect/callback URI configuration.",
+      className: `dp-settings-auth-callback-field${callback ? '' : ' is-callback-unavailable'}`,
+      embedAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-oidc-callback" aria-label="Copy OIDC Callback URL" ${callback ? '' : 'disabled'}>Copy</button>`,
+    });
+
+    const issuerField = input('oidc_issuer_url', 'Issuer URL', a.oidc_issuer_url || '', {
+      inline: true,
       placeholder: 'https://id.example/application/o/debridpulse',
       hint: 'OIDC issuer URL published by your identity provider.',
-    }), 'dp-settings-oidc-sandwich');
-    const clientIdField = fieldClass(input('oidc_client_id', 'Client ID', a.oidc_client_id || '', {
+      className: 'dp-settings-oidc-issuer-field',
+    });
+
+    const clientIdField = input('oidc_client_id', 'Client ID', a.oidc_client_id || '', {
+      inline: true,
       hint: 'Client identifier issued by your OIDC provider.',
-    }), 'dp-settings-oidc-sandwich');
-    const scopesField = fieldClass(input('oidc_scopes', 'Scopes', scopes, {
+      className: 'dp-settings-oidc-client-id-field',
+    });
+
+    /* Same secret semantics as the password: rendered blank, so blank is the
+     * baseline and an untouched field writes nothing; erasing the stored
+     * secret is the confirmed action beside it. */
+    const secretField = input('oidc_client_secret', 'Client Secret', '', {
+      inline: true,
+      type: 'password',
+      autocomplete: 'off',
+      maxlength: 8192,
+      placeholder: clientSecretPlaceholder(a),
+      hint: 'Leave blank to keep the stored secret. Enter a new value to replace it.',
+      className: 'dp-settings-oidc-client-secret-field',
+      action: `<button class="btn btn-danger btn-sm" type="button" data-action="clear-oidc-secret" ${a.oidc_client_secret_configured ? '' : 'disabled'}>Clear Stored Secret</button>`,
+    });
+
+    const scopesField = input('oidc_scopes', 'Scopes', scopes, {
+      inline: true,
       placeholder: 'openid profile email',
       hint: 'Space-separated scopes requested during sign-in.',
-    }), 'dp-settings-oidc-sandwich');
-    const groupClaimField = fieldClass(input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups', {
+      className: 'dp-settings-oidc-scopes-field',
+    });
+
+    const groupClaimField = input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups', {
+      inline: true,
       hint: 'Claim containing group memberships used by group authorization rules.',
-    }), 'dp-settings-oidc-sandwich');
-
-    const secretFieldMarkup = `
-      <div class="dp-settings-field dp-settings-oidc-sandwich">
-        <label class="form-label" for="dp-auth-oidc-secret">Client Secret</label>
-        <input class="input" id="dp-auth-oidc-secret" type="password" autocomplete="off"
-               placeholder="${html(a.oidc_client_secret_configured ? 'Stored Client Secret Configured. Blank keeps it.' : 'Optional for public clients')}">
-        <span class="form-hint">Leave blank to keep the stored secret. Enter a new value to replace it.</span>
-      </div>`;
-
-    const clearSecret = `
-      <div class="dp-settings-oidc-clear-secret-action">
-        <span class="form-label dp-settings-oidc-clear-secret-spacer">Clear Stored Secret</span>
-        <div class="dp-settings-oidc-clear-secret-control">
-          <label class="dp-settings-oidc-clear-secret ${a.oidc_client_secret_configured ? '' : 'is-disabled'}">
-            <span class="dp-settings-oidc-clear-secret-copy">Clear Stored Secret</span>
-            <input id="dp-auth-clear-oidc-secret" type="checkbox"
-                   ${a.oidc_client_secret_configured ? '' : 'disabled aria-disabled="true"'}>
-          </label>
-        </div>
-        <small class="dp-settings-oidc-clear-secret-hint">${a.oidc_client_secret_configured
-          ? 'Remove the saved secret when settings are applied.'
-          : 'No stored client secret is configured.'}</small>
-      </div>`;
+      className: 'dp-settings-oidc-group-claim-field',
+    });
 
     const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
       rows: 3,
@@ -1876,16 +2100,21 @@
     }), 'dp-settings-oidc-sandwich');
 
     const oidc = card('OpenID Connect', `
-      <div class="dp-settings-oidc-row dp-settings-oidc-row--origin">${publicBase}${callbackField}</div>
-      <div class="dp-settings-oidc-row dp-settings-oidc-row--identity">${providerField}${issuerField}</div>
-      <div class="dp-settings-oidc-row dp-settings-oidc-row--credentials">${clientIdField}${secretFieldMarkup}${clearSecret}</div>
-      <div class="dp-settings-oidc-row dp-settings-oidc-row--protocol">${scopesField}${groupClaimField}</div>
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--identity" role="group" aria-label="Provider identity and callback">
+        ${providerField}${publicBaseField}${callbackField}
+      </div>
+      <div class="dp-settings-oidc-issuer-band">${issuerField}</div>
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--credentials" role="group" aria-label="Client credentials">
+        ${clientIdField}${secretField}
+      </div>
+      <div class="dp-settings-oidc-group dp-settings-oidc-group--protocol" role="group" aria-label="Scopes and group claim">
+        ${scopesField}${groupClaimField}
+      </div>
       <section class="dp-settings-oidc-access">
         <div class="dp-settings-oidc-section-heading">
           <span class="dp-settings-oidc-section-title">Access Control</span>
-          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
-          ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
+        <div class="dp-settings-oidc-policy-island">${oidcPolicyToggle(a.oidc_allow_all)}</div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {
@@ -1896,29 +2125,46 @@
     });
 
     const configured = !!a.api_token_configured;
-    const tokenLayoutClass = state.oneTimeToken ? 'dp-settings-api-token-layout has-token' : 'dp-settings-api-token-layout';
+    /* The one-time disclosure.
+     *
+     * It exists only while a freshly minted token is actually being shown, and
+     * the value lives only in page memory. The control carries NO data-setting
+     * and NO commit class, so it is invisible to the persistence owner, to
+     * every baseline, and to every payload this page builds -- it is a
+     * disclosure, never configuration. */
+    const disclosure = state.oneTimeToken ? `
+      <div class="dp-settings-api-token-disclosure" role="group" aria-label="One-time API token disclosure">
+        <b class="dp-settings-api-token-warning">Copy this token now. DebridPulse will not display it again.</b>
+        ${embeddedActionField(
+          `<input class="input" id="dp-settings-api-token-once" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly generated API token" value="${html(state.oneTimeToken)}">`,
+          '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-token" aria-label="Copy the newly generated API token">Copy</button>',
+          'dp-settings-api-token-field')}
+      </div>` : '';
+
     const apiAccess = card('API Access', `
-      <div class="${tokenLayoutClass}">
+      <div class="dp-settings-api-token-layout">
+        ${disclosure}
         <div class="dp-settings-actions dp-settings-api-token-actions">
           <button class="btn btn-blue btn-sm dp-settings-api-token-generate" type="button" data-action="generate-token">${configured ? 'Rotate Token' : 'Generate Token'}</button>
           <button class="btn btn-danger btn-sm dp-settings-api-token-revoke" type="button" data-action="clear-token" ${configured ? '' : 'disabled'}>Revoke Token</button>
         </div>
-        <p class="dp-settings-copy dp-settings-api-token-status">Stored Token: <b>${configured ? 'Configured' : 'Not Configured'}</b></p>
-        ${state.oneTimeToken ? `
-          <b class="dp-settings-api-token-warning">Copy this token now. DebridPulse will not display it again.</b>
-          <div class="dp-settings-inline-field dp-settings-api-token-field">
-            <input class="input" id="dp-settings-api-token-once" readonly value="${html(state.oneTimeToken)}">
-            <button class="btn btn-ghost btn-sm" type="button" data-action="copy-token">Copy</button>
-          </div>` : ''}
       </div>
     `, {
       className: 'dp-settings-api-access-card',
       headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
-      action: authHeaderToggle('api_token_enabled', a.api_token_enabled),
+      action: `<div class="dp-settings-auth-header-actions">${tokenReadyBadge(a)}${authHeaderToggle('api_token_enabled', a.api_token_enabled)}</div>`,
     });
 
     return authStatusCard(a) + credentials + oidc + apiAccess;
+  }
+
+  /* Persistent stored-token status, derived from canonical durable state
+   * alone -- never from a token value on screen and never from the one-time
+   * disclosure block, which is gone the moment the page re-renders without a
+   * freshly minted token. */
+  function tokenReadyBadge(a) {
+    return `<span class="dp-settings-auth-token-ready" data-auth-token-ready role="status"${a?.api_token_configured ? '' : ' hidden'}>Token Ready</span>`;
   }
 
   function maintenancePanel(s) {
@@ -2052,7 +2298,7 @@
 
   /* Tabs that carry NO deferred Apply contract: every control on them is
    * committed by the canonical persistence owner at its own field boundary. */
-  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction']);
+  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'authentication']);
 
   function activateTab(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
@@ -2262,15 +2508,14 @@
     });
 
     view.addEventListener('input', event => {
-      if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
+      if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
     });
 
     view.addEventListener('change', event => {
       if (event.target.matches('[data-integration-enabled]')) void providerEnableChanged(event.target);
       if (event.target.matches('[data-integration-group-enabled]')) void groupEnableChanged(event.target);
-      if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
+      if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
-      if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
     });
 
     view.addEventListener('click', event => {
@@ -2303,6 +2548,7 @@
       else if (action === 'list-backups') listBackups(button);
       else if (action === 'wipe-database') wipeDatabaseClean(button);
       else if (action === 'clear-password') clearPassword(button);
+      else if (action === 'clear-oidc-secret') clearOidcSecret(button);
       else if (action === 'verify-oidc') verifyOidc(button);
       else if (action === 'generate-token') generateToken(button);
       else if (action === 'clear-token') clearToken(button);
@@ -2491,6 +2737,38 @@
           {[option]: committedValue(key, draft)}, 15000);
         adoptTransferPolicy(result);
         return acceptedValue(key, policyOf(state.settings)[option], draft);
+      },
+    });
+
+    /* The authentication namespace. PUT /auth/config is a PARTIAL update --
+     * every ordinary field it does not carry is left exactly as stored -- so
+     * one changed control is one request naming one field, like every other
+     * scope here. A secret converges to blank because that is its accepted
+     * PRESENTATION: the stored value is never projected back. */
+    persistence.defineScope('auth-config', {
+      commit: async ({key, draft}) => {
+        const declared = COMMIT_FIELDS[key];
+        const value = authCommittedValue(key, draft);
+        // Declined at the open-mode gate: nothing was written, so the canonical
+        // value the control was rendered from is exactly what it converges back
+        // to -- no error, no second write, no stale draft left behind.
+        if (!(await authorizeAuthCommit(key, value))) return authControlValue(key, state.auth);
+        const result = await request('PUT', '/auth/config', {[declared.option]: value}, 15000);
+        adoptAuthentication(result);
+        return declared.redacted ? '' : authControlValue(key, result);
+      },
+    });
+
+    /* API Access participation has its own canonical endpoint, and nothing
+     * else about it differs: same boundary, same baseline, same rollback. */
+    persistence.defineScope('api-token', {
+      commit: async ({key, draft}) => {
+        const result = await request('PUT', '/auth/api-token',
+          {[COMMIT_FIELDS[key].option]: draft === true || draft === '1'}, 10000);
+        adoptAuthentication({...state.auth,
+          api_token_enabled: !!result?.enabled,
+          api_token_configured: !!result?.configured});
+        return result?.enabled ? '1' : '0';
       },
     });
 
@@ -2704,80 +2982,25 @@
     return result;
   }
 
-  function authValue(key, fallback = '') {
-    const el = fieldFor(key);
-    return el ? String(el.value ?? '').trim() : fallback;
-  }
-
-  function authLines(key) {
-    return authValue(key).split('\n').map(item => item.trim()).filter(Boolean);
-  }
-
-  function authPayload() {
-    const scopeValues = authValue('oidc_scopes').split(/[\s,]+/).map(item => item.trim()).filter(Boolean);
-    return {
-      auth_password_enabled: boolOf('auth_password_enabled'),
-      auth_username: authValue('auth_username'),
-      auth_password: text(byId('dp-auth-new-password')?.value),
-      auth_session_lifetime_hours: Math.max(1, Math.min(168, intOf('auth_session_lifetime_hours', 12))),
-      auth_oidc_enabled: boolOf('auth_oidc_enabled'),
-      oidc_provider_name: authValue('oidc_provider_name', 'OpenID Connect'),
-      oidc_issuer_url: authValue('oidc_issuer_url'),
-      oidc_client_id: authValue('oidc_client_id'),
-      oidc_client_secret: text(byId('dp-auth-oidc-secret')?.value),
-      clear_oidc_client_secret: !!byId('dp-auth-clear-oidc-secret')?.checked,
-      oidc_scopes: scopeValues,
-      oidc_allow_all: boolOf('oidc_allow_all'),
-      oidc_allowed_subjects: authLines('oidc_allowed_subjects'),
-      oidc_allowed_emails: authLines('oidc_allowed_emails'),
-      oidc_allowed_groups: authLines('oidc_allowed_groups'),
-      oidc_group_claim: authValue('oidc_group_claim', 'groups'),
-      public_base_url: state.auth?.public_base_url_env_override ? undefined : text(byId('dp-auth-public-base-url')?.value).trim(),
-    };
-  }
-
-  async function persistAuth(button, payload = authPayload(), successMessage = 'Authentication settings saved') {
-    let openModeConfirmed = false;
-    if (!payload.auth_password_enabled && !payload.auth_oidc_enabled && state.auth?.authentication_required && !payload.confirm_open_mode) {
-      const confirmed = await window.DPSettingsModal.confirm({
-        title: 'Disable interactive authentication?',
-        message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
-        confirmLabel: 'Continue to Open Mode',
-        tone: 'warning',
-      });
-      if (!confirmed) return false;
-      payload.confirm_open_mode = true;
-      openModeConfirmed = true;
-    }
-
-    setBusy(button, true, 'Saving…');
-    try {
-      const auth = await request('PUT', '/auth/config', payload, 15000);
-      const generation = acceptAuth(auth, {probe: false});
-      state.activeTab = 'authentication';
-      renderPreservingViewport();
-      if (openModeConfirmed) focusSurvivor('[data-action="save"]');
-      void probeOidcRuntime(auth, generation);
-      notify(successMessage, 'success');
-      return true;
-    } catch (error) {
-      notify(error.message, 'error');
-      return false;
-    } finally {
-      setBusy(button, false);
-      if (openModeConfirmed && button?.isConnected) button.focus();
-    }
+  /* One authentication write, carrying ONLY what it is about.
+   *
+   * PUT /auth/config is a partial update: every ordinary field it does not
+   * name is left exactly as stored. There is therefore no whole-form
+   * authentication payload anywhere on this page, and no act can replay a
+   * control it is not about. Actions share the auth lane with field commits so
+   * "last write wins" means the operator's last action. */
+  function writeAuthentication(changes) {
+    return window.DPSettingsPersistence.perform('auth-config', '', async () => {
+      const result = await request('PUT', '/auth/config', changes, 15000);
+      adoptAuthentication(result);
+      return result;
+    });
   }
 
   async function saveCurrent(button) {
     // One deterministic path: every pending changed-blur commit is finished
     // before the footer reads the form.
     await window.DPSettingsPersistence.settle(root());
-    if (state.activeTab === 'authentication') {
-      await persistAuth(button);
-      return;
-    }
-
     setBusy(button, true, 'Saving…');
     try {
       await persistNonAuth();
@@ -2993,9 +3216,11 @@
     }
   }
 
+  /* Erasing a stored credential is an explicit CONFIRMED act, and it carries
+   * only its own removal -- never the rest of the form, and never an inference
+   * from an empty field. */
   async function clearPassword(button) {
-    const payload = authPayload();
-    const entersOpenMode = !payload.auth_oidc_enabled && state.auth?.authentication_required;
+    const entersOpenMode = !state.auth?.oidc_enabled && !!state.auth?.authentication_required;
     const confirmed = await window.DPSettingsModal.confirm({
       title: 'Clear stored password?',
       message: entersOpenMode
@@ -3006,36 +3231,49 @@
     });
     if (!confirmed) return;
 
-    payload.auth_password_enabled = false;
-    payload.auth_password = '';
-    payload.clear_password = true;
-    if (entersOpenMode) payload.confirm_open_mode = true;
-    if (await persistAuth(button, payload, 'Stored password cleared')) {
-      // The stored-password control is now disabled; the password field is where the operator goes next.
-      focusSurvivor('#dp-auth-new-password', '[data-action="save"]');
-    } else if (button?.isConnected) {
-      button.focus();
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing…');
+    try {
+      await writeAuthentication({auth_password_enabled: false, clear_password: true});
+      notify('Stored password cleared', 'success');
+      // The stored-password control is now disabled; the password field is
+      // where the operator goes next.
+      setBusy(button, false);
+      focusSurvivor(`#${fieldId('auth_password')}`, '[data-action="generate-token"]');
+      return;
+    } catch (error) {
+      notify(error.message, 'error');
     }
+    setBusy(button, false);
+    if (button?.isConnected) button.focus();
   }
 
-  async function setApiTokenEnabled(inputEl) {
-    const desired = !!inputEl.checked;
-    inputEl.disabled = true;
+  async function clearOidcSecret(button) {
+    const confirmed = await window.DPSettingsModal.confirm({
+      title: 'Clear stored client secret?',
+      message: 'The stored OIDC client secret will be removed. Sign-in through this provider will fail until a new secret is entered, unless the client is public.',
+      confirmLabel: 'Clear Stored Secret',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing…');
     try {
-      const result = await request('PUT', '/auth/api-token', {enabled: desired}, 10000);
-      state.auth.api_token_enabled = !!result.enabled;
-      state.auth.api_token_configured = !!result.configured;
-      renderPreservingViewport();
-      notify(`API token ${result.enabled ? 'enabled' : 'disabled'}`, 'success');
+      await writeAuthentication({clear_oidc_client_secret: true});
+      notify('Stored client secret cleared', 'success');
+      setBusy(button, false);
+      focusSurvivor(`#${fieldId('oidc_client_secret')}`);
+      return;
     } catch (error) {
-      inputEl.checked = !desired;
       notify(error.message, 'error');
-    } finally {
-      inputEl.disabled = false;
     }
+    setBusy(button, false);
+    if (button?.isConnected) button.focus();
   }
 
   async function generateToken(button) {
+    await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, state.auth?.api_token_configured ? 'Rotating…' : 'Generating…');
     try {
       const result = await request('POST', '/auth/api-token', undefined, 10000);
@@ -3059,6 +3297,7 @@
       tone: 'danger',
     });
     if (!confirmed) return;
+    await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Clearing…');
     try {
       await request('DELETE', '/auth/api-token', undefined, 10000);
@@ -3198,21 +3437,28 @@
     renderOidcWaiting(popup);
     armOidc(popup, button);
     setBusy(button, true, 'Testing…');
+    // The window is opened synchronously from the click so the browser does
+    // not block it; only then is every pending field commit flushed.
+    await window.DPSettingsPersistence.settle(root());
 
-    const payload = authPayload();
+    /* What is tested is the configuration that is STORED. Every OIDC control
+     * commits at its own field boundary and the settle above flushes any that
+     * has not yet, so the stored configuration IS the operator's current
+     * intent -- there is no unsaved draft left to test. The secret is
+     * deliberately absent: the browser does not hold it, and the endpoint
+     * falls back to the stored one. */
+    const a = state.auth || {};
     const verification = {
-      oidc_provider_name: payload.oidc_provider_name,
-      oidc_issuer_url: payload.oidc_issuer_url,
-      oidc_client_id: payload.oidc_client_id,
-      oidc_client_secret: payload.oidc_client_secret,
-      clear_oidc_client_secret: payload.clear_oidc_client_secret,
-      oidc_scopes: payload.oidc_scopes,
-      oidc_allow_all: payload.oidc_allow_all,
-      oidc_allowed_subjects: payload.oidc_allowed_subjects,
-      oidc_allowed_emails: payload.oidc_allowed_emails,
-      oidc_allowed_groups: payload.oidc_allowed_groups,
-      oidc_group_claim: payload.oidc_group_claim,
-      public_base_url: payload.public_base_url,
+      oidc_provider_name: authControlValue('oidc_provider_name', a),
+      oidc_issuer_url: authControlValue('oidc_issuer_url', a),
+      oidc_client_id: authControlValue('oidc_client_id', a),
+      oidc_scopes: Array.isArray(a.oidc_scopes) ? a.oidc_scopes.slice() : [],
+      oidc_allow_all: !!a.oidc_allow_all,
+      oidc_allowed_subjects: Array.isArray(a.oidc_allowed_subjects) ? a.oidc_allowed_subjects.slice() : [],
+      oidc_allowed_emails: Array.isArray(a.oidc_allowed_emails) ? a.oidc_allowed_emails.slice() : [],
+      oidc_allowed_groups: Array.isArray(a.oidc_allowed_groups) ? a.oidc_allowed_groups.slice() : [],
+      oidc_group_claim: authControlValue('oidc_group_claim', a),
+      public_base_url: text(a.public_base_url_env_override ? '' : a.public_base_url) || undefined,
       return_to: '/oidc-verify-complete.html',
     };
 
@@ -3241,6 +3487,10 @@
 
   async function load() {
     document.getElementById('content')?.classList.remove('settings-active');
+    // A one-time disclosure belongs to the act that produced it. Re-entering
+    // Settings is not that act, so the freshly minted token is dropped here
+    // and the disclosure block cannot come back with the page.
+    state.oneTimeToken = '';
 
     if (state.loading) return state.loading;
     const generation = ++loadGeneration;

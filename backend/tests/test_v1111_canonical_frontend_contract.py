@@ -148,8 +148,8 @@ def test_oidc_origin_callback_and_verified_email_policy_are_owned_by_settings() 
         "function callbackFromPublicBase(value)",
         "function updateOidcCallbackPreview()",
         "function copyOidcCallback()",
-        "id=\"dp-auth-public-base-url\"",
-        "id=\"dp-auth-oidc-callback\"",
+        "fieldId('public_base_url')",
+        "input('oidc_callback_url', 'OIDC Callback URL'",
         "readonly",
         "Requires email_verified=true.",
         "oidc_allowed_emails",
@@ -166,13 +166,11 @@ def test_oidc_origin_callback_and_verified_email_policy_are_owned_by_settings() 
 def test_password_session_and_api_token_secret_semantics_survive_canonicalization() -> None:
     source = read(SETTINGS)
     for fragment in (
-        "function authPayload()",
-        "function persistAuth(",
+        "function writeAuthentication(",
         "function clearPassword(",
         "clear_password",
         "auth_session_lifetime_hours",
         "logoutSession(",
-        "function setApiTokenEnabled(",
         "function generateToken(",
         "function clearToken(",
         "request('PUT', '/auth/api-token'",

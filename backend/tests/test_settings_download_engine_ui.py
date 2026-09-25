@@ -115,6 +115,17 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "display: flex" in row
     assert "align-items: center" in row
     assert "grid-template-rows" not in row
+    # DP 1.0.13: the two settings form ONE centred, content-bounded island with
+    # the same relationship container and padding density as the accepted
+    # Extraction behaviour island, rather than stretching across the card.
+    assert "justify-content: center;" in row
+    assert "width: max-content;" in row
+    assert "max-width: min(100%, 1040px);" in row
+    assert "margin: 0 auto;" in row
+    assert "border: 1px solid var(--dp-divider);" in row
+    assert "border-radius: 12px;" in row
+    assert "padding: 16px 22px 17px;" in row
+    assert "gap: 18px 44px;" in row
     # The zone wrappers stay names, not boxes.
     assert (
         "#view-settings .dp-settings-download-path-stack,\n"
@@ -124,10 +135,29 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     ) in css
     # The folder takes the row's spare width -- bounded, because a path field
     # wide enough to read is not one as wide as the card happens to be.
+    # Inside a content-bounded island the path field states its OWN readable
+    # width; taking the row's spare width is what a stretched band did.
     folder = css.split(
         "#view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
-    assert "flex: 1 1 auto" in folder
-    assert "max-width: 460px" in folder
+    assert "flex: 0 1 auto" in folder
+    assert "width: 380px" in folder
+    assert "max-width: 100%" in folder
+
+    # Browse sits INSIDE the field, through the one universal compound-field
+    # material -- the same primitive the OIDC Callback and one-time token Copy
+    # actions use. It is opt-in, so Backup Folder keeps the bare pairing.
+    assert "embedAction: true" in runtime
+    assert "function embeddedActionField(control, action" in runtime
+    assert runtime.count("class=\"dp-action-field") == 1
+    universal = source(STATIC / "ui-universal-language.css")
+    assert ".dp-action-field {" in universal
+    assert ":is(.dp-field, .input, .dp-action-field)," in universal
+    assert ".dp-action-field:focus-within" in universal
+    # Settings adds only the embedded button's geometry; it restates no field
+    # material, which belongs to the universal owner alone.
+    chip = css.split("#view-settings .dp-action-field > .dp-settings-directory-field-browse {", 1)[1].split("}", 1)[0]
+    for material in ("border", "background", "box-shadow", "color"):
+        assert material not in chip, material
     assert "justify-self: end;" not in css.split(".dp-settings-download-engine-row", 1)[1][:1200]
 
 

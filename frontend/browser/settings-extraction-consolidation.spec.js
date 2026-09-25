@@ -453,6 +453,7 @@ test('Download Location & Limits puts both settings on one line in the inline gr
       const info = field => rect(field.querySelector('.dp-settings-inline-field-info'));
       const input = el.querySelector('.dp-settings-directory-field-control > .input');
       const browse = el.querySelector('.dp-settings-directory-field-browse');
+      const compound = el.querySelector('.dp-settings-download-folder-field .dp-action-field');
       const numeric = el.querySelector('[data-setting="aria2_max_active_downloads"]');
       return {
         count: fields.length,
@@ -463,7 +464,13 @@ test('Download Location & Limits puts both settings on one line in the inline gr
                   midY(rect(numeric)) - midY(info(fields[1]))],
         seam: rect(browse).left - rect(input).right,
         browseHeight: rect(browse).height,
-        inputHeight: rect(input).height,
+        // The compound FIELD is what carries the canonical field height now;
+        // the bare control inside it is drawn without material of its own.
+        fieldHeight: rect(compound).height,
+        browseInsideField: rect(browse).right <= rect(compound).right + 0.5
+          && rect(browse).top >= rect(compound).top - 0.5
+          && rect(browse).bottom <= rect(compound).bottom + 0.5,
+        browseCentred: Math.abs(midY(rect(browse)) - midY(rect(compound))),
         pathWidth: rect(input).width,
         numericWidth: rect(numeric).width,
         // Nothing stacks a help row beneath a control any more.
@@ -478,10 +485,14 @@ test('Download Location & Limits puts both settings on one line in the inline gr
       expect(Math.abs(off), 'a control is not centred against its title/hint stack')
         .toBeLessThanOrEqual(TOLERANCE);
     }
-    // Browse stays part of the same compound control.
-    expect(measured.seam).toBeGreaterThanOrEqual(0);
+    // DP 1.0.13: Browse lives INSIDE the field's own border, as a sibling of
+    // the path control, so path text physically ends where the button begins.
+    // It is a chip within the field, not a second control matching its height.
+    expect(measured.browseInsideField, 'Browse is not inside the field border').toBe(true);
+    expect(measured.seam, 'path text can reach under Browse').toBeGreaterThanOrEqual(0);
     expect(measured.seam).toBeLessThanOrEqual(8);
-    expect(Math.abs(measured.browseHeight - measured.inputHeight)).toBeLessThanOrEqual(1);
+    expect(measured.browseHeight).toBeLessThan(measured.fieldHeight);
+    expect(measured.browseCentred, 'Browse is not centred in the field').toBeLessThanOrEqual(TOLERANCE);
     // Readable, but not absurdly wide merely because room exists.
     expect(measured.pathWidth).toBeGreaterThan(200);
     expect(measured.pathWidth).toBeLessThanOrEqual(460);

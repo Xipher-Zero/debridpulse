@@ -25,12 +25,17 @@ def test_settings_apply_rerenders_without_losing_viewport():
     assert "document.getElementById('content')" in js
     assert "window.requestAnimationFrame(() => restoreSettingsViewport(snapshot))" in js
 
-    non_auth = block(js, "async function persistNonAuth", "function authValue")
-    auth = block(js, "async function persistAuth", "async function saveCurrent")
+    non_auth = block(js, "async function persistNonAuth", "/* One authentication write")
     assert "renderPreservingViewport();" in non_auth
-    assert "renderPreservingViewport();" in auth
     assert "notify('Settings saved', 'success')" in non_auth
-    assert "notify(successMessage, 'success')" in auth
+
+    # Authentication no longer re-renders on a save, because it no longer HAS
+    # one: each control commits at its own boundary while the operator is still
+    # working, so the accepted state is projected onto the derived readings in
+    # place rather than by rebuilding the page underneath them.
+    adopt = block(js, "function adoptAuthentication(auth)", "function paintAuthKpis(a)")
+    assert "renderPreservingViewport();" not in adopt
+    assert "paintAuthDerived();" in adopt
 
 
 def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
@@ -58,23 +63,28 @@ def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
 
 def test_destructive_settings_actions_share_confirmation_primitive():
     js = source(SETTINGS)
-    persist_auth = block(js, "async function persistAuth", "async function saveCurrent")
-    wipe = block(js, "async function wipeDatabaseClean", "async function clearPassword")
-    password = block(js, "async function clearPassword", "async function setApiTokenEnabled")
+    open_mode = block(js, "async function confirmOpenMode(", "function authorizeAuthCommit(")
+    wipe = block(js, "async function wipeDatabaseClean", "/* Erasing a stored credential")
+    password = block(js, "async function clearPassword", "async function clearOidcSecret")
+    secret = block(js, "async function clearOidcSecret", "async function generateToken")
     token = block(js, "async function clearToken", "async function copyToken")
 
-    assert "await window.DPSettingsModal.confirm" in persist_auth
-    assert "Continue to Open Mode" in persist_auth
-    assert "!payload.confirm_open_mode" in persist_auth
-    assert "if (!confirmed) return false;" in persist_auth
-    assert persist_auth.index("if (!confirmed) return false;") < persist_auth.index("payload.confirm_open_mode = true")
+    # Opening DebridPulse is a property of the ACT, so it is asked in ONE place
+    # for every act that can perform it.
+    assert js.count("Continue to Open Mode") == 1
+    assert "window.DPSettingsModal.confirm({" in open_mode
+    assert "if (!state.auth?.authentication_required || password || oidc) return true;" in open_mode
 
     assert "await window.DPSettingsModal.confirm" in password
     assert password.count("await window.DPSettingsModal.confirm") == 1
     assert "entersOpenMode" in password
-    assert "payload.confirm_open_mode = true" in password
     assert "if (!confirmed) return;" in password
-    assert password.index("if (!confirmed) return;") < password.index("payload.auth_password_enabled = false")
+    assert password.index("if (!confirmed) return;") < password.index("clear_password: true")
+
+    assert "await window.DPSettingsModal.confirm" in secret
+    assert secret.count("await window.DPSettingsModal.confirm") == 1
+    assert "if (!confirmed) return;" in secret
+    assert secret.index("if (!confirmed) return;") < secret.index("clear_oidc_client_secret: true")
 
     assert "await window.DPSettingsModal.confirm" in token
     assert "Revoke API token?" in token
@@ -102,8 +112,7 @@ def test_settings_action_rerenders_use_viewport_preserving_refresh():
     js = source(SETTINGS)
     for start, end in [
         ("async function sendReport", "async function runBackup"),
-        ("async function wipeDatabaseClean", "async function clearPassword"),
-        ("async function setApiTokenEnabled", "async function generateToken"),
+        ("async function wipeDatabaseClean", "/* Erasing a stored credential"),
         ("async function generateToken", "async function clearToken"),
         ("async function clearToken", "async function copyToken"),
         ("async function finishOidc", "function armOidc"),
