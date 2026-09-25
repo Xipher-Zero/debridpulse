@@ -251,11 +251,13 @@ test('a later Apply Settings cannot replay a stale master or child value', async
   await flipChild(page, 'general_ftp');
   await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
 
-  // An unrelated deferred edit, then the page-level write.
-  await page.locator('#view-settings [data-tab="downloads"]').click();
-  await page.locator('#view-settings [data-setting="min_free_disk_gb"]').fill('6');
+  // An unrelated DEFERRED edit, then the page-level write. It is made on a tab
+  // that still has an Apply contract: DP 1.0.13 made Downloads a field-boundary
+  // surface, so it offers no Apply at all and could not carry one.
+  await page.locator('#view-settings [data-tab="extraction"]').click();
+  await page.locator('#view-settings [data-setting="extract_max_concurrent"]').fill('2');
   await page.locator('#view-settings [data-action="save"]').click();
-  await expect.poll(async () => (await canonical(page)).min_free_disk_gb).toBe(6);
+  await expect.poll(async () => (await canonical(page)).extract_max_concurrent).toBe(2);
 
   const settings = await canonical(page);
   expect(settings.integration_groups[GROUP].enabled, 'Apply replayed a stale master').toBe(false);

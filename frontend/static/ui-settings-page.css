@@ -488,11 +488,26 @@
   flex-wrap: wrap;
   justify-content: center;
   align-items: stretch;
-  gap: 12px;
+  gap: 16px;
   padding: 4px 0 2px;
+  /* The line's own width is what decides whether a relationship group can be
+     drawn as one unbroken row, so the group rules below ask THIS element --
+     not the viewport, which knows nothing about the card it is inside. */
+  container-type: inline-size;
+  container-name: dp-tuning;
 }
 
-#view-settings .dp-settings-tuning-grid > .dp-settings-field {
+/* A relationship between adjacent cells, and nothing more.
+ *
+ * By default it is not a layout box at all: its cells are the line's own
+ * items, wrap naturally, and carry no outline. It becomes a box only at a
+ * width where its whole span demonstrably fits on ONE row -- see the container
+ * queries below -- so an outline is never drawn across a wrapped row. */
+#view-settings .dp-settings-tuning-group {
+  display: contents;
+}
+
+#view-settings .dp-settings-tuning-grid .dp-settings-field {
   flex: 0 1 170px;
   min-width: 150px;
   max-width: 190px;
@@ -513,10 +528,14 @@
 }
 
 /* The control is an element centred in the cell, bounded so a number field
-   stays a number field. */
-#view-settings .dp-settings-tuning-grid > .dp-settings-field > .input {
-  width: min(100%, 112px);
+   stays a number field. A boolean and a selector are cells of exactly this
+   shape: neither is a special layout. */
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .input,
+#view-settings .dp-settings-tuning-grid .dp-settings-field > select.input,
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell {
+  width: min(100%, 112px) !important;
   min-width: 0;
+  max-width: 100%;
   box-sizing: border-box;
   text-align: left;
 }
@@ -524,51 +543,73 @@
 /* Help text wraps to different heights, so the row itself keeps the cells on a
    common top edge and the controls on a common visual baseline as far as the
    longest label allows. */
-#view-settings .dp-settings-tuning-grid > .dp-settings-field > .form-label {
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .form-label {
   min-height: 2.4em;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-#view-settings .dp-settings-tuning-grid > .dp-settings-field > .form-hint {
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .form-hint {
   text-align: center;
   font-size: 10.5px;
   line-height: 1.4;
 }
 
-/* aria2 tuning follows the Settings field grammar in a compact two-
-   column matrix, then terminates with the semantically distinct allocation
-   selector centered beneath the performance controls. */
-#view-settings .dp-settings-engine-tuning {
-  margin-top: 18px;
-}
-
-#view-settings .dp-settings-engine-tuning-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 28px;
-}
-
-#view-settings .dp-settings-engine-tuning-grid > .dp-settings-field {
-  min-width: 0;
-  margin-top: 0;
-}
-
-#view-settings .dp-settings-engine-tuning-toggle-control {
-  min-height: 38px;
+/* A boolean cell IS a tuning cell: the same bounded box and the same centred
+   label / control / help stack every other cell has. The only thing it adds is
+   where its toggle sits inside that stack -- centred, like every other cell's
+   control. This is its ONE geometry owner. */
+#view-settings .dp-settings-tuning-grid .dp-settings-engine-tuning-toggle-control {
+  min-height: 0;
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
 }
 
-#view-settings .dp-settings-engine-file-allocation {
-  width: min(100%, 520px);
-  margin: 20px auto 0;
+/* The relationship outline itself.
+ *
+ * `outline` rather than `border`, with an offset: it is painted OUTSIDE the
+ * group's box and takes no space at all, so turning it on and off never moves
+ * a cell and the group adds no padding, no heading and no container bulk. The
+ * cell stays the layout unit.
+ *
+ * Each span becomes a box only above the inline width at which its own cells
+ * (150px minimum, 16px gaps) plus the outline's offset fit side by side with
+ * room to spare. Below that the rule simply does not apply, the group falls
+ * back to `display: contents`, and the relationship is not drawn at all --
+ * which is the honest answer, rather than an outline split across two rows. */
+@container dp-tuning (min-width: 360px) {
+  #view-settings .dp-settings-tuning-group[data-tuning-span="2"] {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 16px;
+    outline: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+    outline-offset: 5px;
+    border-radius: 14px;
+  }
 }
 
-#view-settings .dp-settings-engine-file-allocation > .dp-settings-field {
-  margin-top: 0;
+@container dp-tuning (min-width: 545px) {
+  #view-settings .dp-settings-tuning-group[data-tuning-span="3"] {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 16px;
+    outline: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+    outline-offset: 5px;
+    border-radius: 14px;
+  }
+}
+
+/* The sentence that closes a tuning region belongs to the CARD, not to the
+   cell collection: its own full-width row beneath the cells, centred on the
+   card whatever width the cells happened to occupy. */
+#view-settings .dp-settings-tuning-footer {
+  width: 100%;
+  margin: 14px auto 0;
+  text-align: center;
 }
 
 #view-settings .dp-settings-inline-check {
@@ -775,6 +816,14 @@
   margin: 0;
 }
 
+/* A tab whose controls all commit at their own field boundary has no deferred
+   Apply contract, so the footer hides both the button and the sentence about
+   it. The button material states its own display, exactly like the context
+   actions above, so the hidden state is stated here too. */
+#view-settings .dp-settings-master-footer > [hidden] {
+  display: none !important;
+}
+
 @media (max-width: 1420px) {
   #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.3fr) minmax(250px, 1fr);
@@ -820,8 +869,7 @@
     overflow: visible;
   }
 
-  #view-settings .dp-settings-alldebrid-key-row.is-configured,
-  #view-settings .dp-settings-engine-tuning-grid {
+  #view-settings .dp-settings-alldebrid-key-row.is-configured {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
   }
@@ -934,8 +982,9 @@
    centres EVERY row, including a wrapped one and a row that is not full, which
    a grid does not: a grid's partial last row sits in its own columns. A bounded
    basis is what makes the distribution fall out of the viewport and the member
-   count alone: six members read 6x1 wide, then 3x2, 2x3, 1x6, with no
-   breakpoint naming a count and no horizontal scroll at any width. */
+   count alone -- as many boxes per row as currently fit, whatever that number
+   is -- with no fixed column count, no breakpoint naming one, and no
+   horizontal scroll at any width. */
 #view-settings .dp-settings-source-box-grid {
   display: flex;
   flex-wrap: wrap;

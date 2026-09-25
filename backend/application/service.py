@@ -391,6 +391,23 @@ class ApplicationService:
                 "cleanup_errors": [error.as_dict() for error in errors],
             }
 
+    async def cancel_artifact(self, transfer_id, artifact_id):
+        """Terminate ONE artifact's execution through the canonical owner.
+
+        The engine owns the whole act: cancelling the native writer, requiring
+        OBSERVED stop truth before the attempt is released, recording the
+        cancellation outcome against that attempt and re-aggregating the parent.
+        This is the application-level command for it, so every caller -- an
+        operator action, an administration surface -- performs the same one
+        act under the same admission and publishes the same way.
+        """
+        async with self.application_operation():
+            await self.require(transfer_id)
+            await self.engine.cancel_artifact(transfer_id, artifact_id)
+            self.execution_wakeup.set()
+            await self._publish(transfer_id)
+            return {"ok": True, "transfer_id": transfer_id, "artifact_id": artifact_id}
+
     async def pause(self, transfer_id):
         async with self.application_operation():
             await self.require(transfer_id)
@@ -534,7 +551,10 @@ class ApplicationService:
             # transition before the bounded recovery cadence.
             self.engine.dispatch_permitted = self.application_storage_permitted() and self.download_storage_permitted()
             before = await self.repository.active()
-            await self.engine.reconcile_executions()
+            # The canonical convergence owner reports what THIS cycle's recovery
+            # wake actually applied. The ordinary scheduler cadence ignores it;
+            # an operator-triggered broad recovery pass reports it.
+            recovery = await self.engine.reconcile_executions()
             await self._contain_download_storage_faults(before)
 
             # Periodic progress publication is a list/read concern, not a reason
@@ -565,6 +585,7 @@ class ApplicationService:
             if updates:
                 await publish("torrent_updated", {"progress_only": True, "items": updates})
                 await publish("stats_changed", {})
+            return recovery
 
     async def process_postprocessors(self):
         async with self.application_operation():
@@ -580,11 +601,35 @@ class ApplicationService:
             return {"imported": sum(item.id not in before for item in after), "updated": len(after), "errors": [error.as_dict() for error in errors]}
 
     async def recover(self):
+        """The broad operator-triggered recovery effort.
+
+        It examines all currently non-terminal/recoverable work and asks the
+        CANONICAL owners to make whatever progress is legal right now: the
+        inventory reconciler, the pending-resolution pass and the convergence
+        engine's own recovery wake. It is an effort, not an override -- every
+        one of them applies exactly the policy it always applies, so pause
+        intent, INPUT_REQUIRED, retry backoff, exhaustion, storage admission,
+        materialization authority, recovery claims and provider/executor
+        availability all hold. No trigger is upgraded, no authority is granted
+        and no streak or budget is reset by the act of asking.
+
+        The result states real canonical outcomes -- how many recoveries were
+        APPLIED and what actually failed -- never how much work exists.
+        """
         async with self.application_operation():
-            report = await self.reconcile_inventory()
+            inventory = await self.reconcile_inventory()
             await self.resolve_pending()
-            await self.reconcile_executions()
-            return {"ok": not report["errors"], **report}
+            recovery = await self.reconcile_executions()
+            errors = [*inventory["errors"], *[error.as_dict() for error in getattr(recovery, "errors", ())]]
+            return {
+                "ok": not errors,
+                # Canonical recovery outcomes: what the recovery owner applied,
+                # and what inventory reconciliation adopted.
+                "recovered": int(getattr(recovery, "applied", 0)),
+                "imported": inventory["imported"],
+                "actions": int(getattr(recovery, "applied", 0)) + int(inventory["imported"]),
+                "errors": errors,
+            }
 
     async def quiesce_for_database_wipe(self):
         # The maintenance admission owner has already drained all commands and

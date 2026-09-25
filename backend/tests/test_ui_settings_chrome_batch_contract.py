@@ -176,7 +176,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert '<summary><span>Additional Settings</span></summary>' in sources
     # Tuning-only, as compact cells in the reusable neutral tuning grid.
     additional = sources[sources.index('class="dp-settings-additional-body"'):]
-    assert 'class="dp-settings-tuning-grid"' in additional
+    assert "tuningCells(" in additional
     for key in (
         "alldebrid_rate_limit_per_minute",
         "poll_interval_seconds",
@@ -272,14 +272,17 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     runtime = read(RUNTIME)
     raw = read(LUCIDE / "flask-conical.svg")
 
-    assert 'data-action="test-alldebrid"' in runtime
+    assert "providerTestAction('test-alldebrid')" in runtime
     # Test is a provider-level action and now lives in the card's operational
     # header rail. Its own treatment is unchanged; only its PLACE moved, so this
-    # owner still declares the whole of it.
+    # owner still declares the whole of it -- once, for every provider that has
+    # one, which is why the treatment is keyed on the control and not on any
+    # provider's action name.
     assert "headerAction: providerTest" in runtime
+    assert 'class="btn btn-ghost btn-sm dp-settings-provider-test"' in runtime
     assert 'class="dp-settings-action-chip"' in runtime
     assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
-    action_owner = chrome.split("button[data-action='test-alldebrid'] {", 1)[1].split("}", 1)[0]
+    action_owner = chrome.split("button.dp-settings-provider-test {", 1)[1].split("}", 1)[0]
     action_glyph = chrome.split(".dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     light_action = chrome.split("body.light #view-settings .dp-settings-action-glyph {", 1)[1].split("}", 1)[0]
     action_chip = chrome.split(".dp-settings-action-chip {", 1)[1].split("}", 1)[0]

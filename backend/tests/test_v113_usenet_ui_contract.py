@@ -21,7 +21,7 @@ STYLE = (STATIC / "style.css").read_text(encoding="utf-8")
 
 def sources_panel() -> str:
     start = SETTINGS.index("function sourcesPanel(s)")
-    return SETTINGS[start:SETTINGS.index("const ARIA2_LIVE_FILTERS")]
+    return SETTINGS[start:SETTINGS.index("const EXECUTOR_WORK_FILTERS")]
 
 
 def downloads_panel() -> str:
@@ -216,13 +216,19 @@ def test_server_collection_has_exactly_one_writer():
     # Servers are written ONLY through the per-server routes, by canonical id.
     assert "/usenet/servers" in SERVERS
     assert "/integrations/usenet/configuration" not in SERVERS
-    payload = SETTINGS[SETTINGS.index("function usenetConfigurationPayload()"):
-                       SETTINGS.index("function transferPolicyPayload()")]
-    options = payload[payload.index("options: {"):payload.index("};", payload.index("options: {"))]
-    assert "servers" not in options
+    # DP 1.0.13: the page carries no deferred Usenet payload at all -- every
+    # option of that namespace is a declared field-boundary control, so there
+    # is no page-level object that could carry a server list.
+    assert "function usenetConfigurationPayload()" not in SETTINGS
+    payload = SETTINGS[SETTINGS.index("const COMMIT_FIELDS"):]
+    payload = payload[:payload.index("});") + 3]
+    usenet = [line for line in payload.splitlines() if "'integration:usenet'" in line]
+    assert usenet, "the Usenet namespace declares no controls at all"
+    declared = {line.split("option: '", 1)[1].split("'", 1)[0] for line in usenet}
+    assert "servers" not in declared
     # And no service endpoint or credential is written from here either.
     for forbidden in ("service_url", "api_key"):
-        assert forbidden not in payload
+        assert forbidden not in declared
 
 
 # --- Downloads -----------------------------------------------------------

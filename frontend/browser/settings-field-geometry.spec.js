@@ -88,9 +88,15 @@ test('every Usenet server field label aligns with its control outer box', async 
 test('representative pre-existing Settings fields use the same canonical datum', async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');
+  // DP 1.0.13: the Downloads tuning and safety controls became cells of the
+  // compact tuning-cell collection, whose label/control/help are each CENTRED
+  // on the cell's own axis -- a different, deliberate grammar. They are
+  // therefore not cases for the left-hand form datum; their own geometry is
+  // proven by settings-providers-layout.spec.js. The Download Folder field,
+  // which is still an ordinary full-width field, keeps the datum.
   const cases = [
     ['sources', 'dp-settings-field-alldebrid-api-key'],
-    ['downloads', 'dp-settings-field-min-free-disk-gb'],
+    ['downloads', 'dp-settings-field-download-folder'],
     ['notifications', 'dp-settings-field-discord-username'],
     ['maintenance', 'dp-settings-field-backup-interval-hours'],
     ['authentication', 'dp-settings-field-auth-username'],
@@ -130,7 +136,7 @@ test('the clear-stored-password group is one explicit destructive control', asyn
   const action = row.locator('[data-usenet-action="clear-password"]');
   await expect(action).toHaveCount(1);
   await expect(action).toHaveClass(/btn-danger/);
-  await expect(action).toHaveText('Clear Stored Password');
+  await expect(action).toHaveText('Clear Password');
   await expect(action).toBeEnabled();
   // No confirmation representation survives on the card, in either theme.
   await expect(row.locator('input[type="checkbox"]')).toHaveCount(0);

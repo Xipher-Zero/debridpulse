@@ -204,7 +204,10 @@ def test_provider_status_composes_the_gate_with_the_existing_health_model():
 # --- F. AllDebrid Test relocation ---------------------------------------------
 
 def test_the_alldebrid_test_action_exists_exactly_once_and_not_in_the_footer():
-    assert SETTINGS.count('data-action="test-alldebrid"') == 1
+    # The control's MARKUP is declared once, by the shared provider-level Test
+    # grammar; the panel names the action it asks that grammar for.
+    assert SETTINGS.count("providerTestAction('test-alldebrid')") == 1
+    assert SETTINGS.count('data-action="${html(action)}"') == 1
     footer = SETTINGS[SETTINGS.index('class="dp-settings-master-footer"'):]
     footer = footer[:footer.index("</section>")]
     assert "test-alldebrid" not in footer, "the footer still owns the AllDebrid test"
@@ -213,10 +216,23 @@ def test_the_alldebrid_test_action_exists_exactly_once_and_not_in_the_footer():
         "a second AllDebrid connection test implementation exists"
 
 
-def test_the_relocated_test_button_lives_in_the_alldebrid_body():
+def test_every_provider_level_test_uses_one_declared_control_grammar():
+    """DP 1.0.13: Usenet is a provider-level Test exactly like AllDebrid's, so
+    it renders the SAME control from the SAME declaration, in the same header
+    slot. No Usenet-specific button styling exists."""
+    grammar = body(SETTINGS, "providerTestAction")
+    assert "dp-settings-action-chip" in grammar and "flask-conical.svg" in grammar
+    assert "<span>Test</span>" in grammar
     panel = body(SETTINGS, "sourcesPanel")
-    assert 'data-action="test-alldebrid"' in panel, \
-        "the AllDebrid test control is not rendered inside the provider card body"
+    assert "providerTestAction('test-alldebrid')" in panel
+    assert "providerTestAction('test-usenet')" in panel
+    assert "dp-settings-usenet-test" not in SETTINGS, "Usenet grew its own Test styling"
+
+
+def test_the_relocated_test_button_lives_in_the_alldebrid_header_rail():
+    panel = body(SETTINGS, "sourcesPanel")
+    assert "headerAction: providerTest" in panel, \
+        "the AllDebrid test control is not rendered in the provider card header rail"
 
 
 # --- G. protocol iconography ---------------------------------------------------
@@ -381,7 +397,9 @@ def test_general_sources_uses_the_one_canonical_disclosure_primitive():
 
 def test_the_provider_header_reports_exactly_the_three_configuration_states():
     status = body(SETTINGS, "providerStatus")
-    assert "'Unconfigured'" in status and "'Configured'" in status and "'Verified'" in status
+    assert "'Unconfigured'" in status and "'Unverified'" in status and "'Verified'" in status
+    # Saved is not proven: the middle state says which of the two it is.
+    assert "'Configured'" not in status
     for redundant in ("'Enabled'", "'Disabled'", "Provider configured", "Configuration required"):
         assert redundant not in status, f"the header still repeats {redundant}"
     # Verified is read from canonical truth, never remembered locally.

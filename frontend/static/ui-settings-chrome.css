@@ -212,8 +212,10 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
 }
 
 /* The provider-test control uses the same chip-before-copy grammar as tabs,
-   but remains a secondary action beside Apply Settings. */
-#view-settings button[data-action='test-alldebrid'] {
+   but remains a secondary action beside Apply Settings. The treatment belongs
+   to the CONTROL, so every provider-level Test renders identically and no
+   provider has styling of its own. */
+#view-settings button.dp-settings-provider-test {
   --dp-settings-action-color: #b866f5;
   position: relative;
   gap: 7px;
@@ -253,7 +255,7 @@ body.light #view-settings .dp-settings-action-glyph {
 
 /* Same cache-eviction rule for the Test glyph: the SVG now carries the exact
    Sources & Providers purple rather than the previous darker purple. */
-#view-settings button[data-action='test-alldebrid'] .dp-settings-action-glyph {
+#view-settings button.dp-settings-provider-test .dp-settings-action-glyph {
   content: url('/icons/lucide/flask-conical.svg?v=2');
 }
 

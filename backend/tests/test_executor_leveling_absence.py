@@ -236,14 +236,15 @@ def test_no_settings_surface_keeps_a_shadow_boolean_for_committed_enablement():
     # from a page-level mirror of the operator's click.
     assert "state.settings?.integrations?.[identity]" in settings
     assert not re.search(r"(?:pendingEnabled|enabledDraft|_enabledState|desiredEnabled)\b", settings)
-    # The whole-settings write carries no participation field at all. AllDebrid
-    # has no deferred payload at all any more: its ordinary control is
-    # changed-blur and its credential state is gated behind the card's own Save.
-    for name in ("usenetConfigurationPayload",):
-        body = settings[settings.index(f"function {name}("):]
-        body = body[:body.index("\n  }") + 4]
-        assert "enabled" not in body, name
-    assert "function allDebridConfigurationPayload(" not in settings
+    # The whole-settings write carries no participation field at all -- and,
+    # since DP 1.0.13, no integration payload either: every option of every
+    # integration namespace is a declared field-boundary control.
+    for name in ("usenetConfigurationPayload", "aria2ConfigurationPayload",
+                 "allDebridConfigurationPayload", "transferPolicyPayload"):
+        assert f"function {name}(" not in settings, name
+    table = settings[settings.index("const COMMIT_FIELDS"):]
+    table = table[:table.index("});") + 3]
+    assert "enabled" not in table, "participation became an ordinary declared field"
 
 
 def test_no_integration_is_named_in_the_shared_enable_path():
@@ -323,8 +324,9 @@ def test_provider_status_hierarchy_has_no_named_integration_branch():
 def test_generic_presentation_never_polls_or_sums_executors_in_the_browser():
     offenders = []
     for path in MAINTAINED_JS:
-        if path.name in ("ui-settings-aria2-live.js",):
-            continue          # an explicit executor DIAGNOSTIC surface, by design
+        # DP 1.0.13: no exemption survives. The executor diagnostic surface that
+        # used to need one is gone; Executor Work reads ONE neutral projection
+        # and names no executor endpoint at all.
         body = _strip_js_comments(path.read_text(encoding="utf-8"))
         if re.search(r"/aria2/global-stat|/aria2/global-options|/aria2/runtime", body):
             offenders.append(path.name)

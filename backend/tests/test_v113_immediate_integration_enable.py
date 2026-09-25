@@ -188,12 +188,14 @@ def test_a_failed_enable_mutation_restores_committed_state_and_reports_it():
 
 def test_apply_settings_no_longer_owns_integration_enablement():
     """No second enable writer may survive beside the immediate control."""
-    for name in ("usenetConfigurationPayload",):
-        body = _function(name)
-        assert "enabled" not in body, f"{name} still carries a deferred enable write"
-    # AllDebrid has no deferred payload at all: the footer owns no AllDebrid
-    # mutation, so it cannot carry a participation field either.
-    assert "function allDebridConfigurationPayload(" not in SETTINGS_JS
+    # DP 1.0.13: no integration has a deferred payload at all, so none of them
+    # can carry a participation field.
+    for name in ("usenetConfigurationPayload", "aria2ConfigurationPayload",
+                 "allDebridConfigurationPayload"):
+        assert f"function {name}(" not in SETTINGS_JS, name
+    table = SETTINGS_JS[SETTINGS_JS.index("const COMMIT_FIELDS"):]
+    table = table[:table.index("});") + 3]
+    assert "enabled" not in table, "participation became an ordinary declared field"
     persist = _function("persistNonAuth")
     assert "data-integration-enabled" not in persist
     assert "enabled: !!enabled.checked" not in persist

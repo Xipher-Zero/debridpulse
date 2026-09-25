@@ -127,7 +127,7 @@ def test_the_clear_password_row_is_one_explicit_destructive_action():
     row = row[:row.index("</div>")]
     assert 'data-usenet-action="clear-password"' in row
     assert "btn-danger" in row
-    assert "Clear Stored Password" in row
+    assert "Clear Password" in row
     # No second confirmation representation survives anywhere on the card.
     assert "dp-settings-inline-check" not in row
     assert "<label" not in row

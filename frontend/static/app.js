@@ -1318,27 +1318,46 @@ async function addDashboardEntries() {
 loadStats = coalesceAsync(loadStats);
 loadRecent = coalesceAsync(loadRecent);
 
+/* Recover All: a broad, provider- and executor-neutral recovery effort.
+ *
+ * It asks the backend to examine everything currently non-terminal and let the
+ * canonical recovery owner make whatever progress is legal right now. It is
+ * not an override -- every policy still holds -- so what it reports is what
+ * the canonical owners actually DID, never how much work exists.
+ *
+ * Three outcomes, and only three: nothing was legal to do, something was
+ * applied, or something failed. */
+function recoveryOutcomeSummary(result) {
+  const parts = [];
+  const recovered = Number(result?.recovered || 0);
+  const imported = Number(result?.imported || 0);
+  if (recovered > 0) parts.push(`${recovered} recovery action${recovered === 1 ? '' : 's'} applied`);
+  if (imported > 0) parts.push(`${imported} transfer${imported === 1 ? '' : 's'} imported`);
+  return parts.join(' · ');
+}
+
 async function recoverAll(button) {
   setButtonPending(button, true, 'Recovering…');
 
   try {
     toast(
-      'Checking AllDebrid for ready torrents…',
+      'Checking transfers for recoverable work…',
       'info'
     );
 
     const r =
       await api('POST','/torrents/recover-all');
 
-    const msg =
-      `Recovery: reset ${r.reset} stuck, checked ${r.checked}, started ${r.started}`;
+    const errors = Array.isArray(r.errors) ? r.errors.length : 0;
+    const summary = recoveryOutcomeSummary(r);
 
-    toast(
-      msg,
-      r.started > 0 || r.reset > 0
-        ? 'success'
-        : 'warn'
-    );
+    if (errors > 0) {
+      toast(`Recovery completed with ${errors} error(s)`, 'error');
+    } else if (summary) {
+      toast(`Recovery complete · ${summary}`, 'success');
+    } else {
+      toast('Recovery check complete · no recoverable work found', 'warn');
+    }
 
     loadStats();
     loadRecent();

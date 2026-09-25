@@ -169,36 +169,44 @@ test('a themed select is measured as the control the operator can see', async ({
 });
 
 /* DP 1.0.13: erasing a stored credential stopped being a gated checkbox that a
- * Save committed and became an explicit destructive ACTION. The final
- * interaction pass moved the question it asked into the ONE canonical Settings
- * confirmation, so the group is now exactly that one button -- and what this
- * spine spec still owns is that the button sits on the card's own form datum
- * rather than being centred in the card. */
-test('the clear-password group is left-aligned with the card form content', async ({page}) => {
+ * Save committed and became an explicit destructive ACTION, asked by the ONE
+ * canonical Settings confirmation -- and the batch that followed put it on the
+ * Password INPUT's own row.
+ *
+ * What this spine spec owns is therefore the relationship between the two: the
+ * button is beside the input, vertically centred against the CONTROL rather
+ * than against the taller label+input stack, and it takes horizontal room from
+ * the field instead of adding an action band beneath it. */
+test('Clear Password sits beside the Password input on its own row', async ({page}) => {
   await openSettings(page);
   await expandAll(page, 'sources');
   const geometry = await page.evaluate(() => {
     const row = document.querySelector('.dp-usenet-clear-password');
     if (!row) return null;
     const card = row.closest('[data-usenet-server-id]');
-    const datum = card.querySelector('[data-usenet-field="username"]').getBoundingClientRect();
+    const input = card.querySelector('[data-usenet-field="password"]').getBoundingClientRect();
+    const label = card.querySelector('[data-usenet-field="password"]')
+      .closest('.dp-usenet-field').querySelector('.form-label').getBoundingClientRect();
     const button = row.querySelector('[data-usenet-action="clear-password"]').getBoundingClientRect();
-    const host = row.getBoundingClientRect();
+    const host = row.closest('.dp-usenet-row').getBoundingClientRect();
     return {
-      datumLeft: datum.left,
+      inputRight: input.right,
+      inputCentreY: (input.top + input.bottom) / 2,
+      labelCentreY: (label.top + label.bottom) / 2,
       buttonLeft: button.left,
       buttonRight: button.right,
       buttonCentreY: (button.top + button.bottom) / 2,
       rowRight: host.right,
-      rowCentreY: (host.top + host.bottom) / 2,
       controls: row.querySelectorAll('input, label').length,
     };
   });
   expect(geometry, 'the clear-password row did not render').toBeTruthy();
-  // Left-aligned with the card's own form datum, never centred in the card.
-  expect(Math.abs(geometry.buttonLeft - geometry.datumLeft)).toBeLessThanOrEqual(1);
+  // Beside the input, on the same row -- never beneath it.
+  expect(geometry.buttonLeft).toBeGreaterThanOrEqual(geometry.inputRight - 1);
+  // Centred against the CONTROL, not against the label+input stack.
+  expect(Math.abs(geometry.buttonCentreY - geometry.inputCentreY)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.buttonCentreY - geometry.labelCentreY)).toBeGreaterThan(2);
   // The group is the button: nothing follows it, and it is not stretched.
   expect(geometry.controls).toBe(0);
-  expect(geometry.buttonRight).toBeLessThan(geometry.rowRight);
-  expect(Math.abs(geometry.buttonCentreY - geometry.rowCentreY)).toBeLessThanOrEqual(1);
+  expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.rowRight + 1);
 });

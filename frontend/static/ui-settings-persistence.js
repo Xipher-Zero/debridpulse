@@ -4,8 +4,14 @@
  * that setting, never by the arbitrary fact that several controls share a page.
  * DebridPulse recognises three classes:
  *
- *   immediate        the mutation IS the intended action (participation
- *                    toggles); committed by its own operational owner.
+ *   immediate        the mutation IS the intended action -- a participation
+ *                    toggle, or an ordinary reversible boolean whose only
+ *                    draft state is the state it already shows. A
+ *                    participation toggle is committed by its own operational
+ *                    owner; an ordinary one declares a scope and key and is
+ *                    owned HERE, through exactly the same baseline, scope
+ *                    dispatch, serialization, stale-response and rollback
+ *                    machinery as changed-blur. Only the BOUNDARY differs.
  *   changed-blur     ordinary, non-destructive values -- INCLUDING entering or
  *                    replacing a credential, which is an ordinary value change
  *                    however sensitive the value is; owned HERE. What makes a
@@ -61,7 +67,13 @@
   const materializations = new Set();
   let outstanding = 0;
 
+  /* Every control this owner persists, whatever its boundary. A control that
+   * declares a commit CLASS but no key is not this owner's at all (a
+   * participation toggle, whose own operational owner commits it), so the key
+   * is what opts a control in. */
+  const COMMITTED = '[data-commit][data-commit-key]';
   const CHANGED_BLUR = '[data-commit="changed-blur"][data-commit-key]';
+  const IMMEDIATE = '[data-commit="immediate"][data-commit-key]';
 
   function signature(control) {
     return control.type === 'checkbox' || control.type === 'radio'
@@ -79,7 +91,7 @@
 
   function controls(host) {
     return host && typeof host.querySelectorAll === 'function'
-      ? Array.from(host.querySelectorAll(CHANGED_BLUR))
+      ? Array.from(host.querySelectorAll(COMMITTED))
       : [];
   }
 
@@ -368,11 +380,32 @@
     }
   }
 
+  const matches = (control, selector) =>
+    !!control && typeof control.matches === 'function' && control.matches(selector);
+
   // The single commit boundary for every changed-blur control in the
   // application. No other module listens for it.
   document.addEventListener('focusout', event => {
+    if (matches(event.target, CHANGED_BLUR)) commit(event.target);
+  });
+
+  /* The other boundary this owner recognises, for exactly two kinds of
+   * control:
+   *
+   *   an ordinary IMMEDIATE control -- a reversible boolean whose mutation is
+   *   the intended action, so the change IS the boundary;
+   *
+   *   a changed-blur SELECT -- a control with no intermediate draft at all.
+   *   Choosing an option is the whole edit, and the application projects
+   *   selects into a listbox whose native element is never focused, so a blur
+   *   the operator can perform does not exist for one.
+   *
+   * Both run the SAME commit(): same baseline, same per-record lane, same
+   * stale-response rule, same rollback. Nothing else about them is special. */
+  document.addEventListener('change', event => {
     const control = event.target;
-    if (control && typeof control.matches === 'function' && control.matches(CHANGED_BLUR)) {
+    if (matches(control, IMMEDIATE)
+        || (matches(control, CHANGED_BLUR) && control.tagName === 'SELECT')) {
       commit(control);
     }
   });

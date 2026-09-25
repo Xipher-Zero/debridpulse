@@ -222,10 +222,10 @@ test('WS1-P2 premium card implements the exact persisted three-state status matr
   const router = await installStatefulSettings(page, fixture(base, {adEnabled:false, adConfigured:false}));
   const cases = [
     {enabled:false, configured:false, verified:false, status:''},
-    {enabled:false, configured:true, verified:false, status:'Configured', tone:'warning'},
+    {enabled:false, configured:true, verified:false, status:'Unverified', tone:'warning'},
     {enabled:false, configured:true, verified:true, status:'Verified', tone:'success'},
     {enabled:true, configured:false, verified:false, status:'Unconfigured', tone:'error'},
-    {enabled:true, configured:true, verified:false, status:'Configured', tone:'warning'},
+    {enabled:true, configured:true, verified:false, status:'Unverified', tone:'warning'},
     {enabled:true, configured:true, verified:true, status:'Verified', tone:'success'},
   ];
 
@@ -311,7 +311,7 @@ test('WS1-P2 disclosure and Enable stay independent, and the credential commits 
     // The credential commits on its OWN boundary -- leaving the field -- and
     // is never carried by the footer.
     await commitAllDebridKey(page, 'typed-then-committed-key');
-    await expect(status).toHaveText('Configured');
+    await expect(status).toHaveText('Unverified');
 
     /* A STATED CONSEQUENCE of the DP 1.0.13 credential contract.
      *
@@ -333,20 +333,20 @@ test('WS1-P2 disclosure and Enable stay independent, and the credential commits 
     // Enabling a provider that IS configured has nothing to ask for, so it
     // opens nothing -- and it does not close what the operator already opened.
     await setProviderEnabled(card, true);
-    await expect(status).toHaveText('Configured');
+    await expect(status).toHaveText('Unverified');
     await expect(body).toBeVisible();
 
     // Withdrawing a configured provider puts its configuration away again.
     await setProviderEnabled(card, false);
     await expect(body).toBeHidden();
-    await expect(status).toHaveText('Configured');
+    await expect(status).toHaveText('Unverified');
 
     await applySettings(page);
     card = page.locator('.dp-settings-provider-card--alldebrid');
     body = card.locator(':scope > .card-body');
     status = card.locator('.dp-settings-provider-config-status');
     await expect(body).toBeHidden();
-    await expect(status).toHaveText('Configured');
+    await expect(status).toHaveText('Unverified');
 
     // Enabling a provider that IS configured has nothing to ask the operator
     // for, so it opens nothing: the only automatic expansion belongs to an
@@ -435,7 +435,7 @@ test('WS1-P2 cross-surface regression keeps persisted card state distinct from r
   await openSources(page);
   let card = page.locator('.dp-settings-provider-card--alldebrid');
   await expect(card.locator(':scope > .card-body')).toBeHidden();
-  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Configured');
+  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Unverified');
 
   router.set(fixture(base, {adEnabled:true, adConfigured:false, httpEnabled:false}));
   await page.reload();

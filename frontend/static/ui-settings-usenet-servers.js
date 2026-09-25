@@ -88,7 +88,10 @@
       // a saved value can never be silently rewritten underneath the operator.
       articles_per_request: Math.min(20, Math.max(1, Number(fieldValue(card, 'articles_per_request')) || 2)),
       timeout_seconds: Math.min(240, Math.max(20, Number(fieldValue(card, 'timeout_seconds')) || 60)),
-      enabled: true,
+      // Whatever the card's own Enable control currently says. A draft created
+      // with it switched off is created disabled; nothing here asserts
+      // participation the operator did not choose.
+      enabled: !!fieldValue(card, 'enabled'),
       display_name: overrideName(card),
     };
     // A blank field is an absent field: the stored credential is preserved.
@@ -206,6 +209,10 @@
   const SERVER_SCOPE = 'usenet-server';
   const NUMERIC_FIELDS = new Set(['port', 'connections', 'priority',
                                   'articles_per_request', 'timeout_seconds']);
+  // Booleans of this record. The canonical namespace holds real booleans, so a
+  // control's '1'/'0' signature is translated once, here, for every one of
+  // them -- never per field.
+  const BOOLEAN_FIELDS = new Set(['ssl', 'enabled']);
   // A credential is never projected back into the browser, so the ACCEPTED
   // presentation of one is always blank -- which is what stops the canonical
   // persistence owner from ever holding a secret as a baseline.
@@ -232,7 +239,7 @@
    * so the browser still retains no secret. */
   function adoptCreatedBaselines(card, server) {
     if (!server) return;
-    for (const node of card.querySelectorAll('[data-usenet-field][data-commit="changed-blur"]')) {
+    for (const node of card.querySelectorAll('[data-usenet-field][data-commit][data-commit-key]')) {
       const key = String(node.dataset.usenetField || '');
       if (SECRET_FIELDS.has(key)) window.DPSettingsPersistence.accept(node, '');
       else if (key in server) window.DPSettingsPersistence.accept(node, server[key]);
@@ -305,7 +312,7 @@
   }
 
   function committedValue(key, raw) {
-    if (key === 'ssl') return raw === true || raw === '1';
+    if (BOOLEAN_FIELDS.has(key)) return raw === true || raw === '1';
     if (!NUMERIC_FIELDS.has(key)) return String(raw ?? '');
     const parsed = parseInt(String(raw), 10);
     return Number.isNaN(parsed) ? 0 : parsed;
@@ -478,16 +485,16 @@
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="" autocomplete="off">
           </label>
         </div>
-        <div class="dp-usenet-row">
-          <label class="dp-usenet-field dp-usenet-field--wide">
+        <div class="dp-usenet-row dp-usenet-row--password">
+          <label class="dp-usenet-field dp-usenet-field--password">
             <span class="form-label">Password</span>
             <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
                    autocomplete="off" placeholder="Password">
           </label>
-        </div>
-        <div class="dp-usenet-clear-password" hidden>
-          <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                  aria-label="Clear the stored password for this server">Clear Stored Password</button>
+          <div class="dp-usenet-clear-password" hidden>
+            <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
+                    aria-label="Clear the stored password for this server">Clear Password</button>
+          </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
@@ -531,6 +538,14 @@
             <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
             <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
           </div>
+          <label class="dp-usenet-enable toggle-row">
+            <span class="tl">Enable</span>
+            <span class="toggle">
+              <input type="checkbox" data-usenet-field="enabled"
+                     data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" checked>
+              <span class="ttrack"></span>
+            </span>
+          </label>
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
@@ -864,8 +879,10 @@
     if (event.target.dataset?.usenetField === 'host') refreshDerivedName(card);
   }
 
-  /* SSL and the Clear confirmation are the card's two `change` controls: one
-   * commits immediately, the other only arms the destructive action. */
+  /* SSL is this owner's own `change` control: switching it may also carry the
+   * conventional port, which is why it is not an ordinary scoped commit. Every
+   * other immediate control of a card -- Enable -- is an ordinary one and is
+   * committed by the canonical persistence owner, not here. */
   function onChange(event) {
     const host = collection();
     if (!host || !host.contains(event.target)) return;

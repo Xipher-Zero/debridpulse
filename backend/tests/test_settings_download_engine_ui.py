@@ -82,16 +82,21 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "function updateModeState" not in runtime
     assert "function aria2RpcSecretFields" not in runtime
 
-    payload = runtime[runtime.index("function aria2ConfigurationPayload"):runtime.index("function usenetConfigurationPayload")]
-    options = payload[payload.index("options: {"):payload.index("},")]
-    assert set(re.findall(r"^\s+(\w+):", options, re.M)) == ARIA2_PAYLOAD_OPTIONS
-    assert "clear_secrets" not in payload
+    # Every aria2 option is a declared field-boundary control of the one
+    # `integration:aria2` scope; there is no deferred payload carrying them.
+    table = runtime[runtime.index("const COMMIT_FIELDS"):]
+    table = table[:table.index("});") + 3]
+    declared = {line.split("option: '", 1)[1].split("'", 1)[0]
+                for line in table.splitlines() if "'integration:aria2'" in line}
+    assert declared == ARIA2_PAYLOAD_OPTIONS
     secrets = runtime[runtime.index("const INTEGRATION_SECRET_CONTROLS"):runtime.index("});", runtime.index("const INTEGRATION_SECRET_CONTROLS"))]
     assert "aria2" not in secrets
 
-    # The engine test is the owned daemon's own health check; there is no draft
-    # connection payload to send.
-    assert "aria2: '/settings/test-aria2'" in runtime
+    # The Download Engine test is removed from the UI entirely -- not
+    # relocated, not replaced. Nothing here reaches its backend route.
+    assert "/settings/test-aria2" not in runtime
+    assert "Test Download Engine" not in runtime
+    assert "test-aria2" not in runtime
     tests = runtime[runtime.index("function connectionTestPayload"):runtime.index("async function testConnection")]
     assert "aria2" not in tests
 
@@ -123,8 +128,13 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     # the operator-facing family; the executor id is unchanged).
     assert "executorTuningCard('direct', 'Network Sources'" in downloads
     assert "function directTransfersTuning(s)" in downloads
-    assert "dp-settings-engine-tuning-grid" in downloads
-    assert "dp-settings-engine-file-allocation" in downloads
+    # DP 1.0.13: one reusable tuning-cell collection, shared with Usenet,
+    # Safety & Recovery and the AllDebrid tuning region. The competing
+    # `dp-settings-engine-tuning-grid` matrix and the separate File Allocation
+    # band are retired -- File Allocation is an ordinary cell.
+    assert "tuningCells(" in downloads
+    assert "dp-settings-engine-tuning-grid" not in downloads
+    assert "dp-settings-engine-file-allocation" not in downloads
 
     required_copy = (
         "Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit.",
@@ -138,28 +148,37 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     for text in required_copy:
         assert text in downloads
 
+    # DP 1.0.13 adjacency: connections/segments/split size, then the two
+    # in-progress controls, then the two disk controls.
     order = [
-        downloads.index("'aria2_continue_downloads'"),
-        downloads.index("'aria2_split'"),
         downloads.index("'aria2_max_connection_per_server'"),
+        downloads.index("'aria2_split'"),
         downloads.index("'aria2_min_split_size'"),
+        downloads.index("'aria2_continue_downloads'"),
         downloads.index("'aria2_lowest_speed_limit'"),
         downloads.index("'aria2_disk_cache'"),
         downloads.index("'aria2_file_allocation'"),
     ]
     assert order == sorted(order)
+    tuning = downloads[downloads.index("function directTransfersTuning("):
+                       downloads.index("function usenetTuning(")]
+    assert tuning.count("tuningGroup(") == 3
 
     assert "['trunc', 'Truncate']" in downloads
     assert "['falloc', 'Fallocate']" in downloads
     assert "['prealloc', 'Preallocate']" in downloads
     assert "['none', 'None']" in downloads
 
-    grid = css.split(".dp-settings-engine-tuning-grid {", 1)[1].split("}", 1)[0]
-    assert "grid-template-columns: repeat(2, minmax(0, 1fr));" in grid
-    assert "gap: 16px 28px;" in grid
-    allocation = css.split(".dp-settings-engine-file-allocation {", 1)[1].split("}", 1)[0]
-    assert "width: min(100%, 520px);" in allocation
-    assert "margin: 20px auto 0;" in allocation
+    grid = css.split(".dp-settings-tuning-grid {", 1)[1].split("}", 1)[0]
+    # A centred wrapping line, not a matrix: no column count anywhere.
+    assert "display: flex;" in grid and "flex-wrap: wrap;" in grid
+    assert "justify-content: center;" in grid
+    assert "grid-template-columns" not in grid
+    # The relationship outline is drawn only where the whole span fits one row.
+    assert "container-type: inline-size;" in grid
+    assert "@container dp-tuning (min-width:" in css
+    group = css.split(".dp-settings-tuning-group {", 1)[1].split("}", 1)[0]
+    assert "display: contents;" in group
 
 
 def test_advanced_tab_and_old_transfer_tuning_card_are_removed_after_migration():

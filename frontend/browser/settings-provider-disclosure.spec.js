@@ -16,11 +16,18 @@ const { test, expect } = require('@playwright/test');
  * where a provider can actually be driven into "enabled and unconfigured".
  */
 
+/* Provider cards: closed on arrival, and a navigation-local choice about one
+ * is never restored. */
 const EXPANDABLE = [
   ['.dp-settings-provider-card--alldebrid', 'AllDebrid'],
   ['.dp-settings-provider-card--usenet', 'Usenet'],
-  ['.dp-settings-general-sources', 'Network Sources'],
 ];
+
+/* DP 1.0.13: the Network Sources group declares a starting state of its own --
+ * it is what an operator arriving at Services most often needs to see -- and
+ * the operator's own later choice about it survives a canonical refresh.
+ * Enable/disable remains a different question entirely. */
+const GROUP = ['.dp-settings-general-sources', 'Network Sources'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -93,6 +100,34 @@ test('every expandable Services card is collapsed on navigation', async ({page})
     expect(state.hidden, `${label} body is not hidden on navigation`).toBe(true);
     expect(state.visible, `${label} body is still rendered on navigation`).toBe(false);
   }
+});
+
+test('Network Sources starts expanded and respects a later manual collapse', async ({page}) => {
+  const [selector, label] = GROUP;
+  await page.goto('/');
+  await openSources(page);
+
+  const initial = await disclosureState(page, selector);
+  expect(initial.missing, `${label} has no canonical disclosure`).toBeFalsy();
+  expect(initial.expanded, `${label} did not start expanded`).toBe(true);
+  expect(initial.hidden).toBe(false);
+
+  // The operator closes it. A canonical Settings refresh re-renders the whole
+  // page from canonical state, and must not reopen what they just closed.
+  await page.locator(`${selector} .dp-settings-disclosure`).click();
+  expect((await disclosureState(page, selector)).expanded, `${label} did not close`).toBe(false);
+
+  await page.evaluate(() => window.DPSettingsPage.load());
+  await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
+  expect((await disclosureState(page, selector)).expanded,
+    `${label} reopened itself on a canonical refresh`).toBe(false);
+
+  // And reopening it is remembered in the same way.
+  await page.locator(`${selector} .dp-settings-disclosure`).click();
+  await page.evaluate(() => window.DPSettingsPage.load());
+  await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
+  expect((await disclosureState(page, selector)).expanded,
+    `${label} did not keep the operator's reopening`).toBe(true);
 });
 
 test('the disclosure still opens and closes each card, and never persists', async ({page}) => {

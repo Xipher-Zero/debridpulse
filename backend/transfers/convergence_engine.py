@@ -63,6 +63,20 @@ class _Step:
     retirement_reason: str | None = None
 
 
+@dataclass(frozen=True)
+class RecoveryWakeReport:
+    """What one broad recovery wake pass actually did.
+
+    ``considered`` is how many quiesced artifacts the canonical wake decision
+    reached at all; ``applied`` is how many of them the canonical recovery owner
+    reports it made legal progress on. An artifact that policy correctly leaves
+    parked is neither an action nor an error -- it is simply not applied.
+    """
+    considered: int = 0
+    applied: int = 0
+    errors: tuple[NormalizedError, ...] = ()
+
+
 # An artifact whose execution is live is being delivered right now by its bound
 # executor; the provider's contribution (resolving the candidate) is already
 # behind it. These are the canonical in-flight artifact states.
@@ -2035,7 +2049,43 @@ class TransferEngine(_QualifiedTransferEngine):
     # Automatic recovery adapters / wake / startup / pause-resume
     # ------------------------------------------------------------------
 
-    async def _wake_quiescent_recoveries(self):
+    async def _wake_quiescent_recoveries(self) -> RecoveryWakeReport:
+        """Ask the canonical recovery owner to make whatever progress is
+        currently legal, for every quiesced artifact of every non-terminal
+        transfer, and REPORT what it actually did.
+
+        The wake decision below is unchanged: every policy that parks an
+        artifact still parks it here -- pause intent, INPUT_REQUIRED, recovery
+        exhaustion, retry backoff that is not yet due, storage admission,
+        materialization authority, provider/executor availability. Nothing is
+        forced, no trigger is upgraded, and no claim is manufactured; the only
+        thing added is a count of the recoveries ``recover_artifact`` reports
+        it APPLIED, so an operator-triggered broad recovery pass can state a
+        real canonical outcome instead of an inventory size.
+
+        ``recover_artifact`` already contains its own application failures and
+        answers False for them. What escapes it is a failure of this pass --
+        reading the artifact set, or the claim system itself -- and that is
+        recorded as a neutral error against the artifact it happened on rather
+        than abandoning the remaining work.
+        """
+        considered = applied = 0
+        errors: list[NormalizedError] = []
+
+        async def wake(artifact, *, trigger) -> None:
+            nonlocal considered, applied
+            considered += 1
+            try:
+                if await self.recover_artifact(artifact, trigger=trigger):
+                    applied += 1
+            except Exception as exc:
+                errors.append(exc.error if isinstance(exc, TransferError) else unknown_failure(
+                    exc, integration_id="", domain=Domain.RECONCILIATION, stage=Stage.RECONCILIATION))
+
+        await self._wake_quiescent_artifacts(wake)
+        return RecoveryWakeReport(considered, applied, tuple(errors))
+
+    async def _wake_quiescent_artifacts(self, wake):
         for transfer in await self.repository.active():
             for artifact in await self.repository.artifacts(transfer.id):
                 context = await self.repository.recovery_context(artifact.id)
@@ -2048,12 +2098,10 @@ class TransferEngine(_QualifiedTransferEngine):
                 provider_ready = self._candidate_provider_enabled(candidate)
                 if candidate is not None and not provider_ready:
                     if reason != "provider_disabled":
-                        await self.recover_artifact(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
+                        await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
                     continue
                 if reason == "provider_disabled":
-                    await self.recover_artifact(
-                        artifact, trigger=RecoveryTrigger.PROVIDER_RECOVERY,
-                    )
+                    await wake(artifact, trigger=RecoveryTrigger.PROVIDER_RECOVERY)
                 elif reason == "executor_unavailable":
                     if (
                         artifact.execution is not None
@@ -2063,13 +2111,11 @@ class TransferEngine(_QualifiedTransferEngine):
                         and candidate is not None
                         and self.registry.claimants(ExecutionSubject.of(candidate))
                     ):
-                        await self.recover_artifact(
-                            artifact, trigger=RecoveryTrigger.EXECUTOR_RECOVERY,
-                        )
+                        await wake(artifact, trigger=RecoveryTrigger.EXECUTOR_RECOVERY)
                 elif reason == "storage_unavailable" and self.dispatch_permitted:
-                    await self.recover_artifact(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
+                    await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
                 elif reason == "retry_backoff" and artifact.retry_at <= self.clock():
-                    await self.recover_artifact(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
+                    await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
                 elif reason == "materialization_hold":
                     # Gate 9 revision-6 rejection finding 1: HOLD parking
                     # (``_reconcile_unauthorized_existing_execution`` /
@@ -2090,7 +2136,7 @@ class TransferEngine(_QualifiedTransferEngine):
                     # acquired claim.
                     admission = await self.repository.materialization_authorization(artifact)
                     if admission.kind == MaterializationAdmissionKind.PROCEED:
-                        await self.recover_artifact(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
+                        await wake(artifact, trigger=RecoveryTrigger.AUTO_RETRY)
 
     async def reconcile_executions(self):
         startup = set(getattr(self, "_startup_recovery_artifacts", set()))
@@ -2110,8 +2156,12 @@ class TransferEngine(_QualifiedTransferEngine):
         # via a passthrough wrapper in transfers._engine_recovery.py, which
         # also carried a second, shadowed _wake_quiescent_recoveries
         # implementation of its own.
-        await self._wake_quiescent_recoveries()
-        return await super().reconcile_executions()
+        report = await self._wake_quiescent_recoveries()
+        await super().reconcile_executions()
+        # The scheduler ignores this; an operator-triggered broad recovery pass
+        # reports it. Either way it is derived from THIS cycle's own canonical
+        # outcomes and nothing is retained between cycles.
+        return report
 
     async def _process_executions(
         self,

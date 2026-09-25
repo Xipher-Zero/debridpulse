@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import errno
 import os
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -689,6 +690,62 @@ async def get_usenet_runtime_status(application: ApplicationService = Depends(ge
     return await _usenet_admin(application).status()
 
 
+@dataclass(frozen=True)
+class _UsenetServerProof:
+    """One completed per-server verification attempt.
+
+    ``failure`` is the sanitized reason the attempt could not even be made; it
+    is a FAILED proof exactly like a negative answer, never an absent one.
+    """
+    ok: bool
+    fingerprint: str
+    result: dict
+    accepted: object = None
+    failure: str = ""
+
+
+async def _verify_usenet_server(application: ApplicationService, admin, draft: "UsenetServerDraft") -> _UsenetServerProof:
+    """The ONE per-server Usenet verification primitive.
+
+    Stored-password resolution, the verification fingerprint, the actual
+    ``admin.test_server(...)`` call and the recording of success/failure
+    evidence all live here, so the individual Test and the provider-level
+    aggregate Test are the same act performed once or several times -- never
+    two implementations that have to agree.
+
+    It raises nothing: a transport failure is a recorded FAILED proof and is
+    returned like any other outcome, because an aggregate must be able to test
+    the whole enabled set and report every failure rather than stopping at the
+    first one. Turning an outcome into an HTTP answer belongs to the route.
+    """
+    password = draft.password
+    if not password and draft.server_id:
+        # The existing UI contract: a blank secret means "keep the stored one".
+        from integrations.usenet.servers import find_server
+        existing = find_server(admin.options, draft.server_id)
+        if existing is not None:
+            password = existing.password
+    host = draft.host.strip()
+    # Exactly what this request connects with, in the shape the Usenet
+    # definition declares as one server's verification material.
+    fingerprint = verification_fingerprint({
+        "host": host, "port": int(draft.port), "ssl": bool(draft.ssl),
+        "username": str(draft.username or ""), "password": str(password or ""),
+        "connections": int(draft.connections)})
+    try:
+        result = await admin.test_server(
+            host=host, port=draft.port, ssl=draft.ssl,
+            username=draft.username, password=password, connections=draft.connections,
+        )
+    except Exception as exc:
+        accepted = await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, False)
+        return _UsenetServerProof(False, fingerprint, {}, accepted, _safe_failure(exc))
+    ok = bool(result.get("ok")) if isinstance(result, dict) else bool(result)
+    payload = result if isinstance(result, dict) else {"ok": ok}
+    accepted = await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, ok)
+    return _UsenetServerProof(ok, fingerprint, payload, accepted)
+
+
 @router.post("/usenet/servers/test")
 async def test_usenet_server(payload: UsenetServerDraft,
                              application: ApplicationService = Depends(get_application)):
@@ -696,34 +753,66 @@ async def test_usenet_server(payload: UsenetServerDraft,
     if not payload.host.strip():
         raise HTTPException(400, "A server host is required")
     admin = _usenet_admin(application)
-    password = payload.password
-    if not password and payload.server_id:
-        # The existing UI contract: a blank secret means "keep the stored one".
-        from integrations.usenet.servers import find_server
-        existing = find_server(admin.options, payload.server_id)
-        if existing is not None:
-            password = existing.password
-    host = payload.host.strip()
-    # Exactly what this request connects with, in the shape the Usenet
-    # definition declares as one server's verification material.
-    fingerprint = verification_fingerprint({
-        "host": host, "port": int(payload.port), "ssl": bool(payload.ssl),
-        "username": str(payload.username or ""), "password": str(password or ""),
-        "connections": int(payload.connections)})
-    try:
-        result = await admin.test_server(
-            host=host, port=payload.port, ssl=payload.ssl,
-            username=payload.username, password=password, connections=payload.connections,
-        )
-    except Exception as exc:
-        await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, False)
-        raise HTTPException(502, _safe_failure(exc)) from exc
-    ok = bool(result.get("ok")) if isinstance(result, dict) else bool(result)
-    accepted = await _record_verification_outcome(application, USENET_NAMESPACE, fingerprint, ok)
-    envelope = _accepted(USENET_NAMESPACE, accepted)
-    if not ok:
-        return {**result, **envelope}
-    return {**result, "verification": verification_proof(fingerprint), **envelope}
+    proof = await _verify_usenet_server(application, admin, payload)
+    if proof.failure:
+        raise HTTPException(502, proof.failure)
+    envelope = _accepted(USENET_NAMESPACE, proof.accepted)
+    if not proof.ok:
+        return {**proof.result, **envelope}
+    return {**proof.result, "verification": verification_proof(proof.fingerprint), **envelope}
+
+
+@router.post("/usenet/test")
+async def test_usenet_integration(application: ApplicationService = Depends(get_application)):
+    """The provider-level Usenet Test: every configured, participating server.
+
+    It operates on the CANONICAL SAVED server collection -- never on anything
+    a browser sent -- and performs the same per-server act the individual Test
+    performs, through the same primitive, so a server proven here is proven in
+    exactly the sense ``verification_subjects`` requires.
+
+    A disabled server is not part of the enabled set: it is never contacted,
+    it never fails the aggregate, and it never blocks the answer for the
+    servers that do participate. Whether Usenet as a whole is Verified stays
+    the existing derived question about per-server evidence; nothing here
+    records an aggregate flag, and with no enabled usable server there is
+    nothing to have proven, so no verification is claimed.
+    """
+    from integrations.usenet.definition import server_usable
+
+    admin = _usenet_admin(application)
+    participating = [server for server in admin.options.servers if server_usable(server)]
+    results: list[dict] = []
+    accepted = None
+    for server in participating:
+        proof = await _verify_usenet_server(application, admin, UsenetServerDraft(
+            host=str(server.host or ""), port=int(server.port), ssl=bool(server.ssl),
+            username=str(server.username or ""), password=str(server.password or ""),
+            connections=int(server.connections), server_id=str(server.id),
+        ))
+        # The LAST accepted projection is the one that reflects every proof
+        # recorded so far, so the neutral acceptance envelope carries it.
+        if proof.accepted:
+            accepted = proof.accepted
+        results.append({
+            "server_id": str(server.id),
+            "name": str(server.display_name or server.host or ""),
+            "ok": proof.ok,
+            **({"error": proof.failure} if proof.failure else {}),
+            **({"message": proof.result.get("message")} if isinstance(proof.result, dict)
+               and proof.result.get("message") else {}),
+        })
+    passed = sum(1 for item in results if item["ok"])
+    return {
+        # No enabled usable server is not a pass: there is nothing that could
+        # have been proven, so the aggregate does not claim success.
+        "ok": bool(results) and passed == len(results),
+        "tested": len(results),
+        "passed": passed,
+        "failed": len(results) - passed,
+        "servers": results,
+        **_accepted(USENET_NAMESPACE, accepted),
+    }
 
 
 @router.get("/usenet/drift")

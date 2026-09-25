@@ -24,10 +24,19 @@ def test_send_report_now_is_a_footer_action_of_the_notifications_context():
     assert "reportButton" not in page
 
 
-def test_downloads_context_action_uses_download_engine_language():
+def test_downloads_carries_no_footer_action_and_no_deferred_apply_contract():
+    """DP 1.0.13: Downloads became a field-boundary persistence surface.
+
+    Every control on it commits at its own boundary, so the footer offers it no
+    Apply button and no unsaved hint -- and the Download Engine test is removed
+    from the UI entirely rather than relocated or replaced."""
     page = source(SETTINGS_PAGE)
 
-    # Keep the existing aria2 validation action/endpoint contract while presenting
-    # the user-facing abstraction used by the redesigned Downloads tab.
-    assert 'data-context-action="downloads" data-action="test-aria2">Test Download Engine</button>' in page
+    assert "Test Download Engine" not in page
     assert "testDownloadEngine" not in page
+    assert 'data-context-action="downloads"' not in page
+    # The footer's deferred controls are hidden on a field-boundary tab; the
+    # Apply infrastructure itself remains for the tabs that still need it.
+    assert "const FIELD_BOUNDARY_TABS = new Set(['downloads'])" in page
+    assert "[data-deferred-apply], .dp-settings-save-hint" in page
+    assert 'data-action="save" data-deferred-apply' in page

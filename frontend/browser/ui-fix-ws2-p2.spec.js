@@ -232,7 +232,7 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   await expect(card).toBeVisible();
   await expect(card.locator('.dp-settings-disclosure')).toHaveAttribute('aria-expanded', 'false');
   await expect(card.locator(':scope > .card-body')).toBeHidden();
-  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Configured');
+  await expect(card.locator('.dp-settings-provider-config-status')).toHaveText('Unverified');
   await expect(card.locator('.dp-settings-provider-config-status')).toHaveAttribute('data-tone', 'warning');
 
   await page.locator('#theme-toggle').click();

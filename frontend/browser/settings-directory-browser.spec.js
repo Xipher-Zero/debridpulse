@@ -94,6 +94,47 @@ function directoryResponse(path, overrides = {}) {
   return { ...(defaults[path] || defaults['/download']), ...overrides };
 }
 
+/* Accept every whole-settings write and echo it back, so a field-boundary
+ * commit this case is not about cannot change what it measures. */
+async function acceptSettingsWrites(page) {
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PUT') {
+      await route.continue();
+      return;
+    }
+    await route.fulfill({
+      status: 200, contentType: 'application/json',
+      body: JSON.stringify(route.request().postDataJSON()),
+    });
+  });
+}
+
+/* Count and, on demand, reject the canonical whole-settings writes. */
+function trackSettingsWrites(page) {
+  const state = { count: 0, last: null, reject: false };
+  page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PUT') {
+      await route.continue();
+      return;
+    }
+    state.count += 1;
+    state.last = route.request().postDataJSON();
+    if (state.reject) {
+      await route.fulfill({
+        status: 400, contentType: 'application/json',
+        body: JSON.stringify({
+          detail: { code: 'invalid_path', message: 'Selected Download Folder is no longer available' },
+        }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200, contentType: 'application/json', body: JSON.stringify(state.last),
+    });
+  });
+  return state;
+}
+
 async function installDirectoryFixture(page, { invalidInitial = false } = {}) {
   const requests = [];
   await page.route('**/api/settings/directories*', async route => {
@@ -182,6 +223,10 @@ test('Browse is offered once and preserves backend path, ordering, capacity, roo
 
 test('invalid initial path falls back without repairing the field and Cancel/Escape are exact', async ({ page }) => {
   const requests = await installDirectoryFixture(page, { invalidInitial: true });
+  // DP 1.0.13: Download Folder is a changed-blur field, so leaving it to click
+  // Browse IS its commit boundary. That commit is not what this case is about,
+  // so it is accepted here and the picker's own behaviour is what is measured.
+  await acceptSettingsWrites(page);
   await openDownloadsSettings(page);
 
   const field = downloadFolderField(page);
@@ -209,41 +254,33 @@ test('invalid initial path falls back without repairing the field and Cancel/Esc
   await expect(browse).toBeFocused();
 });
 
-test('Confirm changes only the form field; Save remains the persistence boundary and rejections stay safe', async ({ page }) => {
+/* DP 1.0.13: Browse is a non-destructive VALUE-SELECTION action.
+ *
+ * It chooses what the Download Folder field holds and commits it through the
+ * ONE canonical field owner, exactly as the operator typing it and leaving
+ * would. It is not a second save path, it names no endpoint of its own, and it
+ * never waits for a deferred Apply -- Downloads has none. Cancelling mutates
+ * nothing at all, and a rejected write rolls the field back to the canonical
+ * truth the server still holds. */
+test('an accepted Browse commits Download Folder through the canonical field owner', async ({ page }) => {
   await installDirectoryFixture(page);
-  let putCount = 0;
-  let lastPut = null;
-  let rejectSave = false;
-
-  await page.route('**/api/settings', async route => {
-    const request = route.request();
-    if (request.method() !== 'PUT') {
-      await route.continue();
-      return;
-    }
-    putCount += 1;
-    lastPut = request.postDataJSON();
-    if (rejectSave) {
-      await route.fulfill({
-        status: 400,
-        contentType: 'application/json',
-        body: JSON.stringify({
-          detail: { code: 'invalid_path', message: 'Selected Download Folder is no longer available' },
-        }),
-      });
-      return;
-    }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/json',
-      body: JSON.stringify(lastPut),
-    });
-  });
+  const writes = trackSettingsWrites(page);
 
   await openDownloadsSettings(page);
   const field = downloadFolderField(page);
   const browse = browseButton(page);
-  await field.fill('/download');
+
+  // Downloads carries no deferred Apply contract at all.
+  await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+
+  // Cancelling performs no mutation whatsoever.
+  await browse.click();
+  await directoryDialog(page).locator('[data-modal-cancel]').click();
+  await expect(directoryDialog(page)).toHaveCount(0);
+  await page.waitForTimeout(500);
+  expect(writes.count).toBe(0);
+
   await browse.click();
   const dialog = directoryDialog(page);
   await dialog.locator('[data-directory-row][data-path="/download/Alpha"]').click();
@@ -253,27 +290,22 @@ test('Confirm changes only the form field; Save remains the persistence boundary
   await expect(dialog).toHaveCount(0);
   await expect(field).toHaveValue('/download/Alpha');
   await expect(browse).toBeFocused();
-  expect(putCount).toBe(0);
+  // Committed immediately, by the field's own owner, carrying the chosen value.
+  await expect.poll(() => writes.count).toBe(1);
+  expect(writes.last.download_folder).toBe('/download/Alpha');
 
-  const save = page.locator('button[data-action="save"]');
-  await save.click();
-  await expect.poll(() => putCount).toBe(1);
-  expect(lastPut.download_folder).toBe('/download/Alpha');
-  // The PUT is the last request of the save chain, not its completion. The Settings owner marks
-  // Apply busy synchronously on click and replaces it with a fresh, enabled control only after it
-  // has adopted the saved state and re-rendered the form (which restores the saved folder). Wait
-  // for that boundary so the next edit cannot race the save-completion render.
-  await expect(save).toBeEnabled();
-
-  await field.fill('/download');
+  // A rejected write converges nothing: the field returns to what the server
+  // still holds, and no second save path is involved.
+  writes.reject = true;
   await browse.click();
-  await directoryDialog(page).locator('[data-directory-row][data-path="/download/Alpha"]').click();
+  // The picker now opens on the accepted folder; step up to its parent, which
+  // is itself selectable, and choose that instead.
+  await directoryDialog(page).locator('[data-directory-up]').click();
+  await expect(directoryDialog(page).locator('[data-directory-current-path]')).toHaveText('/download');
   await directoryDialog(page).locator('[data-modal-accept]').click();
-  rejectSave = true;
-  await save.click();
-  await expect.poll(() => putCount).toBe(2);
-  // A rejected save has finished only when Apply returns to idle; the form must be unchanged then.
-  await expect(save).toBeEnabled();
+  await expect.poll(() => writes.count).toBe(2);
+  expect(writes.last.download_folder).toBe('/download');
+  // Nothing was accepted, so the field returns to the canonical truth.
   await expect(field).toHaveValue('/download/Alpha');
 });
 

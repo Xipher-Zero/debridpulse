@@ -235,5 +235,5 @@ def test_frontend_reads_only_canonical_settings_fields() -> None:
             assert not re.search(pattern, text), f"{path.name} reads flat alias {pattern!r}"
     app = _source_without_comments("app.js")
     assert "settingsData.execution_runtime_limits = Object.assign({}, settingsData.execution_runtime_limits" in app
-    live = _source_without_comments("ui-settings-aria2-live.js")
+    live = _source_without_comments("ui-settings-executor-work.js")
     assert "settingsData" not in live

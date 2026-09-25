@@ -96,7 +96,7 @@ def test_the_settings_ui_offers_no_service_url_or_api_key_control():
 def test_no_operator_surface_names_the_daemon():
     settings_js = (REPO / "frontend/static/ui-settings-page.js").read_text(encoding="utf-8")
     start = settings_js.index("function usenetServerCard(")
-    end = settings_js.index("const ARIA2_LIVE_FILTERS")
+    end = settings_js.index("const EXECUTOR_WORK_FILTERS")
     assert "SABnzbd" not in settings_js[start:end]
     servers_js = (REPO / "frontend/static/ui-settings-usenet-servers.js").read_text(encoding="utf-8")
     assert "SABnzbd" not in servers_js and "sabnzbd" not in servers_js

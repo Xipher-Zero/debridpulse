@@ -217,23 +217,69 @@
   opacity: .7;
 }
 
-/* Erasing a stored credential is an explicit, deliberate act: the button, its
-   confirmation and the sentence that describes it read as ONE group, left
-   aligned with the card's form content and vertically centred together. */
+/* Password + Clear Password are ONE row, in exactly the idiom the Host row
+   already uses: the field wrapper becomes `display: contents` so its label and
+   its input are the grid's own items, and the destructive action takes the
+   INPUT's row. It is therefore centred against the control it is about rather
+   than against the taller label+input stack, and it takes horizontal room from
+   the field instead of adding an action band beneath it.
+
+   Whether there is anything to clear is STATE, owned by refreshClearGate().
+   The second track exists only while the group is actually shown, so with no
+   stored credential the field simply takes the whole row -- no placeholder
+   column, no JS repositioning, no absolute positioning. */
+.dp-usenet-row--password {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+
+.dp-usenet-row--password:has(> .dp-usenet-clear-password:not([hidden])) {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.dp-usenet-row--password > .dp-usenet-field--password { display: contents; }
+.dp-usenet-row--password .dp-usenet-field--password > .form-label { grid-column: 1; grid-row: 1; }
+.dp-usenet-row--password .dp-usenet-field--password > .input { grid-column: 1; grid-row: 2; }
+
 /* One explicit destructive action. What it MEANS is the canonical Settings
    confirmation's question, asked when the operator acts -- not a checkbox the
    card has to arm, gate and reset. */
 .dp-usenet-clear-password {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 2px 0 10px;
+  margin: 0;
   font-size: .82rem;
 }
 
 .dp-usenet-clear-password[hidden] { display: none; }
 
 .dp-usenet-clear-password > .btn { flex: 0 0 auto; }
+
+/* The rail's far-right structural slot.
+ *
+ * The Advanced rail is a three-track grid (`1fr auto 1fr`) and this occupies
+ * the third track in ROW 1 -- the row Advanced itself is in. Only
+ * `.dp-usenet-actions` is re-placed when the disclosure opens, so Enable stays
+ * beside Advanced in both states and can never drop underneath Test/Remove.
+ * Nothing measures or moves it. */
+.dp-usenet-enable {
+  grid-column: 3;
+  grid-row: 1;
+  justify-self: end;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
 
 /* Inline FIELD validation only -- a missing or malformed value on this card.
    The RESULT of Save / Test / Remove belongs to the canonical toast owner;

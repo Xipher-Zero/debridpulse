@@ -452,7 +452,7 @@ def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
         assert "disabled" not in action, f"{label}: the action still carries a local gate"
         group = rendered[rendered.index("dp-usenet-clear-password"):]
         group = group[:group.index("</div>")]
-        assert "Clear Stored Password" in group, label
+        assert "Clear Password" in group, label
         assert 'type="checkbox"' not in group, label
         assert "<label" not in group, label
     # The retired gated checkbox and every trace of its copy are gone.
@@ -641,7 +641,9 @@ def test_the_header_action_slot_is_neutral_and_optional():
     assert "headerAction ? " in card, "an empty slot still emits a wrapper"
     assert "alldebrid" not in card.lower(), "the generic card names a provider"
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert panel.count("headerAction:") == 1, \
+    # Exactly the cards that HAVE a provider-level action ask for the slot:
+    # AllDebrid and Usenet. The Network Sources group card does not.
+    assert panel.count("headerAction:") == 2, \
         "the rail was applied to a card that did not ask for it"
 
 
@@ -650,9 +652,7 @@ def test_the_test_action_lives_in_the_header_and_not_in_the_body():
     optional-tuning disclosure (its position must not depend on that being
     open). There is no provider action footer left at all."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert panel.count('data-action="test-alldebrid"') == 1
-    assert panel.index('data-action="test-alldebrid"') < panel.index("headerAction:") \
-        or "providerTest" in panel
+    assert panel.count("providerTestAction('test-alldebrid')") == 1
     assert "headerAction: providerTest" in panel
     body = panel[panel.index("dp-settings-copy"):panel.index("`, allDebrid, {")]
     assert "test-alldebrid" not in body, "Test is still rendered in the card body"
@@ -696,12 +696,12 @@ def test_the_alldebrid_additional_settings_are_five_tuning_cells():
     disclosure row carries no Test, no Save and no action footer."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     additional = panel[panel.index("dp-settings-additional"):panel.index("`, allDebrid, {")]
-    assert "dp-settings-tuning-grid" in additional
+    assert "tuningCells(" in additional
     for field in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
                   "full_sync_interval_minutes", "upload_fail_retry_count",
                   "upload_fail_retry_delay_minutes"):
         assert field in additional, field
-    assert additional.count("${input(") == 5, "the grid does not hold exactly five cells"
+    assert additional.count("input(") == 5, "the collection does not hold exactly five cells"
     for banned in ("test-alldebrid", "Save", "dp-settings-provider-actions"):
         assert banned not in additional, banned
 
@@ -721,19 +721,51 @@ def test_the_tuning_grid_is_a_neutral_bounded_reusable_primitive():
     assert "display: flex" in grid
     assert "flex-wrap: wrap" in grid
     assert "justify-content: center" in grid
-    cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid > .dp-settings-field {")
+    # A cell is a cell wherever it sits -- directly on the line, or inside a
+    # relationship group -- so the rule is a descendant one.
+    cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid .dp-settings-field {")
     assert "flex: 0 1 170px" in cell, \
         "the basis is not bounded, so a cell can stretch to fill the row"
     assert "max-width: 190px" in cell
     assert "justify-items: center" in cell
     assert "text-align: center" in cell
     control = rule(SETTINGS_CSS,
-                   "#view-settings .dp-settings-tuning-grid > .dp-settings-field > .input {")
+                   "#view-settings .dp-settings-tuning-grid .dp-settings-field > .input,")
     assert "text-align: left" in control, \
         "the cell's centring leaked into the value inside the control"
     assert "overflow-x" not in SETTINGS_CSS.split("dp-settings-tuning-grid")[1][:400]
     # The primitive names no provider.
     assert "alldebrid" not in grid.lower() and "alldebrid" not in cell.lower()
+
+
+def test_a_relationship_group_never_draws_a_broken_outline():
+    """DP 1.0.13: adjacent cells may carry a light shared outline, and ONLY at
+    a width where their whole span demonstrably fits one row. Below that the
+    group is not a layout box at all, so its cells wrap as ordinary cells and
+    the relationship simply is not drawn -- never split across two rows.
+
+    The decision is a container query on the collection's own inline size.
+    Nothing measures geometry in JavaScript and nothing is re-parented."""
+    group = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-group {")
+    assert "display: contents" in group, "the group is a layout box by default"
+    grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
+    assert "container-type: inline-size" in grid
+    assert "container-name: dp-tuning" in grid
+    # Each span has its own threshold, and the outline takes no space.
+    for span in ("2", "3"):
+        marker = f'.dp-settings-tuning-group[data-tuning-span="{span}"]'
+        assert marker in SETTINGS_CSS, span
+        rule_body = SETTINGS_CSS.split(marker + " {", 1)[1].split("}", 1)[0]
+        assert "flex-wrap: nowrap" in rule_body, span
+        assert "outline:" in rule_body and "outline-offset:" in rule_body, span
+        assert "border:" not in rule_body, "an outline that takes layout space is a border"
+    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 2
+    # No owner measures a cell, a row or a group in JavaScript.
+    page = SETTINGS_JS
+    for measurement in ("getBoundingClientRect", "offsetWidth", "clientWidth",
+                        "getComputedStyle", "ResizeObserver"):
+        assert measurement not in block(page, "function tuningCells("), measurement
+        assert measurement not in block(page, "function tuningGroup("), measurement
 
 
 # --- Items 6/9: one canonical persistence owner ----------------------------
@@ -967,7 +999,7 @@ def test_the_persistence_owner_loads_before_the_settings_page():
 
 
 def test_every_migrated_providers_field_declares_exactly_one_scope():
-    table = block(SETTINGS_JS, "const CHANGED_BLUR_FIELDS")
+    table = block(SETTINGS_JS, "const COMMIT_FIELDS")
     for key in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
                 "full_sync_interval_minutes", "upload_fail_retry_count",
                 "upload_fail_retry_delay_minutes",
@@ -980,8 +1012,12 @@ def test_every_migrated_providers_field_declares_exactly_one_scope():
 
 def test_the_page_declares_its_commit_class_rather_than_reimplementing_it():
     field = block(SETTINGS_JS, "function input(")
-    assert "CHANGED_BLUR_FIELDS" in field
-    assert 'data-commit=' in field
+    assert "commitAttributes(key)" in field
+    # The class itself is emitted in exactly ONE place, for every kind of
+    # control, from the page's own declaration table.
+    attributes = block(SETTINGS_JS, "function commitAttributes(")
+    assert 'data-commit="${html(declared.commit || \'changed-blur\')}"' in attributes
+    assert "data-commit-key=" in attributes and "data-commit-scope=" in attributes
     # The page dispatches scoped mutations; it owns no baseline/stale machinery.
     assert "window.DPSettingsPersistence" in SETTINGS_JS
     assert "defineScope(" in SETTINGS_JS
@@ -1008,13 +1044,20 @@ def test_the_api_key_is_an_ordinary_changed_blur_replacement():
 
 
 def test_the_credential_scope_writes_the_existing_integration_mutation():
-    scope = block(SETTINGS_JS, "function registerCommitScopes(")
-    assert "/integrations/alldebrid/configuration" in scope
+    # One generic integration scope serves every integration namespace; the
+    # identity is the only thing that differs.
+    scope = block(SETTINGS_JS, "function registerIntegrationScope(")
+    assert "`/integrations/${identity}/configuration`" in scope
     assert "INTEGRATION_SECRET_CONTROLS" in scope, \
         "the scope must know which of its controls is a secret"
     # A secret's accepted presentation is blank: no credential becomes a baseline.
     assert "return '';" in scope
-    assert "renderAllDebridCredential(" in scope
+    # The row that has to change because the ACCEPTED state changed is named by
+    # the secret control's own declaration, not by the generic scope.
+    assert "secret.converge(draft)" in scope
+    assert "renderAllDebridCredential(" in block(SETTINGS_JS, "const INTEGRATION_SECRET_CONTROLS")
+    assert "registerIntegrationScope(persistence, identity)" in \
+        block(SETTINGS_JS, "function registerCommitScopes(")
 
 
 def test_the_explicit_clear_is_the_only_destructive_credential_writer():
@@ -1261,26 +1304,32 @@ def test_footer_apply_remains_present():
 
 
 def test_footer_apply_no_longer_reads_migrated_providers_page_controls():
-    policy = block(SETTINGS_JS, "function transferPolicyPayload(")
-    for migrated in ("poll_interval_seconds", "upload_fail_retry_count",
-                     "upload_fail_retry_delay_minutes"):
-        assert f"intOf('{migrated}'" not in policy, migrated
-    # Positive control: the Downloads-page policy fields are still written here.
-    assert "intOf('aria2_max_active_downloads'" in policy
+    # There is no deferred transfer-policy or integration payload left at all.
+    for retired in ("function transferPolicyPayload(", "function aria2ConfigurationPayload(",
+                    "function usenetConfigurationPayload("):
+        assert retired not in SETTINGS_JS, retired
 
     document = block(SETTINGS_JS, "function nonAuthPayload(")
     assert "intOf('full_sync_interval_minutes'" not in document
     assert "current.full_sync_interval_minutes" in document
+    # Every Downloads-owned settings-document value is carried forward from
+    # canonical truth, never re-read from the page.
+    for migrated in ("download_folder", "min_free_disk_gb",
+                     "disk_guard_resume_hysteresis_gb"):
+        assert f"valueOf('{migrated}'" not in document, migrated
+        assert f"floatOf('{migrated}'" not in document, migrated
+        assert f"{migrated}:" not in document, migrated
     # Positive control: an unmigrated top-level field is still read from the form.
     assert "boolOf('extract_enabled')" in document
 
 
-def test_footer_apply_writes_no_alldebrid_namespace_at_all():
+def test_footer_apply_writes_no_integration_namespace_at_all():
     persist = block(SETTINGS_JS, "async function persistNonAuth(")
-    assert "/integrations/alldebrid/configuration" not in persist
+    assert "/integrations/" not in persist
+    assert "/transfer-policy" not in persist
     assert "allDebridConfigurationPayload" not in SETTINGS_JS
-    # Positive control: the namespaces the footer still owns are untouched.
-    assert "/integrations/aria2/configuration" in persist
+    # Positive control: the whole-settings document write is still the footer's.
+    assert "request('PUT', '/settings', nonAuthPayload()" in persist
 
 
 def test_immediate_toggles_are_still_immediate_and_never_deferred():
@@ -1294,7 +1343,7 @@ def test_immediate_toggles_are_still_immediate_and_never_deferred():
 # --- Archive Passwords is explicitly excluded from this batch --------------
 
 def test_archive_passwords_is_not_migrated_by_this_batch():
-    table = block(SETTINGS_JS, "const CHANGED_BLUR_FIELDS")
+    table = block(SETTINGS_JS, "const COMMIT_FIELDS")
     assert "extraction_password" not in table
     field = block(SETTINGS_JS, "function archivePasswordField(")
     assert "data-commit" not in field

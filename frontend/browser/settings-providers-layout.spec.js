@@ -156,7 +156,9 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
   const enable = page => rail(page).locator('.dp-settings-integration-header-enable');
   const summary = page => card(page).locator('.dp-settings-additional > summary');
   const optionBody = page => card(page).locator('.dp-settings-additional-body');
-  const cells = page => card(page).locator('.dp-settings-tuning-grid > .dp-settings-field');
+  // A cell is a cell wherever it sits: directly on the line, or inside a
+  // relationship group that draws a light shared outline around it.
+  const cells = page => card(page).locator('.dp-settings-tuning-grid .dp-settings-field');
 
   const boxOf = locator => locator.evaluate(el => {
     const r = el.getBoundingClientRect();
@@ -293,7 +295,9 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
         const rows = await card(page).locator('.dp-settings-tuning-grid').evaluate(el => {
           const host = el.getBoundingClientRect();
           const byTop = new Map();
-          for (const child of el.children) {
+          // The CELLS are the layout unit, whether or not a relationship group
+          // currently wraps some of them.
+          for (const child of el.querySelectorAll('.dp-settings-field')) {
             const r = child.getBoundingClientRect();
             const key = Math.round(r.top);
             if (!byTop.has(key)) byTop.set(key, []);
@@ -438,5 +442,155 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     // And not centred against the label+input wrapper, whose centre sits higher.
     const wrapper = await box(card.locator('.dp-usenet-field--host'));
     expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
+  });
+});
+
+/* DP 1.0.13 -- the Downloads tuning collections.
+ *
+ * Network Sources, Usenet and Download Safety & Recovery share ONE tuning-cell
+ * grammar with the AllDebrid region above. What is measured here is the part
+ * only a real layout can answer: that a cell never stretches, that every row
+ * (including a partial one) is centred, that nothing scrolls horizontally at
+ * any width, and that a relationship outline is drawn ONLY while the group it
+ * describes is contiguous on one row -- disappearing entirely rather than
+ * splitting across a wrap.
+ */
+test.describe('the Downloads tuning collections share one cell grammar', () => {
+  const REGIONS = [
+    ['[data-executor-tuning="direct"]', 'Network Sources', 7],
+    ['[data-executor-tuning="usenet"]', 'Usenet', 4],
+    ['.dp-settings-download-recovery-card', 'Download Safety & Recovery', 5],
+  ];
+
+  const geom = locator => locator.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return {top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+            width: r.width, height: r.height};
+  });
+
+  test.beforeEach(async ({page}) => {
+    await isolateExternalFonts(page);
+    await page.setViewportSize({width: 1440, height: 1000});
+    await page.goto('/');
+    await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+    await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
+    await page.locator('#view-settings [data-tab="downloads"]').click();
+    await expect(page.locator('#view-settings [data-panel="downloads"]')).toBeVisible();
+    // The two executor tuning cards render collapsed; open them.
+    for (const id of ['direct', 'usenet']) {
+      const disclosure = page.locator(`[data-executor-tuning="${id}"] .dp-settings-disclosure`);
+      if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+    }
+  });
+
+  test('every region renders its controls as cells of the one collection', async ({page}) => {
+    for (const [selector, label, count] of REGIONS) {
+      const region = page.locator(selector);
+      await expect(region.locator('.dp-settings-tuning-grid'), `${label} has no tuning collection`)
+        .toHaveCount(1);
+      await expect(region.locator('.dp-settings-tuning-grid .dp-settings-field'), label)
+        .toHaveCount(count);
+      // File Allocation is an ordinary cell: no band of its own survives.
+      await expect(region.locator('.dp-settings-engine-file-allocation')).toHaveCount(0);
+      await expect(region.locator('.dp-settings-engine-tuning-grid')).toHaveCount(0);
+    }
+  });
+
+  test('cells stay bounded, rows stay centred, and nothing scrolls at any width',
+    async ({page}) => {
+      for (const width of [1600, 1280, 1024, 860, 700, 520, 400]) {
+        await page.setViewportSize({width, height: 1100});
+        for (const [selector, label] of REGIONS) {
+          const grid = page.locator(`${selector} .dp-settings-tuning-grid`);
+          const host = await geom(grid);
+          const cells = await grid.locator('.dp-settings-field').evaluateAll(nodes =>
+            nodes.map(n => {
+              const r = n.getBoundingClientRect();
+              return {top: Math.round(r.top), left: r.left, right: r.right, width: r.width};
+            }));
+          for (const cell of cells) {
+            // Bounded: a cell fits the row, it never fills it.
+            expect(cell.width, `${label} cell stretched at ${width}px`).toBeLessThanOrEqual(220);
+          }
+          // Every row -- including a partial one -- is centred in the collection.
+          const byRow = new Map();
+          for (const cell of cells) {
+            if (!byRow.has(cell.top)) byRow.set(cell.top, []);
+            byRow.get(cell.top).push(cell);
+          }
+          for (const [, row] of byRow) {
+            const leading = Math.min(...row.map(c => c.left)) - host.left;
+            const trailing = host.right - Math.max(...row.map(c => c.right));
+            expect(Math.abs(leading - trailing),
+              `${label} row not centred at ${width}px`).toBeLessThanOrEqual(2);
+          }
+        }
+        expect(await page.evaluate(() =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
+          `horizontal overflow at ${width}px`).toBeTruthy();
+      }
+      await page.setViewportSize({width: 1440, height: 1000});
+    });
+
+  test('a relationship outline is drawn only while its group is contiguous on one row',
+    async ({page}) => {
+      let sawDrawn = false;
+      let sawWithdrawn = false;
+
+      for (const width of [1600, 1280, 1024, 860, 700, 520, 400]) {
+        await page.setViewportSize({width, height: 1100});
+        const groups = await page.locator('#view-settings [data-panel="downloads"] .dp-settings-tuning-group')
+          .evaluateAll(nodes => nodes.map(node => {
+            const style = getComputedStyle(node);
+            const cells = Array.from(node.querySelectorAll('.dp-settings-field'))
+              .map(c => Math.round(c.getBoundingClientRect().top));
+            return {
+              // `display: contents` means the group is not a layout box at all.
+              drawn: style.display !== 'contents',
+              outlined: style.outlineStyle !== 'none' && parseFloat(style.outlineWidth) > 0,
+              rows: new Set(cells).size,
+              span: Number(node.dataset.tuningSpan),
+              members: cells.length,
+            };
+          }));
+        expect(groups.length, 'no relationship groups rendered').toBeGreaterThan(0);
+
+        for (const group of groups) {
+          expect(group.members, 'a group lost a member').toBe(group.span);
+          if (group.drawn) {
+            sawDrawn = true;
+            // Drawn means one unbroken row, with a real outline on it.
+            expect(group.rows, `outline split across ${group.rows} rows at ${width}px`).toBe(1);
+            expect(group.outlined, `a drawn group carries no outline at ${width}px`).toBe(true);
+          } else {
+            sawWithdrawn = true;
+            // Withdrawn entirely: no box, so no outline can be drawn at all.
+            expect(group.outlined).toBe(false);
+          }
+        }
+      }
+      // The rule is meaningful only if both states actually occur.
+      expect(sawDrawn, 'no outline was ever drawn').toBe(true);
+      expect(sawWithdrawn, 'no outline was ever withdrawn at a narrow width').toBe(true);
+      await page.setViewportSize({width: 1440, height: 1000});
+    });
+
+  test('the Usenet footer is a full-width centred row beneath the cells', async ({page}) => {
+    const region = page.locator('[data-executor-tuning="usenet"]');
+    const footer = region.locator('.dp-settings-tuning-footer');
+    await expect(footer).toHaveText(/Per-server acquisition tuning belongs to each news server under\s+Services\./);
+    for (const width of [1440, 900, 600]) {
+      await page.setViewportSize({width, height: 1100});
+      const body = await geom(region.locator('.card-body'));
+      const grid = await geom(region.locator('.dp-settings-tuning-grid'));
+      const line = await geom(footer);
+      // Beneath the cells...
+      expect(line.top).toBeGreaterThanOrEqual(grid.bottom - 1);
+      // ...spanning the card, and centred on the CARD rather than on whatever
+      // width the cell collection happened to occupy.
+      expect(Math.abs((line.left + line.right) / 2 - (body.left + body.right) / 2))
+        .toBeLessThanOrEqual(2);
+    }
+    await page.setViewportSize({width: 1440, height: 1000});
   });
 });

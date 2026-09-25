@@ -351,7 +351,7 @@ test('clearing the password is explicit, confirmed, and does erase it', async ({
   await enableUsenet(page);
   const card = collection(page).locator(`[data-usenet-server-id="${id}"]`);
   await expect(clearButton(card)).toBeEnabled();
-  await expect(clearButton(card)).toHaveText('Clear Stored Password');
+  await expect(clearButton(card)).toHaveText('Clear Password');
   await confirmDanger(page, clearButton(card));
   await expect.poll(async () => (await storedServers(page))[0].password_configured).toBe(false);
 });

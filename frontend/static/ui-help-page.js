@@ -269,10 +269,10 @@
         </div>
 
         <article class="dp-help-inset">
-          <h3>Testing the download engine</h3>
+          <h3>Checking the download engine</h3>
           <div class="dp-help-copy dp-help-prose">
-            <p>While the Downloads tab is open, use <b>Test Download Engine</b> in the Settings footer. It checks that the aria2 engine DebridPulse runs is responding and reports its version.</p>
-            <p>Tuning changes take effect when you use <b>Apply Settings</b>.</p>
+            <p>The <b>aria2</b> indicator in the sidebar reports the engine continuously: it shows the running version while the engine DebridPulse runs is responding, and reads offline when it is not. There is nothing to press.</p>
+            <p>Downloads settings save themselves. A value you type is stored when you leave the field, and a switch applies the moment you change it.</p>
           </div>
         </article>
       </section>`;
@@ -385,7 +385,6 @@
                 <li><b>Download Engine:</b> configure the Download Folder and set Maximum Concurrent Downloads.</li>
                 <li><b>Additional Engine Tuning:</b> includes partial-download continuation, segmentation, connection limits, split size, disk cache, file allocation, and the low-speed threshold.</li>
                 <li><b>Download Safety &amp; Recovery:</b> contains the minimum-free-space guard, resume buffer, stalled-download recovery, download-error retry count, and retry delay.</li>
-                <li><b>Test Download Engine:</b> checks that the aria2 engine DebridPulse runs is responding.</li>
               </ul>
               <p>The header speed cap is an operational bandwidth control and is separate from the deeper engine settings on this tab.</p>
             </div>

@@ -274,6 +274,15 @@
       liveField.value = canonicalPath;
       liveField.dispatchEvent(new Event('input', {bubbles: true}));
       liveField.dispatchEvent(new Event('change', {bubbles: true}));
+      /* Browse is a non-destructive VALUE-SELECTION action: it chooses what the
+       * field holds and then commits it exactly as the operator typing it and
+       * leaving would, through the one canonical field owner. It is not a
+       * second save path -- it names no endpoint, carries no payload and owns
+       * no rollback -- and it never waits for a deferred Apply. A field this
+       * page has not migrated declares no commit key and keeps its existing
+       * semantics untouched; a cancelled dialog returned above and mutates
+       * nothing at all. */
+      if (liveField.dataset?.commitKey) window.DPSettingsPersistence?.commit(liveField);
     });
 
     if (originalValue.length) void loadDirectory(originalValue, {fallbackOnFailure: true});

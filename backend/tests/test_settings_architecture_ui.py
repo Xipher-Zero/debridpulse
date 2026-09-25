@@ -111,7 +111,6 @@ def test_settings_runtime_directly_uses_backend_api_contracts():
         "request('POST', '/auth/api-token'",
         "request('DELETE', '/auth/api-token'",
         "'/settings/validate-alldebrid'",
-        "'/settings/test-aria2'",
         "'/settings/validate-discord'",
         "request('POST', '/settings/upload-avatar'",
         "request('POST', '/admin/backup'",
@@ -324,30 +323,38 @@ def test_settings_page_reads_only_canonical_namespaces():
 def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
     """Specification section 9.5: provider/executor configuration and universal
     concurrency/retry/poll/stall policy are written through their own scoped
-    namespace mutations, never through the whole-settings snapshot."""
+    namespace mutations, never through the whole-settings snapshot.
+
+    DP 1.0.13: every option either namespace holds is now a declared
+    field-boundary control, so the deferred footer builds no payload for them
+    at all -- there is nothing left of theirs for an Apply to replay.
+    """
     runtime = source(SETTINGS_PAGE_JS)
-    assert "function aria2ConfigurationPayload()" in runtime
-    assert "function transferPolicyPayload()" in runtime
+    assert "function aria2ConfigurationPayload()" not in runtime
+    assert "function usenetConfigurationPayload()" not in runtime
+    assert "function transferPolicyPayload()" not in runtime
     persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("async function persistAuth")]
-    assert "request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload()" in persist
-    assert "request('PATCH', '/transfer-policy', transferPolicyPayload()" in persist
-    policy = runtime[runtime.index("function transferPolicyPayload()"):runtime.index("function nonAuthPayload()")]
+    assert "/integrations/" not in persist
+    assert "/transfer-policy" not in persist
+    scopes = runtime[runtime.index("function registerCommitScopes("):]
+    assert "'/transfer-policy'" in scopes
+    assert "`/integrations/${identity}/configuration`" in runtime
+    # Every canonical option each namespace owns is declared exactly once.
+    table = runtime[runtime.index("const COMMIT_FIELDS"):]
+    table = table[:table.index("});") + 3]
     for canonical in (
+        # transfer policy, from both Services and Downloads
         "max_concurrent_executions", "execution_retry_count", "execution_retry_delay_seconds",
-        "stalled_timeout_hours",
+        "stalled_timeout_hours", "provider_poll_interval_seconds", "resolution_retry_count",
+        "resolution_retry_delay_minutes",
+        # aria2
+        "split", "min_split_size", "max_connection_per_server", "continue_downloads",
+        "disk_cache", "file_allocation", "lowest_speed_limit",
+        # usenet acquisition tuning
+        "operation_timeout_seconds", "article_cache_megabytes", "direct_write",
+        "max_acquisition_retries",
     ):
-        assert f"{canonical}:" in policy
-    # The Services policy fields are locally owned changed-blur
-    # controls; they are written through the SAME scoped surface, one field at
-    # a time, and are deliberately absent from the deferred payload so it can
-    # never replay them.
-    blur = runtime[runtime.index("const CHANGED_BLUR_FIELDS"):]
-    blur = blur[:blur.index("});") + 3]
-    for canonical in ("provider_poll_interval_seconds", "resolution_retry_count",
-                      "resolution_retry_delay_minutes"):
-        assert canonical not in policy, canonical
-        assert canonical in blur, canonical
-    assert "'/transfer-policy'" in runtime[runtime.index("function registerCommitScopes("):]
+        assert canonical in table, canonical
 
 
 def test_settings_is_one_master_card_with_internal_header_body_and_footer():

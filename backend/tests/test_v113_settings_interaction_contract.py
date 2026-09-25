@@ -165,7 +165,7 @@ ALLDEBRID_COPY = "Resolve supported links and torrents through your AllDebrid ac
 
 def test_every_provider_source_card_explains_what_enabling_it_allows():
     panel = SETTINGS_JS[SETTINGS_JS.index("function sourcesPanel("):
-                        SETTINGS_JS.index("const ARIA2_LIVE_FILTERS")]
+                        SETTINGS_JS.index("const EXECUTOR_WORK_FILTERS")]
     assert USENET_COPY in panel
     assert ALLDEBRID_COPY in panel
     # The two expandable Premium Services cards carry their copy in the
@@ -181,7 +181,7 @@ def test_every_provider_source_card_explains_what_enabling_it_allows():
 
 def test_no_implementation_name_reaches_operator_copy():
     panel = SETTINGS_JS[SETTINGS_JS.index("function sourcesPanel("):
-                        SETTINGS_JS.index("const ARIA2_LIVE_FILTERS")]
+                        SETTINGS_JS.index("const EXECUTOR_WORK_FILTERS")]
     for name in ("SABnzbd", "sabnzbd", "SAB ", "NNTP"):
         assert name not in panel
 

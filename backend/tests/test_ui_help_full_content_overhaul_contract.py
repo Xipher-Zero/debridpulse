@@ -56,9 +56,18 @@ def test_aria2_help_uses_current_downloads_ui_and_one_managed_engine():
         "Connections per Server",
         "Download Safety &amp; Recovery",
         "speed-cap control",
-        "Test Download Engine",
+        # DP 1.0.13 made Downloads a field-boundary surface: the Settings
+        # footer's Test Download Engine is gone, so Help no longer tells the
+        # operator to press it. Engine health is the sidebar indicator's, and
+        # Downloads settings save themselves.
+        "Checking the download engine",
+        "aria2</b> indicator in the sidebar",
+        "Downloads settings save themselves",
     ):
         assert phrase in panel
+
+    for retired in ("Test Download Engine", "Tuning changes take effect"):
+        assert retired not in panel, retired
 
     for legacy in (
         "Settings → Download Client",

@@ -49,9 +49,9 @@ def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -
         "/settings/validate-discord",
     ):
         assert endpoint in test_connection
-    # aria2 is the daemon DebridPulse runs: its test is that daemon's own health
-    # check, with no draft connection values.
-    assert "aria2: '/settings/test-aria2'" in test_connection
+    # DP 1.0.13: the Download Engine test is removed from the UI, so no draft
+    # validation path reaches it at all.
+    assert "test-aria2" not in test_connection
     assert "connectionTestPayload(kind)" in test_connection
     assert "persistNonAuth" not in test_connection
     assert "render();" not in test_connection

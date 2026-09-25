@@ -382,6 +382,14 @@ def public_integrations(settings, definitions):
             # verification-relevant configuration is covered by successful test
             # evidence. The evidence itself stays internal.
             "verified": definition.verified(entry.options, entry.verification) if definition else False,
+            # Derived, never stored: whether "verified" is a question this
+            # integration can even be asked. An integration that declares no
+            # verification subjects has nothing to prove, so a presentation
+            # owner must not report it as unverified forever. This is the fact
+            # that makes that distinction possible; it is not a second
+            # verification authority.
+            "verification_applicable": bool(definition is not None
+                                            and definition.verification_subjects is not None),
             "presentation": definition.presentation.public() if definition else {},
             "options": definition.public_options(entry.options) if definition else {},
         }

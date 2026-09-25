@@ -113,18 +113,20 @@ def test_settings_remote_tests_hold_pending_state_through_remote_test():
     assert "setBusy(button, false)" in test.split("finally", 1)[1]
 
 
-def test_settings_aria2_queue_refresh_is_coalesced_and_actions_acknowledge():
+def test_settings_executor_work_refresh_is_coalesced_and_actions_acknowledge():
     js = (REPO_ROOT / "frontend/static/app.js").read_text()
 
-    live = (REPO_ROOT / "frontend/static/ui-settings-aria2-live.js").read_text()
+    live = (REPO_ROOT / "frontend/static/ui-settings-executor-work.js").read_text()
 
-    # The queue renderer and its direct engine actions belong to the one live-queue
-    # owner; app.js keeps no copy of them and nothing coalesces a second loader.
+    # The rows and their actions belong to the one Executor Work owner; app.js
+    # keeps no copy of them and nothing coalesces a second loader. The retired
+    # aria2-specific owner is gone rather than merely unused.
+    assert not (REPO_ROOT / "frontend/static/ui-settings-aria2-live.js").exists()
     for retired in ("loadAria2Downloads", "aria2DownloadAction", "renderAria2Downloads", "aria2StatusLabel"):
         assert retired not in js, retired
-    assert "async function engineAction(gid, action, button)" in live
+    assert "async function perform(button)" in live
     assert "if (refreshRunning) return refreshRunning;" in live
-    assert "remove: 'Removing…'" in live
+    assert "cancel: 'Terminating…'" in live
     # The superseded Settings handlers that used to live beside the queue
     # (refresh button, database wipe, stats report) are retired; the clean
     # Settings runtime owns them.

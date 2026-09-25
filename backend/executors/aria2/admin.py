@@ -67,10 +67,7 @@ class Aria2Administration:
         if action == "resume":
             return await self.application.resume(attempt.transfer_id)
         if action == "remove":
-            async with self.application.application_operation():
-                await self.application.engine.cancel_artifact(attempt.transfer_id, attempt.artifact_id)
-                await self.application._publish(attempt.transfer_id)
-            return {"ok": True}
+            return await self.application.cancel_artifact(attempt.transfer_id, attempt.artifact_id)
         raise ValueError("Unsupported execution action")
 
     def rpc_metrics(self):

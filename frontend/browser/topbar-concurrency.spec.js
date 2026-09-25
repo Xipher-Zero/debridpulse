@@ -119,7 +119,7 @@ test('no flat alias is read or written when the operator applies a bandwidth cap
   expect(state).toEqual({canonical: 2097152, alias: false, capacity: 4});
 });
 
-test('saving Settings adopts the canonical policy and never writes a flat alias or namespace through the broad document', async ({ page }) => {
+test('committing a Downloads field adopts the canonical policy and never writes a flat alias or namespace through the broad document', async ({ page }) => {
   await ready(page);
   const policy = {max_concurrent_executions: 5, execution_retry_count: 3, execution_retry_delay_seconds: 60,
     resolution_retry_count: 3, resolution_retry_delay_minutes: 5, execution_poll_interval_seconds: 2,
@@ -155,21 +155,39 @@ test('saving Settings adopts the canonical policy and never writes a flat alias 
     await expect(downloads.locator(`[data-setting="${retired}"]`)).toHaveCount(0);
   }
   await expect(downloads.locator('[data-download-path-mode], [data-builtin-only-tuning], [data-clear-secret^="aria2"]')).toHaveCount(0);
+  // DP 1.0.13: Downloads is a field-boundary persistence surface. There is no
+  // Apply on it at all -- each control commits itself, through its own
+  // canonical namespace, carrying only the field that changed.
+  await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').fill('5');
-  // Advanced direct-transfer tuning now lives in the collapsed "Direct
-  // Transfers" child card of the Executor Tuning master card.
+  await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').blur();
+  await expect.poll(() => captured.patches.filter(p => p.id === 'transfer-policy').length).toBe(1);
+
+  // Advanced direct-transfer tuning lives in the collapsed Network Sources
+  // child card of the Executor Tuning master card.
   await page.locator('#view-settings [data-executor-tuning="direct"] .dp-settings-disclosure').click();
   await page.locator('#view-settings [data-setting="aria2_split"]').fill('8');
-  await page.locator('#view-settings button[data-action="save"]:visible').first().click();
+  await page.locator('#view-settings [data-setting="aria2_split"]').blur();
+  await expect.poll(() => captured.patches.filter(p => p.id === 'aria2').length).toBe(1);
 
-  await expect.poll(() => captured.put).not.toBeNull();
-  expect(captured.patches.find(p => p.id === 'transfer-policy').body.max_concurrent_executions).toBe(5);
-  // aria2 tuning still saves, and carries tuning only.
+  // Each scoped write carries exactly ONE field of exactly one namespace.
+  const policyPatch = captured.patches.find(p => p.id === 'transfer-policy').body;
+  expect(Object.keys(policyPatch)).toEqual(['max_concurrent_executions']);
+  expect(policyPatch.max_concurrent_executions).toBe(5);
   const aria2 = captured.patches.find(p => p.id === 'aria2').body;
   expect(Object.keys(aria2)).toEqual(['options']);
-  expect(Object.keys(aria2.options).sort()).toEqual(['continue_downloads', 'disk_cache', 'file_allocation',
-    'lowest_speed_limit', 'max_connection_per_server', 'min_split_size', 'split']);
+  expect(Object.keys(aria2.options)).toEqual(['split']);
   expect(aria2.options.split).toBe(8);
+
+  // A settings-document control of the same panel commits through its own
+  // scope: read canonical truth, write it back, with no flat alias and no
+  // canonical namespace inside the broad document.
+  await page.locator('#view-settings [data-setting="min_free_disk_gb"]').fill('2');
+  await page.locator('#view-settings [data-setting="min_free_disk_gb"]').blur();
+  await expect.poll(() => captured.put).not.toBeNull();
+  expect(captured.put.min_free_disk_gb).toBe(2);
   for (const flat of ['max_concurrent_downloads', 'aria2_max_active_downloads', 'aria2_max_download_limit',
     'aria2_split', 'alldebrid_api_key', 'poll_interval_seconds', 'stuck_download_timeout_hours',
     'upload_fail_retry_count', 'integrations', 'transfer_policy', 'execution_runtime_limits']) {

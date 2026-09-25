@@ -198,7 +198,6 @@ def test_non_auth_settings_contracts_remain_in_canonical_owner_or_semantic_modul
         "db_wipe_enabled",
         "clear_secrets",
         "/settings/validate-alldebrid",
-        "/settings/test-aria2",
         "/settings/validate-discord",
     ):
         assert fragment in combined

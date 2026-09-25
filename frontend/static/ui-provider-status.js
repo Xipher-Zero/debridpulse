@@ -34,6 +34,11 @@
           name: String(presentation.status_name),
           enabled: integration.enabled !== false,
           configured: Boolean(integration.configured),
+          // Canonical, backend-derived verification truth. `verifiable` says
+          // whether the question applies at all, so a source that has nothing
+          // to prove is never reported as unproven.
+          verified: Boolean(integration.verified),
+          verifiable: Boolean(integration.verification_applicable),
           premium: Boolean(presentation.premium),
           endpoint: String(presentation.status_endpoint || '').trim(),
           staticStatus: String(presentation.static_status || '').trim(),
@@ -57,7 +62,28 @@
   const statusHost = () => document.getElementById('provider-status-list');
 
   function dotClass(state) {
-    return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unknown:'check', checking:'check', mixed:'warn', unavailable:'error', disabled:'error'})[state] || 'check';
+    return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unverified:'warn', unknown:'check', checking:'check', mixed:'warn', unavailable:'error', disabled:'error'})[state] || 'check';
+  }
+
+  /* Runtime health and verification are two different questions, asked in that
+   * order.
+   *
+   * A real runtime/service failure outranks everything: it is what is wrong
+   * right now, and verification cannot make it green. Only once the runtime is
+   * reporting healthy does the second question apply -- and only to a provider
+   * that can actually be asked it. A configured, verification-capable provider
+   * whose current saved configuration carries no successful proof is healthy
+   * but unproven, which is a warning, not readiness. A source with no
+   * verification subjects has nothing to prove and stays exactly as healthy as
+   * its runtime says it is.
+   *
+   * This is derived PRESENTATION, from facts the backend already publishes.
+   * Nothing here names an integration and nothing here decides, records or
+   * second-guesses what is verified. */
+  function verificationAdjusted(entry) {
+    if (entry.state !== 'healthy') return entry;
+    if (!entry.verifiable || !entry.configured || entry.verified) return entry;
+    return {...entry, state: 'unverified'};
   }
 
   /* The group's one reported state.
@@ -82,6 +108,7 @@
     if (enabled.length !== entries.length) return 'mixed';
     if (enabled.some(entry => ['unhealthy', 'auth_required'].includes(entry.state))) return 'unhealthy';
     if (enabled.some(entry => entry.state === 'unconfigured')) return 'unconfigured';
+    if (enabled.some(entry => entry.state === 'unverified')) return 'unverified';
     if (enabled.some(entry => ['unknown', 'checking'].includes(entry.state))) return 'unknown';
     if (enabled.every(entry => entry.state === 'healthy')) return 'healthy';
     return 'unknown';
@@ -148,11 +175,11 @@
 
   async function observe(candidate) {
     if (!candidate.enabled) return {...candidate, state:'disabled'};
-    if (candidate.staticStatus) return {...candidate, state:candidate.staticStatus};
+    if (candidate.staticStatus) return verificationAdjusted({...candidate, state:candidate.staticStatus});
     if (!candidate.endpoint) return {...candidate, state:'unknown'};
     try {
       const status = await api('GET', candidate.endpoint);
-      return {...candidate, state:String(status?.state || 'unknown'), status};
+      return verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status});
     } catch (_) {
       return {...candidate, state:'unknown'};
     }

@@ -25,22 +25,23 @@ def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leaka
     assert "•••••" not in runtime
 
 
-def test_continue_partial_uses_copy_block_with_adjacent_centered_toggle_and_file_allocation_stays_grouped():
+def test_boolean_and_selector_tuning_controls_are_ordinary_cells_of_one_grammar():
+    """DP 1.0.13: this layer held a SECOND visual system for the Downloads
+    tuning controls -- a text-block-plus-control grammar for the booleans and a
+    separate centred band for File Allocation. Both are gone: a boolean and a
+    selector are cells of the one reusable tuning-cell collection, whose single
+    owner is ui-settings-page.css."""
     css = read("ui-settings-downloads-completion.css")
+    page = read("ui-settings-page.css")
 
-    assert ".dp-settings-engine-tuning-toggle-field" in css
-    assert "grid-template-columns: fit-content(620px) auto;" in css
-    assert "grid-template-rows: auto auto;" in css
-    assert ".dp-settings-engine-tuning-toggle-field > .form-label" in css
-    assert ".dp-settings-engine-tuning-toggle-field > .form-hint" in css
-    assert ".dp-settings-engine-tuning-toggle-field > .dp-settings-engine-tuning-toggle-control" in css
-    assert "grid-row: 1 / 3;" in css
-    assert "align-self: center;" in css
+    assert ".dp-settings-engine-tuning-toggle-field" not in css
+    assert ".dp-settings-engine-file-allocation" not in css
 
-    assert ".dp-settings-engine-file-allocation" in css
-    assert "width: min(100%, 680px);" in css
-    assert "grid-template-columns: fit-content(380px) minmax(180px, 220px);" in css
-    assert ".dp-settings-engine-file-allocation > .dp-settings-field > .dp-dropdown-shell" in css
+    owner = page.split("#view-settings .dp-settings-tuning-grid .dp-settings-engine-tuning-toggle-control {", 1)[1]
+    owner = owner.split("}", 1)[0]
+    assert "justify-content: center;" in owner
+    # The selector shares the cell's bounded control width; it is not special.
+    assert "#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell" in page
 
 
 def test_download_safety_recovery_has_vector_header_artwork_and_established_glow():
@@ -100,16 +101,22 @@ def test_safety_recovery_copy_uses_user_facing_titles_and_explanations():
         assert text in runtime
 
 
-def test_safety_recovery_is_equal_width_three_over_two_inverted_pyramid():
+def test_safety_recovery_no_longer_hard_codes_a_three_over_two_matrix():
+    """DP 1.0.13: the hard-coded 3-over-2 pyramid named a column count and a
+    position per control. Those five controls are now cells of the one tuning
+    collection, which derives how many fit per row from the width alone."""
     css = read("ui-settings-downloads-completion.css")
+    page = read("ui-settings-page.js")
 
-    assert ".dp-settings-download-recovery-card > .card-body" in css
-    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in css
-    assert "grid-column: span 2;" in css
-    assert ".dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(4)" in css
-    assert "grid-column: 2 / span 2;" in css
-    assert ".dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(5)" in css
-    assert "grid-column: 4 / span 2;" in css
+    assert ".dp-settings-download-recovery-card > .card-body" not in css
+    assert "repeat(6, minmax(0, 1fr))" not in css
+    assert "nth-child(4)" not in css and "nth-child(5)" not in css
+
+    recovery = page[page.index("card('Download Safety & Recovery'"):
+                    page.index("className: 'dp-settings-download-recovery-card'")]
+    assert "tuningCells(" in recovery
+    # Two relationships and one standalone control.
+    assert recovery.count("tuningGroup(") == 2
 
 
 def test_alldebrid_additional_settings_are_owned_solely_by_the_tuning_grid():

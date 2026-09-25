@@ -800,6 +800,19 @@ class TransferEngine:
             return ExecutionSnapshot(tuple(ExecutionObservation(handle, ExecutionState.UNKNOWN, error=error)
                                            for handle in handles), error)
 
+    async def observe_existing(self, executor, handles: tuple[ExecutionHandle, ...]) -> ExecutionSnapshot:
+        """Batched READ of work this application already owns.
+
+        The same one observation call every reconcile cycle makes -- same batch
+        contract, same one-observation-per-handle guarantee, same
+        never-fabricate-absence rule on failure -- with no acceptance step.
+        A read must not move canonical state, so ``_accept_observation``
+        remains the single acceptance point and stays on the reconcile cadence
+        where it belongs. Nothing here is a second observation path: it is the
+        existing one, without the write.
+        """
+        return await self._observe_batch(executor, tuple(handles))
+
     async def _observe_execution(self, executor, handle: ExecutionHandle) -> ExecutionObservation:
         """Observe one execution through the batch contract and accept it."""
         observed = (await self._observe_batch(executor, (handle,))).observations[0]

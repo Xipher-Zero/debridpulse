@@ -59,18 +59,29 @@
   const usenetOf = s => s?.integrations?.usenet?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
+  // ``converge`` is the row that has to change because the ACCEPTED state
+  // changed what it shows -- whether there is a stored value to clear at all.
   const INTEGRATION_SECRET_CONTROLS = Object.freeze({
-    alldebrid_api_key: {integration: 'alldebrid', option: 'api_key'},
+    alldebrid_api_key: {integration: 'alldebrid', option: 'api_key',
+                        converge: dispatched => renderAllDebridCredential(dispatched)},
   });
 
-  /* The Services page's CHANGED-BLUR controls.
+  /* Every ordinary Settings control this page commits at a FIELD boundary.
    *
-   * One declaration of which canonical namespace owns each ordinary control
-   * and which option inside it the control is. ui-settings-persistence.js owns
-   * every generic behaviour (baseline, dirty comparison, serialization,
-   * stale-response protection, convergence, rollback); this table is the page
-   * DECLARING what a control commits to, never a second implementation of the
-   * machinery.
+   * One declaration of which canonical namespace owns each ordinary control,
+   * which option inside it the control is, and -- where it is not the ordinary
+   * changed-blur -- which commit class it belongs to.
+   * ui-settings-persistence.js owns every generic behaviour (baseline, dirty
+   * comparison, scope dispatch, serialization, stale-response protection,
+   * convergence, rollback) for BOTH classes; this table is the page DECLARING
+   * what a control commits to, never a second implementation of the machinery.
+   *
+   * ``commit: 'immediate'`` is for an ordinary, reversible boolean whose only
+   * draft state is the state it already shows: flipping it IS the edit, so
+   * waiting for a blur would only delay it. It is still an ordinary VALUE of
+   * its namespace and goes through the same scope -- it is emphatically not
+   * participation, which is a different question about a different subject and
+   * keeps its own operational owner (providerEnableChanged).
    *
    * Destructive confirmations and participation toggles are deliberately
    * absent: erasing a credential is an explicit confirmed action and a
@@ -83,14 +94,56 @@
    * change: it commits on changed blur, through the same scoped mutation every
    * other control of that namespace uses. What makes it a secret is what the
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
-  const CHANGED_BLUR_FIELDS = Object.freeze({
+  // Every integration namespace a declared control can belong to. Each one is
+  // written by the SAME generic scope; nothing about them differs here.
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet']);
+
+  const COMMIT_FIELDS = Object.freeze({
+    // Services
     alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'},
     alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
     poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
     upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
     upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
     full_sync_interval_minutes: {scope: 'settings-document', option: 'full_sync_interval_minutes'},
+
+    // Downloads -> Network Sources tuning
+    aria2_max_connection_per_server: {scope: 'integration:aria2', option: 'max_connection_per_server'},
+    aria2_split: {scope: 'integration:aria2', option: 'split'},
+    aria2_min_split_size: {scope: 'integration:aria2', option: 'min_split_size'},
+    aria2_continue_downloads: {scope: 'integration:aria2', option: 'continue_downloads', commit: 'immediate'},
+    aria2_lowest_speed_limit: {scope: 'integration:aria2', option: 'lowest_speed_limit'},
+    aria2_disk_cache: {scope: 'integration:aria2', option: 'disk_cache'},
+    aria2_file_allocation: {scope: 'integration:aria2', option: 'file_allocation'},
+
+    // Downloads -> Usenet tuning
+    usenet_article_cache_megabytes: {scope: 'integration:usenet', option: 'article_cache_megabytes'},
+    usenet_max_acquisition_retries: {scope: 'integration:usenet', option: 'max_acquisition_retries'},
+    usenet_operation_timeout_seconds: {scope: 'integration:usenet', option: 'operation_timeout_seconds'},
+    usenet_direct_write: {scope: 'integration:usenet', option: 'direct_write', commit: 'immediate'},
+
+    // Downloads -> global admission and safety/recovery policy
+    aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
+    aria2_error_retry_count: {scope: 'transfer-policy', option: 'execution_retry_count'},
+    aria2_error_retry_delay_seconds: {scope: 'transfer-policy', option: 'execution_retry_delay_seconds'},
+    stuck_download_timeout_hours: {scope: 'transfer-policy', option: 'stalled_timeout_hours'},
+
+    // Downloads -> settings-document values
+    download_folder: {scope: 'settings-document', option: 'download_folder'},
+    min_free_disk_gb: {scope: 'settings-document', option: 'min_free_disk_gb'},
+    disk_guard_resume_hysteresis_gb: {scope: 'settings-document', option: 'disk_guard_resume_hysteresis_gb'},
   });
+
+  /* The commit attributes a declared control carries, or nothing at all for a
+   * control this page has not migrated. One place decides it, so every kind of
+   * control -- input, select, toggle, directory field -- declares its class the
+   * same way and none of them re-derives it. */
+  function commitAttributes(key) {
+    const declared = COMMIT_FIELDS[key];
+    if (!declared) return '';
+    return `data-commit="${html(declared.commit || 'changed-blur')}" `
+      + `data-commit-key="${html(key)}" data-commit-scope="${html(declared.scope)}"`;
+  }
 
   function oidcStatePresentation(auth, available = auth?.oidc_available) {
     if (!auth?.oidc_configured) {
@@ -243,10 +296,9 @@
     const id = fieldId(key);
     const type = options.type || 'text';
     // The control declares its commit class; the canonical persistence owner
-    // supplies the behaviour (CHANGED_BLUR_FIELDS).
-    const commit = CHANGED_BLUR_FIELDS[key];
+    // supplies the behaviour (COMMIT_FIELDS).
     const attrs = [
-      commit ? `data-commit="changed-blur" data-commit-key="${html(key)}" data-commit-scope="${html(commit.scope)}"` : '',
+      commitAttributes(key),
       options.min != null ? `min="${html(options.min)}"` : '',
       options.max != null ? `max="${html(options.max)}"` : '',
       options.step != null ? `step="${html(options.step)}"` : '',
@@ -308,7 +360,7 @@
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <select class="input" id="${id}" data-setting="${html(key)}">
+        <select class="input" id="${id}" data-setting="${html(key)}" ${commitAttributes(key)}>
           ${choices.map(([v, labelText]) => `<option value="${html(v)}" ${selected(value, v)}>${html(labelText)}</option>`).join('')}
         </select>
         ${hint ? `<span class="form-hint">${hint}</span>` : ''}
@@ -321,7 +373,7 @@
   const CARD_ICONS = Object.freeze({
     'Global Download Settings': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
     'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
-    'Download Engine State': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
+    'Executor Work': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
     'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
     'Authentication Status': ['authentication', '/icons/dp/settings/authentication-status.svg?v=1'],
     'Username & Password': ['authentication', '/icons/dp/settings/username-password.svg?v=1'],
@@ -370,8 +422,12 @@
       : `<span class="card-title">${html(title)}</span>`;
     const safe = String(options.groupId || title).replace(/[^a-z0-9_-]/gi, '-');
     const bodyId = `dp-settings-group-body-${safe}`;
+    // A group may declare what it should look like on FIRST render; after that
+    // the operator's own choice is what it looks like.
+    const persistKey = options.collapsible ? `group:${safe}` : '';
+    const expanded = options.collapsible && disclosureOpen(persistKey, options.expanded);
     const disclosure = options.collapsible
-      ? settingsDisclosure(bodyId, false, `${title} sources`) : '';
+      ? settingsDisclosure(bodyId, expanded, `${title} sources`, persistKey) : '';
     const header = options.action || disclosure;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
@@ -381,7 +437,7 @@
           ${header ? `<div class="dp-settings-card-header-center"></div>
           <div class="dp-settings-card-header-controls">${options.action || ''}</div>` : ''}
         </div>
-        <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}" hidden` : ''}>${body}</div>
+        <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
       </section>`;
   }
 
@@ -411,7 +467,7 @@
     return `
       <div class="dp-settings-field dp-settings-directory-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}"><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>
+        <div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>
         <span class="form-hint">${hint}</span>
       </div>`;
   }
@@ -462,6 +518,31 @@
       </div>`;
   }
 
+  /* The ONE compact tuning-cell collection.
+   *
+   * Every tuning region renders the same thing: bounded intrinsic cells on a
+   * centred wrapping flex line (ui-settings-page.css). Nothing here declares a
+   * column count, a matrix or a breakpoint -- as many cells fit per row as the
+   * width permits, every row is centred including a partial one, and a cell
+   * never stretches to consume the row. A boolean and a selector are cells of
+   * the same shape as a number; none of them is a special layout.
+   *
+   * ``tuningGroup`` states a RELATIONSHIP between adjacent cells and nothing
+   * else. The cell remains the layout unit: while the group fits on one line
+   * it is drawn with a light shared outline, and at any width where it would
+   * not, the group element stops being a box at all (`display: contents`) so
+   * its cells rejoin the line as ordinary cells and the outline disappears
+   * entirely rather than splitting across rows. No geometry is measured and
+   * no node is ever re-parented. */
+  function tuningCells(...cells) {
+    return `<div class="dp-settings-tuning-grid">${cells.flat().join('')}</div>`;
+  }
+
+  function tuningGroup(...cells) {
+    const members = cells.flat();
+    return `<div class="dp-settings-tuning-group" data-tuning-span="${members.length}">${members.join('')}</div>`;
+  }
+
   function tuningToggle(key, label, detail, value) {
     const id = fieldId(key);
     return `
@@ -469,7 +550,7 @@
         <label class="form-label" for="${id}">${html(label)}</label>
         <div class="dp-settings-engine-tuning-toggle-control">
           <span class="toggle">
-            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)}>
+            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
             <span class="ttrack"></span>
           </span>
         </div>
@@ -549,12 +630,30 @@
    * immediately after the card title, so the control reads as belonging to the
    * title while the operational controls stay independent on the right. The
    * card header itself is never clickable. */
-  function settingsDisclosure(bodyId, expanded, subject) {
+  function settingsDisclosure(bodyId, expanded, subject, persistKey = '') {
     const label = `${expanded ? 'Collapse' : 'Expand'} ${subject}`;
-    return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(subject)}"
+    return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(subject)}"${
+            persistKey ? ` data-disclosure-persist="${html(persistKey)}"` : ''}
             aria-controls="${html(bodyId)}" aria-expanded="${expanded}" title="${html(label)}"
             aria-label="${html(label)}"><span aria-hidden="true">&rsaquo;</span></button>`;
   }
+
+  /* Disclosure state the operator has CHOSEN, for the sections that keep it.
+   *
+   * Most Settings disclosures deliberately render closed every time: arriving
+   * at a page is not an opinion about what should be open. A section may
+   * instead declare a starting state AND a persistence key -- and then the one
+   * disclosure owner below remembers what the operator last did with it, so a
+   * canonical refresh/re-render does not silently reopen something they closed
+   * (or close something they opened). Enable/disable is a different question
+   * about a different subject and is untouched by this.
+   *
+   * Page-lifetime only, and only for sections that ask. */
+  const disclosureChoices = new Map();
+
+  const disclosureOpen = (persistKey, fallback) =>
+    (persistKey && disclosureChoices.has(persistKey))
+      ? disclosureChoices.get(persistKey) : !!fallback;
 
   // Provider card: the title (with its premium mark), the configuration status,
   // the collapse control and the Enable toggle are all part of the card's own
@@ -571,16 +670,37 @@
    *                 provider -- so it cannot do the job it was just admitted
    *                 for. A provider that is switched off and unconfigured is
    *                 not a problem and says nothing.
-   *   Configured    saved and usable, but the current saved configuration has
-   *                 no successful test behind it.
+   *   Unverified    saved and usable, but the current saved configuration has
+   *                 no successful test behind it. Saved is not proven, and the
+   *                 report says which of the two it is.
    *   Verified      the current saved configuration IS covered by successful
    *                 test evidence. Durable canonical truth from the backend;
    *                 this function only reports it. */
   function providerStatus(enabled, configured, verified) {
     if (configured) {
-      return verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+      return verified ? {text: 'Verified', tone: 'success'} : {text: 'Unverified', tone: 'warning'};
     }
     return enabled ? {text: 'Unconfigured', tone: 'error'} : {text: '', tone: 'none'};
+  }
+
+  /* The provider-level Test control.
+   *
+   * Test is a PROVIDER-level action, so it belongs to the card's operational
+   * header rail beside the state it proves and the participation control it is
+   * about -- never in a credential row (it saves nothing) and never in an
+   * optional-tuning disclosure (it is not tuning, and its position must not
+   * depend on whether that is open).
+   *
+   * The grammar is the CARD's, not any one provider's: one declaration, one
+   * appearance, one place, for every provider that has something to prove. */
+  function providerTestAction(action) {
+    return `
+          <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-action="${html(action)}">
+            <span class="dp-settings-action-chip" aria-hidden="true">
+              <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+            </span>
+            <span>Test</span>
+          </button>`;
   }
 
   /* The card's operational header rail.
@@ -672,6 +792,31 @@
    * placement in BOTH disclosure states belongs to that grid
    * (ui-settings-usenet-servers.css); nothing clones, moves or re-parents
    * them. */
+  /* One server's participation control.
+   *
+   * It is an ORDINARY reversible boolean of this record, so it commits
+   * immediately through the same `usenet-server` scope, lane and rollback
+   * every other field of the card uses -- never through the top-level
+   * integration participation owner, which is a different question about a
+   * different subject.
+   *
+   * Its PLACEMENT is the Advanced rail's own far-right structural slot
+   * (ui-settings-usenet-servers.css). The rail is a three-track grid whose
+   * third track exists in both disclosure states, so Enable stays beside
+   * Advanced when Test/Remove drop to their own row. Nothing measures,
+   * moves or re-parents it. */
+  function usenetEnableControl(value) {
+    return `
+          <label class="dp-usenet-enable toggle-row">
+            <span class="tl">Enable</span>
+            <span class="toggle">
+              <input type="checkbox" data-usenet-field="enabled"
+                     data-commit="immediate" data-commit-scope="usenet-server" data-commit-key="enabled" ${checked(value)}>
+              <span class="ttrack"></span>
+            </span>
+          </label>`;
+  }
+
   function usenetServerCard(server, index) {
     const advancedId = `dp-usenet-advanced-${String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-')}`;
     const derived = String(server.host || '').trim();
@@ -715,16 +860,16 @@
             <input class="input" type="text" data-usenet-field="username" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="username" value="${html(server.username || '')}" autocomplete="off">
           </label>
         </div>
-        <div class="dp-usenet-row">
-          <label class="dp-usenet-field dp-usenet-field--wide">
+        <div class="dp-usenet-row dp-usenet-row--password">
+          <label class="dp-usenet-field dp-usenet-field--password">
             <span class="form-label">Password</span>
             <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
                    autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
           </label>
-        </div>
-        <div class="dp-usenet-clear-password"${configured ? '' : ' hidden'}>
-          <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                  aria-label="Clear the stored password for this server">Clear Stored Password</button>
+          <div class="dp-usenet-clear-password"${configured ? '' : ' hidden'}>
+            <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
+                    aria-label="Clear the stored password for this server">Clear Password</button>
+          </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
@@ -768,6 +913,7 @@
             <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
             <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
           </div>
+          ${usenetEnableControl(server.enabled !== false)}
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
@@ -810,46 +956,37 @@
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
       </span>`;
-    // Test is a PROVIDER-level action, so it belongs to the card's operational
-    // header rail beside the state it proves and the participation control it
-    // is about -- never in the credential row (it saves nothing) and never in
-    // the optional-tuning disclosure (it is not tuning, and its position must
-    // not depend on whether that is open).
-    const providerTest = `
-          <button class="btn btn-ghost btn-sm" type="button" data-action="test-alldebrid">
-            <span class="dp-settings-action-chip" aria-hidden="true">
-              <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-            </span>
-            <span>Test</span>
-          </button>`;
+    const providerTest = providerTestAction('test-alldebrid');
     const provider = providerCard('alldebrid', 'AllDebrid', `
       <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
-          <div class="dp-settings-tuning-grid">
-            ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
+          ${tuningCells(
+            input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
               type: 'number', min: 0, max: 300,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
-            })}
-            ${input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
+            }),
+            input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
               type: 'number', min: 10,
               hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
-            })}
-            ${input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
+            }),
+            input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
               type: 'number', min: 0, max: 1440,
               hint: 'How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.'
-            })}
-            ${input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
-              type: 'number', min: 0, max: 20,
-              hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
-            })}
-            ${input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
-              type: 'number', min: 0, max: 1440,
-              hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
-            })}
-          </div>
+            }),
+            tuningGroup(
+              input('upload_fail_retry_count', 'Upload Failure Retries', policyOf(s).resolution_retry_count ?? 3, {
+                type: 'number', min: 0, max: 20,
+                hint: 'How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.'
+              }),
+              input('upload_fail_retry_delay_minutes', 'Retry Delay (minutes)', policyOf(s).resolution_retry_delay_minutes ?? 5, {
+                type: 'number', min: 0, max: 1440,
+                hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
+              }),
+            ),
+          )}
         </div>
       </details>
 `, allDebrid, {
@@ -869,6 +1006,7 @@
       titlePrefix: protocolIcon('usenet'),
       displayName: 'Usenet',
       headerCopy: 'Download NZB content from configured Usenet news servers.',
+      headerAction: providerTestAction('test-usenet'),
     });
 
     // Usenet is the first card under Premium Services, above the debrid
@@ -902,46 +1040,50 @@
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
       collapsible: true,
+      // The network sources are what an operator arriving at Services most
+      // often needs to see; a later manual collapse is theirs and survives
+      // every canonical refresh.
+      expanded: true,
     });
     return premiumServices + generalSources;
   }
 
-  const ARIA2_LIVE_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
+  // Neutral state filters, mapped by the backend from ExecutionState alone.
+  const EXECUTOR_WORK_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
 
-  function aria2LiveCard() {
+  /* Executor Work: markup owner only.
+   *
+   * The rows, the polling and the actions belong to
+   * ui-settings-executor-work.js, which reads ONE neutral projection covering
+   * every registered executor. Nothing about this card names an executor. */
+  function executorWorkCard() {
     return `
-      <section class="card dp-settings-card dp-settings-aria2-live-card" data-dp-aria2-live-card="1" aria-label="Download Engine State">
+      <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Executor Work">
         <div class="card-header">
-          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Download Engine State'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Download Engine State</span></span>
+          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Executor Work'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Executor Work</span></span>
           <div class="dp-settings-card-header-center">
-            <span class="dp-settings-aria2-live-copy">Inspect and control the aria2 engine.</span>
+            <span class="dp-executor-work-copy">Inspect and control work currently owned by DebridPulse executors.</span>
           </div>
-          <div class="dp-settings-aria2-live-header-actions">
-            <button type="button" class="btn btn-ghost btn-sm" data-dp-aria2-live-refresh>Refresh</button>
+          <div class="dp-executor-work-header-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
           </div>
         </div>
-        <div class="card-body" data-dp-aria2-live-body>
-          <div class="dp-settings-aria2-live-context">
-            This reflects temporary aria2 runtime state, not transfer history. DebridPulse Downloads remains the historical record.
+        <div class="card-body" data-dp-executor-work-body>
+          <div class="dp-executor-work-context">
+            This reflects current executor state, not transfer history. Downloads remains the authoritative transfer record.
           </div>
-          <div class="dp-settings-aria2-live-control-row">
-            <div class="dp-settings-aria2-live-note">
-              <div class="dp-settings-aria2-live-note-title">Direct Engine Controls</div>
-              <div class="dp-settings-aria2-live-note-text">Bypasses normal DebridPulse transfer controls. Use for troubleshooting or recovery.</div>
+          <div class="dp-executor-work-control-row">
+            <div class="dp-executor-work-metrics" aria-label="Executor work totals">
+              <span data-dp-executor-work-speed>0 KB/s</span>
+              <span data-dp-executor-work-remaining>— Remaining</span>
             </div>
-            <div class="dp-settings-aria2-live-tools">
-              <div class="dp-settings-aria2-live-metrics" aria-label="aria2 engine metrics">
-                <span data-dp-aria2-live-speed>0 KB/s</span>
-                <span data-dp-aria2-live-remaining>— Remaining</span>
-              </div>
-              <div class="filter-tabs dp-settings-aria2-live-filters" role="tablist" aria-label="Filter aria2 engine jobs">
-                ${ARIA2_LIVE_FILTERS.map(([id, label]) => `
-                <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-engine-filter="${id}">${label}</button>`).join('')}
-              </div>
+            <div class="filter-tabs dp-executor-work-filters" role="tablist" aria-label="Filter executor work">
+              ${EXECUTOR_WORK_FILTERS.map(([id, label]) => `
+              <button type="button" class="ftab${id === 'all' ? ' active' : ''}" role="tab" aria-selected="${id === 'all'}" data-executor-filter="${id}">${label}</button>`).join('')}
             </div>
           </div>
-          <div id="dp-settings-aria2-downloads" data-dp-aria2-live-queue="1" class="dp-settings-aria2-live-queue" aria-live="polite">
-            <div class="empty">Loading aria2 engine state…</div>
+          <div data-dp-executor-work-list="1" class="dp-executor-work-list" aria-live="polite">
+            <div class="empty">Loading executor work…</div>
           </div>
         </div>
       </section>`;
@@ -972,40 +1114,46 @@
 
   function directTransfersTuning(s) {
     const aria2 = aria2Of(s);
-    return `
-      <div class="dp-settings-engine-tuning-grid">
-        ${tuningToggle(
+    // Three relationships: how a transfer is divided across connections, what
+    // happens to a transfer already in progress, and how the destination file
+    // is prepared on disk.
+    return tuningCells(
+      tuningGroup(
+        input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
+          type: 'number', min: 1, max: 32,
+          hint: 'Maximum number of connections a single download can open to the same server.'
+        }),
+        input('aria2_split', 'Segments per File', aria2.split ?? 16, {
+          type: 'number', min: 1, max: 64,
+          hint: 'Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.'
+        }),
+        input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
+          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments.'
+        }),
+      ),
+      tuningGroup(
+        tuningToggle(
           'aria2_continue_downloads',
           'Continue Partial Downloads',
           'Resume existing partial files when possible instead of restarting them from the beginning.',
           aria2.continue_downloads !== false
-        )}
-        ${input('aria2_split', 'Segments per File', aria2.split ?? 16, {
-          type: 'number', min: 1, max: 64,
-          hint: 'Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.'
-        })}
-        ${input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
-          type: 'number', min: 1, max: 32,
-          hint: 'Maximum number of connections a single download can open to the same server.'
-        })}
-        ${input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
-          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments.'
-        })}
-        ${input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
+        ),
+        input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
           hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit.'
-        })}
-        ${input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
+        }),
+      ),
+      tuningGroup(
+        input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
           hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
-        })}
-      </div>
-      <div class="dp-settings-engine-file-allocation">
-        ${selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
+        }),
+        selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
           ['trunc', 'Truncate'],
           ['falloc', 'Fallocate'],
           ['prealloc', 'Preallocate'],
           ['none', 'None'],
-        ], 'Controls how disk space is prepared for new files.')}
-      </div>`;
+        ], 'Controls how disk space is prepared for new files.'),
+      ),
+    );
   }
 
   function usenetTuning(s) {
@@ -1014,30 +1162,34 @@
     // already live -- neither is duplicated here -- and nothing about unpacking
     // or folder layout belongs here at all: DebridPulse owns both.
     const options = usenetOf(s);
-    return `
-      <div class="dp-settings-engine-tuning-grid">
-        ${input('usenet_article_cache_megabytes', 'Article Cache Limit (MB)',
-          options.article_cache_megabytes ?? 1024, {
-          type: 'number', min: 0, max: 4096,
-          hint: 'Memory DebridPulse may use to hold downloaded article data before it is written to disk. Set to 0 to disable the cache.'
-        })}
-        ${input('usenet_max_acquisition_retries', 'Maximum Retries',
+    // Retries and timeout are the two halves of one question -- what happens to
+    // a single article request -- so they stay adjacent; the cache limit and
+    // Direct Write are each about writing, but neither depends on the other.
+    return tuningCells(
+      input('usenet_article_cache_megabytes', 'Article Cache Limit (MB)',
+        options.article_cache_megabytes ?? 1024, {
+        type: 'number', min: 0, max: 4096,
+        hint: 'Memory DebridPulse may use to hold downloaded article data before it is written to disk. Set to 0 to disable the cache.'
+      }),
+      tuningGroup(
+        input('usenet_max_acquisition_retries', 'Maximum Retries',
           options.max_acquisition_retries ?? 3, {
           type: 'number', min: 2, max: 25,
           hint: 'How many times DebridPulse retries a single article on a news server before giving up on that server. This is Usenet acquisition retry only; it is not the DebridPulse download retry count under Download Safety &amp; Recovery.'
-        })}
-        ${input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
+        }),
+        input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
           options.operation_timeout_seconds ?? 30, {
           type: 'number', min: 5, max: 300,
           hint: 'How long DebridPulse waits for the Usenet download service to answer a request.'
-        })}
-        ${tuningToggle(
-          'usenet_direct_write',
-          'Direct Write',
-          'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
-          options.direct_write !== false
-        )}
-      </div>
+        }),
+      ),
+      tuningToggle(
+        'usenet_direct_write',
+        'Direct Write',
+        'Write article data straight to the destination file instead of buffering it in memory first. Reduces disk I/O when articles arrive in order.',
+        options.direct_write !== false
+      ),
+    ) + `
       <p class="dp-settings-tuning-footer">
         Per-server acquisition tuning belongs to each news server under
         Services.
@@ -1081,30 +1233,36 @@
       className: 'dp-settings-source-group dp-executor-tuning-group',
     });
 
-    const recovery = card('Download Safety & Recovery', `
-      ${input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
-        type: 'number', min: 0, step: 0.5,
-        hint: 'Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.'
-      })}
-      ${input('disk_guard_resume_hysteresis_gb', 'Resume Free Space Buffer (GB)', s.disk_guard_resume_hysteresis_gb ?? 0.5, {
-        type: 'number', min: 0, step: 0.1,
-        hint: 'Extra free space required above the minimum before DebridPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.'
-      })}
-      ${input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
+    // Two relationships -- the disk-space guard's threshold and its buffer, and
+    // the error-retry count and its delay -- plus one standalone control.
+    const recovery = card('Download Safety & Recovery', tuningCells(
+      tuningGroup(
+        input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
+          type: 'number', min: 0, step: 0.5,
+          hint: 'Stops new downloads from starting when free disk space falls below this amount. Set to 0 to disable the disk-space guard.'
+        }),
+        input('disk_guard_resume_hysteresis_gb', 'Resume Free Space Buffer (GB)', s.disk_guard_resume_hysteresis_gb ?? 0.5, {
+          type: 'number', min: 0, step: 0.1,
+          hint: 'Extra free space required above the minimum before DebridPulse starts downloads again. Helps prevent repeated stop/start behavior near the limit.'
+        }),
+      ),
+      tuningGroup(
+        input('aria2_error_retry_count', 'Download Error Retries', policy.execution_retry_count ?? 3, {
+          type: 'number', min: 0, max: 20,
+          hint: 'How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.'
+        }),
+        input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
+          type: 'number', min: 0, max: 3600,
+          hint: 'How long DebridPulse waits before retrying a download after an error. Set to 0 to retry immediately.'
+        }),
+      ),
+      input('stuck_download_timeout_hours', 'Stalled Download Timeout (hours)', policy.stalled_timeout_hours ?? 6, {
         type: 'number', min: 0, max: 168,
         hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
-      })}
-      ${input('aria2_error_retry_count', 'Download Error Retries', policy.execution_retry_count ?? 3, {
-        type: 'number', min: 0, max: 20,
-        hint: 'How many times DebridPulse retries a download after an error. Set to 0 to disable automatic retries.'
-      })}
-      ${input('aria2_error_retry_delay_seconds', 'Retry Delay (seconds)', policy.execution_retry_delay_seconds ?? 60, {
-        type: 'number', min: 0, max: 3600,
-        hint: 'How long DebridPulse waits before retrying a download after an error. Set to 0 to retry immediately.'
-      })}
-    `, {className: 'dp-settings-download-recovery-card'});
+      }),
+    ), {className: 'dp-settings-download-recovery-card'});
 
-    return delivery + tuning + recovery + aria2LiveCard();
+    return delivery + tuning + recovery + executorWorkCard();
   }
 
   function extractionPanel(s) {
@@ -1786,12 +1944,11 @@
         <div class="dp-settings-master-footer" aria-label="Settings actions">
           <span class="dp-settings-save-hint">Changes remain unsaved until Apply Settings is selected.</span>
           <div class="dp-settings-context-actions">
-            <button class="btn btn-ghost" type="button" data-context-action="downloads" data-action="test-aria2">Test Download Engine</button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt=""></span><span>Test Discord</span></button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="send-report"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/send.svg" alt=""></span><span>Send Report Now</span></button>
             <button class="btn btn-ghost" type="button" data-context-action="authentication" data-action="verify-oidc">Test OIDC Sign-In</button>
           </div>
-          <button class="btn btn-primary" type="button" data-action="save">Apply Settings</button>
+          <button class="btn btn-primary" type="button" data-action="save" data-deferred-apply>Apply Settings</button>
         </div>
       </section>`;
 
@@ -1803,6 +1960,10 @@
     window.DPSettingsPersistence.adopt(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
+
+  /* Tabs that carry NO deferred Apply contract: every control on them is
+   * committed by the canonical persistence owner at its own field boundary. */
+  const FIELD_BOUNDARY_TABS = new Set(['downloads']);
 
   function activateTab(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
@@ -1822,6 +1983,14 @@
     root()?.querySelectorAll('[data-context-action]').forEach(button => {
       button.hidden = button.dataset.contextAction !== name;
     });
+
+    // A tab whose every control commits at its own field boundary has no
+    // deferred Apply contract at all, so the footer must not offer one or
+    // claim that anything is unsaved. Apply infrastructure stays exactly as it
+    // is for the tabs that still need it.
+    const deferred = !FIELD_BOUNDARY_TABS.has(name);
+    root()?.querySelectorAll('[data-deferred-apply], .dp-settings-save-hint')
+      .forEach(node => { node.hidden = !deferred; });
   }
 
   // A collapsed provider card can only be re-collapsed by un-checking Enable
@@ -1849,6 +2018,8 @@
    * provider card and an executor-tuning card without knowing either. */
   function setDisclosureExpanded(button, expanded) {
     if (!button) return;
+    const persistKey = String(button.dataset.disclosurePersist || '');
+    if (persistKey) disclosureChoices.set(persistKey, !!expanded);
     const body = document.getElementById(button.getAttribute('aria-controls'));
     if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
@@ -2031,8 +2202,8 @@
       const action = button.dataset.action;
       if (action === 'save') saveCurrent(button);
       else if (action === 'test-alldebrid') testConnection('alldebrid', button);
+      else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
-      else if (action === 'test-aria2') testConnection('aria2', button);
       else if (action === 'test-discord') testConnection('discord', button);
       else if (action === 'clear-avatar') clearAvatar();
       else if (action === 'browse-download-folder') window.DPSettingsDirectoryPicker?.open('download');
@@ -2064,13 +2235,6 @@
     const raw = valueOf(key, '');
     if (raw === '') return fallback;
     const value = parseInt(raw, 10);
-    return Number.isNaN(value) ? fallback : value;
-  }
-
-  function floatOf(key, fallback = 0) {
-    const raw = valueOf(key, '');
-    if (raw === '') return fallback;
-    const value = parseFloat(raw);
     return Number.isNaN(value) ? fallback : value;
   }
 
@@ -2111,60 +2275,14 @@
 
   // Provider, executor, transfer-policy and runtime-limit settings are owned by
   // their canonical namespaces and are written exclusively through the scoped
-  // surfaces below, never through the whole-settings document, so a stale
-  // snapshot can never undo a concurrently applied scoped write.
-  function aria2ConfigurationPayload() {
-    const current = aria2Of(state.settings);
-    return {
-      options: {
-        split: intOf('aria2_split', current.split ?? 16),
-        min_split_size: valueOf('aria2_min_split_size', current.min_split_size || '10M'),
-        max_connection_per_server: intOf('aria2_max_connection_per_server', current.max_connection_per_server ?? 16),
-        continue_downloads: boolOf('aria2_continue_downloads'),
-        disk_cache: valueOf('aria2_disk_cache', current.disk_cache || '64M'),
-        file_allocation: valueOf('aria2_file_allocation', current.file_allocation || 'falloc'),
-        lowest_speed_limit: valueOf('aria2_lowest_speed_limit', current.lowest_speed_limit || '0'),
-      },
-    };
-  }
-
-  function usenetConfigurationPayload() {
-    // The server collection is deliberately absent: ui-settings-usenet-servers.js
-    // is its sole writer, so a stale page snapshot can never overwrite a server
-    // the operator just saved. One namespace, one writer per field. There is no
-    // service address or credential here: the acquisition service is internal.
-    const current = usenetOf(state.settings);
-    // Participation has its own immediate canonical write
-    // (providerEnableChanged); a second deferred writer would let a stale page
-    // snapshot overwrite it.
-    return {
-      options: {
-        operation_timeout_seconds: intOf('usenet_operation_timeout_seconds',
-          current.operation_timeout_seconds ?? 30),
-        article_cache_megabytes: intOf('usenet_article_cache_megabytes',
-          current.article_cache_megabytes ?? 1024),
-        direct_write: boolOf('usenet_direct_write'),
-        max_acquisition_retries: intOf('usenet_max_acquisition_retries',
-          current.max_acquisition_retries ?? 3),
-      },
-    };
-  }
-
-  /* Only the transfer-policy fields the footer still owns.
-   *
-   * The Services policy controls -- provider poll interval, upload
-   * retry count and retry delay -- are locally owned changed-blur controls and
-   * are deliberately absent, so this partial write can never replay a rendered
-   * value over the newer value their own commit already persisted. */
-  function transferPolicyPayload() {
-    const current = policyOf(state.settings);
-    return {
-      max_concurrent_executions: intOf('aria2_max_active_downloads', current.max_concurrent_executions ?? 3),
-      execution_retry_count: intOf('aria2_error_retry_count', current.execution_retry_count ?? 3),
-      execution_retry_delay_seconds: intOf('aria2_error_retry_delay_seconds', current.execution_retry_delay_seconds ?? 60),
-      stalled_timeout_hours: intOf('stuck_download_timeout_hours', current.stalled_timeout_hours ?? 6),
-    };
-  }
+  // field-boundary surfaces, never through the whole-settings document and
+  // never through the deferred footer, so a stale page snapshot can never undo
+  // a value an operator already committed.
+  //
+  // The footer therefore builds NO integration payload and NO transfer-policy
+  // payload at all: every option either namespace holds is a declared control
+  // of COMMIT_FIELDS, written one field at a time by the canonical persistence
+  // owner. There is nothing left for a deferred write to replay.
 
   function nonAuthPayload() {
     // Canonical namespaces are never part of the whole-settings write, and the
@@ -2175,13 +2293,13 @@
       ...current,
       // Integration-owned secret clears travel with their own scoped request.
       clear_secrets: clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control]),
-      // Locally owned (changed-blur): carried forward from the canonical
-      // document this write was built on, never re-read from the page.
+      // Locally owned field-boundary values -- the Services full-sync interval
+      // and every Downloads-owned value -- are carried forward from the
+      // canonical document this write was built on by the spread above, and are
+      // never re-read from the page. Naming one here would be exactly the stale
+      // replay this removal exists to prevent.
       full_sync_interval_minutes: Number(current.full_sync_interval_minutes ?? 5),
 
-      download_folder: valueOf('download_folder', current.download_folder || '/download'),
-      min_free_disk_gb: floatOf('min_free_disk_gb', 0),
-      disk_guard_resume_hysteresis_gb: floatOf('disk_guard_resume_hysteresis_gb', 0.5),
       extract_enabled: boolOf('extract_enabled'),
       extract_delete_archive: boolOf('extract_delete_archive'),
       extract_max_concurrent: intOf('extract_max_concurrent', 1),
@@ -2228,14 +2346,19 @@
   }
 
   /* A control's committed value, in the shape its canonical namespace holds.
-   * A number control that cannot be read as a number is submitted as one
-   * anyway, so the server -- the only authority on a field's bounds -- rejects
-   * it and the persistence owner rolls the control back. */
+   *
+   * A checkbox holds a boolean; a number control holds a number -- including a
+   * fractional one, because a disk-space guard measured in gigabytes is not an
+   * integer and truncating it here would silently save a value the operator did
+   * not choose. A number control that cannot be read as a number is submitted
+   * as one anyway, so the server -- the only authority on a field's bounds --
+   * rejects it and the persistence owner rolls the control back. */
   function committedValue(key, raw) {
     const field = fieldFor(key);
+    if (field && field.type === 'checkbox') return raw === true || raw === '1';
     if (!field || field.type !== 'number') return String(raw ?? '');
-    const parsed = parseInt(String(raw), 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
+    const parsed = Number(String(raw).trim());
+    return Number.isFinite(parsed) ? parsed : 0;
   }
 
   /* The WRITABLE whole-settings document: the canonical namespaces are written
@@ -2255,39 +2378,59 @@
   /* How each canonical namespace a changed-blur control can belong to is
    * written. Every scope dispatches exactly ONE scoped mutation carrying only
    * the field that changed, and adopts exactly what the server accepted. */
-  function registerCommitScopes() {
-    const persistence = window.DPSettingsPersistence;
-
-    persistence.defineScope('integration:alldebrid', {
+  /* How ONE integration namespace is written, for any integration.
+   *
+   * Every integration-owned option -- an AllDebrid rate limit, an aria2 split
+   * count, a Usenet article cache -- is the same act against the same scoped
+   * mutation, so it is declared once here rather than once per integration. */
+  function registerIntegrationScope(persistence, identity) {
+    persistence.defineScope(`integration:${identity}`, {
       commit: async ({key, draft}) => {
-        const option = CHANGED_BLUR_FIELDS[key].option;
+        const option = COMMIT_FIELDS[key].option;
         // A secret is declared by the page's own table of integration-owned
         // secret controls; the generic persistence owner knows nothing about it.
-        const secret = !!INTEGRATION_SECRET_CONTROLS[key];
-        const result = await request('PATCH', '/integrations/alldebrid/configuration',
+        const secret = INTEGRATION_SECRET_CONTROLS[key];
+        const result = await request('PATCH', `/integrations/${identity}/configuration`,
           secret
-            ? withTestedDrafts('alldebrid', {options: {[option]: String(draft ?? '')}})
+            ? withTestedDrafts(identity, {options: {[option]: String(draft ?? '')}})
             : {options: {[option]: committedValue(key, draft)}}, 15000);
-        adoptIntegration('alldebrid', result);
-        if (!secret) return String(allDebridOf(state.settings)[option] ?? draft);
+        adoptIntegration(identity, result);
+        if (!secret) {
+          const accepted = (state.settings?.integrations?.[identity]?.options || {})[option];
+          return acceptedValue(key, accepted, draft);
+        }
         // A credential is NEVER projected back into the browser. The accepted
         // presentation of one is the blank/configured row the backend's own
         // redacted projection describes, so returning '' is what makes the
         // canonical baseline hold no secret -- and what returns the visible
         // field to that presentation. Verification needs no step here: the
         // stored evidence simply stops describing the saved configuration.
-        renderAllDebridCredential(draft);
+        if (typeof secret.converge === 'function') secret.converge(draft);
         return '';
       },
     });
+  }
+
+  /* An accepted canonical value in the SIGNATURE shape the control shows, so a
+   * boolean namespace value and a checkbox agree about what "unchanged" means. */
+  function acceptedValue(key, accepted, draft) {
+    if (accepted === undefined || accepted === null) return draft;
+    if (typeof accepted === 'boolean') return accepted ? '1' : '0';
+    return String(accepted);
+  }
+
+  function registerCommitScopes() {
+    const persistence = window.DPSettingsPersistence;
+
+    for (const identity of INTEGRATION_SCOPES) registerIntegrationScope(persistence, identity);
 
     persistence.defineScope('transfer-policy', {
       commit: async ({key, draft}) => {
-        const option = CHANGED_BLUR_FIELDS[key].option;
+        const option = COMMIT_FIELDS[key].option;
         const result = await request('PATCH', '/transfer-policy',
           {[option]: committedValue(key, draft)}, 15000);
         adoptTransferPolicy(result);
-        return String(policyOf(state.settings)[option] ?? draft);
+        return acceptedValue(key, policyOf(state.settings)[option], draft);
       },
     });
 
@@ -2297,12 +2440,12 @@
       // -- never against the rendered page, which would replay unrelated
       // drafts, and never against a cached document, which could be stale.
       commit: async ({key, draft}) => {
-        const option = CHANGED_BLUR_FIELDS[key].option;
+        const option = COMMIT_FIELDS[key].option;
         const canonical = await request('GET', '/settings', null, 15000);
         const result = await request('PUT', '/settings',
           {...settingsDocument(canonical), clear_secrets: [], [option]: committedValue(key, draft)}, 15000);
         syncGlobalSettings(result);
-        return String(result?.[option] ?? draft);
+        return acceptedValue(key, result?.[option], draft);
       },
     });
   }
@@ -2421,14 +2564,11 @@
     // forward every field it does not itself own, and a locally persisted
     // value must never be overwritten by an older copy of itself.
     syncGlobalSettings(await request('GET', '/settings', null, 15000));
-    adoptIntegration('aria2', await request('PATCH', '/integrations/aria2/configuration', aria2ConfigurationPayload(), 15000));
-    // AllDebrid is absent: its ordinary control is changed-blur and its
-    // credential state is gated behind the card's own Save, so the footer owns
-    // no AllDebrid mutation at all.
-    adoptIntegration('usenet', await request('PATCH', '/integrations/usenet/configuration', usenetConfigurationPayload(), 15000));
-    // Direct Sources carry only their own generic Enable, which is an immediate
-    // canonical operational control -- nothing about them is deferred to here.
-    adoptTransferPolicy(await request('PATCH', '/transfer-policy', transferPolicyPayload(), 15000));
+    // No canonical namespace is written here. Every integration option,
+    // transfer-policy value and Downloads-owned settings-document value is a
+    // field-boundary control committed by its own scope, so a footer Apply on
+    // ANOTHER tab has nothing of theirs to replay -- and cannot overwrite a
+    // value the operator committed on Downloads.
     const result = await request('PUT', '/settings', nonAuthPayload(), 15000);
     syncGlobalSettings(result);
     if (renderAfter) {
@@ -2551,31 +2691,57 @@
     await window.DPSettingsPersistence.settle(root());
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
-      aria2: '/settings/test-aria2',
       discord: '/settings/validate-discord',
     };
-    const labels = {alldebrid: 'AllDebrid', aria2: 'aria2', discord: 'Discord'};
+    const labels = {alldebrid: 'AllDebrid', discord: 'Discord'};
     setBusy(button, true, 'Testing…');
     try {
-      // aria2 is the daemon DebridPulse runs: its test takes no draft values.
-      const draft = kind === 'aria2' ? undefined : connectionTestPayload(kind);
-      const result = await request('POST', endpoints[kind], draft, 20000);
+      const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
       if (kind === 'alldebrid') {
         rememberTestedDraft('alldebrid', result.verification);
         // A Test of exactly the SAVED configuration establishes durable
-        // verification, so the header must stop saying Configured about a
+        // verification, so the header must stop saying Unverified about a
         // configuration this action just proved. Published through the one
         // acceptance seam, like every other accepted canonical change.
         publishAccepted(result);
         notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
-      } else if (kind === 'aria2') {
-        notify(`aria2 ${result.version ? `v${result.version}` : 'online'}`, 'success');
       } else {
         notify('Discord notification sent', 'success');
       }
     } catch (error) {
       if (kind === 'alldebrid') forgetTestedDrafts('alldebrid');
       notify(`${labels[kind]}: ${error.message}`, 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  /* The provider-level Usenet Test.
+   *
+   * It settles every pending field-boundary write first, so the collection it
+   * asks the backend to test is the one the operator has actually finished
+   * editing -- and then asks for exactly that: the CANONICAL SAVED collection.
+   * No server list, no credential and no aggregation crosses the wire from
+   * here. Which servers participate, what each proof exercises and whether
+   * Usenet ends up Verified are all the backend's, decided from the same
+   * per-server evidence the individual Test records. */
+  async function testUsenet(button) {
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Testing…');
+    try {
+      const result = await request('POST', '/usenet/test', undefined, 60000);
+      publishAccepted(result);
+      if (!result.tested) {
+        notify('Usenet: no enabled news server is configured', 'warn');
+      } else if (result.ok) {
+        notify(`Usenet: ${result.passed} of ${result.tested} news server(s) verified`, 'success');
+      } else {
+        const failed = (result.servers || []).filter(item => !item.ok);
+        const named = failed.map(item => item.name).filter(Boolean).join(', ');
+        notify(`Usenet: ${result.failed} of ${result.tested} news server(s) failed${named ? ` (${named})` : ''}`, 'error');
+      }
+    } catch (error) {
+      notify(`Usenet: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);
     }

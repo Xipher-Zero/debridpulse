@@ -343,7 +343,7 @@ test('the card reports the accepted projection after a credential write', async 
 
   // Configured, never Verified: nothing has proven this credential works, and
   // no owner in the browser may claim otherwise.
-  await expect(status).toHaveText('Configured');
+  await expect(status).toHaveText('Unverified');
   expect((await settings(page)).integrations.alldebrid.verified).toBe(false);
   // The row now offers the explicit Clear, because a key is present.
   await expect(clearButton(page)).toHaveCount(1);
