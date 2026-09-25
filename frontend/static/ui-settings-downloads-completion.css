@@ -178,26 +178,43 @@
 /* The editor's action row. Clear Passwords sits immediately left of the
    reveal control, both anchored to the editor's bottom-right inside the space
    the editor already reserves for them. */
-/* What the action row occupies at the editor's trailing edge. The guidance is
-   bounded by TWICE this, because a centred box reaches the same distance on
-   both sides -- so it can never grow into the actions however wide the editor
-   is or how long the sentence becomes. */
-#view-settings .dp-settings-extraction-password-editor {
-  --dp-password-actions-reserve: 250px;
-  /* The editor's own width decides whether a centred line and the action row
-     can share the bottom band; the viewport cannot know, because this field
-     is as wide as whatever card holds it. */
-  container-type: inline-size;
-  container-name: dp-password-editor;
-}
-
-#view-settings .dp-settings-password-actions {
+/* The editor's bottom band: the guidance and the action row are SIBLINGS in
+   one flex row, so they cannot overlap however wide either renders. The
+   leading spacer and the action group are both `1fr`, which is what centres
+   the guidance on the editor exactly -- no reserved constant standing in for
+   the actions' real width, which depends on font metrics this stylesheet
+   cannot know. */
+#view-settings .dp-settings-password-footer {
   position: absolute;
-  right: 9px;
+  left: 11px;
+  right: 11px;
   bottom: 9px;
   display: flex;
   align-items: center;
+  gap: 12px;
+  /* The BAR is transparent to the pointer -- only the buttons inside it take
+     events back. Without this the bar itself would swallow clicks in the
+     editor's bottom band that used to reach the field. */
+  pointer-events: none;
+}
+
+#view-settings .dp-settings-password-footer::before {
+  content: '';
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-password-actions {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
   gap: 8px;
+}
+
+#view-settings .dp-settings-password-actions > * {
+  pointer-events: auto;
 }
 
 #view-settings .dp-settings-password-clear {
@@ -217,37 +234,13 @@
    scrolling or password-line manipulation. The editor reserves bottom room for
    it and for the action row, so editable content collides with neither. */
 #view-settings .dp-settings-password-guidance {
-  position: absolute;
-  left: 50%;
-  bottom: 12px;
-  transform: translateX(-50%);
-  width: max-content;
-  max-width: max(180px, calc(100% - 2 * var(--dp-password-actions-reserve)));
+  flex: 0 1 auto;
+  min-width: 0;
   margin: 0;
   text-align: center;
   line-height: 1.4;
   pointer-events: none;
   user-select: none;
-}
-
-/* Below the width where a centred line and the action row can share the bottom
-   band, the guidance takes the band ABOVE the actions instead of overlapping
-   them -- still inside the editor, still at its bottom, still inert. The
-   editor's reserved room grows with it so editable content stays clear of
-   both. */
-@container dp-password-editor (max-width: 720px) {
-  #view-settings .dp-settings-password-guidance {
-    left: 11px;
-    right: 11px;
-    bottom: 48px;
-    width: auto;
-    max-width: none;
-    transform: none;
-  }
-
-  #view-settings .dp-settings-extraction-password-editor {
-    padding-bottom: 112px !important;
-  }
 }
 
 #view-settings .dp-settings-password-rows {

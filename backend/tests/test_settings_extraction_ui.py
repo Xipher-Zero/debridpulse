@@ -43,7 +43,10 @@ def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
     compact = css.replace(" ", "")
     assert "max-height:none!important" in compact
     assert "overflow:visible!important" in compact
-    assert "padding:8px11px50px!important" in compact
+    # The editor reserves bottom room for its own footer -- the bottom-centred
+    # guidance beside the Clear Passwords / Show all controls -- so editable
+    # password content can never collide with either.
+    assert "padding:8px11px68px!important" in compact
     assert "box-shadow:var(--dp-focus-ring)!important" in compact
 
 

@@ -177,7 +177,10 @@ test('the Archive Passwords guidance lives inside the editor and intercepts noth
     const line = editor.locator('.dp-settings-password-line').first();
     await line.click();
     await page.keyboard.press('End');
-    await page.keyboard.type('ZZ');
+    // The editor re-renders its rows and hands focus back on a frame, so a
+    // keystroke burst with no delay can outrun it. Every password-line case in
+    // this suite types at a human cadence for the same reason.
+    await page.keyboard.type('ZZ', {delay: 40});
     expect(await line.inputValue()).toContain('ZZ');
     await page.keyboard.press('Home');
     expect(await page.evaluate(() => document.activeElement.selectionStart)).toBe(0);
