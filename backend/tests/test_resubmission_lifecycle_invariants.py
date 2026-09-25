@@ -554,6 +554,27 @@ async def _owed_pair(core):
 
 
 @pytest.mark.asyncio
+async def test_a_member_resolution_cannot_take_a_sibling_roots_queued_parcel(core):
+    """The pairing ``_owed_pair`` depends on, proven directly.
+
+    One resolution cycle interleaves root and member resolutions freely, so the
+    order of ``resolve`` calls is not the order responses were queued in. A
+    member resolution that lands before a sibling root's must not take that
+    root's parcel: the root would fall through to the default candidate-only
+    result and end the cycle owning no provider resource, which is how this
+    module's serial-claim test failed on a loaded runner.
+    """
+    for payload in ("box-a", "box-b"):
+        core.provider.responses.append(core.provider.parcel(payload, state=ResourceState.AVAILABLE))
+    root_a = await core.provider.resolve(TransferRequest("parcel", "box-a"))
+    member_a = await core.provider.resolve(TransferRequest("parcel-member", "box-a"))
+    root_b = await core.provider.resolve(TransferRequest("parcel", "box-b"))
+    assert root_a.observation.resource.id == "parcel-lab:box-a"
+    assert member_a.observation is None
+    assert root_b.observation is not None and root_b.observation.resource.id == "parcel-lab:box-b"
+
+
+@pytest.mark.asyncio
 async def test_each_serial_claim_starts_its_lease_when_that_claim_is_taken_not_when_the_scan_began(core):
     """One cadence pass scans A and B at time T and runs them serially. A runs past
     a whole lease; B is then claimed at T+150. B's lease must start at ITS claim

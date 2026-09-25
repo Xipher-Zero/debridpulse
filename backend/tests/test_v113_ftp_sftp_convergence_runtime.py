@@ -17,6 +17,7 @@ import asyncio
 import hashlib
 import shutil
 import socket
+import time
 
 import pytest
 
@@ -27,6 +28,7 @@ from executors.aria2.client import Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
 from providers.general_ftp.provider import GeneralFtpProvider
 from providers.general_http.provider import GeneralHttpProvider
+from test_v1111_aria2_security_boundary import RPC_READY_TIMEOUT_SECONDS, TERMINAL_STATE_TIMEOUT_SECONDS
 from test_v113_egress_guard_route_scope import FtpOrigin
 from test_v113_transport_evidence_sampling import HttpOrigin, SftpOrigin, guard_for
 from transfers.convergence_engine import TransferEngine
@@ -43,6 +45,11 @@ SAMPLE = 64 * 1024
 PAYLOAD = (hashlib.sha256(b"transfer-312-payload-x").digest() * (10 * SAMPLE // 32 + 1))[:10 * SAMPLE + 5]
 DIFFERENT = bytes(value ^ 0xA5 for value in PAYLOAD)
 USER, PASSWORD = "runtime-user-sentinel", "runtime-password-sentinel"
+
+
+# The one convergence hang guard for this runtime, on the same wall-clock ladder
+# as the executor/aria2 waits it drives.
+CONVERGENCE_TIMEOUT_SECONDS = TERMINAL_STATE_TIMEOUT_SECONDS
 
 
 def _free_port() -> int:
@@ -66,28 +73,50 @@ async def _start_aria2(root, *, limit=None):
     proc = await asyncio.create_subprocess_exec(*args, stdout=asyncio.subprocess.PIPE,
                                                 stderr=asyncio.subprocess.PIPE)
     service = Aria2Service(f"http://127.0.0.1:{port}/jsonrpc", secret, 3)
-    for _ in range(100):
+    # A wall-clock hang guard, not a latency assumption: a fixed poll count gave
+    # process startup 5 s, which a loaded runner can exceed.
+    deadline = time.monotonic() + RPC_READY_TIMEOUT_SECONDS
+    while True:
         try:
             await service.test()
             return proc, service
         except Exception:
-            await asyncio.sleep(0.05)
-    proc.kill()
-    raise AssertionError("aria2 RPC did not become ready")
+            pass
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            proc.kill()
+            raise AssertionError(
+                f"aria2 RPC did not become ready within {RPC_READY_TIMEOUT_SECONDS:.0f}s")
+        await asyncio.sleep(min(0.05, remaining))
 
 
 class Runtime:
     def __init__(self, **values):
         self.__dict__.update(values)
 
-    async def until(self, predicate, *, label, ticks=300):
-        for _ in range(ticks):
+    async def until(self, predicate, *, label, timeout=CONVERGENCE_TIMEOUT_SECONDS):
+        """Tick until ``predicate`` holds, bounded by wall clock.
+
+        A cycle count is not a deadline: these predicates wait on real aria2
+        transfers, so how many cycles one needs is a function of runner load,
+        not of the invariant. The bound is a hang guard and outlasts aria2's own
+        60 s timeouts, so what fails here is convergence and never this loop
+        running out of cycles first.
+        """
+        deadline = time.monotonic() + timeout
+        cycles = 0
+        while True:
             await self.engine.tick()
+            cycles += 1
             value = await predicate()
             if value:
                 return value
-            await asyncio.sleep(0.03)
-        raise AssertionError(f"DP 1.0.13 evidence runtime did not reach: {label}")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise AssertionError(
+                    f"DP 1.0.13 evidence runtime did not reach within {timeout:.0f}s "
+                    f"({cycles} cycles): {label}")
+            await asyncio.sleep(min(0.03, remaining))
 
     async def close(self):
         try:
@@ -219,8 +248,8 @@ async def test_transfer_312_shape_equivalent_ftp_mirrors_converge_to_one_canonic
         assert [item.id for item in await runtime.repository.artifacts(transfer.id)] == [canonical.id]
         await runtime.engine.resume(transfer.id)
 
-        final = await runtime.until(lambda: _completed_bytes(runtime, transfer.id), label="canonical completion",
-                                    ticks=600)
+        final = await runtime.until(lambda: _completed_bytes(runtime, transfer.id),
+                                    label="canonical completion")
         assert final == PAYLOAD
         assert [item.id for item in await runtime.repository.artifacts(transfer.id)] == [canonical.id]
     finally:
@@ -548,9 +577,9 @@ async def test_automatic_failover_moves_between_converged_ftp_candidates(tmp_pat
             current = (await runtime.repository.artifacts(transfer.id))[0]
             return current if current.candidates[current.selected].id != selected.id else None
 
-        await runtime.until(switched, label="automatic candidate failover", ticks=600)
-        final = await runtime.until(lambda: _completed_bytes(runtime, transfer.id), label="completion after failover",
-                                    ticks=900)
+        await runtime.until(switched, label="automatic candidate failover")
+        final = await runtime.until(lambda: _completed_bytes(runtime, transfer.id),
+                                    label="completion after failover")
         assert final == PAYLOAD
         assert [item.id for item in await runtime.repository.artifacts(transfer.id)] == [artifact.id]
     finally:

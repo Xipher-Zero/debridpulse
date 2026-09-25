@@ -83,13 +83,37 @@ class ParcelProvider:
             self.file_manifests[resource.id] = tree
         return ResolutionResult(state, observation=observed)
 
+    def _queued(self, request):
+        """Take the queued response this request is entitled to, in queue order.
+
+        A queue position is not an identity. One resolution cycle interleaves
+        the root resolutions of several transfers with the *member* resolutions
+        their manifests fan out into, so the Nth ``resolve`` call is not the Nth
+        response a test queued. A member resolution that lands before a sibling
+        root's used to take that root's parcel; the root then fell through to
+        the default candidate-only result and ended the cycle owning no provider
+        resource at all -- a rare, load-dependent failure far from its cause.
+
+        A queued response that names the request class it was built for (every
+        ``parcel()`` observation carries ``TransferRequest(kind, ...)``) is
+        therefore answered only to a request of that class, first queued first.
+        A member resolution takes only what was queued for a member. Responses
+        that name nothing (an exception, a bare result) keep strict queue order
+        for any request, exactly as before.
+        """
+        for index, queued in enumerate(self.responses):
+            named = getattr(getattr(queued, "observation", None), "request", None)
+            if named is None or named.kind == request.kind:
+                return self.responses.pop(index)
+        return None
+
     async def resolve(self, request):
         self.calls.append(("resolve", request.payload))
         if self.entered:
             self.entered.set()
             await self.release.wait()
-        if self.responses:
-            result = self.responses.pop(0)
+        result = self._queued(request)
+        if result is not None:
             if isinstance(result, Exception):
                 raise result
             return result

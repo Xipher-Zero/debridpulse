@@ -512,13 +512,31 @@ async def _real(tmp_path, monkeypatch, origin, *, daemon_globals=()):
 
 
 async def _terminal(executor, handle):
+    """The executor's own terminal verdict for a real aria2 job.
+
+    Bounded by wall clock on the same ladder as ``_wait_status``: a fixed poll
+    count is not a deadline, and 200 polls of 0.05 s gave a real FTP transfer
+    10 s -- less than aria2's own 60 s connect/read timeouts, so under runner
+    load this reported "still RUNNING" as a verdict aria2 had never given.
+    """
     import asyncio
-    for _ in range(200):
+    import time
+
+    from test_v1111_aria2_security_boundary import TERMINAL_STATE_TIMEOUT_SECONDS
+
+    deadline = time.monotonic() + TERMINAL_STATE_TIMEOUT_SECONDS
+    polls = 0
+    while True:
         observed = await executor.observe(handle)
+        polls += 1
         if observed.state in {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED}:
             return observed
-        await asyncio.sleep(0.05)
-    raise AssertionError(observed)
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(
+                f"execution did not reach a terminal state within "
+                f"{TERMINAL_STATE_TIMEOUT_SECONDS:.0f}s ({polls} observations): {observed}")
+        await asyncio.sleep(min(0.05, remaining))
 
 
 @pytest.mark.asyncio

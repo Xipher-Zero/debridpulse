@@ -28,6 +28,18 @@ from test_v1111_aria2_security_boundary import _answer, _start_aria2, _stop_aria
 
 pytestmark = pytest.mark.asyncio
 
+# Hang guards for this scaffolding, in wall-clock seconds, ordered as a ladder so
+# that the component under test always decides first and this file only ever
+# reports that verdict: aria2's own connect/read timeouts are 60 s, so the origin
+# waits longer than that before abandoning a peer, and ``_wait_status`` (in
+# ``test_v1111_aria2_security_boundary``) waits longer still. A 10 s origin
+# timeout inverted that ladder under runner load -- the origin dropped a control
+# connection aria2 was still driving and the failure read "Got EOF from the
+# server" for a healthy 11-byte loopback transfer.
+ORIGIN_IDLE_TIMEOUT_SECONDS = 90.0
+DATA_CHANNEL_TIMEOUT_SECONDS = 90.0
+PROBE_RESPONSE_TIMEOUT_SECONDS = 60.0
+
 
 # ── A minimal in-process passive FTP origin (no third-party server needed) ────
 
@@ -91,7 +103,7 @@ class FtpOrigin:
         send("220 dp-test ftp")
         try:
             while True:
-                raw = await asyncio.wait_for(reader.readline(), timeout=10)
+                raw = await asyncio.wait_for(reader.readline(), timeout=ORIGIN_IDLE_TIMEOUT_SECONDS)
                 if not raw:
                     return
                 command, _, argument = raw.decode("latin-1").strip().partition(" ")
@@ -126,7 +138,7 @@ class FtpOrigin:
                     else:
                         send("150 opening data connection")
                         await writer.drain()
-                        data_reader, data_writer = await asyncio.wait_for(data_ready, timeout=10)
+                        data_reader, data_writer = await asyncio.wait_for(data_ready, timeout=DATA_CHANNEL_TIMEOUT_SECONDS)
                         self.retrieved.append(path)
                         payload = self.files[path]
                         if ascii_type:
@@ -222,7 +234,7 @@ async def _connect(guard: DownloaderEgressGuard, authority: str, username: str, 
     writer.write(f"CONNECT {authority} HTTP/1.1\r\nHost: {authority}\r\nProxy-Authorization: Basic {credential}\r\n\r\n".encode())
     await writer.drain()
     try:
-        return await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
+        return await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=PROBE_RESPONSE_TIMEOUT_SECONDS)
     except asyncio.IncompleteReadError as exc:
         return exc.partial
     finally:

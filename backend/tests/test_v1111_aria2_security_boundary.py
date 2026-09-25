@@ -5,6 +5,7 @@ import shutil
 import socket
 import ssl
 import subprocess
+import time
 from pathlib import Path
 
 import pytest
@@ -20,6 +21,16 @@ from urllib.parse import urlsplit
 
 pytestmark = pytest.mark.asyncio
 
+# Hang guards for the real aria2 subprocess, in wall-clock seconds. Both exceed
+# every timeout of the parts they observe, so a helper that gives up is reporting
+# a genuine stall and never its own impatience under runner load.
+RPC_READY_TIMEOUT_SECONDS = 60.0
+TERMINAL_STATE_TIMEOUT_SECONDS = 180.0
+# The in-test origins wait longer than aria2's own 60 s timeouts before
+# abandoning a peer, so a stalled runner surfaces as aria2's verdict and never
+# as this scaffolding dropping a request aria2 was still sending.
+ORIGIN_REQUEST_TIMEOUT_SECONDS = 90.0
+
 
 def _answer(address: str, port: int) -> tuple:
     family = socket.AF_INET6 if ":" in address else socket.AF_INET
@@ -33,7 +44,7 @@ async def _start_http_server(body: bytes = b"ok", content_type: str = "applicati
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         state["connections"] += 1
         try:
-            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=3)
+            await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=ORIGIN_REQUEST_TIMEOUT_SECONDS)
             writer.write(
                 b"HTTP/1.1 200 OK\r\n"
                 + f"Content-Length: {len(body)}\r\n".encode()
@@ -162,7 +173,7 @@ async def _start_https_server(tmp_path: Path, body: bytes = b"tls-ok"):
     async def handle(reader: asyncio.StreamReader, writer: asyncio.StreamWriter) -> None:
         state["connections"] += 1
         try:
-            raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=3)
+            raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=ORIGIN_REQUEST_TIMEOUT_SECONDS)
             for line in raw.decode("iso-8859-1", errors="replace").split("\r\n"):
                 if line.casefold().startswith("host:"):
                     state["hosts"].append(line.split(":", 1)[1].strip())
@@ -213,7 +224,9 @@ async def _start_aria2(tmp_path: Path, *, extra_args: tuple[str, ...] = ()):
     )
     service = Aria2Service(f"http://127.0.0.1:{port}/jsonrpc", secret, 3)
     last = None
-    for _ in range(80):
+    deadline = time.monotonic() + RPC_READY_TIMEOUT_SECONDS
+    attempts = 0
+    while True:
         if proc.returncode is not None:
             stdout, stderr = await proc.communicate()
             raise AssertionError(f"aria2c exited early: {stdout!r} {stderr!r}")
@@ -222,10 +235,15 @@ async def _start_aria2(tmp_path: Path, *, extra_args: tuple[str, ...] = ()):
             return proc, service
         except Exception as exc:  # pragma: no cover - transient startup only
             last = exc
-            await asyncio.sleep(0.05)
-    proc.terminate()
-    await proc.wait()
-    raise AssertionError(f"aria2 RPC did not become ready: {last}")
+        attempts += 1
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            proc.terminate()
+            await proc.wait()
+            raise AssertionError(
+                f"aria2 RPC did not become ready within {RPC_READY_TIMEOUT_SECONDS:.0f}s "
+                f"({attempts} attempts): {last}")
+        await asyncio.sleep(min(0.05, remaining))
 
 
 async def _stop_aria2(proc, service: Aria2Service) -> None:
@@ -241,20 +259,39 @@ async def _stop_aria2(proc, service: Aria2Service) -> None:
 
 
 async def _wait_status(service: Aria2Service, gid: str, terminal=("complete", "error", "removed")):
+    """Return aria2's own verdict for ``gid``.
+
+    The bound is a hang guard, never a correctness knob, so it is derived from
+    wall clock and is the longest rung of the scaffolding's timeout ladder: it
+    outlasts aria2's own 60 s connect/read timeouts and the in-test origins' own
+    guards, so what it returns is aria2's verdict. A shorter bound reports the
+    test's impatience as the system's verdict instead -- an 8 s ceiling (160
+    polls, ignoring the cost of each RPC round trip) failed exactly that way on
+    a loaded runner, with an 11-byte loopback transfer still ``active``.
+    Reaching this deadline now means nothing terminated anything, so say so with
+    the evidence.
+    """
     last = None
-    for _ in range(160):
+    deadline = time.monotonic() + TERMINAL_STATE_TIMEOUT_SECONDS
+    polls = 0
+    while True:
         try:
             result = await service._call(
                 "aria2.tellStatus",
                 [gid, ["gid", "status", "followedBy", "errorCode", "errorMessage"]],
             )
             last = result
+            polls += 1
             if str(result.get("status") or "") in terminal:
                 return result
         except Exception as exc:  # pragma: no cover - transient RPC state
             last = exc
-        await asyncio.sleep(0.05)
-    raise AssertionError(f"aria2 job did not reach terminal state: {last}")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise AssertionError(
+                f"aria2 job {gid} did not reach a terminal state within "
+                f"{TERMINAL_STATE_TIMEOUT_SECONDS:.0f}s ({polls} polls); last={last}")
+        await asyncio.sleep(min(0.05, remaining))
 
 
 async def test_canonical_job_options_disable_metadata_following(tmp_path, monkeypatch) -> None:
