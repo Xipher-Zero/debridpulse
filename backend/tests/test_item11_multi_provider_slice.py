@@ -221,7 +221,7 @@ async def test_direct_route_history_survives_later_alldebrid_claim_change(tmp_pa
     before = await core.repository.presentation(completed.id, details=True)
     assert before["delivering_provider_id"] == "general_http"
     before_public = _public_transfer_presentation(before, definitions)
-    assert before_public["delivering_provider_name"] == "HTTP & HTTPS"
+    assert before_public["delivering_provider_name"] == "HTTP(S)"
 
     # The same URL becomes structurally specialized later. Current applicability
     # changes routing for new work only; durable history must not be rewritten.
@@ -237,7 +237,7 @@ async def test_direct_route_history_survives_later_alldebrid_claim_change(tmp_pa
     assert after["delivering_provider_id"] == "general_http"
     assert [attempt["provider_id"] for attempt in after["route_attempts"]] == ["general_http"]
     after_public = _public_transfer_presentation(after, definitions)
-    assert after_public["delivering_provider_name"] == "HTTP & HTTPS"
+    assert after_public["delivering_provider_name"] == "HTTP(S)"
 
 
 async def test_initial_host_refresh_failure_keeps_route_unresolved_without_lkg(tmp_path, monkeypatch):

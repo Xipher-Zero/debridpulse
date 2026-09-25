@@ -38,7 +38,9 @@ def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -
     test_connection = section(runtime, "async function testConnection", "async function uploadAvatar")
 
     assert "api_key: valueOf('alldebrid_api_key')" in payload
-    assert "clear_api_key: clears.has('alldebrid_api_key')" in payload
+    # DP 1.0.13: credential removal became an explicit confirmed action, so no
+    # removal intent is ever pending at Test time and none is carried.
+    assert "clear_api_key" not in payload
     assert "webhook_url: valueOf('discord_webhook_url')" in payload
     assert "clear_webhook: clears.has('discord_webhook_url')" in payload
 
@@ -62,7 +64,7 @@ def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() ->
     # footer payload, and the canonical single-field settings-document commit
     # (which reads canonical truth and overrides exactly one field).
     assert runtime.count("request('PUT', '/settings'") == 2
-    scope = section(runtime, "function registerCommitScopes", "function allDebridGatedIntent")
+    scope = section(runtime, "function registerCommitScopes", "function refreshAllDebridClearGate")
     assert scope.count("request('PUT', '/settings'") == 1
     assert "[option]: committedValue(key, draft)" in scope
     assert runtime.count("persistNonAuth(") == 2  # declaration + Apply Settings path
@@ -80,12 +82,17 @@ def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() ->
 
 def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations() -> None:
     runtime = read(RUNTIME)
-    sources = section(runtime, "function allDebridApiKeyField", "function downloadsPanel")
+    # DP 1.0.13: the configured/unconfigured copy of the credential row is
+    # declared just above the field helper, so the operator-facing copy of the
+    # whole Services surface starts there.
+    sources = section(runtime, "const ALLDEBRID_KEY_PLACEHOLDER", "function downloadsPanel")
 
     expected = (
         "Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.",
-        "Enter a new API key to replace the stored key, then choose Save. Leave this field blank to keep the current key.",
-        "Remove the saved API key when you choose Save.",
+        # Entry/replacement is changed-blur and removal is an explicit confirmed
+        # action, so neither sentence mentions a Save any more.
+        "Enter a new API key to replace the stored key. Leave this field blank to keep the current key.",
+        "Confirm removal of the stored API key",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
         "How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.",
         "How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.",
@@ -117,7 +124,7 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
 
     # A validation route never persists the CANDIDATE it tested. It may record
     # the OUTCOME of a test about the configuration that is already saved --
-    # DP 1.0.13 Sources & Providers final corrective pass, Defect 3: a
+    # DP 1.0.13 Services final corrective pass, Defect 3: a
     # successful test of exactly the saved configuration establishes durable
     # verification, and a failed one retires a proof that has stopped being
     # true rather than leaving the provider claiming "Verified". That is

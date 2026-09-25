@@ -339,14 +339,17 @@
   line-height: 1.35;
 }
 
-/* AllDebrid keeps the primary secret action in one coherent row: the key field
-   gives up horizontal space to the explicit clear control, while the checkbox
-   stays pinned to the card's right datum and centers against the two-line copy. */
+/* The AllDebrid credential row.
+   The field's label, control and hint are the grid's own rows, so the explicit
+   Clear group can occupy the CONTROL's row -- centred against the input box
+   itself rather than against the label + hint stack -- and take horizontal
+   room from the field rather than adding a taller action band beneath it. */
 #view-settings .dp-settings-alldebrid-key-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 22px;
-  align-items: center;
+  column-gap: 22px;
+  row-gap: 6px;
+  align-items: start;
   min-width: 0;
 }
 
@@ -354,11 +357,22 @@
   grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
 }
 
-#view-settings .dp-settings-alldebrid-key-field {
+#view-settings .dp-settings-alldebrid-key-label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+#view-settings .dp-settings-alldebrid-key-input {
+  grid-column: 1;
+  grid-row: 2;
+  width: 100%;
   min-width: 0;
+  box-sizing: border-box;
 }
 
 #view-settings .dp-settings-alldebrid-key-meta {
+  grid-column: 1;
+  grid-row: 3;
   display: flex;
   align-items: baseline;
   justify-content: space-between;
@@ -379,22 +393,33 @@
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {
-  width: 100%;
-  min-width: 0;
+/* Button, confirmation and the sentence that describes it read as ONE
+   horizontal group, sitting on the API-key input's own grid row. */
+#view-settings .dp-settings-alldebrid-key-clear {
+  grid-column: 2;
+  grid-row: 2;
   align-self: center;
-  margin-top: 0;
-  padding-top: 0;
-  border-top: 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
 }
 
-#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > span {
-  padding-right: 18px;
-}
-
-#view-settings .dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid > input {
+#view-settings .dp-settings-alldebrid-key-clear > .btn {
   flex: 0 0 auto;
-  margin-left: auto;
+}
+
+/* The confirmation is the ONE canonical single-line Settings checkbox row
+   (.dp-settings-inline-check), so its control sits on the label text's optical
+   centreline rather than on the centre of a line box. Only its placement
+   inside the clear group, and its muted weight, are local. */
+#view-settings .dp-settings-alldebrid-key-confirm {
+  margin: 0;
+  min-width: 0;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+  cursor: pointer;
 }
 
 /* Secondary provider/engine tuning lives in native disclosures rather than
@@ -762,6 +787,12 @@
     gap: 12px;
   }
 
+  /* One column: the clear group follows the field it belongs to. */
+  #view-settings .dp-settings-alldebrid-key-clear {
+    grid-column: 1;
+    grid-row: 4;
+  }
+
   #view-settings .dp-settings-download-engine-row {
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
@@ -842,8 +873,20 @@
 }
 #view-settings .dp-settings-header-subtitle::after { content: none !important; }
 
-/* Roadmap Item 10: Sources & Providers. */
+/* Roadmap Item 10: Services. */
 #view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
+
+/* A mild grouping rule inside one group card, between the reserved Usenet
+   member and the debrid providers beneath it. Inset and partial width, within
+   the content bounds and never full bleed: it groups, and it is emphatically
+   not a second section, header or category. */
+#view-settings .dp-settings-group-separator {
+  height: 1px;
+  width: min(72%, 520px);
+  margin: 16px auto;
+  border: 0;
+  background: linear-gradient(90deg, transparent, var(--dp-divider), transparent);
+}
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
 
 /* Direct Sources are header-only cards; the canonical three-region header owns

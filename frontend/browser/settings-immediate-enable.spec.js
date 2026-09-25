@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 work item A -- every Sources & Providers Enable toggle is an
+/* DP 1.0.13 work item A -- every Services Enable toggle is an
  * IMMEDIATE canonical operational control against the REAL backend. The
  * visible toggle can never report ON while canonical state is OFF. */
 
@@ -21,7 +21,7 @@ async function openSources(page) {
 const persisted = async (page, id) =>
   (await page.request.get('/api/settings').then(r => r.json())).integrations[id]?.enabled;
 
-/* Sources & Providers cards arrive COLLAPSED: expansion is local presentation
+/* Services cards arrive COLLAPSED: expansion is local presentation
  * state, never a projection of enabled/configured/verified state. A General
  * Sources member toggle lives inside that group's body, so operating one means
  * opening the card first -- exactly what the operator does, through the one

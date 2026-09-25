@@ -58,24 +58,52 @@
   margin-bottom: 10px;
 }
 
-/* Host + Port + SSL share one row, vertically centred as a group. */
-.dp-usenet-row--host { align-items: center; }
-.dp-usenet-row--host .dp-usenet-field--host { flex: 1 1 auto; min-width: 0; }
-.dp-usenet-row--host .dp-usenet-field--port { flex: 0 0 5.5rem; }
+/* Host + Port + SSL share one row, as a TWO-ROW grid: the field labels, then
+   the controls. SSL is placed in the CONTROLS row, so the label/toggle group
+   is centred against the Host and Port input boxes themselves rather than
+   against the taller label+input wrappers they sit in. The alignment belongs
+   to this row owner; nothing is nudged. */
+.dp-usenet-row--host {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 5.5rem auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 4px;
+}
+
+/* The label and the input become the grid's own items, so each lands in its
+   own row while the implicit label association is untouched. */
+.dp-usenet-row--host .dp-usenet-field--host,
+.dp-usenet-row--host .dp-usenet-field--port { display: contents; }
+
+.dp-usenet-row--host .dp-usenet-field--host > .form-label { grid-column: 1; grid-row: 1; }
+.dp-usenet-row--host .dp-usenet-field--host > .input { grid-column: 1; grid-row: 2; }
+.dp-usenet-row--host .dp-usenet-field--port > .form-label { grid-column: 2; grid-row: 1; }
+.dp-usenet-row--host .dp-usenet-field--port > .input { grid-column: 2; grid-row: 2; }
+
 .dp-usenet-field--port .input { text-align: center; }
+
 .dp-usenet-ssl {
+  grid-column: 3;
+  grid-row: 2;
+  align-self: center;
   display: flex;
   align-items: center;
   gap: 8px;
-  flex: 0 0 auto;
   white-space: nowrap;
 }
 
-/* Connections + Priority share one row. */
-.dp-usenet-row--tuning { align-items: center; }
+/* Connections + Priority share one row. Aligned to the TOP so the Priority
+   column can carry its own help text beneath its input without dragging the
+   two inputs off one band. */
+.dp-usenet-row--tuning { align-items: flex-start; }
 .dp-usenet-row--tuning .dp-usenet-field { flex: 1 1 0; }
 
 .dp-usenet-field { display: flex; flex-direction: column; gap: 4px; }
+/* The Priority column is a field whose control and help text are siblings, so
+   the hint belongs to the field rather than floating beneath the whole row. */
+.dp-usenet-field-control { display: flex; flex-direction: column; gap: 4px; }
 .dp-usenet-field--wide { flex: 1 1 100%; }
 .dp-usenet-field .input { width: 100%; box-sizing: border-box; }
 
@@ -83,12 +111,24 @@
    short. Connections and Priority live HERE, beside the other per-server
    acquisition controls, rather than being repeated on the compact card. */
 .dp-usenet-advanced {
+  display: grid;
+  /* Symmetric rails: the action pair sits in the middle track, so it is
+     centred on the WHOLE card rather than on the space left over to the right
+     of the disclosure. */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 10px;
   margin: 4px 0 2px;
   border-top: 1px solid var(--dp-divider, var(--border));
   padding-top: 8px;
 }
 
 .dp-usenet-advanced-toggle {
+  grid-column: 1;
+  grid-row: 1;
+  justify-self: start;
+  min-width: 0;
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -123,8 +163,19 @@
   transform: rotate(90deg);
 }
 
-.dp-usenet-advanced-body { margin-top: 8px; }
+/* The advanced fields own their own full-width row beneath the disclosure. */
+.dp-usenet-advanced-body {
+  grid-column: 1 / -1;
+  grid-row: 2;
+}
 .dp-usenet-advanced-body[hidden] { display: none !important; }
+
+/* The label may shrink before it would ever reach the centred pair. */
+.dp-usenet-advanced-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 .dp-usenet-advanced-hint {
   margin: 6px 0 0;
@@ -137,33 +188,62 @@
   .dp-usenet-advanced-chevron { transition: none; }
 }
 
+/* Collapsed: Advanced on the left, the pair beside it on the SAME row and
+   centred on the card -- no dedicated action band of its own. */
 .dp-usenet-actions {
+  grid-column: 2;
+  grid-row: 1;
   display: flex;
   justify-content: center;
   gap: 8px;
-  margin-top: 12px;
 }
 
+/* Expanded: the pair owns the final row beneath every advanced field, still
+   centred on the card. The state is read from the disclosure's own open body
+   -- never a measured offset, an absolute position, or a moved node. */
+.dp-usenet-advanced:has(> .dp-usenet-advanced-body:not([hidden])) .dp-usenet-actions {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  justify-self: center;
+}
+
+/* Part of the Priority field, directly beneath its input and aligned to its
+   column -- not a free-floating centred paragraph under the whole row. */
 .dp-usenet-priority-hint {
-  margin: 8px 0 0;
-  text-align: center;
-  font-size: .82rem;
+  margin: 0;
+  text-align: left;
+  font-size: .78rem;
+  line-height: 1.3;
   opacity: .7;
 }
 
-/* Erasing a stored credential is an explicit, deliberate act. The row's
-   geometry belongs to the canonical Settings checkbox row
-   (.dp-settings-inline-check); only its placement and weight are card-local. */
+/* Erasing a stored credential is an explicit, deliberate act: the button, its
+   confirmation and the sentence that describes it read as ONE group, left
+   aligned with the card's form content and vertically centred together. */
 .dp-usenet-clear-password {
+  display: flex;
+  align-items: center;
+  gap: 10px;
   margin: 2px 0 10px;
   font-size: .82rem;
   opacity: .85;
-  /* The primitive is a block whose checkbox and text are inline siblings, so
-     centring the inline formatting context centres the CONTROL AND ITS TEXT
-     as one group -- and leaves the primitive's own optical baseline
-     (vertical-align: middle on the control) untouched. Anything that centred
-     the text alone would leave the checkbox where it was. */
-  text-align: center;
+}
+
+.dp-usenet-clear-password[hidden] { display: none; }
+
+.dp-usenet-clear-password > .btn { flex: 0 0 auto; }
+
+/* The confirmation is the ONE canonical single-line Settings checkbox row
+   (.dp-settings-inline-check): its control is an inline sibling of its label
+   text, so `vertical-align: middle` puts the control on the text's OPTICAL
+   centreline -- the font's baseline + x-height/2 -- rather than on the centre
+   of a line box, which is what `align-items: center` would give and which
+   drifts badly once the sentence wraps. Only its placement inside the action
+   group is card-local. */
+#view-settings .dp-usenet-clear-confirm {
+  margin: 0;
+  min-width: 0;
+  cursor: pointer;
 }
 
 /* Inline FIELD validation only -- a missing or malformed value on this card.

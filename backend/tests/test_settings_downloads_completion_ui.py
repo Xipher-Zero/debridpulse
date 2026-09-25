@@ -18,7 +18,10 @@ def test_configured_secret_mask_is_fixed_and_tripled_without_secret_length_leaka
     runtime = read("ui-settings-page.js")
     # One mask, emitted by the owner directly into every configured-secret field.
     assert "const CONFIGURED_SECRET_MASK = '•'.repeat(48);" in runtime
-    assert runtime.count("const masked = CONFIGURED_SECRET_MASK;") == 1
+    # The AllDebrid row reaches it through its one placeholder declaration,
+    # which both the render and the convergence path use.
+    assert "ALLDEBRID_KEY_PLACEHOLDER = configured =>" in runtime
+    assert runtime.count("CONFIGURED_SECRET_MASK : 'Your AllDebrid API key'") == 1
     assert "•••••" not in runtime
 
 

@@ -35,15 +35,15 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
     assert general["kind"] == "provider"
     assert general["configured"] is True
     assert general["presentation"] == {
-        "status_name": "HTTP & HTTPS",
+        "status_name": "HTTP(S)",
         "premium": False,
         "status_endpoint": None,
         "static_status": "healthy",
-        "display_order": 30,
+        "display_order": 910,
         "status_group": "direct_sources",
-        "status_group_label": "General Sources",
+        "status_group_label": "Network Sources",
         "status_tier": "general_family",
-        "status_tier_label": "General",
+        "status_tier_label": "Standard Services",
     }
 
 

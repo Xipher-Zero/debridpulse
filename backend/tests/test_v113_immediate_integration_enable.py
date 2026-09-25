@@ -1,6 +1,6 @@
 """DP 1.0.13 post-Usenet corrective pass, work item A.
 
-Every top-level Sources & Providers Enable/Disable toggle is an IMMEDIATE
+Every top-level Services Enable/Disable toggle is an IMMEDIATE
 canonical operational control: flipping it persists the canonical enabled
 state through the existing generic integration-configuration mutation and
 wakes the lifecycle/routing maintenance that has to act on it. A visible
@@ -35,7 +35,7 @@ DEFINITIONS = (alldebrid_definition, general_http_definition, general_ftp_defini
                usenet_definition, aria2_definition)
 
 # Every integration whose participation the operator switches from a
-# Sources & Providers header toggle.
+# Services header toggle.
 TOGGLED_INTEGRATIONS = ("alldebrid", "usenet", "general_http", "general_ftp")
 
 

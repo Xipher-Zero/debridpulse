@@ -3,7 +3,7 @@
 * B -- browser-native dialogs are forbidden in maintained operator UI; the one
   application dialog owner (``DPSettingsModal``) gains the missing prompt shape.
 * C -- exactly one canonical disclosure control, immediately after the card
-  title, shared by Sources & Providers and Downloads -> Executor Tuning.
+  title, shared by Services and Downloads -> Executor Tuning.
 * D -- every provider/source card explains what enabling it allows.
 * E -- header flavour copy is centred against the FULL header, not the flex
   remainder left over after the title.
@@ -168,7 +168,7 @@ def test_every_provider_source_card_explains_what_enabling_it_allows():
                         SETTINGS_JS.index("const ARIA2_LIVE_FILTERS")]
     assert USENET_COPY in panel
     assert ALLDEBRID_COPY in panel
-    # The existing General Sources copy is preserved verbatim.
+    # The existing Network Sources copy is preserved verbatim.
     assert "Direct downloads from standard HTTP and HTTPS URLs." in panel
     assert "Direct downloads from FTP and SFTP URLs." in panel
     # Four cards, four headerCopy values.

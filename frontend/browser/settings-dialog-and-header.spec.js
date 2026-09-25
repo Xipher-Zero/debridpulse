@@ -214,7 +214,7 @@ test('header flavour copy is geometrically centred on the full card header', asy
   expect(new Set(offsets.map(o => Math.round(o.titleWidth))).size).toBeGreaterThan(1);
   for (const entry of offsets) expect(Math.abs(entry.offset)).toBeLessThan(1);
 
-  // The same invariant holds for Sources & Providers cards.
+  // The same invariant holds for Services cards.
   await openSettings(page, 'sources');
   const sources = await page.evaluate(() => {
     const out = [];

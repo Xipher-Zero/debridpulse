@@ -410,7 +410,7 @@ async def test_a_blocked_new_transport_destination_is_a_security_failure(tmp_pat
 
 
 # ── 7. Authentication boundary stays at the native adapter ────────────────────
-# The FTP & SFTP provider pass made FTP/SFTP authentication and host identity
+# The (S)FTP provider pass made FTP/SFTP authentication and host identity
 # live (test_v113_aria2_ftp_sftp_auth.py). What remains pinned here: HTTP code
 # 24 is unchanged, and native credential/host-key option names exist in
 # production code only at the aria2 boundary.

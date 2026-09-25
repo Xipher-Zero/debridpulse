@@ -119,7 +119,7 @@ body.light #view-settings .dp-settings-tab-glyph {
   --dp-settings-tab-color: #3ab8a8;
 }
 
-/* ── Sources & Providers / Download Engine identity ─────────────────── */
+/* ── Services / Download Engine identity ─────────────────────────────── */
 #view-settings .dp-settings-card-title--with-icon {
   display: inline-flex;
   align-items: center;
@@ -128,9 +128,11 @@ body.light #view-settings .dp-settings-tab-glyph {
 
 /* Download Engine uses the supplied purple artwork directly. The artwork owns
 
-/* Debrid Services is a source-type master group. The supplied artwork already
-   owns its rounded-square frame, so CSS adds only layout and the established
-   omnidirectional purple artwork glow rather than inventing another chip. */
+/* The premium master group. The supplied artwork already owns its
+   rounded-square frame, so CSS adds only layout and the COLOUR its
+   omnidirectional master-card outer glow is derived from; the glow itself has
+   one owner, in ui-settings-card-icons.css, shared with the Network Sources
+   master. */
 #view-settings .dp-settings-debrid-services > .card-header > .card-title {
   display: inline-flex;
   align-items: center;
@@ -144,15 +146,7 @@ body.light #view-settings .dp-settings-tab-glyph {
   flex: 0 0 34px;
   display: block;
   background: url('/icons/dp/debrid-services.svg?v=1') center / 34px 34px no-repeat;
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.78))
-    drop-shadow(0 0 9px rgba(184,102,245,.34));
-}
-
-body.light #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
-  filter:
-    drop-shadow(0 0 4px rgba(184,102,245,.88))
-    drop-shadow(0 0 10px rgba(184,102,245,.44));
+  --dp-settings-master-glow: #b866f5;
 }
 
 /* Keep provider/engine disclosures visually subordinate to their primary rows:

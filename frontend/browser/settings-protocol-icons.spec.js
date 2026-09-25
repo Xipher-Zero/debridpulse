@@ -1,8 +1,8 @@
 const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.13 Items 7 and 8 -- one Settings protocol icon block, per-instance
- * colour, and the operator-facing family name `General Sources` on both
- * Sources & Providers and Downloads. */
+ * colour, and the operator-facing family name `Network Sources` on both
+ * Services and Downloads. */
 
 const PROTOCOLS = {
   direct_sources: {glyph: 'globe', colour: 'rgb(59, 130, 246)'},
@@ -72,11 +72,11 @@ async function openSettings(page, tab) {
   if (tab === 'sources') await revealGeneralSources(page);
 }
 
-/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+/* Services cards render COLLAPSED: expansion is LOCAL presentation
  * state, never a projection of enabled/configured/verified state. Opening one
  * through the canonical disclosure writes no canonical state, so this spec
  * never depends on another spec's enable/disable timing against the shared
- * backend. The General Sources members live inside that group's body. */
+ * backend. The Network Sources members live inside that group's body. */
 async function revealGeneralSources(page) {
   const group = page.locator('.dp-settings-general-sources');
   const disclosure = group.locator('.dp-settings-disclosure');
@@ -103,7 +103,7 @@ const blocks = (page, tab) => page.evaluate(tab => {
   });
 }, tab);
 
-test('Sources & Providers renders every protocol identity from one block', async ({page}) => {
+test('Services renders every protocol identity from one block', async ({page}) => {
   await openSettings(page, 'sources');
   const rendered = await blocks(page, 'sources');
   const byProtocol = Object.fromEntries(rendered.map(item => [item.protocol, item]));
@@ -138,14 +138,14 @@ test('each protocol block carries its own frozen colour datum', async ({page}) =
   }
 });
 
-test('Downloads shows General Sources with the identical identity', async ({page}) => {
+test('Downloads shows Network Sources with the identical identity', async ({page}) => {
   await openSettings(page, 'downloads');
   await expect(page.locator('#view-settings [data-executor-tuning="direct"] .card-title'))
-    .toContainText('General Sources');
+    .toContainText('Network Sources');
   const rendered = await blocks(page, 'downloads');
   const general = rendered.find(item => item.protocol === 'direct_sources');
   const usenet = rendered.find(item => item.protocol === 'usenet');
-  expect(general, 'Downloads General Sources has no protocol identity').toBeTruthy();
+  expect(general, 'Downloads Network Sources has no protocol identity').toBeTruthy();
   expect(general.src).toBe('/icons/lucide/globe.svg');
   expect(usenet, 'Downloads Usenet has no protocol identity').toBeTruthy();
   expect(usenet.src).toBe('/icons/lucide/newspaper.svg');

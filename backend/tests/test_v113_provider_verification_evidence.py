@@ -1,4 +1,4 @@
-"""DP 1.0.13 Sources & Providers final corrective pass -- Defect 3.
+"""DP 1.0.13 Services final corrective pass -- Defect 3.
 
 ``Verified`` is DURABLE CANONICAL TRUTH about the CURRENT SAVED configuration,
 not a frontend memory of a Test having once succeeded.

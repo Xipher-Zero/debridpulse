@@ -1,4 +1,4 @@
-"""FTP & SFTP registration and backend-owned configuration."""
+"""(S)FTP registration and backend-owned configuration."""
 from pydantic import BaseModel
 
 from integrations.definition import IntegrationDefinition, IntegrationPresentation
@@ -14,16 +14,20 @@ def build(options, environment):
 
 
 definition = IntegrationDefinition(
-    "general_ftp", "provider", "FTP & SFTP", GeneralFtpOptions, build,
+    # ``general_ftp`` is the durable provider identity and never changes; the
+    # name is the ONE operator-facing label, read both by the Provider Status
+    # panel and by the transfer-list provider badge.
+    "general_ftp", "provider", "(S)FTP", GeneralFtpOptions, build,
     presentation=IntegrationPresentation(
-        status_name="FTP & SFTP",
+        status_name="(S)FTP",
         static_status="healthy",
-        # The second member of the General Sources group; the GROUP renders at
-        # its first member's position, so this only orders it within the group.
-        display_order=31,
+        # The second member of the Network Sources group, inside the reserved
+        # STANDARD band documented on ``general_http``; the GROUP renders at its
+        # first member's position, so this only orders it within the group.
+        display_order=911,
         status_group="direct_sources",
-        status_group_label="General Sources",
+        status_group_label="Network Sources",
         status_tier="general_family",
-        status_tier_label="General",
+        status_tier_label="Standard Services",
     ),
 )

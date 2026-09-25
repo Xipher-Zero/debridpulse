@@ -8,7 +8,8 @@
   'use strict';
 
   const TABS = Object.freeze([
-    ['sources', 'Sources & Providers', 'zap'],
+    // Presentation only: the internal tab key stays `sources`.
+    ['sources', 'Services', 'zap'],
     ['downloads', 'Downloads', 'download'],
     ['extraction', 'Extraction', 'package-open'],
     ['authentication', 'Authentication', 'shield-check'],
@@ -62,7 +63,7 @@
     alldebrid_api_key: {integration: 'alldebrid', option: 'api_key'},
   });
 
-  /* The Sources & Providers page's CHANGED-BLUR controls.
+  /* The Services page's CHANGED-BLUR controls.
    *
    * One declaration of which canonical namespace owns each ordinary control
    * and which option inside it the control is. ui-settings-persistence.js owns
@@ -71,12 +72,19 @@
    * DECLARING what a control commits to, never a second implementation of the
    * machinery.
    *
-   * Secrets, destructive confirmations and participation toggles are
-   * deliberately absent: a credential is gated-save and a participation
-   * toggle is immediate because of what they ARE, not because of the page
-   * they appear on. A control absent from this table keeps the page's existing
-   * deferred (Apply Settings) semantics until its own page is migrated. */
+   * Destructive confirmations and participation toggles are deliberately
+   * absent: erasing a credential is an explicit confirmed action and a
+   * participation toggle is immediate because of what they ARE, not because of
+   * the page they appear on. A control absent from this table keeps the page's
+   * existing deferred (Apply Settings) semantics until its own page is
+   * migrated.
+   *
+   * A credential is NOT absent. Entering or replacing one is an ordinary value
+   * change: it commits on changed blur, through the same scoped mutation every
+   * other control of that namespace uses. What makes it a secret is what the
+   * SCOPE does with the accepted value -- see registerCommitScopes(). */
   const CHANGED_BLUR_FIELDS = Object.freeze({
+    alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'},
     alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
     poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
     upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
@@ -408,34 +416,53 @@
       </div>`;
   }
 
+  /* The AllDebrid credential row.
+   *
+   * Entering or replacing the key is an ordinary value change and commits on
+   * changed blur through the existing `integration:alldebrid` scope; the
+   * browser holds no secret afterwards, because the accepted presentation of
+   * one is blank. ERASING the stored key is destructive, so it is an explicit
+   * action behind its own confirmation -- never a commit boundary, and never
+   * something that also saves a replacement.
+   *
+   * The clear group occupies the INPUT's own grid row (ui-settings-page.css),
+   * so it is centred against the control itself rather than against the
+   * label + hint stack, and it takes horizontal room from the field instead of
+   * adding a taller action band. */
+  /* The three parts of the row that DEPEND on whether a key is stored. They
+   * are declared once and used both to render the row and to converge it, so
+   * the row has exactly one markup owner in either direction. */
+  const ALLDEBRID_KEY_PLACEHOLDER = configured =>
+    configured ? CONFIGURED_SECRET_MASK : 'Your AllDebrid API key';
+
+  const ALLDEBRID_KEY_META = configured => `
+          <span class="form-hint">${configured
+            ? 'Enter a new API key to replace the stored key. Leave this field blank to keep the current key.'
+            : 'Enter your AllDebrid API key.'}</span>
+          ${configured ? '<span class="form-hint dp-settings-key-present">Key present</span>' : ''}`;
+
+  const ALLDEBRID_KEY_CLEAR = `
+          <div class="dp-settings-alldebrid-key-clear">
+            <button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"
+                    aria-label="Clear the stored AllDebrid API key" disabled>Clear</button>
+            <label class="dp-settings-inline-check dp-settings-alldebrid-key-confirm">
+              <input type="checkbox" data-alldebrid-clear-confirm>
+              <span>Confirm removal of the stored API key</span>
+            </label>
+          </div>`;
+
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
-    const masked = CONFIGURED_SECRET_MASK;
-    // A secret is never committed by leaving the field: entering one is
-    // pending intent until the card's own Save.
-    const hint = configured
-      ? 'Enter a new API key to replace the stored key, then choose Save. Leave this field blank to keep the current key.'
-      : 'Enter your AllDebrid API key, then choose Save.';
     return `
       <div class="dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}">
-        <div class="dp-settings-field dp-settings-alldebrid-key-field">
-          <label class="form-label" for="${id}">API Key</label>
-          <input class="input" id="${id}" data-setting="${key}" data-commit="gated-save" type="password" value=""
-                 placeholder="${configured ? masked : 'Your AllDebrid API key'}" autocomplete="off">
-          <div class="dp-settings-alldebrid-key-meta">
-            <span class="form-hint">${hint}</span>
-            ${configured ? '<span class="form-hint dp-settings-key-present">Key present</span>' : ''}
-          </div>
-        </div>
-        ${configured ? `
-          <label class="dp-settings-clear-secret dp-settings-clear-secret--alldebrid">
-            <span>
-              <b>Clear stored API Key</b>
-              <small>Remove the saved API key when you choose Save.</small>
-            </span>
-            <input type="checkbox" data-clear-secret="${key}">
-          </label>` : ''}
+        <label class="form-label dp-settings-alldebrid-key-label" for="${id}">API Key</label>
+        <input class="input dp-settings-alldebrid-key-input" id="${id}" data-setting="${key}"
+               data-commit="changed-blur" data-commit-scope="integration:alldebrid" data-commit-key="${key}"
+               type="password" value="" autocomplete="off"
+               placeholder="${ALLDEBRID_KEY_PLACEHOLDER(configured)}">
+        <div class="dp-settings-alldebrid-key-meta">${ALLDEBRID_KEY_META(configured)}
+        </div>${configured ? ALLDEBRID_KEY_CLEAR : ''}
       </div>`;
   }
 
@@ -475,8 +502,8 @@
    * of thing, and the only difference is what the mutation is scoped to. */
   /* The ONE Settings protocol identity chip.
    *
-   * Six appearances (General Sources, HTTP & HTTPS, FTP & SFTP and Usenet on
-   * Sources & Providers; General Sources and Usenet on Downloads) render this
+   * Six appearances (Network Sources, HTTP(S), (S)FTP and Usenet on
+   * Services; Network Sources and Usenet on Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
    * and a protocol contributes nothing but its canonical colour. */
   const PROTOCOL_GLYPHS = Object.freeze({
@@ -509,7 +536,7 @@
 
   /* The ONE canonical Settings disclosure control.
    *
-   * Sources & Providers cards and Downloads -> Executor Tuning cards had two
+   * Services cards and Downloads -> Executor Tuning cards had two
    * independently styled disclosures in two different places (a ghost chip at
    * the far right beside Enable, and a naked chevron beside the title). This
    * is the single component both now render: a compact ghost chip sitting
@@ -566,7 +593,7 @@
     const bodyId = `dp-settings-provider-body-${safe}`;
     // headerOnly renders the whole card as its header (Direct Sources): no
     // body, therefore no disclosure and no configuration-status region.
-    // Every expandable card renders CLOSED. Arriving at Sources & Providers is
+    // Every expandable card renders CLOSED. Arriving at Services is
     // not an opinion about what should be open, and enabled/configured/verified
     // state is canonical truth about the provider, never about the card.
     const disclosure = headerOnly ? '' : settingsDisclosure(bodyId, false, 'provider configuration');
@@ -591,6 +618,18 @@
   // save / test / derived display name) belongs to ui-settings-usenet-servers.js;
   // this renders the collection's initial state and its containers exactly once.
 
+  /* One server card.
+   *
+   * Erasing a stored credential is destructive, so it is an explicit action
+   * behind its own confirmation -- button, checkbox, then the sentence that
+   * describes it, as one left-aligned group. It is rendered on every card and
+   * hidden while the server has nothing stored to clear, so the behaviour
+   * owner toggles STATE rather than markup.
+   *
+   * Test and Remove are rendered exactly once, inside the Advanced grid. Their
+   * placement in BOTH disclosure states belongs to that grid
+   * (ui-settings-usenet-servers.css); nothing clones, moves or re-parents
+   * them. */
   function usenetServerCard(server, index) {
     const advancedId = `dp-usenet-advanced-${String(server.id || `new-${index}`).replace(/[^a-z0-9_-]/gi, '-')}`;
     const derived = String(server.host || '').trim();
@@ -637,14 +676,18 @@
         <div class="dp-usenet-row">
           <label class="dp-usenet-field dp-usenet-field--wide">
             <span class="form-label">Password</span>
-            <input class="input" type="password" data-usenet-field="password" data-commit="gated-save" value=""
+            <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
                    autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
           </label>
-        </div>${configured ? `
-        <label class="dp-settings-inline-check dp-usenet-clear-password">
-          <input type="checkbox" data-usenet-clear-password data-commit="gated-save">
-          <span>Clear the stored password for this server</span>
-        </label>` : ''}
+        </div>
+        <div class="dp-usenet-clear-password"${configured ? '' : ' hidden'}>
+          <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
+                  aria-label="Clear the stored password for this server" disabled>Clear</button>
+          <label class="dp-settings-inline-check dp-usenet-clear-confirm">
+            <input type="checkbox" data-usenet-clear-password>
+            <span>Confirm removal of the stored password for this server</span>
+          </label>
+        </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
                   aria-controls="${advancedId}" aria-expanded="false"
@@ -660,13 +703,15 @@
                 <input class="input" type="number" min="1" max="500" data-usenet-field="connections" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="connections"
                        value="${html(String(server.connections ?? 8))}">
               </label>
-              <label class="dp-usenet-field">
-                <span class="form-label">Priority</span>
-                <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
-                       value="${html(String(server.priority ?? 0))}">
-              </label>
+              <div class="dp-usenet-field dp-usenet-field--priority">
+                <label class="dp-usenet-field-control">
+                  <span class="form-label">Priority</span>
+                  <input class="input" type="number" min="0" max="99" data-usenet-field="priority" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="priority"
+                         value="${html(String(server.priority ?? 0))}">
+                </label>
+                <span class="form-hint dp-usenet-priority-hint">Lower values have priority.</span>
+              </div>
             </div>
-            <p class="dp-usenet-priority-hint">Lower values have priority.</p>
             <div class="dp-usenet-row dp-usenet-row--tuning">
               <label class="dp-usenet-field">
                 <span class="form-label">Articles per Request</span>
@@ -681,11 +726,10 @@
             </div>
             <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
           </div>
-        </div>
-        <div class="dp-usenet-actions">
-          <button type="button" class="btn btn-sm" data-usenet-action="save">Save</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
-          <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+          <div class="dp-usenet-actions">
+            <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
+            <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+          </div>
         </div>
         <p class="dp-usenet-field-validation" role="alert" data-usenet-validation hidden></p>
       </div>`;
@@ -713,6 +757,12 @@
         ${usenetAddTile()}
       </div>`;
   }
+
+  /* A mild grouping rule between the reserved Usenet card and the debrid
+   * providers beneath it. Inset, partial-width and inside the content bounds:
+   * it groups, and it is emphatically not a second section, header or
+   * category. Its whole treatment is one rule in ui-settings-page.css. */
+  const PREMIUM_SEPARATOR = '<div class="dp-settings-group-separator" role="presentation"></div>';
 
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
@@ -759,8 +809,6 @@
             </span>
             <span>Test</span>
           </button>
-          <button class="btn btn-success" type="button" data-action="save-alldebrid" disabled
-                  aria-label="Save AllDebrid credentials">Save</button>
         </div>
       </div>
 `, allDebrid, {
@@ -770,17 +818,17 @@
       headerCopy: 'Resolve supported links and torrents through your AllDebrid account.',
     });
 
-    const generalHttpCard = providerCard('general_http', 'HTTP & HTTPS', '', generalHttp, {
+    const generalHttpCard = providerCard('general_http', 'HTTP(S)', '', generalHttp, {
       className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-http',
       titlePrefix: protocolIcon('general_http'),
-      displayName: 'HTTP & HTTPS',
+      displayName: 'HTTP(S)',
       headerCopy: 'Direct downloads from standard HTTP and HTTPS URLs.',
       headerOnly: true,
     });
-    const generalFtpCard = providerCard('general_ftp', 'FTP & SFTP', '', generalFtp, {
+    const generalFtpCard = providerCard('general_ftp', '(S)FTP', '', generalFtp, {
       className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-ftp',
       titlePrefix: protocolIcon('general_ftp'),
-      displayName: 'FTP & SFTP',
+      displayName: '(S)FTP',
       headerCopy: 'Direct downloads from FTP and SFTP URLs.',
       headerOnly: true,
     });
@@ -796,15 +844,20 @@
       headerCopy: 'Download NZB content from configured Usenet news servers.',
     });
 
-    // Usenet is the first card under External Providers, above AllDebrid.
-    const externalProviders = groupCard('External Providers', usenetCard + provider, {
+    // Usenet is the first card under Premium Services, above the debrid
+    // providers. This order is deliberately INDEPENDENT of the Provider Status
+    // panel's, which reports Usenet last: the operator configures the service
+    // they most often add first, and the panel reads debrid-then-Usenet. One is
+    // never derived from the other.
+    const premiumServices = groupCard('Premium Services',
+      usenetCard + PREMIUM_SEPARATOR + provider, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
     // Group identity, label and gate all come from metadata the members
     // already publish -- there is no second list of who is in this family.
     const groupId = generalHttp.presentation?.status_group || '';
     const groupLabel = (s.integration_groups?.[groupId]?.label)
-      || generalHttp.presentation?.status_group_label || 'General Sources';
+      || generalHttp.presentation?.status_group_label || 'Network Sources';
     const groupEnabled = s.integration_groups?.[groupId]?.enabled !== false;
     const generalSources = groupCard(groupLabel, generalHttpCard + generalFtpCard, {
       className: 'dp-settings-source-group dp-settings-general-sources',
@@ -813,7 +866,7 @@
       groupId,
       collapsible: true,
     });
-    return externalProviders + generalSources;
+    return premiumServices + generalSources;
   }
 
   const ARIA2_LIVE_FILTERS = Object.freeze([['all', 'All'], ['active', 'Active'], ['waiting', 'Waiting'], ['paused', 'Paused'], ['stopped', 'Stopped']]);
@@ -950,7 +1003,7 @@
       </div>
       <p class="dp-settings-tuning-footer">
         Per-server acquisition tuning belongs to each news server under
-        Sources &amp; Providers.
+        Services.
       </p>`;
   }
 
@@ -980,10 +1033,10 @@
     });
 
     const tuning = groupCard('Executor Tuning',
-      // The operator-facing family name matches Sources & Providers exactly;
-      // the executor id stays 'direct', because nothing about the executor
-      // changed and renaming it would only churn durable identities.
-      executorTuningCard('direct', 'General Sources',
+      // The operator-facing family name matches Services exactly; the executor
+      // id stays 'direct', because nothing about the executor changed and
+      // renaming it would only churn durable identities.
+      executorTuningCard('direct', 'Network Sources',
         'Tuning for HTTP(S), FTP/SFTP and other general source transfers.',
         directTransfersTuning(s), 'direct_sources') +
       executorTuningCard('usenet', 'Usenet',
@@ -1711,7 +1764,7 @@
     snapshotProviderControls(view);
     // Whatever was just rendered FROM canonical state IS the accepted baseline.
     window.DPSettingsPersistence.adopt(view);
-    refreshGatedSave();
+    refreshAllDebridClearGate();
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
@@ -1822,7 +1875,7 @@
         {enabled: desired}, 15000);
       adoptIntegration(identity, result);
       renderIntegrationState(card, identity);
-      // The ONE automatic expansion in Sources & Providers, and it belongs to
+      // The ONE automatic expansion in Services, and it belongs to
       // the operator's ACTION rather than to rendering: admitting a provider
       // that has nothing configured leaves it unable to do the job it was just
       // admitted for, so its configuration is put in front of them. It follows
@@ -1914,7 +1967,6 @@
 
     view.addEventListener('input', event => {
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
-      if (event.target.matches('[data-setting="alldebrid_api_key"]')) refreshGatedSave();
     });
 
     view.addEventListener('change', event => {
@@ -1923,7 +1975,7 @@
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
-      if (event.target.matches('[data-clear-secret="alldebrid_api_key"]')) refreshGatedSave();
+      if (event.target.matches('[data-alldebrid-clear-confirm]')) refreshAllDebridClearGate();
     });
 
     view.addEventListener('click', event => {
@@ -1944,7 +1996,7 @@
       const action = button.dataset.action;
       if (action === 'save') saveCurrent(button);
       else if (action === 'test-alldebrid') testConnection('alldebrid', button);
-      else if (action === 'save-alldebrid') saveAllDebridCredentials(button);
+      else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
       else if (action === 'test-aria2') testConnection('aria2', button);
       else if (action === 'test-discord') testConnection('discord', button);
       else if (action === 'clear-avatar') clearAvatar();
@@ -2026,13 +2078,6 @@
   // their canonical namespaces and are written exclusively through the scoped
   // surfaces below, never through the whole-settings document, so a stale
   // snapshot can never undo a concurrently applied scoped write.
-  function scopedClears(integration) {
-    return clearSecrets()
-      .map(control => INTEGRATION_SECRET_CONTROLS[control])
-      .filter(entry => entry && entry.integration === integration)
-      .map(entry => entry.option);
-  }
-
   function aria2ConfigurationPayload() {
     const current = aria2Of(state.settings);
     return {
@@ -2072,7 +2117,7 @@
 
   /* Only the transfer-policy fields the footer still owns.
    *
-   * The Sources & Providers policy controls -- provider poll interval, upload
+   * The Services policy controls -- provider poll interval, upload
    * retry count and retry delay -- are locally owned changed-blur controls and
    * are deliberately absent, so this partial write can never replay a rendered
    * value over the newer value their own commit already persisted. */
@@ -2181,10 +2226,23 @@
     persistence.defineScope('integration:alldebrid', {
       commit: async ({key, draft}) => {
         const option = CHANGED_BLUR_FIELDS[key].option;
+        // A secret is declared by the page's own table of integration-owned
+        // secret controls; the generic persistence owner knows nothing about it.
+        const secret = !!INTEGRATION_SECRET_CONTROLS[key];
         const result = await request('PATCH', '/integrations/alldebrid/configuration',
-          {options: {[option]: committedValue(key, draft)}}, 15000);
+          secret
+            ? withTestedDrafts('alldebrid', {options: {[option]: String(draft ?? '')}})
+            : {options: {[option]: committedValue(key, draft)}}, 15000);
         adoptIntegration('alldebrid', result);
-        return String(allDebridOf(state.settings)[option] ?? draft);
+        if (!secret) return String(allDebridOf(state.settings)[option] ?? draft);
+        // A credential is NEVER projected back into the browser. The accepted
+        // presentation of one is the blank/configured row the backend's own
+        // redacted projection describes, so returning '' is what makes the
+        // canonical baseline hold no secret -- and what returns the visible
+        // field to that presentation. Verification needs no step here: the
+        // stored evidence simply stops describing the saved configuration.
+        renderAllDebridCredential(draft);
+        return '';
       },
     });
 
@@ -2248,75 +2306,79 @@
     return proofs.length ? {...body, verification: proofs} : body;
   }
 
-  /* Is there gated AllDebrid state waiting to be committed? A typed API key
-   * and an armed Clear Stored API Key are both pending INTENT and nothing
-   * else until the localized Save runs. */
-  function allDebridGatedIntent() {
-    return !!valueOf('alldebrid_api_key') || scopedClears('alldebrid').length > 0;
+  /* Whether the destructive Clear may act at all. It is inert until the
+   * operator has confirmed the removal, and it converges from the accepted
+   * integration projection the row was rendered from. */
+  function refreshAllDebridClearGate() {
+    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
+    const button = card?.querySelector('[data-action="clear-alldebrid-key"]');
+    if (button) button.disabled = !card?.querySelector('[data-alldebrid-clear-confirm]')?.checked;
   }
 
-  function refreshGatedSave() {
-    const button = root()?.querySelector('[data-action="save-alldebrid"]');
-    if (button) button.disabled = !allDebridGatedIntent();
-  }
-
-  /* A completed gated mutation consumes only the intent it DISPATCHED.
+  /* Converge the credential row on ACCEPTED canonical state.
    *
-   * The credential row is re-rendered because the accepted state changes what
-   * it must show -- whether a key is present, and therefore whether the Clear
-   * control exists at all. Anything the operator entered after dispatch is
-   * NEWER intent, so it is carried across that re-render: it stays visible,
-   * keeps Save offered, and is committed by the next Save. An older response
-   * can never erase it. */
-  function consumeAllDebridIntent(card, dispatched) {
+   * The row has to change, because the accepted state changes what it SHOWS --
+   * whether a key is present, and therefore whether the Clear action exists at
+   * all. Only the parts that depend on that are rebuilt; the INPUT ELEMENT IS
+   * NEVER REPLACED. Destroying a control the operator may still be editing
+   * would remove focus from it, which IS its commit boundary -- so a draft
+   * they had not finished would be persisted by this owner's own re-render
+   * rather than by them leaving the field.
+   *
+   * A key typed after this write was dispatched is therefore simply left
+   * alone: it stays visible, stays dirty against the blank accepted baseline,
+   * and commits on its own blur. Only the draft this write actually carried is
+   * consumed. */
+  function renderAllDebridCredential(dispatched) {
+    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
+    const row = card?.querySelector('.dp-settings-alldebrid-key-row');
+    if (!card || !row) return;
+    const configured = !!allDebridOf(state.settings).api_key_configured;
+
     const field = fieldFor('alldebrid_api_key');
-    const pendingKey = field && String(field.value ?? '') !== dispatched.apiKey
-      ? String(field.value ?? '') : '';
-    const gate = card.querySelector('[data-clear-secret="alldebrid_api_key"]');
-    const pendingClear = !!gate && gate.checked && gate.checked !== dispatched.clear;
+    if (field) {
+      if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
+      field.placeholder = ALLDEBRID_KEY_PLACEHOLDER(configured);
+    }
+    row.classList.toggle('is-configured', configured);
+    const meta = row.querySelector('.dp-settings-alldebrid-key-meta');
+    if (meta) meta.innerHTML = ALLDEBRID_KEY_META(configured);
+    const clear = row.querySelector('.dp-settings-alldebrid-key-clear');
+    if (configured && !clear) row.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_CLEAR);
+    else if (!configured && clear) clear.remove();
 
-    const row = card.querySelector('.dp-settings-alldebrid-key-row');
-    if (row) row.outerHTML = allDebridApiKeyField(!!allDebridOf(state.settings).api_key_configured);
-
-    const replaced = fieldFor('alldebrid_api_key');
-    if (replaced) replaced.value = pendingKey;
-    const replacedGate = card.querySelector('[data-clear-secret="alldebrid_api_key"]');
-    if (replacedGate) replacedGate.checked = pendingClear;
+    refreshAllDebridClearGate();
+    renderIntegrationState(card, 'alldebrid');
   }
 
-  /* The explicit commit boundary for gated AllDebrid state.
+  /* Erasing the stored credential.
    *
-   * It writes only the credential namespace, through the same canonical
-   * integration surface every other AllDebrid write uses, and serializes no
-   * unrelated Settings state. On success the accepted canonical state becomes
-   * the new baseline: the markup owner re-renders the credential row it owns,
-   * which consumes the draft secret and the confirmation gate together. */
-  async function saveAllDebridCredentials(button) {
-    // One deterministic path: whatever changed-blur commit this click's blur
-    // started has finished before the gated payload is read.
+   * Destructive, so it is an explicit confirmed action and never a commit
+   * boundary. It carries ONLY the removal, through the same canonical
+   * integration mutation every other AllDebrid write uses: a replacement the
+   * operator typed belongs to its own changed-blur boundary, which the settle
+   * below orders before this, so the stored key ends up removed either way and
+   * this request never saves one.
+   *
+   * The confirmation is consumed only by a clear that actually happened: a
+   * failure leaves it armed. */
+  async function clearAllDebridKey(button) {
+    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
+    if (!card?.querySelector('[data-alldebrid-clear-confirm]')?.checked) return;
     await window.DPSettingsPersistence.settle(root());
-    const apiKey = valueOf('alldebrid_api_key');
-    const clears = scopedClears('alldebrid');
-    if (!apiKey && !clears.length) return;
-    setBusy(button, true, 'Saving…');
+    setBusy(button, true, 'Clearing…');
     try {
       const result = await request('PATCH', '/integrations/alldebrid/configuration',
-        withTestedDrafts('alldebrid',
-          {options: apiKey ? {api_key: apiKey} : {}, clear_secrets: clears}), 15000);
+        {options: {}, clear_secrets: ['api_key']}, 15000);
       adoptIntegration('alldebrid', result);
-      const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
-      if (card) {
-        // Only the intent this write carried is consumed.
-        consumeAllDebridIntent(card, {apiKey, clear: clears.length > 0});
-        renderIntegrationState(card, 'alldebrid');
-      }
-      notify('AllDebrid credentials saved', 'success');
+      renderAllDebridCredential('');
+      notify('AllDebrid API key cleared', 'success');
       try { window.DPProviderStatus?.refresh(); } catch (_) {}
     } catch (error) {
       notify(error.message, 'error');
     } finally {
       setBusy(button, false);
-      refreshGatedSave();
+      refreshAllDebridClearGate();
     }
   }
 
@@ -2433,10 +2495,11 @@
   function connectionTestPayload(kind) {
     const clears = new Set(clearSecrets());
     if (kind === 'alldebrid') {
-      return {
-        api_key: valueOf('alldebrid_api_key'),
-        clear_api_key: clears.has('alldebrid_api_key'),
-      };
+      // Entry/replacement commits on changed blur and removal is its own
+      // explicit action, so no credential intent is ever pending at Test time:
+      // the draft this reads is whatever the field still holds -- after the
+      // settle above, ordinarily nothing -- and never a removal.
+      return {api_key: valueOf('alldebrid_api_key')};
     }
     if (kind === 'discord') {
       return {

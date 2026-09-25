@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
-// DP 1.0.13: General Sources exposes two equal, header-only provider cards
-// (HTTP & HTTPS, FTP & SFTP) through the one shared providerCard() owner, and
+// DP 1.0.13: Network Sources exposes two equal, header-only provider cards
+// (HTTP(S), (S)FTP) through the one shared providerCard() owner, and
 // the one INPUT_REQUIRED modal owner presents the neutral server-identity
 // challenge. The backend is the authority for every persisted toggle.
 
@@ -23,15 +23,15 @@ async function openSettings(page) {
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
-  await revealGeneralSources(page);
+  await revealNetworkSources(page);
 }
 
-/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
+/* Services cards render COLLAPSED: expansion is LOCAL presentation
  * state, never a projection of enabled/configured/verified state. Opening one
  * through the canonical disclosure writes no canonical state, so this spec
  * never depends on another spec's enable/disable timing against the shared
- * backend. The General Sources members live inside that group's body. */
-async function revealGeneralSources(page) {
+ * backend. The Network Sources members live inside that group's body. */
+async function revealNetworkSources(page) {
   const group = page.locator('.dp-settings-general-sources');
   const disclosure = group.locator('.dp-settings-disclosure');
   if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
@@ -54,20 +54,20 @@ async function saveSettings(page) {
   // Apply Settings re-renders the whole Settings view, which returns every
   // expandable card to its collapsed default. Re-open the group this spec
   // operates, through the same canonical disclosure.
-  await revealGeneralSources(page);
+  await revealNetworkSources(page);
 }
 
 const CARDS = [
-  ['general_http', '.dp-settings-provider-card--general-http', 'HTTP & HTTPS', 'Direct downloads from standard HTTP and HTTPS URLs.'],
-  ['general_ftp', '.dp-settings-provider-card--general-ftp', 'FTP & SFTP', 'Direct downloads from FTP and SFTP URLs.'],
+  ['general_http', '.dp-settings-provider-card--general-http', 'HTTP(S)', 'Direct downloads from standard HTTP and HTTPS URLs.'],
+  ['general_ftp', '.dp-settings-provider-card--general-ftp', '(S)FTP', 'Direct downloads from FTP and SFTP URLs.'],
 ];
 
 async function assertHeaderOnlyCards(page) {
   const group = page.locator('.dp-settings-general-sources');
-  await expect(group).toContainText('General Sources');
+  await expect(group).toContainText('Network Sources');
   await expect(group.locator('.dp-settings-provider-card')).toHaveCount(2);
   const order = await group.locator('.dp-settings-provider-card .card-title').allTextContents();
-  expect(order.map(text => text.trim())).toEqual(['HTTP & HTTPS', 'FTP & SFTP']);
+  expect(order.map(text => text.trim())).toEqual(['HTTP(S)', '(S)FTP']);
   const heights = [];
   for (const [identity, selector, title, copy] of CARDS) {
     const card = page.locator(selector);
@@ -99,7 +99,7 @@ async function assertHeaderOnlyCards(page) {
   expect(Math.abs(heights[0] - heights[1])).toBeLessThanOrEqual(1);
 }
 
-test('General Sources renders two equal header-only cards with truly centered copy in dark and light themes', async ({ page }) => {
+test('Network Sources renders two equal header-only cards with truly centered copy in dark and light themes', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await page.goto('/'); await openSettings(page);
@@ -122,7 +122,7 @@ test('General Sources renders two equal header-only cards with truly centered co
   expect(errors).toEqual([]);
 });
 
-test('HTTP & HTTPS and FTP & SFTP toggles persist independently and never touch aria2', async ({ page }) => {
+test('HTTP(S) and (S)FTP toggles persist independently and never touch aria2', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/');
   const original = await page.request.get('/api/settings').then(response => response.json());
   const originalHttp = original.integrations.general_http.enabled;

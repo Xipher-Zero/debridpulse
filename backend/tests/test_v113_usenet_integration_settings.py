@@ -124,14 +124,17 @@ def test_presentation_uses_a_real_readiness_endpoint_not_a_static_status():
     # A static status could not express "enabled but not yet configured".
     assert presentation.static_status is None
     assert presentation.status_endpoint == "/integration-status/usenet"
-    # DP 1.0.13 work item L: display_order is the ONE ordering authority, and
-    # the Provider Status tier order is derived from it -- named premium
-    # services (AllDebrid, 10) before aggregate premium families (Usenet, 20)
-    # before the general families (100+). The Settings card order is owned
-    # separately by ui-settings-page.js and is unaffected.
-    assert presentation.display_order == 20
-    assert presentation.status_tier == "general_family"
-    assert presentation.status_tier_label == "General"
+    # DP 1.0.13 Services cleanup: display_order is the ONE ordering authority,
+    # and the Provider Status tier order is derived from it. Usenet is a
+    # PREMIUM service and the reserved LAST row of that tier, so it declares
+    # the reserved 900 -- above the presentation model's default of 100 that a
+    # future debrid entry inherits, and below the reserved Standard band (910+)
+    # that Network Sources occupies. The Settings card order is owned
+    # separately by ui-settings-page.js and is deliberately the other way
+    # round; neither is derived from the other.
+    assert presentation.display_order == 900
+    assert presentation.status_tier == "premium_service"
+    assert presentation.status_tier_label == "Premium Services"
 
 
 def test_display_name_defaults_to_derived_from_host():

@@ -49,9 +49,9 @@ def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
 def test_presentation_identity_and_direct_source_group_are_provider_owned():
     assert 'status_name="AllDebrid"' in ALLDEBRID_DEF
     assert 'status_endpoint="/integration-status/alldebrid"' in ALLDEBRID_DEF
-    assert 'status_name="HTTP & HTTPS"' in GENERAL_DEF
+    assert 'status_name="HTTP(S)"' in GENERAL_DEF
     assert 'status_group="direct_sources"' in GENERAL_DEF
-    assert 'status_group_label="General Sources"' in GENERAL_DEF
+    assert 'status_group_label="Network Sources"' in GENERAL_DEF
     assert 'static_status="healthy"' in GENERAL_DEF
 
 
@@ -62,7 +62,7 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
     # the executor-tuning cards and placed immediately after the title.
     assert "dp-settings-disclosure" in CARDS
     assert "settingsDisclosure(" in CARDS
-    # DP 1.0.13 Sources & Providers final corrective pass: the header reports
+    # DP 1.0.13 Services final corrective pass: the header reports
     # the three CONFIGURATION states and never repeats what the Enable toggle
     # beside it already says. ``Verified`` is durable canonical truth about the
     # current saved configuration, not a local memory of a Test.

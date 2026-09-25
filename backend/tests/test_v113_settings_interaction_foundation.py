@@ -1,31 +1,38 @@
-"""DP 1.0.13 -- Settings interaction foundation + Sources & Providers cleanup.
+"""DP 1.0.13 -- Settings interaction foundation + Services taxonomy cleanup.
 
-Six bounded items, each proved at its canonical owner:
+Each bounded item is proved at its canonical owner:
 
-1. Provider Status drops the standalone ``premium_family`` tier; Usenet joins
-   the existing ``general_family`` tier, whose first two positions are reserved
-   -- Usenet, then General Sources -- so a later GENERAL integration that
-   declares no explicit order still follows both.
+1. Provider Status taxonomy: ``premium_service`` holds the debrid providers and
+   then Usenet, which is its reserved LAST row; ``general_family`` -- now shown
+   as Standard Services -- holds the one aggregate Network Sources family. Both
+   the tier order and the order within a tier fall out of ``display_order``,
+   whose reserved bands are declared by the integrations themselves.
 2. The Usenet server-card collection centres on its own viewport and expands
    outward from that centre, including when it wraps.
-3. Usenet owns no notification system: Save/Test/Remove RESULTS are the
-   canonical toast owner's. Inline field validation is a different thing and
-   survives as its own, narrower surface.
-4/5. The AllDebrid card's ``Additional Settings`` disclosure and its
-   ``[Test][Save]`` action group share ONE row, and Save is the explicit commit
-   boundary for gated credential/destructive state.
-6b. A Usenet server card is NOT a credential transaction. Each control on it
-   is classified by ITS OWN semantics and risk: ordinary scalars are
-   changed-blur, SSL is an immediate reversible toggle, and only the password
-   and its Clear confirmation are gated behind the card's Save. A card with no
-   canonical id yet is the one deliberate exception -- record CREATION -- and
-   its Save mints the record.
+3. Usenet owns no notification system: action RESULTS are the canonical toast
+   owner's. Inline field validation is a different thing and survives as its
+   own, narrower surface.
+4/5. The AllDebrid card's ``Additional Settings`` disclosure and its action
+   group share ONE row. The localized Save is gone: Test is the only action.
+6b. A Usenet server card is NOT a credential transaction. Each control on it is
+   classified by ITS OWN semantics and risk: ordinary scalars AND the password
+   are changed-blur, SSL is an immediate reversible toggle, and erasing a
+   stored credential is an explicit confirmed Clear. A card with no canonical
+   id yet is the one deliberate exception -- record CREATION -- and it is the
+   canonical persistence owner that asks the record's scope to perform it.
 6/9. One canonical Settings field-persistence owner
    (``ui-settings-persistence.js``) provides baseline, dirty comparison, scoped
-   dispatch, stale-response protection, success convergence and failure
-   rollback. Controls DECLARE their commit class; no page reimplements it.
+   dispatch, stale-response protection, success convergence, failure rollback
+   and the ONE optional, integration-neutral record-materialization hook.
+   Controls DECLARE their commit class; no page reimplements it.
 10. The global ``Apply Settings`` control remains, but can no longer replay a
-   migrated Sources & Providers value over newer locally persisted state.
+   migrated Services value over newer locally persisted state.
+
+CREDENTIAL CONTRACT (DP 1.0.13 Services cleanup). Entry and replacement of a
+credential is an ordinary value change and commits on changed blur through the
+integration's existing scoped mutation; destructive removal is an explicit
+confirmed Clear; Test tests and never saves. No secret is ever retained by the
+browser as an accepted baseline.
 
 The rendered geometry and the live persistence behaviour are proved against the
 real application in ``frontend/browser/settings-providers-layout.spec.js``,
@@ -96,54 +103,126 @@ def rule(css: str, selector: str) -> str:
     return css[begin:css.index("}", begin) + 1]
 
 
-# --- Item 1: GENERAL tier ordering ----------------------------------------
+def enclosing_rule(css: str, needle: str) -> str:
+    """The WHOLE rule -- selector list and body -- that contains ``needle``."""
+    assert needle in css, f"missing declaration: {needle}"
+    at = css.index(needle)
+    return css[css.rfind("}", 0, at) + 1:css.index("}", at) + 1]
 
-GENERAL_FAMILY = "general_family"
+
+# --- Item 1: Services taxonomy and the reserved display_order bands -------
+
+PREMIUM_SERVICE, GENERAL_FAMILY = "premium_service", "general_family"
 RETIRED_TIER = "premium_family"
+DEFAULT_ORDER = IntegrationPresentation().display_order
 
 
-def test_usenet_belongs_to_the_general_tier():
+def test_usenet_is_a_premium_service():
     presentation = usenet_definition.presentation
-    assert presentation.status_tier == GENERAL_FAMILY
-    assert presentation.status_tier_label == "General"
+    assert presentation.status_tier == PREMIUM_SERVICE
+    assert presentation.status_tier_label == "Premium Services"
+    assert presentation.premium is True
 
 
 def test_no_integration_declares_the_retired_standalone_premium_tier():
     assert [d.id for d in definitions if d.presentation.status_tier == RETIRED_TIER] == []
 
 
-def test_premium_services_and_alldebrid_are_unchanged():
+def test_alldebrid_is_unchanged_by_the_taxonomy_move():
     presentation = alldebrid_definition.presentation
-    assert presentation.status_tier == "premium_service"
+    assert presentation.status_tier == PREMIUM_SERVICE
     assert presentation.status_tier_label == "Premium Services"
     assert presentation.display_order == 10
     assert presentation.premium is True
 
 
-def test_the_general_tier_reserves_usenet_first_and_general_sources_second():
-    orders = {d.id: d.presentation.display_order for d in definitions
-              if d.presentation.status_tier == GENERAL_FAMILY}
-    assert set(orders) == {"usenet", "general_http", "general_ftp"}
-    assert orders["usenet"] < orders["general_http"] <= orders["general_ftp"]
+def test_the_lower_tier_keeps_its_identity_and_changes_only_its_label():
+    """``general_family`` is the internal tier identity and does not move; only
+    what the operator reads changed."""
+    members = [d for d in definitions if d.presentation.status_tier == GENERAL_FAMILY]
+    assert {d.id for d in members} == {"general_http", "general_ftp"}
+    for definition in members:
+        assert definition.presentation.status_tier_label == "Standard Services", definition.id
 
 
-def test_a_future_general_tier_entry_naturally_follows_both_reserved_positions():
-    """The invariant is future-proof, not merely true of today's two entries.
+def test_the_premium_tier_reserves_its_last_position_for_usenet():
+    """Reserved BANDS, not merely today's values.
 
-    An integration that declares no explicit order takes the presentation
-    model's default, so it sorts after BOTH reserved positions without the
-    renderer, or this batch, knowing anything about it.
+    Ordinary premium entries sort below the presentation model's DEFAULT order,
+    so a future debrid integration that declares no order at all still lands
+    before Usenet -- and Usenet still lands before the Standard band, which is
+    what keeps Premium Services rendered before Standard Services even when
+    Usenet is the only premium row.
     """
-    reserved = [d.presentation.display_order for d in definitions
+    premium = {d.id: d.presentation.display_order for d in definitions
+               if d.presentation.status_tier == PREMIUM_SERVICE}
+    assert set(premium) == {"alldebrid", "usenet"}
+    ordinary = [order for identity, order in premium.items() if identity != "usenet"]
+    assert max(ordinary) < DEFAULT_ORDER
+    assert DEFAULT_ORDER < premium["usenet"], \
+        "a future default-order premium entry would sort AFTER the reserved Usenet tail"
+    standard = [d.presentation.display_order for d in definitions
                 if d.presentation.status_tier == GENERAL_FAMILY]
-    assert max(reserved) < IntegrationPresentation().display_order
+    assert premium["usenet"] < min(standard)
 
 
-def test_the_general_sources_aggregate_group_survives_unchanged():
+def test_a_future_default_order_premium_entry_lands_before_usenet():
+    """The renderer names neither integration: a tier takes the position of its
+    first entry and entries arrive sorted by display_order, so this is decided
+    entirely by the band an integration declares for itself."""
+    future = IntegrationPresentation(status_name="Future Debrid", premium=True,
+                                     status_tier=PREMIUM_SERVICE,
+                                     status_tier_label="Premium Services")
+    rows = sorted([(alldebrid_definition.presentation.display_order, "alldebrid"),
+                   (usenet_definition.presentation.display_order, "usenet"),
+                   (future.display_order, "future_debrid")])
+    assert [identity for _, identity in rows] == ["alldebrid", "future_debrid", "usenet"]
+
+
+def test_the_aggregate_family_is_now_network_sources():
     for definition in (general_http_definition, general_ftp_definition):
         assert definition.presentation.status_group == "direct_sources"
-        assert definition.presentation.status_group_label == "General Sources"
-        assert definition.presentation.status_tier_label == "General"
+        assert definition.presentation.status_group_label == "Network Sources"
+
+
+def test_the_network_source_members_carry_the_new_operator_facing_names():
+    """One owner, two fields of the same definition: ``name`` is what the
+    transfer-list badge reads and ``status_name`` is what Provider Status
+    reads. Nothing durable is renamed."""
+    assert general_http_definition.name == "HTTP(S)"
+    assert general_http_definition.presentation.status_name == "HTTP(S)"
+    assert general_ftp_definition.name == "(S)FTP"
+    assert general_ftp_definition.presentation.status_name == "(S)FTP"
+    assert general_http_definition.id == "general_http"
+    assert general_ftp_definition.id == "general_ftp"
+
+
+def test_the_transfer_list_badge_label_has_exactly_one_owner():
+    """Downloads and Dashboard Recent read the name the backend stamped from
+    the integration definition; neither renderer owns a protocol label map."""
+    routes = (BACKEND / "api" / "routes.py").read_text(encoding="utf-8")
+    assert "def _provider_display_name(" in routes
+    assert "definition.name for definition in definitions" in routes
+    app_js = read("app.js")
+    presentation = app_js[app_js.index("function transferProviderPresentation("):]
+    presentation = presentation[:presentation.index("\nfunction ", 1)]
+    assert "current_provider_name" in presentation
+    assert "delivering_provider_name" in presentation
+    # The chip renders that label and nothing it derived itself.
+    chip = app_js[app_js.index("function providerChip("):]
+    chip = chip[:chip.index("\nfunction ", 1)]
+    assert "transferProviderPresentation(t)" in chip
+    assert "dp-provider-chip" in chip
+    # Neither the label owner nor the row renderers hold a protocol label map.
+    # (app.js is audited at its two owning functions: its submission copy names
+    # protocols to the operator, which is neither a map nor a badge.)
+    for named in ("HTTP(S)", "(S)FTP", "HTTP & HTTPS", "FTP & SFTP",
+                  "general_http", "general_ftp"):
+        assert named not in presentation, f"the label owner names a protocol: {named}"
+        assert named not in chip, f"the chip names a protocol: {named}"
+        for renderer in ("ui-downloads.js", "ui-dashboard-transfer-presentation.js"):
+            assert named not in read(renderer), \
+                f"{renderer} declares its own protocol label: {named}"
 
 
 def test_no_source_file_still_names_the_retired_tier():
@@ -161,8 +240,69 @@ def test_no_source_file_still_names_the_retired_tier():
 def test_the_status_renderer_still_names_no_integration_and_no_tier():
     status_js = read("ui-provider-status.js")
     for named in ("alldebrid", "usenet", "general_http", "general_ftp",
-                  "premium_service", GENERAL_FAMILY, "Premium Services", "General Sources"):
+                  PREMIUM_SERVICE, GENERAL_FAMILY, "Premium Services",
+                  "Standard Services", "Network Sources"):
         assert named not in status_js, named
+
+
+# --- Item 1 (presentation): the Services page taxonomy --------------------
+
+def test_the_settings_tab_is_presented_as_services_and_keeps_its_key():
+    tabs = block(SETTINGS_JS, "const TABS")
+    assert "['sources', 'Services'" in tabs
+    assert "Sources & Providers" not in tabs
+
+
+def test_the_premium_group_card_is_premium_services():
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert "groupCard('Premium Services'" in panel
+    assert "External Providers" not in panel
+
+
+def test_the_aggregate_group_label_falls_back_to_network_sources():
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert "'Network Sources'" in panel
+    assert "'General Sources'" not in panel
+
+
+def test_the_downloads_executor_tuning_family_matches_the_services_name():
+    panel = block(SETTINGS_JS, "function downloadsPanel(")
+    assert "executorTuningCard('direct', 'Network Sources'" in panel
+    assert "'General Sources'" not in panel
+
+
+def test_the_services_page_renders_the_new_network_source_names():
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert "providerCard('general_http', 'HTTP(S)'" in panel
+    assert "providerCard('general_ftp', '(S)FTP'" in panel
+    assert "HTTP & HTTPS" not in panel
+    assert "FTP & SFTP" not in panel
+    # The durable identities the card addresses are untouched.
+    assert "'general_http'" in panel and "'general_ftp'" in panel
+
+
+def test_usenet_stays_first_in_settings_premium_services():
+    """Settings order is intentionally INDEPENDENT of Provider Status order:
+    the operator configures Usenet first, and the panel reports it last."""
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert "usenetCard + " in panel
+    assert panel.index("usenetCard +") < panel.index("provider,")
+
+
+def test_an_inset_separator_groups_usenet_apart_from_the_debrid_providers():
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert "usenetCard + PREMIUM_SEPARATOR + provider" in panel
+    separator = block(SETTINGS_JS, "const PREMIUM_SEPARATOR")
+    assert "dp-settings-group-separator" in separator
+    rule_text = rule(SETTINGS_CSS, "#view-settings .dp-settings-group-separator {")
+    # Inset and partial width -- within the content bounds, never full bleed.
+    assert "width:" in rule_text
+    assert "100%" not in rule_text
+    for banned in ("position: absolute", "margin-left: -", "margin-inline-start: -"):
+        assert banned not in rule_text, banned
+    # It is a rule, not a second section/heading.
+    for banned in ("<h1", "<h2", "<h3", "card-title", "card-header", "groupCard"):
+        assert banned not in separator, banned
 
 
 # --- Item 2: Usenet collection geometry ------------------------------------
@@ -195,7 +335,8 @@ def test_usenet_owns_no_operation_result_notification_system():
 
 
 def test_every_usenet_action_result_goes_to_the_canonical_toast_owner():
-    for action in ("async function save(", "async function test(", "async function removeCard("):
+    for action in ("async function createServer(", "async function test(",
+                   "async function removeCard(", "async function clearPassword("):
         body = block(USENET_JS, action)
         assert "toast(" in body, action
 
@@ -257,31 +398,90 @@ def test_ssl_is_an_immediate_reversible_toggle():
     assert "followSslPort(card)" in handler
 
 
-def test_only_the_credential_and_its_confirmation_are_gated():
+def test_the_password_is_an_ordinary_changed_blur_replacement():
+    """DP 1.0.13: entering or replacing a credential is an ordinary value
+    change. It commits on changed blur, through the SAME per-record scope every
+    other field of the card uses -- there is no second credential writer and no
+    localized Save."""
     for label, markup in SERVER_CARDS:
         password = control(markup, 'data-usenet-field="password"')
-        assert 'data-commit="gated-save"' in password
-        assert 'data-commit="changed-blur"' not in password
-    # A brand-new card has no stored credential, so only the rendered card
-    # carries the Clear confirmation at all.
-    clear = control(SERVER_CARDS[0][1], "data-usenet-clear-password")
-    assert 'data-commit="gated-save"' in clear
-    assert "data-usenet-clear-password" not in block(USENET_JS, "function blankCard(")
+        assert 'data-commit="changed-blur"' in password, label
+        assert 'data-commit-key="password"' in password, label
+        assert 'data-commit-scope="usenet-server"' in password, label
+        assert 'data-commit="gated-save"' not in password, label
 
 
-def test_save_on_an_existing_record_commits_only_the_gated_credential():
-    body = block(USENET_JS, "async function save(")
-    # The gated payload is the credential and its confirmation, nothing else.
-    assert "password" in body
-    assert "clear_password" in body
-    for ordinary in ORDINARY_SERVER_FIELDS:
-        assert f"'{ordinary}'" not in body, ordinary
-    # Creation is the one deliberate record boundary, taken only when the card
-    # has no canonical id yet.
-    assert "if (!serverId(card)) return createServer(" in body
-    creation = block(USENET_JS, "async function createServer(")
-    assert "'POST'" in creation and "readCard(" in creation
-    assert "adoptServerId(" in creation
+def test_no_gated_save_class_survives_anywhere_in_settings():
+    """The class is retired for credentials, so no control may still declare
+    it -- a dormant declaration is a second contract."""
+    for source in (SETTINGS_JS, USENET_JS):
+        assert 'data-commit="gated-save"' not in source
+
+
+def test_no_owner_renders_a_save_action_for_a_usenet_server():
+    for label, markup in SERVER_CARDS:
+        assert 'data-usenet-action="save"' not in markup, label
+    assert 'data-usenet-action="save"' not in USENET_JS
+    assert "function gatedIntent(" not in USENET_JS
+    assert "function refreshGate(" not in USENET_JS
+    assert "async function save(" not in USENET_JS
+
+
+def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
+    rendered = SERVER_CARDS[0][1]
+    action = control(rendered, 'data-usenet-action="clear-password"')
+    assert "btn-danger" in action, "the canonical destructive treatment is not used"
+    assert "disabled" in action, "Clear must arrive disabled until the confirmation is checked"
+    confirm = control(rendered, "data-usenet-clear-password")
+    assert 'type="checkbox"' in confirm
+    assert 'data-commit' not in confirm, "a confirmation is not a persisted value"
+    # Button first, checkbox second, text third.
+    group = rendered[rendered.index("dp-usenet-clear-password"):]
+    group = group[:group.index("</div>")]
+    assert group.index('data-usenet-action="clear-password"') < group.index("data-usenet-clear-password")
+    assert group.index("data-usenet-clear-password") < group.index(
+        "Confirm removal of the stored password for this server")
+    # The retired gated checkbox and its copy are gone.
+    assert "<span>Clear the stored password for this server</span>" not in SETTINGS_JS
+    assert "dp-settings-inline-check dp-usenet-clear-password" not in SETTINGS_JS
+
+
+def test_the_clear_action_writes_only_the_removal_and_resets_only_on_success():
+    body = block(USENET_JS, "async function clearPassword(")
+    assert "{clear_password: true}" in body, "Clear must carry only the removal"
+    assert "password:" not in body.replace("clear_password", ""), \
+        "Clear must never also save a replacement credential"
+    # The confirmation is consumed only by a clear that actually happened: the
+    # reset is on the success path, never in the finally.
+    success = body[:body.index("} catch (error) {")]
+    failure = body[body.index("} catch (error) {"):]
+    assert "gate.checked = false" in success
+    assert "gate.checked = false" not in failure
+    assert "toast(" in failure, "a failed clear must report itself"
+    # It refuses to act at all until the operator has confirmed.
+    assert "gate?.checked" in body or "gate.checked" in body.split("\n")[1]
+
+
+def test_a_blank_password_is_never_a_clear():
+    """The persistence owner never commits a draft equal to its baseline, and a
+    rendered credential field is always blank -- so leaving one blank writes
+    nothing at all. The backend states the same rule for the value it does
+    receive."""
+    persistence = PERSISTENCE_PATH.read_text(encoding="utf-8")
+    commit = block(persistence, "function commit(")
+    assert "draft === baselines.get(key)" in commit
+    servers = (BACKEND / "integrations" / "usenet" / "servers.py").read_text(encoding="utf-8")
+    assert 'means "keep the stored one for THIS server"' in servers
+
+
+def test_a_credential_is_never_retained_as_an_accepted_baseline():
+    """A scope returns the ACCEPTED value, which the owner records as the
+    baseline. For a secret that accepted value is blank, so the browser holds
+    no credential and the field returns to its blank/configured presentation."""
+    scope = block(USENET_JS, "function registerServerScope(")
+    assert "SECRET_FIELDS" in scope
+    assert "return '';" in scope
+    assert "SECRET_FIELDS = new Set(['password'])" in USENET_JS
 
 
 def test_a_new_card_cannot_field_commit_before_its_record_exists():
@@ -319,13 +519,15 @@ def test_an_action_converges_only_the_controls_it_wrote():
     # A newer draft is kept, and made dirty against the accepted baseline so it
     # commits on its own blur rather than being silently swallowed.
     assert "DPSettingsPersistence.accept(" in body
-    # A credential is never projected back into the browser.
-    assert "password" in body
+    # A credential is never projected back into the browser -- but its ACCEPTED
+    # presentation, which for a secret is blank, still becomes the baseline.
+    assert "SECRET_FIELDS.has(key)" in body
+    assert "DPSettingsPersistence.accept(node, '')" in body
 
 
 def test_every_record_write_shares_that_record_lane():
-    """Immediate, gated and dialog-committed writes mutate the SAME record as a
-    field commit, so they cannot be allowed to overlap it or each other."""
+    """Immediate, destructive and dialog-committed writes mutate the SAME record
+    as a field commit, so they cannot be allowed to overlap it or each other."""
     writer = block(USENET_JS, "function writeServer(")
     assert "DPSettingsPersistence.perform(" in writer
     assert "SERVER_SCOPE" in writer and "serverId(card)" in writer
@@ -352,38 +554,40 @@ def test_the_persistence_owner_owns_record_ordering_and_acceptance():
         assert name in source[source.index("window.DPSettingsPersistence"):], name
 
 
-def test_a_gated_mutation_consumes_only_the_intent_it_dispatched():
-    """The rule scoped convergence applies to ordinary controls applies to the
-    GATED ones too: a completed write may reset the credential and its Clear
-    confirmation only while they still represent what it sent. Intent created
-    after dispatch is newer and must survive."""
-    consume = block(USENET_JS, "function consumeGatedIntent(")
-    assert "dispatched.password" in consume and "dispatched.clear" in consume
-    assert "field.value === dispatched.password" in consume
-    assert "gate.checked === dispatched.clear" in consume
-    # Both gated writers use it: the existing record's Save and record creation.
-    assert "consumeGatedIntent(card, {password: secret, clear})" in USENET_JS
-    assert "consumeGatedIntent(card, {password: server.password || ''" in USENET_JS
+def test_record_creation_consumes_only_the_credential_it_dispatched():
+    """A credential typed while the record was being minted is NEWER intent: it
+    stays on screen and commits on its own blur. Only what creation actually
+    carried is cleared."""
+    consume = block(USENET_JS, "function consumeCarriedCredential(")
+    assert "dispatched" in consume
+    assert "field.value === dispatched" in consume
+    assert "consumeCarriedCredential(card, server.password || '')" in USENET_JS
     # And nothing clears the credential unconditionally any more.
-    for retired in ("if (field) field.value = '';", "if (gate) gate.checked = false;"):
-        assert retired not in USENET_JS, retired
+    assert "if (field) field.value = '';" not in USENET_JS
 
 
-def test_the_alldebrid_gated_save_carries_newer_intent_across_its_rerender():
-    """The credential row is re-rendered because the accepted state changes
-    what it must show; anything entered after dispatch is carried across it."""
-    consume = block(SETTINGS_JS, "function consumeAllDebridIntent(")
-    assert "dispatched.apiKey" in consume and "dispatched.clear" in consume
-    assert "pendingKey" in consume and "pendingClear" in consume
-    assert "allDebridApiKeyField(" in consume
-    saver = block(SETTINGS_JS, "async function saveAllDebridCredentials(")
-    assert "consumeAllDebridIntent(card, {apiKey, clear: clears.length > 0})" in saver
-    # The unconditional row replacement is gone from the save path.
-    assert "row.outerHTML" not in saver
+def test_the_alldebrid_credential_row_never_replaces_the_control_it_converges():
+    """The row has to change -- whether a key is present decides whether the
+    Clear action exists at all -- but the INPUT is never replaced. Destroying a
+    control the operator may still be editing would remove focus from it, which
+    IS its commit boundary, so this owner's own re-render would persist a draft
+    they had not finished."""
+    render = block(SETTINGS_JS, "function renderAllDebridCredential(")
+    assert "dispatched" in render
+    # Only the draft this write carried is consumed.
+    assert "String(field.value ?? '') === String(dispatched ?? '')" in render
+    # The variable parts are rebuilt from the SAME declarations the row is
+    # rendered from, so the row keeps one markup owner in either direction.
+    for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_META(", "ALLDEBRID_KEY_CLEAR"):
+        assert fragment in render, fragment
+        assert fragment.rstrip("(") in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    # Nothing replaces or re-parents the control.
+    for banned in ("outerHTML", "replaceWith", "replaceChild", "cloneNode"):
+        assert banned not in render, banned
 
 
 def test_every_usenet_action_settles_pending_field_commits_first():
-    for action in ("async function save(", "async function test(",
+    for action in ("async function clearPassword(", "async function test(",
                    "async function sslChanged(", "async function rename("):
         body = block(USENET_JS, action)
         assert "settle(" in body, action
@@ -393,7 +597,7 @@ def test_the_canonical_toast_owner_is_the_only_notification_owner_on_this_page()
     assert "window.toast" in read("ui-toast-contract.js")
 
 
-# --- Items 4/5: the AllDebrid action row -----------------------------------
+# --- Items 4/5/13: the AllDebrid action row --------------------------------
 
 def test_the_disclosure_and_the_action_group_share_one_row():
     panel = block(SETTINGS_JS, "function sourcesPanel(")
@@ -422,21 +626,37 @@ def test_the_expanded_state_bottom_aligns_the_action_group():
     assert ":has(> details[open])" in SETTINGS_CSS
 
 
-def test_save_sits_immediately_right_of_test_in_one_action_group():
-    actions = block(SETTINGS_JS, "function sourcesPanel(")
-    actions = actions[actions.index("dp-settings-provider-actions"):]
-    assert actions.index('data-action="test-alldebrid"') < actions.index('data-action="save-alldebrid"')
+def test_no_localized_save_action_survives_for_the_alldebrid_credential():
+    """Item 13: the localized Save is gone entirely, not merely hidden. Test
+    inherits the action group's right-hand position it occupied."""
+    assert 'data-action="save-alldebrid"' not in SETTINGS_JS
+    for retired in ("function saveAllDebridCredentials(", "function allDebridGatedIntent(",
+                    "function refreshGatedSave(", "function scopedClears("):
+        assert retired not in SETTINGS_JS, retired
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    actions = panel[panel.index("dp-settings-provider-actions"):]
+    actions = actions[:actions.index("</div>")]
+    assert 'data-action="test-alldebrid"' in actions
+    assert "Save" not in actions
 
 
-def test_save_uses_the_canonical_success_button_variant():
-    assert "btn-success" in SETTINGS_JS
-    assert ":is(.btn-success" in LANGUAGE_CSS
-    variant = rule(LANGUAGE_CSS, ":is(.btn-success")
-    assert "--dp-state-success" in variant
-    # The success variant belongs to the one button-language owner.
-    offenders = [p.name for p in MAINTAINED_CSS
-                 if p.name != "ui-universal-language.css" and ".btn-success" in p.read_text(encoding="utf-8")]
-    assert offenders == [], offenders
+def test_the_action_group_keeps_its_single_right_hand_datum():
+    """The only geometric consequence of removing Save: the group now holds one
+    button, which the existing right-aligned flex row places exactly where Save
+    used to sit."""
+    actions = rule(SETTINGS_CSS, "#view-settings .dp-settings-provider-actions {")
+    assert "display: flex" in actions
+    assert "justify-content: flex-end" in actions
+
+
+def test_the_alldebrid_expanded_additional_settings_are_untouched():
+    """Explicitly out of scope: the expanded layout keeps every field it had."""
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    additional = panel[panel.index("dp-settings-additional"):panel.index("dp-settings-provider-actions")]
+    for field in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
+                  "full_sync_interval_minutes", "upload_fail_retry_count",
+                  "upload_fail_retry_delay_minutes"):
+        assert field in additional, field
 
 
 # --- Items 6/9: one canonical persistence owner ----------------------------
@@ -468,6 +688,37 @@ def test_the_persistence_owner_is_instance_scoped():
     assert "instance" in commit
     # Writes serialize per RECORD, so two servers never block each other.
     assert "chains" in commit
+
+
+def test_the_persistence_owner_offers_one_optional_neutral_materialization_hook():
+    """A record with no canonical identity cannot be field-committed, and only
+    its own scope knows how one is created. The generic owner therefore ASKS --
+    once per record -- and owns nothing about the creation itself."""
+    source = PERSISTENCE_PATH.read_text(encoding="utf-8")
+    assert "function materialize(" in source
+    body = block(source, "function materialize(")
+    # Optional: a scope that does not declare it is untouched.
+    assert "typeof scope.materialize !== 'function'" in body
+    # Exactly one creation per draft record.
+    assert "materializing.has(owner)" in body
+    assert "materializing.set(owner" in body
+    # It is counted as outstanding work, so `settle` waits for it.
+    settle = block(source, "async function settle(")
+    assert "materializations" in settle
+    # The commit boundary is what asks, and only for an uncommittable record
+    # whose draft actually differs from the accepted baseline.
+    commit = block(source, "function commit(")
+    guard = commit[:commit.index("const scopeId")]
+    assert "deferred.set(control, draft)" in guard
+    assert "materialize(control)" in guard
+    assert guard.index("draft === baselines.get(key)") < guard.index("materialize(control)")
+
+
+def test_the_materialization_hook_names_no_integration_or_page():
+    source = PERSISTENCE_PATH.read_text(encoding="utf-8")
+    for named in ("usenet", "alldebrid", "general_http", "general_ftp",
+                  "Usenet", "AllDebrid", "/api/", "data-setting"):
+        assert named not in source, named
 
 
 def test_the_persistence_owner_keys_off_its_own_attribute_vocabulary():
@@ -526,6 +777,9 @@ def test_failure_repaints_only_while_the_control_still_shows_what_it_sent():
 # field-committed -- yet it stays interactive, so the operator can express
 # intent after the creation write is dispatched and before the id arrives.
 # That intent must reach the minted record, and removal must never abandon it.
+#
+# DP 1.0.13: there is no Save to take that boundary, so the canonical
+# persistence owner asks the record's own scope to materialize it.
 
 
 def test_a_commit_boundary_crossed_before_the_record_exists_is_remembered():
@@ -556,6 +810,27 @@ def test_what_is_deferred_is_the_draft_that_crossed_the_boundary():
     replay = block(source, "function resume(")
     assert "deferred.get(control)" in replay and "commit(control, draft)" in replay, \
         "resume replays the control's current value instead of the deferred draft"
+
+
+def test_the_usenet_scope_is_what_creates_the_record():
+    """The generic owner asks; the scope creates and adopts the identity. There
+    is no second creation owner and no Usenet focusout listener."""
+    scope = block(USENET_JS, "function registerServerScope(")
+    assert "materialize:" in scope
+    assert "createServer(" in scope
+    creation = block(USENET_JS, "async function createServer(")
+    assert "'POST'" in creation and "readCard(" in creation
+    assert "adoptServerId(" in creation
+    # Exactly one creation site.
+    assert USENET_JS.count("api(\n") + USENET_JS.count("api('POST'") == 1 or \
+        USENET_JS.count("'/usenet/servers'") == 1
+
+
+def test_a_blank_or_invalid_host_creates_nothing_and_keeps_inline_validation():
+    creation = block(USENET_JS, "async function createServer(")
+    assert "if (!server.host)" in creation
+    assert "validation(card, 'A server host is required.')" in creation
+    assert creation.index("if (!server.host)") < creation.index("'POST'")
 
 
 def test_record_creation_hands_post_dispatch_intent_onto_the_new_record():
@@ -618,10 +893,11 @@ def test_every_migrated_providers_field_declares_exactly_one_scope():
     table = block(SETTINGS_JS, "const CHANGED_BLUR_FIELDS")
     for key in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
                 "full_sync_interval_minutes", "upload_fail_retry_count",
-                "upload_fail_retry_delay_minutes"):
+                "upload_fail_retry_delay_minutes",
+                # DP 1.0.13: credential replacement is an ordinary value change.
+                "alldebrid_api_key"):
         assert key in table, key
-    # Gated and secret controls are never changed-blur.
-    assert "alldebrid_api_key" not in table
+    # Archive passwords keep their own, unchanged hydration contract.
     assert "extraction_password" not in table
 
 
@@ -636,36 +912,250 @@ def test_the_page_declares_its_commit_class_rather_than_reimplementing_it():
         assert machinery not in SETTINGS_JS, machinery
 
 
-# --- Item 6.3 / 7 / 8: gated save, draft Test, deterministic ordering ------
+# --- Items 11-13: the AllDebrid credential contract ------------------------
 
-def test_the_gated_save_is_the_only_writer_of_alldebrid_credentials():
-    saver = block(SETTINGS_JS, "async function saveAllDebridCredentials(")
-    assert "/integrations/alldebrid/configuration" in saver
-    assert "scopedClears('alldebrid')" in saver
-    assert "alldebrid_api_key" in saver
-
-
-def test_no_gated_control_is_persisted_by_blur():
+def test_the_api_key_is_an_ordinary_changed_blur_replacement():
     key_field = block(SETTINGS_JS, "function allDebridApiKeyField(")
-    assert 'data-commit="changed-blur"' not in key_field
-    assert 'data-commit="gated-save"' in key_field
-    # The confirmation checkbox expresses pending intent only.
-    assert "data-clear-secret" in key_field
+    element = control(key_field, 'data-commit-scope="integration:alldebrid"')
+    assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_field
+    assert 'data-commit="changed-blur"' in element
+    assert 'data-setting="${key}"' in element
+    assert 'data-commit-key="${key}"' in element
+    assert 'data-commit="gated-save"' not in element
+    assert "const key = 'alldebrid_api_key';" in key_field
+    # The retired Save-oriented clear checkbox and its copy are gone.
+    assert "data-clear-secret=" not in key_field
+    assert "data-clear-secret=\"alldebrid_api_key\"" not in SETTINGS_JS
+    assert "Remove the saved API key when you choose Save." not in SETTINGS_JS
+    assert "then choose Save" not in key_field
+
+
+def test_the_credential_scope_writes_the_existing_integration_mutation():
+    scope = block(SETTINGS_JS, "function registerCommitScopes(")
+    assert "/integrations/alldebrid/configuration" in scope
+    assert "INTEGRATION_SECRET_CONTROLS" in scope, \
+        "the scope must know which of its controls is a secret"
+    # A secret's accepted presentation is blank: no credential becomes a baseline.
+    assert "return '';" in scope
+    assert "renderAllDebridCredential(" in scope
+
+
+def test_the_explicit_clear_is_the_only_destructive_credential_writer():
+    body = block(SETTINGS_JS, "async function clearAllDebridKey(")
+    assert "clear_secrets: ['api_key']" in body
+    assert "options: {}" in body, "Clear must never also save a replacement key"
+    assert "/integrations/alldebrid/configuration" in body
+    # Settled first, so the clear is the LAST write on this namespace.
+    assert "settle(" in body
+    # The confirmation is consumed only by a clear that actually happened.
+    success = body[:body.index("} catch (error) {")]
+    failure = body[body.index("} catch (error) {"):]
+    assert "renderAllDebridCredential('')" in success
+    assert "renderAllDebridCredential(" not in failure, \
+        "a failed clear must leave the confirmation armed"
+    assert "notify(" in failure
+
+
+def test_the_clear_group_is_button_then_confirmation_then_text():
+    group = block(SETTINGS_JS, "const ALLDEBRID_KEY_CLEAR")
+    action = control(group, 'data-action="clear-alldebrid-key"')
+    assert "btn-danger" in action
+    assert "disabled" in action, "Clear must arrive disabled until confirmed"
+    assert group.index('data-action="clear-alldebrid-key"') < group.index("data-alldebrid-clear-confirm")
+    assert group.index("data-alldebrid-clear-confirm") < group.index(
+        "Confirm removal of the stored API key")
+    # The row renders that one declaration, and nothing else does.
+    assert "ALLDEBRID_KEY_CLEAR" in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    assert SETTINGS_JS.count("dp-settings-alldebrid-key-clear\"") == 1
+
+
+def test_the_clear_group_is_centred_against_the_api_key_input_itself():
+    """Structural: the clear group occupies the INPUT's own grid row, so it is
+    centred against the control rather than the label+hint stack, and it takes
+    horizontal room from the field instead of adding an action band."""
+    row = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-row {")
+    assert "display: grid" in row
+    clear = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-clear {")
+    assert "align-self: center" in clear
+    assert "grid-row: 2" in clear
+    control_rule = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-input {")
+    assert "grid-row: 2" in control_rule
+    for banned in ("position: absolute", "transform", "margin-top: -"):
+        assert banned not in clear, banned
+
+
+def test_verification_invalidation_is_derived_and_never_a_second_check():
+    """A credential change stops matching the fingerprint the stored evidence
+    describes, so ``verified`` falls to False by derivation. No owner asserts
+    it, clears it, or re-checks it.
+
+    The BEHAVIOURAL proof against real evidence is the existing owner's:
+    ``test_v113_provider_verification_evidence.py``
+    ``test_a_verification_relevant_change_retires_the_evidence``. What is
+    proved here is that this batch introduced no second check anywhere."""
+    configuration = (BACKEND / "integrations" / "configuration.py").read_text(encoding="utf-8")
+    assert "definition.verified(entry.options, entry.verification)" in configuration
+    definition_py = (BACKEND / "integrations" / "definition.py").read_text(encoding="utf-8")
+    assert "def verified(self, options: dict, evidence) -> bool:" in definition_py
+    assert "stored.get(subject) == fingerprint" in definition_py
+    # No credential owner asserts, clears or re-checks verification: the
+    # AllDebrid scope and its Clear carry the mutation and nothing else.
+    scope = block(SETTINGS_JS, "function registerCommitScopes(")
+    clear = block(SETTINGS_JS, "async function clearAllDebridKey(")
+    for body in (scope, clear):
+        assert "verified" not in body
+        assert "invalidate" not in body
 
 
 def test_every_providers_page_action_settles_pending_commits_first():
-    for action in ("async function testConnection(", "async function saveAllDebridCredentials(",
+    for action in ("async function testConnection(", "async function clearAllDebridKey(",
                    "async function saveCurrent("):
         body = block(SETTINGS_JS, action)
         assert "settle(" in body, action
 
 
-def test_test_operates_on_the_current_draft_including_an_unsaved_secret():
+def test_test_is_never_a_credential_save_action():
     payload = block(SETTINGS_JS, "function connectionTestPayload(")
     assert "valueOf('alldebrid_api_key')" in payload
-    assert "clearSecrets()" in payload
-    # Testing a draft never writes it.
+    # Testing never writes, and it carries no removal intent of its own: a
+    # removal is an explicit action, never something pending at Test time.
     assert "PATCH" not in payload and "PUT" not in payload
+    assert "clear_api_key" not in payload
+    tester = block(SETTINGS_JS, "async function testConnection(")
+    assert "PATCH" not in tester and "PUT" not in tester
+
+
+# --- Item 10 (glow): one master-card outer-glow owner ----------------------
+
+def test_the_master_card_outer_glow_has_exactly_one_owner():
+    """The Network Sources master chip had no external glow at all. Rather
+    than a second copy of the existing master treatment, both masters derive
+    the same two-stop omnidirectional glow from ONE per-instance colour datum,
+    declared once and covering both selectors."""
+    icons = read("ui-settings-card-icons.css")
+    chrome = read("ui-settings-chrome.css")
+    owner = enclosing_rule(
+        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%")
+    assert ".dp-settings-debrid-services > .card-header > .card-title::before" in owner
+    assert "[data-integration-group] > .card-header .dp-settings-protocol-chip" in owner
+    # The previously hard-coded debrid-services filter is gone from the other
+    # stylesheet: it now supplies only its colour.
+    debrid = enclosing_rule(chrome, "url('/icons/dp/debrid-services.svg")
+    assert "drop-shadow" not in debrid, "a second outer-glow owner survives"
+    assert "--dp-settings-master-glow: #b866f5;" in debrid
+    assert "rgba(184,102,245,.78)" not in chrome
+    # Exactly two stylesheets mention the datum: the one owner, and the one
+    # master that is not a protocol chip stating its colour.
+    owners = [p.name for p in MAINTAINED_CSS
+              if "--dp-settings-master-glow" in p.read_text(encoding="utf-8")]
+    assert sorted(owners) == ["ui-settings-card-icons.css", "ui-settings-chrome.css"], owners
+
+
+def test_the_network_sources_master_glow_is_selected_structurally():
+    """The master chip is addressed through the group attribute groupCard()
+    already emits -- no integration is named, and the Downloads executor-tuning
+    cards are deliberately not matched."""
+    icons = re.sub(r"/\*.*?\*/", "", read("ui-settings-card-icons.css"), flags=re.S)
+    owner = enclosing_rule(
+        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%")
+    selectors = owner[:owner.index("{")]
+    assert "[data-integration-group]" in selectors
+    # The glow names no integration and no family: it is selected by the group
+    # attribute groupCard() already emits.
+    for named in ("direct_sources", "direct-sources", "general-sources",
+                  "network-sources", "general_http", "general_ftp", "usenet",
+                  "data-executor-tuning"):
+        assert named not in selectors, named
+
+
+def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
+    icons = read("ui-settings-card-icons.css")
+    datum = rule(icons, "#view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {")
+    assert "#3B82F6" in datum
+    chip = rule(icons, "#view-settings .dp-settings-protocol-chip {")
+    for kept in ("width: 38px", "height: 38px", "border-radius: 9px", "inset 0 1px 0"):
+        assert kept in chip, kept
+    glyph = rule(icons, "#view-settings .dp-settings-protocol-chip img {")
+    assert "drop-shadow" in glyph, "the internal glyph glow was removed"
+
+
+# --- Items 17-19: Usenet server-card geometry ------------------------------
+
+def test_one_test_and_one_remove_per_card_rendered_once():
+    for label, markup in SERVER_CARDS:
+        assert markup.count('data-usenet-action="test"') == 1, label
+        assert markup.count('data-usenet-action="remove"') == 1, label
+    # And the behaviour owner never clones or relocates them.
+    for banned in ("cloneNode", "insertBefore(actions", "appendChild(actions",
+                   "getBoundingClientRect"):
+        assert banned not in USENET_JS, banned
+
+
+def test_the_action_pair_lives_inside_the_disclosure_grid():
+    """One markup set, placed by the grid in both states -- never moved by JS."""
+    for label, markup in SERVER_CARDS:
+        advanced = markup[markup.index("dp-usenet-advanced"):]
+        assert "dp-usenet-actions" in advanced, label
+        # DOM order is toggle -> body -> actions, so tab order follows the
+        # expanded visual order.
+        assert advanced.index("dp-usenet-advanced-toggle") < advanced.index("dp-usenet-advanced-body")
+        assert advanced.index("dp-usenet-advanced-body") < advanced.index("dp-usenet-actions")
+
+
+def test_the_disclosure_grid_centres_the_pair_on_the_whole_card():
+    grid = rule(USENET_CSS, ".dp-usenet-advanced {")
+    assert "display: grid" in grid
+    # Symmetric rails: the pair is centred on the CARD, not on leftover space.
+    assert "minmax(0, 1fr) auto minmax(0, 1fr)" in grid
+    for banned in ("position: absolute", "margin-left", "transform"):
+        assert banned not in grid, banned
+    collapsed = rule(USENET_CSS, ".dp-usenet-actions {")
+    assert "grid-row: 1" in collapsed and "grid-column: 2" in collapsed
+    # Expanded: its own final row beneath every advanced field, still centred,
+    # driven by the disclosure's own open state.
+    expanded = rule(USENET_CSS, ".dp-usenet-advanced:has(> .dp-usenet-advanced-body:not([hidden])) .dp-usenet-actions {")
+    assert "grid-row: 3" in expanded
+    assert "grid-column: 1 / -1" in expanded
+
+
+def test_the_priority_hint_belongs_to_the_priority_field():
+    for label, markup in SERVER_CARDS:
+        field = markup[markup.index("dp-usenet-field--priority"):]
+        field = field[:field.index("</div>")]
+        assert 'data-usenet-field="priority"' in field, label
+        assert "Lower values have priority." in field, label
+        assert field.index('data-usenet-field="priority"') < field.index("Lower values have priority."), label
+    hint = rule(USENET_CSS, ".dp-usenet-priority-hint {")
+    assert "text-align: center" not in hint, "the hint is still a free-floating centred paragraph"
+    # The tuning row keeps both inputs on one band even though one column is taller.
+    tuning = rule(USENET_CSS, ".dp-usenet-row--tuning {")
+    assert "align-items: flex-start" in tuning
+
+
+def test_ssl_is_centred_against_the_host_and_port_input_boxes():
+    """Structural: the host row becomes a two-row grid -- labels, then controls
+    -- and SSL is placed in the CONTROLS row. Nothing is nudged."""
+    row = rule(USENET_CSS, ".dp-usenet-row--host {")
+    assert "display: grid" in row
+    ssl = rule(USENET_CSS, ".dp-usenet-ssl {")
+    assert "grid-row: 2" in ssl
+    assert "align-self: center" in ssl
+    for banned in ("position: absolute", "transform", "margin-top: -", "margin-bottom: -"):
+        assert banned not in ssl, banned
+    # The toggle itself is untouched.
+    for label, markup in SERVER_CARDS:
+        element = control(markup, 'data-usenet-field="ssl"')
+        assert 'type="checkbox"' in element, label
+        assert "toggle-row" in markup
+
+
+def test_no_usenet_geometry_is_faked_at_runtime():
+    for banned in ("position: absolute", "position:absolute"):
+        assert banned not in USENET_CSS, banned
+    toggle = block(USENET_JS, "function toggleAdvanced(")
+    assert "hidden" in toggle and "aria-expanded" in toggle
+    for banned in ("style.", "classList.add", "appendChild", "insertBefore"):
+        assert banned not in toggle, banned
 
 
 # --- Item 10: the footer cannot replay migrated Providers-page state -------

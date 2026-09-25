@@ -115,22 +115,34 @@ def test_the_canonical_checkbox_row_is_declared_once_by_the_form_layout_owner():
     assert offenders == [], offenders
 
 
-def test_the_clear_password_row_converges_on_the_shared_owner():
+def test_the_clear_password_row_is_one_confirmed_destructive_action_group():
+    """DP 1.0.13: the confirmation stopped being a gated checkbox committed by
+    a Save and became the confirmation of an explicit destructive ACTION. It is
+    no longer a Settings checkbox ROW at all, so it no longer borrows that
+    primitive's geometry -- it is a button + confirmation + sentence group."""
     block = SETTINGS_JS[SETTINGS_JS.index("function usenetServerCard("):
                         SETTINGS_JS.index("function usenetAddTile(")]
-    row = block[block.index("data-usenet-clear-password") - 400:block.index("data-usenet-clear-password") + 200]
+    row = block[block.index("dp-usenet-clear-password"):]
+    row = row[:row.index("</div>")]
+    assert 'data-usenet-action="clear-password"' in row
+    # The confirmation itself still uses the ONE canonical single-line Settings
+    # checkbox row, so its control keeps sitting on the label text's optical
+    # centreline -- that datum has one owner and this row does not restate it.
     assert "dp-settings-inline-check" in row
     # Interaction truth is unchanged: the label still wraps the control.
     assert "<label" in row
-    assert "Clear the stored password for this server" in row
+    assert "Confirm removal of the stored password for this server" in row
 
 
-def test_the_private_checkbox_geometry_is_gone():
+def test_the_clear_group_owns_its_geometry_without_a_positioning_hack():
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
     block = css[css.index(".dp-usenet-clear-password {"):]
     block = block[:block.index("}") + 1]
-    assert "align-items" not in block
-    assert "display: flex" not in block
+    # One left-aligned group, centred together -- never a nudge.
+    assert "display: flex" in block
+    assert "align-items: center" in block
+    for banned in ("position: absolute", "transform", "margin-left", "text-align: center"):
+        assert banned not in block, banned
 
 
 # --- I: one explicit constant Route History gap ---------------------------

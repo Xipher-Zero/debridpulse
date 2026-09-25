@@ -140,7 +140,7 @@ def test_old_authentication_settings_augmentations_are_not_loaded():
 def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
     runtime = source(SETTINGS_PAGE_JS)
     expected = [
-        "['sources', 'Sources & Providers', 'zap']",
+        "['sources', 'Services', 'zap']",
         "['downloads', 'Downloads', 'download']",
         "['extraction', 'Extraction', 'package-open']",
         "['authentication', 'Authentication', 'shield-check']",
@@ -157,7 +157,8 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('External Providers', usenetCard + provider," in sources
+    assert "groupCard('Premium Services'," in sources
+    assert "usenetCard + PREMIUM_SEPARATOR + provider," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
@@ -336,7 +337,7 @@ def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
         "stalled_timeout_hours",
     ):
         assert f"{canonical}:" in policy
-    # The Sources & Providers policy fields are locally owned changed-blur
+    # The Services policy fields are locally owned changed-blur
     # controls; they are written through the SAME scoped surface, one field at
     # a time, and are deliberately absent from the deferred payload so it can
     # never replay them.

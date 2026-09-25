@@ -14,7 +14,7 @@ async function openSettings(page) {
  * state, never a projection of enabled/configured/verified state. Opening one
  * through the canonical disclosure writes no canonical state, so this spec
  * never depends on another spec's enable/disable timing against the shared
- * backend. The General Sources members live inside that group's body. */
+ * backend. The Network Sources members live inside that group's body. */
 async function revealGeneralSources(page) {
   const group = page.locator('.dp-settings-general-sources');
   const disclosure = group.locator('.dp-settings-disclosure');
@@ -60,19 +60,19 @@ function listFixture(overrides = {}) {
   return {
     id:901, name:'Stage 10 fixture', status:'completed', progress:100, size_bytes:1024,
     source:'direct_link', label:'', hash:'', created_at:'2026-09-02T12:00:00Z',
-    provider_provenance_status:'recorded', current_provider_id:'general_http', current_provider_name:'HTTP & HTTPS',
-    delivering_provider_id:'general_http', delivering_provider_name:'HTTP & HTTPS', ...overrides,
+    provider_provenance_status:'recorded', current_provider_id:'general_http', current_provider_name:'HTTP(S)',
+    delivering_provider_id:'general_http', delivering_provider_name:'HTTP(S)', ...overrides,
   };
 }
 
-test('Sources & Providers exposes canonical AllDebrid and General HTTP enable controls without HTTP tuning', async ({ page }) => {
+test('Services exposes canonical AllDebrid and General HTTP enable controls without HTTP tuning', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
-  await expect(page.locator('.dp-settings-debrid-services')).toContainText('External Providers');
+  await expect(page.locator('.dp-settings-debrid-services')).toContainText('Premium Services');
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toContainText('AllDebrid');
   await expect(integrationControl(page, 'alldebrid')).toBeVisible();
-  await expect(page.locator('.dp-settings-general-sources')).toContainText('General Sources');
+  await expect(page.locator('.dp-settings-general-sources')).toContainText('Network Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
-  await expect(httpCard).toContainText('HTTP & HTTPS');
+  await expect(httpCard).toContainText('HTTP(S)');
   await expect(httpCard).toContainText('Direct downloads from standard HTTP and HTTPS URLs.');
   await expect(integrationControl(page, 'general_http')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
@@ -130,7 +130,7 @@ test('Recent Activity shows final provider and neutral legacy unknown without UR
   const items = [listFixture(), listFixture({id:902,name:'Legacy unknown',provider_provenance_status:'unknown_legacy',current_provider_id:null,current_provider_name:null,delivering_provider_id:null,delivering_provider_name:null})];
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
   await page.goto('/');
-  await expect(page.locator('#dash-tbody tr[data-torrent-id="901"] .dp-provider-chip')).toHaveText('HTTP & HTTPS');
+  await expect(page.locator('#dash-tbody tr[data-torrent-id="901"] .dp-provider-chip')).toHaveText('HTTP(S)');
   await expect(page.locator('#dash-tbody tr[data-torrent-id="902"] .dp-provider-chip')).toHaveText('Unknown');
 });
 
@@ -144,7 +144,7 @@ test('Downloads uses current provider for active transfers and delivering provid
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
   await page.goto('/'); await page.locator('#sidebar .nav-item[data-view="torrents"]').click();
   await expect(page.locator('#t-tbody tr[data-torrent-id="903"] .dp-provider-chip')).toHaveText('AllDebrid');
-  await expect(page.locator('#t-tbody tr[data-torrent-id="904"] .dp-provider-chip')).toHaveText('HTTP & HTTPS');
+  await expect(page.locator('#t-tbody tr[data-torrent-id="904"] .dp-provider-chip')).toHaveText('HTTP(S)');
   await expect(page.locator('#t-tbody tr[data-torrent-id="905"] .dp-provider-chip')).toHaveText('Pending');
   await expect(page.locator('#view-torrents thead')).toContainText('Provider / Source');
 });
@@ -154,12 +154,12 @@ test('Details separates safe original resource, final provider, ordered failover
   const detail = {...listFixture({id:906,name:'Failover detail'}), original_resource:'https://downloads.example/file.bin?…', executors:['aria2'],
     route_attempts:[
       {ordinal:5,provider_id:'alldebrid',provider_name:'AllDebrid',outcome:'failed',route_origin:null,route_location:null,route_identity:null},
-      {ordinal:9,provider_id:'general_http',provider_name:'HTTP & HTTPS',outcome:'completed',route_origin:'https://mirror.example',route_location:'https://mirror.example/file.bin',route_identity:'https://mirror.example'},
+      {ordinal:9,provider_id:'general_http',provider_name:'HTTP(S)',outcome:'completed',route_origin:'https://mirror.example',route_location:'https://mirror.example/file.bin',route_identity:'https://mirror.example'},
     ], files:[], source_outcomes:[], events:[]};
   await page.route(url => url.pathname === '/api/torrents/906', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(detail)}));
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[detail],total:1})}));
   await page.goto('/'); await page.evaluate(() => showDetail(906));
-  await expect(page.locator('.dp-detail-provider .dv')).toHaveText('HTTP & HTTPS');
+  await expect(page.locator('.dp-detail-provider .dv')).toHaveText('HTTP(S)');
   await expect(page.locator('.dp-detail-original-resource .dv')).toHaveText('https://downloads.example/file.bin?…');
   const rows = page.locator('.dp-detail-route-row'); await expect(rows).toHaveCount(2);
   // Case B11/backend-truth-only: the durable ordinal (5, 9) renders as given,
@@ -168,7 +168,7 @@ test('Details separates safe original resource, final provider, ordered failover
   await expect(rows.nth(0)).toContainText('AllDebrid'); await expect(rows.nth(0)).toContainText('Failed');
   await expect(rows.nth(0).locator('.dp-detail-route-identity')).toHaveText('—');
   await expect(rows.nth(1).locator('.dp-detail-route-order')).toHaveText('9');
-  await expect(rows.nth(1)).toContainText('HTTP & HTTPS'); await expect(rows.nth(1)).toContainText('Completed');
+  await expect(rows.nth(1)).toContainText('HTTP(S)'); await expect(rows.nth(1)).toContainText('Completed');
   await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveText('https://mirror.example');
   await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveAttribute('title', 'https://mirror.example/file.bin');
   await expect(page.locator('.detail-grid')).not.toContainText('aria2');

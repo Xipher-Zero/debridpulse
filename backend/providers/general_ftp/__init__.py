@@ -1,1 +1,1 @@
-"""FTP & SFTP Direct Sources provider package."""
+"""(S)FTP Network Sources provider package."""

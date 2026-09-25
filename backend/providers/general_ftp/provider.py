@@ -22,7 +22,7 @@ class GeneralFtpProvider:
         generic_schemes=frozenset({"ftp", "sftp"}),
     )
     descriptor = IntegrationDescriptor(
-        "general_ftp", "FTP & SFTP", frozenset({Capability.RESOLVE}),
+        "general_ftp", "(S)FTP", frozenset({Capability.RESOLVE}),
         request_types=frozenset({"ftp", "sftp"}),
     )
 

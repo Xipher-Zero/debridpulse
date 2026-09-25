@@ -1,7 +1,7 @@
-"""1.0.13 Usenet UI contract: Sources & Providers, Downloads, sidebar.
+"""1.0.13 Usenet UI contract: Services, Downloads, sidebar.
 
 Static-analysis contract over the bounded owners. Operator-facing surfaces name
-capabilities ("Usenet", "General Sources"), never daemon
+capabilities ("Usenet", "Network Sources"), never daemon
 implementations ("SABnzbd", "aria2").
 """
 from __future__ import annotations
@@ -29,19 +29,20 @@ def downloads_panel() -> str:
     return SETTINGS[start:SETTINGS.index("function extractionPanel(s)")]
 
 
-# --- Sources & Providers -------------------------------------------------
+# --- Services -------------------------------------------------
 
 def test_master_groups_are_renamed():
     panel = sources_panel()
-    assert "groupCard('External Providers'" in panel
+    assert "groupCard('Premium Services'" in panel
     assert "'Debrid Services'" not in panel
-    assert "General Sources" in SETTINGS
+    assert "Network Sources" in SETTINGS
     assert "groupCard('Direct Sources'" not in panel
 
 
-def test_usenet_is_the_first_card_under_external_providers():
+def test_usenet_is_the_first_card_under_premium_services():
     panel = sources_panel()
-    assert "groupCard('External Providers', usenetCard + provider," in panel
+    assert "groupCard('Premium Services'," in panel
+    assert "usenetCard + PREMIUM_SEPARATOR + provider," in panel
 
 
 def test_usenet_renders_collapsed_and_only_an_accepted_enable_can_open_it():
@@ -115,12 +116,20 @@ def test_add_tile_uses_a_lucide_plus_and_centres_its_group():
 
 
 def test_host_port_and_ssl_share_one_aligned_row():
+    """DP 1.0.13: one row, laid out as a two-row grid -- labels, then controls
+    -- so the SSL group is centred against the Host/Port INPUT BOXES rather
+    than against their taller label+input wrappers."""
     assert 'dp-usenet-row--host' in SETTINGS
     for field in ("host", "port", "ssl"):
         assert f'data-usenet-field="{field}"' in SETTINGS
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
-    assert ".dp-usenet-row--host { align-items: center; }" in css
+    row = css[css.index(".dp-usenet-row--host {"):]
+    row = row[:row.index("}") + 1]
+    assert "display: grid" in row
     assert ".dp-usenet-row--host .dp-usenet-field--port" in css
+    ssl = css[css.index(".dp-usenet-ssl {"):]
+    ssl = ssl[:ssl.index("}") + 1]
+    assert "grid-row: 2" in ssl and "align-self: center" in ssl
 
 
 def test_the_ssl_toggle_follows_only_a_conventional_port():
@@ -155,9 +164,11 @@ def test_a_failed_native_application_is_surfaced_on_the_card():
 
 
 def test_connections_and_priority_share_one_aligned_row():
+    """Top-aligned, so the Priority column can carry its own help text beneath
+    its input without dragging the two inputs off one band."""
     assert "dp-usenet-row--tuning" in SETTINGS
     css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
-    assert ".dp-usenet-row--tuning { align-items: center; }" in css
+    assert ".dp-usenet-row--tuning { align-items: flex-start; }" in css
 
 
 def test_no_api_key_field_is_exposed_on_a_news_server():
@@ -174,9 +185,12 @@ def test_priority_helper_text_matches_characterized_semantics():
     assert "Lower values have priority." in SETTINGS
 
 
-def test_server_actions_are_save_test_remove():
-    for action in ("save", "test", "remove"):
+def test_server_actions_are_test_remove_and_a_confirmed_clear():
+    """DP 1.0.13: there is no Save. Entering or replacing a credential commits
+    on changed blur; erasing one is an explicit confirmed Clear."""
+    for action in ("test", "remove", "clear-password"):
         assert f'data-usenet-action="{action}"' in SETTINGS
+    assert 'data-usenet-action="save"' not in SETTINGS
 
 
 def test_display_name_derives_from_host_and_honours_an_override():
@@ -232,7 +246,7 @@ def test_executor_tuning_has_general_sources_and_usenet_children():
     Providers. The executor id stays 'direct' -- nothing about the executor
     changed, and renaming a durable identity for copy would be churn."""
     panel = downloads_panel()
-    assert "executorTuningCard('direct', 'General Sources'" in panel
+    assert "executorTuningCard('direct', 'Network Sources'" in panel
     assert "executorTuningCard('usenet', 'Usenet'" in panel
 
 

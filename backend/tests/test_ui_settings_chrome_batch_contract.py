@@ -13,6 +13,7 @@ CHROME = STATIC / "ui-settings-chrome.css"
 PAGE = STATIC / "ui-settings-page.css"
 RUNTIME = STATIC / "ui-settings-page.js"
 FEATURE = STATIC / "ui-feature-icon-contract.css"
+ICONS = STATIC / "ui-settings-card-icons.css"
 STYLE = STATIC / "style.css"
 MANIFEST = STATIC / "icons" / "dp" / "manifest.json"
 LUCIDE = STATIC / "icons" / "lucide"
@@ -139,7 +140,8 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
     assert "function groupCard(" in runtime
-    assert "groupCard('External Providers', usenetCard + provider," in sources
+    assert "groupCard('Premium Services'," in sources
+    assert "usenetCard + PREMIUM_SEPARATOR + provider," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-provider-recovery-card" not in sources
@@ -148,11 +150,21 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
 
     assert 'class="dp-settings-alldebrid-key-row ${configured ? \'is-configured\' : \'\'}"' in key_helper
     assert 'value=""' in key_helper
-    assert "CONFIGURED_SECRET_MASK" in key_helper
-    assert "Key present" in key_helper
-    assert "Clear stored API Key" in key_helper
-    assert 'data-clear-secret="${key}"' in key_helper
+    # The configured/unconfigured parts of the row are declared once and used
+    # both to render it and to converge it.
+    assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_helper
+    assert "CONFIGURED_SECRET_MASK" in runtime
+    assert "ALLDEBRID_KEY_META(configured)" in key_helper
+    assert "Key present" in runtime
+    # DP 1.0.13: the Save-oriented clear checkbox became an explicit confirmed
+    # Clear action; the row still owns both, in one place.
+    assert "Clear stored API Key" not in runtime
+    assert 'data-action="clear-alldebrid-key"' in runtime
+    assert "Confirm removal of the stored API key" in runtime
+    # The generic secretField() helper still uses that phrasing for the other
+    # secrets; the AllDebrid row has always stated its own.
     assert "configured — blank keeps current value" not in key_helper
+    assert "Leave this field blank to keep the current key." in runtime
     assert "api_key: valueOf('alldebrid_api_key')" in runtime
 
     assert '<details class="dp-settings-additional">' in sources
@@ -170,10 +182,13 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
 
     assert ".dp-settings-alldebrid-key-row.is-configured" in page
     assert "grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);" in page
-    clear_rule = page.split(".dp-settings-alldebrid-key-row .dp-settings-clear-secret--alldebrid {", 1)[1].split("}", 1)[0]
-    assert "border-top: 0;" in clear_rule
-    assert "padding-top: 0;" in clear_rule
-    assert "margin-top: 0;" in clear_rule
+    # DP 1.0.13: the clear control is an explicit action group occupying the
+    # API-key INPUT's own grid row, so it is centred against the control rather
+    # than against the label + hint stack, and it needs no seam of its own.
+    clear_rule = page.split("#view-settings .dp-settings-alldebrid-key-clear {", 1)[1].split("}", 1)[0]
+    assert "grid-row: 2;" in clear_rule
+    assert "align-self: center;" in clear_rule
+    assert "border-top" not in clear_rule
     assert ".dp-settings-key-present" in page
     assert "text-align: right;" in page
     assert ".dp-settings-additional > summary" in page
@@ -201,9 +216,16 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "url('/icons/dp/debrid-services.svg?v=1')" in icon_rule
     assert "width: 34px;" in icon_rule
     assert "height: 34px;" in icon_rule
-    assert icon_rule.count("drop-shadow") == 2
-    light_rule = chrome.split("body.light #view-settings .dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
-    assert light_rule.count("drop-shadow") == 2
+    # DP 1.0.13: the omnidirectional master-card outer glow has ONE owner,
+    # shared with the Network Sources master. This master states only the
+    # colour that owner derives both of its stops from, in both themes.
+    assert icon_rule.count("drop-shadow") == 0
+    assert "--dp-settings-master-glow: #b866f5;" in icon_rule
+    glow = read(ICONS)
+    owner = glow.split("#view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {", 1)[1].split("}", 1)[0]
+    assert owner.count("drop-shadow") == 2
+    light_owner = glow.split("body.light #view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {", 1)[1].split("}", 1)[0]
+    assert light_owner.count("drop-shadow") == 2
 
 
 def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger_logo() -> None:

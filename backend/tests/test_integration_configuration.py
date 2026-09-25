@@ -142,5 +142,5 @@ def test_public_integration_metadata_exposes_canonical_provider_names():
     normalized = normalize_settings(AppSettings(), definitions)
     public = public_integrations(normalized, definitions)
     assert public["alldebrid"]["name"] == "AllDebrid"
-    assert public["general_http"]["name"] == "HTTP & HTTPS"
+    assert public["general_http"]["name"] == "HTTP(S)"
     assert public["general_http"]["options"] == {}

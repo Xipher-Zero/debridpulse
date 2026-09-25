@@ -140,16 +140,22 @@ def test_no_per_tab_label_or_hint_nudge_survives():
 
 # --- D. Usenet clear-password row ---------------------------------------------
 
-def test_clear_password_row_is_centred_through_the_shared_primitive():
+def test_clear_password_row_is_one_left_aligned_action_group():
+    """DP 1.0.13: the confirmation stopped being a gated checkbox and became
+    the confirmation of an explicit destructive ACTION. Button, checkbox and
+    the sentence that describes it read as one group, left-aligned with the
+    card's form content and vertically centred together."""
     assert ".dp-usenet-clear-password" in USENET_CSS
-    rule = USENET_CSS[USENET_CSS.index(".dp-usenet-clear-password"):]
+    rule = USENET_CSS[USENET_CSS.index(".dp-usenet-clear-password {"):]
     rule = rule[:rule.index("}")]
-    assert "text-align: center" in rule
-    assert "display: flex" not in rule and "display: grid" not in rule, \
-        "a second checkbox-row layout primitive was introduced"
+    assert "display: flex" in rule
+    assert "align-items: center" in rule
+    assert "text-align: center" not in rule
+    for banned in ("position: absolute", "transform", "margin-left"):
+        assert banned not in rule, banned
 
 
-# --- E. General Sources master -------------------------------------------------
+# --- E. Network Sources master -------------------------------------------------
 
 def test_the_group_master_uses_a_generic_control_identity():
     assert "data-integration-group-enabled" in SETTINGS
@@ -305,7 +311,7 @@ def test_no_operator_facing_direct_transfers_or_direct_sources_title_remains():
     code = _without_comments(SETTINGS)
     for alias in ("Direct Transfers", "Direct Sources", "Global Sources"):
         assert alias not in code, f"visible alias {alias!r} survives"
-    assert "executorTuningCard('direct', 'General Sources'" in code
+    assert "executorTuningCard('direct', 'Network Sources'" in code
 
 
 def test_downloads_tuning_cards_carry_the_same_protocol_identity():
@@ -314,7 +320,7 @@ def test_downloads_tuning_cards_carry_the_same_protocol_identity():
     That the two renderings are pixel-identical is proven in the browser;
     what is proven here is that there is no second Downloads-only identity.
     """
-    assert "executorTuningCard('direct', 'General Sources'," in SETTINGS
+    assert "executorTuningCard('direct', 'Network Sources'," in SETTINGS
     assert "directTransfersTuning(s), 'direct_sources')" in SETTINGS
     assert "usenetTuning(s), 'usenet')" in SETTINGS
     tuning = body(SETTINGS, "executorTuningCard")
@@ -323,7 +329,7 @@ def test_downloads_tuning_cards_carry_the_same_protocol_identity():
         "Downloads builds its own identity markup instead of using the composer"
 
 
-# --- G. Sources & Providers final corrective pass (Defects 1, 2, 4, 5) --------
+# --- G. Services final corrective pass (Defects 1, 2, 4, 5) --------
 #
 # Expansion is LOCAL PRESENTATION STATE. Enabled state, configured state and
 # verified state are canonical truth about the provider; none of them is an
@@ -365,10 +371,10 @@ def test_general_sources_uses_the_one_canonical_disclosure_primitive():
     panel = body(SETTINGS, "sourcesPanel")
     general = panel[panel.index("const generalSources = groupCard("):]
     assert "collapsible: true" in general[:general.index(");")], \
-        "General Sources is not collapsible through the canonical primitive"
-    external = panel[panel.index("const externalProviders = groupCard("):]
+        "Network Sources is not collapsible through the canonical primitive"
+    external = panel[panel.index("const premiumServices = groupCard("):]
     assert "collapsible" not in external[:external.index(");")], \
-        "External Providers was made collapsible by this pass"
+        "Premium Services was made collapsible by this pass"
 
 
 def test_the_provider_header_reports_exactly_the_three_configuration_states():

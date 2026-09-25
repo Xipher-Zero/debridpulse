@@ -1,13 +1,13 @@
 """1.0.13: the canonical integration-GROUP gate.
 
-`General Sources` gains a master Enable that gates whether the group's children
+`Network Sources` gains a master Enable that gates whether the group's children
 participate at all, without ever editing a child's own stored preference.
 
     child desired      = integrations.<child>.enabled
     group desired      = integration_groups.<group>.enabled
     effective          = child desired AND group desired   (derived, read-only)
 
-Nothing here names HTTP, FTP or "General Sources" as an implementation fact: the
+Nothing here names HTTP, FTP or "Network Sources" as an implementation fact: the
 group identity is the one already published as
 ``presentation.status_group`` / ``status_group_label``.
 """

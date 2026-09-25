@@ -265,15 +265,25 @@ definition = IntegrationDefinition(
         # A real readiness check: an enabled-but-unconfigured Usenet integration
         # must never render as ready, which a static status could not express.
         status_endpoint="/integration-status/usenet",
-        # Usenet is an aggregate acquisition FAMILY, not a named premium account
-        # service: the operator configures news servers, and the panel reports
-        # one Usenet readiness for all of them. It belongs to the GENERAL tier,
-        # whose first two positions are permanently reserved -- Usenet, then
-        # General Sources -- with both declared below the presentation model's
-        # default order, so any later GENERAL integration naturally follows
-        # both without anything declaring a tier order.
-        status_tier="general_family",
-        status_tier_label="General",
-        display_order=20,
+        # Usenet is a PREMIUM service: it is an account-bearing acquisition
+        # service the operator subscribes to, presented beside the debrid
+        # providers rather than beside the aggregate Network Sources family.
+        #
+        # It is the reserved LAST row of that tier. `display_order` is the one
+        # ordering authority -- for entries and, because a tier takes the
+        # position of its first entry, for tiers -- so the reserved bands are:
+        #
+        #     .. 100   ordinary PREMIUM entries, including every future debrid
+        #              integration that declares no order and therefore takes
+        #              the presentation model's default of 100
+        #      900     this reserved PREMIUM tail
+        #      910 ..  the reserved STANDARD band (Network Sources)
+        #
+        # Declaring this ABOVE the default is what makes "debrid providers,
+        # then Usenet" true of integrations that do not exist yet, without the
+        # renderer naming any of them.
+        status_tier="premium_service",
+        status_tier_label="Premium Services",
+        display_order=900,
     ),
 )

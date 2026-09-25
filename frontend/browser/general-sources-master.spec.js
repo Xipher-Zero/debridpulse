@@ -1,7 +1,7 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 Items 5 and 10 -- the General Sources master gate, and every
- * Sources & Providers Enable toggle as an immediate canonical control.
+/* DP 1.0.13 Items 5 and 10 -- the Network Sources master gate, and every
+ * Services Enable toggle as an immediate canonical control.
  *
  * The master is an aggregate PARTICIPATION gate. It never edits a child's
  * stored preference, in either direction, and the group's Provider Status row
@@ -43,7 +43,7 @@ const masterTrack = page => page.locator(
 const childTrack = (page, id) => page.locator(
   `label[for="dp-settings-integration-${id}-enabled"] .ttrack`);
 
-/* Sources & Providers cards arrive COLLAPSED: expansion is local presentation
+/* Services cards arrive COLLAPSED: expansion is local presentation
  * state, never a projection of enabled/configured/verified state. A General
  * Sources member toggle lives inside that group's body, so operating one means
  * opening the card first -- exactly what the operator does, through the one
@@ -86,7 +86,7 @@ async function renderStatus(page, {http, ftp, master}) {
     {...live.integrations,
      general_http: {...live.integrations.general_http, enabled: http},
      general_ftp: {...live.integrations.general_ftp, enabled: ftp}},
-    {[GROUP]: {enabled: master, label: 'General Sources', members: CHILDREN}},
+    {[GROUP]: {enabled: master, label: 'Network Sources', members: CHILDREN}},
   ]);
   await page.evaluate(() => window.DPProviderStatus.refresh());
 }
@@ -122,7 +122,7 @@ test('an upgraded installation starts with the group master enabled', async ({pa
   await setMaster(page, true);
   const settings = await canonical(page);
   expect(settings.integration_groups[GROUP].enabled).toBe(true);
-  expect(settings.integration_groups[GROUP].label).toBe('General Sources');
+  expect(settings.integration_groups[GROUP].label).toBe('Network Sources');
 });
 
 test('master OFF does not rewrite either child preference', async ({page}) => {
@@ -201,7 +201,7 @@ test('the closed gate and the empty open gate stay distinguishable', async ({pag
   }
 });
 
-test('the General Sources row renders, with a state, in every one of those states', async ({page}) => {
+test('the Network Sources row renders, with a state, in every one of those states', async ({page}) => {
   const expected = {
     'true|true|true': 'healthy',
     'true|false|true': 'mixed',
@@ -214,7 +214,7 @@ test('the General Sources row renders, with a state, in every one of those state
     await renderStatus(page, {http, ftp, master});
     const row = page.locator(`#provider-status-list [data-provider-group="${GROUP}"]`);
     await expect(row, `http=${http} ftp=${ftp} master=${master}`).toHaveCount(1);
-    await expect(row).toContainText('General Sources');
+    await expect(row).toContainText('Network Sources');
     await expect.poll(() => groupState(page),
       `http=${http} ftp=${ftp} master=${master}`).toBe(expected[`${http}|${ftp}|${master}`]);
   }
@@ -233,7 +233,7 @@ test('the master toggle persists on change, with no Apply Settings', async ({pag
   await expect(page.locator(`[data-integration-group-enabled="${GROUP}"]`)).not.toBeChecked();
 });
 
-test('every Sources & Providers enable control is immediate', async ({page}) => {
+test('every Services enable control is immediate', async ({page}) => {
   await openSources(page);
   const controls = await page.$$eval(
     '.dp-settings-panel[data-panel="sources"] [data-integration-enabled], ' +
@@ -288,7 +288,7 @@ test('an unknown group id is refused', async ({page}) => {
  * used to update only the Settings page's own copy, so the status renderer --
  * which reads the one global document -- kept serving pre-mutation state until
  * an unrelated Apply Settings happened to perform a fresh GET. */
-test.describe.serial('immediate General Sources status convergence', () => {
+test.describe.serial('immediate Network Sources status convergence', () => {
   test('master and member toggles converge the sidebar status with no Apply Settings', async ({page}) => {
     await setChildren(page, true, true);
     await setMaster(page, true);

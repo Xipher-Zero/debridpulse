@@ -95,7 +95,7 @@ def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() 
     assert "window.toast =" not in source
 
     expected = [
-        "['sources', 'Sources & Providers', 'zap']",
+        "['sources', 'Services', 'zap']",
         "['downloads', 'Downloads', 'download']",
         "['extraction', 'Extraction', 'package-open']",
         "['authentication', 'Authentication', 'shield-check']",

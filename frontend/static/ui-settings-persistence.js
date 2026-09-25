@@ -2,16 +2,19 @@
  *
  * A Settings control's commit boundary is decided by the semantics and risk of
  * that setting, never by the arbitrary fact that several controls share a page.
- * DebridPulse recognises four classes:
+ * DebridPulse recognises three classes:
  *
  *   immediate        the mutation IS the intended action (participation
  *                    toggles); committed by its own operational owner.
- *   changed-blur     ordinary, non-secret, non-destructive values; owned HERE.
- *   gated-save       secrets, credential replacement and destructive
- *                    confirmations; committed only by an explicit localized
- *                    Save, never by leaving a field.
- *   explicit-action  Test / Browse / probes; they may READ the current draft
- *                    and commit nothing.
+ *   changed-blur     ordinary, non-destructive values -- INCLUDING entering or
+ *                    replacing a credential, which is an ordinary value change
+ *                    however sensitive the value is; owned HERE. What makes a
+ *                    value a secret is what its SCOPE does with the accepted
+ *                    result, never a different commit boundary.
+ *   explicit-action  Test / Browse / probes, and every DESTRUCTIVE act -- a
+ *                    confirmed Clear. They may READ the current draft; a probe
+ *                    commits nothing, and a destructive act carries only its
+ *                    own removal.
  *
  * This module owns everything generic that a changed-blur control needs -- the
  * canonical accepted baseline, dirty comparison, scoped mutation dispatch,
@@ -25,8 +28,10 @@
  * therefore scope + key + INSTANCE, taken from the nearest enclosing
  * `[data-commit-instance]`, and writes serialize per record so editing one
  * never queues behind another. A control inside a record that has no canonical
- * id yet cannot be field-committed at all: there is nothing to write to, and
- * creating the record is a separate, deliberate boundary its own owner takes.
+ * id yet cannot be field-committed at all: there is nothing to write to. Only
+ * that record's own scope knows how one comes into existence, so this owner
+ * merely ASKS it to -- once per record, through the optional `materialize`
+ * hook -- and owns no part of the creation itself.
  *
  * This module names no page, no integration and no endpoint.
  */
@@ -48,6 +53,12 @@
   // control -> the exact draft that crossed its commit boundary while its
   // record had no canonical identity yet; replayed by `resume` once it has one
   const deferred = new WeakMap();
+  // record element -> the creation its own scope is performing for it, so a
+  // second boundary crossed while that runs can never create a second record
+  const materializing = new WeakMap();
+  // every creation still running, so `settle` waits for one exactly as it
+  // waits for a scoped write
+  const materializations = new Set();
   let outstanding = 0;
 
   const CHANGED_BLUR = '[data-commit="changed-blur"][data-commit-key]';
@@ -102,6 +113,46 @@
    * mutation, adopts what the server accepted and returns it. */
   function defineScope(id, handler) {
     scopes.set(String(id), handler);
+  }
+
+  /* Ask a scope to give an uncommittable record its canonical identity.
+   *
+   * A record's controls cannot be written until the record exists, and only
+   * its own scope knows how one is created -- so this ASKS, and owns nothing
+   * else: not the request, not the identity, not the adoption. A scope that
+   * declares no hook behaves exactly as it did, and nothing here names a page,
+   * an integration or a kind of record.
+   *
+   * Exactly ONE creation per draft record: a second boundary crossed while the
+   * first is still running must never mint a second record. It is counted as
+   * outstanding work, so `settle` waits for it like any scoped write.
+   *
+   * The boundary that asked is remembered exactly as before, and replayed by
+   * `resume` once identity exists. A creation is made from the record's
+   * CURRENT values, so it ordinarily carries that same draft -- and where the
+   * scope records what the creation accepted as the new baseline, the replay
+   * then writes nothing. Where the accepted value cannot describe the draft --
+   * a credential, whose accepted presentation is always blank -- the replay
+   * writes the same value a second time. That is idempotent and ordered on the
+   * record's own lane, and it is the ordinary deferred-draft semantics rather
+   * than a second writer.
+   */
+  function materialize(control) {
+    const owner = record(control);
+    const scope = scopes.get(String(control.dataset.commitScope || ''));
+    if (!owner || !scope || typeof scope.materialize !== 'function') return;
+    if (materializing.has(owner)) return;
+    outstanding += 1;
+    const run = Promise.resolve()
+      .then(() => scope.materialize({record: owner, control}))
+      .catch(() => {})
+      .finally(() => {
+        outstanding -= 1;
+        materializing.delete(owner);
+        materializations.delete(run);
+      });
+    materializing.set(owner, run);
+    materializations.add(run);
   }
 
   /* The canonical accepted baseline is whatever the page just rendered FROM
@@ -160,7 +211,12 @@
     // and replayed the moment the record acquires its canonical identity --
     // never silently dropped, and never requiring a second blur. A draft typed
     // afterwards crossed no boundary of its own and is never promoted with it.
-    if (!committable(control)) { deferred.set(control, draft); return null; }
+    if (!committable(control)) {
+      deferred.set(control, draft);
+      // The record can be brought into existence only by its own scope.
+      materialize(control);
+      return null;
+    }
     const scopeId = String(control.dataset.commitScope || '');
     const scope = scopes.get(scopeId);
     if (!scope) return null;
@@ -306,7 +362,9 @@
   async function settle(host) {
     for (const control of controls(host)) commit(control);
     for (let guard = 0; outstanding > 0 && guard < 50; guard += 1) {
-      await Promise.allSettled(Array.from(chains.values()));
+      // A record still being created is outstanding work too: an action must
+      // not read form state, or dispatch, underneath one.
+      await Promise.allSettled([...chains.values(), ...materializations]);
     }
   }
 

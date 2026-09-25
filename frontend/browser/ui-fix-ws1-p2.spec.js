@@ -143,15 +143,18 @@ async function applySettings(page) {
   await expect(apply).toBeEnabled();
 }
 
-/* DP 1.0.13: an AllDebrid credential is GATED-SAVE state. Typing a key is
- * pending intent; the card's own Save is its commit boundary, and the footer
- * deliberately writes no AllDebrid namespace at all. */
-async function saveAllDebridCredentials(page) {
-  const save = page.locator('.dp-settings-provider-card--alldebrid [data-action="save-alldebrid"]');
-  await expect(save).toBeEnabled();
-  await save.click();
-  // The gate is consumed once the accepted state becomes the new baseline.
-  await expect(save).toBeDisabled();
+/* DP 1.0.13 Services cleanup: an AllDebrid credential is an ORDINARY value.
+ * Entering or replacing one commits on changed blur through the integration's
+ * own scoped mutation -- there is no localized Save, and the footer still
+ * writes no AllDebrid namespace at all. Anything that removes focus from the
+ * field is therefore its commit boundary, including clicking Enable. */
+async function commitAllDebridKey(page, value) {
+  const key = page.locator('.dp-settings-provider-card--alldebrid #dp-settings-field-alldebrid-api-key');
+  await key.fill(value);
+  await key.blur();
+  // The accepted presentation of a secret is blank, so convergence is visible
+  // as the field returning to its configured presentation.
+  await expect(key).toHaveValue('');
 }
 
 async function setProviderEnabled(card, enabled) {
@@ -257,71 +260,102 @@ test('WS1-P2 premium card implements the exact persisted three-state status matr
   await expect(page.locator('.dp-settings-provider-card--general-http .dp-settings-disclosure')).toHaveCount(0);
 });
 
-test('WS1-P2 disclosure and staged Enable controls remain independent and protect unsaved edits', async ({ page }) => {
-  const base = await loadBaseSettings(page);
-  await installStatefulSettings(page, fixture(base, {adEnabled:false, adConfigured:false}));
-  await page.reload();
-  await openSources(page);
+test('WS1-P2 disclosure and Enable stay independent, and the credential commits on its own boundary',
+  async ({ page }) => {
+    const base = await loadBaseSettings(page);
+    await installStatefulSettings(page, fixture(base, {adEnabled:false, adConfigured:false}));
+    await page.reload();
+    await openSources(page);
 
-  let card = page.locator('.dp-settings-provider-card--alldebrid');
-  let body = card.locator(':scope > .card-body');
-  let disclosure = card.locator('.dp-settings-disclosure');
-  let key = card.locator('#dp-settings-field-alldebrid-api-key');
-  let status = card.locator('.dp-settings-provider-config-status');
+    let card = page.locator('.dp-settings-provider-card--alldebrid');
+    let body = card.locator(':scope > .card-body');
+    let disclosure = card.locator('.dp-settings-disclosure');
+    let key = card.locator('#dp-settings-field-alldebrid-api-key');
+    let status = card.locator('.dp-settings-provider-config-status');
 
-  await disclosure.click();
-  await expect(body).toBeVisible();
-  await key.fill('typed-but-unsaved-key');
-  await expect(status).toHaveText('');
-  await expect(card).toHaveAttribute('data-provider-configured', 'false');
+    // Disclosure is LOCAL presentation: opening the card writes nothing and a
+    // switched-off, unconfigured provider reports nothing.
+    await disclosure.click();
+    await expect(body).toBeVisible();
+    await expect(status).toHaveText('');
+    await expect(card).toHaveAttribute('data-provider-configured', 'false');
 
-  await setProviderEnabled(card, true);
-  await expect(body).toBeVisible();
-  await expect(status).toHaveText('Unconfigured');
+    // Admitting a provider that has nothing configured puts its configuration
+    // in front of the operator -- the ONE automatic expansion there is.
+    await setProviderEnabled(card, true);
+    await expect(body).toBeVisible();
+    await expect(status).toHaveText('Unconfigured');
 
-  await setProviderEnabled(card, false);
-  await expect(body).toBeVisible();
-  await expect(status).toHaveText('');
+    // Withdrawing it puts that configuration away again. Under the DP 1.0.13
+    // credential contract there is no unsaved credential left to protect: the
+    // key commits on its own boundary, so nothing suppresses this.
+    await setProviderEnabled(card, false);
+    await expect(body).toBeHidden();
+    await expect(status).toHaveText('');
 
-  await disclosure.focus();
-  await disclosure.press('Enter');
-  await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
-  await expect(body).toBeHidden();
-  await expect(key).not.toBeFocused();
+    // Expansion is LOCAL state: the operator can open a withdrawn provider,
+    // and doing so writes nothing and changes no enable state.
+    await disclosure.click();
+    await expect(body).toBeVisible();
+    await expect(card.locator('input[data-integration-enabled="alldebrid"]')).not.toBeChecked();
 
-  await disclosure.press('Enter');
-  await expect(body).toBeVisible();
-  await setProviderEnabled(card, true);
-  // The staged key survived every disclosure/Enable interaction above and is
-  // committed here, by its own gated Save, not by the page footer.
-  await saveAllDebridCredentials(page);
+    // The keyboard contract on the disclosure is unchanged.
+    await disclosure.focus();
+    await disclosure.press('Enter');
+    await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    await expect(body).toBeHidden();
+    await expect(key).not.toBeFocused();
+    await disclosure.press('Enter');
+    await expect(body).toBeVisible();
 
-  card = page.locator('.dp-settings-provider-card--alldebrid');
-  body = card.locator(':scope > .card-body');
-  status = card.locator('.dp-settings-provider-config-status');
-  await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
-  // Saved, but no successful test covers this exact saved credential.
-  await expect(status).toHaveText('Configured');
+    // The credential commits on its OWN boundary -- leaving the field -- and
+    // is never carried by the footer.
+    await commitAllDebridKey(page, 'typed-then-committed-key');
+    await expect(status).toHaveText('Configured');
 
-  await setProviderEnabled(card, false);
-  await expect(body).toBeHidden();
-  await expect(status).toHaveText('Configured');
+    /* A STATED CONSEQUENCE of the DP 1.0.13 credential contract.
+     *
+     * The card is open and the provider is still switched OFF. The accepted
+     * credential re-renders this provider's state, and the pre-existing rule
+     * there is "a withdrawn provider's configuration is put away again, unless
+     * the operator has edits in it". Before this batch the key was a gated
+     * draft, so it kept the card dirty and open; now it commits on its own
+     * boundary, so by the time that render runs there is nothing pending and
+     * the card closes.
+     *
+     * Both rules are behaving exactly as written -- this is where they now
+     * meet. It is recorded here rather than left to be discovered. */
+    await expect(body).toBeHidden();
+    await disclosure.click();
+    await expect(body).toBeVisible();
+    await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
 
-  await applySettings(page);
-  card = page.locator('.dp-settings-provider-card--alldebrid');
-  body = card.locator(':scope > .card-body');
-  status = card.locator('.dp-settings-provider-config-status');
-  await expect(body).toBeHidden();
-  await expect(status).toHaveText('Configured');
+    // Enabling a provider that IS configured has nothing to ask for, so it
+    // opens nothing -- and it does not close what the operator already opened.
+    await setProviderEnabled(card, true);
+    await expect(status).toHaveText('Configured');
+    await expect(body).toBeVisible();
 
-  // Enabling a provider that IS configured has nothing to ask the operator
-  // for, so it opens nothing: the only automatic expansion belongs to an
-  // accepted enable of an UNCONFIGURED provider.
-  await setProviderEnabled(card, true);
-  await expect(body).toBeHidden();
-  await card.locator('.dp-settings-disclosure').click();
-  await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
-});
+    // Withdrawing a configured provider puts its configuration away again.
+    await setProviderEnabled(card, false);
+    await expect(body).toBeHidden();
+    await expect(status).toHaveText('Configured');
+
+    await applySettings(page);
+    card = page.locator('.dp-settings-provider-card--alldebrid');
+    body = card.locator(':scope > .card-body');
+    status = card.locator('.dp-settings-provider-config-status');
+    await expect(body).toBeHidden();
+    await expect(status).toHaveText('Configured');
+
+    // Enabling a provider that IS configured has nothing to ask the operator
+    // for, so it opens nothing: the only automatic expansion belongs to an
+    // accepted enable of an UNCONFIGURED provider.
+    await setProviderEnabled(card, true);
+    await expect(body).toBeHidden();
+    await card.locator('.dp-settings-disclosure').click();
+    await expect(card.locator('.dp-settings-key-present')).toHaveText('Key present');
+  });
 
 test('WS1-P2 provider header stays centered/non-overlapping and semantic in dark/light/narrow layouts', async ({ page }) => {
   const base = await loadBaseSettings(page);

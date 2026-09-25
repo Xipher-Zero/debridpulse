@@ -2,14 +2,18 @@ const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.13 Settings interaction foundation -- items 5, 6, 7, 8 and 10.
  *
- * The Sources & Providers page against the REAL backend. Every interactive
- * control has exactly ONE commit class, decided by the semantics and risk of
- * the setting and never by the page it happens to appear on:
+ * The Services page against the REAL backend. Every interactive control has
+ * exactly ONE commit class, decided by the semantics and risk of the setting
+ * and never by the page it happens to appear on:
  *
  *   immediate       provider / group Enable
- *   changed-blur    ordinary, non-secret scalars
- *   gated-save      the API key and its Clear confirmation
- *   explicit-action Test, Add / Remove Server, Browse
+ *   changed-blur    ordinary scalars AND credential entry/replacement
+ *   explicit-action Test, Clear, Add / Remove Server, Browse
+ *
+ * DP 1.0.13 credential contract: entering or replacing a credential is an
+ * ordinary value change and commits on blur through the integration's existing
+ * scoped mutation; ERASING one is an explicit, confirmed Clear; Test tests and
+ * never saves. The browser never retains a secret as an accepted baseline.
  */
 
 const RATE_LIMIT = '#dp-settings-field-alldebrid-rate-limit-per-minute';
@@ -40,12 +44,12 @@ async function revealAllDebrid(page) {
   await expect(card.locator(':scope > .card-body')).toBeVisible();
 }
 
-/* Sources & Providers cards render COLLAPSED: expansion is LOCAL presentation
- * state, never a projection of enabled/configured/verified state. Opening one
- * through the canonical disclosure writes no canonical state, so this spec
- * never depends on another spec's enable/disable timing against the shared
- * backend. The General Sources members live inside that group's body. */
-async function revealGeneralSources(page) {
+/* Services cards render COLLAPSED: expansion is LOCAL presentation state,
+ * never a projection of enabled/configured/verified state. Opening one through
+ * the canonical disclosure writes no canonical state, so this spec never
+ * depends on another spec's enable/disable timing against the shared backend.
+ * The Network Sources members live inside that group's body. */
+async function revealNetworkSources(page) {
   const group = page.locator('.dp-settings-general-sources');
   const disclosure = group.locator('.dp-settings-disclosure');
   if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
@@ -63,7 +67,8 @@ async function openAdditional(page) {
 
 const settings = page => page.request.get('/api/settings').then(r => r.json());
 const toasts = page => page.locator('#toasts .toast');
-const saveButton = page => page.locator('[data-action="save-alldebrid"]');
+const clearButton = page => page.locator('[data-action="clear-alldebrid-key"]');
+const clearConfirm = page => page.locator('[data-alldebrid-clear-confirm]');
 
 async function clearToasts(page) {
   await page.evaluate(() => { const host = document.getElementById('toasts'); if (host) host.innerHTML = ''; });
@@ -245,93 +250,199 @@ test('an older in-flight response can never overwrite a newer edit', async ({pag
   expect((await settings(page)).transfer_policy.provider_poll_interval_seconds).toBe(newer);
 });
 
-// --- 6.3 gated save -------------------------------------------------------
+// --- 11/12/13 the credential contract ------------------------------------
 
-test('Save is inactive until there is a gated mutation to commit', async ({page}) => {
-  await expect(saveButton(page)).toBeDisabled();
-  await page.locator(API_KEY).fill('DP-GATED-DRAFT');
-  await expect(saveButton(page)).toBeEnabled();
-  await page.locator(API_KEY).fill('');
-  await expect(saveButton(page)).toBeDisabled();
+/* Establish a stored key through the canonical scoped mutation, so a case that
+ * needs "already configured" never depends on the UI path it is testing. */
+async function preconfigure(page, key = 'DP-PRESET') {
+  await page.request.patch('/api/integrations/alldebrid/configuration',
+    {data: {options: {api_key: key}}});
+  await page.reload();
+  await openSources(page);
+  await revealAllDebrid(page);
+}
+
+test('no localized Save survives for the AllDebrid credential', async ({page}) => {
+  await expect(page.locator('[data-action="save-alldebrid"]')).toHaveCount(0);
+  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-actions button'))
+    .toHaveCount(1);
 });
 
-test('an entered API key is a pending draft that blur never persists', async ({page}) => {
+test('entering an API key commits on blur through the existing integration mutation',
+  async ({page}) => {
+    const seen = mutations(page);
+    await page.locator(API_KEY).fill('DP-BLUR-COMMIT');
+    await page.locator(API_KEY).blur();
+
+    await expect.poll(async () =>
+      (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+    const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
+    expect(writes).toHaveLength(1);
+    expect(writes[0].method).toBe('PATCH');
+    expect(writes[0].body.options.api_key).toBe('DP-BLUR-COMMIT');
+    // Only the credential travelled; nothing unrelated was replayed.
+    expect(Object.keys(writes[0].body.options)).toEqual(['api_key']);
+    expect(scoped(seen, '/api/settings')).toHaveLength(0);
+  });
+
+test('the accepted presentation is blank, and no secret becomes the baseline',
+  async ({page}) => {
+    await page.locator(API_KEY).fill('DP-NOT-RETAINED');
+    await page.locator(API_KEY).blur();
+    await expect.poll(async () =>
+      (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+
+    // The visible field returns to its blank / configured presentation ...
+    await expect(page.locator(API_KEY)).toHaveValue('');
+    // ... and the canonical persistence owner holds no secret for it.
+    expect(await committedBaseline(page, API_KEY)).toBe('');
+    // A second blur therefore writes nothing at all.
+    const seen = mutations(page);
+    await page.locator(API_KEY).focus();
+    await page.locator(API_KEY).blur();
+    await page.waitForTimeout(700);
+    expect(seen).toEqual([]);
+  });
+
+/* That a credential change RETIRES durable verification is derived, not
+ * asserted, and its behavioural owner is the canonical configuration merge --
+ * proved against real evidence in
+ * backend/tests/test_v113_provider_verification_evidence.py
+ * (test_a_verification_relevant_change_retires_the_evidence). A browser cannot
+ * establish real evidence without a real account, so what is proved HERE is
+ * the part the browser owns: the accepted projection is what the card reports,
+ * and it moves on every accepted credential write. */
+test('the card reports the accepted projection after a credential write', async ({page}) => {
+  const card = page.locator('.dp-settings-provider-card--alldebrid');
+  const status = card.locator('.dp-settings-provider-config-status');
+
+  await page.request.patch('/api/integrations/alldebrid/configuration',
+    {data: {options: {}, clear_secrets: ['api_key']}});
+  await page.reload();
+  await openSources(page);
+  await revealAllDebrid(page);
+  expect((await settings(page)).integrations.alldebrid.configured).toBe(false);
+
+  await page.locator(API_KEY).fill('DP-PROJECTED-KEY');
+  await page.locator(API_KEY).blur();
+  await expect.poll(async () =>
+    (await settings(page)).integrations.alldebrid.configured).toBe(true);
+
+  // Configured, never Verified: nothing has proven this credential works, and
+  // no owner in the browser may claim otherwise.
+  await expect(status).toHaveText('Configured');
+  expect((await settings(page)).integrations.alldebrid.verified).toBe(false);
+  // The row now offers the explicit Clear, because a key is present.
+  await expect(clearConfirm(page)).toHaveCount(1);
+});
+
+test('a failed credential write rolls back to the safe blank state and says so',
+  async ({page}) => {
+    await page.route(url => url.pathname === '/api/integrations/alldebrid/configuration',
+      route => route.fulfill({status: 502, contentType: 'application/json',
+        body: JSON.stringify({detail: 'credential rejected'})}));
+    await page.locator(API_KEY).fill('DP-REFUSED');
+    await page.locator(API_KEY).blur();
+
+    await expect(toasts(page).first()).toContainText(/reject|error|fail/i);
+    await expect(page.locator(API_KEY)).toHaveValue('');
+    expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
+  });
+
+test('Clear is inert until the removal is confirmed', async ({page}) => {
+  await preconfigure(page);
+  await expect(clearButton(page)).toBeDisabled();
+  await expect(clearConfirm(page)).not.toBeChecked();
   const seen = mutations(page);
-  await page.locator(API_KEY).fill('DP-GATED-DRAFT');
+  await clearButton(page).click({force: true});
+  await page.waitForTimeout(500);
+  expect(seen).toEqual([]);
+  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+
+  await clearConfirm(page).check();
+  await expect(clearButton(page)).toBeEnabled();
+  // Arming the confirmation alone changes nothing.
+  await page.waitForTimeout(500);
+  expect(scoped(seen, '/api/integrations/alldebrid/configuration')).toHaveLength(0);
+});
+
+test('a confirmed Clear erases the stored key and resets the confirmation', async ({page}) => {
+  await preconfigure(page);
+  const seen = mutations(page);
+  await clearConfirm(page).check();
+  await clearButton(page).click();
+
+  await expect.poll(async () =>
+    (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
+  const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
+  expect(writes).toHaveLength(1);
+  expect(writes[0].body.clear_secrets).toEqual(['api_key']);
+  // Clear never also saves a replacement key.
+  expect(writes[0].body.options).toEqual({});
+  // The row now reports "no key", so the confirmed removal is consumed.
+  await expect(clearConfirm(page)).toHaveCount(0);
+});
+
+test('a failed Clear keeps the confirmation armed', async ({page}) => {
+  await preconfigure(page);
+  await page.route(url => url.pathname === '/api/integrations/alldebrid/configuration',
+    route => route.request().method() === 'PATCH'
+      ? route.fulfill({status: 502, contentType: 'application/json',
+          body: JSON.stringify({detail: 'clear rejected'})})
+      : route.continue());
+  await clearConfirm(page).check();
+  await clearButton(page).click();
+
+  await expect(toasts(page).first()).toContainText(/reject|error|fail/i);
+  await expect(clearConfirm(page)).toBeChecked();
+  await expect(clearButton(page)).toBeEnabled();
+  await page.unrouteAll({behavior: 'ignoreErrors'}).catch(() => {});
+  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+});
+
+test('Clear is the only path that erases a stored key', async ({page}) => {
+  await preconfigure(page);
+  // Leaving the credential field blank is "no replacement", never a removal.
+  const seen = mutations(page);
+  await page.locator(API_KEY).focus();
   await page.locator(API_KEY).blur();
   await page.waitForTimeout(700);
   expect(seen).toEqual([]);
-  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
-});
-
-test('Save commits the gated credential and converges the baseline', async ({page}) => {
-  await page.locator(API_KEY).fill('DP-GATED-COMMIT');
-  await saveButton(page).click();
-
-  await expect.poll(async () =>
-    (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
-  await expect(toasts(page).first()).toContainText(/saved|updated/i);
-  // The gate is consumed: the draft secret is gone and Save is inactive again.
-  await expect(page.locator(API_KEY)).toHaveValue('');
-  await expect(saveButton(page)).toBeDisabled();
-});
-
-test('Clear Stored API Key expresses intent only, and Save performs it', async ({page}) => {
-  await page.locator(API_KEY).fill('DP-GATED-TO-CLEAR');
-  await saveButton(page).click();
-  await expect.poll(async () =>
-    (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
-  await clearToasts(page);
-
-  // Adopting integration state re-renders the card, and a card whose
-  // integration is switched off renders collapsed -- its expansion is LOCAL
-  // presentation, not canonical state. Re-establishing it writes nothing and
-  // is exactly what an operator does; the invariant under test is the gate's
-  // commit boundary, never the disclosure.
-  await revealAllDebrid(page);
-  const clear = page.locator('[data-clear-secret="alldebrid_api_key"]');
-  await expect(clear).toHaveCount(1);
-  await clear.check();
-  // Checking the gate changes nothing persistently.
-  await page.waitForTimeout(700);
   expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
-  await expect(saveButton(page)).toBeEnabled();
-
-  await revealAllDebrid(page);
-  await saveButton(page).click();
-  await expect.poll(async () =>
-    (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
-});
-
-test('a failed Save reports the failure and claims no success', async ({page}) => {
-  await page.route(url => url.pathname === '/api/integrations/alldebrid/configuration',
-    route => route.fulfill({status: 502, contentType: 'application/json',
-      body: JSON.stringify({detail: 'credential rejected'})}));
-  await page.locator(API_KEY).fill('DP-GATED-FAILS');
-  await saveButton(page).click();
-  await expect(toasts(page).first()).toContainText(/reject|error|fail/i);
-  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
 });
 
 // --- 7 / 8 draft Test and deterministic ordering --------------------------
 
-test('Test uses the unsaved draft credential without persisting it', async ({page}) => {
-  let probed = null;
-  await page.route(url => url.pathname === '/api/settings/validate-alldebrid', async route => {
-    probed = route.request().postDataJSON();
-    await route.fulfill({status: 200, contentType: 'application/json',
-      body: JSON.stringify({ok: true, username: 'draft-account'})});
+test('Test settles the pending credential commit first, and never saves it itself',
+  async ({page}) => {
+    const order = [];
+    page.on('requestfinished', request => {
+      if (new URL(request.url()).pathname === '/api/integrations/alldebrid/configuration') {
+        order.push('commit-finished');
+      }
+    });
+    let probed = null;
+    await page.route(url => url.pathname === '/api/settings/validate-alldebrid', async route => {
+      probed = route.request().postDataJSON();
+      order.push('test-sent');
+      await route.fulfill({status: 200, contentType: 'application/json',
+        body: JSON.stringify({ok: true, username: 'settled-account'})});
+    });
+
+    await page.locator(API_KEY).fill('DP-SETTLED-KEY');
+    // No explicit blur: clicking Test is what removes focus.
+    await page.locator('[data-action="test-alldebrid"]').click();
+
+    await expect(toasts(page).first()).toContainText('settled-account');
+    expect(order).toEqual(['commit-finished', 'test-sent']);
+    // The credential was persisted by its OWN boundary, so Test read the saved
+    // configuration rather than carrying a draft secret.
+    expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+    expect(probed.api_key).toBe('');
+    expect(probed.clear_api_key).toBeUndefined();
   });
 
-  await page.locator(API_KEY).fill('DP-DRAFT-ONLY');
-  await page.locator('[data-action="test-alldebrid"]').click();
-  await expect(toasts(page).first()).toContainText('draft-account');
-  expect(probed.api_key).toBe('DP-DRAFT-ONLY');
-  // Testing a draft never writes it.
-  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
-});
-
-test('an edited field is committed before Test reads the form', async ({page}) => {
+test('an edited ordinary field is committed before Test reads the form', async ({page}) => {
   const order = [];
   page.on('requestfinished', request => {
     if (new URL(request.url()).pathname === '/api/integrations/alldebrid/configuration') {
@@ -363,7 +474,7 @@ test('an edited field is committed before Test reads the form', async ({page}) =
 test('the provider Enable toggle stays immediate and is never replayed by the footer',
   async ({page}) => {
     const before = (await settings(page)).integrations.general_http.enabled;
-    await revealGeneralSources(page);
+    await revealNetworkSources(page);
     await page.locator('label[for="dp-settings-integration-general_http-enabled"]').click();
     await expect.poll(async () => (await settings(page)).integrations.general_http.enabled)
       .toBe(!before);
@@ -420,14 +531,23 @@ test('the footer cannot replay a migrated top-level field over newer canonical s
     expect((await settings(page)).full_sync_interval_minutes).toBe(newer);
   });
 
-test('the footer never writes gated AllDebrid credential state', async ({page}) => {
+test('the footer owns no AllDebrid credential write of its own', async ({page}) => {
   const seen = mutations(page);
-  await page.locator(API_KEY).fill('DP-NEVER-APPLIED');
+  await page.locator(API_KEY).fill('DP-FOOTER-DRAFT');
   await page.locator('#view-settings button[data-action="save"]:visible').first().click();
   await expect(toasts(page).first()).toBeVisible();
   await page.waitForTimeout(500);
-  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
-  expect(scoped(seen, '/api/integrations/alldebrid/configuration')).toHaveLength(0);
+  // Apply Settings settles pending commits, so the credential is persisted by
+  // its OWN changed-blur boundary -- through the integration mutation, never
+  // through the whole-settings document.
+  const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
+  expect(writes).toHaveLength(1);
+  expect(writes[0].body.options.api_key).toBe('DP-FOOTER-DRAFT');
+  const document = scoped(seen, '/api/settings');
+  for (const write of document) {
+    expect(JSON.stringify(write.body)).not.toContain('DP-FOOTER-DRAFT');
+    expect(write.body.clear_secrets || []).not.toContain('alldebrid_api_key');
+  }
 });
 
 test('the global Apply Settings control is still present', async ({page}) => {
@@ -435,58 +555,54 @@ test('the global Apply Settings control is still present', async ({page}) => {
   await expect(page.locator('#view-settings button[data-action="save"]')).toBeVisible();
 });
 
-// --- a gated mutation consumes only the intent it dispatched --------------
+// --- a credential write consumes only the draft it dispatched -------------
 
-test('the gated Save consumes only the API key it dispatched', async ({page}) => {
-  const seen = mutations(page);
-  await page.locator(API_KEY).fill('DP-KEY-A');
-  await delayNextAllDebridWrite(page, 1500);
-  await saveButton(page).click();
-  // Newer gated intent, created while KEY-A is still on the wire.
-  await page.locator(API_KEY).fill('DP-KEY-B');
+test('a credential write leaves a newer key typed while it was in flight alone',
+  async ({page}) => {
+    const seen = mutations(page);
+    await delayNextAllDebridWrite(page, 1500);
+    await page.locator(API_KEY).fill('DP-KEY-A');
+    await page.locator(API_KEY).blur();
+    // Newer intent, created while KEY-A is still on the wire.
+    await page.locator(API_KEY).fill('DP-KEY-B');
 
-  await expect.poll(async () =>
-    (await settings(page)).integrations.alldebrid.options.api_key_configured,
-    {timeout: 15000}).toBe(true);
-  await page.waitForTimeout(700);
+    await expect.poll(async () =>
+      (await settings(page)).integrations.alldebrid.options.api_key_configured,
+      {timeout: 15000}).toBe(true);
+    await page.waitForTimeout(700);
 
-  // KEY-A is what was accepted ...
-  const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
-  expect(writes[0].body.options.api_key).toBe('DP-KEY-A');
-  // ... and KEY-B is still pending, visible, and still offered for commit.
-  await expect(page.locator(API_KEY)).toHaveValue('DP-KEY-B');
-  await expect(saveButton(page)).toBeEnabled();
+    // KEY-A is what was accepted ...
+    const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
+    expect(writes[0].body.options.api_key).toBe('DP-KEY-A');
+    // ... and KEY-B survived the row's re-render, dirty against the blank
+    // accepted baseline, so it commits on its own blur.
+    await expect(page.locator(API_KEY)).toHaveValue('DP-KEY-B');
+    expect(await committedBaseline(page, API_KEY)).toBe('');
 
-  await saveButton(page).click();
-  await expect.poll(() => scoped(seen, '/api/integrations/alldebrid/configuration').length).toBe(2);
-  expect(scoped(seen, '/api/integrations/alldebrid/configuration')[1].body.options.api_key)
-    .toBe('DP-KEY-B');
-  await expect(page.locator(API_KEY)).toHaveValue('');
-  await expect(saveButton(page)).toBeDisabled();
-});
+    await page.locator(API_KEY).blur();
+    await expect.poll(() => scoped(seen, '/api/integrations/alldebrid/configuration').length).toBe(2);
+    expect(scoped(seen, '/api/integrations/alldebrid/configuration')[1].body.options.api_key)
+      .toBe('DP-KEY-B');
+    await expect(page.locator(API_KEY)).toHaveValue('');
+  });
 
-test('the gated Save never disarms a Clear confirmation armed after dispatch', async ({page}) => {
-  // Start configured, so the Clear control exists from the outset.
-  await page.request.patch('/api/integrations/alldebrid/configuration',
-    {data: {options: {api_key: 'DP-PRESET'}}});
-  await page.reload();
-  await openSources(page);
-  await revealAllDebrid(page);
+test('a credential write never disarms a Clear confirmation armed after dispatch',
+  async ({page}) => {
+    await preconfigure(page);
+    await delayNextAllDebridWrite(page, 1500);
+    await page.locator(API_KEY).fill('DP-KEY-A');
+    await page.locator(API_KEY).blur();          // dispatched with no removal intent
+    await clearConfirm(page).check();
 
-  await page.locator(API_KEY).fill('DP-KEY-A');
-  await delayNextAllDebridWrite(page, 1500);
-  await saveButton(page).click();          // dispatched with no clear intent
-  await page.locator('[data-clear-secret="alldebrid_api_key"]').check();
+    await page.waitForTimeout(2200);
+    // The newer intent survived the older response's re-render.
+    await expect(clearConfirm(page)).toBeChecked();
+    await expect(clearButton(page)).toBeEnabled();
 
-  await page.waitForTimeout(2000);
-  // The newer gated intent survived the older response.
-  await expect(page.locator('[data-clear-secret="alldebrid_api_key"]')).toBeChecked();
-  await expect(saveButton(page)).toBeEnabled();
-
-  await saveButton(page).click();
-  await expect.poll(async () =>
-    (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
-});
+    await clearButton(page).click();
+    await expect.poll(async () =>
+      (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
+  });
 
 // --- an earlier queued write that SUCCEEDS is canonical knowledge ---------
 //

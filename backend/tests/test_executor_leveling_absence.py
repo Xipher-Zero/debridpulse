@@ -314,7 +314,7 @@ def test_provider_status_hierarchy_has_no_named_integration_branch():
     status = _js("ui-provider-status.js")
     for named in ("alldebrid", "usenet", "general_http", "general_ftp", "sabnzbd", "aria2",
                   "premium_service", "premium_family", "general_family",
-                  "Premium Services", "General Sources"):
+                  "Premium Services", "Standard Services", "Network Sources"):
         assert named not in status, named
 
 

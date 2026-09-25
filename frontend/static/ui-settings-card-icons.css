@@ -49,6 +49,9 @@
 #view-settings .dp-settings-protocol-chip {
   --dp-protocol-color: #b866f5;
   --dp-settings-inner-icon-color: var(--dp-protocol-color);
+  /* The colour this chip contributes to the master-card outer glow below.
+     Only a GROUP MASTER's chip actually receives that glow. */
+  --dp-settings-master-glow: var(--dp-protocol-color);
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
@@ -129,4 +132,32 @@ body.light #view-settings .dp-settings-inner-card-icon img {
     contrast(1.04)
     drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-inner-icon-color) 88%, transparent))
     drop-shadow(0 0 10px color-mix(in srgb, var(--dp-settings-inner-icon-color) 44%, transparent));
+}
+
+/* ── The ONE master-card outer glow ───────────────────────────────────────
+ *
+ * A master group card carries an omnidirectional glow AROUND its artwork, on
+ * top of whatever inner material that artwork owns. It existed only for the
+ * premium master, hard-coded to one colour, and the Network Sources master had
+ * none at all. Both now derive the same two-stop pair from ONE per-instance
+ * datum -- --dp-settings-master-glow -- so there is exactly one owner and each
+ * master contributes nothing but its colour.
+ *
+ * The Network Sources master is addressed STRUCTURALLY, through the group
+ * attribute groupCard() already emits: nothing here names an integration, and
+ * the Downloads executor-tuning cards (data-executor-tuning) are deliberately
+ * not group masters and so are deliberately not matched. Chip geometry, glyph,
+ * blue colour, inner glyph glow and status logic are untouched. */
+#view-settings .dp-settings-debrid-services > .card-header > .card-title::before,
+#view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%, transparent))
+    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-master-glow) 34%, transparent));
+}
+
+body.light #view-settings .dp-settings-debrid-services > .card-header > .card-title::before,
+body.light #view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {
+  filter:
+    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 88%, transparent))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--dp-settings-master-glow) 44%, transparent));
 }

@@ -22,9 +22,9 @@ def test_completed_transfer_uses_delivering_provider_and_ordered_route_labels():
         "execution_attempts": [{"provider_id": "general_http", "executor_id": "aria2", "delivered": True}],
     }
     result = _public_transfer_presentation(raw, definitions)
-    assert result["delivering_provider_name"] == "HTTP & HTTPS"
-    assert result["current_provider_name"] == "HTTP & HTTPS"
-    assert [item["provider_name"] for item in result["route_attempts"]] == ["AllDebrid", "HTTP & HTTPS"]
+    assert result["delivering_provider_name"] == "HTTP(S)"
+    assert result["current_provider_name"] == "HTTP(S)"
+    assert [item["provider_name"] for item in result["route_attempts"]] == ["AllDebrid", "HTTP(S)"]
     assert [item["ordinal"] for item in result["route_attempts"]] == [1, 2]
     assert result["original_resource"] == "https://downloads.example/file.bin?…"
     assert "token=secret" not in str(result)
@@ -41,9 +41,9 @@ def test_active_transfer_projects_current_durable_provider_without_url_inference
         "execution_attempts": [],
     }
     result = _public_transfer_presentation(raw, definitions)
-    assert result["current_provider_name"] == "HTTP & HTTPS"
+    assert result["current_provider_name"] == "HTTP(S)"
     assert result["delivering_provider_name"] is None
-    assert result["route_attempts"][0]["provider_name"] == "HTTP & HTTPS"
+    assert result["route_attempts"][0]["provider_name"] == "HTTP(S)"
 
 
 def test_unknown_historical_provider_keeps_stable_id_without_inventing_label():

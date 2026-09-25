@@ -16,7 +16,7 @@ class GeneralHttpProvider:
         generic_schemes=frozenset({"http", "https"}),
     )
     descriptor = IntegrationDescriptor(
-        "general_http", "HTTP & HTTPS", frozenset({Capability.RESOLVE}),
+        "general_http", "HTTP(S)", frozenset({Capability.RESOLVE}),
         request_types=frozenset({"http", "https"}),
     )
 

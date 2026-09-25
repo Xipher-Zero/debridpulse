@@ -12,32 +12,35 @@ const { test, expect } = require('@playwright/test');
  * one record never touches another and removing a card never disturbs a
  * survivor. A blank password is omitted from the request, which the backend
  * reads as "keep this server's stored credential"; erasing one requires the
- * explicit clear control.
+ * explicit, confirmed Clear.
  *
  * A card is NOT a credential transaction. Every control on it is classified by
  * ITS OWN semantics and risk, exactly like every other Settings control:
  *
  *   host / port / username / connections / priority /
  *   articles per request / timeout          changed-blur
+ *   password (entry / replacement)          changed-blur  (DP 1.0.13)
  *   SSL                                     immediate
- *   password, Clear Stored Password         gated-save (the card's Save)
  *   display name                            committed when its dialog accepts
- *   Test / Remove / Add Server              explicit-action
+ *   Test / Remove / Clear / Add Server      explicit-action
  *
- * A card with no canonical id yet is the one deliberate exception: there is no
- * record to write a field to, so its Save is record CREATION. Once the backend
- * mints the id, the card joins the universal persistence model.
+ * DP 1.0.13: there is no Save. A card with no canonical id yet is the one
+ * deliberate exception -- nothing can be written to a record that does not
+ * exist -- so the canonical persistence owner asks the Usenet scope to
+ * MATERIALIZE it the first time an ordinary commit boundary is crossed on a
+ * draft that has a Host. From that moment the card is an ordinary member of
+ * the universal persistence model.
  *
- * Usenet owns no notification system: Save/Test/Remove RESULTS are the
- * canonical toast owner's, while inline FIELD VALIDATION is a different,
- * narrower thing that survives.
+ * Usenet owns no notification system: action RESULTS are the canonical toast
+ * owner's, while inline FIELD VALIDATION is a different, narrower thing that
+ * survives.
  */
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
 }
 
-/* Arrive at Sources & Providers with the Usenet card OPEN.
+/* Arrive at Services with the Usenet card OPEN.
  *
  * Every expandable card is collapsed on navigation -- expansion is local
  * presentation state, never a projection of enabled/configured/verified state
@@ -61,7 +64,8 @@ const serverCards = page => collection(page).locator('[data-usenet-server-id]');
 const addTile = page => collection(page).locator('[data-usenet-action="add"]');
 const cardFor = (page, id) => collection(page).locator(`[data-usenet-server-id="${id}"]`);
 const field = (card, name) => card.locator(`[data-usenet-field="${name}"]`);
-const saveButton = card => card.locator('[data-usenet-action="save"]');
+const clearButton = card => card.locator('[data-usenet-action="clear-password"]');
+const clearConfirm = card => card.locator('[data-usenet-clear-password]');
 const toasts = page => page.locator('#toasts .toast');
 
 async function rename(page, card, value) {
@@ -163,16 +167,46 @@ async function draftCard(page, host) {
   return card;
 }
 
+/* The canonical id of THE CARD UNDER TEST, once its record exists.
+ *
+ * Deliberately read from the card rather than from "the only stored server":
+ * a record is identified by its identity, never by its position, and an
+ * assertion that assumes the collection holds exactly one row is measuring the
+ * collection instead of the card. */
+async function mintedId(card) {
+  await expect.poll(() => card.getAttribute('data-usenet-server-id'), {timeout: 20000}).not.toBe('');
+  return card.getAttribute('data-usenet-server-id');
+}
+
+/* The boundary that turns a draft card into a canonical record: an ordinary
+ * changed-blur commit on a card that has a Host. There is no Save. */
+async function materialize(page, card) {
+  await field(card, 'host').blur();
+  return mintedId(card);
+}
+
 /** Create one server through the UI and return its canonical id. */
 async function addServer(page, {host, username, password, port}) {
   const card = await draftCard(page, host);
-  if (username !== undefined) await field(card, 'username').fill(username);
-  if (password !== undefined) await field(card, 'password').fill(password);
-  if (port !== undefined) await field(card, 'port').fill(String(port));
-  await saveButton(card).click();
+  const id = await materialize(page, card);
   await expect.poll(async () => (await storedServers(page)).some(s => s.host === host)).toBeTruthy();
-  await expect.poll(() => card.getAttribute('data-usenet-server-id')).not.toBe('');
-  return card.getAttribute('data-usenet-server-id');
+  const commit = async (name, value) => {
+    await field(card, name).fill(String(value));
+    await field(card, name).blur();
+  };
+  if (port !== undefined) {
+    await commit('port', port);
+    await expect.poll(async () => (await record(page, id)).port).toBe(Number(port));
+  }
+  if (username !== undefined) {
+    await commit('username', username);
+    await expect.poll(async () => (await record(page, id)).username).toBe(username);
+  }
+  if (password !== undefined) {
+    await commit('password', password);
+    await expect.poll(async () => (await record(page, id)).password_configured).toBe(true);
+  }
+  return id;
 }
 
 /* Every server RECORD mutation the page issues, in order. `/usenet/servers/test`
@@ -296,14 +330,16 @@ test('an ordinary field change preserves the stored credential', async ({page}) 
   expect((await storedServers(page))[0].password_configured).toBe(true);
 });
 
-test('clearing the password is explicit and does erase it', async ({page}) => {
+test('clearing the password is explicit, confirmed, and does erase it', async ({page}) => {
   const id = await addServer(page, {host: 'news.clear.net', username: 'c', password: 'PW-CLEAR'});
   await page.reload();
   await openSources(page);
   await enableUsenet(page);
   const card = collection(page).locator(`[data-usenet-server-id="${id}"]`);
-  await card.locator('[data-usenet-clear-password]').check();
-  await card.locator('[data-usenet-action="save"]').click();
+  await expect(clearButton(card)).toBeDisabled();
+  await clearConfirm(card).check();
+  await expect(clearButton(card)).toBeEnabled();
+  await clearButton(card).click();
   await expect.poll(async () => (await storedServers(page))[0].password_configured).toBe(false);
 });
 
@@ -524,85 +560,150 @@ test('a deliberate port survives an immediate SSL change', async ({page}) => {
   await expect(field(card, 'port')).toHaveValue('9119');
 });
 
-// --- gated-save: the credential and its confirmation --------------------
+// --- the credential: changed-blur entry, explicit confirmed removal -------
 
-test('Save is inactive on an existing record with no gated state', async ({page}) => {
+test('an entered password persists on blur and is never retained by the browser',
+  async ({page}) => {
+    const id = await seed(page, {password: ''});
+    await page.reload();
+    await openSources(page);
+    const card = cardFor(page, id);
+    const seen = writes(page);
+
+    await field(card, 'password').fill('PW-ON-BLUR');
+    await field(card, 'password').blur();
+
+    await expect.poll(async () => (await record(page, id)).password_configured).toBe(true);
+    const sent = seen.filter(entry => entry.method === 'PUT');
+    expect(sent).toHaveLength(1);
+    // Only the credential travelled.
+    expect(Object.keys(sent[0].body)).toEqual(['password']);
+    // The accepted presentation of a secret is blank, in the field and in the
+    // canonical persistence owner's baseline alike.
+    await expect(field(card, 'password')).toHaveValue('');
+    await expect.poll(() => committedBaseline(page, id, 'password')).toBe('');
+
+    // So leaving it again writes nothing.
+    const after = writes(page);
+    await field(card, 'password').focus();
+    await field(card, 'password').blur();
+    await page.waitForTimeout(700);
+    expect(after).toEqual([]);
+  });
+
+test('a blank password is "no replacement", never a removal', async ({page}) => {
   const id = await seed(page);
-  await page.reload();
-  await openSources(page);
-  await expect(saveButton(cardFor(page, id))).toBeDisabled();
-});
-
-test('a typed password is a pending draft that blur never persists', async ({page}) => {
-  const id = await seed(page, {password: ''});
   await page.reload();
   await openSources(page);
   const card = cardFor(page, id);
   const seen = writes(page);
 
-  await field(card, 'password').fill('PW-DRAFT');
+  await expect(field(card, 'password')).toHaveValue('');
+  await field(card, 'password').focus();
   await field(card, 'password').blur();
   await page.waitForTimeout(700);
   expect(seen).toEqual([]);
-  expect((await record(page, id)).password_configured).toBe(false);
-  await expect(saveButton(card)).toBeEnabled();
-
-  await saveButton(card).click();
-  await expect.poll(async () => (await record(page, id)).password_configured).toBe(true);
-  await expect(field(card, 'password')).toHaveValue('');
-  await expect(saveButton(card)).toBeDisabled();
+  expect((await record(page, id)).password_configured).toBe(true);
 });
 
-test('Clear Stored Password expresses intent only, and Save performs it', async ({page}) => {
+test('Clear is inert until the removal is confirmed, and resets only on success',
+  async ({page}) => {
+    const id = await seed(page);
+    await page.reload();
+    await openSources(page);
+    const card = cardFor(page, id);
+    const seen = writes(page);
+
+    await expect(clearButton(card)).toBeDisabled();
+    await clearButton(card).click({force: true});
+    await page.waitForTimeout(500);
+    expect(seen).toEqual([]);
+    expect((await record(page, id)).password_configured).toBe(true);
+
+    await clearConfirm(card).check();
+    await expect(clearButton(card)).toBeEnabled();
+    // Arming the confirmation alone changes nothing.
+    await page.waitForTimeout(500);
+    expect(seen).toEqual([]);
+
+    await clearButton(card).click();
+    await expect.poll(async () => (await record(page, id)).password_configured).toBe(false);
+    // Clear carries only the removal -- never a replacement value.
+    const sent = seen.filter(entry => entry.method === 'PUT');
+    expect(sent).toHaveLength(1);
+    expect(sent[0].body).toEqual({clear_password: true});
+    // Consumed only by a clear that actually happened.
+    await expect(clearConfirm(card)).not.toBeChecked();
+    await expect(clearButton(card)).toBeDisabled();
+  });
+
+test('a failed Clear keeps the confirmation armed', async ({page}) => {
   const id = await seed(page);
   await page.reload();
   await openSources(page);
   const card = cardFor(page, id);
 
-  await card.locator('[data-usenet-clear-password]').check();
-  await page.waitForTimeout(700);
-  expect((await record(page, id)).password_configured).toBe(true);
-  await expect(saveButton(card)).toBeEnabled();
+  await page.route(url => url.pathname === `/api/usenet/servers/${id}`,
+    route => route.request().method() === 'PUT'
+      ? route.fulfill({status: 502, contentType: 'application/json',
+          body: JSON.stringify({detail: 'news server rejected'})})
+      : route.continue());
 
-  await saveButton(card).click();
-  await expect.poll(async () => (await record(page, id)).password_configured).toBe(false);
+  await clearConfirm(card).check();
+  await clearButton(card).click();
+  await expect(toasts(page).first()).toContainText(/reject|could not|fail/i);
+  await expect(clearConfirm(card)).toBeChecked();
+  await expect(clearButton(card)).toBeEnabled();
+  await page.unrouteAll({behavior: 'ignoreErrors'}).catch(() => {});
+  expect((await record(page, id)).password_configured).toBe(true);
 });
 
-test('the gated Save writes no ordinary field of its own', async ({page}) => {
-  const id = await seed(page, {password: ''});
+test('no Save action survives on a server card', async ({page}) => {
+  const id = await seed(page);
   await page.reload();
   await openSources(page);
-  const card = cardFor(page, id);
-  const seen = writes(page);
-
-  await field(card, 'password').fill('PW-ONLY');
-  await saveButton(card).click();
-  await expect.poll(async () => (await record(page, id)).password_configured).toBe(true);
-
-  const gated = seen.filter(entry => entry.method === 'PUT').pop();
-  expect(Object.keys(gated.body).sort()).toEqual(['clear_password', 'password']);
+  await expect(cardFor(page, id).locator('[data-usenet-action="save"]')).toHaveCount(0);
+  await draftCard(page, 'news.nosave.net');
+  await expect(serverCards(page).last().locator('[data-usenet-action="save"]')).toHaveCount(0);
 });
 
 // --- explicit actions ----------------------------------------------------
 
-test('Test uses the unsaved draft password without persisting it', async ({page}) => {
+/* DP 1.0.13: Test settles pending changed-blur commits first, so a credential
+ * the operator has just typed is persisted by ITS OWN boundary before Test
+ * runs -- Test never saves it. The request then carries a blank secret, which
+ * the endpoint reads as "use this server's stored credential", so Test still
+ * exercises exactly what the operator entered. */
+test('Test settles the typed credential first and never saves it itself', async ({page}) => {
   const id = await seed(page, {password: ''});
   await page.reload();
   await openSources(page);
   const card = cardFor(page, id);
 
+  const order = [];
+  page.on('requestfinished', request => {
+    const path = new URL(request.url()).pathname;
+    if (path === `/api/usenet/servers/${id}` && request.method() === 'PUT') order.push('commit-finished');
+  });
   let probed = null;
   await page.route(url => url.pathname === '/api/usenet/servers/test', async route => {
     probed = route.request().postDataJSON();
+    order.push('test-sent');
     await route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({ok: true, message: 'Connected'})});
   });
 
-  await field(card, 'password').fill('PW-DRAFT-ONLY');
+  await field(card, 'password').fill('PW-SETTLED');
+  // No explicit blur: clicking Test is what removes focus.
   await card.locator('[data-usenet-action="test"]').click();
   await expect(toasts(page).first()).toContainText('Connected');
-  expect(probed.password).toBe('PW-DRAFT-ONLY');
-  expect((await record(page, id)).password_configured).toBe(false);
+
+  expect(order).toEqual(['commit-finished', 'test-sent']);
+  // Test carried no credential of its own ...
+  expect(probed.password).toBe('');
+  expect(probed.server_id).toBe(id);
+  // ... because the credential's own boundary had already persisted it.
+  expect((await record(page, id)).password_configured).toBe(true);
 });
 
 test('renaming commits the display name immediately', async ({page}) => {
@@ -622,36 +723,104 @@ test('renaming commits the display name immediately', async ({page}) => {
 
 // --- record creation: the one deliberate exception ----------------------
 
-test('a new card writes no field before its record exists, and Save creates it', async ({page}) => {
+test('Add Server alone creates no backend record', async ({page}) => {
   const seen = writes(page);
   await addTile(page).click();
   const card = serverCards(page).last();
   await expect(card).toHaveAttribute('data-usenet-server-id', '');
-
-  await field(card, 'host').fill('news.created.net');
-  await field(card, 'host').blur();
-  await field(card, 'username').fill('creator');
-  await field(card, 'username').blur();
   await page.waitForTimeout(700);
-  // No record exists yet, so nothing could be written to one.
+  expect(seen).toEqual([]);
+  expect(await storedServers(page)).toHaveLength(0);
+});
+
+test('a valid Host plus one ordinary commit boundary creates exactly one record',
+  async ({page}) => {
+    const seen = writes(page);
+    const card = await draftCard(page, 'news.created.net');
+    await field(card, 'username').fill('creator');
+    // Moving focus off Host is the boundary; the creation carries the card's
+    // current values, which is the one approved creation exception.
+    await field(card, 'username').blur();
+
+    await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
+    expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
+    const created = await record(page, await mintedId(card));
+    expect(created.host).toBe('news.created.net');
+    await expect(card).toHaveAttribute('data-usenet-server-id', created.id);
+    // The username boundary reaches the record either with the creation or
+    // immediately after it, without a second blur.
+    await expect.poll(async () => (await record(page, created.id)).username,
+      {timeout: 20000}).toBe('creator');
+  });
+
+test('a creation carries a password already entered on the draft card', async ({page}) => {
+  const seen = writes(page);
+  await addTile(page).click();
+  const card = serverCards(page).last();
+  // Entered while the card has no Host at all, so no boundary can create a
+  // record yet -- the approved creation exception is exercised deliberately.
+  await field(card, 'password').fill('PW-AT-CREATION');
+  await field(card, 'host').fill('news.created-pw.net');
+  await field(card, 'host').blur();
+
+  await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
+  // The creation itself carried the credential, because there was no record
+  // for it to have been written to.
+  const posts = seen.filter(entry => entry.method === 'POST');
+  expect(posts).toHaveLength(1);
+  expect(posts[0].body.password).toBe('PW-AT-CREATION');
+  const id = await mintedId(card);
+  await expect.poll(async () => (await record(page, id)).password_configured,
+    {timeout: 20000}).toBe(true);
+  // The browser retains no secret, and exactly one record exists.
+  await expect(field(card, 'password')).toHaveValue('');
+  await expect.poll(() => committedBaseline(page, id, 'password')).toBe('');
+  expect(await storedServers(page)).toHaveLength(1);
+});
+
+test('a blank Host creates nothing and keeps inline field validation', async ({page}) => {
+  const seen = writes(page);
+  const card = await draftCard(page, '');
+  await field(card, 'username').fill('nobody');
+  await field(card, 'username').blur();
+
+  const validation = card.locator('[data-usenet-validation]');
+  await expect(validation).toBeVisible();
+  await expect(validation).toContainText(/host is required/i);
+  await expect(toasts(page)).toHaveCount(0);
   expect(seen).toEqual([]);
   expect(await storedServers(page)).toHaveLength(0);
 
-  await saveButton(card).click();
-  await expect.poll(async () => (await storedServers(page)).length).toBe(1);
-  expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
-  const created = (await storedServers(page))[0];
-  expect(created.host).toBe('news.created.net');
-  expect(created.username).toBe('creator');
+  // Correcting the Host creates it, and the validation clears with no toast
+  // of its own.
+  await field(card, 'host').fill('news.corrected.net');
+  await field(card, 'host').blur();
+  await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
+  await expect(validation).toBeHidden();
 });
 
+test('several boundaries crossed while the creation is in flight create one record',
+  async ({page}) => {
+    const seen = writes(page);
+    const card = await draftCard(page, 'news.single-record.net');
+    await delayNextCreate(page, 1500);
+    await field(card, 'host').blur();
+    // More boundaries, all while the one creation is still on the wire.
+    await field(card, 'username').fill('a');
+    await field(card, 'username').blur();
+    await field(card, 'username').fill('b');
+    await field(card, 'username').blur();
+
+    await expect.poll(async () => (await storedServers(page)).length, {timeout: 25000}).toBe(1);
+    await page.waitForTimeout(1500);
+    expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
+    expect(await storedServers(page)).toHaveLength(1);
+  });
+
 test('once created, the card joins the universal model and persists on blur', async ({page}) => {
-  await addTile(page).click();
-  const card = serverCards(page).last();
-  await field(card, 'host').fill('news.joined.net');
-  await saveButton(card).click();
+  const card = await draftCard(page, 'news.joined.net');
+  const id = await materialize(page, card);
   await expect.poll(async () => (await storedServers(page)).length).toBe(1);
-  const id = (await storedServers(page))[0].id;
   await expect(card).toHaveAttribute('data-usenet-server-id', id);
 
   const seen = writes(page);
@@ -671,31 +840,35 @@ test('the private inline action-result surface no longer exists anywhere', async
   await expect(page.locator('.dp-usenet-server-status')).toHaveCount(0);
 });
 
-test('Save success is reported by the canonical toast owner', async ({page}) => {
+test('creation success is reported by the canonical toast owner', async ({page}) => {
   const card = await draftCard(page, 'news.saved.net');
-  await card.locator('[data-usenet-action="save"]').click();
+  await field(card, 'host').blur();
   await expect(toasts(page)).toHaveCount(1);
   await expect(toasts(page).first()).toContainText(/saved/i);
   await expect(page.locator('[data-usenet-status]')).toHaveCount(0);
 });
 
-test('Save failure is reported by the canonical toast owner and claims nothing', async ({page}) => {
-  await page.route(url => /\/api\/usenet\/servers$/.test(url.pathname),
-    route => route.fulfill({status: 502, contentType: 'application/json',
-      body: JSON.stringify({detail: 'news server rejected'})}));
-  const card = await draftCard(page, 'news.failed.net');
-  await card.locator('[data-usenet-action="save"]').click();
-  await expect(toasts(page).first()).toContainText(/reject|could not|fail/i);
-  expect(await storedServers(page)).toHaveLength(0);
-});
+test('creation failure is reported by the canonical toast owner and claims nothing',
+  async ({page}) => {
+    await page.route(url => /\/api\/usenet\/servers$/.test(url.pathname),
+      route => route.fulfill({status: 502, contentType: 'application/json',
+        body: JSON.stringify({detail: 'news server rejected'})}));
+    const card = await draftCard(page, 'news.failed.net');
+    await field(card, 'host').blur();
+    await expect(toasts(page).first()).toContainText(/reject|could not|fail/i);
+    expect(await storedServers(page)).toHaveLength(0);
+  });
 
 test('Test success is reported by the canonical toast owner', async ({page}) => {
   await page.route(url => /\/api\/usenet\/servers\/test$/.test(url.pathname),
     route => route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({ok: true, message: 'Connected to news.tested.net'})}));
   const card = await draftCard(page, 'news.tested.net');
+  // Test settles first, which materializes the draft -- so the creation
+  // reports itself too. Both results belong to the one canonical toast owner.
   await card.locator('[data-usenet-action="test"]').click();
-  await expect(toasts(page).first()).toContainText('Connected to news.tested.net');
+  await expect(toasts(page).filter({hasText: 'Connected to news.tested.net'}))
+    .toHaveCount(1);
 });
 
 test('Test failure is reported by the canonical toast owner', async ({page}) => {
@@ -704,12 +877,13 @@ test('Test failure is reported by the canonical toast owner', async ({page}) => 
       body: JSON.stringify({ok: false, message: 'Authentication rejected'})}));
   const card = await draftCard(page, 'news.badauth.net');
   await card.locator('[data-usenet-action="test"]').click();
-  await expect(toasts(page).first()).toContainText('Authentication rejected');
+  await expect(toasts(page).filter({hasText: 'Authentication rejected'})).toHaveCount(1);
 });
 
 test('inline field validation survives and is not a toast', async ({page}) => {
   const card = await draftCard(page, '');
-  await card.locator('[data-usenet-action="save"]').click();
+  await field(card, 'username').fill('nobody');
+  await field(card, 'username').blur();
   const validation = card.locator('[data-usenet-validation]');
   await expect(validation).toBeVisible();
   await expect(validation).toContainText(/host is required/i);
@@ -717,8 +891,8 @@ test('inline field validation survives and is not a toast', async ({page}) => {
   expect(await storedServers(page)).toHaveLength(0);
 
   // Correcting the field clears the validation without any notification.
-  await card.locator('[data-usenet-field="host"]').fill('news.corrected.net');
-  await card.locator('[data-usenet-action="save"]').click();
+  await field(card, 'host').fill('news.corrected.net');
+  await field(card, 'host').blur();
   await expect(validation).toBeHidden();
 });
 
@@ -749,16 +923,15 @@ test('an SSL response cannot overwrite an edit made while it was in flight', asy
   await expect.poll(async () => (await record(page, id)).username).toBe('typed-during-ssl');
 });
 
-test('a credential Save response cannot overwrite an ORDINARY edit made while it was in flight',
+test('a credential response cannot overwrite an ORDINARY edit made while it was in flight',
   async ({page}) => {
     const id = await seed(page, {password: ''});
     await page.reload();
     await openSources(page);
     const card = cardFor(page, id);
-    await field(card, 'password').fill('PW-INFLIGHT');
     await delayNextWrite(page, id, 1500);
-
-    await saveButton(card).click();
+    await field(card, 'password').fill('PW-INFLIGHT');
+    await field(card, 'password').blur();
     await field(card, 'username').fill('typed-during-save');
 
     await expect.poll(async () => (await record(page, id)).password_configured,
@@ -815,95 +988,135 @@ test('a port changed after SSL carried it converges on the operator value', asyn
   expect(seen).toEqual([]);
 });
 
-// --- a gated mutation consumes only the intent it dispatched --------------
+// --- a credential write consumes only the draft it dispatched -------------
 //
-// Ordinary controls are protected by scoped convergence. The GATED controls --
-// the credential itself and its Clear confirmation -- need the same rule: a
-// completed write may consume only the exact intent it sent, and must never
-// erase intent the operator created after dispatch.
+// Ordinary controls are protected by scoped convergence. The credential needs
+// the same rule: a completed write may consume only the exact draft it sent,
+// and must never erase intent the operator created after dispatch.
 
-test('a credential Save consumes only the credential it dispatched', async ({page}) => {
-  const id = await seed(page, {password: ''});
-  await page.reload();
-  await openSources(page);
-  const card = cardFor(page, id);
-  const seen = writes(page);
-
-  await field(card, 'password').fill('PW-A');
-  await delayNextWrite(page, id, 1500);
-  await saveButton(card).click();
-  // Newer gated intent, created while PW-A is still on the wire.
-  await field(card, 'password').fill('PW-B');
-
-  await expect.poll(async () => (await record(page, id)).password_configured,
-    {timeout: 15000}).toBe(true);
-  await page.waitForTimeout(700);
-
-  // PW-A is what was accepted ...
-  expect(seen.filter(entry => entry.method === 'PUT')[0].body.password).toBe('PW-A');
-  // ... and PW-B is still pending, visible, and still offered for commit.
-  await expect(field(card, 'password')).toHaveValue('PW-B');
-  await expect(saveButton(card)).toBeEnabled();
-
-  await saveButton(card).click();
-  await expect.poll(() => seen.filter(entry => entry.method === 'PUT').length).toBe(2);
-  expect(seen.filter(entry => entry.method === 'PUT')[1].body.password).toBe('PW-B');
-  await expect(field(card, 'password')).toHaveValue('');
-  await expect(saveButton(card)).toBeDisabled();
-});
-
-test('a credential Save never disarms a Clear confirmation armed after dispatch',
+test('a credential write leaves a newer password typed while it was in flight alone',
   async ({page}) => {
-    // Seeded WITH a credential: the Clear confirmation only exists on a card
+    const id = await seed(page, {password: ''});
+    await page.reload();
+    await openSources(page);
+    const card = cardFor(page, id);
+    const seen = writes(page);
+
+    await delayNextWrite(page, id, 1500);
+    await field(card, 'password').fill('PW-A');
+    await field(card, 'password').blur();
+    // Newer intent, typed while PW-A is still on the wire.
+    await field(card, 'password').fill('PW-B');
+
+    await expect.poll(async () => (await record(page, id)).password_configured,
+      {timeout: 15000}).toBe(true);
+    await page.waitForTimeout(700);
+
+    // PW-A is what was accepted ...
+    expect(seen.filter(entry => entry.method === 'PUT')[0].body.password).toBe('PW-A');
+    // ... and PW-B is still the operator's, dirty against the blank accepted
+    // baseline, so it commits on its own blur.
+    await expect(field(card, 'password')).toHaveValue('PW-B');
+    await expect.poll(() => committedBaseline(page, id, 'password')).toBe('');
+
+    await field(card, 'password').blur();
+    await expect.poll(() => seen.filter(entry => entry.method === 'PUT').length).toBe(2);
+    expect(seen.filter(entry => entry.method === 'PUT')[1].body.password).toBe('PW-B');
+    await expect(field(card, 'password')).toHaveValue('');
+  });
+
+test('a credential write never disarms a Clear confirmation armed after dispatch',
+  async ({page}) => {
+    // Seeded WITH a credential: the Clear confirmation only applies to a card
     // that has something stored to clear.
     const id = await seed(page);
     await page.reload();
     await openSources(page);
     const card = cardFor(page, id);
 
-    await field(card, 'password').fill('PW-A');
     await delayNextWrite(page, id, 1500);
-    await saveButton(card).click();          // dispatched with clear_password: false
+    await field(card, 'password').fill('PW-A');
+    await field(card, 'password').blur();
     // The operator changes their mind while the write is in flight.
-    await card.locator('[data-usenet-clear-password]').check();
+    await clearConfirm(card).check();
 
-    await expect.poll(async () => (await record(page, id)).password_configured,
-      {timeout: 15000}).toBe(true);
-    await page.waitForTimeout(700);
+    await page.waitForTimeout(2200);
+    // The newer intent survived the older response.
+    await expect(clearConfirm(card)).toBeChecked();
+    await expect(clearButton(card)).toBeEnabled();
 
-    // The newer gated intent survived the older response.
-    await expect(card.locator('[data-usenet-clear-password]')).toBeChecked();
-    await expect(saveButton(card)).toBeEnabled();
-
-    await saveButton(card).click();
+    await clearButton(card).click();
     await expect.poll(async () => (await record(page, id)).password_configured).toBe(false);
   });
 
 test('record creation consumes only the credential it dispatched', async ({page}) => {
   const seen = writes(page);
-  const card = await draftCard(page, 'news.created-gated.net');
-  await field(card, 'password').fill('PW-A');
   await delayNextCreate(page, 1500);
-
-  await saveButton(card).click();
-  // Newer gated intent, typed while the record is still being minted.
+  await addTile(page).click();
+  const card = serverCards(page).last();
+  // Entered while the card has no Host, so nothing can be created yet and the
+  // creation deterministically carries it.
+  await field(card, 'password').fill('PW-A');
+  await field(card, 'host').fill('news.created-credential.net');
+  await field(card, 'host').blur();
+  // Newer intent, typed while the record is still being minted.
   await field(card, 'password').fill('PW-B');
 
-  await expect.poll(async () => (await storedServers(page)).length, {timeout: 15000}).toBe(1);
-  await page.waitForTimeout(700);
-  const created = (await storedServers(page))[0];
+  await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
+  await page.waitForTimeout(900);
+  const created = await record(page, await mintedId(card));
   expect(created.password_configured).toBe(true);
   expect(seen.filter(entry => entry.method === 'POST')[0].body.password).toBe('PW-A');
 
-  // The freshly minted record keeps PW-B as pending gated intent.
+  // The freshly minted record keeps PW-B as the operator's pending draft: the
+  // completed creation consumed only PW-A, which is what it actually carried.
   await expect(card).toHaveAttribute('data-usenet-server-id', created.id);
   await expect(field(card, 'password')).toHaveValue('PW-B');
-  await expect(saveButton(card)).toBeEnabled();
+  await expect.poll(() => committedBaseline(page, created.id, 'password')).toBe('');
 
-  await saveButton(card).click();
-  await expect.poll(() => seen.filter(entry => entry.method === 'PUT').length).toBe(1);
-  expect(seen.filter(entry => entry.method === 'PUT')[0].body.password).toBe('PW-B');
+  await field(card, 'password').blur();
+  await expect.poll(() => seen.filter(entry => entry.method === 'PUT'
+    && entry.body.password === 'PW-B').length, {timeout: 20000}).toBe(1);
+  await page.waitForTimeout(700);
+  // The operator's LATEST credential is the last one written, and therefore
+  // what the record ends up holding: every write to one record shares that
+  // record's lane, so the carried draft's replay can never overtake it.
+  const credentials = seen.filter(entry => entry.method === 'PUT' && entry.body.password !== undefined);
+  expect(credentials.pop().body.password).toBe('PW-B');
+  await expect(field(card, 'password')).toHaveValue('');
 });
+
+/* A credential boundary crossed BEFORE the record existed is carried by the
+ * creation AND remembered by the canonical persistence owner, which replays it
+ * once the record has an identity. A secret's accepted presentation is blank,
+ * so the replay cannot be recognised as already-applied and re-writes the same
+ * value once. It is idempotent, it is ordered on the record's own lane, and it
+ * is the ordinary deferred-draft semantics rather than a second writer -- but
+ * it is real, so it is stated rather than left to be discovered. */
+test('a credential carried by creation is replayed at most once, idempotently',
+  async ({page}) => {
+    const seen = writes(page);
+    await addTile(page).click();
+    const card = serverCards(page).last();
+    await field(card, 'password').fill('PW-CARRIED');
+    await field(card, 'host').fill('news.carried-once.net');
+    await field(card, 'host').blur();
+
+    await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
+    await page.waitForTimeout(1200);
+    const created = await record(page, await mintedId(card));
+
+    expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
+    expect(seen.filter(entry => entry.method === 'POST')[0].body.password).toBe('PW-CARRIED');
+    const replays = seen.filter(entry => entry.method === 'PUT' && entry.body.password !== undefined);
+    expect(replays.length).toBeLessThanOrEqual(1);
+    for (const replay of replays) expect(replay.body.password).toBe('PW-CARRIED');
+    // One record, the credential stored, and nothing retained by the browser.
+    expect(await storedServers(page)).toHaveLength(1);
+    expect(created.password_configured).toBe(true);
+    await expect(field(card, 'password')).toHaveValue('');
+    await expect.poll(() => committedBaseline(page, created.id, 'password')).toBe('');
+  });
 
 // --- the same invariant, on an INSTANCED control -------------------------
 //
@@ -964,19 +1177,17 @@ test('an older record write that succeeded is what a newer failed write rolls ba
 test('an ordinary field left while the record is being minted persists without a second blur',
   async ({page}) => {
     const seen = writes(page);
-    const card = await draftCard(page, 'news.creation-field.net');
-    await field(card, 'username').fill('before');
     await delayNextCreate(page, 1500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-field.net');
+    await field(card, 'host').blur();
     // Newer ordinary intent whose commit boundary is genuinely crossed while
     // the record is still being minted.
     await field(card, 'username').fill('after');
     await field(card, 'username').blur();
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
-    expect(seen.filter(entry => entry.method === 'POST')[0].body.username).toBe('before');
+    const id = await mintedId(card);
+    expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
 
     // The operator already left the field: no second blur may be required.
     await expect.poll(async () => (await record(page, id)).username, {timeout: 20000}).toBe('after');
@@ -985,16 +1196,15 @@ test('an ordinary field left while the record is being minted persists without a
 
 test('an SSL toggle made while the record is being minted reaches the canonical record',
   async ({page}) => {
-    const card = await draftCard(page, 'news.creation-ssl.net');
     await delayNextCreate(page, 1500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-ssl.net');
+    await field(card, 'host').blur();
     // SSL is immediate: performing it IS the act, so it cannot wait for a
     // later blur the operator has no reason to make.
     await setSsl(card, false);
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     await expect.poll(async () => (await record(page, id)).ssl, {timeout: 20000}).toBe(false);
     // The conventional port travelled with it: one operator action, not two.
     expect((await record(page, id)).port).toBe(119);
@@ -1004,14 +1214,13 @@ test('an SSL toggle made while the record is being minted reaches the canonical 
 
 test('a display name chosen while the record is being minted survives and is canonical',
   async ({page}) => {
-    const card = await draftCard(page, 'news.creation-name.net');
     await delayNextCreate(page, 2500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-name.net');
+    await field(card, 'host').blur();
     await rename(page, card, 'Chosen Later');
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     // The creation response carried the derived name; the newer choice wins.
     await expect.poll(async () => (await record(page, id)).display_name, {timeout: 20000})
       .toBe('Chosen Later');
@@ -1020,10 +1229,9 @@ test('a display name chosen while the record is being minted survives and is can
 
 test('removing a card while its record is being minted never leaves an orphan record',
   async ({page}) => {
-    const card = await draftCard(page, 'news.creation-orphan.net');
     await delayNextCreate(page, 1500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-orphan.net');
+    await field(card, 'host').blur();
     await card.locator('[data-usenet-action="remove"]').click();
 
     // The minting may well succeed; what may never happen is a surviving
@@ -1046,11 +1254,9 @@ test('removing a card while its record is being minted never leaves an orphan re
 test('only the draft that crossed the boundary during creation is committed, never a later unblurred one',
   async ({page}) => {
     const seen = writes(page);
-    const card = await draftCard(page, 'news.creation-draft.net');
-    await field(card, 'username').fill('first');
     await delayNextCreate(page, 1500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-draft.net');
+    await field(card, 'host').blur();
     // Crossed its boundary while the record was being minted.
     await field(card, 'username').fill('second');
     await field(card, 'username').blur();
@@ -1058,8 +1264,8 @@ test('only the draft that crossed the boundary during creation is committed, nev
     await field(card, 'username').fill('third');
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
-    expect(seen.filter(entry => entry.method === 'POST')[0].body.username).toBe('first');
+    const id = await mintedId(card);
+    expect(seen.filter(entry => entry.method === 'POST')).toHaveLength(1);
 
     // The blurred draft is what reaches the record ...
     await expect.poll(async () => (await record(page, id)).username, {timeout: 20000}).toBe('second');
@@ -1083,11 +1289,9 @@ test('only the draft that crossed the boundary during creation is committed, nev
 test('only the LATEST draft that crossed a boundary during creation is committed',
   async ({page}) => {
     const seen = writes(page);
-    const card = await draftCard(page, 'news.creation-latest.net');
-    await field(card, 'username').fill('first');
     await delayNextCreate(page, 2000);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-latest.net');
+    await field(card, 'host').blur();
     await field(card, 'username').fill('second');
     await field(card, 'username').blur();
     await field(card, 'username').fill('third');
@@ -1096,7 +1300,7 @@ test('only the LATEST draft that crossed a boundary during creation is committed
     await field(card, 'username').fill('fourth');
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     await expect.poll(async () => (await record(page, id)).username, {timeout: 20000}).toBe('third');
     await page.waitForTimeout(700);
 
@@ -1116,10 +1320,9 @@ test('only the LATEST draft that crossed a boundary during creation is committed
 
 test('an SSL action during creation replays its own payload, never later form state',
   async ({page}) => {
-    const card = await draftCard(page, 'news.creation-ssl-draft.net');
     await delayNextCreate(page, 2000);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-ssl-draft.net');
+    await field(card, 'host').blur();
     // The act: SSL off, carrying the conventional port it follows.
     await setSsl(card, false);
     // Typed afterwards and deliberately never left: a changed-blur draft that
@@ -1127,7 +1330,7 @@ test('an SSL action during creation replays its own payload, never later form st
     await field(card, 'port').fill('9119');
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     await expect.poll(async () => (await record(page, id)).ssl, {timeout: 20000}).toBe(false);
     // The action's OWN port, not the draft that came after it.
     await expect.poll(async () => (await record(page, id)).port, {timeout: 20000}).toBe(119);
@@ -1143,16 +1346,15 @@ test('an SSL action during creation replays its own payload, never later form st
 test('a port boundary crossed after an SSL action during creation wins over it',
   async ({page}) => {
     const seen = writes(page);
-    const card = await draftCard(page, 'news.creation-ssl-order.net');
     await delayNextCreate(page, 2500);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-ssl-order.net');
+    await field(card, 'host').blur();
     await setSsl(card, false);
     await field(card, 'port').fill('9119');
     await field(card, 'port').blur();
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     await expect.poll(async () => (await record(page, id)).ssl, {timeout: 20000}).toBe(false);
     await expect.poll(async () => (await record(page, id)).port, {timeout: 20000}).toBe(9119);
     await page.waitForTimeout(900);
@@ -1169,10 +1371,9 @@ test('a port boundary crossed after an SSL action during creation wins over it',
 
 test('an SSL action that moves the port supersedes a port boundary crossed before it',
   async ({page}) => {
-    const card = await draftCard(page, 'news.creation-ssl-supersede.net');
     await delayNextCreate(page, 3000);
-
-    await saveButton(card).click();
+    const card = await draftCard(page, 'news.creation-ssl-supersede.net');
+    await field(card, 'host').blur();
     // A boundary crossed first ...
     await field(card, 'port').fill('119');
     await field(card, 'port').blur();
@@ -1182,7 +1383,7 @@ test('an SSL action that moves the port supersedes a port boundary crossed befor
     await setSsl(card, true);
 
     await expect.poll(async () => (await storedServers(page)).length, {timeout: 20000}).toBe(1);
-    const id = (await storedServers(page))[0].id;
+    const id = await mintedId(card);
     await expect.poll(async () => (await record(page, id)).ssl, {timeout: 20000}).toBe(true);
     await page.waitForTimeout(900);
     expect((await record(page, id)).port).toBe(563);

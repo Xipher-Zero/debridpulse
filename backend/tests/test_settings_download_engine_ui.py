@@ -118,10 +118,10 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     downloads = downloads_runtime()
     css = source(SETTINGS_PAGE_CSS)
 
-    # Advanced direct-transfer tuning lives in the collapsed "General Sources"
+    # Advanced direct-transfer tuning lives in the collapsed "Network Sources"
     # child card of the Executor Tuning master card (DP 1.0.13 Item 8 renamed
     # the operator-facing family; the executor id is unchanged).
-    assert "executorTuningCard('direct', 'General Sources'" in downloads
+    assert "executorTuningCard('direct', 'Network Sources'" in downloads
     assert "function directTransfersTuning(s)" in downloads
     assert "dp-settings-engine-tuning-grid" in downloads
     assert "dp-settings-engine-file-allocation" in downloads

@@ -1,10 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.13 -- Provider Status renders two metadata-driven tiers:
- * Premium Services -> General. The standalone Premium tier is retired; Usenet
- * belongs to the GENERAL tier, whose first two positions are permanently
- * reserved -- Usenet, then General Sources -- so any later GENERAL entry
- * naturally follows both.
+ * Premium Services -> Standard Services. Usenet is a PREMIUM service and is
+ * the reserved LAST row of that tier, so a future debrid entry that declares
+ * no order at all still lands before it; Standard Services is the one
+ * aggregate Network Sources row.
  *
  * The renderer is the unit under test, so its input is supplied as canonical
  * presentation metadata rather than by mutating the shared backend: that keeps
@@ -21,8 +21,8 @@ const INTEGRATIONS = {
   usenet: {
     enabled: true, priority: 0, name: 'Usenet', kind: 'provider_executor', configured: true,
     presentation: {status_name: 'Usenet', premium: true, status_endpoint: null,
-      static_status: 'healthy', display_order: 20, status_group: null, status_group_label: null,
-      status_tier: 'general_family', status_tier_label: 'General'},
+      static_status: 'healthy', display_order: 900, status_group: null, status_group_label: null,
+      status_tier: 'premium_service', status_tier_label: 'Premium Services'},
     options: {servers: [{id: 'a', host: 'news-one.example.com'}, {id: 'b', host: 'news-two.example.com'}]},
   },
   alldebrid: {
@@ -33,17 +33,19 @@ const INTEGRATIONS = {
     options: {},
   },
   general_http: {
-    enabled: true, priority: 0, name: 'HTTP & HTTPS', kind: 'provider', configured: true,
-    presentation: {status_name: 'HTTP & HTTPS', premium: false, status_endpoint: null,
-      static_status: 'healthy', display_order: 30, status_group: 'direct_sources',
-      status_group_label: 'General Sources', status_tier: 'general_family', status_tier_label: 'General'},
+    enabled: true, priority: 0, name: 'HTTP(S)', kind: 'provider', configured: true,
+    presentation: {status_name: 'HTTP(S)', premium: false, status_endpoint: null,
+      static_status: 'healthy', display_order: 910, status_group: 'direct_sources',
+      status_group_label: 'Network Sources', status_tier: 'general_family',
+      status_tier_label: 'Standard Services'},
     options: {},
   },
   general_ftp: {
-    enabled: true, priority: 0, name: 'FTP & SFTP', kind: 'provider', configured: true,
-    presentation: {status_name: 'FTP & SFTP', premium: false, status_endpoint: null,
-      static_status: 'healthy', display_order: 31, status_group: 'direct_sources',
-      status_group_label: 'General Sources', status_tier: 'general_family', status_tier_label: 'General'},
+    enabled: true, priority: 0, name: '(S)FTP', kind: 'provider', configured: true,
+    presentation: {status_name: '(S)FTP', premium: false, status_endpoint: null,
+      static_status: 'healthy', display_order: 911, status_group: 'direct_sources',
+      status_group_label: 'Network Sources', status_tier: 'general_family',
+      status_tier_label: 'Standard Services'},
     options: {},
   },
 };
@@ -72,13 +74,13 @@ test.beforeEach(async ({page}) => {
   await expect(page.locator('#provider-status-list')).toBeVisible();
 });
 
-test('the hierarchy is Premium Services, then General', async ({page}) => {
+test('the hierarchy is Premium Services, then Standard Services', async ({page}) => {
   await renderWith(page);
   const rendered = await tiers(page);
-  expect(rendered.map(tier => tier.label)).toEqual(['Premium Services', 'General']);
+  expect(rendered.map(tier => tier.label)).toEqual(['Premium Services', 'Standard Services']);
   expect(rendered[0].rows.join(' ')).toContain('AllDebrid');
-  expect(rendered[1].rows.join(' ')).toContain('Usenet');
-  expect(rendered[1].rows.join(' ')).toContain('General Sources');
+  expect(rendered[0].rows.join(' ')).toContain('Usenet');
+  expect(rendered[1].rows.join(' ')).toContain('Network Sources');
 });
 
 test('no standalone Premium tier is rendered', async ({page}) => {
@@ -86,38 +88,59 @@ test('no standalone Premium tier is rendered', async ({page}) => {
   const rendered = await tiers(page);
   expect(rendered.map(tier => tier.id)).not.toContain('premium_family');
   expect(rendered.map(tier => tier.label)).not.toContain('Premium');
+  expect(rendered.map(tier => tier.label)).not.toContain('General');
 });
 
-test('the GENERAL tier is Usenet first, then General Sources', async ({page}) => {
+test('PREMIUM SERVICES is the debrid providers, then Usenet last', async ({page}) => {
   await renderWith(page);
-  const general = (await tiers(page)).find(tier => tier.id === 'general_family');
-  expect(general.rows.length).toBe(2);
-  expect(general.rows[0]).toContain('Usenet');
-  expect(general.rows[1]).toContain('General Sources');
+  const premium = (await tiers(page)).find(tier => tier.id === 'premium_service');
+  expect(premium.label).toBe('Premium Services');
+  expect(premium.rows.map(row => row.replace(/\s+/g, ' ').trim()))
+    .toEqual(['AllDebrid', 'Usenet']);
 });
 
-test('a later GENERAL entry sorts after both reserved positions', async ({page}) => {
-  // A future integration that declares no explicit order takes the
-  // presentation model's default, and lands after Usenet and General Sources
-  // without the renderer knowing any of their names.
+test('STANDARD SERVICES is the one aggregate Network Sources row', async ({page}) => {
+  await renderWith(page);
+  const standard = (await tiers(page)).find(tier => tier.id === 'general_family');
+  expect(standard.label).toBe('Standard Services');
+  expect(standard.rows.map(row => row.replace(/\s+/g, ' ').trim()))
+    .toEqual(['Network Sources']);
+});
+
+test('a future default-order debrid entry lands before Usenet', async ({page}) => {
+  // The reserved band, proved through the renderer: an integration that
+  // declares no explicit order takes the presentation model's default and
+  // still sorts ahead of the reserved Usenet tail -- and the renderer names
+  // neither of them.
   await renderWith(page, entries => {
-    entries.future_general = {
-      enabled: true, priority: 0, name: 'Future General', kind: 'provider', configured: true,
-      presentation: {status_name: 'Future General', premium: false, status_endpoint: null,
+    entries.future_debrid = {
+      enabled: true, priority: 0, name: 'Future Debrid', kind: 'provider', configured: true,
+      presentation: {status_name: 'Future Debrid', premium: true, status_endpoint: null,
         static_status: 'healthy', display_order: 100, status_group: null, status_group_label: null,
-        status_tier: 'general_family', status_tier_label: 'General'},
+        status_tier: 'premium_service', status_tier_label: 'Premium Services'},
       options: {},
     };
     return entries;
   });
-  const general = (await tiers(page)).find(tier => tier.id === 'general_family');
-  expect(general.rows.map(row => row.replace(/\s+/g, ' ').trim()))
-    .toEqual(['Usenet', 'General Sources', 'Future General']);
+  const premium = (await tiers(page)).find(tier => tier.id === 'premium_service');
+  expect(premium.rows.map(row => row.replace(/\s+/g, ' ').trim()))
+    .toEqual(['AllDebrid', 'Future Debrid', 'Usenet']);
+});
+
+test('Premium stays before Standard when Usenet is the only premium row', async ({page}) => {
+  await renderWith(page, entries => {
+    delete entries.alldebrid;
+    return entries;
+  });
+  const rendered = await tiers(page);
+  expect(rendered.map(tier => tier.id)).toEqual(['premium_service', 'general_family']);
+  expect(rendered[0].rows.map(row => row.replace(/\s+/g, ' ').trim())).toEqual(['Usenet']);
 });
 
 test('tier order follows the ordering metadata, not the declaration order', async ({page}) => {
-  // The panel receives General first and Premium Services last; the rendered
-  // order still comes from display_order, so no renderer knows any tier's name.
+  // The panel receives the Standard members first and the premium ones last;
+  // the rendered order still comes from display_order, so no renderer knows
+  // any tier's name.
   await renderWith(page, entries => ({
     general_http: entries.general_http, general_ftp: entries.general_ftp,
     usenet: entries.usenet, alldebrid: entries.alldebrid,
@@ -129,38 +152,32 @@ test('tier order follows the ordering metadata, not the declaration order', asyn
 test('Usenet is one aggregate row and never lists a news server', async ({page}) => {
   await renderWith(page);
   const rendered = await tiers(page);
-  const general = rendered.find(tier => tier.id === 'general_family');
-  expect(general.rows.filter(row => row.includes('Usenet')).length).toBe(1);
+  const premium = rendered.find(tier => tier.id === 'premium_service');
+  expect(premium.rows.filter(row => row.includes('Usenet')).length).toBe(1);
   const panel = await page.locator('#provider-status-list').textContent();
   expect(panel).not.toContain('news-one.example.com');
   expect(panel).not.toContain('news-two.example.com');
 });
 
-test('General Sources stays one aggregate row, never duplicate HTTP and FTP rows', async ({page}) => {
-  await renderWith(page);
-  const general = (await tiers(page)).find(tier => tier.id === 'general_family');
-  expect(general.rows.filter(row => row.includes('General Sources')).length).toBe(1);
-  const panel = await page.locator('#provider-status-list').textContent();
-  expect(panel).not.toContain('HTTP & HTTPS');
-  expect(panel).not.toContain('FTP & SFTP');
-});
-
-test('PREMIUM SERVICES and AllDebrid are unchanged', async ({page}) => {
-  await renderWith(page);
-  const premium = (await tiers(page)).find(tier => tier.id === 'premium_service');
-  expect(premium.label).toBe('Premium Services');
-  expect(premium.rows.length).toBe(1);
-  expect(premium.rows[0]).toContain('AllDebrid');
-});
+test('Network Sources stays one aggregate row, never separate HTTP and FTP rows',
+  async ({page}) => {
+    await renderWith(page);
+    const standard = (await tiers(page)).find(tier => tier.id === 'general_family');
+    expect(standard.rows.filter(row => row.includes('Network Sources')).length).toBe(1);
+    const panel = await page.locator('#provider-status-list').textContent();
+    expect(panel).not.toContain('HTTP(S)');
+    expect(panel).not.toContain('(S)FTP');
+  });
 
 test('a tier whose only entry is disabled leaves no bare heading behind', async ({page}) => {
   await renderWith(page, entries => {
-    entries.alldebrid.enabled = false;
+    delete entries.alldebrid;
+    entries.usenet.enabled = false;
     return entries;
   });
   const rendered = await tiers(page);
   expect(rendered.some(tier => tier.id === 'premium_service')).toBe(false);
-  expect(rendered.map(tier => tier.label)).toEqual(['General']);
+  expect(rendered.map(tier => tier.label)).toEqual(['Standard Services']);
 });
 
 test('an integration that declares no tier is still rendered', async ({page}) => {

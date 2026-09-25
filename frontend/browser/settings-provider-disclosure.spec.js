@@ -1,11 +1,11 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 Sources & Providers final corrective pass -- Defect 1.
+/* DP 1.0.13 Services final corrective pass -- Defect 1.
  *
  * Expansion is LOCAL PRESENTATION STATE.
  *
  * Enabled state is not expansion state. Configured state is not expansion
- * state. Verified state is not expansion state. Arriving at Sources & Providers
+ * state. Verified state is not expansion state. Arriving at Services
  * therefore shows every expandable card closed, whatever the providers'
  * canonical state happens to be -- which is why every assertion below holds no
  * matter what another spec is doing to the shared installation at the time.
@@ -19,7 +19,7 @@ const { test, expect } = require('@playwright/test');
 const EXPANDABLE = [
   ['.dp-settings-provider-card--alldebrid', 'AllDebrid'],
   ['.dp-settings-provider-card--usenet', 'Usenet'],
-  ['.dp-settings-general-sources', 'General Sources'],
+  ['.dp-settings-general-sources', 'Network Sources'],
 ];
 
 async function isolateExternalFonts(page) {
@@ -73,7 +73,7 @@ test.beforeEach(async ({page}) => {
   await isolateExternalFonts(page);
 });
 
-test('every expandable Sources & Providers card is collapsed on navigation', async ({page}) => {
+test('every expandable Services card is collapsed on navigation', async ({page}) => {
   // Drive the providers ENABLED first: the whole point is that an enabled
   // provider is not thereby an expanded one.
   for (const id of ['alldebrid', 'usenet']) {
@@ -128,7 +128,7 @@ test('there is exactly one disclosure control per expandable card', async ({page
     await expect(page.locator(`${selector} > .card-header .dp-settings-disclosure`),
       `${label} does not carry exactly one canonical disclosure in its header`).toHaveCount(1);
   }
-  // External Providers is not an expandable owner: this pass gave a disclosure
+  // Premium Services is not an expandable owner: this pass gave a disclosure
   // only to the group that needed one.
   await expect(page.locator('.dp-settings-debrid-services > .card-header .dp-settings-disclosure'))
     .toHaveCount(0);

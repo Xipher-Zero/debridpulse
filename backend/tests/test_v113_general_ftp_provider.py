@@ -1,4 +1,4 @@
-"""1.0.13: the FTP & SFTP Direct Sources provider consumes existing machinery.
+"""1.0.13: the (S)FTP Network Sources provider consumes existing machinery.
 
 The provider resolves ``ftp://``/``sftp://`` requests into one ordinary neutral
 candidate with a typed accepted-input capability. Routing, executor selection,
@@ -43,7 +43,7 @@ def _request(url: str, kind: str | None = None, name: str = "") -> TransferReque
 def test_descriptor_is_a_resolution_only_direct_source_for_exactly_ftp_and_sftp() -> None:
     provider = GeneralFtpProvider()
     assert provider.descriptor.id == "general_ftp"
-    assert provider.descriptor.name == "FTP & SFTP"
+    assert provider.descriptor.name == "(S)FTP"
     assert provider.descriptor.request_types == frozenset({"ftp", "sftp"})
     assert provider.applicability.generic_schemes == frozenset({"ftp", "sftp"})
     assert {item.value for item in provider.descriptor.capabilities} == {"resolve"}
@@ -53,11 +53,11 @@ def test_integration_definition_is_an_independent_direct_sources_provider() -> N
     assert general_ftp_definition.id == "general_ftp"
     assert general_ftp_definition.kind == "provider"
     presentation = general_ftp_definition.presentation
-    assert presentation.status_name == "FTP & SFTP"
+    assert presentation.status_name == "(S)FTP"
     assert presentation.static_status == "healthy"
     assert presentation.status_group == "direct_sources"
-    assert presentation.status_group_label == "General Sources"
-    assert presentation.display_order == 31
+    assert presentation.status_group_label == "Network Sources"
+    assert presentation.display_order == 911
     http = next(item for item in definitions if item.id == "general_http")
     assert http.presentation.display_order < presentation.display_order
 
@@ -261,7 +261,7 @@ def test_general_ftp_enablement_persists_through_the_generic_namespace() -> None
     assert merged.integrations["general_ftp"].enabled is False
     assert merged.integrations["general_http"].enabled is True
     public = public_integrations(merged, definitions)
-    assert public["general_ftp"]["name"] == "FTP & SFTP"
+    assert public["general_ftp"]["name"] == "(S)FTP"
     assert public["general_ftp"]["enabled"] is False
     assert public["general_ftp"]["options"] == {}
     assert "ftp_enabled" not in AppSettings.model_fields and "sftp_enabled" not in AppSettings.model_fields
