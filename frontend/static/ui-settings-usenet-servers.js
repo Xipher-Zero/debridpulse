@@ -426,8 +426,11 @@
    * confirmation's question, asked at the moment they act. */
   function refreshClearGate(card) {
     const configured = card.dataset.usenetPasswordConfigured === '1';
-    const group = card.querySelector('.dp-usenet-clear-password');
-    if (group) group.hidden = !configured;
+    // The action keeps its slot whatever the card holds; only whether it can
+    // act converges. Hiding the group made the password row change width the
+    // moment a credential was saved or cleared.
+    const clear = card.querySelector('[data-usenet-action="clear-password"]');
+    if (clear) clear.disabled = !configured;
   }
 
   /* The operator-facing subject of a destructive confirmation about one card.
@@ -491,9 +494,9 @@
             <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
                    autocomplete="off" placeholder="Password">
           </label>
-          <div class="dp-usenet-clear-password" hidden>
+          <div class="dp-usenet-clear-password">
             <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                    aria-label="Clear the stored password for this server">Clear Password</button>
+                    aria-label="Clear the stored password for this server" disabled>Clear Password</button>
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>

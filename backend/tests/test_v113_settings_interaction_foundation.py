@@ -466,11 +466,14 @@ def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
     for label, rendered in SERVER_CARDS:
         action = control(rendered, 'data-usenet-action="clear-password"')
         assert "btn-danger" in action, f"{label}: the canonical destructive treatment is not used"
-        # It is NOT pre-disabled: the action is available whenever there is
-        # something stored to clear, and the dialog is the gate.
-        assert "disabled" not in action, f"{label}: the action still carries a local gate"
+        # DP 1.0.13: the action keeps its slot whether or not a password is
+        # stored, and says which by being disabled. That is presentation, not a
+        # gate on intent -- the canonical dialog is still what asks whether the
+        # operator means it. Hiding the group instead made the password field
+        # change width every time a credential was saved or cleared.
         group = rendered[rendered.index("dp-usenet-clear-password"):]
         group = group[:group.index("</div>")]
+        assert " hidden>" not in group, f"{label}: the clear group still disappears"
         assert "Clear Password" in group, label
         assert 'type="checkbox"' not in group, label
         assert "<label" not in group, label
@@ -623,9 +626,13 @@ def test_the_alldebrid_credential_row_never_replaces_the_control_it_converges():
     # and -- since the row moved to the inline field grammar -- the in-field
     # status beside the destructive action.
     for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_HINT(",
-                     "ALLDEBRID_KEY_PRESENT", "ALLDEBRID_KEY_CLEAR"):
+                     "ALLDEBRID_KEY_PRESENT"):
         assert fragment in render, fragment
         assert fragment.rstrip("(") in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    # The destructive action is no longer one of the variable parts: it is
+    # always rendered, so convergence only moves its disabled state.
+    assert "clear.disabled = !configured;" in render
+    assert "ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
     # Nothing replaces or re-parents the control.
     for banned in ("outerHTML", "replaceWith", "replaceChild", "cloneNode"):
         assert banned not in render, banned
@@ -1147,7 +1154,12 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     group = block(SETTINGS_JS, "const ALLDEBRID_KEY_CLEAR")
     action = control(group, 'data-action="clear-alldebrid-key"')
     assert "btn-danger" in action
-    assert "disabled" not in action, "the action still carries a local gate"
+    # DP 1.0.13: `disabled` here is the two-state presentation, not a gate on
+    # whether the operator MEANS it -- that remains the canonical confirmation's
+    # question. The control keeps its slot at all times and simply says whether
+    # there is anything stored to erase, so the row never reflows.
+    assert "configured ? '' : ' disabled'" in action
+    assert 'type="checkbox"' not in action
     assert "Clear Stored API Key" in group
     assert 'type="checkbox"' not in group
     assert "<label" not in group
@@ -1157,8 +1169,10 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     # The row renders that one declaration, and nothing else does. It is now
     # carried by the inline field's neutral trailing action slot rather than a
     # wrapper of its own, so the button itself is what must be unique.
-    assert "ALLDEBRID_KEY_CLEAR" in block(SETTINGS_JS, "function allDebridApiKeyField(")
-    assert SETTINGS_JS.count('data-action="clear-alldebrid-key"') == 1
+    assert "ALLDEBRID_KEY_CLEAR(configured)" in block(SETTINGS_JS, "function allDebridApiKeyField(")
+    # One declaration. The converger addresses that same button by selector,
+    # which is a read rather than a second rendering of it.
+    assert SETTINGS_JS.count('<button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"') == 1
 
 
 def test_the_clear_group_is_centred_against_the_api_key_input_itself():

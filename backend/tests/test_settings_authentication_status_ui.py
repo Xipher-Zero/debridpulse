@@ -33,7 +33,12 @@ def test_session_information_and_control_form_one_centred_bounded_island():
     island = island[:island.index("}")]
 
     assert "width: max-content;" in island
-    assert "max-width: min(100%, 880px);" in island
+    # Bounded by the CARD, never by a declared ceiling: the island holds
+    # font-sized content, so a number here is a guess about text this
+    # stylesheet cannot measure -- one that sat above the content locally and
+    # below it on the container, wrapping a row meant to stay a row.
+    assert "max-width: 100%;" in island
+    assert "880px" not in re.sub(r"/\*.*?\*/", "", island, flags=re.S)
     assert "margin: 14px auto 0;" in island
     assert "border: 1px solid var(--dp-divider);" in island
     assert "border-radius: 12px;" in island

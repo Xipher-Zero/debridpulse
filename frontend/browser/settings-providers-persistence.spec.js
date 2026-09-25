@@ -410,8 +410,11 @@ test('a confirmed Clear erases the stored key exactly once', async ({page}) => {
   expect(writes[0].body.clear_secrets).toEqual(['api_key']);
   // Clear never also saves a replacement key.
   expect(writes[0].body.options).toEqual({});
-  // The row now reports "no key", so the action it offered is gone with it.
-  await expect(clearButton(page)).toHaveCount(0);
+  // DP 1.0.13: the action keeps its slot and reports that there is nothing
+  // left to erase. Removing it made the credential row reflow the instant a
+  // key was saved or cleared, and moved a control out from under the operator.
+  await expect(clearButton(page)).toHaveCount(1);
+  await expect(clearButton(page)).toBeDisabled();
 });
 
 test('a failed Clear renders no false cleared state', async ({page}) => {

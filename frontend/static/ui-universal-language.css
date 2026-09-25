@@ -423,6 +423,21 @@ textarea.input { resize: vertical; }
   box-shadow: none;
   transform: none;
 }
+
+/* A destructive control with nothing to destroy.
+   It keeps its place and its meaning -- this is where a stored credential is
+   erased -- while saying plainly that there is nothing stored yet. Ghosting it
+   is what lets every credential surface keep the action in the same slot at
+   all times: removing or hiding it instead makes the row reflow each time a
+   secret is saved or cleared, and makes the operator hunt for a control that
+   moved. Declared once, so the four credential surfaces cannot each invent
+   their own disabled red. */
+:is(.btn-danger, .dp-btn--danger):disabled {
+  border-color: color-mix(in srgb, var(--dp-state-error) 18%, transparent);
+  background: transparent;
+  color: color-mix(in srgb, var(--dp-state-error) 52%, var(--dp-text-muted));
+  opacity: .55;
+}
 :is(.dp-btn, .btn):focus-visible {
   outline: none;
   box-shadow: var(--dp-focus-ring);

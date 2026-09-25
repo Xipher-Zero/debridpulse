@@ -645,8 +645,11 @@ test('Clear is confirmation-gated, carries only the removal, and converges on su
     const sent = seen.filter(entry => entry.method === 'PUT');
     expect(sent).toHaveLength(1);
     expect(sent[0].body).toEqual({clear_password: true});
-    // Nothing is left to clear, so the action the row offered is put away.
-    await expect(clearButton(card)).toBeHidden();
+    // DP 1.0.13: nothing is left to clear, and the action says so in place
+    // rather than vanishing -- the password row keeps its own geometry either
+    // way, so saving or clearing a credential never moves the field.
+    await expect(clearButton(card)).toBeVisible();
+    await expect(clearButton(card)).toBeDisabled();
   });
 
 test('the clear confirmation names the server, and falls back to its host', async ({page}) => {

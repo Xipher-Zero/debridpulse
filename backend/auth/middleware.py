@@ -21,6 +21,7 @@ from auth.policy import (
     interactive_auth_enabled,
     is_public_path,
     normalized_origin,
+    public_base_url_bootstrap_origin,
     oidc_auth_enabled,
     password_auth_enabled,
     password_auth_ready,
@@ -178,11 +179,21 @@ async def enforce_general_web_security(
     # application authority before comparing Origin with it. The operator-owned
     # public base URL covers reverse-proxy deployments; direct localhost/IP and
     # the transport-owned ASGI server authority preserve ordinary local access.
-    request_identity = trusted_request_origin(request, settings=get_settings())
+    settings = get_settings()
+    request_identity = trusted_request_origin(request, settings=settings)
+    origin_identity = normalized_origin(origin)
     if request_identity is None:
+        # A reverse-proxy deployment has no trusted authority until the operator
+        # establishes one, and the only way to establish it is a mutation --
+        # which this boundary refuses. That is a bootstrap deadlock, not a
+        # policy. The ONE way out is admitting the single mutation that creates
+        # the authority, and only while no authority exists; the route below is
+        # what enforces that the mutation really is only that. Nothing else is
+        # relaxed, and the allowance disappears the moment the value is stored.
+        if public_base_url_bootstrap_origin(request, settings) is not None:
+            return await call_next(request)
         return Response(content="Forbidden authority", status_code=403)
 
-    origin_identity = normalized_origin(origin)
     configured_identities = {
         identity
         for item in allowed_origins

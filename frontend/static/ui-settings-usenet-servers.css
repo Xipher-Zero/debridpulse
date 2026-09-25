@@ -243,21 +243,17 @@
    than against the taller label+input stack, and it takes horizontal room from
    the field instead of adding an action band beneath it.
 
-   Whether there is anything to clear is STATE, owned by refreshClearGate().
-   The second track exists only while the group is actually shown, so with no
-   stored credential the field simply takes the whole row -- no placeholder
-   column, no JS repositioning, no absolute positioning. */
+   Whether there is anything to clear is STATE, owned by refreshClearGate() --
+   the action keeps its track either way, so the field does not move when a
+   credential is saved or cleared. No placeholder column, no JS repositioning,
+   no absolute positioning. */
 .dp-usenet-row--password {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   grid-template-rows: auto auto;
   align-items: center;
   column-gap: 12px;
   row-gap: 4px;
-}
-
-.dp-usenet-row--password:has(> .dp-usenet-clear-password:not([hidden])) {
-  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 .dp-usenet-row--password > .dp-usenet-field--password { display: contents; }
@@ -277,8 +273,6 @@
   margin: 0;
   font-size: .82rem;
 }
-
-.dp-usenet-clear-password[hidden] { display: none; }
 
 .dp-usenet-clear-password > .btn { flex: 0 0 auto; }
 

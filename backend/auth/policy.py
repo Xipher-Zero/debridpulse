@@ -216,6 +216,57 @@ def trusted_request_origin(request, settings=None) -> tuple[str, str, int] | Non
     return None
 
 
+AUTH_CONFIG_PATH = "/api/auth/config"
+
+
+def public_base_url_bootstrap_origin(request, settings=None) -> tuple[str, str, int] | None:
+    """The origin this request may establish as the application's authority.
+
+    A reverse-proxy deployment starts with no trusted authority: no
+    ``PUBLIC_BASE_URL``, no persisted value, and a Host that is neither literal
+    nor the transport's own. Every browser mutation is therefore refused --
+    including the one that would establish the authority. That is a deadlock,
+    and this is the single, one-purpose way out of it.
+
+    It returns an origin only when ALL of the following hold:
+
+    * no canonical authority exists yet, from either source, so nothing is
+      being overridden;
+    * the request is not already trusted by ordinary means, so a local operator
+      keeps completely ordinary semantics;
+    * it is the canonical Authentication partial write, not another route;
+    * the browser did not arrive from another site;
+    * the Origin is a well-formed HTTPS origin equal to the Host actually used,
+      so the operator can only nominate the authority they are standing on.
+
+    Deciding this in one place is what lets the security boundary and the route
+    agree without passing state between them: the boundary uses it to decide
+    whether the request may be SEEN, and the route uses the very same answer to
+    decide what the request may DO. Nothing is carried across the middleware
+    chain, so nothing can be lost on the way.
+    """
+    if str(getattr(request, "method", "") or "").upper() != "PUT":
+        return None
+    if str(getattr(getattr(request, "url", None), "path", "") or "") != AUTH_CONFIG_PATH:
+        return None
+    if configured_public_origin(settings) is not None:
+        return None
+    if trusted_request_origin(request, settings=settings) is not None:
+        return None
+
+    fetch_site = str(request.headers.get("Sec-Fetch-Site", "") or "").strip().casefold()
+    if fetch_site == "cross-site":
+        return None
+
+    origin_identity = normalized_origin(str(request.headers.get("Origin", "") or "").strip())
+    if origin_identity is None or origin_identity[0] != "https":
+        return None
+    authority = normalized_host_authority(str(request.headers.get("Host", "") or ""))
+    if authority is None or not authority_matches_origin(authority, origin_identity):
+        return None
+    return origin_identity
+
+
 def normalized_origin_host(origin: str) -> str:
     """Compatibility helper returning the case-folded origin authority."""
     try:

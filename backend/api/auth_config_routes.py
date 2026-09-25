@@ -38,6 +38,7 @@ from auth.pending_oidc import commit_verified_pending_oidc, pending_oidc_store
 from auth.policy import (
     interactive_auth_enabled,
     normalized_origin,
+    public_base_url_bootstrap_origin,
     oidc_auth_enabled,
     password_auth_enabled,
     password_auth_ready,
@@ -396,9 +397,59 @@ async def get_oidc_runtime_status():
     return response
 
 
+def _bootstrap_rejection(request: Request, update: AuthenticationConfigUpdate):
+    """Hold the bootstrap allowance to its single purpose.
+
+    The security boundary admitted this request only because no public
+    authority exists yet and it claims to be establishing one. It has not been
+    origin-verified in the ordinary way, so it may carry NOTHING else: every
+    other field must be absent, and the value must be exactly the origin the
+    browser is standing on. Anything else is an attempt to ride the allowance,
+    and is refused here rather than at the boundary, because this is where the
+    parsed body already lives -- there is no second parser.
+    """
+    # Re-derived, not received. The boundary and this route ask the ONE shared
+    # predicate the same question, so nothing has to survive the middleware
+    # chain -- and a request that was admitted normally is not restricted here.
+    origin_identity = public_base_url_bootstrap_origin(request, get_settings())
+    if origin_identity is None:
+        return None
+
+    carried = update.model_dump(exclude_none=True)
+    # The three flags default to False rather than None, so they are always
+    # present and are checked by value.
+    for flag in ("clear_password", "clear_oidc_client_secret", "confirm_open_mode"):
+        if carried.pop(flag, False):
+            return JSONResponse(
+                {"detail": "Only the Public Base URL may be established before a trusted origin exists"},
+                status_code=403,
+            )
+    if set(carried) != {"public_base_url"}:
+        return JSONResponse(
+            {"detail": "Only the Public Base URL may be established before a trusted origin exists"},
+            status_code=403,
+        )
+
+    proposed = normalized_origin(str(update.public_base_url or "").strip())
+    if proposed is None or not _valid_public_base_url(update.public_base_url):
+        return JSONResponse(
+            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]"},
+            status_code=400,
+        )
+    if proposed != origin_identity:
+        return JSONResponse(
+            {"detail": "The Public Base URL must match the address this page was opened from"},
+            status_code=403,
+        )
+    return None
+
+
 @router.put("/api/auth/config")
 async def update_authentication_config(request: Request, update: AuthenticationConfigUpdate):
     current = get_settings()
+    bootstrap_rejection = _bootstrap_rejection(request, update)
+    if bootstrap_rejection is not None:
+        return bootstrap_rejection
     candidate = _build_authentication_update(update)
 
     if update.public_base_url is not None and not _valid_public_base_url(update.public_base_url):

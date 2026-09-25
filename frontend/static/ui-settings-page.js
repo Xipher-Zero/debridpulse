@@ -184,19 +184,27 @@
       + `data-commit-key="${html(key)}" data-commit-scope="${html(declared.scope)}"`;
   }
 
+  /* OIDC in the same three-state vocabulary every mechanism KPI uses, plus the
+   * two conditions only OIDC has: a provider that cannot be reached, and a
+   * configuration nobody has proven with a real sign-in yet.
+   *
+   * Neither of those changes the STATE word. Enabled means enabled; whether it
+   * has been tested rides alongside as a qualifier, and a provider that is
+   * unreachable is a real error rather than a different degree of enabled. */
   function oidcStatePresentation(auth, available = auth?.oidc_available) {
     if (!auth?.oidc_configured) {
+      // Enabled but incomplete is broken; simply unused is not.
       return auth?.oidc_enabled
         ? {primary: 'Configuration Error', secondary: '', tone: 'red'}
-        : {primary: 'Disabled', secondary: '', tone: 'neutral'};
+        : {primary: 'Unconfigured', secondary: '', tone: 'neutral'};
     }
     if (!auth?.oidc_enabled) {
       return {primary: 'Configured', secondary: '', tone: 'yellow'};
     }
     if (available === false) {
       return {
-        primary: auth?.oidc_verified ? 'Verified · Runtime Unavailable' : 'Runtime Unavailable',
-        secondary: '',
+        primary: 'Runtime Unavailable',
+        secondary: auth?.oidc_verified ? '(Verified)' : '',
         tone: 'red',
       };
     }
@@ -204,11 +212,7 @@
       return {primary: 'Enabled', secondary: '', tone: 'green'};
     }
     if (auth?.oidc_ready) {
-      return {
-        primary: 'Configured & Enabled',
-        secondary: '(Untested)',
-        tone: 'yellow',
-      };
+      return {primary: 'Enabled', secondary: '(Untested)', tone: 'green'};
     }
     return {primary: 'Configuration Error', secondary: '', tone: 'red'};
   }
@@ -629,9 +633,13 @@
   const ALLDEBRID_KEY_PRESENT =
     '<span class="dp-settings-key-present" role="status">Key present</span>';
 
-  const ALLDEBRID_KEY_CLEAR = `
+  /* The destructive action is part of the field, always. Whether there is
+   * anything to destroy is a STATE of that control, not a reason to remove it:
+   * a credential row that grows and loses an action as secrets come and go
+   * reflows under the operator's hands. */
+  const ALLDEBRID_KEY_CLEAR = configured => `
             <button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"
-                    aria-label="Clear the stored AllDebrid API key">Clear Stored API Key</button>`;
+                    aria-label="Clear the stored AllDebrid API key"${configured ? '' : ' disabled'}>Clear Stored API Key</button>`;
 
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
@@ -644,7 +652,7 @@
       inline: true,
       className: `dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}`,
       after: configured ? ALLDEBRID_KEY_PRESENT : '',
-      action: configured ? ALLDEBRID_KEY_CLEAR : '',
+      action: ALLDEBRID_KEY_CLEAR(configured),
     });
   }
 
@@ -1022,9 +1030,9 @@
             <input class="input" type="password" data-usenet-field="password" data-commit="changed-blur" data-commit-scope="usenet-server" data-commit-key="password" value=""
                    autocomplete="off" placeholder="${configured ? 'Password configured — blank keeps current value' : 'Password'}">
           </label>
-          <div class="dp-usenet-clear-password"${configured ? '' : ' hidden'}>
+          <div class="dp-usenet-clear-password">
             <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                    aria-label="Clear the stored password for this server">Clear Password</button>
+                    aria-label="Clear the stored password for this server"${configured ? '' : ' disabled'}>Clear Password</button>
           </div>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
@@ -1910,7 +1918,7 @@
   }
 
   const passwordPlaceholder = a => (a?.password_configured
-    ? 'Stored password configured. Blank keeps it.'
+    ? 'Password is set'
     : 'Set a password before enabling');
 
   const clientSecretPlaceholder = a => (a?.oidc_client_secret_configured
@@ -1932,45 +1940,35 @@
     let modeTone = 'neutral';
     if (a.authentication_required) modeTone = passwordOperational || oidcOperational ? 'green' : 'red';
 
-    let passwordValue = 'Not Configured';
-    let passwordTone = 'neutral';
-    if (a.password_configured) {
-      if (!a.password_enabled) {
-        passwordValue = 'Configured';
-        passwordTone = 'yellow';
-      } else if (a.password_ready) {
-        passwordValue = 'Configured & Enabled';
-        passwordTone = 'green';
-      } else {
-        passwordValue = 'Configuration Error';
-        passwordTone = 'red';
-      }
-    } else if (a.password_enabled) {
-      passwordValue = 'Configuration Error';
-      passwordTone = 'red';
-    }
+    /* One state vocabulary for every mechanism: Unconfigured, Configured,
+     * Enabled. "Configured" says the configuration exists but the mechanism is
+     * not participating; "Enabled" says it is. The conjunction they used to
+     * form said both and meant only the second.
+     *
+     * Colour means severity, and red means something is WRONG. A mechanism the
+     * operator simply does not use is not wrong, so an unconfigured, disabled
+     * mechanism is grey -- an installation using only OIDC should not show a
+     * red Username & Password card, nor the reverse. Red is reserved for the
+     * one case that really is broken: enabled, but not actually usable. */
+    const mechanismState = (configured, enabled, ready) => {
+      if (enabled && !ready) return {value: 'Configuration Error', tone: 'red'};
+      if (!configured) return {value: 'Unconfigured', tone: 'neutral'};
+      return enabled ? {value: 'Enabled', tone: 'green'} : {value: 'Configured', tone: 'yellow'};
+    };
+
+    const password = mechanismState(
+      !!a.password_configured, !!a.password_enabled, !!a.password_ready);
 
     const oidcState = oidcStatePresentation(a);
-    let tokenValue = 'Not Configured';
-    let tokenTone = 'neutral';
-    if (a.api_token_configured) {
-      if (a.api_token_enabled) {
-        tokenValue = 'Configured & Enabled';
-        tokenTone = 'green';
-      } else {
-        tokenValue = 'Configured';
-        tokenTone = 'yellow';
-      }
-    } else if (a.api_token_enabled) {
-      tokenValue = 'Configuration Error';
-      tokenTone = 'red';
-    }
+    // A token is usable exactly when one is stored, so configured IS ready.
+    const token = mechanismState(
+      !!a.api_token_configured, !!a.api_token_enabled, !!a.api_token_configured);
 
     return [
       {id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone, secondary: ''},
-      {id: 'password', label: 'Username & Password', value: passwordValue, tone: passwordTone, secondary: ''},
+      {id: 'password', label: 'Username & Password', value: password.value, tone: password.tone, secondary: ''},
       {id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary},
-      {id: 'token', label: 'API Token', value: tokenValue, tone: tokenTone, secondary: ''},
+      {id: 'token', label: 'API Token', value: token.value, tone: token.tone, secondary: ''},
     ];
   }
 
@@ -2027,7 +2025,7 @@
      * untouched crosses no commit boundary at all. Erasing the stored password
      * is the separate confirmed action beside it, never an inference from an
      * empty field. */
-    const passwordField = input('auth_password', 'New Password', '', {
+    const passwordField = input('auth_password', 'Password', '', {
       inline: true,
       type: 'password',
       autocomplete: 'new-password',
@@ -2952,13 +2950,9 @@
     if (configured && control && !present) control.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_PRESENT);
     else if (!configured && present) present.remove();
 
-    const action = row.querySelector('.dp-settings-inline-field-action');
-    if (configured && !action) {
-      row.insertAdjacentHTML('beforeend',
-        `<div class="dp-settings-inline-field-action">${ALLDEBRID_KEY_CLEAR}</div>`);
-    } else if (!configured && action) {
-      action.remove();
-    }
+    // The action never appears or disappears; only its state converges.
+    const clear = row.querySelector('[data-action="clear-alldebrid-key"]');
+    if (clear) clear.disabled = !configured;
 
     renderIntegrationState(card, 'alldebrid');
   }
@@ -2992,14 +2986,18 @@
       const result = await request('PATCH', '/integrations/alldebrid/configuration',
         {options: {}, clear_secrets: ['api_key']}, 15000);
       adoptIntegration('alldebrid', result);
+      // Releasing the busy state re-enables the button, so convergence has to
+      // be the LAST word: with no key stored the action must end up disabled,
+      // not resurrected by the spinner being taken off it.
+      setBusy(button, false);
       renderAllDebridCredential('');
       notify('AllDebrid API key cleared', 'success');
       try { window.DPProviderStatus?.refresh(); } catch (_) {}
+      return;
     } catch (error) {
       notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
     }
+    setBusy(button, false);
   }
 
   /* Erasing the stored archive-password list.
@@ -3325,9 +3323,11 @@
         ...(entersOpenMode ? {confirm_open_mode: true} : {}),
       });
       notify('Stored password cleared', 'success');
-      // The stored-password control is now disabled; the password field is
-      // where the operator goes next.
+      // Releasing the busy state re-enables the button, so the derived state is
+      // projected again afterwards: with nothing stored the action stays in
+      // place, disabled. The password field is where the operator goes next.
       setBusy(button, false);
+      paintAuthDerived();
       focusSurvivor(`#${fieldId('auth_password')}`, '[data-action="generate-token"]');
       return;
     } catch (error) {
@@ -3352,6 +3352,7 @@
       await writeAuthentication({clear_oidc_client_secret: true});
       notify('Stored client secret cleared', 'success');
       setBusy(button, false);
+      paintAuthDerived();
       focusSurvivor(`#${fieldId('oidc_client_secret')}`);
       return;
     } catch (error) {

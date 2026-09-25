@@ -195,7 +195,13 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex-wrap: wrap;
   gap: 18px 44px;
   width: max-content;
-  max-width: min(100%, 880px);
+  /* Bounded by the card, not by a number. The island holds font-sized content
+     -- a Log Out button, two labels, a unit suffix -- so any declared ceiling
+     is a guess about text this stylesheet cannot measure. An 880px cap sat 22px
+     above the content on one machine and below it on another, which wrapped a
+     row that was supposed to stay a row. `max-content` still keeps the island
+     content-bounded; the card decides when it genuinely cannot fit. */
+  max-width: 100%;
   margin: 14px auto 0;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
@@ -332,17 +338,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   gap: 10px;
 }
 
-/* Keep every Generate/Rotate busy and resting label on exactly one footprint. */
-#view-settings .dp-settings-api-token-generate {
+/* The token lifecycle PAIR, sized once.
+   They are two halves of one control group, so they share a footprint rather
+   than each measuring its own longest label -- which is what made them
+   different widths and, stacked in the disclosure state, visibly ragged. The
+   width holds every label either button takes, including its busy text. */
+#view-settings .dp-settings-api-token-generate,
+#view-settings .dp-settings-api-token-revoke {
   inline-size: 136px;
   min-inline-size: 136px;
-  justify-content: center;
-  white-space: nowrap;
-}
-
-#view-settings .dp-settings-api-token-revoke {
-  inline-size: 116px;
-  min-inline-size: 116px;
   justify-content: center;
   white-space: nowrap;
 }

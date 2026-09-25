@@ -553,29 +553,69 @@ def _project_route_history(route_attempts, requests, *, lineage_attempts=()):
     _assign_route_identities(ordinary)
 
 
+# The canonical terminal set, as the status strings the transfer table stores.
+# Derived from policy so a new terminal state cannot be missed here, and sorted
+# so the SQL parameter order is stable.
+_TERMINAL_TRANSFER_STATUSES = tuple(sorted(str(state) for state in TERMINAL_TRANSFER_STATES))
+
+
 class TransferRepository:
     async def has_integration_references(self, identity=None):
-        """Connection changes cannot abandon live jobs or unresolved resources.
+        """Does anything still DEPEND on this integration's connection?
 
         ``identity`` may be one identity or a collection of them. A paired
         integration owns several durable identities (its provider's and its
         executor's), and work recorded under ANY of them is a reference to that
         integration's configuration.
+
+        Three things are a real dependency, and nothing else is:
+
+        1. a live authorized execution for an owned executor identity;
+        2. a NONTERMINAL transfer still holding a non-ABSENT provider resource,
+           which is work that may yet need this credential;
+        3. genuinely outstanding cleanup -- the durable cleanup owner still has
+           responsibility to act -- which needs the credential it was recorded
+           against. That is the canonical `pending_cleanup` predicate, not a
+           second cleanup state machine.
+
+        What is NOT a dependency is HISTORY. A completed or deleted transfer
+        keeps its provider-resource row as provenance, and that row keeps
+        whatever state it last held -- routinely ``available``. Treating any
+        non-absent row as live ownership made a credential permanent the moment
+        the integration was ever used: one production installation accumulated
+        66 such rows and could no longer change its key. Provenance stays in the
+        database; it simply stops masquerading as ownership.
+
+        Nothing here knows which integration it is asked about. The predicate is
+        the same for every provider that uses the ownership-field mechanism.
         """
         identities = ([] if identity is None else
                       [identity] if isinstance(identity, str) else sorted(identity))
+        terminal = ",".join("?" for _ in _TERMINAL_TRANSFER_STATUSES)
+        # A row is owned while its transfer is unfinished, or while cleanup is
+        # still owed for it. `cleanup_abandoned` is the canonical terminal
+        # marker for cleanup that will not be retried.
+        owned = (
+            "SELECT r.id FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id"
+            " WHERE ("
+            f"   (r.state!='absent' AND t.status NOT IN ({terminal}))"
+            "    OR (r.cleanup_authority IS NOT NULL AND COALESCE(r.cleanup_abandoned, 0) = 0)"
+            " )"
+        )
+        live_execution = ("SELECT id FROM execution_attempts WHERE authorized=1"
+                          " AND state IN ('prepared','queued','running','paused','unknown')")
         async with get_db() as db:
             if not identities:
-                if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown') LIMIT 1", ()):
+                if await db.fetchone(f"{live_execution} LIMIT 1", ()):
                     return True
-                return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent' LIMIT 1", ()))
+                return bool(await db.fetchone(f"{owned} LIMIT 1", _TERMINAL_TRANSFER_STATUSES))
             placeholders = ",".join("?" for _ in identities)
             params = tuple(identities)
-            if await db.fetchone("SELECT id FROM execution_attempts WHERE authorized=1 AND state IN ('prepared','queued','running','paused','unknown')"
-                                 f" AND executor_id IN ({placeholders}) LIMIT 1", params):
+            if await db.fetchone(f"{live_execution} AND executor_id IN ({placeholders}) LIMIT 1", params):
                 return True
-            return bool(await db.fetchone("SELECT id FROM provider_resources WHERE state!='absent'"
-                                          f" AND provider_id IN ({placeholders}) LIMIT 1", params))
+            return bool(await db.fetchone(
+                f"{owned} AND r.provider_id IN ({placeholders}) LIMIT 1",
+                _TERMINAL_TRANSFER_STATUSES + params))
 
     async def pending_events(self):
         async with get_db() as db:

@@ -129,6 +129,27 @@ test('session information and its control are one centred island with Log Out in
     expect(measured.logoutInsideField, 'Log Out is not inside the sessions field').toBe(true);
     expect(measured.clear, 'the session count can collide with Log Out').toBeGreaterThan(0);
     expect(measured.ghost).toBe(true);
+
+    /* The island holds font-sized content -- a Log Out button, two labels, a
+     * unit suffix -- so any declared ceiling is a guess about text a stylesheet
+     * cannot measure. An 880px cap once sat 22px above the content on one
+     * machine and below it on the container's wider metrics, which wrapped a
+     * row that is supposed to stay a row. Stressing the BUTTON is what proves
+     * the island is bounded by the card rather than by that guess. */
+    for (const scale of [1.25, 1.5]) {
+      await page.addStyleTag({content:
+        `.dp-settings-auth-session-row .btn { font-size: ${12 * scale}px !important; }`});
+      const stressed = await page.locator('.dp-settings-auth-session-row').evaluate(el => {
+        const rect = node => node.getBoundingClientRect();
+        const kids = Array.from(el.children);
+        return {
+          oneLine: Math.abs(rect(kids[0]).top - rect(kids[1]).top) < 3,
+          clamped: el.scrollWidth > Math.ceil(rect(el).width),
+        };
+      });
+      expect(stressed.oneLine, `the session island wrapped at ${scale}x button text`).toBe(true);
+      expect(stressed.clamped, `the session island is clamped by a declared width at ${scale}x`).toBe(false);
+    }
   });
 
 test('ordinary Authentication values commit at their own boundary, with no Apply anywhere',
