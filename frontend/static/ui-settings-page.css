@@ -307,7 +307,13 @@
    only how the two sit beside one another. */
 #view-settings .dp-settings-download-engine-row {
   display: flex;
-  align-items: center;
+  /* STRETCH, not centre: the two settings' informational stacks wrap to
+     different line counts as text reflows, and centring items of unequal
+     height pulls the taller one's top upward -- so two settings genuinely on
+     one row stop sharing a baseline. Equal-height items keep that promise at
+     any font metric; each field still centres its own control against its own
+     stack. */
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
   gap: 18px 44px;

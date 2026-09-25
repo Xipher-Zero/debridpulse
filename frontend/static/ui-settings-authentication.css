@@ -184,7 +184,13 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
   min-width: 0;
   display: flex;
-  align-items: center;
+  /* STRETCH, not centre: the two settings' informational stacks wrap to
+     different line counts as text reflows, and centring items of unequal
+     height pulls the taller one's top upward -- so two settings genuinely on
+     one row stop sharing a baseline. Equal-height items keep that promise at
+     any font metric; each field still centres its own control against its own
+     stack. */
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
   gap: 18px 44px;
@@ -208,13 +214,38 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   white-space: nowrap;
 }
 
+/* A READING, not a control: it states a positive fact about the installation,
+   so it takes the positive-state colour and a restrained border, and nothing
+   that would suggest it can be pressed. Its height follows the title/hint
+   stack beside it rather than a number chosen here. */
 #view-settings .dp-settings-auth-session-count-value {
-  min-width: 0;
-  color: var(--dp-text-primary);
+  align-self: stretch;
+  min-width: 46px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-success) 42%, transparent);
+  border-radius: 10px;
+  background: var(--dp-surface-2);
+  color: var(--dp-state-success);
   font-size: 15px;
   font-weight: 700;
   line-height: 1.2;
   font-variant-numeric: tabular-nums;
+  cursor: default;
+  user-select: none;
+}
+
+/* The tile takes its height from the title/hint stack beside it, so the two
+   read as one line of information rather than a number floating in a box. */
+#view-settings .dp-settings-auth-session-count > .dp-settings-inline-field-control {
+  align-self: stretch;
+}
+
+/* The action needs room to read as separate from the count it sits beside. */
+#view-settings .dp-settings-auth-session-count > .dp-settings-inline-field-action {
+  margin-inline-start: 8px;
 }
 
 /* Username & Password ------------------------------------------------------ */
@@ -224,7 +255,13 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 #view-settings .dp-settings-auth-credentials-row {
   min-width: 0;
   display: flex;
-  align-items: center;
+  /* STRETCH, not centre: the two settings' informational stacks wrap to
+     different line counts as text reflows, and centring items of unequal
+     height pulls the taller one's top upward -- so two settings genuinely on
+     one row stop sharing a baseline. Equal-height items keep that promise at
+     any font metric; each field still centres its own control against its own
+     stack. */
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
   gap: 18px 44px;
@@ -250,15 +287,19 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 /* API Access --------------------------------------------------------------- */
-/* One column: the disclosure, when there is one, then the lifecycle actions.
-   DebridPulse puts actions on the right, so that is where they sit. */
+/* Two states, one layout owner.
+   Ordinarily the card body holds nothing but the lifecycle pair, so the pair
+   IS the content and sits centred. While a one-time token is being disclosed
+   the disclosure is the content, and the pair becomes the actions BESIDE it --
+   stacked, so it occupies the disclosure's own vertical span instead of being
+   pushed underneath it. */
 #view-settings .dp-settings-api-token-layout {
   min-width: 0;
   width: 100%;
   display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 14px;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
 }
 
 #view-settings .dp-settings-api-token-actions {
@@ -266,9 +307,29 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-height: var(--dp-input-height);
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: center;
   gap: 8px;
   margin: 0;
+}
+
+#view-settings .dp-settings-api-token-layout.is-disclosing {
+  align-items: stretch;
+  justify-content: flex-start;
+}
+
+#view-settings .dp-settings-api-token-layout.is-disclosing > .dp-settings-api-token-disclosure {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Rotate above Revoke, the stack centred against the disclosure it belongs to
+   and sized by it rather than by a height declared here. */
+#view-settings .dp-settings-api-token-layout.is-disclosing > .dp-settings-api-token-actions {
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  gap: 10px;
 }
 
 /* Keep every Generate/Rotate busy and resting label on exactly one footprint. */
@@ -327,38 +388,34 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   white-space: nowrap;
 }
 
-/* Persistent stored-token status, beside Enable in the card header. */
-#view-settings .dp-settings-auth-header-actions {
+/* The Authentication cards use the SAME operational header rail as a provider
+   card -- state, then the action that proves it, then participation -- so
+   status is the canonical coloured text, never a badge of its own. The rail's
+   own placement rule is scoped to the provider header, so the auth cards'
+   three-column header grid places it here. */
+#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-card-header-controls,
+#view-settings .dp-settings-api-access-card > .card-header > .dp-settings-card-header-controls,
+#view-settings .dp-settings-username-password-card > .card-header > .dp-settings-card-header-controls {
   min-width: 0;
-  display: inline-flex;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   justify-self: end;
-  gap: 14px;
+  gap: 12px;
 }
 
-#view-settings .dp-settings-auth-header-actions > .dp-settings-auth-header-enable {
+#view-settings .dp-settings-oidc-grouped-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable,
+#view-settings .dp-settings-api-access-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable {
   justify-self: auto;
 }
 
-#view-settings .dp-settings-auth-token-ready {
+/* The status sits with its rail, so it is not the centred provider variant. */
+#view-settings .dp-settings-card-header-controls > .dp-settings-provider-config-status {
+  justify-self: auto;
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  padding: 3px 10px;
-  border: 1px solid color-mix(in srgb, var(--dp-state-success) 45%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--dp-state-success) 13%, transparent);
-  color: var(--dp-state-success);
-  font-size: 10px;
-  font-weight: 750;
-  letter-spacing: .03em;
-  line-height: 1.5;
+  text-align: right;
   white-space: nowrap;
-}
-
-#view-settings .dp-settings-auth-token-ready[hidden] {
-  display: none;
 }
 
 @media (max-width: 1280px) {
@@ -390,9 +447,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     text-align: left;
   }
 
-  #view-settings .dp-settings-auth-header-actions,
+  #view-settings .dp-settings-card-header-controls,
   #view-settings .dp-settings-auth-header-enable {
     justify-self: start;
+    justify-content: flex-start;
   }
 
   #view-settings .dp-settings-auth-kpi-grid {
@@ -489,80 +547,111 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    credentials, protocol details -- with the issuer endpoint floating free
    between the first two, because it is the one authority the others describe.
    Each group is content-bounded and centred; none of them is a card. */
+/* A relationship container at the body's normal inset, not a narrow island.
+   The room it holds belongs to the FIELDS: each one grows with the container
+   instead of sitting at a width chosen here, so a URL is readable without the
+   group announcing itself.
+
+   STRETCH, not centre: the informational stacks wrap to different line counts
+   as text reflows, and centring items of unequal height pulls the taller one's
+   top upward -- so settings genuinely on one row stop sharing a baseline.
+   Equal-height items keep that promise at any font metric; each field still
+   centres its own control against its own stack. */
 #view-settings .dp-settings-oidc-group {
   min-width: 0;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
   flex-wrap: wrap;
-  gap: 18px 44px;
-  width: max-content;
-  max-width: 100%;
-  margin-inline: auto;
+  gap: 18px 32px;
+  width: auto;
+  margin-inline: 8px;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
   padding: 16px 22px 17px;
 }
 
+/* The fields share the group's spare width rather than each keeping a fixed
+   one; the informational stack stays bounded so the growth reaches controls. */
 #view-settings .dp-settings-oidc-group > .dp-settings-inline-field {
-  flex: 0 1 auto;
+  flex: 1 1 260px;
   min-width: 0;
+}
+
+#view-settings .dp-settings-oidc-group .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  /* Room to read a URL, not room to stretch one across the card. */
+  max-width: 420px;
+}
+
+#view-settings .dp-settings-oidc-group .dp-settings-inline-field-control > .input,
+#view-settings .dp-settings-oidc-group .dp-action-field {
+  width: 100%;
 }
 
 /* A hint is a sentence, not a single line: bound the informational stack so
    the group's width is decided by how much room its CONTROLS need, not by how
    long its longest sentence happens to be. */
-#view-settings .dp-settings-oidc-group .dp-settings-inline-field-info,
 #view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info,
 #view-settings .dp-settings-auth-session-row .dp-settings-inline-field-info {
   max-width: 200px;
+}
+
+/* Inside a group the hint is bounded harder than elsewhere: three of them
+   share one row, so every pixel the sentences keep is a pixel the URL fields
+   do not get. The hints wrap; the values stay readable. */
+#view-settings .dp-settings-oidc-group .dp-settings-inline-field-info {
+  max-width: 158px;
 }
 
 #view-settings .dp-settings-oidc-issuer-field .dp-settings-inline-field-info {
   max-width: 300px;
 }
 
-/* Control widths follow what each value IS, not the space that happens to
-   exist: a provider name is short, a callback URL is not. */
-#view-settings .dp-settings-oidc-provider-field .input {
-  width: 180px;
-  max-width: 100%;
+/* The fields grow with their group (above). What differs between them is only
+   how much of a row each one deserves -- a provider name is short, a callback
+   URL is not -- so they state PROPORTION, not pixels.
+
+   The informational stack stays bounded, which is what makes the group's spare
+   width reach the controls rather than the sentences. */
+/* Scoped to the group so these state the proportion INSIDE it -- the group's
+   own child rule above is more specific than a bare field class would be. */
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-provider-field {
+  flex: 1 1 200px;
 }
 
-#view-settings .dp-settings-auth-public-base-field .input {
-  width: 240px;
-  max-width: 100%;
+#view-settings .dp-settings-oidc-group > .dp-settings-auth-public-base-field {
+  flex: 1.35 1 260px;
 }
 
-#view-settings .dp-settings-auth-callback-field > .dp-settings-inline-field-control {
-  flex: 0 1 auto;
-  min-width: 0;
-  width: 300px;
-  max-width: 100%;
+#view-settings .dp-settings-oidc-group > .dp-settings-auth-callback-field {
+  flex: 1.45 1 280px;
 }
 
-#view-settings .dp-settings-oidc-client-id-field .input {
-  width: 230px;
-  max-width: 100%;
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-id-field {
+  flex: 1.1 1 300px;
 }
 
-#view-settings .dp-settings-oidc-client-secret-field .input {
-  width: 200px;
-  max-width: 100%;
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-client-secret-field {
+  flex: 1 1 300px;
 }
 
 #view-settings .dp-settings-oidc-client-secret-field > .dp-settings-inline-field-action .btn {
   white-space: nowrap;
 }
 
-#view-settings .dp-settings-oidc-scopes-field .input {
-  width: 240px;
-  max-width: 100%;
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-scopes-field {
+  flex: 1.5 1 300px;
 }
 
-#view-settings .dp-settings-oidc-group-claim-field .input {
-  width: 150px;
-  max-width: 100%;
+/* A claim name is one short word; it does not earn half the row. */
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-group-claim-field {
+  flex: 1 1 240px;
+}
+
+#view-settings .dp-settings-oidc-group > .dp-settings-oidc-group-claim-field .dp-settings-inline-field-control {
+  max-width: 220px;
 }
 
 /* The identity-provider authority endpoint: centred, unbordered, and given
@@ -588,70 +677,82 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   width: 100%;
 }
 
-/* Access-control policy is one coherent section: the policy decision, then
-   the allowlists it can defer to. */
+/* Access control is one coherent section: the policy decision on its own
+   header row, then the allowlists it can defer to. */
 #view-settings .dp-settings-oidc-access {
   min-width: 0;
   display: grid;
   gap: 16px;
-  padding-top: 18px;
-  border-top: 1px solid color-mix(in srgb, var(--dp-border, var(--border)) 65%, var(--dp-text-muted) 35%);
+  padding-top: 20px;
+}
+
+/* A muted, centred rule -- a change of subject, not a subsection boundary.
+   It is drawn as the section's own leading element so it cannot be mistaken
+   for a card edge, and it spans most of the body rather than all of it. */
+#view-settings .dp-settings-oidc-access::before {
+  content: '';
+  justify-self: center;
+  width: 70%;
+  height: 1px;
+  margin-bottom: 4px;
+  background: var(--dp-divider);
 }
 
 #view-settings .dp-settings-oidc-section-heading {
   min-width: 0;
-  display: flex;
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   align-items: center;
+  gap: 18px;
 }
 
 #view-settings .dp-settings-oidc-section-title {
+  justify-self: start;
   color: var(--dp-text-primary);
   font-weight: 700;
   line-height: 1.25;
 }
 
-/* The policy island: an explicit decision, so it is bounded, centred and
-   tinted differently from the neutral configuration groups above it -- and
-   small, because it holds one choice. */
-#view-settings .dp-settings-oidc-policy-island {
-  min-width: 0;
-  width: max-content;
-  max-width: min(100%, 760px);
-  margin-inline: auto;
-  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright) 30%, var(--dp-divider));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--dp-accent-purple-bright) 6%, transparent);
-  padding: 14px 20px 15px;
+#view-settings .dp-settings-oidc-section-copy {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: min(620px, 44%);
+  transform: translate(-50%, -50%);
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: center;
 }
 
-#view-settings .dp-settings-oidc-policy-island > .dp-settings-oidc-allow-all {
+/* The policy control keeps its original right-side place and its neutral
+   treatment; the only addition is a restrained border that says the label and
+   its toggle are one control. */
+#view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
   width: auto;
   min-width: 0;
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 32px;
+  justify-content: flex-end;
+  justify-self: end;
+  gap: 12px;
   margin: 0 !important;
-  padding: 0;
-  border: 0;
+  padding: 7px 12px;
+  border: 1px solid var(--dp-divider);
+  border-radius: 10px;
   background: transparent;
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle-info {
-  flex: 1 1 auto;
-  min-width: 0;
-  max-width: 540px;
   display: block;
+  flex: 0 0 auto;
+  min-width: 0;
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle-info .tl {
   display: block;
-}
-
-#view-settings .dp-settings-oidc-allow-all .toggle-info .td {
-  display: block;
-  margin-top: 3px;
-  line-height: 1.4;
+  white-space: nowrap;
 }
 
 #view-settings .dp-settings-oidc-allow-all .toggle {
@@ -705,10 +806,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     text-align: left;
   }
 
-  #view-settings .dp-settings-oidc-allowlists {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
   /* Stacked, each setting keeps its own inline title/hint + control. */
   #view-settings .dp-settings-oidc-group {
     width: auto;
@@ -717,13 +814,32 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
     gap: 14px;
   }
 
-  #view-settings .dp-settings-oidc-issuer-band,
-  #view-settings .dp-settings-oidc-policy-island {
+  #view-settings .dp-settings-oidc-issuer-band {
     width: auto;
     max-width: none;
   }
 
-  #view-settings .dp-settings-oidc-policy-island > .dp-settings-oidc-allow-all {
-    gap: 16px;
+  /* Stacked, the policy control leads its own row rather than hugging a right
+     edge that no longer exists. */
+  #view-settings .dp-settings-oidc-section-heading,
+  #view-settings .dp-settings-oidc-allowlists {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  #view-settings .dp-settings-oidc-section-title,
+  #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
+    justify-self: start;
+  }
+
+  #view-settings .dp-settings-oidc-section-copy {
+    position: static;
+    width: auto;
+    transform: none;
+    justify-self: start;
+    text-align: left;
+  }
+
+  #view-settings .dp-settings-oidc-section-heading {
+    gap: 8px;
   }
 }

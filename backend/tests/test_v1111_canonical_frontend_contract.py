@@ -116,7 +116,10 @@ def test_settings_authentication_renders_final_cards_directly() -> None:
         "Browser Session Lifetime",
         "Public DebridPulse Base URL",
         "OIDC Callback URL",
-        "Test OIDC Sign-In",
+        # DP 1.0.13: Test is a provider-level action on the card's own
+        # operational rail, in the one canonical treatment -- relocated from
+        # the footer, not duplicated.
+        "providerTestAction('verify-oidc')",
         "dp-settings-auth-header-enable",
         "dp-settings-auth-credentials-row",
         "dp-settings-auth-status-card",

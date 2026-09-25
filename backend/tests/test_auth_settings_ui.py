@@ -199,6 +199,66 @@ async def test_dedicated_auth_config_requires_open_mode_confirmation():
 
 
 @pytest.mark.asyncio
+async def test_partial_auth_config_write_still_requires_open_mode_confirmation():
+    """The field-boundary shape must hit the same gate as the whole payload.
+
+    Settings now writes ONE field per request, so the mutation that disables the
+    last interactive mechanism names only that field -- the other mechanism's
+    key is absent, not False. The guard resolves an absent key from current
+    state, so this is still an open-mode transition and is still refused without
+    explicit proof. A frontend that drops the confirmation is therefore rejected
+    rather than silently opening the installation.
+    """
+    # Password is the ONLY enabled mechanism, so disabling it opens the
+    # installation even though the request never mentions OIDC.
+    password_only = _settings(auth_oidc_enabled=False)
+
+    rejected = await settings_transition_rejection(
+        _request("/api/auth/config", {"auth_password_enabled": False}),
+        Principal.password_session("operator"),
+        password_only,
+    )
+    assert rejected is not None
+    assert rejected.status_code == 409
+
+    accepted = await settings_transition_rejection(
+        _request(
+            "/api/auth/config",
+            {"auth_password_enabled": False, "confirm_open_mode": True},
+        ),
+        Principal.password_session("operator"),
+        password_only,
+    )
+    assert accepted is None
+
+    # The mirror image: OIDC as the last mechanism, in the same partial shape.
+    oidc_only = _settings(auth_password_enabled=False)
+    assert (
+        await settings_transition_rejection(
+            _request("/api/auth/config", {"auth_oidc_enabled": False}),
+            Principal.oidc_session("operator"),
+            oidc_only,
+        )
+    ).status_code == 409
+    assert await settings_transition_rejection(
+        _request(
+            "/api/auth/config",
+            {"auth_oidc_enabled": False, "confirm_open_mode": True},
+        ),
+        Principal.oidc_session("operator"),
+        oidc_only,
+    ) is None
+
+    # And disabling ONE of two enabled mechanisms is not an open-mode
+    # transition at all, so it needs no proof.
+    assert await settings_transition_rejection(
+        _request("/api/auth/config", {"auth_oidc_enabled": False}),
+        Principal.password_session("operator"),
+        _settings(),
+    ) is None
+
+
+@pytest.mark.asyncio
 async def test_authentication_payload_is_secret_free(monkeypatch):
     cfg = _settings()
     monkeypatch.setattr(auth_config_routes, "get_settings", lambda: cfg)

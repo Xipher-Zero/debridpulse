@@ -27,19 +27,25 @@ def test_token_ready_is_derived_from_durable_stored_token_state_alone():
     js = source(SETTINGS)
     css = source(STYLE)
 
-    badge = js[js.index("function tokenReadyBadge(a)"):]
+    # DP 1.0.13: status is coloured TEXT on the card's shared operational rail
+    # -- the same node, vocabulary and tones every provider card uses. A badge
+    # of its own would have been a second status grammar.
+    badge = js[js.index("function tokenReadyStatus(a)"):]
     badge = badge[:badge.index("\n  }")]
-    assert "a?.api_token_configured ? '' : ' hidden'" in badge
+    assert "a?.api_token_configured" in badge
+    assert "tone: 'success'" in badge
     assert "state.oneTimeToken" not in badge
-    assert "tokenReady.hidden = !a.api_token_configured;" in js
+    assert "paintCardStatus(view, '.dp-settings-api-access-card', tokenReadyStatus(a));" in js
+    assert "dp-settings-auth-token-ready" not in js and "dp-settings-auth-token-ready" not in css
 
     # The former body-level reading is gone; the header carries it.
     assert "Stored Token" not in js
     assert "dp-settings-api-token-status" not in js and "dp-settings-api-token-status" not in css
 
-    assert ".dp-settings-auth-token-ready" in css
-    assert "color: var(--dp-state-success);" in css
-    assert ".dp-settings-auth-token-ready[hidden]" in css
+    # Plain text: no capsule, no border, no background of its own.
+    assert '.dp-settings-provider-config-status[data-tone="success"]' in source(STATIC / "ui-provider-state.css")
+    for capsule in ("border-radius: 999px", "dp-settings-auth-token-ready"):
+        assert capsule not in css
 
 
 def test_one_time_token_disclosure_is_ephemeral_and_never_configuration_state():
@@ -62,20 +68,36 @@ def test_one_time_token_disclosure_is_ephemeral_and_never_configuration_state():
     # Re-entering Settings is not the act that produced it.
     assert "state.oneTimeToken = '';" in js[js.index("async function load()"):]
 
-    block = css[css.index(".dp-settings-api-token-disclosure {"):]
+    block = css[css.index("#view-settings .dp-settings-api-token-disclosure {"):]
     block = block[:block.index("}")]
     assert "var(--dp-state-caution)" in block
     assert "var(--dp-state-caution-bg)" in block
     assert "var(--dp-state-error)" not in block
 
 
-def test_token_lifecycle_actions_sit_on_the_right_of_the_action_area():
+def test_token_lifecycle_actions_follow_what_the_card_body_actually_holds():
+    """Two states, one layout owner.
+
+    With nothing else in the body the lifecycle pair IS the content, so it sits
+    centred. While a one-time token is being disclosed the disclosure is the
+    content and the pair becomes the actions beside it -- stacked to the right,
+    occupying the disclosure's own vertical span rather than being pushed below
+    it.
+    """
     css = source(STYLE)
+    js = source(SETTINGS)
+
     actions = css[css.index("#view-settings .dp-settings-api-token-actions {"):]
     actions = actions[:actions.index("}")]
-    assert "justify-content: flex-end;" in actions
+    assert "justify-content: center;" in actions
     assert "min-height: var(--dp-input-height);" in actions
 
-    js = source(SETTINGS)
-    assert 'data-action="generate-token"' in js
-    assert 'data-action="clear-token"' in js
+    disclosing = css[css.index("#view-settings .dp-settings-api-token-layout.is-disclosing > .dp-settings-api-token-actions {"):]
+    disclosing = disclosing[:disclosing.index("}")]
+    assert "flex-direction: column;" in disclosing
+    assert "justify-content: center;" in disclosing
+
+    # The state is declared by the markup owner, from the one ephemeral value.
+    assert "state.oneTimeToken ? ' is-disclosing' : ''" in js
+    # Rotate is rendered before Revoke, so the column stacks them in that order.
+    assert js.index('data-action="generate-token"') < js.index('data-action="clear-token"')

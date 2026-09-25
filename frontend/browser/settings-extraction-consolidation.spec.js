@@ -502,3 +502,54 @@ test('Download Location & Limits puts both settings on one line in the inline gr
     await expect(page.locator('.dp-settings-download-limit-field .form-hint'))
       .toHaveText('Maximum downloads DebridPulse runs at once.');
   });
+
+/* The one-line promise has to survive TEXT, not just this machine's text.
+ *
+ * The two informational stacks are bounded, so they wrap to different line
+ * counts at different font metrics. While the island centred items of unequal
+ * height that pulled the taller one's top upward, and the two settings stopped
+ * sharing a baseline while still sitting on one row -- which is what the
+ * hosted container reproduced at metrics ~1.08x this machine's, with only 2px
+ * of local slack against a 3px tolerance to hide it. Stressing the font size
+ * is what makes the promise provable rather than lucky. */
+test('Download Location & Limits keeps one shared baseline at any text size',
+  async ({page}) => {
+    await isolateExternalFonts(page);
+    await page.goto('/');
+    await openSettings(page, 'downloads');
+
+    for (const scale of [1, 1.15, 1.3]) {
+      if (scale !== 1) {
+        await page.addStyleTag({content:
+          `#view-settings .form-hint, #view-settings .form-label { font-size: ${11 * scale}px !important; }`});
+      }
+      const measured = await page.locator('.dp-settings-download-engine-row').evaluate(el => {
+        const rect = node => node.getBoundingClientRect();
+        // The zone wrappers are `display: contents`, so the fields are the
+        // island's flex items without being its element children.
+        const fields = Array.from(el.querySelectorAll('.dp-settings-inline-field'));
+        const tops = fields.map(field => rect(field).top);
+        return {
+          count: fields.length,
+          topSpread: Math.max(...tops) - Math.min(...tops),
+          equalHeights: new Set(fields.map(field => Math.round(rect(field).height))).size === 1,
+          // Each control still centres against its OWN stack inside the field.
+          centred: fields.map(field => {
+            const mid = box => (box.top + box.bottom) / 2;
+            return Math.abs(mid(rect(field.querySelector('.dp-settings-inline-field-control')))
+              - mid(rect(field.querySelector('.dp-settings-inline-field-info'))));
+          }),
+        };
+      });
+
+      expect(measured.count).toBe(2);
+      expect(measured.topSpread, `the two settings lost their shared baseline at ${scale}x text`)
+        .toBeLessThanOrEqual(TOLERANCE);
+      expect(measured.equalHeights, `the island stopped equalising item height at ${scale}x text`)
+        .toBe(true);
+      for (const off of measured.centred) {
+        expect(Math.abs(off), `a control lost its own centring at ${scale}x text`)
+          .toBeLessThanOrEqual(TOLERANCE);
+      }
+    }
+  });

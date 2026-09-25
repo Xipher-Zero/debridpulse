@@ -73,7 +73,14 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     # for every act that can perform it.
     assert js.count("Continue to Open Mode") == 1
     assert "window.DPSettingsModal.confirm({" in open_mode
-    assert "if (!state.auth?.authentication_required || password || oidc) return true;" in open_mode
+    assert "if (!state.auth?.authentication_required || password || oidc) return AUTH_ALLOWED;" in open_mode
+    # The gate answers with the PROOF the act must carry, never a bare
+    # permission: an authorization that does not travel with the mutation is
+    # not an authorization, because the backend refuses the write without it.
+    assert "proof: {confirm_open_mode: true}" in open_mode
+    assert "...(authorization.proof || {})" in js
+    # And the proof is minted per act -- nothing holds one for a later write.
+    assert "confirmationGranted" not in js and "openModeConfirmed = true" not in js
 
     assert "await window.DPSettingsModal.confirm" in password
     assert password.count("await window.DPSettingsModal.confirm") == 1

@@ -227,7 +227,9 @@ test('Token Ready is durable stored-token state, and the disclosure is ephemeral
   async ({page}) => {
     await page.goto('/');
     const before = await auth(page);
-    const badge = page.locator('[data-auth-token-ready]');
+    // DP 1.0.13: the status is plain coloured text on the card's shared
+    // operational rail -- the same node every provider card's state uses.
+    const badge = page.locator('.dp-settings-api-access-card .dp-settings-provider-config-status');
     const disclosure = page.locator('.dp-settings-api-token-disclosure');
     try {
       await openSettings(page, 'authentication');
@@ -359,3 +361,131 @@ test('the generic Apply carries no Authentication value read from the page', asy
     await restoreAuth(page, before);
   }
 });
+
+
+/* ── Open-mode confirmation TRANSPORT ────────────────────────────────────
+ *
+ * The backend refuses to disable the last interactive mechanism unless the
+ * request itself says the operator confirmed it. The field-boundary migration
+ * kept the modal but spent its answer on a local permission check, so the
+ * partial write went out without proof and the backend -- correctly -- refused
+ * it, leaving the operator unable to enter Open mode at all.
+ *
+ * These cases therefore assert the PAYLOAD, not the presence of a dialog: a
+ * modal that appears and is then thrown away is exactly the bug.
+ *
+ * Canonical auth state is served to the page rather than persisted, because
+ * OIDC-only is not reachable against a real backend without end-to-end
+ * verification evidence, and because a spec must not leave a shared
+ * installation open. The write itself is the real one the page builds.
+ */
+const OIDC_ONLY = Object.freeze({
+  mode: 'OIDC', authentication_required: true,
+  password_enabled: false, password_ready: false, password_configured: false,
+  username: '', session_lifetime_hours: 12,
+  oidc_enabled: true, oidc_configured: true, oidc_ready: true, oidc_available: true,
+  oidc_verified: true, oidc_verified_at: '2026-09-25T00:00:00Z',
+  oidc_provider_name: 'OpenID Connect', oidc_issuer_url: 'https://id.example/o/dp',
+  oidc_client_id: 'dp', oidc_client_secret_configured: true,
+  oidc_scopes: ['openid', 'email'], oidc_allow_all: false,
+  oidc_allowed_subjects: [], oidc_allowed_emails: [], oidc_allowed_groups: [],
+  oidc_group_claim: 'groups', public_base_url: 'https://dp.example.com',
+  public_base_url_effective: 'https://dp.example.com', public_base_url_env_override: false,
+  oidc_callback_url: 'https://dp.example.com/auth/oidc/callback',
+  api_token_enabled: false, api_token_configured: false,
+  current_session_mechanism: 'oidc_session', session_count: 1,
+});
+const PASSWORD_ONLY = Object.freeze({
+  ...OIDC_ONLY, mode: 'Username & Password',
+  password_enabled: true, password_ready: true, password_configured: true, username: 'operator',
+  oidc_enabled: false, oidc_verified: false, current_session_mechanism: 'password_session',
+});
+const BOTH = Object.freeze({
+  ...OIDC_ONLY, mode: 'Username & Password + OIDC',
+  password_enabled: true, password_ready: true, password_configured: true, username: 'operator',
+});
+
+/** Serve one canonical auth state and capture every /auth/config write. */
+async function withAuthState(page, authState) {
+  const writes = [];
+  await page.route('**/api/auth/config', route => {
+    if (route.request().method() !== 'PUT') {
+      return route.fulfill({status: 200, contentType: 'application/json',
+        body: JSON.stringify(authState)});
+    }
+    const body = route.request().postDataJSON();
+    writes.push(body);
+    return route.fulfill({status: 200, contentType: 'application/json',
+      body: JSON.stringify({ok: true, ...authState,
+        ...(body.auth_oidc_enabled === false ? {oidc_enabled: false} : {}),
+        ...(body.auth_password_enabled === false ? {password_enabled: false} : {})})});
+  });
+  return writes;
+}
+
+const enableToggle = (page, card) =>
+  page.locator(`.dp-settings-${card}-card .dp-settings-auth-header-enable .ttrack`);
+
+async function settleModal(page, choice) {
+  const accept = page.locator('.dp-modal-overlay [data-modal-accept]');
+  let appeared = true;
+  try { await accept.waitFor({timeout: 2000}); } catch (_) { appeared = false; }
+  if (appeared) {
+    await page.locator(choice === 'confirm'
+      ? '.dp-modal-overlay [data-modal-accept]'
+      : '.dp-modal-overlay [data-modal-cancel]').click();
+    await page.waitForTimeout(500);
+  }
+  return appeared;
+}
+
+test('OIDC as the last mechanism: cancelling writes nothing, confirming carries the proof',
+  async ({page}) => {
+    const writes = await withAuthState(page, OIDC_ONLY);
+    await page.goto('/');
+    await openSettings(page, 'authentication');
+
+    await enableToggle(page, 'oidc').click();
+    expect(await settleModal(page, 'cancel'), 'no Open-mode confirmation was offered').toBe(true);
+    expect(writes, 'a cancelled Open-mode transition still wrote').toEqual([]);
+
+    await enableToggle(page, 'oidc').click();
+    expect(await settleModal(page, 'confirm')).toBe(true);
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]).toEqual({auth_oidc_enabled: false, confirm_open_mode: true});
+  });
+
+test('Password as the last mechanism: confirming carries the proof in the same write',
+  async ({page}) => {
+    const writes = await withAuthState(page, PASSWORD_ONLY);
+    await page.goto('/');
+    await openSettings(page, 'authentication');
+
+    await enableToggle(page, 'username-password').click();
+    expect(await settleModal(page, 'cancel')).toBe(true);
+    expect(writes).toEqual([]);
+
+    await enableToggle(page, 'username-password').click();
+    expect(await settleModal(page, 'confirm')).toBe(true);
+    await expect.poll(() => writes.length).toBe(1);
+    expect(writes[0]).toEqual({auth_password_enabled: false, confirm_open_mode: true});
+  });
+
+test('disabling one of two mechanisms is not an Open-mode transition and carries no proof',
+  async ({page}) => {
+    for (const [card, field] of [['oidc', 'auth_oidc_enabled'],
+                                 ['username-password', 'auth_password_enabled']]) {
+      const writes = await withAuthState(page, BOTH);
+      await page.goto('/');
+      await openSettings(page, 'authentication');
+
+      await enableToggle(page, card).click();
+      expect(await settleModal(page, 'confirm'),
+        `${card}: an Open-mode confirmation was demanded while the other mechanism stays enabled`)
+        .toBe(false);
+      await expect.poll(() => writes.length).toBe(1);
+      expect(writes[0]).toEqual({[field]: false});
+      expect(writes[0]).not.toHaveProperty('confirm_open_mode');
+      await page.unroute('**/api/auth/config');
+    }
+  });

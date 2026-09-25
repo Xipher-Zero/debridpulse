@@ -497,12 +497,23 @@
       titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
     }
     const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
+    /* The SAME operational header rail a provider card renders: what the
+     * configuration currently IS, the action that can prove it, then whether it
+     * participates at all. A card that declares none of it renders no rail, so
+     * nothing changes for the cards that never had one. */
+    const status = options.headerStatus;
+    const rail = (status || options.headerAction)
+      ? `<div class="dp-settings-card-header-controls">${
+          status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${
+          options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
+          options.action || ''}</div>`
+      : (options.action || '');
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
           <span class="${titleClass}"${titleAttrs}>${titleMarkup}</span>
           ${options.headerCenter ? `<div class="${centerClass}">${options.headerCenter}</div>` : ''}
-          ${options.action || ''}
+          ${rail}
         </div>
         <div class="card-body">${body}</div>
       </section>`;
@@ -1547,10 +1558,7 @@
     const id = fieldId('oidc_allow_all');
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-oidc-allow-all" for="${id}">
-        <span class="toggle-info">
-          <span class="tl">Allow Any Authenticated OIDC Identity</span>
-          <span class="td">Accept every identity the provider authenticates, or leave this off to restrict sign-in to the allowlists below.</span>
-        </span>
+        <span class="toggle-info"><span class="tl">Allow Any Authenticated OIDC Identity</span></span>
         <span class="toggle">
           <input id="${id}" data-setting="oidc_allow_all" type="checkbox" ${checked(value)} ${commitAttributes('oidc_allow_all')}>
           <span class="ttrack"></span>
@@ -1788,19 +1796,35 @@
    * Turning off the last interactive mechanism intentionally opens DebridPulse
    * and its API to anyone who can reach it. That is a property of the ACT, not
    * of the page or of any one control, so every act that can perform it -- the
-   * two Enable toggles and the confirmed password clear alike -- asks here. */
+   * two Enable toggles and the confirmed password clear alike -- asks here.
+   *
+   * It answers with the PROOF the act must carry, never with a bare permission:
+   * the backend accepts an open-mode transition only when the request itself
+   * says the operator confirmed it, so an authorization that did not travel
+   * with the mutation is not an authorization at all. The proof belongs to that
+   * one act -- it is returned to the caller and never stored, so nothing can
+   * hold a granted confirmation and spend it on a later write. */
+  const AUTH_DENIED = Object.freeze({allowed: false, proof: null});
+  const AUTH_ALLOWED = Object.freeze({allowed: true, proof: null});
+
   async function confirmOpenMode({password, oidc}) {
-    if (!state.auth?.authentication_required || password || oidc) return true;
-    return window.DPSettingsModal.confirm({
+    // Not an open-mode transition: nothing to confirm and nothing to prove.
+    if (!state.auth?.authentication_required || password || oidc) return AUTH_ALLOWED;
+    const confirmed = await window.DPSettingsModal.confirm({
       title: 'Disable interactive authentication?',
       message: 'Username & Password and OpenID Connect will both be disabled. DebridPulse and its API will be intentionally open.',
       confirmLabel: 'Continue to Open Mode',
       tone: 'warning',
     });
+    return confirmed ? Object.freeze({allowed: true, proof: {confirm_open_mode: true}}) : AUTH_DENIED;
   }
 
+  /* What this ONE commit is authorized to send. Only the two participation
+   * toggles can open the installation; every other field is ordinary. */
   function authorizeAuthCommit(key, value) {
-    if (key !== 'auth_password_enabled' && key !== 'auth_oidc_enabled') return Promise.resolve(true);
+    if (key !== 'auth_password_enabled' && key !== 'auth_oidc_enabled') {
+      return Promise.resolve(AUTH_ALLOWED);
+    }
     return confirmOpenMode({
       password: key === 'auth_password_enabled' ? !!value : !!state.auth?.password_enabled,
       oidc: key === 'auth_oidc_enabled' ? !!value : !!state.auth?.oidc_enabled,
@@ -1818,6 +1842,15 @@
     paintAuthDerived();
     void probeOidcRuntime(state.auth, generation);
     return generation;
+  }
+
+  /* Repaint one card's canonical header status in place. */
+  function paintCardStatus(view, card, status) {
+    const node = view.querySelector(`${card} .dp-settings-provider-config-status`);
+    if (!node) return;
+    node.textContent = status.text;
+    node.dataset.tone = status.tone;
+    node.hidden = !status.text;
   }
 
   function paintAuthKpis(a) {
@@ -1859,11 +1892,12 @@
     const clearSecretButton = view.querySelector('[data-action="clear-oidc-secret"]');
     if (clearSecretButton) clearSecretButton.disabled = !a.oidc_client_secret_configured;
 
-    // Token Ready is canonical STORED-token state. It is never derived from
-    // whether a token value is on screen, and never from the one-time
-    // disclosure block, which exists only for the moment of disclosure.
-    const tokenReady = view.querySelector('[data-auth-token-ready]');
-    if (tokenReady) tokenReady.hidden = !a.api_token_configured;
+    // Both header statuses are projections of canonical state, repainted in
+    // the one canonical status node each card's rail already owns. Token Ready
+    // is never derived from a token on screen or from the disclosure block,
+    // and the OIDC word is never derived from a toast or from the DOM.
+    paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));
+    paintCardStatus(view, '.dp-settings-api-access-card', tokenReadyStatus(a));
     const generate = view.querySelector('[data-action="generate-token"]');
     if (generate) generate.textContent = a.api_token_configured ? 'Rotate Token' : 'Generate Token';
     const revoke = view.querySelector('[data-action="clear-token"]');
@@ -2113,14 +2147,20 @@
       <section class="dp-settings-oidc-access">
         <div class="dp-settings-oidc-section-heading">
           <span class="dp-settings-oidc-section-title">Access Control</span>
+          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+          ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
-        <div class="dp-settings-oidc-policy-island">${oidcPolicyToggle(a.oidc_allow_all)}</div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {
       className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
       headerCenter: 'Configure an external identity provider for browser sign-in.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
+      // Test is a provider-level action proving provider-level state, so it
+      // takes the card's own rail in the one canonical treatment -- there is no
+      // OIDC-specific Test.
+      headerStatus: oidcHeaderStatus(a),
+      headerAction: providerTestAction('verify-oidc'),
       action: authHeaderToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
     });
 
@@ -2142,7 +2182,7 @@
       </div>` : '';
 
     const apiAccess = card('API Access', `
-      <div class="dp-settings-api-token-layout">
+      <div class="dp-settings-api-token-layout${state.oneTimeToken ? ' is-disclosing' : ''}">
         ${disclosure}
         <div class="dp-settings-actions dp-settings-api-token-actions">
           <button class="btn btn-blue btn-sm dp-settings-api-token-generate" type="button" data-action="generate-token">${configured ? 'Rotate Token' : 'Generate Token'}</button>
@@ -2153,18 +2193,35 @@
       className: 'dp-settings-api-access-card',
       headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
-      action: `<div class="dp-settings-auth-header-actions">${tokenReadyBadge(a)}${authHeaderToggle('api_token_enabled', a.api_token_enabled)}</div>`,
+      headerStatus: tokenReadyStatus(a),
+      action: authHeaderToggle('api_token_enabled', a.api_token_enabled),
     });
 
     return authStatusCard(a) + credentials + oidc + apiAccess;
   }
 
+  /* The OIDC card's header status, in the canonical three-state provider
+   * vocabulary -- the same words, tones and treatment every provider card uses.
+   *
+   * It is a projection of canonical CONFIGURATION and canonical VERIFICATION
+   * EVIDENCE and nothing else: not the DOM, not a toast, not runtime
+   * reachability, and not a second `verified` bit this page keeps. A Test that
+   * failed leaves complete configuration unverified, which is Configured --
+   * the concrete reason travels in the Test's own feedback, not in this word.
+   * Disabled OIDC states nothing at all. */
+  function oidcHeaderStatus(a) {
+    if (!a?.oidc_enabled) return {text: '', tone: 'none'};
+    if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
+    return a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+  }
+
   /* Persistent stored-token status, derived from canonical durable state
    * alone -- never from a token value on screen and never from the one-time
    * disclosure block, which is gone the moment the page re-renders without a
-   * freshly minted token. */
-  function tokenReadyBadge(a) {
-    return `<span class="dp-settings-auth-token-ready" data-auth-token-ready role="status"${a?.api_token_configured ? '' : ' hidden'}>Token Ready</span>`;
+   * freshly minted token. Status is coloured TEXT in this application; a
+   * button is an action and a toggle is participation, so it wears neither. */
+  function tokenReadyStatus(a) {
+    return a?.api_token_configured ? {text: 'Token Ready', tone: 'success'} : {text: '', tone: 'none'};
   }
 
   function maintenancePanel(s) {
@@ -2281,7 +2338,6 @@
           <div class="dp-settings-context-actions">
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt=""></span><span>Test Discord</span></button>
             <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="send-report"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/send.svg" alt=""></span><span>Send Report Now</span></button>
-            <button class="btn btn-ghost" type="button" data-context-action="authentication" data-action="verify-oidc">Test OIDC Sign-In</button>
           </div>
           <button class="btn btn-primary" type="button" data-action="save" data-deferred-apply>Apply Settings</button>
         </div>
@@ -2749,11 +2805,17 @@
       commit: async ({key, draft}) => {
         const declared = COMMIT_FIELDS[key];
         const value = authCommittedValue(key, draft);
+        const authorization = await authorizeAuthCommit(key, value);
         // Declined at the open-mode gate: nothing was written, so the canonical
         // value the control was rendered from is exactly what it converges back
         // to -- no error, no second write, no stale draft left behind.
-        if (!(await authorizeAuthCommit(key, value))) return authControlValue(key, state.auth);
-        const result = await request('PUT', '/auth/config', {[declared.option]: value}, 15000);
+        if (!authorization.allowed) return authControlValue(key, state.auth);
+        // The confirmation travels WITH the field it authorized, in the one
+        // partial mutation this commit already makes. It is not a second write,
+        // not a flag this page holds, and not something a later commit can
+        // inherit: the gate minted it for this act and it is spent here.
+        const result = await request('PUT', '/auth/config',
+          {[declared.option]: value, ...(authorization.proof || {})}, 15000);
         adoptAuthentication(result);
         return declared.redacted ? '' : authControlValue(key, result);
       },
@@ -2763,11 +2825,30 @@
      * else about it differs: same boundary, same baseline, same rollback. */
     persistence.defineScope('api-token', {
       commit: async ({key, draft}) => {
+        const enabled = draft === true || draft === '1';
+        /* Enabling API Access with nothing stored is a request for API access,
+         * not a request to be told a token is missing. The obvious intent is
+         * completed here by the ONE canonical minting act -- which also
+         * discloses the raw value once -- and the participation write then
+         * proceeds normally. Disabling never touches the stored token, so a
+         * later enable reuses it; only an explicit Revoke removes one. */
+        const minted = enabled && !state.auth?.api_token_configured
+          ? await mintApiToken()
+          : null;
+        // A disclosure belongs to the act that minted it. Changing
+        // participation is a different act, so any token still on screen stops
+        // being shown rather than riding along with an unrelated write.
+        const stale = !minted && !!state.oneTimeToken;
+        if (stale) state.oneTimeToken = '';
         const result = await request('PUT', '/auth/api-token',
-          {[COMMIT_FIELDS[key].option]: draft === true || draft === '1'}, 10000);
+          {[COMMIT_FIELDS[key].option]: enabled}, 10000);
         adoptAuthentication({...state.auth,
           api_token_enabled: !!result?.enabled,
           api_token_configured: !!result?.configured});
+        // The disclosure is markup, so showing or removing it rebuilds the
+        // page. Nothing is dirty at this point: the toggle that started this IS
+        // the committed value, and the render re-adopts every baseline.
+        if (minted || stale) renderPreservingViewport();
         return result?.enabled ? '1' : '0';
       },
     });
@@ -3234,7 +3315,15 @@
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Clearing…');
     try {
-      await writeAuthentication({auth_password_enabled: false, clear_password: true});
+      // Erasing the last interactive credential IS an open-mode transition, and
+      // the modal above is where the operator confirmed that exact act -- its
+      // message says so. The proof therefore travels with this mutation, for
+      // the same reason and in the same shape as the Enable toggles'.
+      await writeAuthentication({
+        auth_password_enabled: false,
+        clear_password: true,
+        ...(entersOpenMode ? {confirm_open_mode: true} : {}),
+      });
       notify('Stored password cleared', 'success');
       // The stored-password control is now disabled; the password field is
       // where the operator goes next.
@@ -3272,14 +3361,25 @@
     if (button?.isConnected) button.focus();
   }
 
+  /* The ONE act that mints an API token.
+   *
+   * Rotate/Generate performs it, and so does enabling API Access for the first
+   * time -- one canonical request, one canonical adoption, one disclosure of
+   * the raw value. Neither caller has a token lifecycle of its own. The raw
+   * value goes to page memory only, never to canonical state. */
+  async function mintApiToken() {
+    const result = await request('POST', '/auth/api-token', undefined, 10000);
+    state.auth.api_token_enabled = true;
+    state.auth.api_token_configured = true;
+    state.oneTimeToken = text(result.token);
+    return result;
+  }
+
   async function generateToken(button) {
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, state.auth?.api_token_configured ? 'Rotating…' : 'Generating…');
     try {
-      const result = await request('POST', '/auth/api-token', undefined, 10000);
-      state.auth.api_token_enabled = true;
-      state.auth.api_token_configured = true;
-      state.oneTimeToken = text(result.token);
+      const result = await mintApiToken();
       renderPreservingViewport();
       notify(result.rotated ? 'API token rotated' : 'API token generated', 'success');
     } catch (error) {

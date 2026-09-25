@@ -113,8 +113,14 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     # is gone with the grammar that needed it.
     row = css.split(".dp-settings-download-engine-row {", 1)[1].split("}", 1)[0]
     assert "display: flex" in row
-    assert "align-items: center" in row
     assert "grid-template-rows" not in row
+    # STRETCH, not centre. The two informational stacks wrap to different line
+    # counts as text reflows, and centring items of unequal height pulls the
+    # taller one's top upward -- so two settings genuinely on one row stop
+    # sharing a baseline. Equal-height items keep that promise at any font
+    # metric; each field still centres its own control against its own stack.
+    assert "align-items: stretch;" in row
+    assert "align-items: center" not in row
     # DP 1.0.13: the two settings form ONE centred, content-bounded island with
     # the same relationship container and padding density as the accepted
     # Extraction behaviour island, rather than stretching across the card.
