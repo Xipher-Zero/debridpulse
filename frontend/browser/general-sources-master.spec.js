@@ -253,11 +253,12 @@ test('a later Apply Settings cannot replay a stale master or child value', async
 
   // An unrelated DEFERRED edit, then the page-level write. It is made on a tab
   // that still has an Apply contract: DP 1.0.13 made Downloads a field-boundary
-  // surface, so it offers no Apply at all and could not carry one.
-  await page.locator('#view-settings [data-tab="extraction"]').click();
-  await page.locator('#view-settings [data-setting="extract_max_concurrent"]').fill('2');
+  // surface and the Settings consolidation did the same for Extraction, so
+  // neither offers an Apply at all and neither could carry one.
+  await page.locator('#view-settings [data-tab="notifications"]').click();
+  await page.locator('#view-settings [data-setting="discord_username"]').fill('ReplayProbe');
   await page.locator('#view-settings [data-action="save"]').click();
-  await expect.poll(async () => (await canonical(page)).extract_max_concurrent).toBe(2);
+  await expect.poll(async () => (await canonical(page)).discord_username).toBe('ReplayProbe');
 
   const settings = await canonical(page);
   expect(settings.integration_groups[GROUP].enabled, 'Apply replayed a stale master').toBe(false);

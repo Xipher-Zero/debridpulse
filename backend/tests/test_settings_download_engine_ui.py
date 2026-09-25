@@ -30,14 +30,14 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     css = source(SETTINGS_PAGE_CSS)
     chrome = source(SETTINGS_CHROME_CSS)
 
-    assert "card('Global Download Settings'" in downloads
+    assert "card('Download Location & Limits'" in downloads
     assert "aria2 Delivery" not in downloads
     # Operator-facing tuning labels name capabilities, never daemons.
     assert "card('Download Engine'" not in downloads
     # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
     assert "wrapTitle: true" in downloads
     assert "dp-settings-download-engine-icon" not in downloads
-    assert "'Global Download Settings': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
+    assert "'Download Location & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
     assert "Where DebridPulse saves downloads and how many it runs at once." in downloads
@@ -68,12 +68,12 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "directoryField('download_folder', 'Download Folder'" in downloads
     assert "Browse server directories for Download Folder" in downloads
     assert "Where DebridPulse saves downloads." in downloads
-    assert "Maximum number of downloads DebridPulse can run at the same time." in downloads
+    assert "Maximum downloads DebridPulse runs at once." in downloads
     # No topology control exists, visible or hidden, in the global card.
-    # (Collapsed Executor Tuning child cards legitimately use `hidden`, so the
-    # check is scoped to the Global Download Settings card it is about.)
-    global_card = downloads[downloads.index("card('Global Download Settings'"):
-                            downloads.index("const tuning = groupCard('Executor Tuning'")]
+    # (Collapsed Transfer Method Settings child cards legitimately use `hidden`,
+    # so the check is scoped to the Download Location & Limits card it is about.)
+    global_card = downloads[downloads.index("card('Download Location & Limits'"):
+                            downloads.index("const tuning = groupCard('Transfer Method Settings'")]
     assert " hidden" not in global_card and "'hidden'" not in global_card
     for absent in ("aria2_mode", "aria2_url", "aria2_secret", "aria2_download_path",
                    "data-download-path-mode", "data-builtin-only-tuning", "External aria2", "External RPC",
@@ -107,16 +107,24 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
         assert selector not in css, selector
 
     css = source(SETTINGS_PAGE_CSS)
+    # DP 1.0.13 consolidation: two deliberate zones that are shares of the SAME
+    # free space -- a dominant folder lane and a bounded concurrency lane that
+    # fills its own share rather than a compact field pinned to the far right.
     row = css.split(".dp-settings-download-engine-row {", 1)[1].split("}", 1)[0]
-    assert "grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);" in row
-    assert "gap: 32px;" in row
+    assert "grid-template-columns: minmax(0, 73fr) minmax(200px, 27fr);" in row
+    assert "grid-template-rows: auto auto auto;" in row
+    assert "gap: 28px;" in row
+    # The zone wrappers are names, not boxes, so exactly one subgrid level puts
+    # both zones on the same label / control / help rows.
     assert (
+        "#view-settings .dp-settings-download-path-stack,\n"
         "#view-settings .dp-settings-download-limit {\n"
-        "  width: 100%;\n"
-        "  max-width: 320px;\n"
-        "  justify-self: end;\n"
+        "  display: contents;\n"
         "}"
     ) in css
+    zone = css.split("#view-settings .dp-settings-download-engine-row > * > .dp-settings-field {", 1)[1].split("}", 1)[0]
+    assert "grid-template-rows: subgrid;" in zone and "grid-row: span 3;" in zone
+    assert "justify-self: end;" not in css.split(".dp-settings-download-engine-row", 1)[1][:1200]
 
 
 def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
@@ -170,14 +178,18 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     assert "['none', 'None']" in downloads
 
     grid = css.split(".dp-settings-tuning-grid {", 1)[1].split("}", 1)[0]
-    # A centred wrapping line, not a matrix: no column count anywhere.
-    assert "display: flex;" in grid and "flex-wrap: wrap;" in grid
-    assert "justify-content: center;" in grid
-    assert "grid-template-columns" not in grid
-    # The relationship outline is drawn only where the whole span fits one row.
+    # DP 1.0.13 consolidation: equal-width invisible lanes, one per cell of the
+    # fixed set, derived from the set's own declared cardinality -- never a
+    # column count written into a region's own rule.
+    assert "grid-template-columns: repeat(auto-fill, minmax(" in grid
+    assert "var(--dp-tuning-lanes)" in grid and "var(--dp-tuning-lane-min)" in grid
+    assert "max-width: var(--dp-tuning-card-max);" in css
+    # The relationship outline is drawn only where the set still holds all of
+    # its lanes, and it owns no track of its own.
     assert "container-type: inline-size;" in grid
     assert "@container dp-tuning (min-width:" in css
-    group = css.split(".dp-settings-tuning-group {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns: subgrid;" in css
+    group = css.split("#view-settings .dp-settings-tuning-group {", 1)[1].split("}", 1)[0]
     assert "display: contents;" in group
 
 

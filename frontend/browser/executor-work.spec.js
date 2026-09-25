@@ -90,10 +90,16 @@ test('two unrelated executors render from one neutral payload', async ({page}) =
   await installExecutorWork(page);
   await openDownloads(page);
 
-  await expect(card(page)).toContainText('Executor Work');
-  await expect(card(page)).toContainText('Inspect and control work currently owned by DebridPulse executors.');
+  // DP 1.0.13 Settings consolidation: operator-facing break-glass presentation.
+  // The generic projection and action routing beneath it are unchanged; only
+  // what the operator is told changed, and it names no internal concept.
+  await expect(card(page)).toContainText('Download Engine Activity');
   await expect(card(page)).toContainText(
-    'This reflects current executor state, not transfer history. Downloads remains the authoritative transfer record.');
+    'View current download engine jobs and intervene when something is stuck.');
+  await expect(card(page)).toContainText(
+    'This is an advanced recovery surface. Use Downloads for normal management, '
+    + 'and these controls only for troubleshooting or recovery.');
+  expect((await card(page).innerText()).toLowerCase()).not.toContain('executor');
 
   // Each row states which executor holds it, from the projection's own
   // display identity.
@@ -238,6 +244,6 @@ test('an empty projection says so, and offers nothing to control', async ({page}
   await page.locator('#view-settings [data-tab="downloads"]').click();
   await expect(card(page)).toBeVisible();
   await expect(card(page).locator('.empty'))
-    .toHaveText('No executor work is owned by DebridPulse right now.');
+    .toHaveText('No download engine activity right now.');
   await expect(card(page).locator('[data-executor-action]')).toHaveCount(0);
 });

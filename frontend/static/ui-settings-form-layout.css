@@ -4,26 +4,16 @@
  * the Downloads/Sources/Extraction review without changing Settings semantics.
  */
 
-/* Let the configured AllDebrid API key consume every spare pixel before the
-   compact clear-key action rather than reserving an oversized action column. */
-@media (min-width: 901px) {
-  #view-settings .dp-settings-alldebrid-key-row.is-configured {
-    grid-template-columns: minmax(0, 1fr) max-content;
-    gap: 22px;
-  }
-}
+/* The configured AllDebrid key row's column template and its row rhythm both
+   belong to that row's ONE owner (ui-settings-page.css). This layer used to
+   restate the template here and, with a `gap` shorthand, silently replace the
+   row gap that owner had set -- which is what made the credential block
+   expand ~32px taller than any other Settings field. Both statements now live
+   with the row itself; nothing about it is declared twice.
 
-/* Treat concurrency + delete-after-extraction as one centered desktop block. */
+   The Extraction behaviour group is likewise stated once, by the Extraction
+   geometry owner (ui-settings-downloads-completion.css). */
 @media (min-width: 901px) {
-  #view-settings .dp-settings-extraction-controls-row {
-    width: min(100%, 1040px);
-    margin-inline: auto;
-    grid-template-columns: minmax(360px, 460px) minmax(0, 520px);
-    justify-content: center;
-    align-items: center;
-    gap: 36px;
-  }
-
   /* The Extraction panel owns the available Settings viewport height. The
      password editor then flexes into the remaining card body instead of ending
      at an arbitrary textarea-height cap and leaving a large dead area below. */

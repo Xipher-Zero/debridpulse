@@ -132,6 +132,16 @@
     download_folder: {scope: 'settings-document', option: 'download_folder'},
     min_free_disk_gb: {scope: 'settings-document', option: 'min_free_disk_gb'},
     disk_guard_resume_hysteresis_gb: {scope: 'settings-document', option: 'disk_guard_resume_hysteresis_gb'},
+
+    // Extraction -- ordinary settings-document values, on exactly the same two
+    // boundaries every other Settings control uses. ``redacted`` says only that
+    // the canonical ECHO of this option is blank by design (the whole-settings
+    // projection redacts it), so the echo cannot describe what was accepted; it
+    // is not a different commit class and not a different write.
+    extract_enabled: {scope: 'settings-document', option: 'extract_enabled', commit: 'immediate'},
+    extract_delete_archive: {scope: 'settings-document', option: 'extract_delete_archive', commit: 'immediate'},
+    extract_max_concurrent: {scope: 'settings-document', option: 'extract_max_concurrent'},
+    extraction_password: {scope: 'settings-document', option: 'extraction_password', redacted: true},
   });
 
   /* The commit attributes a declared control carries, or nothing at all for a
@@ -334,9 +344,9 @@
     return `
       <div class="dp-settings-field dp-settings-extraction-password-field">
         <label class="form-label" for="${id}">Archive Passwords (one per line)</label>
-        <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1"></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><button type="button" class="dp-settings-password-eye"></button></div>
-        <span class="form-hint">One password per line. Entering values replaces the stored list; leaving it blank keeps what is stored. Use the eye to show or hide all passwords.</span>
+        <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div>
+        <span class="form-hint">One password per line. Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</span>
       </div>`;
   }
 
@@ -371,9 +381,9 @@
 
   // Inner-card title icons, keyed by the card's title.
   const CARD_ICONS = Object.freeze({
-    'Global Download Settings': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
-    'Download Safety & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
-    'Executor Work': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
+    'Download Location & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
+    'Disk Space & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
+    'Download Engine Activity': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
     'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
     'Authentication Status': ['authentication', '/icons/dp/settings/authentication-status.svg?v=1'],
     'Username & Password': ['authentication', '/icons/dp/settings/username-password.svg?v=1'],
@@ -518,24 +528,36 @@
       </div>`;
   }
 
-  /* The ONE compact tuning-cell collection.
+  /* The ONE fixed tuning-set collection.
    *
-   * Every tuning region renders the same thing: bounded intrinsic cells on a
-   * centred wrapping flex line (ui-settings-page.css). Nothing here declares a
-   * column count, a matrix or a breakpoint -- as many cells fit per row as the
-   * width permits, every row is centred including a partial one, and a cell
-   * never stretches to consume the row. A boolean and a selector are cells of
-   * the same shape as a number; none of them is a special layout.
+   * Every tuning region renders the same thing: equal-width invisible layout
+   * lanes spanning the usable width, one lane per cell of the fixed set, with
+   * a bounded card centred in each lane (ui-settings-page.css). The only thing
+   * a region contributes is its own CARDINALITY -- declared here, derived from
+   * the cells it passed -- so no region states a column count, a breakpoint
+   * matrix or a geometry of its own, and none is measured in JavaScript. When
+   * the set can no longer hold its lanes at their accepted minimum the lane
+   * count drops on its own and the cells left-fill the rows that remain.
+   *
+   * A boolean and a selector are cells of the same shape as a number; none of
+   * them is a special layout.
    *
    * ``tuningGroup`` states a RELATIONSHIP between adjacent cells and nothing
-   * else. The cell remains the layout unit: while the group fits on one line
-   * it is drawn with a light shared outline, and at any width where it would
-   * not, the group element stops being a box at all (`display: contents`) so
-   * its cells rejoin the line as ordinary cells and the outline disappears
-   * entirely rather than splitting across rows. No geometry is measured and
-   * no node is ever re-parented. */
+   * else -- it is never a cell, so it contributes its MEMBERS to the lane
+   * count rather than one lane. The cell remains the layout unit: at the one
+   * width where the whole set holds its lanes the group is drawn as a light
+   * outline over exactly the lanes its members occupy (a subgrid, so it owns
+   * no track of its own), and at every narrower width it stops being a box at
+   * all (`display: contents`) so its cells rejoin the lanes as ordinary cells
+   * and the outline disappears entirely rather than splitting across rows.
+   * No geometry is measured and no node is ever re-parented. */
   function tuningCells(...cells) {
-    return `<div class="dp-settings-tuning-grid">${cells.flat().join('')}</div>`;
+    const members = cells.flat();
+    const lanes = members.reduce((total, markup) => {
+      const span = /data-tuning-span="(\d+)"/.exec(markup);
+      return total + (span ? Number(span[1]) : 1);
+    }, 0);
+    return `<div class="dp-settings-tuning-grid" data-tuning-lanes="${lanes}">${members.join('')}</div>`;
   }
 
   function tuningGroup(...cells) {
@@ -548,12 +570,12 @@
     return `
       <div class="dp-settings-field dp-settings-engine-tuning-toggle-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <div class="dp-settings-engine-tuning-toggle-control">
+        <label class="dp-settings-engine-tuning-toggle-control" for="${id}">
           <span class="toggle">
             <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
             <span class="ttrack"></span>
           </span>
-        </div>
+        </label>
         <span class="form-hint">${html(detail)}</span>
       </div>`;
   }
@@ -1058,11 +1080,11 @@
    * every registered executor. Nothing about this card names an executor. */
   function executorWorkCard() {
     return `
-      <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Executor Work">
+      <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Download Engine Activity">
         <div class="card-header">
-          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Executor Work'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Executor Work</span></span>
+          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Download Engine Activity'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Download Engine Activity</span></span>
           <div class="dp-settings-card-header-center">
-            <span class="dp-executor-work-copy">Inspect and control work currently owned by DebridPulse executors.</span>
+            <span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span>
           </div>
           <div class="dp-executor-work-header-actions">
             <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
@@ -1070,7 +1092,7 @@
         </div>
         <div class="card-body" data-dp-executor-work-body>
           <div class="dp-executor-work-context">
-            This reflects current executor state, not transfer history. Downloads remains the authoritative transfer record.
+            This is an advanced recovery surface. Use Downloads for normal management, and these controls only for troubleshooting or recovery.
           </div>
           <div class="dp-executor-work-control-row">
             <div class="dp-executor-work-metrics" aria-label="Executor work totals">
@@ -1083,7 +1105,7 @@
             </div>
           </div>
           <div data-dp-executor-work-list="1" class="dp-executor-work-list" aria-live="polite">
-            <div class="empty">Loading executor work…</div>
+            <div class="empty">Loading download engine activity…</div>
           </div>
         </div>
       </section>`;
@@ -1106,7 +1128,7 @@
               identity ? `<span class="dp-settings-card-title-text">${html(label)}</span>` : html(label)}</span>
             ${settingsDisclosure(bodyId, false, `${label} tuning`)}
           </span>
-          <div class="dp-settings-card-header-center">${html(copy)}</div>
+          <div class="dp-settings-card-header-center"><span class="dp-settings-download-engine-header-copy">${html(copy)}</span></div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -1175,7 +1197,7 @@
         input('usenet_max_acquisition_retries', 'Maximum Retries',
           options.max_acquisition_retries ?? 3, {
           type: 'number', min: 2, max: 25,
-          hint: 'How many times DebridPulse retries a single article on a news server before giving up on that server. This is Usenet acquisition retry only; it is not the DebridPulse download retry count under Download Safety &amp; Recovery.'
+          hint: 'How many times DebridPulse retries a single article on a news server before giving up on that server. This is Usenet acquisition retry only; it is not the DebridPulse download retry count under Disk Space &amp; Recovery.'
         }),
         input('usenet_operation_timeout_seconds', 'Request Timeout (seconds)',
           options.operation_timeout_seconds ?? 30, {
@@ -1199,7 +1221,7 @@
   function downloadsPanel(s) {
     const policy = policyOf(s);
     const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
-    const delivery = card('Global Download Settings', `
+    const delivery = card('Download Location & Limits', `
       <div class="dp-settings-download-engine-row">
         <div class="dp-settings-download-path-stack">
           ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
@@ -1211,7 +1233,7 @@
         <div class="dp-settings-download-limit">
           ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', policy.max_concurrent_executions ?? 3, {
             type: 'number', min: 1, max: 20,
-            hint: 'Maximum number of downloads DebridPulse can run at the same time.'
+            hint: 'Maximum downloads DebridPulse runs at once.'
           })}
         </div>
       </div>
@@ -1221,21 +1243,21 @@
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
     });
 
-    const tuning = groupCard('Executor Tuning',
+    const tuning = groupCard('Transfer Method Settings',
       // The operator-facing family name matches Services exactly; the executor
       // id stays 'direct', because nothing about the executor changed and
       // renaming it would only churn durable identities.
       executorTuningCard('direct', 'Network Sources',
-        'Tuning for HTTP(S), FTP/SFTP and other general source transfers.',
+        'How DebridPulse handles downloads from direct network sources.',
         directTransfersTuning(s), 'direct_sources') +
       executorTuningCard('usenet', 'Usenet',
-        'Tuning for Usenet download behavior.', usenetTuning(s), 'usenet'), {
+        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
     });
 
     // Two relationships -- the disk-space guard's threshold and its buffer, and
     // the error-retry count and its delay -- plus one standalone control.
-    const recovery = card('Download Safety & Recovery', tuningCells(
+    const recovery = card('Disk Space & Recovery', tuningCells(
       tuningGroup(
         input('min_free_disk_gb', 'Minimum Free Disk Space (GB)', s.min_free_disk_gb ?? 0, {
           type: 'number', min: 0, step: 0.5,
@@ -1265,27 +1287,32 @@
     return delivery + tuning + recovery + executorWorkCard();
   }
 
+  /* The two extraction behaviour controls are ONE group.
+   *
+   * Two lanes of the ordinary label / control / help rhythm under a single
+   * subtle outline -- not two cards, and not two floating controls. The
+   * boolean is rendered by the SAME composer the tuning cells use, because a
+   * boolean presented as label-over-control-over-help is one shape, not two:
+   * only where its control sits inside that stack is stated by this group
+   * (ui-settings-downloads-completion.css). */
   function extractionPanel(s) {
     const enableId = fieldId('extract_enabled');
     return card('Automatic Extraction', `
-      <div class="dp-settings-extraction-controls-row">
+      <div class="dp-settings-extraction-behavior" role="group" aria-label="Extraction behavior">
         ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
           type: 'number', min: 1, max: 8,
-          hint: 'Maximum number of extraction jobs DebridPulse can run at the same time.'
+          hint: 'Maximum extraction jobs DebridPulse runs at once.'
         })}
-        ${toggle('extract_delete_archive', 'Delete Archives After Extraction', 'Remove original archive files only after extraction completes successfully.', s.extract_delete_archive !== false, 'dp-settings-extraction-delete')}
+        ${tuningToggle('extract_delete_archive', 'Delete Archives After Extraction',
+          'Remove original archive files only after extraction completes successfully.',
+          s.extract_delete_archive !== false)}
       </div>
       ${archivePasswordField(s.extraction_password_configured)}
-      ${s.extraction_password_configured ? `
-        <label class="dp-settings-clear-secret">
-          <span><b>Clear stored archive passwords</b><small>Erase the stored extraction password list on Save.</small></span>
-          <input type="checkbox" data-clear-secret="extraction_password">
-        </label>` : ''}
     `, {
       className: 'dp-settings-extraction-card',
       headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
       action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
-          <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${checked(s.extract_enabled)}>
+          <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${commitAttributes('extract_enabled')} ${checked(s.extract_enabled)}>
           <span class="ttrack"></span>
         </span></label>`,
     });
@@ -1963,7 +1990,7 @@
 
   /* Tabs that carry NO deferred Apply contract: every control on them is
    * committed by the canonical persistence owner at its own field boundary. */
-  const FIELD_BOUNDARY_TABS = new Set(['downloads']);
+  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction']);
 
   function activateTab(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
@@ -2204,6 +2231,7 @@
       else if (action === 'test-alldebrid') testConnection('alldebrid', button);
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
+      else if (action === 'clear-archive-passwords') clearArchivePasswords(button);
       else if (action === 'test-discord') testConnection('discord', button);
       else if (action === 'clear-avatar') clearAvatar();
       else if (action === 'browse-download-folder') window.DPSettingsDirectoryPicker?.open('download');
@@ -2242,42 +2270,17 @@
     return !!fieldFor(key)?.checked;
   }
 
-  function archivePasswordEditorMounted() {
-    return !!root()?.querySelector('.dp-settings-extraction-password-editor');
-  }
-
-  function archivePasswordsHydrated() {
-    try {
-      return !!(window.DPArchivePasswords && window.DPArchivePasswords.hydrated);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  function extractionPasswordValue() {
-    // Never submit the archive-password field as authoritative until its editor
-    // has read the stored list. An un-hydrated editor holds only the redacted
-    // (empty) server value or racy pre-hydration input; an empty value is
-    // treated as "keep the stored list" by the backend.
-    if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) return '';
-    return valueOf('extraction_password');
-  }
-
   function clearSecrets() {
-    const checked = Array.from(root()?.querySelectorAll('[data-clear-secret]:checked') || [])
+    return Array.from(root()?.querySelectorAll('[data-clear-secret]:checked') || [])
       .map(input => input.dataset.clearSecret)
       .filter(Boolean);
-    if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) {
-      return checked.filter(name => name !== 'extraction_password');
-    }
-    return checked;
   }
 
-  // Provider, executor, transfer-policy and runtime-limit settings are owned by
-  // their canonical namespaces and are written exclusively through the scoped
-  // field-boundary surfaces, never through the whole-settings document and
-  // never through the deferred footer, so a stale page snapshot can never undo
-  // a value an operator already committed.
+  // Provider, executor, transfer-policy, Extraction and runtime-limit settings
+  // are owned by their canonical namespaces and are written exclusively through
+  // the scoped field-boundary surfaces, never through the whole-settings
+  // document and never through the deferred footer, so a stale page snapshot
+  // can never undo a value an operator already committed.
   //
   // The footer therefore builds NO integration payload and NO transfer-policy
   // payload at all: every option either namespace holds is a declared control
@@ -2294,16 +2297,11 @@
       // Integration-owned secret clears travel with their own scoped request.
       clear_secrets: clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control]),
       // Locally owned field-boundary values -- the Services full-sync interval
-      // and every Downloads-owned value -- are carried forward from the
-      // canonical document this write was built on by the spread above, and are
-      // never re-read from the page. Naming one here would be exactly the stale
-      // replay this removal exists to prevent.
+      // and every Downloads- and Extraction-owned value -- are carried forward
+      // from the canonical document this write was built on by the spread
+      // above, and are never re-read from the page. Naming one here would be
+      // exactly the stale replay this removal exists to prevent.
       full_sync_interval_minutes: Number(current.full_sync_interval_minutes ?? 5),
-
-      extract_enabled: boolOf('extract_enabled'),
-      extract_delete_archive: boolOf('extract_delete_archive'),
-      extract_max_concurrent: intOf('extract_max_concurrent', 1),
-      extraction_password: extractionPasswordValue(),
 
       discord_username: valueOf('discord_username', 'DebridPulse'),
       discord_avatar_url: valueOf('discord_avatar_url'),
@@ -2435,19 +2433,30 @@
     });
 
     persistence.defineScope('settings-document', {
-      // The whole-settings surface has no partial write, so one field is
-      // committed as a read-modify-write against FRESHLY read canonical truth
-      // -- never against the rendered page, which would replay unrelated
-      // drafts, and never against a cached document, which could be stale.
       commit: async ({key, draft}) => {
         const option = COMMIT_FIELDS[key].option;
-        const canonical = await request('GET', '/settings', null, 15000);
-        const result = await request('PUT', '/settings',
-          {...settingsDocument(canonical), clear_secrets: [], [option]: committedValue(key, draft)}, 15000);
-        syncGlobalSettings(result);
-        return acceptedValue(key, result?.[option], draft);
+        const result = await writeSettingsDocument({[option]: committedValue(key, draft)});
+        // A redacted option's canonical echo is blank BY DESIGN, so it cannot
+        // describe what the server accepted. The draft it accepted is the
+        // accepted value; nothing else here differs.
+        return COMMIT_FIELDS[key].redacted ? draft : acceptedValue(key, result?.[option], draft);
       },
     });
+  }
+
+  /* The ONE whole-settings write.
+   *
+   * The surface has no partial write, so every caller -- a field commit and the
+   * one destructive settings-document clear alike -- is a read-modify-write
+   * against FRESHLY read canonical truth: never against the rendered page,
+   * which would replay unrelated drafts, and never against a cached document,
+   * which could be stale. Declared once so there is exactly one such write. */
+  async function writeSettingsDocument(overrides, clears = []) {
+    const canonical = await request('GET', '/settings', null, 15000);
+    const result = await request('PUT', '/settings',
+      {...settingsDocument(canonical), clear_secrets: clears, ...overrides}, 15000);
+    syncGlobalSettings(result);
+    return result;
   }
 
   /* Proof of what a successful Test actually exercised.
@@ -2556,6 +2565,44 @@
     } finally {
       setBusy(button, false);
     }
+  }
+
+  /* Erasing the stored archive-password list.
+   *
+   * The same act, the same machinery and the same order as erasing the stored
+   * AllDebrid key: destructive, therefore an explicit action behind the ONE
+   * canonical Settings confirmation (ui-settings-modal.js) and never a commit
+   * boundary. Declining performs no mutation at all. Every pending field
+   * commit is settled first, so a list the operator was still editing is
+   * written before -- never after -- the removal, and the request carries only
+   * the removal itself through the one whole-settings write. The accepted
+   * canonical projection is what the editor then converges on. */
+  async function clearArchivePasswords(button) {
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: 'Clear stored archive passwords?',
+      message: 'Every stored archive password will be removed. Password-protected archives '
+        + 'will not be extracted until passwords are entered again.',
+      confirmLabel: 'Clear Passwords',
+    });
+    if (!confirmed) return;
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing…');
+    let removed = false;
+    try {
+      await writeSettingsDocument({}, ['extraction_password']);
+      removed = true;
+    } catch (error) {
+      notify(error.message, 'error');
+    } finally {
+      setBusy(button, false);
+    }
+    // Convergence is the LAST word on this control: releasing the busy state
+    // re-enables the button, and with nothing left to clear the editor's own
+    // owner must be the one to decide whether it stays enabled.
+    if (!removed) return;
+    window.DPArchivePasswords?.clear();
+    notify('Archive passwords cleared', 'success');
   }
 
   async function persistNonAuth({renderAfter = true, quiet = false} = {}) {

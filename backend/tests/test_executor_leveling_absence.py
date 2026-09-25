@@ -244,7 +244,11 @@ def test_no_settings_surface_keeps_a_shadow_boolean_for_committed_enablement():
         assert f"function {name}(" not in settings, name
     table = settings[settings.index("const COMMIT_FIELDS"):]
     table = table[:table.index("});") + 3]
-    assert "enabled" not in table, "participation became an ordinary declared field"
+    # The invariant is that PARTICIPATION is not a declared field, so the
+    # declared KEYS are what this reads -- an ordinary boolean whose name merely
+    # ends in `_enabled` (Automatic Extraction) is not participation.
+    declared = re.findall(r"^\s{4}([a-z0-9_]+):\s*\{", table, re.M)
+    assert "enabled" not in declared, "participation became an ordinary declared field"
 
 
 def test_no_integration_is_named_in_the_shared_enable_path():

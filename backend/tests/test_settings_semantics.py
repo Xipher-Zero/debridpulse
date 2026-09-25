@@ -98,7 +98,7 @@ class SettingsFrontendContractTests(unittest.TestCase):
         sources = js.split("function sourcesPanel", 1)[1].split("function downloadsPanel", 1)[0]
         self.assertNotIn("stuck_download_timeout_hours", sources)
         self.assertIn("stuck_download_timeout_hours", downloads)
-        self.assertIn("Download Safety & Recovery", downloads)
+        self.assertIn("Disk Space & Recovery", downloads)
 
 
 if __name__ == "__main__":

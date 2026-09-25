@@ -82,16 +82,29 @@ def test_archive_password_editor_is_the_sole_owner() -> None:
         assert token not in archive, token
     assert "dp-settings-password-rows" in archive  # its own row host, filled by the owner
 
-    # The serializer reads the field through the hydration gate and the visible
-    # clear checkbox is the only clear-secret control for archive passwords.
-    assert "extraction_password: extractionPasswordValue()" in page
-    assert 'data-clear-secret="extraction_password"' in page
+    # DP 1.0.13 Settings consolidation: the field is an ordinary declared
+    # changed-blur control of the canonical `settings-document` scope, and the
+    # deferred clear-on-save checkbox it used to need is gone entirely -- not
+    # hidden, and with no payload semantics left behind.
+    assert "extraction_password: {scope: 'settings-document', option: 'extraction_password'" in page
+    assert 'data-clear-secret="extraction_password"' not in page
+    assert "extractionPasswordValue" not in page
+    assert "Erase the stored extraction password list on Save." not in page
+    assert "dp-settings-clear-secret\">\n          <span><b>Clear stored archive" not in page
+    assert 'data-action="clear-archive-passwords"' in page
 
     assert ".dp-settings-extraction-password-source" in css
     assert "display: none !important;" in css
 
 
-def test_archive_password_serializer_gates_on_editor_hydration() -> None:
+def test_archive_passwords_never_commit_before_the_stored_list_is_read() -> None:
+    """The hydration gate survived the move to field-boundary persistence.
+
+    An empty editor before hydration means "not read yet", never "no
+    passwords", so the composite control's commit boundary is suppressed until
+    the authoritative list has been read -- and what the server holds becomes
+    the canonical baseline, so an unchanged editor writes nothing.
+    """
     archive = read("frontend/static/ui-settings-archive-passwords.js")
     page = read("frontend/static/ui-settings-page.js")
     routes = read("backend/api/routes.py")
@@ -99,12 +112,14 @@ def test_archive_password_serializer_gates_on_editor_hydration() -> None:
     # The editor exposes whether it has read the authoritative stored list.
     assert "get hydrated(){return hydrated;}" in archive
     assert "hydrated=true;" in archive
-
-    # The serializer will not submit extraction_password (value or clear) while
-    # the editor is mounted but has not hydrated.
-    assert "window.DPArchivePasswords.hydrated" in page
-    assert "if (archivePasswordEditorMounted() && !archivePasswordsHydrated()) return '';" in page
-    assert "return checked.filter(name => name !== 'extraction_password');" in page
+    assert "function commitSource(){if(refocusing||!hydrated||!sourceNode)return;" in archive
+    assert "window.DPSettingsPersistence?.commit(sourceNode)" in archive
+    assert "acceptSource(remote)" in archive
+    # Persistence itself is not reimplemented here: no write, no endpoint.
+    for token in ("PUT", "clear_secrets", "'/settings'"):
+        assert token not in archive, token
+    # The page declares the control; the canonical owner supplies the machinery.
+    assert "extraction_password: {scope: 'settings-document'" in page
 
     # A supplied non-empty secret overrides a contradictory clear request.
     merge = routes.split("def _merge_secret_settings", 1)[1].split("\n\n", 1)[0]

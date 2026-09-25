@@ -320,13 +320,26 @@ def test_an_inset_separator_groups_usenet_apart_from_the_debrid_providers():
 
 # --- Item 2: Usenet collection geometry ------------------------------------
 
-def test_the_server_collection_centres_on_its_own_viewport():
+def test_the_server_collection_is_a_viewport_capacity_grid():
+    """DP 1.0.13 Settings consolidation: the collection stopped sizing itself
+    from the population and became a capacity grid.
+
+    Available width alone decides how many equal tracks exist; servers populate
+    them left to right; the Add tile is an ordinary slot occupant; the tracks a
+    sparse population does not reach stay empty. `auto-fill` is what preserves
+    that trailing capacity, which `auto-fit` would collapse -- so one server
+    does not stretch into a giant card and three do not recentre themselves."""
     collection = rule(USENET_CSS, ".dp-usenet-servers {")
-    assert "flex-wrap: wrap" in collection
-    assert "justify-content: center" in collection
-    # Centring is the layout's own behaviour, never a measured offset.
+    assert "display: grid" in collection
+    assert "repeat(auto-fill, minmax(248px, 1fr))" in collection
+    assert "auto-fit" not in collection, "empty trailing capacity would collapse"
+    assert "justify-content: center" not in collection, "population-centred sizing returned"
+    # Capacity is the layout's own behaviour, never a measured offset.
     for banned in ("margin-left", "margin-inline-start", "position: absolute", "transform"):
         assert banned not in collection, banned
+    # The card asks its OWN width about its internal rows, not the viewport's.
+    assert "container-name: dp-usenet-card" in USENET_CSS
+    assert "@container dp-usenet-card (max-width:" in USENET_CSS
 
 
 # --- Item 3: Usenet owns no notification system ----------------------------
@@ -706,27 +719,33 @@ def test_the_alldebrid_additional_settings_are_five_tuning_cells():
         assert banned not in additional, banned
 
 
-def test_the_tuning_grid_is_a_neutral_bounded_reusable_primitive():
-    """Compact cells the row FITS rather than fills, wrapping responsively with
-    no horizontal scroll, and centring each cell's label/control/help as
-    ELEMENTS while the value inside the control keeps canonical alignment.
+def test_the_tuning_grid_is_the_one_fixed_set_grammar():
+    """DP 1.0.13 Settings consolidation: ONE grammar for every fixed tuning set.
 
-    It is a centred wrapping FLEX line, deliberately: a flex line centres every
-    row including a partial one, which a grid does not -- a grid's partial last
-    row sits in its own columns."""
+    The region is divided into equal, invisible lanes spanning the usable
+    width -- one lane per cell -- and a bounded card is centred in each. A set
+    contributes only its own CARDINALITY, so no region names a column count, a
+    breakpoint matrix or a geometry of its own, and the per-set card width
+    falls out of cardinality alone. When the set can no longer hold its lanes
+    at their accepted minimum the lane count drops and the cells left-fill the
+    rows that remain."""
     owners = [p.name for p in MAINTAINED_CSS
               if "dp-settings-tuning-grid" in p.read_text(encoding="utf-8")]
     assert owners == ["ui-settings-page.css"], owners
     grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
-    assert "display: flex" in grid
-    assert "flex-wrap: wrap" in grid
-    assert "justify-content: center" in grid
-    # A cell is a cell wherever it sits -- directly on the line, or inside a
+    assert "display: grid" in grid
+    assert "grid-template-columns: repeat(auto-fill, minmax(" in grid
+    assert "var(--dp-tuning-lane-min)" in grid and "var(--dp-tuning-lanes)" in grid
+    assert "justify-content: center" not in grid, "sparse-row centring returned"
+    # Cardinality is declared by the SET, and nothing else varies per set.
+    for lanes in ("4", "5", "7"):
+        assert f'.dp-settings-tuning-grid[data-tuning-lanes="{lanes}"]' in SETTINGS_CSS, lanes
+    # A cell is a cell wherever it sits -- directly in a lane, or inside a
     # relationship group -- so the rule is a descendant one.
     cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid .dp-settings-field {")
-    assert "flex: 0 1 170px" in cell, \
-        "the basis is not bounded, so a cell can stretch to fill the row"
-    assert "max-width: 190px" in cell
+    assert "max-width: var(--dp-tuning-card-max)" in cell, \
+        "the card is not bounded, so it stretches edge to edge in its lane"
+    assert "margin-inline: auto" in cell, "the card is not centred in its lane"
     assert "justify-items: center" in cell
     assert "text-align: center" in cell
     control = rule(SETTINGS_CSS,
@@ -751,15 +770,23 @@ def test_a_relationship_group_never_draws_a_broken_outline():
     grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
     assert "container-type: inline-size" in grid
     assert "container-name: dp-tuning" in grid
-    # Each span has its own threshold, and the outline takes no space.
+    # The outline takes no space, and the box it is painted on owns no track:
+    # a subgrid puts the members in the REGION's own lanes.
+    outline = rule(SETTINGS_CSS,
+                   "#view-settings .dp-settings-tuning-grid[data-tuning-lanes] .dp-settings-tuning-group {")
+    assert "grid-template-columns: subgrid" in outline
+    assert "outline:" in outline and "outline-offset:" in outline
+    assert "border:" not in outline, "an outline that takes layout space is a border"
+    # A span declares how many lanes it relates, and nothing else.
     for span in ("2", "3"):
         marker = f'.dp-settings-tuning-group[data-tuning-span="{span}"]'
         assert marker in SETTINGS_CSS, span
         rule_body = SETTINGS_CSS.split(marker + " {", 1)[1].split("}", 1)[0]
-        assert "flex-wrap: nowrap" in rule_body, span
-        assert "outline:" in rule_body and "outline-offset:" in rule_body, span
-        assert "border:" not in rule_body, "an outline that takes layout space is a border"
-    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 2
+        assert rule_body.strip() == f"--dp-tuning-span: {span};", span
+    # One threshold per CARDINALITY -- the width at which that set still holds
+    # every one of its lanes, which is the only state in which every group is
+    # provably contiguous -- never one per column count.
+    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 3
     # No owner measures a cell, a row or a group in JavaScript.
     page = SETTINGS_JS
     for measurement in ("getBoundingClientRect", "offsetWidth", "clientWidth",
@@ -988,9 +1015,22 @@ def test_removal_is_serialized_behind_an_in_flight_creation():
 
 
 def test_only_the_persistence_owner_listens_for_the_commit_boundary():
+    """One generic boundary listener, plus exactly one declared exception.
+
+    A COMPOSITE control -- the archive-password list, edited across many line
+    inputs -- has no single blur of its own, so the generic owner cannot know
+    where its boundary is. Its own owner reports that boundary by calling the
+    canonical `commit()`; it implements no part of persistence itself, which is
+    what keeps this one owner rather than two."""
     offenders = [p.name for p in MAINTAINED_JS
-                 if p.name != "ui-settings-persistence.js" and "focusout" in p.read_text(encoding="utf-8")]
+                 if p.name not in ("ui-settings-persistence.js", "ui-settings-archive-passwords.js")
+                 and "focusout" in p.read_text(encoding="utf-8")]
     assert offenders == [], offenders
+    archive = next(p for p in MAINTAINED_JS if p.name == "ui-settings-archive-passwords.js")
+    body = archive.read_text(encoding="utf-8")
+    assert "window.DPSettingsPersistence?.commit(sourceNode)" in body
+    for reimplemented in ("baselines", "clear_secrets", "PUT", "defineScope("):
+        assert reimplemented not in body, reimplemented
 
 
 def test_the_persistence_owner_loads_before_the_settings_page():
@@ -1006,8 +1046,6 @@ def test_every_migrated_providers_field_declares_exactly_one_scope():
                 # DP 1.0.13: credential replacement is an ordinary value change.
                 "alldebrid_api_key"):
         assert key in table, key
-    # Archive passwords keep their own, unchanged hydration contract.
-    assert "extraction_password" not in table
 
 
 def test_the_page_declares_its_commit_class_rather_than_reimplementing_it():
@@ -1319,8 +1357,15 @@ def test_footer_apply_no_longer_reads_migrated_providers_page_controls():
         assert f"valueOf('{migrated}'" not in document, migrated
         assert f"floatOf('{migrated}'" not in document, migrated
         assert f"{migrated}:" not in document, migrated
+    # DP 1.0.13 Settings consolidation: Extraction joined them, so its four
+    # values are carried forward from canonical truth too.
+    for migrated in ("extract_enabled", "extract_delete_archive",
+                     "extract_max_concurrent", "extraction_password"):
+        assert f"boolOf('{migrated}')" not in document, migrated
+        assert f"intOf('{migrated}'" not in document, migrated
+        assert f"{migrated}:" not in document, migrated
     # Positive control: an unmigrated top-level field is still read from the form.
-    assert "boolOf('extract_enabled')" in document
+    assert "boolOf('discord_notify_added')" in document
 
 
 def test_footer_apply_writes_no_integration_namespace_at_all():
@@ -1340,12 +1385,20 @@ def test_immediate_toggles_are_still_immediate_and_never_deferred():
     assert "enabled:" not in persist
 
 
-# --- Archive Passwords is explicitly excluded from this batch --------------
+# --- Archive Passwords: a specialized field, persisted canonically ---------
 
-def test_archive_passwords_is_not_migrated_by_this_batch():
+def test_archive_passwords_are_a_declared_field_of_the_canonical_scope():
+    """DP 1.0.13 Settings consolidation migrated this field without changing
+    what it IS: still the specialized masked line editor, now an ordinary
+    declared control of the one `settings-document` scope rather than a value
+    the deferred footer carried.
+
+    ``redacted`` says only that the canonical echo of this option is blank by
+    design, so the echo cannot describe what was accepted -- it is not a
+    different commit class and not a different write."""
     table = block(SETTINGS_JS, "const COMMIT_FIELDS")
-    assert "extraction_password" not in table
+    assert "extraction_password: {scope: 'settings-document', option: 'extraction_password', redacted: true}" in table
     field = block(SETTINGS_JS, "function archivePasswordField(")
-    assert "data-commit" not in field
+    assert "commitAttributes('extraction_password')" in field
     # Its owner keeps its own, unchanged hydration contract.
     assert "DPArchivePasswords" in SETTINGS_JS

@@ -4,9 +4,9 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / 'frontend' / 'static'
 
 EXPECTED = {
-    'Global Download Settings': ('downloads', 'download-engine.svg'),
-    'Download Safety & Recovery': ('downloads', 'download-safety-recovery.svg'),
-    'Executor Work': ('downloads', 'download-engine-state.svg'),
+    'Download Location & Limits': ('downloads', 'download-engine.svg'),
+    'Disk Space & Recovery': ('downloads', 'download-safety-recovery.svg'),
+    'Download Engine Activity': ('downloads', 'download-engine-state.svg'),
     'Automatic Extraction': ('extraction', 'automatic-extraction.svg'),
     'Authentication Status': ('authentication', 'authentication-status.svg'),
     'Username & Password': ('authentication', 'username-password.svg'),

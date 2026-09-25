@@ -96,78 +96,60 @@
   white-space: nowrap;
 }
 
-/* The first body row deliberately gives concurrency a compact field and leaves
-   the remaining width to the descriptive delete-after-extraction boolean. */
-#view-settings .dp-settings-extraction-controls-row {
+/* ── The Extraction behaviour group ───────────────────────────────────────
+   Concurrent Extractions and Delete Archives After Extraction are ONE group,
+   not two cards and not two controls floating in a band: a single subtle
+   outline around a two-lane form that uses the width deliberately rather than
+   clustering both controls in the middle.
+
+   The group states the three rows -- label, control, help -- once, and each
+   lane is a `subgrid` of them, so the two lanes align on all three whatever
+   either one's text wraps to. Nothing is measured and neither lane knows about
+   the other. */
+#view-settings .dp-settings-extraction-behavior {
   display: grid;
-  grid-template-columns: minmax(260px, 420px) minmax(0, 1fr);
-  align-items: center;
-  gap: 36px;
+  grid-template-columns: minmax(200px, 300px) minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+  align-items: start;
+  column-gap: 40px;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 14px 16px 15px;
 }
 
-#view-settings .dp-settings-extraction-controls-row > .dp-settings-field {
-  width: 100%;
+#view-settings .dp-settings-extraction-behavior > .dp-settings-field {
   min-width: 0;
   margin-top: 0 !important;
-  align-self: center;
-}
-
-#view-settings .dp-settings-extraction-controls-row > .dp-settings-field .input {
-  width: 100%;
-}
-
-#view-settings .dp-settings-extraction-delete {
-  width: fit-content;
-  max-width: 100%;
-  min-width: 0;
-  margin: 0 !important;
-  padding: 0;
   display: grid;
-  grid-template-columns: fit-content(720px) auto;
-  grid-template-rows: auto auto;
-  justify-content: start;
-  justify-self: start;
-  align-items: center;
-  align-self: center;
-  column-gap: 14px;
-  row-gap: 3px;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+  row-gap: 0;
 }
 
-#view-settings .dp-settings-extraction-delete > .toggle-info {
-  grid-column: 1;
-  grid-row: 1 / 3;
-  min-width: 0;
+/* Bounded: a count of jobs is a small number, not a text field. */
+#view-settings .dp-settings-extraction-behavior > .dp-settings-field .input {
+  width: min(100%, 120px);
+}
+
+/* The boolean's control sits on its own row directly beneath its label, like
+   every other control in this group. The composer is shared with the tuning
+   cells, which centre it inside their cell; a form lane has no centre to sit
+   on, so the lane states its placement -- and only its placement. */
+#view-settings .dp-settings-extraction-behavior .dp-settings-engine-tuning-toggle-control {
   display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-#view-settings .dp-settings-extraction-delete .tl {
-  color: var(--dp-text-primary);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1.3;
-}
-
-#view-settings .dp-settings-extraction-delete .td {
-  color: var(--dp-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-#view-settings .dp-settings-extraction-delete > .toggle {
-  grid-column: 2;
-  grid-row: 1 / 3;
-  align-self: center;
+  align-items: center;
+  justify-content: flex-start;
+  min-height: 0;
+  padding: 7px 0 6px;
 }
 
 #view-settings .dp-settings-extraction-password-field {
-  margin-top: 20px !important;
+  margin-top: 14px !important;
 }
 
-/* The actual textarea remains the serializer's authoritative data-setting but
-   is visually replaced by a line-aware editor so only the active password need
-   be revealed. */
+/* The actual textarea remains the field's authoritative control -- the one the
+   canonical persistence owner commits -- but is visually replaced by a
+   line-aware editor so only the active password need be revealed. */
 #view-settings .dp-settings-extraction-password-source {
   display: none !important;
 }
@@ -183,6 +165,28 @@
   overflow-x: hidden;
   overflow-y: auto;
   cursor: text;
+}
+
+/* The editor's action row. Clear Passwords sits immediately left of the
+   reveal control, both anchored to the editor's bottom-right inside the space
+   the editor already reserves for them. */
+#view-settings .dp-settings-password-actions {
+  position: absolute;
+  right: 9px;
+  bottom: 9px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+#view-settings .dp-settings-password-clear {
+  flex: 0 0 auto;
+  height: 32px;
+}
+
+#view-settings .dp-settings-password-clear[disabled] {
+  opacity: .45;
+  cursor: not-allowed;
 }
 
 #view-settings .dp-settings-password-rows {
@@ -217,11 +221,10 @@
   color: var(--dp-text-primary);
 }
 
+/* Placement belongs to the action row the control now sits in, not to the
+   control; only its own material is stated here. */
 #view-settings .dp-settings-password-eye {
   appearance: none;
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
   width: 30px;
   height: 30px;
   display: grid;
@@ -292,20 +295,23 @@
     justify-self: center;
   }
 
-  #view-settings .dp-settings-extraction-controls-row {
-    grid-template-columns: minmax(220px, 340px) minmax(0, 1fr);
-    gap: 24px;
+  #view-settings .dp-settings-extraction-behavior {
+    grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
+    column-gap: 28px;
   }
 }
 
 @media (max-width: 700px) {
-  #view-settings .dp-settings-extraction-controls-row {
+  /* One lane: each control keeps its own label / control / help stack, and the
+     shared row spine has nothing left to share. */
+  #view-settings .dp-settings-extraction-behavior {
     grid-template-columns: minmax(0, 1fr);
-    gap: 18px;
+    grid-template-rows: auto;
+    row-gap: 14px;
   }
 
-  #view-settings .dp-settings-extraction-delete {
-    width: 100%;
-    grid-template-columns: minmax(0, 1fr) auto;
+  #view-settings .dp-settings-extraction-behavior > .dp-settings-field {
+    display: block;
+    grid-row: auto;
   }
 }

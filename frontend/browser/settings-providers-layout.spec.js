@@ -52,15 +52,16 @@ async function enableUsenet(page) {
   await expect(card).not.toHaveClass(/dp-settings-provider-card--collapsed/);
 }
 
-/* Every rendered row of the server collection, measured against the
+/* The collection's CAPACITY and how it is populated, measured against the
  * collection's own content box -- the available Usenet card viewport. */
-async function rows(page) {
+async function capacity(page) {
   return page.evaluate(() => {
     const host = document.querySelector('[data-usenet-collection]');
     const style = getComputedStyle(host);
     const box = host.getBoundingClientRect();
     const left = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
     const right = box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+    const tracks = style.gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat);
     const grouped = new Map();
     for (const child of host.children) {
       const rect = child.getBoundingClientRect();
@@ -68,11 +69,17 @@ async function rows(page) {
       if (!grouped.has(key)) grouped.set(key, []);
       grouped.get(key).push(rect);
     }
-    return [...grouped.entries()].sort((a, b) => a[0] - b[0]).map(([, rects]) => ({
-      count: rects.length,
-      leading: Math.min(...rects.map(r => r.left)) - left,
-      trailing: right - Math.max(...rects.map(r => r.right)),
-    }));
+    return {
+      capacity: tracks.length,
+      // Equal lanes: every structural track is the same width.
+      trackSpread: Math.max(...tracks) - Math.min(...tracks),
+      width: right - left,
+      rows: [...grouped.entries()].sort((a, b) => a[0] - b[0]).map(([, rects]) => ({
+        count: rects.length,
+        leading: Math.min(...rects.map(r => r.left)) - left,
+        trailing: right - Math.max(...rects.map(r => r.right)),
+      })),
+    };
   });
 }
 
@@ -87,7 +94,13 @@ async function addServer(page, host) {
   await expect.poll(async () => (await storedServers(page)).some(s => s.host === host)).toBeTruthy();
 }
 
-test.describe('Usenet server cards centre on their own viewport', () => {
+/* DP 1.0.13 Settings consolidation: the collection is a viewport-CAPACITY grid.
+ *
+ * Population-centred sizing is retired. The available width alone decides how
+ * many equal structural tracks exist; servers and the Add tile populate them
+ * left to right; the tracks a sparse population does not reach simply stay
+ * empty; and the capacity drops on its own as the viewport narrows. */
+test.describe('Usenet server cards populate a viewport-capacity grid', () => {
   test.beforeEach(async ({page}) => {
     await isolateExternalFonts(page);
     await page.goto('/');
@@ -100,40 +113,69 @@ test.describe('Usenet server cards centre on their own viewport', () => {
 
   test.afterEach(async ({page}) => { await resetServers(page); });
 
-  test('the Add Server tile alone is centred, not packed left', async ({page}) => {
-    await expect(serverCards(page)).toHaveCount(0);
-    const [row] = await rows(page);
-    expect(row.count).toBe(1);
-    expect(Math.abs(row.leading - row.trailing)).toBeLessThanOrEqual(1);
-  });
+  test('the Add Server tile alone occupies the first track, leaving the rest empty',
+    async ({page}) => {
+      await expect(serverCards(page)).toHaveCount(0);
+      const measured = await capacity(page);
+      // Capacity is a property of the viewport, not of the population.
+      expect(measured.capacity).toBeGreaterThan(1);
+      expect(measured.trackSpread, 'the structural tracks are not equal').toBeLessThanOrEqual(1);
+      expect(measured.rows.length).toBe(1);
+      expect(measured.rows[0].count).toBe(1);
+      // Left-filled, with the unreached capacity preserved to its right.
+      expect(Math.abs(measured.rows[0].leading)).toBeLessThanOrEqual(1);
+      expect(measured.rows[0].trailing).toBeGreaterThan(measured.width / measured.capacity);
+    });
 
-  test('one configured server and the tile centre as one group', async ({page}) => {
+  test('a sparse population does not expand or recentre itself', async ({page}) => {
+    const empty = await capacity(page);
     await addServer(page, 'news.one.example.com');
-    const measured = await rows(page);
-    expect(measured.length).toBe(1);
-    expect(measured[0].count).toBe(2);
-    expect(Math.abs(measured[0].leading - measured[0].trailing)).toBeLessThanOrEqual(1);
-  });
-
-  test('two configured servers stay centred as they expand outward', async ({page}) => {
-    await addServer(page, 'news.one.example.com');
+    const one = await capacity(page);
     await addServer(page, 'news.two.example.com');
-    for (const row of await rows(page)) {
-      expect(Math.abs(row.leading - row.trailing)).toBeLessThanOrEqual(1);
+    const two = await capacity(page);
+
+    // The same capacity and the same track width throughout: adding a server
+    // consumes a track, it does not resize the collection.
+    expect(one.capacity).toBe(empty.capacity);
+    expect(two.capacity).toBe(empty.capacity);
+    for (const measured of [empty, one, two]) {
+      expect(measured.trackSpread).toBeLessThanOrEqual(1);
+      expect(Math.abs(measured.rows[0].leading), 'the population recentred itself')
+        .toBeLessThanOrEqual(1);
     }
+    expect(one.rows[0].count).toBe(2);
+    expect(two.rows[0].count).toBe(3);
   });
 
-  test('every rendered row stays centred when the collection wraps', async ({page}) => {
+  test('capacity drops on its own as the viewport narrows, and never below one',
+    async ({page}) => {
+      await addServer(page, 'news.one.example.com');
+      const seen = [];
+      for (const width of [1440, 1280, 1100, 900]) {
+        await page.setViewportSize({width, height: 1000});
+        const measured = await capacity(page);
+        expect(measured.trackSpread, `tracks unequal at ${width}px`).toBeLessThanOrEqual(1);
+        expect(measured.capacity, `capacity vanished at ${width}px`).toBeGreaterThanOrEqual(1);
+        seen.push(measured.capacity);
+      }
+      // Monotonically non-increasing, and it demonstrably drops at least once.
+      for (let i = 1; i < seen.length; i += 1) expect(seen[i]).toBeLessThanOrEqual(seen[i - 1]);
+      expect(seen[seen.length - 1], `capacity never dropped: ${seen}`).toBeLessThan(seen[0]);
+      await page.setViewportSize({width: 1440, height: 1000});
+    });
+
+  test('every rendered row left-fills the same lanes when the collection wraps',
+    async ({page}) => {
     for (const host of ['news.one.example.com', 'news.two.example.com',
                         'news.three.example.com', 'news.four.example.com']) {
       await addServer(page, host);
     }
     await page.setViewportSize({width: 900, height: 1000});
-    const measured = await rows(page);
+    const measured = (await capacity(page)).rows;
     expect(measured.length).toBeGreaterThan(1);
     for (const row of measured) {
-      expect(Math.abs(row.leading - row.trailing),
-        `row of ${row.count} is not centred`).toBeLessThanOrEqual(1);
+      expect(Math.abs(row.leading),
+        `row of ${row.count} does not start at the first lane`).toBeLessThanOrEqual(1);
     }
     await page.setViewportSize({width: 1440, height: 1000});
   });
@@ -266,17 +308,29 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       await expect(optionBody(page).locator('button')).toHaveCount(0);
     });
 
-  test('the tuning cells are bounded, centred and never overflow horizontally',
+  test('the tuning cards are bounded, centred in their lanes and never overflow',
     async ({page}) => {
       await summary(page).click();
       await expect(optionBody(page)).toBeVisible();
       const grid = await boxOf(card(page).locator('.dp-settings-tuning-grid'));
 
+      // DP 1.0.13 Settings consolidation: one lane per cell of the fixed set,
+      // spanning the usable width, with a bounded card centred in each.
+      await expect(card(page).locator('.dp-settings-tuning-grid'))
+        .toHaveAttribute('data-tuning-lanes', '5');
+      const lanes = await card(page).locator('.dp-settings-tuning-grid').evaluate(el =>
+        getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat));
+      expect(lanes.length, 'the set lost a lane').toBe(5);
+      expect(Math.max(...lanes) - Math.min(...lanes), 'the lanes are not equal')
+        .toBeLessThanOrEqual(1);
+      expect(grid.width - (lanes.reduce((a, b) => a + b, 0) + 4 * 16),
+        'the lanes do not span the usable width').toBeLessThanOrEqual(2);
+
       for (let i = 0; i < 5; i += 1) {
         const cell = cells(page).nth(i);
         const cellBox = await boxOf(cell);
-        // Bounded: a cell does not stretch to consume the row.
-        expect(cellBox.width).toBeLessThanOrEqual(220);
+        // Bounded: a card never stretches edge to edge in its lane.
+        expect(cellBox.width).toBeLessThanOrEqual(240);
         // Label, control and help are each centred AS ELEMENTS on the cell axis.
         for (const part of ['.form-label', '.input', '.form-hint']) {
           const partBox = await boxOf(cell.locator(part));
@@ -288,34 +342,55 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
           getComputedStyle(el).textAlign)).toBe('left');
       }
 
-      // Wrapped rows stay centred inside the grid, and nothing scrolls.
+      // The lane count drops on its own as the width falls, the rows left-fill
+      // what remains, and nothing scrolls.
+      let seen = [];
       for (const width of [1440, 900, 700, 420]) {
         await page.setViewportSize({width, height: 1000});
         await expect(optionBody(page)).toBeVisible();
-        const rows = await card(page).locator('.dp-settings-tuning-grid').evaluate(el => {
+        const measured = await card(page).locator('.dp-settings-tuning-grid').evaluate(el => {
           const host = el.getBoundingClientRect();
+          const tracks = getComputedStyle(el).gridTemplateColumns
+            .split(' ').filter(Boolean).map(parseFloat);
           const byTop = new Map();
           // The CELLS are the layout unit, whether or not a relationship group
-          // currently wraps some of them.
+          // is currently drawn around some of them.
           for (const child of el.querySelectorAll('.dp-settings-field')) {
             const r = child.getBoundingClientRect();
             const key = Math.round(r.top);
             if (!byTop.has(key)) byTop.set(key, []);
             byTop.get(key).push(r);
           }
-          return Array.from(byTop.values()).map(boxes => ({
-            leading: Math.min(...boxes.map(b => b.left)) - host.left,
-            trailing: host.right - Math.max(...boxes.map(b => b.right)),
-          }));
+          return {
+            lanes: tracks.length,
+            lane: tracks[0],
+            rows: Array.from(byTop.values()).map(boxes => ({
+              leading: Math.min(...boxes.map(b => b.left)) - host.left,
+              card: Math.min(...boxes.map(b => b.width)),
+            })),
+          };
         });
-        for (const row of rows) {
-          expect(Math.abs(row.leading - row.trailing),
-            `tuning row is not centred at ${width}px`).toBeLessThanOrEqual(2);
+        seen.push(measured.lanes);
+        for (const row of measured.rows) {
+          // Left-filled: the row occupies the FIRST lane. Its bounded card is
+          // centred inside that lane, so the slack is the lane's, not a
+          // sparse-row offset.
+          expect(row.leading,
+            `tuning row does not start at the first lane at ${width}px`)
+            .toBeLessThanOrEqual((measured.lane - row.card) / 2 + 2);
         }
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
           `horizontal overflow at ${width}px`).toBeTruthy();
       }
+      // Full capacity at the wide viewport, never more lanes than the set has
+      // cells, and a demonstrable drop at some narrower width. Monotonicity in
+      // the VIEWPORT is deliberately not asserted: the Settings chrome has its
+      // own breakpoints, so the region's own width is not a monotonic function
+      // of the window's -- and the lane rule answers to the region alone.
+      expect(seen[0], `the set did not hold all five lanes: ${seen}`).toBe(5);
+      for (const lanes of seen) expect(lanes).toBeLessThanOrEqual(5);
+      expect(Math.min(...seen), `lane count never dropped: ${seen}`).toBeLessThan(5);
       await page.setViewportSize({width: 1440, height: 1000});
     });
 
@@ -368,6 +443,25 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     return {left, right, centerX: (left + right) / 2};
   });
 
+  /* DP 1.0.13 Settings consolidation: the collection became a capacity grid,
+   * so a card's own width is now a function of the capacity rather than of the
+   * viewport, and the card asks ITS OWN width whether its internal rows still
+   * fit side by side. These two viewports put the card either side of that
+   * question -- 1440 gives four tracks (a narrow card), 1100 gives two (a wide
+   * one) -- so both states of every rule below are actually exercised. */
+  const WIDE_CARD_VIEWPORT = {width: 900, height: 1000};
+  const NARROW_CARD_VIEWPORT = {width: 1440, height: 1000};
+  const CARD_REFLOW_WIDTH = 330;
+
+  /* A container query measures the CONTENT box, so that is what the card's own
+   * rules actually see -- never its border box. */
+  const cardWidth = locator => locator.evaluate(el => {
+    const style = getComputedStyle(el);
+    return el.getBoundingClientRect().width
+      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
+      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
+  });
+
   const only = page => serverCards(page).first();
 
   test('exactly one Test and one Remove exist in either disclosure state', async ({page}) => {
@@ -381,12 +475,14 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
   });
 
-  test('collapsed: Advanced stays left and the pair shares its row, centred on the card',
+  test('collapsed: Advanced stays left, and the pair shares its row while the card can hold it',
     async ({page}) => {
+      await page.setViewportSize(WIDE_CARD_VIEWPORT);
       const card = only(page);
-      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
-      const actions = await box(card.locator('.dp-usenet-actions'));
-      const content = await contentBox(card);
+      expect(await cardWidth(card)).toBeGreaterThan(CARD_REFLOW_WIDTH);
+      let toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      let actions = await box(card.locator('.dp-usenet-actions'));
+      let content = await contentBox(card);
       // One row.
       expect(Math.abs(toggle.centerY - actions.centerY)).toBeLessThanOrEqual(2);
       // Advanced is on the card's left datum.
@@ -397,22 +493,51 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       // And they do not overlap.
       expect(actions.left).toBeGreaterThan(toggle.right);
       // No dedicated action band beneath the row.
-      const advanced = await box(card.locator('[data-usenet-advanced]'));
+      let advanced = await box(card.locator('[data-usenet-advanced]'));
       expect(advanced.bottom - Math.max(toggle.bottom, actions.bottom)).toBeLessThanOrEqual(3);
+
+      // At a card width that cannot hold three tracks, the rail drops the pair
+      // to the row beneath instead of squeezing it -- Advanced still left, the
+      // pair still left-aligned under it, and still no overlap.
+      await page.setViewportSize(NARROW_CARD_VIEWPORT);
+      expect(await cardWidth(card)).toBeLessThan(CARD_REFLOW_WIDTH);
+      toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      actions = await box(card.locator('.dp-usenet-actions'));
+      content = await contentBox(card);
+      expect(actions.top).toBeGreaterThanOrEqual(toggle.bottom - 1);
+      expect(actions.left - content.left).toBeLessThanOrEqual(2);
+      const enable = await box(card.locator('.dp-usenet-enable'));
+      expect(enable.left).toBeGreaterThan(actions.right);
+      expect(Math.abs(enable.centerY - actions.centerY)).toBeLessThanOrEqual(3);
+      await page.setViewportSize(NARROW_CARD_VIEWPORT);
     });
 
-  test('expanded: the pair owns the final row beneath every advanced field, still centred',
+  test('expanded: the pair owns a row beneath every advanced field, in both card widths',
     async ({page}) => {
       const card = only(page);
       await card.locator('[data-usenet-advanced-toggle]').click();
       await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
-      const body = await box(card.locator('.dp-usenet-advanced-body'));
-      const actions = await box(card.locator('.dp-usenet-actions'));
-      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
-      const content = await contentBox(card);
-      expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
-      expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
-      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+
+      for (const viewport of [WIDE_CARD_VIEWPORT, NARROW_CARD_VIEWPORT]) {
+        await page.setViewportSize(viewport);
+        const wide = (await cardWidth(card)) > CARD_REFLOW_WIDTH;
+        const body = await box(card.locator('.dp-usenet-advanced-body'));
+        const actions = await box(card.locator('.dp-usenet-actions'));
+        const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+        const content = await contentBox(card);
+        expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
+        expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
+        if (wide) {
+          expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+        } else {
+          // No third track to centre across: the pair takes the card's left
+          // datum and Enable keeps the far side of the same row.
+          expect(actions.left - content.left).toBeLessThanOrEqual(2);
+          const enable = await box(card.locator('.dp-usenet-enable'));
+          expect(enable.left).toBeGreaterThan(actions.right);
+        }
+      }
+      await page.setViewportSize(NARROW_CARD_VIEWPORT);
     });
 
   test('the Priority hint sits directly beneath the Priority input, in its column',
@@ -432,17 +557,34 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       expect(Math.abs(connections.centerY - priority.centerY)).toBeLessThanOrEqual(2);
     });
 
-  test('SSL is centred against the Host and Port input boxes themselves', async ({page}) => {
-    const card = only(page);
-    const host = await box(card.locator('[data-usenet-field="host"]'));
-    const port = await box(card.locator('[data-usenet-field="port"]'));
-    const ssl = await box(card.locator('.dp-usenet-ssl'));
-    expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
-    expect(Math.abs(ssl.centerY - host.centerY)).toBeLessThanOrEqual(2);
-    // And not centred against the label+input wrapper, whose centre sits higher.
-    const wrapper = await box(card.locator('.dp-usenet-field--host'));
-    expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
-  });
+  test('SSL shares the Host/Port band while the card can hold it, and takes its own row when it cannot',
+    async ({page}) => {
+      await page.setViewportSize(WIDE_CARD_VIEWPORT);
+      const card = only(page);
+      expect(await cardWidth(card)).toBeGreaterThan(CARD_REFLOW_WIDTH);
+      let host = await box(card.locator('[data-usenet-field="host"]'));
+      let port = await box(card.locator('[data-usenet-field="port"]'));
+      let ssl = await box(card.locator('.dp-usenet-ssl'));
+      expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
+      // Centred against the INPUT boxes themselves...
+      expect(Math.abs(ssl.centerY - host.centerY)).toBeLessThanOrEqual(2);
+      // ...and not against the label+input wrapper, whose centre sits higher.
+      const wrapper = await box(card.locator('.dp-usenet-field--host'));
+      expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
+
+      // At a narrower card, squeezing the host name into a few characters is
+      // the wrong answer: SSL takes the row beneath, on the card's left datum.
+      await page.setViewportSize(NARROW_CARD_VIEWPORT);
+      expect(await cardWidth(card)).toBeLessThan(CARD_REFLOW_WIDTH);
+      host = await box(card.locator('[data-usenet-field="host"]'));
+      port = await box(card.locator('[data-usenet-field="port"]'));
+      ssl = await box(card.locator('.dp-usenet-ssl'));
+      const content = await contentBox(card);
+      expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
+      expect(ssl.top).toBeGreaterThanOrEqual(host.bottom - 1);
+      expect(ssl.left - content.left).toBeLessThanOrEqual(2);
+      await page.setViewportSize(NARROW_CARD_VIEWPORT);
+    });
 });
 
 /* DP 1.0.13 -- the Downloads tuning collections.
@@ -459,7 +601,7 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
   const REGIONS = [
     ['[data-executor-tuning="direct"]', 'Network Sources', 7],
     ['[data-executor-tuning="usenet"]', 'Usenet', 4],
-    ['.dp-settings-download-recovery-card', 'Download Safety & Recovery', 5],
+    ['.dp-settings-download-recovery-card', 'Disk Space & Recovery', 5],
   ];
 
   const geom = locator => locator.evaluate(el => {
@@ -496,23 +638,50 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
     }
   });
 
-  test('cells stay bounded, rows stay centred, and nothing scrolls at any width',
+  test('every set declares its own cardinality, and one lane grammar serves all three',
+    async ({page}) => {
+      // DP 1.0.13 Settings consolidation: the ONLY thing a set contributes is
+      // how many cells it has. Every per-set difference -- the widest cards in
+      // Usenet, the narrowest in Network Sources -- falls out of that alone.
+      for (const [selector, label, count] of REGIONS) {
+        await expect(page.locator(`${selector} .dp-settings-tuning-grid`), label)
+          .toHaveAttribute('data-tuning-lanes', String(count));
+        const lanes = await page.locator(`${selector} .dp-settings-tuning-grid`).evaluate(el =>
+          getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat));
+        expect(lanes.length, `${label} does not hold one lane per cell`).toBe(count);
+        expect(Math.max(...lanes) - Math.min(...lanes), `${label} lanes unequal`)
+          .toBeLessThanOrEqual(1);
+      }
+      // Widest set of cards is the smallest cardinality, from one rule.
+      const widthOf = async selector => (await page.locator(`${selector} .dp-settings-field`)
+        .first().evaluate(el => el.getBoundingClientRect().width));
+      expect(await widthOf('[data-executor-tuning="usenet"]'))
+        .toBeGreaterThan(await widthOf('.dp-settings-download-recovery-card'));
+      expect(await widthOf('.dp-settings-download-recovery-card'))
+        .toBeGreaterThan(await widthOf('[data-executor-tuning="direct"]'));
+    });
+
+  test('cards stay bounded, rows left-fill their lanes, and nothing scrolls at any width',
     async ({page}) => {
       for (const width of [1600, 1280, 1024, 860, 700, 520, 400]) {
         await page.setViewportSize({width, height: 1100});
         for (const [selector, label] of REGIONS) {
           const grid = page.locator(`${selector} .dp-settings-tuning-grid`);
           const host = await geom(grid);
+          const lane = await grid.evaluate(el => parseFloat(
+            getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean)[0]));
           const cells = await grid.locator('.dp-settings-field').evaluateAll(nodes =>
             nodes.map(n => {
               const r = n.getBoundingClientRect();
               return {top: Math.round(r.top), left: r.left, right: r.right, width: r.width};
             }));
           for (const cell of cells) {
-            // Bounded: a cell fits the row, it never fills it.
-            expect(cell.width, `${label} cell stretched at ${width}px`).toBeLessThanOrEqual(220);
+            // Bounded: a card fits its lane, it never stretches edge to edge.
+            expect(cell.width, `${label} card stretched at ${width}px`).toBeLessThanOrEqual(240);
           }
-          // Every row -- including a partial one -- is centred in the collection.
+          // Left-filled: every row, including a partial one, occupies the FIRST
+          // lane -- there is no sparse-row centring anywhere. A bounded card
+          // centred inside its own lane is the lane's slack, not an offset.
           const byRow = new Map();
           for (const cell of cells) {
             if (!byRow.has(cell.top)) byRow.set(cell.top, []);
@@ -520,9 +689,10 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
           }
           for (const [, row] of byRow) {
             const leading = Math.min(...row.map(c => c.left)) - host.left;
-            const trailing = host.right - Math.max(...row.map(c => c.right));
-            expect(Math.abs(leading - trailing),
-              `${label} row not centred at ${width}px`).toBeLessThanOrEqual(2);
+            const card_ = Math.min(...row.map(c => c.width));
+            expect(leading,
+              `${label} row does not start at the first lane at ${width}px`)
+              .toBeLessThanOrEqual((lane - card_) / 2 + 2);
           }
         }
         expect(await page.evaluate(() =>

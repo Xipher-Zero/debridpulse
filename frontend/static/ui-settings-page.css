@@ -293,33 +293,60 @@
   line-height: 1.45;
 }
 
-/* The download folder consumes all remaining row width; concurrency remains
-   compact and pinned to the card's right datum. */
+/* One primary form, not a tuning region: the card body carries the compact
+   card padding rather than the full one, so the two zones are not floated in a
+   tall band. Only this card's body; the shared token is untouched. */
+#view-settings .dp-settings-download-engine-card > .card-body {
+  padding-block: var(--dp-card-padding-compact, 14px);
+}
+
+/* Two deliberate zones, not a field and a stranded remainder: the dominant
+   Download Folder lane and a bounded Maximum Concurrent Downloads lane that
+   fills its own share of the row. Both are shares of the SAME free space, so
+   the proportion holds at every width.
+
+   The zones align on three shared rows -- label, control, help -- because the
+   row states those rows once and each zone's field is a `subgrid` of them. The
+   zone wrappers are `display: contents` so there is exactly one subgrid level
+   and the zone names stay what they are: names, not boxes. */
 #view-settings .dp-settings-download-engine-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(280px, 320px);
+  grid-template-columns: minmax(0, 73fr) minmax(200px, 27fr);
+  grid-template-rows: auto auto auto;
   align-items: start;
-  gap: 32px;
+  gap: 28px;
   margin-top: 0;
 }
 
 #view-settings .dp-settings-download-path-stack,
 #view-settings .dp-settings-download-limit {
-  min-width: 0;
+  display: contents;
 }
 
 #view-settings .dp-settings-download-path-stack[hidden] {
   display: none !important;
 }
 
-#view-settings .dp-settings-download-engine-row .dp-settings-field {
+#view-settings .dp-settings-download-engine-row > * > .dp-settings-field {
+  min-width: 0;
   margin-top: 0;
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 3;
+  row-gap: 0;
 }
 
-#view-settings .dp-settings-download-limit {
-  width: 100%;
-  max-width: 320px;
-  justify-self: end;
+/* Download Folder + Browse read as ONE compound control: a single seam between
+   them rather than a button floating beside a field, and one shared height
+   taken from the input itself so neither is the taller of the two. */
+#view-settings .dp-settings-download-engine-row .dp-settings-directory-field-control {
+  align-items: stretch;
+  gap: 6px;
+}
+
+#view-settings .dp-settings-download-engine-row .dp-settings-directory-field-browse {
+  align-self: stretch;
+  min-height: 0;
 }
 
 #view-settings .dp-settings-clear-secret {
@@ -357,18 +384,30 @@
    The field's label, control and hint are the grid's own rows, so the explicit
    Clear group can occupy the CONTROL's row -- centred against the input box
    itself rather than against the label + hint stack -- and take horizontal
-   room from the field rather than adding a taller action band beneath it. */
+   room from the field rather than adding a taller action band beneath it.
+
+   The rows carry NO gap of their own. An ordinary Settings field stacks its
+   label, control and help in normal flow, where the only space between them is
+   the help text's own `margin-top` -- so a row gap here would be extra
+   vertical space that no other Settings field has, which is exactly the
+   excessive expansion this row used to show (a `gap: 22px` shorthand declared
+   by a second owner in ui-settings-form-layout.css, which also silently
+   replaced the row gap this rule sets). The rhythm is the canonical one
+   because the grid contributes nothing to it, not because it was tuned to
+   match. */
 #view-settings .dp-settings-alldebrid-key-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   column-gap: 22px;
-  row-gap: 6px;
+  row-gap: 0;
   align-items: start;
   min-width: 0;
 }
 
+/* Configured: the key consumes every spare pixel before the compact clear
+   action, which is sized by its own content rather than by a reserved column. */
 #view-settings .dp-settings-alldebrid-key-row.is-configured {
-  grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);
+  grid-template-columns: minmax(0, 1fr) max-content;
 }
 
 #view-settings .dp-settings-alldebrid-key-label {
@@ -476,42 +515,71 @@
   padding: 2px 0 4px;
 }
 
-/* ── The reusable tuning grid ────────────────────────────────────────────
-   Optional numeric tuning for one provider, as compact bounded cells in a
-   restrained version of the server-box language: a bounded basis the cells FIT
-   rather than fill, so a cell never stretches into a giant field to consume the
-   row, on a centred wrapping flex line that centres every row -- including a
-   partial one -- without ever needing horizontal scroll. The grid knows nothing
-   about which provider it holds. */
+/* ── The ONE fixed tuning-set grammar ────────────────────────────────────
+   Every fixed tuning set in Settings -- AllDebrid Additional Settings,
+   Downloads -> Network Sources, Downloads -> Usenet, Disk Space & Recovery --
+   is laid out by exactly this, and by nothing else.
+
+   The set declares only its own CARDINALITY (`data-tuning-lanes`, emitted by
+   tuningCells()). From that, the region is divided into that many EQUAL,
+   INVISIBLE lanes spanning the usable width, and a bounded card is centred in
+   each. The lane width is the larger of the set's accepted minimum and the
+   share each lane would get at full capacity, so at any width that can hold
+   the whole set there are exactly as many lanes as cells, and below it the
+   lane count drops on its own -- the cells then left-fill the rows that
+   remain, with no sparse-row centring, no column-count matrix, no viewport
+   breakpoint and nothing measured in JavaScript.
+
+   Because the lane is the layout unit and the card is merely bounded inside
+   it, a card never stretches edge to edge and the per-set width difference
+   falls out of cardinality alone: four lanes give a materially wider card than
+   seven do, from one rule. */
 #view-settings .dp-settings-tuning-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  --dp-tuning-gap: 16px;
+  /* Overridden per cardinality below; a set that declares none still lays out. */
+  --dp-tuning-lanes: 5;
+  --dp-tuning-lane-min: 160px;
+  /* The bounded card inside the lane. */
+  --dp-tuning-card-max: 240px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(
+    max(var(--dp-tuning-lane-min),
+        (100% - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap)) / var(--dp-tuning-lanes)),
+    1fr));
   align-items: stretch;
-  gap: 16px;
+  gap: var(--dp-tuning-gap);
   padding: 4px 0 2px;
-  /* The line's own width is what decides whether a relationship group can be
-     drawn as one unbroken row, so the group rules below ask THIS element --
-     not the viewport, which knows nothing about the card it is inside. */
+  /* The region's own width is what decides whether the set still holds all of
+     its lanes, so the group rules below ask THIS element -- not the viewport,
+     which knows nothing about the card it is inside. */
   container-type: inline-size;
   container-name: dp-tuning;
 }
 
+/* A fixed set's lane count IS its cardinality, and its accepted minimum lane
+   is the width below which that many lanes stop being honest. Two numbers per
+   cardinality, and nothing else: no set names a column count of its own. */
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] { --dp-tuning-lanes: 4; --dp-tuning-lane-min: 200px; }
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] { --dp-tuning-lanes: 5; --dp-tuning-lane-min: 160px; }
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] { --dp-tuning-lanes: 7; --dp-tuning-lane-min: 120px; }
+
 /* A relationship between adjacent cells, and nothing more.
  *
- * By default it is not a layout box at all: its cells are the line's own
- * items, wrap naturally, and carry no outline. It becomes a box only at a
- * width where its whole span demonstrably fits on ONE row -- see the container
- * queries below -- so an outline is never drawn across a wrapped row. */
+ * By default it is not a layout box at all: its cells are the region's own
+ * grid items, left-fill the lanes and carry no outline. It becomes a box only
+ * at a width where the whole set still holds every one of its lanes -- see the
+ * container queries below -- and even then it owns no track: `subgrid` makes
+ * its members sit in the region's OWN lanes, so switching the outline on and
+ * off moves nothing. */
 #view-settings .dp-settings-tuning-group {
   display: contents;
 }
 
 #view-settings .dp-settings-tuning-grid .dp-settings-field {
-  flex: 0 1 170px;
-  min-width: 150px;
-  max-width: 190px;
+  width: 100%;
+  max-width: var(--dp-tuning-card-max);
   margin-top: 0;
+  margin-inline: auto;
   box-sizing: border-box;
   border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
   border-radius: 10px;
@@ -570,38 +638,58 @@
 /* The relationship outline itself.
  *
  * `outline` rather than `border`, with an offset: it is painted OUTSIDE the
- * group's box and takes no space at all, so turning it on and off never moves
- * a cell and the group adds no padding, no heading and no container bulk. The
- * cell stays the layout unit.
+ * group's box and takes no space at all, and the box itself is a `subgrid` of
+ * the region's lanes, so it introduces no track, no padding, no heading and no
+ * container bulk. Turning it on and off moves nothing. The lane stays the
+ * layout unit and the group stays a visual relation.
  *
- * Each span becomes a box only above the inline width at which its own cells
- * (150px minimum, 16px gaps) plus the outline's offset fit side by side with
- * room to spare. Below that the rule simply does not apply, the group falls
- * back to `display: contents`, and the relationship is not drawn at all --
- * which is the honest answer, rather than an outline split across two rows. */
-@container dp-tuning (min-width: 360px) {
-  #view-settings .dp-settings-tuning-group[data-tuning-span="2"] {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 16px;
-    outline: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
-    outline-offset: 5px;
-    border-radius: 14px;
+ * It is drawn at exactly one condition: the set still holds ALL of its lanes,
+ * which is the only state in which every group is provably contiguous on one
+ * row. That width is the set's own accepted minimum lane times its cardinality
+ * plus its gaps -- the same two numbers declared above, nothing new -- so
+ * there is one threshold per cardinality rather than a breakpoint matrix.
+ * Below it the rule does not apply, the group falls back to `display:
+ * contents`, and the relation is simply not drawn -- the honest answer, rather
+ * than an outline split across two rows. */
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes] .dp-settings-tuning-group {
+  grid-template-columns: subgrid;
+  align-items: stretch;
+  border-radius: 14px;
+  /* Declared ONCE. A withdrawn group leaves this unset, so it resolves to
+     `none` and the relation is genuinely not drawn -- not merely invisible. */
+  outline: var(--dp-tuning-relation, none);
+  outline-offset: 5px;
+}
+
+/* 4 lanes x 200px + 3 x 16px */
+@container dp-tuning (min-width: 848px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
   }
 }
 
-@container dp-tuning (min-width: 545px) {
-  #view-settings .dp-settings-tuning-group[data-tuning-span="3"] {
-    display: flex;
-    flex-wrap: nowrap;
-    align-items: stretch;
-    gap: 16px;
-    outline: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
-    outline-offset: 5px;
-    border-radius: 14px;
+/* 5 lanes x 160px + 4 x 16px */
+@container dp-tuning (min-width: 864px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
   }
 }
+
+/* 7 lanes x 120px + 6 x 16px */
+@container dp-tuning (min-width: 936px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+  }
+}
+
+#view-settings .dp-settings-tuning-group[data-tuning-span="2"] { --dp-tuning-span: 2; }
+#view-settings .dp-settings-tuning-group[data-tuning-span="3"] { --dp-tuning-span: 3; }
 
 /* The sentence that closes a tuning region belongs to the CARD, not to the
    cell collection: its own full-width row beneath the cells, centred on the
@@ -882,12 +970,14 @@
 
   #view-settings .dp-settings-download-engine-row {
     grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto;
     gap: 12px;
   }
 
-  #view-settings .dp-settings-download-limit {
-    max-width: none;
-    justify-self: stretch;
+  /* Stacked: each zone is an ordinary field again, with no shared row spine. */
+  #view-settings .dp-settings-download-engine-row > * > .dp-settings-field {
+    display: block;
+    grid-row: auto;
   }
 
   #view-settings .dp-settings-master-footer {
@@ -977,26 +1067,26 @@
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
 
 /* ── The Network Source protocol boxes ───────────────────────────────────
-   A compact bounded box per real registered member, on a centred wrapping flex
-   line -- the established server-box language, chosen because a flex line
-   centres EVERY row, including a wrapped one and a row that is not full, which
-   a grid does not: a grid's partial last row sits in its own columns. A bounded
-   basis is what makes the distribution fall out of the viewport and the member
-   count alone -- as many boxes per row as currently fit, whatever that number
-   is -- with no fixed column count, no breakpoint naming one, and no
-   horizontal scroll at any width. */
+   A compact bounded box per real registered member, in a CAPACITY grid: the
+   available width alone decides how many equal tracks exist, the members
+   populate them left to right, and the tracks a sparse population does not
+   reach simply stay empty. Capacity is therefore a property of the viewport,
+   never of the member count -- two members do not expand or recentre
+   themselves, and a protocol registered later consumes the next free track
+   without any rule learning that it exists. `auto-fill` is what preserves the
+   empty trailing capacity that `auto-fit` would collapse. No fixed column
+   count, no breakpoint naming one, nothing measured, and no horizontal scroll
+   at any width. */
 #view-settings .dp-settings-source-box-grid {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   align-items: stretch;
+  justify-items: stretch;
   gap: 12px;
 }
 
 #view-settings .card.dp-settings-source-box {
-  flex: 0 1 170px;
-  min-width: 150px;
-  max-width: 190px;
+  min-width: 0;
   box-sizing: border-box;
   /* The COLLECTION's gap owns the rhythm between boxes. A stacking margin
      inherited from the card material would also be subtracted from the flex

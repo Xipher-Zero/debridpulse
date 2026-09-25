@@ -195,7 +195,11 @@ def test_apply_settings_no_longer_owns_integration_enablement():
         assert f"function {name}(" not in SETTINGS_JS, name
     table = SETTINGS_JS[SETTINGS_JS.index("const COMMIT_FIELDS"):]
     table = table[:table.index("});") + 3]
-    assert "enabled" not in table, "participation became an ordinary declared field"
+    # The invariant is that PARTICIPATION is not a declared field, so the
+    # declared KEYS are what this reads -- an ordinary boolean whose name merely
+    # ends in `_enabled` (Automatic Extraction) is not participation.
+    declared = re.findall(r"^\s{4}([a-z0-9_]+):\s*\{", table, re.M)
+    assert "enabled" not in declared, "participation became an ordinary declared field"
     persist = _function("persistNonAuth")
     assert "data-integration-enabled" not in persist
     assert "enabled: !!enabled.checked" not in persist
@@ -226,7 +230,20 @@ def test_every_current_toggle_of_this_class_uses_the_shared_path():
 
 
 def test_ordinary_settings_fields_remain_deferred():
-    """Scope boundary: only integration participation became immediate."""
+    """Scope boundary: the deferred footer still owns the tabs that have not
+    been migrated.
+
+    DP 1.0.13 Settings consolidation migrated Extraction, so its four values
+    left this payload and became declared field-boundary controls like every
+    Downloads value before them. Notifications and Data & Maintenance still
+    commit through the footer, and that is what this case holds.
+    """
     persist = _function("persistNonAuth")
     assert "PUT" in persist and "/settings" in persist
-    assert "extract_enabled" in _function("nonAuthPayload")
+    payload = _function("nonAuthPayload")
+    assert "discord_notify_added: boolOf('discord_notify_added')" in payload
+    assert "backup_interval_hours: intOf('backup_interval_hours', 24)" in payload
+    # Nothing Extraction owns is read from the page here any more.
+    for name in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent",
+                 "extraction_password"):
+        assert name not in payload, name

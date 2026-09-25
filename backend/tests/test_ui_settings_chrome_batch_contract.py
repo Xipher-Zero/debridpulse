@@ -187,7 +187,14 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
         assert key in additional
 
     assert ".dp-settings-alldebrid-key-row.is-configured" in page
-    assert "grid-template-columns: minmax(0, 1.45fr) minmax(320px, .85fr);" in page
+    # DP 1.0.13 Settings consolidation: the key consumes every spare pixel
+    # before a clear action sized by its own content. This is stated HERE, by
+    # the row's one owner -- ui-settings-form-layout.css used to restate it,
+    # and the `gap` shorthand it carried alongside silently replaced this row's
+    # own rhythm.
+    assert "grid-template-columns: minmax(0, 1fr) max-content;" in page
+    key_row = page.split("#view-settings .dp-settings-alldebrid-key-row {", 1)[1].split("}", 1)[0]
+    assert "row-gap: 0;" in key_row
     # DP 1.0.13: the clear control is an explicit action group occupying the
     # API-key INPUT's own grid row, so it is centred against the control rather
     # than against the label + hint stack, and it needs no seam of its own.

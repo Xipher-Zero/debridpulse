@@ -168,7 +168,7 @@
       empty.dataset.dpExecutorWorkFilterEmpty = '1';
       list.appendChild(empty);
     }
-    empty.textContent = `No ${activeFilter} executor work right now.`;
+    empty.textContent = `No ${activeFilter} download engine activity right now.`;
   }
 
   function render(data) {
@@ -176,7 +176,7 @@
     if (!list) return;
     const items = ordered(data);
     list.innerHTML = items.length ? items.map(rowMarkup).join('')
-      : '<div class="empty">No executor work is owned by DebridPulse right now.</div>';
+      : '<div class="empty">No download engine activity right now.</div>';
     updateMetrics(data);
     applyFilter();
   }
@@ -186,7 +186,7 @@
     if (!list) return;
     const node = document.createElement('div');
     node.className = 'dp-executor-work-error';
-    node.textContent = `Executor work unavailable: ${String(message || 'unknown error')}`;
+    node.textContent = `Download engine activity unavailable: ${String(message || 'unknown error')}`;
     list.replaceChildren(node);
     updateMetrics(null);
   }

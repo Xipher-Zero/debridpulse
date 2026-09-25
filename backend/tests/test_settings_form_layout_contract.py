@@ -44,16 +44,34 @@ def test_archive_password_masks_are_presentation_only_and_cannot_enter_model_sta
     assert "function mask(value){return'•'.repeat(String(value||'').length);}" in archive
 
 
-def test_settings_secret_fields_and_extraction_controls_keep_accepted_geometry() -> None:
-    css = source(LAYOUT)
-    alldebrid = css.split(".dp-settings-alldebrid-key-row.is-configured {", 1)[1].split("}", 1)[0]
-    assert "grid-template-columns: minmax(0, 1fr) max-content;" in alldebrid
+def test_this_late_layer_is_not_a_second_owner_of_two_bounded_geometries() -> None:
+    """DP 1.0.13 consolidation.
 
-    controls = css.split(".dp-settings-extraction-controls-row {", 1)[1].split("}", 1)[0]
-    assert "width: min(100%, 1040px);" in controls
-    assert "margin-inline: auto;" in controls
-    assert "minmax(360px, 460px) minmax(0, 520px)" in controls
-    assert "justify-content: center;" in controls
+    This layer used to restate the configured AllDebrid key row's column
+    template AND, with a `gap` shorthand, silently replace the row gap its one
+    owner had set -- which is what made the credential block expand ~32px
+    taller than any other Settings field. It also restated the Extraction
+    behaviour row's geometry. Both belong to their own owners now, and the
+    point of this case is that they stay there.
+    """
+    css = source(LAYOUT)
+    assert ".dp-settings-alldebrid-key-row.is-configured {" not in css
+    assert ".dp-settings-extraction-controls-row" not in css
+    assert ".dp-settings-extraction-behavior" not in css
+
+    page = source(STATIC / "ui-settings-page.css")
+    row = page.split("#view-settings .dp-settings-alldebrid-key-row {", 1)[1].split("}", 1)[0]
+    # The rows contribute NO gap of their own: an ordinary Settings field stacks
+    # label, control and help in normal flow, where the only space between them
+    # is the help text's own margin.
+    assert "row-gap: 0;" in row
+    configured = page.split("#view-settings .dp-settings-alldebrid-key-row.is-configured {", 1)[1].split("}", 1)[0]
+    assert "grid-template-columns: minmax(0, 1fr) max-content;" in configured
+
+    extraction = source(STATIC / "ui-settings-downloads-completion.css")
+    group = extraction.split("#view-settings .dp-settings-extraction-behavior {", 1)[1].split("}", 1)[0]
+    assert "grid-template-rows: auto auto auto;" in group
+    assert "border: 1px solid var(--dp-divider);" in group
 
 
 def test_archive_password_editor_fills_remaining_extraction_card_height() -> None:
