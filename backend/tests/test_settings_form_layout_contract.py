@@ -60,18 +60,19 @@ def test_this_late_layer_is_not_a_second_owner_of_two_bounded_geometries() -> No
     assert ".dp-settings-extraction-behavior" not in css
 
     page = source(STATIC / "ui-settings-page.css")
-    row = page.split("#view-settings .dp-settings-alldebrid-key-row {", 1)[1].split("}", 1)[0]
-    # The rows contribute NO gap of their own: an ordinary Settings field stacks
-    # label, control and help in normal flow, where the only space between them
-    # is the help text's own margin.
-    assert "row-gap: 0;" in row
-    configured = page.split("#view-settings .dp-settings-alldebrid-key-row.is-configured {", 1)[1].split("}", 1)[0]
-    assert "grid-template-columns: minmax(0, 1fr) max-content;" in configured
+    # The credential row states no vertical rhythm of its own at all now: it is
+    # the shared inline field, where the informational stack is one unit and the
+    # control is centred against it. The excessive band this case was written
+    # about cannot come back, because there is no stacked row left to gap.
+    grammar = page.split("#view-settings .dp-settings-inline-field {", 1)[1].split("}", 1)[0]
+    assert "align-items: center;" in grammar
+    row = page.split("#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto" in row
 
     extraction = source(STATIC / "ui-settings-downloads-completion.css")
     group = extraction.split("#view-settings .dp-settings-extraction-behavior {", 1)[1].split("}", 1)[0]
-    assert "grid-template-rows: auto auto auto;" in group
     assert "border: 1px solid var(--dp-divider);" in group
+    assert "margin-inline: auto;" in group
 
 
 def test_archive_password_editor_fills_remaining_extraction_card_height() -> None:

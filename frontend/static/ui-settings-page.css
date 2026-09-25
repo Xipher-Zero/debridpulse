@@ -300,21 +300,15 @@
   padding-block: var(--dp-card-padding-compact, 14px);
 }
 
-/* Two deliberate zones, not a field and a stranded remainder: the dominant
-   Download Folder lane and a bounded Maximum Concurrent Downloads lane that
-   fills its own share of the row. Both are shares of the SAME free space, so
-   the proportion holds at every width.
-
-   The zones align on three shared rows -- label, control, help -- because the
-   row states those rows once and each zone's field is a `subgrid` of them. The
-   zone wrappers are `display: contents` so there is exactly one subgrid level
-   and the zone names stay what they are: names, not boxes. */
+/* Two settings, one line. Each is the shared inline field, so the row itself
+   states only how the two sit beside one another -- the three-row spine the
+   zones used to share is gone with the stacked grammar that needed it. */
 #view-settings .dp-settings-download-engine-row {
-  display: grid;
-  grid-template-columns: minmax(0, 73fr) minmax(200px, 27fr);
-  grid-template-rows: auto auto auto;
-  align-items: start;
-  gap: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 18px 48px;
   margin-top: 0;
 }
 
@@ -327,13 +321,34 @@
   display: none !important;
 }
 
-#view-settings .dp-settings-download-engine-row > * > .dp-settings-field {
+/* The folder is the one control here with a variable-length value, so it takes
+   the row's spare width -- bounded, because a path field wide enough to read
+   is not a field as wide as the card happens to be. */
+#view-settings .dp-settings-download-folder-field {
+  flex: 1 1 auto;
   min-width: 0;
-  margin-top: 0;
-  display: grid;
-  grid-template-rows: subgrid;
-  grid-row: span 3;
-  row-gap: 0;
+}
+
+#view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 460px;
+}
+
+/* The path and its Browse action are one compound control, so the pair fills
+   that bounded room together rather than sitting at content width inside it. */
+#view-settings .dp-settings-download-folder-field .dp-settings-directory-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-download-limit-field {
+  flex: 0 0 auto;
+}
+
+#view-settings .dp-settings-download-limit-field .input {
+  width: 96px;
+  text-align: center;
 }
 
 /* Download Folder + Browse read as ONE compound control: a single seam between
@@ -380,87 +395,101 @@
   line-height: 1.35;
 }
 
-/* The AllDebrid credential row.
-   The field's label, control and hint are the grid's own rows, so the explicit
-   Clear group can occupy the CONTROL's row -- centred against the input box
-   itself rather than against the label + hint stack -- and take horizontal
-   room from the field rather than adding a taller action band beneath it.
+/* ── The ONE inline Settings field ───────────────────────────────────────
+   [ stacked title + hint ]   [ control ]   [ optional action ]
 
-   The rows carry NO gap of their own. An ordinary Settings field stacks its
-   label, control and help in normal flow, where the only space between them is
-   the help text's own `margin-top` -- so a row gap here would be extra
-   vertical space that no other Settings field has, which is exactly the
-   excessive expansion this row used to show (a `gap: 22px` shorthand declared
-   by a second owner in ui-settings-form-layout.css, which also silently
-   replaced the row gap this rule sets). The rhythm is the canonical one
-   because the grid contributes nothing to it, not because it was tuned to
-   match. */
-#view-settings .dp-settings-alldebrid-key-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  column-gap: 22px;
-  row-gap: 0;
-  align-items: start;
+   The informational stack is one unit and the control is centred against it,
+   which is what removes the extra help/status band these rows used to carry.
+   Every surface that reads this way uses THIS; none states a geometry of its
+   own. What a caller may state is how much room its own control deserves --
+   a path, a credential and a job count are not the same control. */
+#view-settings .dp-settings-inline-field {
+  display: flex;
+  align-items: center;
+  gap: 18px;
   min-width: 0;
 }
 
-/* Configured: the key consumes every spare pixel before the compact clear
-   action, which is sized by its own content rather than by a reserved column. */
-#view-settings .dp-settings-alldebrid-key-row.is-configured {
-  grid-template-columns: minmax(0, 1fr) max-content;
+#view-settings .dp-settings-inline-field-info {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
-#view-settings .dp-settings-alldebrid-key-label {
-  grid-column: 1;
-  grid-row: 1;
+#view-settings .dp-settings-inline-field-info > .form-hint {
+  margin-top: 0;
 }
 
-#view-settings .dp-settings-alldebrid-key-input {
-  grid-column: 1;
-  grid-row: 2;
+/* Bounded by default: a control earns extra room by asking for it. */
+#view-settings .dp-settings-inline-field-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-inline-field-action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+}
+
+/* The AllDebrid credential row.
+   The informational stack takes what it needs, the field is the flexible
+   element between it and the destructive action, and all three peers share one
+   centre line -- the inline grammar above, with no geometry of its own. */
+#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
+  flex: 0 1 auto;
+  max-width: 340px;
+}
+
+#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
+  /* The field is what absorbs the row's spare width. */
+  flex: 1 1 auto;
+  /* The status inside the field is positioned against THIS box, which is the
+     field's own box -- not against the page, and not to compensate for a
+     structure that could not express it. */
+  position: relative;
+}
+
+#view-settings .dp-settings-alldebrid-key-row .dp-settings-inline-field-control > .input {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
 
-#view-settings .dp-settings-alldebrid-key-meta {
-  grid-column: 1;
-  grid-row: 3;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 14px;
-  min-width: 0;
+/* Room the FIELD reserves for the status it carries, so entered or masked
+   content can never render underneath it. The same value bounds the status, so
+   the reservation and the thing reserved for can never disagree. */
+#view-settings .dp-settings-alldebrid-key-row.is-configured {
+  --dp-key-status-reserve: 88px;
 }
 
-#view-settings .dp-settings-alldebrid-key-meta .form-hint:first-child {
-  min-width: 0;
+#view-settings .dp-settings-alldebrid-key-row.is-configured .dp-settings-inline-field-control > .input {
+  padding-right: calc(var(--dp-key-status-reserve) + 20px);
 }
 
+/* A status the field carries -- never a control, and never mistakable for
+   credential text. It takes no pointer events and no selection, so it cannot
+   be clicked, dragged across, focused, or caught by a caret; the field's own
+   reserved room keeps content clear of it. */
 #view-settings .dp-settings-key-present {
-  flex: 0 0 auto;
-  margin-left: auto;
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  max-width: var(--dp-key-status-reserve);
+  overflow: hidden;
   color: var(--dp-state-success);
+  font-size: 10px;
   font-weight: 600;
-  text-align: right;
+  line-height: 1;
   white-space: nowrap;
-}
-
-/* The explicit destructive action, sitting on the API-key input's own grid
-   row so it is centred against the control it is about. What it MEANS is the
-   canonical confirmation dialog's question, not a checkbox beside it. */
-#view-settings .dp-settings-alldebrid-key-clear {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: center;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-#view-settings .dp-settings-alldebrid-key-clear > .btn {
-  flex: 0 0 auto;
+  text-align: right;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* Secondary provider/engine tuning lives in native disclosures rather than
@@ -969,27 +998,27 @@
     overflow: visible;
   }
 
-  #view-settings .dp-settings-alldebrid-key-row.is-configured {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 12px;
+  /* Stacked: the informational block, the field and the action each take the
+     full width, in that order. The status stays inside the field. */
+  #view-settings .dp-settings-alldebrid-key-row {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  /* One column: the clear group follows the field it belongs to. */
-  #view-settings .dp-settings-alldebrid-key-clear {
-    grid-column: 1;
-    grid-row: 4;
+  #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
+    max-width: none;
   }
 
+  /* One setting per line, each keeping its own inline title/hint + control. */
   #view-settings .dp-settings-download-engine-row {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    gap: 12px;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 14px;
   }
 
-  /* Stacked: each zone is an ordinary field again, with no shared row spine. */
-  #view-settings .dp-settings-download-engine-row > * > .dp-settings-field {
-    display: block;
-    grid-row: auto;
+  #view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {
+    max-width: none;
   }
 
   #view-settings .dp-settings-master-footer {
@@ -1030,17 +1059,6 @@
 
   #view-settings .dp-settings-card-header-center {
     grid-row: 2;
-    text-align: left;
-  }
-
-  #view-settings .dp-settings-alldebrid-key-meta {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 4px;
-  }
-
-  #view-settings .dp-settings-key-present {
-    margin-left: 0;
     text-align: left;
   }
 

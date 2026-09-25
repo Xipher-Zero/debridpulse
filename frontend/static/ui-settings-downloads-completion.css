@@ -107,59 +107,48 @@
    either one's text wraps to. Nothing is measured and neither lane knows about
    the other. */
 #view-settings .dp-settings-extraction-behavior {
-  display: grid;
-  grid-template-columns: minmax(0, 200px) minmax(0, 260px);
-  grid-template-rows: auto auto auto;
-  align-items: start;
-  column-gap: 36px;
-  /* Content-bounded, and bounded by its CONTENT rather than by the space that
-     happens to exist: two controls do not become a viewport-wide band just
-     because the card is wide. It starts on the card's own left edge -- the
-     same edge the Archive Passwords label starts on -- so `margin-inline-end`
-     alone takes the slack and the group is never a centred island. */
-  width: max-content;
-  max-width: 100%;
-  margin-inline-end: auto;
-  border: 1px solid var(--dp-divider);
-  border-radius: 12px;
-  padding: 14px 18px 15px;
-}
-
-#view-settings .dp-settings-extraction-behavior > .dp-settings-field {
-  min-width: 0;
-  margin-top: 0 !important;
-  display: grid;
-  grid-template-rows: subgrid;
-  grid-row: span 3;
-  row-gap: 0;
-}
-
-/* Bounded: a count of jobs is a small number, not a text field. */
-#view-settings .dp-settings-extraction-behavior > .dp-settings-field .input {
-  width: min(100%, 120px);
-}
-
-/* The boolean lane centres its WHOLE stack -- label, toggle, help -- so the
-   control sits between the two text rows rather than reading as left-aligned
-   under a wider sentence. The numeric lane keeps the ordinary left-aligned
-   field stack; only these two placements differ, and each lane states its
-   own. */
-#view-settings .dp-settings-extraction-behavior
-  > .dp-settings-field:has(> .dp-settings-engine-tuning-toggle-control) {
-  justify-items: center;
-  text-align: center;
-}
-
-/* The boolean's control sits on its own row directly beneath its label, like
-   every other control in this group. The composer is shared with the tuning
-   cells, which centre it inside their cell; a form lane has no centre to sit
-   on, so the lane states its placement -- and only its placement. */
-#view-settings .dp-settings-extraction-behavior .dp-settings-engine-tuning-toggle-control {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 0;
-  padding: 7px 0 6px;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+  /* Content-bounded and CENTRED in the card body: an intentional control
+     cluster, not a band stretched across whatever width happens to exist and
+     not anchored to one edge. The max width is what keeps the two settings
+     breathing without letting the island span the card. */
+  width: max-content;
+  max-width: min(100%, 880px);
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
+/* Each setting is the shared inline field; the island only says how the two
+   sit beside one another. */
+#view-settings .dp-settings-extraction-behavior > .dp-settings-inline-field {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-inline-toggle {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+
+/* Restrained: a job count needs room for a number, not for a sentence. */
+#view-settings .dp-settings-extraction-concurrency-field .input {
+  width: 84px;
+  min-width: 0;
+  flex: 0 0 auto;
+  text-align: center;
+}
+
+/* The informational stacks may wrap their hint, but not into a column of
+   single words. */
+#view-settings .dp-settings-extraction-behavior .dp-settings-inline-field-info {
+  max-width: 300px;
 }
 
 #view-settings .dp-settings-extraction-password-field {
@@ -189,6 +178,19 @@
 /* The editor's action row. Clear Passwords sits immediately left of the
    reveal control, both anchored to the editor's bottom-right inside the space
    the editor already reserves for them. */
+/* What the action row occupies at the editor's trailing edge. The guidance is
+   bounded by TWICE this, because a centred box reaches the same distance on
+   both sides -- so it can never grow into the actions however wide the editor
+   is or how long the sentence becomes. */
+#view-settings .dp-settings-extraction-password-editor {
+  --dp-password-actions-reserve: 250px;
+  /* The editor's own width decides whether a centred line and the action row
+     can share the bottom band; the viewport cannot know, because this field
+     is as wide as whatever card holds it. */
+  container-type: inline-size;
+  container-name: dp-password-editor;
+}
+
 #view-settings .dp-settings-password-actions {
   position: absolute;
   right: 9px;
@@ -206,6 +208,46 @@
 #view-settings .dp-settings-password-clear[disabled] {
   opacity: .45;
   cursor: not-allowed;
+}
+
+/* The editor's own guidance: bottom-centred INSIDE the field, consuming no
+   external row. It is informational only -- it takes no pointer events and no
+   selection, so it can neither be clicked, dragged across, focused, nor catch
+   a caret, and it can never interrupt typing, caret movement, shortcuts,
+   scrolling or password-line manipulation. The editor reserves bottom room for
+   it and for the action row, so editable content collides with neither. */
+#view-settings .dp-settings-password-guidance {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: max(180px, calc(100% - 2 * var(--dp-password-actions-reserve)));
+  margin: 0;
+  text-align: center;
+  line-height: 1.4;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Below the width where a centred line and the action row can share the bottom
+   band, the guidance takes the band ABOVE the actions instead of overlapping
+   them -- still inside the editor, still at its bottom, still inert. The
+   editor's reserved room grows with it so editable content stays clear of
+   both. */
+@container dp-password-editor (max-width: 720px) {
+  #view-settings .dp-settings-password-guidance {
+    left: 11px;
+    right: 11px;
+    bottom: 48px;
+    width: auto;
+    max-width: none;
+    transform: none;
+  }
+
+  #view-settings .dp-settings-extraction-password-editor {
+    padding-bottom: 112px !important;
+  }
 }
 
 #view-settings .dp-settings-password-rows {
@@ -315,22 +357,20 @@
   }
 
   #view-settings .dp-settings-extraction-behavior {
-    grid-template-columns: minmax(180px, 260px) minmax(0, 1fr);
-    column-gap: 28px;
+    gap: 16px 28px;
   }
 }
 
 @media (max-width: 700px) {
-  /* One lane: each control keeps its own label / control / help stack, and the
-     shared row spine has nothing left to share. */
+  /* One setting per line; each keeps its own inline title/hint + control. */
   #view-settings .dp-settings-extraction-behavior {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto;
-    row-gap: 14px;
+    width: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
   }
 
-  #view-settings .dp-settings-extraction-behavior > .dp-settings-field {
-    display: block;
-    grid-row: auto;
+  #view-settings .dp-settings-extraction-behavior > .dp-settings-inline-field {
+    justify-content: space-between;
   }
 }

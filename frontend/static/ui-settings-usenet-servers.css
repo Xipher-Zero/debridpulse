@@ -33,7 +33,12 @@
 .dp-usenet-servers {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
-  align-items: stretch;
+  /* Each card is as tall as its OWN content. `stretch` made every card in a
+     row as tall as the tallest, so opening one server's Advanced section
+     visually inflated its collapsed neighbours -- one card's disclosure state
+     is not a fact about its siblings. The grid row is still as tall as the
+     expanded card for placement; the siblings simply do not fill it. */
+  align-items: start;
   gap: 12px;
 }
 

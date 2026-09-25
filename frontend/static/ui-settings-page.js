@@ -316,10 +316,19 @@
       options.readonly ? 'readonly' : '',
       options.autocomplete ? `autocomplete="${html(options.autocomplete)}"` : '',
     ].filter(Boolean).join(' ');
+    const control =
+      `<input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>`;
+    // The SAME control, in whichever of the two Settings field grammars the
+    // caller asked for. Nothing about the control -- its bounds, its commit
+    // class, its identity -- differs between them.
+    if (options.inline) {
+      return inlineField(id, label, options.hint, control + (options.after || ''),
+        {className: options.className, action: options.action});
+    }
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>
+        ${control}
         ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}${options.after || ''}
       </div>`;
   }
@@ -345,8 +354,7 @@
       <div class="dp-settings-field dp-settings-extraction-password-field">
         <label class="form-label" for="${id}">Archive Passwords (one per line)</label>
         <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div>
-        <span class="form-hint">One password per line. Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</span>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><p class="form-hint dp-settings-password-guidance" aria-hidden="true">One password per line. Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div>
       </div>`;
   }
 
@@ -374,6 +382,31 @@
           ${choices.map(([v, labelText]) => `<option value="${html(v)}" ${selected(value, v)}>${html(labelText)}</option>`).join('')}
         </select>
         ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+      </div>`;
+  }
+
+  /* The ONE compact inline Settings field.
+   *
+   *   [ stacked title + hint ]   [ control ]   [ optional action ]
+   *
+   * The title and its hint are ONE informational block, and the control is
+   * centred against that block rather than stacked beneath it -- which is what
+   * removes the extra help/status band each of these rows used to carry. Every
+   * surface that reads this way renders THIS, so the grammar is declared once
+   * and no caller states a geometry of its own.
+   *
+   * What a caller does own is how much room its control deserves: a path, a
+   * credential and a job count are not the same control, and nothing here
+   * forces them to a common width. */
+  function inlineField(id, label, hint, control, {className = '', action = ''} = {}) {
+    return `
+      <div class="dp-settings-inline-field${className ? ` ${className}` : ''}">
+        <div class="dp-settings-inline-field-info">
+          <label class="form-label" for="${id}">${html(label)}</label>
+          ${hint ? `<span class="form-hint">${hint}</span>` : ''}
+        </div>
+        <div class="dp-settings-inline-field-control">${control}</div>${
+          action ? `<div class="dp-settings-inline-field-action">${action}</div>` : ''}
       </div>`;
   }
 
@@ -472,12 +505,17 @@
 
   // Directory-valued field with its Browse control (the picker itself is owned
   // by ui-settings-directory-picker.js, opened from the Browse button).
-  function directoryField(key, label, value, {hint, browseAction, browseLabel}) {
+  function directoryField(key, label, value, {hint, browseAction, browseLabel, inline, className}) {
     const id = fieldId(key);
+    const control = `<div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>`;
+    if (inline) {
+      return inlineField(id, label, hint, control,
+        {className: ['dp-settings-directory-field', className].filter(Boolean).join(' ')});
+    }
     return `
       <div class="dp-settings-field dp-settings-directory-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <div class="dp-settings-directory-field-control"><input class="input" id="${id}" data-setting="${html(key)}" type="text" value="${html(value)}" ${commitAttributes(key)}><button type="button" class="btn btn-ghost btn-sm dp-settings-directory-field-browse" data-action="${browseAction}" aria-label="${html(browseLabel)}">Browse</button></div>
+        ${control}
         <span class="form-hint">${hint}</span>
       </div>`;
   }
@@ -501,31 +539,37 @@
   const ALLDEBRID_KEY_PLACEHOLDER = configured =>
     configured ? CONFIGURED_SECRET_MASK : 'Your AllDebrid API key';
 
-  const ALLDEBRID_KEY_META = configured => `
-          <span class="form-hint">${configured
-            ? 'Enter a new API key to replace the stored key. Leave this field blank to keep the current key.'
-            : 'Enter your AllDebrid API key.'}</span>
-          ${configured ? '<span class="form-hint dp-settings-key-present">Key present</span>' : ''}`;
+  const ALLDEBRID_KEY_HINT = configured => configured
+    ? 'Enter a new API key to replace the stored key. Leave this field blank to keep the current key.'
+    : 'Enter your AllDebrid API key.';
+
+  /* The stored-key state, INSIDE the field's trailing edge.
+   *
+   * It is a status the field carries, not a control and not credential text:
+   * it takes no pointer events and no selection, so it can neither be clicked,
+   * dragged over, focused nor mistaken for something the operator typed, and
+   * the field reserves trailing room for it (ui-settings-page.css) so entered
+   * or masked content can never render underneath it. */
+  const ALLDEBRID_KEY_PRESENT =
+    '<span class="dp-settings-key-present" role="status">Key present</span>';
 
   const ALLDEBRID_KEY_CLEAR = `
-          <div class="dp-settings-alldebrid-key-clear">
             <button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"
-                    aria-label="Clear the stored AllDebrid API key">Clear Stored API Key</button>
-          </div>`;
+                    aria-label="Clear the stored AllDebrid API key">Clear Stored API Key</button>`;
 
   function allDebridApiKeyField(configured) {
     const key = 'alldebrid_api_key';
     const id = fieldId(key);
-    return `
-      <div class="dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}">
-        <label class="form-label dp-settings-alldebrid-key-label" for="${id}">API Key</label>
-        <input class="input dp-settings-alldebrid-key-input" id="${id}" data-setting="${key}"
-               data-commit="changed-blur" data-commit-scope="integration:alldebrid" data-commit-key="${key}"
-               type="password" value="" autocomplete="off"
-               placeholder="${ALLDEBRID_KEY_PLACEHOLDER(configured)}">
-        <div class="dp-settings-alldebrid-key-meta">${ALLDEBRID_KEY_META(configured)}
-        </div>${configured ? ALLDEBRID_KEY_CLEAR : ''}
-      </div>`;
+    return input(key, 'API Key', '', {
+      type: 'password',
+      autocomplete: 'off',
+      placeholder: ALLDEBRID_KEY_PLACEHOLDER(configured),
+      hint: ALLDEBRID_KEY_HINT(configured),
+      inline: true,
+      className: `dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}`,
+      after: configured ? ALLDEBRID_KEY_PRESENT : '',
+      action: configured ? ALLDEBRID_KEY_CLEAR : '',
+    });
   }
 
   /* The ONE fixed tuning-set collection.
@@ -565,8 +609,22 @@
     return `<div class="dp-settings-tuning-group" data-tuning-span="${members.length}">${members.join('')}</div>`;
   }
 
-  function tuningToggle(key, label, detail, value) {
+  function tuningToggle(key, label, detail, value, options = {}) {
     const id = fieldId(key);
+    const boolean = `
+          <span class="toggle">
+            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
+            <span class="ttrack"></span>
+          </span>`;
+    if (options.inline) {
+      // A toggle's visible hit target is its TRACK, and the checkbox behind it
+      // is visually hidden -- so the track has to be label-associated or the
+      // control is operable only through its title. The other inline controls
+      // are their own hit target and need no such wrapper.
+      return inlineField(id, label, html(detail),
+        `<label class="dp-settings-inline-toggle" for="${id}">${boolean}</label>`,
+        {className: options.className});
+    }
     return `
       <div class="dp-settings-field dp-settings-engine-tuning-toggle-field">
         <label class="form-label" for="${id}">${html(label)}</label>
@@ -1228,12 +1286,14 @@
             hint: 'Where DebridPulse saves downloads.',
             browseAction: 'browse-download-folder',
             browseLabel: 'Browse server directories for Download Folder',
+            inline: true, className: 'dp-settings-download-folder-field',
           })}
         </div>
         <div class="dp-settings-download-limit">
           ${input('aria2_max_active_downloads', 'Maximum Concurrent Downloads', policy.max_concurrent_executions ?? 3, {
             type: 'number', min: 1, max: 20,
-            hint: 'Maximum downloads DebridPulse runs at once.'
+            hint: 'Maximum downloads DebridPulse runs at once.',
+            inline: true, className: 'dp-settings-download-limit-field',
           })}
         </div>
       </div>
@@ -1301,11 +1361,13 @@
       <div class="dp-settings-extraction-behavior" role="group" aria-label="Extraction behavior">
         ${input('extract_max_concurrent', 'Concurrent Extractions', s.extract_max_concurrent ?? 1, {
           type: 'number', min: 1, max: 8,
-          hint: 'Maximum extraction jobs DebridPulse runs at once.'
+          hint: 'Maximum extraction jobs DebridPulse runs at once.',
+          inline: true, className: 'dp-settings-extraction-concurrency-field',
         })}
         ${tuningToggle('extract_delete_archive', 'Delete Archives After Extraction',
           'Remove original archive files only after extraction completes successfully.',
-          s.extract_delete_archive !== false)}
+          s.extract_delete_archive !== false,
+          {inline: true, className: 'dp-settings-extraction-delete-field'})}
       </div>
       ${archivePasswordField(s.extraction_password_configured)}
     `, {
@@ -2519,11 +2581,25 @@
       field.placeholder = ALLDEBRID_KEY_PLACEHOLDER(configured);
     }
     row.classList.toggle('is-configured', configured);
-    const meta = row.querySelector('.dp-settings-alldebrid-key-meta');
-    if (meta) meta.innerHTML = ALLDEBRID_KEY_META(configured);
-    const clear = row.querySelector('.dp-settings-alldebrid-key-clear');
-    if (configured && !clear) row.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_CLEAR);
-    else if (!configured && clear) clear.remove();
+    // Only the three parts that DEPEND on whether a key is stored: the hint,
+    // the in-field status and the destructive action. The input element itself
+    // is still never replaced -- destroying a control the operator may be
+    // editing would remove focus from it, which IS its commit boundary.
+    const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
+    if (hint) hint.textContent = ALLDEBRID_KEY_HINT(configured);
+
+    const control = row.querySelector('.dp-settings-inline-field-control');
+    const present = control?.querySelector('.dp-settings-key-present');
+    if (configured && control && !present) control.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_PRESENT);
+    else if (!configured && present) present.remove();
+
+    const action = row.querySelector('.dp-settings-inline-field-action');
+    if (configured && !action) {
+      row.insertAdjacentHTML('beforeend',
+        `<div class="dp-settings-inline-field-action">${ALLDEBRID_KEY_CLEAR}</div>`);
+    } else if (!configured && action) {
+      action.remove();
+    }
 
     renderIntegrationState(card, 'alldebrid');
   }

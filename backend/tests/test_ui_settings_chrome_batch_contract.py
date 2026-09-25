@@ -148,13 +148,20 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
     assert "dp-settings-provider-card dp-settings-provider-card--alldebrid" in sources
 
-    assert 'class="dp-settings-alldebrid-key-row ${configured ? \'is-configured\' : \'\'}"' in key_helper
-    assert 'value=""' in key_helper
+    # The row still carries its configured state, and the credential still
+    # renders blank -- both now through the canonical composer rather than
+    # hand-written markup, so there is one control owner and one commit
+    # declaration instead of two.
+    assert "className: `dp-settings-alldebrid-key-row ${configured ? 'is-configured' : ''}`" in key_helper
+    assert "return input(key, 'API Key', ''," in key_helper
     # The configured/unconfigured parts of the row are declared once and used
     # both to render it and to converge it.
     assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_helper
     assert "CONFIGURED_SECRET_MASK" in runtime
-    assert "ALLDEBRID_KEY_META(configured)" in key_helper
+    assert "ALLDEBRID_KEY_HINT(configured)" in key_helper
+    # The stored-key state moved INSIDE the field's trailing edge, so it is
+    # carried by the control rather than by an external status row.
+    assert "ALLDEBRID_KEY_PRESENT" in key_helper
     assert "Key present" in runtime
     # DP 1.0.13: the Save-oriented clear checkbox became an explicit Clear
     # action, and the final interaction pass moved the question it asked into
@@ -187,21 +194,18 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
         assert key in additional
 
     assert ".dp-settings-alldebrid-key-row.is-configured" in page
-    # DP 1.0.13 Settings consolidation: the key consumes every spare pixel
-    # before a clear action sized by its own content. This is stated HERE, by
-    # the row's one owner -- ui-settings-form-layout.css used to restate it,
-    # and the `gap` shorthand it carried alongside silently replaced this row's
-    # own rhythm.
-    assert "grid-template-columns: minmax(0, 1fr) max-content;" in page
-    key_row = page.split("#view-settings .dp-settings-alldebrid-key-row {", 1)[1].split("}", 1)[0]
-    assert "row-gap: 0;" in key_row
-    # DP 1.0.13: the clear control is an explicit action group occupying the
-    # API-key INPUT's own grid row, so it is centred against the control rather
-    # than against the label + hint stack, and it needs no seam of its own.
-    clear_rule = page.split("#view-settings .dp-settings-alldebrid-key-clear {", 1)[1].split("}", 1)[0]
-    assert "grid-row: 2;" in clear_rule
-    assert "align-self: center;" in clear_rule
-    assert "border-top" not in clear_rule
+    # The row is the shared inline field: a stacked title + hint, the field as
+    # the flexible element beside it, and the destructive action last -- three
+    # peers on one centre line. The key still consumes every spare pixel before
+    # an action sized by its own content; that is now a property of the
+    # grammar rather than a template this row restates.
+    control_rule = page.split(
+        "#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto" in control_rule
+    action_rule = page.split("#view-settings .dp-settings-inline-field-action {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto;" in action_rule
+    assert "align-items: center;" in action_rule
+    assert "border-top" not in action_rule
     # The retired confirmation's own rule went with it.
     assert ".dp-settings-alldebrid-key-confirm" not in page
     assert ".dp-settings-key-present" in page

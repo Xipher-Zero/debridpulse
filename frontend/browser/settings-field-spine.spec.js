@@ -115,7 +115,18 @@ for (const tab of TABS) {
     await openSettings(page);
     await expandAll(page, tab);
     const rows = await measure(page, tab);
-    expect(rows.length).toBeGreaterThan(0);
+    // A tab may legitimately have no STACKED field left: Downloads and
+    // Extraction converged on the inline grammar, where the control sits
+    // beside its title/hint rather than beneath it, so there is no shared left
+    // origin to measure. What must never happen is a tab rendering no field of
+    // EITHER grammar -- that would mean the panel stopped rendering, not that
+    // it changed shape.
+    const present = await page.locator(
+      `.dp-settings-panel[data-panel="${tab}"] .dp-settings-field, ` +
+      `.dp-settings-panel[data-panel="${tab}"] .dp-usenet-field, ` +
+      `.dp-settings-panel[data-panel="${tab}"] .dp-settings-inline-field`).count();
+    expect(present, `${tab} renders no Settings field at all`).toBeGreaterThan(0);
+    if (!rows.length) return;
     const off = value => value !== null && Math.abs(value) > TOLERANCE;
     const broken = rows.filter(row =>
       off(row.label) || off(row.labelText) || off(row.hint) || off(row.hintText));

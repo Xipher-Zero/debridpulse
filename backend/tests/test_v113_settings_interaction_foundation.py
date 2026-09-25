@@ -619,7 +619,11 @@ def test_the_alldebrid_credential_row_never_replaces_the_control_it_converges():
     assert "String(field.value ?? '') === String(dispatched ?? '')" in render
     # The variable parts are rebuilt from the SAME declarations the row is
     # rendered from, so the row keeps one markup owner in either direction.
-    for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_META(", "ALLDEBRID_KEY_CLEAR"):
+    # Three parts depend on whether a key is stored: the placeholder, the hint,
+    # and -- since the row moved to the inline field grammar -- the in-field
+    # status beside the destructive action.
+    for fragment in ("ALLDEBRID_KEY_PLACEHOLDER(", "ALLDEBRID_KEY_HINT(",
+                     "ALLDEBRID_KEY_PRESENT", "ALLDEBRID_KEY_CLEAR"):
         assert fragment in render, fragment
         assert fragment.rstrip("(") in block(SETTINGS_JS, "function allDebridApiKeyField(")
     # Nothing replaces or re-parents the control.
@@ -1073,13 +1077,19 @@ def test_the_page_declares_its_commit_class_rather_than_reimplementing_it():
 
 def test_the_api_key_is_an_ordinary_changed_blur_replacement():
     key_field = block(SETTINGS_JS, "function allDebridApiKeyField(")
-    element = control(key_field, 'data-commit-scope="integration:alldebrid"')
     assert "ALLDEBRID_KEY_PLACEHOLDER(configured)" in key_field
-    assert 'data-commit="changed-blur"' in element
-    assert 'data-setting="${key}"' in element
-    assert 'data-commit-key="${key}"' in element
-    assert 'data-commit="gated-save"' not in element
     assert "const key = 'alldebrid_api_key';" in key_field
+    # The row renders the CANONICAL field composer rather than hand-written
+    # control markup, so the commit class, the scope and the bounds are
+    # declared in exactly one place -- COMMIT_FIELDS -- and emitted by exactly
+    # one place, commitAttributes(). A second markup path would be how those
+    # silently drift apart.
+    assert "return input(key, 'API Key'" in key_field
+    assert "data-commit" not in key_field, "the row hand-writes its own commit attributes"
+    declared = block(SETTINGS_JS, "const COMMIT_FIELDS")
+    assert "alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'}" in declared
+    attributes = block(SETTINGS_JS, "function commitAttributes(")
+    assert 'data-commit="${html(declared.commit || \'changed-blur\')}"' in attributes
     # The retired Save-oriented clear checkbox and its copy are gone.
     assert "data-clear-secret=" not in key_field
     assert "data-clear-secret=\"alldebrid_api_key\"" not in SETTINGS_JS
@@ -1144,9 +1154,11 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     assert "data-alldebrid-clear-confirm" not in SETTINGS_JS
     assert "Confirm removal of the stored API key" not in SETTINGS_JS
     assert "function refreshAllDebridClearGate(" not in SETTINGS_JS
-    # The row renders that one declaration, and nothing else does.
+    # The row renders that one declaration, and nothing else does. It is now
+    # carried by the inline field's neutral trailing action slot rather than a
+    # wrapper of its own, so the button itself is what must be unique.
     assert "ALLDEBRID_KEY_CLEAR" in block(SETTINGS_JS, "function allDebridApiKeyField(")
-    assert SETTINGS_JS.count("dp-settings-alldebrid-key-clear\"") == 1
+    assert SETTINGS_JS.count('data-action="clear-alldebrid-key"') == 1
 
 
 def test_the_clear_group_is_centred_against_the_api_key_input_itself():
@@ -1155,15 +1167,22 @@ def test_the_clear_group_is_centred_against_the_api_key_input_itself():
     horizontal room from the field instead of adding an action band. The retired
     confirmation's own rule is gone with it."""
     assert "dp-settings-alldebrid-key-confirm" not in SETTINGS_CSS
-    row = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-row {")
-    assert "display: grid" in row
-    clear = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-clear {")
-    assert "align-self: center" in clear
-    assert "grid-row: 2" in clear
-    control_rule = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-input {")
-    assert "grid-row: 2" in control_rule
-    for banned in ("position: absolute", "transform", "margin-top: -"):
-        assert banned not in clear, banned
+    # The row is the shared inline field, whose three peers -- the
+    # informational stack, the control and the trailing action -- share one
+    # centre line. The clear is therefore centred against the control by the
+    # grammar itself, with no placement of its own to drift.
+    grammar = rule(SETTINGS_CSS, "#view-settings .dp-settings-inline-field {")
+    assert "display: flex" in grammar
+    assert "align-items: center" in grammar
+    action = rule(SETTINGS_CSS, "#view-settings .dp-settings-inline-field-action {")
+    assert "align-items: center" in action
+    for banned in ("position: absolute", "margin-top: -"):
+        assert banned not in action, banned
+    # And the field is what absorbs the row's spare width, so the action takes
+    # room from it rather than adding a band beneath it.
+    control_rule = rule(SETTINGS_CSS,
+        "#view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {")
+    assert "flex: 1 1 auto" in control_rule
 
 
 def test_verification_invalidation_is_derived_and_never_a_second_check():

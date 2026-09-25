@@ -107,23 +107,27 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
         assert selector not in css, selector
 
     css = source(SETTINGS_PAGE_CSS)
-    # DP 1.0.13 consolidation: two deliberate zones that are shares of the SAME
-    # free space -- a dominant folder lane and a bounded concurrency lane that
-    # fills its own share rather than a compact field pinned to the far right.
+    # DP 1.0.13: both settings are the shared INLINE field -- a stacked title +
+    # hint with the control beside it -- so the row states only how the two sit
+    # next to one another. The three-row spine the stacked zones used to share
+    # is gone with the grammar that needed it.
     row = css.split(".dp-settings-download-engine-row {", 1)[1].split("}", 1)[0]
-    assert "grid-template-columns: minmax(0, 73fr) minmax(200px, 27fr);" in row
-    assert "grid-template-rows: auto auto auto;" in row
-    assert "gap: 28px;" in row
-    # The zone wrappers are names, not boxes, so exactly one subgrid level puts
-    # both zones on the same label / control / help rows.
+    assert "display: flex" in row
+    assert "align-items: center" in row
+    assert "grid-template-rows" not in row
+    # The zone wrappers stay names, not boxes.
     assert (
         "#view-settings .dp-settings-download-path-stack,\n"
         "#view-settings .dp-settings-download-limit {\n"
         "  display: contents;\n"
         "}"
     ) in css
-    zone = css.split("#view-settings .dp-settings-download-engine-row > * > .dp-settings-field {", 1)[1].split("}", 1)[0]
-    assert "grid-template-rows: subgrid;" in zone and "grid-row: span 3;" in zone
+    # The folder takes the row's spare width -- bounded, because a path field
+    # wide enough to read is not one as wide as the card happens to be.
+    folder = css.split(
+        "#view-settings .dp-settings-download-folder-field > .dp-settings-inline-field-control {", 1)[1].split("}", 1)[0]
+    assert "flex: 1 1 auto" in folder
+    assert "max-width: 460px" in folder
     assert "justify-self: end;" not in css.split(".dp-settings-download-engine-row", 1)[1][:1200]
 
 

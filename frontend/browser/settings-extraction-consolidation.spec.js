@@ -62,7 +62,7 @@ const passwordLines = page => page.locator('.dp-settings-password-line');
 
 // --- Extraction layout -----------------------------------------------------
 
-test('the two extraction behaviour controls are ONE group with one shared outline',
+test('the two extraction behaviour controls are ONE centred, content-bounded island',
   async ({page}) => {
     await isolateExternalFonts(page);
     await page.goto('/');
@@ -72,87 +72,127 @@ test('the two extraction behaviour controls are ONE group with one shared outlin
     await expect(group).toHaveCount(1);
     // One group, not two cards.
     await expect(group.locator('.card')).toHaveCount(0);
-    await expect(group.locator('.dp-settings-field')).toHaveCount(2);
+    // Both settings are the shared inline field: stacked title + hint, control
+    // beside it. Neither states a geometry of its own.
+    await expect(group.locator('.dp-settings-inline-field')).toHaveCount(2);
 
     const geometry = await group.evaluate(el => {
       const style = getComputedStyle(el);
       const host = el.getBoundingClientRect();
-      const fields = Array.from(el.querySelectorAll(':scope > .dp-settings-field'));
-      const part = (field, selector) => {
-        const node = field.querySelector(selector);
-        return node ? node.getBoundingClientRect() : null;
-      };
       const body = el.closest('.card-body');
       const bodyBox = body.getBoundingClientRect();
-      const bodyStyle = getComputedStyle(body);
+      const rect = node => node.getBoundingClientRect();
+      const midX = box => (box.left + box.right) / 2;
+      const midY = box => (box.top + box.bottom) / 2;
+      const fields = Array.from(el.querySelectorAll(':scope > .dp-settings-inline-field'));
       return {
-        bodyWidth: bodyBox.width,
-        leftOfBody: host.left - (bodyBox.left + parseFloat(bodyStyle.paddingLeft)),
         outline: parseFloat(style.borderTopWidth),
-        lanes: style.gridTemplateColumns.split(' ').filter(Boolean).length,
         width: host.width,
-        subgrid: fields.map(field => getComputedStyle(field).gridTemplateRows),
-        rows: fields.map(field => {
-          const control = part(field, '.input') || part(field, '.toggle');
-          const lane = field.getBoundingClientRect();
-          const mid = box => (box.left + box.right) / 2;
-          return {
-            label: part(field, '.form-label').top,
-            // Controls of different heights sit on the same row; what they
-            // share is the row's centre, not their own top edge.
-            control: (control.top + control.bottom) / 2,
-            help: part(field, '.form-hint').top,
-            left: lane.left - host.left,
-            // Each part's offset from the lane's own left edge, and from its
-            // centre: one lane is a left-aligned stack, the other a centred
-            // one, and these say which without naming either.
-            starts: [part(field, '.form-label').left - lane.left,
-                     control.left - lane.left,
-                     part(field, '.form-hint').left - lane.left],
-            offCentre: [mid(part(field, '.form-label')) - mid(lane),
-                        mid(control) - mid(lane),
-                        mid(part(field, '.form-hint')) - mid(lane)],
-          };
+        bodyWidth: bodyBox.width,
+        offCentreOfBody: midX(host) - midX(bodyBox),
+        sideBySide: Math.abs(rect(fields[0]).top - rect(fields[1]).top) < 3,
+        // Every control sits on its own stack's centre line.
+        controlsCentred: fields.map(field => {
+          const info = rect(field.querySelector('.dp-settings-inline-field-info'));
+          const control = rect(field.querySelector('.dp-settings-inline-field-control'));
+          return midY(control) - midY(info);
         }),
+        // The title sits above its hint, as one informational block.
+        stacked: fields.every(field =>
+          rect(field.querySelector('.form-hint')).top >= rect(field.querySelector('.form-label')).bottom - 1),
+        numericWidth: rect(el.querySelector('input[type="number"]')).width,
       };
     });
 
     // A single subtle outline around the pair.
     expect(geometry.outline).toBeGreaterThan(0);
     expect(geometry.outline).toBeLessThanOrEqual(2);
-    // Two lanes, and the GROUP is bounded by its content rather than by the
-    // space that happens to exist -- it does not become a viewport-wide band.
-    expect(geometry.lanes).toBe(2);
-    expect(geometry.rows[1].left).toBeGreaterThanOrEqual(geometry.width / 3 - 2);
-    expect(geometry.width, 'the group stretched to the card width')
-      .toBeLessThan(geometry.bodyWidth * 0.75);
-    // ...and it starts on the card's own content edge, like Archive Passwords.
-    expect(Math.abs(geometry.leftOfBody),
-      'the group is a centred island').toBeLessThanOrEqual(TOLERANCE);
-    // The two lanes are subgrids of the SAME three rows, so they cannot drift.
-    expect(geometry.subgrid[0]).toBe(geometry.subgrid[1]);
-    // Both lanes align on label, control and help.
-    for (const key of ['label', 'control', 'help']) {
-      expect(Math.abs(geometry.rows[0][key] - geometry.rows[1][key]),
-        `the two lanes disagree about the ${key} row`).toBeLessThanOrEqual(TOLERANCE);
-    }
-    // Concurrent Extractions is a conventional LEFT-aligned field stack.
-    for (const start of geometry.rows[0].starts) {
-      expect(Math.abs(start), 'the numeric lane is not a left-aligned stack')
+    // Content-bounded and CENTRED -- never viewport-wide, never left-anchored.
+    expect(geometry.width).toBeLessThan(geometry.bodyWidth * 0.8);
+    expect(Math.abs(geometry.offCentreOfBody), 'the island is not centred')
+      .toBeLessThanOrEqual(TOLERANCE);
+    // The two settings sit beside one another.
+    expect(geometry.sideBySide).toBe(true);
+    expect(geometry.stacked).toBe(true);
+    for (const off of geometry.controlsCentred) {
+      expect(Math.abs(off), 'a control is not centred against its title/hint stack')
         .toBeLessThanOrEqual(TOLERANCE);
     }
-    // Delete Archives centres its WHOLE stack in its lane, so the toggle sits
-    // between the label and help rather than left-aligned under wider text.
-    for (const off of geometry.rows[1].offCentre) {
-      expect(Math.abs(off), 'the boolean stack is not centred in its lane')
-        .toBeLessThanOrEqual(TOLERANCE);
-    }
+    // Restrained: a job count needs room for a number, not for a sentence.
+    expect(geometry.numericWidth).toBeLessThanOrEqual(110);
 
     await expect(group.locator('.form-hint').first())
       .toHaveText('Maximum extraction jobs DebridPulse runs at once.');
-    // The concurrency control stays a bounded number field.
-    expect(await concurrency(page).evaluate(el => el.getBoundingClientRect().width))
-      .toBeLessThanOrEqual(130);
+  });
+
+test('the Archive Passwords guidance lives inside the editor and intercepts nothing',
+  async ({page}) => {
+    await isolateExternalFonts(page);
+    await page.goto('/');
+    await openSettings(page, 'extraction');
+
+    const editor = page.locator('.dp-settings-extraction-password-editor');
+    const guidance = editor.locator('.dp-settings-password-guidance');
+    await expect(guidance).toHaveCount(1);
+    // It consumes no external row.
+    await expect(page.locator('.dp-settings-extraction-password-field > .form-hint')).toHaveCount(0);
+
+    const placement = await editor.evaluate(el => {
+      const rect = node => node.getBoundingClientRect();
+      const guide = el.querySelector('.dp-settings-password-guidance');
+      const actions = el.querySelector('.dp-settings-password-actions');
+      const box = rect(el);
+      const g = rect(guide);
+      const style = getComputedStyle(guide);
+      const mid = r => (r.left + r.right) / 2;
+      return {
+        inside: g.top >= box.top && g.bottom <= box.bottom,
+        centredOnEditor: mid(g) - mid(box),
+        // A true box intersection, not a left/right ordering: below the width
+        // where a centred line and the action row can share the bottom band,
+        // the guidance takes the band ABOVE them instead of overlapping.
+        overlapsActions: (a => !(g.right <= a.left || g.left >= a.right
+          || g.bottom <= a.top || g.top >= a.bottom))(rect(actions)),
+        pointerEvents: style.pointerEvents,
+        userSelect: style.userSelect,
+        reservedBottom: getComputedStyle(el).paddingBottom,
+      };
+    });
+    expect(placement.inside).toBe(true);
+    expect(Math.abs(placement.centredOnEditor)).toBeLessThanOrEqual(TOLERANCE);
+    expect(placement.overlapsActions, 'the guidance overlaps the editor actions').toBe(false);
+    expect(placement.pointerEvents).toBe('none');
+    expect(placement.userSelect).toBe('none');
+
+    // Hit-testing proves it: the point at its centre resolves to the EDITOR,
+    // so a click, drag or caret there reaches the field, never the guidance.
+    const hit = await page.evaluate(() => {
+      const guide = document.querySelector('.dp-settings-password-guidance').getBoundingClientRect();
+      const node = document.elementFromPoint((guide.left + guide.right) / 2, (guide.top + guide.bottom) / 2);
+      return node ? node.className : null;
+    });
+    expect(String(hit)).not.toContain('dp-settings-password-guidance');
+
+    // And editing still works: typing, caret movement and row insertion.
+    const line = editor.locator('.dp-settings-password-line').first();
+    await line.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('ZZ');
+    expect(await line.inputValue()).toContain('ZZ');
+    await page.keyboard.press('Home');
+    expect(await page.evaluate(() => document.activeElement.selectionStart)).toBe(0);
+    // Editable content never collides with the guidance or the action row.
+    const collision = await editor.evaluate(el => {
+      const rect = node => node.getBoundingClientRect();
+      const lines = [...el.querySelectorAll('.dp-settings-password-line')];
+      const last = rect(lines[lines.length - 1]);
+      return {
+        clearOfGuidance: last.bottom <= rect(el.querySelector('.dp-settings-password-guidance')).top + 1,
+        clearOfActions: last.bottom <= rect(el.querySelector('.dp-settings-password-actions')).top + 1,
+      };
+    });
+    expect(collision.clearOfGuidance).toBe(true);
+    expect(collision.clearOfActions).toBe(true);
   });
 
 // --- Extraction persistence ------------------------------------------------
@@ -331,106 +371,120 @@ test('an Apply on another tab cannot replay Extraction state', async ({page}) =>
 
 // --- AllDebrid credential rhythm -------------------------------------------
 
-test('the AllDebrid credential block keeps the canonical field rhythm', async ({page}) => {
-  await isolateExternalFonts(page);
-  const live = await page.request.get('/api/settings').then(r => r.json());
-  const document_ = {...live, integrations: {...live.integrations, alldebrid: {
-    ...live.integrations.alldebrid,
-    options: {...(live.integrations.alldebrid?.options || {}), api_key_configured: true},
-  }}};
-  await page.route(url => url.pathname === '/api/settings', route =>
-    (route.request().method() === 'GET'
-      ? route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(document_)})
-      : route.fallback()));
-  await page.goto('/');
-  await openSettings(page, 'sources');
-  await page.locator('.dp-settings-provider-card--alldebrid .dp-settings-disclosure').click();
-  await expect(page.locator('.dp-settings-alldebrid-key-row')).toBeVisible();
+test('the AllDebrid credential row is the inline grammar, with its status inside the field',
+  async ({page}) => {
+    await isolateExternalFonts(page);
+    const live = await page.request.get('/api/settings').then(r => r.json());
+    const document_ = {...live, integrations: {...live.integrations, alldebrid: {
+      ...live.integrations.alldebrid,
+      options: {...(live.integrations.alldebrid?.options || {}), api_key_configured: true},
+    }}};
+    await page.route(url => url.pathname === '/api/settings', route =>
+      (route.request().method() === 'GET'
+        ? route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(document_)})
+        : route.fallback()));
+    await page.goto('/');
+    await openSettings(page, 'sources');
+    await page.locator('.dp-settings-provider-card--alldebrid .dp-settings-disclosure').click();
+    await expect(page.locator('.dp-settings-alldebrid-key-row')).toBeVisible();
 
-  const measured = await page.evaluate(() => {
-    const row = document.querySelector('.dp-settings-alldebrid-key-row');
-    const rect = el => el.getBoundingClientRect();
-    const label = rect(row.querySelector('.dp-settings-alldebrid-key-label'));
-    const input = rect(row.querySelector('.dp-settings-alldebrid-key-input'));
-    const meta = rect(row.querySelector('.dp-settings-alldebrid-key-meta'));
-    const help = rect(row.querySelector('.dp-settings-alldebrid-key-meta .form-hint'));
-    const present = rect(row.querySelector('.dp-settings-key-present'));
-    const clear = rect(row.querySelector('.dp-settings-alldebrid-key-clear .btn'));
+    const measured = await page.evaluate(() => {
+      const row = document.querySelector('.dp-settings-alldebrid-key-row');
+      const rect = node => node.getBoundingClientRect();
+      const midY = box => (box.top + box.bottom) / 2;
+      const info = rect(row.querySelector('.dp-settings-inline-field-info'));
+      const input = row.querySelector('.dp-settings-inline-field-control > .input');
+      const badge = row.querySelector('.dp-settings-key-present');
+      const clear = row.querySelector('[data-action="clear-alldebrid-key"]');
+      const style = getComputedStyle(badge);
+      const contentRight = rect(input).right - parseFloat(getComputedStyle(input).paddingRight);
+      return {
+        height: rect(row).height,
+        stacked: rect(row.querySelector('.form-hint')).top
+          >= rect(row.querySelector('.form-label')).bottom - 1,
+        inputCentred: midY(rect(input)) - midY(info),
+        clearCentred: midY(rect(clear)) - midY(info),
+        badgeInsideField: rect(badge).right <= rect(input).right && rect(badge).left > rect(input).left,
+        // Reserved trailing room: entered or masked content stops clear of it.
+        contentToBadge: rect(badge).left - contentRight,
+        pointerEvents: style.pointerEvents,
+        userSelect: style.userSelect,
+        externalStatusRow: !!document.querySelector('.dp-settings-alldebrid-key-meta'),
+      };
+    });
 
-    return {
-      labelToInput: input.top - label.bottom,
-      inputToHelp: help.top - input.bottom,
-      clearCentre: ((clear.top + clear.bottom) / 2) - ((input.top + input.bottom) / 2),
-      presentOnHelpRow: present.top - help.top,
-      height: rect(row).height,
-    };
+    expect(measured.stacked).toBe(true);
+    // One compact row: no extra help/status band beneath it.
+    expect(measured.height).toBeLessThanOrEqual(64);
+    expect(Math.abs(measured.inputCentred)).toBeLessThanOrEqual(TOLERANCE);
+    expect(Math.abs(measured.clearCentred)).toBeLessThanOrEqual(TOLERANCE);
+    // The status lives inside the field's trailing edge, reserved for, and
+    // incapable of catching a pointer or a selection.
+    expect(measured.badgeInsideField).toBe(true);
+    expect(measured.contentToBadge).toBeGreaterThan(0);
+    expect(measured.pointerEvents).toBe('none');
+    expect(measured.userSelect).toBe('none');
+    expect(measured.externalStatusRow).toBe(false);
+
+    // Hit-testing: the badge's own centre resolves to the input beneath it.
+    const hit = await page.evaluate(() => {
+      const b = document.querySelector('.dp-settings-key-present').getBoundingClientRect();
+      const node = document.elementFromPoint((b.left + b.right) / 2, (b.top + b.bottom) / 2);
+      return node ? node.id || node.className : null;
+    });
+    expect(String(hit)).not.toContain('dp-settings-key-present');
   });
-
-  // The canonical unadorned Settings field stacks label / control / help with
-  // no gap of its own beyond the help text's own margin: ~0px and ~3px. The
-  // credential block must not be taller than that rhythm allows.
-  expect(measured.labelToInput, 'extra space between the label and the input')
-    .toBeLessThanOrEqual(4);
-  expect(measured.inputToHelp, 'extra space between the input and the help row')
-    .toBeLessThanOrEqual(6);
-  // Clear Stored API Key stays centred on the INPUT row.
-  expect(Math.abs(measured.clearCentre)).toBeLessThanOrEqual(TOLERANCE);
-  // Key present stays on the help row.
-  expect(Math.abs(measured.presentOnHelpRow)).toBeLessThanOrEqual(TOLERANCE);
-  // Whole block: label + control + help and nothing else.
-  expect(measured.height).toBeLessThanOrEqual(90);
-});
 
 // --- Download Location & Limits --------------------------------------------
 
-test('Download Location & Limits is a two-zone primary form sharing three rows',
+test('Download Location & Limits puts both settings on one line in the inline grammar',
   async ({page}) => {
     await isolateExternalFonts(page);
     await page.goto('/');
     await openSettings(page, 'downloads');
 
     const measured = await page.locator('.dp-settings-download-engine-row').evaluate(el => {
-      const host = el.getBoundingClientRect();
       const rect = node => node.getBoundingClientRect();
-      const folder = el.querySelector('.dp-settings-download-path-stack .dp-settings-field');
-      const limit = el.querySelector('.dp-settings-download-limit .dp-settings-field');
+      const midY = box => (box.top + box.bottom) / 2;
+      const fields = Array.from(el.querySelectorAll('.dp-settings-inline-field'));
+      const info = field => rect(field.querySelector('.dp-settings-inline-field-info'));
       const input = el.querySelector('.dp-settings-directory-field-control > .input');
       const browse = el.querySelector('.dp-settings-directory-field-browse');
-      const row = node => ({
-        label: rect(node.querySelector('.form-label')).top,
-        control: rect(node.querySelector('.input, .dp-settings-directory-field-control')).top,
-        help: rect(node.querySelector('.form-hint')).top,
-      });
+      const numeric = el.querySelector('[data-setting="aria2_max_active_downloads"]');
       return {
-        width: host.width,
-        left: rect(folder).width,
-        right: rect(limit).width,
-        rightEdge: host.right - rect(limit).right,
-        folderRows: row(folder),
-        limitRows: row(limit),
+        count: fields.length,
+        oneLine: Math.abs(rect(fields[0]).top - rect(fields[1]).top) < 3,
+        stacked: fields.every(field =>
+          rect(field.querySelector('.form-hint')).top >= rect(field.querySelector('.form-label')).bottom - 1),
+        centred: [midY(rect(input)) - midY(info(fields[0])),
+                  midY(rect(numeric)) - midY(info(fields[1]))],
         seam: rect(browse).left - rect(input).right,
         browseHeight: rect(browse).height,
         inputHeight: rect(input).height,
+        pathWidth: rect(input).width,
+        numericWidth: rect(numeric).width,
+        // Nothing stacks a help row beneath a control any more.
+        danglingHelp: el.querySelectorAll('.dp-settings-field > .form-hint').length,
       };
     });
 
-    // A dominant folder lane and a bounded concurrency lane -- not a compact
-    // field stranded at the far right.
-    const share = measured.left / (measured.left + measured.right);
-    expect(share).toBeGreaterThan(0.66);
-    expect(share).toBeLessThan(0.78);
-    expect(measured.rightEdge, 'the concurrency lane does not fill its own share')
-      .toBeLessThanOrEqual(TOLERANCE);
-    // Both zones on the same label / control / help rows.
-    for (const key of ['label', 'control', 'help']) {
-      expect(Math.abs(measured.folderRows[key] - measured.limitRows[key]),
-        `the two zones disagree about the ${key} row`).toBeLessThanOrEqual(TOLERANCE);
+    expect(measured.count).toBe(2);
+    expect(measured.oneLine, 'the two settings are not on one line').toBe(true);
+    expect(measured.stacked).toBe(true);
+    for (const off of measured.centred) {
+      expect(Math.abs(off), 'a control is not centred against its title/hint stack')
+        .toBeLessThanOrEqual(TOLERANCE);
     }
-    // Download Folder + Browse read as one compound control.
+    // Browse stays part of the same compound control.
     expect(measured.seam).toBeGreaterThanOrEqual(0);
     expect(measured.seam).toBeLessThanOrEqual(8);
     expect(Math.abs(measured.browseHeight - measured.inputHeight)).toBeLessThanOrEqual(1);
+    // Readable, but not absurdly wide merely because room exists.
+    expect(measured.pathWidth).toBeGreaterThan(200);
+    expect(measured.pathWidth).toBeLessThanOrEqual(460);
+    expect(measured.numericWidth).toBeLessThanOrEqual(130);
+    expect(measured.danglingHelp).toBe(0);
 
-    await expect(page.locator('.dp-settings-download-limit .form-hint'))
+    await expect(page.locator('.dp-settings-download-limit-field .form-hint'))
       .toHaveText('Maximum downloads DebridPulse runs at once.');
   });
