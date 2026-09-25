@@ -82,21 +82,36 @@ test('the two extraction behaviour controls are ONE group with one shared outlin
         const node = field.querySelector(selector);
         return node ? node.getBoundingClientRect() : null;
       };
+      const body = el.closest('.card-body');
+      const bodyBox = body.getBoundingClientRect();
+      const bodyStyle = getComputedStyle(body);
       return {
+        bodyWidth: bodyBox.width,
+        leftOfBody: host.left - (bodyBox.left + parseFloat(bodyStyle.paddingLeft)),
         outline: parseFloat(style.borderTopWidth),
         lanes: style.gridTemplateColumns.split(' ').filter(Boolean).length,
         width: host.width,
         subgrid: fields.map(field => getComputedStyle(field).gridTemplateRows),
         rows: fields.map(field => {
           const control = part(field, '.input') || part(field, '.toggle');
+          const lane = field.getBoundingClientRect();
+          const mid = box => (box.left + box.right) / 2;
           return {
             label: part(field, '.form-label').top,
             // Controls of different heights sit on the same row; what they
             // share is the row's centre, not their own top edge.
             control: (control.top + control.bottom) / 2,
             help: part(field, '.form-hint').top,
-            left: field.getBoundingClientRect().left - host.left,
-            controlLeft: control.left - part(field, '.form-label').left,
+            left: lane.left - host.left,
+            // Each part's offset from the lane's own left edge, and from its
+            // centre: one lane is a left-aligned stack, the other a centred
+            // one, and these say which without naming either.
+            starts: [part(field, '.form-label').left - lane.left,
+                     control.left - lane.left,
+                     part(field, '.form-hint').left - lane.left],
+            offCentre: [mid(part(field, '.form-label')) - mid(lane),
+                        mid(control) - mid(lane),
+                        mid(part(field, '.form-hint')) - mid(lane)],
           };
         }),
       };
@@ -105,9 +120,15 @@ test('the two extraction behaviour controls are ONE group with one shared outlin
     // A single subtle outline around the pair.
     expect(geometry.outline).toBeGreaterThan(0);
     expect(geometry.outline).toBeLessThanOrEqual(2);
-    // Two lanes that use the available width, not a centred cluster.
+    // Two lanes, and the GROUP is bounded by its content rather than by the
+    // space that happens to exist -- it does not become a viewport-wide band.
     expect(geometry.lanes).toBe(2);
     expect(geometry.rows[1].left).toBeGreaterThanOrEqual(geometry.width / 3 - 2);
+    expect(geometry.width, 'the group stretched to the card width')
+      .toBeLessThan(geometry.bodyWidth * 0.75);
+    // ...and it starts on the card's own content edge, like Archive Passwords.
+    expect(Math.abs(geometry.leftOfBody),
+      'the group is a centred island').toBeLessThanOrEqual(TOLERANCE);
     // The two lanes are subgrids of the SAME three rows, so they cannot drift.
     expect(geometry.subgrid[0]).toBe(geometry.subgrid[1]);
     // Both lanes align on label, control and help.
@@ -115,9 +136,17 @@ test('the two extraction behaviour controls are ONE group with one shared outlin
       expect(Math.abs(geometry.rows[0][key] - geometry.rows[1][key]),
         `the two lanes disagree about the ${key} row`).toBeLessThanOrEqual(TOLERANCE);
     }
-    // The boolean's control sits on its own row beneath its label, on the same
-    // left datum -- never floating beside the description.
-    expect(Math.abs(geometry.rows[1].controlLeft)).toBeLessThanOrEqual(TOLERANCE);
+    // Concurrent Extractions is a conventional LEFT-aligned field stack.
+    for (const start of geometry.rows[0].starts) {
+      expect(Math.abs(start), 'the numeric lane is not a left-aligned stack')
+        .toBeLessThanOrEqual(TOLERANCE);
+    }
+    // Delete Archives centres its WHOLE stack in its lane, so the toggle sits
+    // between the label and help rather than left-aligned under wider text.
+    for (const off of geometry.rows[1].offCentre) {
+      expect(Math.abs(off), 'the boolean stack is not centred in its lane')
+        .toBeLessThanOrEqual(TOLERANCE);
+    }
 
     await expect(group.locator('.form-hint').first())
       .toHaveText('Maximum extraction jobs DebridPulse runs at once.');

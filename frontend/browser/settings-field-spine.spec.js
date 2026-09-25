@@ -173,79 +173,45 @@ test('a themed select is measured as the control the operator can see', async ({
  * canonical Settings confirmation -- and the batch that followed put it on the
  * Password INPUT's own row.
  *
- * The Settings consolidation then made the server collection a capacity grid,
- * so a card's width is a function of the capacity rather than of the viewport.
- * What this spine spec owns is therefore the relationship in BOTH states: the
- * button takes horizontal room from the field while the card has room to give,
- * centred against the CONTROL rather than the taller label+input stack -- and
- * where it has none, it takes the row beneath on the card's own left datum
- * rather than squeezing the password field into a few characters. It never
- * adds an action band, and it is never stretched. */
-/* The card asks its OWN width, and a container query measures the CONTENT box.
- * A single-track collection is what leaves a card room for its wide rows. */
-const CARD_REFLOW_WIDTH = 330;
-const WIDE_CARD_VIEWPORT = {width: 900, height: 1000};
-const NARROW_CARD_VIEWPORT = {width: 1440, height: 1000};
-
-async function clearPasswordGeometry(page) {
-  return page.evaluate(() => {
+ * There is ONE state again. The collection's track minimum is now the width
+ * the card genuinely needs, so the card is never starved into reflowing this
+ * row onto a second line, and the two-state oracle that briefly described that
+ * reflow described a layout that can no longer occur.
+ *
+ * What this spine spec owns is therefore the relationship between the two: the
+ * button is beside the input, vertically centred against the CONTROL rather
+ * than against the taller label+input stack, and it takes horizontal room from
+ * the field instead of adding an action band beneath it. */
+test('Clear Password sits beside the Password input on its own row', async ({page}) => {
+  await openSettings(page);
+  await expandAll(page, 'sources');
+  const geometry = await page.evaluate(() => {
     const row = document.querySelector('.dp-usenet-clear-password');
     if (!row) return null;
     const card = row.closest('[data-usenet-server-id]');
-    const style = getComputedStyle(card);
-    const cardRect = card.getBoundingClientRect();
-    const cardContent = cardRect.width
-      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
     const input = card.querySelector('[data-usenet-field="password"]').getBoundingClientRect();
     const label = card.querySelector('[data-usenet-field="password"]')
       .closest('.dp-usenet-field').querySelector('.form-label').getBoundingClientRect();
     const button = row.querySelector('[data-usenet-action="clear-password"]').getBoundingClientRect();
     const host = row.closest('.dp-usenet-row').getBoundingClientRect();
     return {
-      cardWidth: cardContent,
-      cardLeft: cardRect.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft),
       inputRight: input.right,
-      inputBottom: input.bottom,
       inputCentreY: (input.top + input.bottom) / 2,
       labelCentreY: (label.top + label.bottom) / 2,
       buttonLeft: button.left,
       buttonRight: button.right,
-      buttonTop: button.top,
-      buttonWidth: button.width,
       buttonCentreY: (button.top + button.bottom) / 2,
       rowRight: host.right,
       controls: row.querySelectorAll('input, label').length,
     };
   });
-}
-
-test('Clear Password takes room from the Password field, or the row beneath when there is none',
-  async ({page}) => {
-    await openSettings(page);
-    await expandAll(page, 'sources');
-
-    // A wide card: beside the input, on the same row.
-    await page.setViewportSize(WIDE_CARD_VIEWPORT);
-    let geometry = await clearPasswordGeometry(page);
-    expect(geometry, 'the clear-password row did not render').toBeTruthy();
-    expect(geometry.cardWidth).toBeGreaterThan(CARD_REFLOW_WIDTH);
-    expect(geometry.buttonLeft).toBeGreaterThanOrEqual(geometry.inputRight - 1);
-    // Centred against the CONTROL, not against the label+input stack.
-    expect(Math.abs(geometry.buttonCentreY - geometry.inputCentreY)).toBeLessThanOrEqual(2);
-    expect(Math.abs(geometry.buttonCentreY - geometry.labelCentreY)).toBeGreaterThan(2);
-    // The group is the button: nothing follows it, and it is not stretched.
-    expect(geometry.controls).toBe(0);
-    expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.rowRight + 1);
-
-    // A narrow card: the row beneath, on the card's own left datum, still the
-    // button alone and still not stretched to the field's width.
-    await page.setViewportSize(NARROW_CARD_VIEWPORT);
-    geometry = await clearPasswordGeometry(page);
-    expect(geometry.cardWidth).toBeLessThan(CARD_REFLOW_WIDTH);
-    expect(geometry.buttonTop).toBeGreaterThanOrEqual(geometry.inputBottom - 1);
-    expect(geometry.buttonLeft - geometry.cardLeft).toBeLessThanOrEqual(2);
-    expect(geometry.controls).toBe(0);
-    expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.rowRight + 1);
-    expect(geometry.buttonWidth).toBeLessThan(geometry.rowRight - geometry.cardLeft);
-  });
+  expect(geometry, 'the clear-password row did not render').toBeTruthy();
+  // Beside the input, on the same row -- never beneath it.
+  expect(geometry.buttonLeft).toBeGreaterThanOrEqual(geometry.inputRight - 1);
+  // Centred against the CONTROL, not against the label+input stack.
+  expect(Math.abs(geometry.buttonCentreY - geometry.inputCentreY)).toBeLessThanOrEqual(2);
+  expect(Math.abs(geometry.buttonCentreY - geometry.labelCentreY)).toBeGreaterThan(2);
+  // The group is the button: nothing follows it, and it is not stretched.
+  expect(geometry.controls).toBe(0);
+  expect(geometry.buttonRight).toBeLessThanOrEqual(geometry.rowRight + 1);
+});

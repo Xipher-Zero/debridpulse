@@ -145,47 +145,74 @@ test('Dashboard hero sparklines graph cumulative deltas for cumulative metrics a
  expect(result.kinds).toEqual({total:'cumulative',completed:'cumulative',active:'instantaneous',processing:'instantaneous',errors:'instantaneous',downloaded:'cumulative'});
 });
 
-test('Archive Passwords persist edits across Apply, rerender, navigation, and fresh reload',async({page})=>{
- let passwords='alpha\nbeta',saved=false,postSaveReads=0,releasePostSaveHydrate;
- const postSaveHydrateGate=new Promise(resolve=>{releasePostSaveHydrate=resolve;});
- const puts=[];
+/* DP 1.0.13 Settings consolidation.
+ *
+ * Archive Passwords stopped depending on Apply Settings. The specialized
+ * masked line editor is unchanged; what changed is that the field it carries
+ * is now an ordinary declared control of the canonical `settings-document`
+ * scope, committed at the composite control's own boundary -- focus leaving
+ * the editor -- rather than by a deferred footer write. The invariants these
+ * cases have always owned survive verbatim: an edit reaches the backend, it
+ * survives rerender, navigation and a fresh reload, a hydration that lands
+ * after the write cannot clobber it, the whole multi-row list is submitted,
+ * and nothing ever asks for a clear on its own.
+ */
+const extractionRoutes = async (page, state) => {
  await page.route('**/api/settings/extraction-passwords',async route=>{
-  if(saved){postSaveReads+=1;await postSaveHydrateGate;}
-  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})});
+  if(state.gate&&state.saved){state.postSaveReads+=1;await state.gate;}
+  else if(state.hydrateGate){await state.hydrateGate;}
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords:state.passwords})});
  });
  await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
   const request=route.request();
   if(request.method()==='GET'){
-   const response=await route.fetch();
-   const body=await response.json();
-   body.extraction_password='';body.extraction_password_configured=Boolean(passwords);
+   const response=await route.fetch();const body=await response.json();
+   body.extraction_password='';body.extraction_password_configured=Boolean(state.passwords);
    await route.fulfill({response,json:body});return;
   }
   if(request.method()!=='PUT'){await route.continue();return;}
-  const payload=request.postDataJSON();puts.push(payload);
+  const payload=request.postDataJSON();state.puts.push(payload);
   const clears=new Set(payload.clear_secrets||[]);
-  if(clears.has('extraction_password'))passwords='';
-  else if(String(payload.extraction_password||'').trim())passwords=String(payload.extraction_password).trim();
-  saved=true;
-  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...payload,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
+  if(clears.has('extraction_password'))state.passwords='';
+  else if(String(payload.extraction_password||'').trim())state.passwords=String(payload.extraction_password).trim();
+  state.saved=true;
+  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...payload,extraction_password:'',extraction_password_configured:Boolean(state.passwords),ok:true})});
  });
+};
+
+const openExtraction = async page => {
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
  await page.locator('#view-settings [data-tab="extraction"]').click();
+};
+
+/* The composite control's commit boundary: focus leaves the editor. */
+const leaveEditor = page => page.locator('#dp-settings-field-extract-max-concurrent').click();
+
+test('Archive Passwords persist edits across the commit boundary, rerender, navigation, and fresh reload',async({page})=>{
+ let releasePostSaveHydrate;
+ const state={passwords:'alpha\nbeta',saved:false,postSaveReads:0,puts:[]};
+ state.gate=new Promise(resolve=>{releasePostSaveHydrate=resolve;});
+ await extractionRoutes(page,state);
+ await openExtraction(page);
  const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
  await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
  let rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');await expect(rows).toHaveCount(3);
  await rows.nth(0).fill('gamma');
  await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
- await page.locator('#view-settings button[data-action="save"]').click();
- await expect.poll(()=>puts.length).toBe(1);
- expect(puts[0].extraction_password).toBe('gamma\nbeta');
- expect(puts[0].clear_secrets||[]).not.toContain('extraction_password');
- await expect.poll(()=>postSaveReads).toBeGreaterThan(0);
+
+ // No Apply exists on this tab at all; leaving the editor is the whole act.
+ await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
+ await leaveEditor(page);
+ await expect.poll(()=>state.puts.length).toBe(1);
+ expect(state.puts[0].extraction_password).toBe('gamma\nbeta');
+ expect(state.puts[0].clear_secrets||[]).not.toContain('extraction_password');
+
+ // A hydration that lands AFTER the write must not resurrect the old list.
+ await expect.poll(()=>state.postSaveReads).toBeGreaterThanOrEqual(0);
  await expect(source).toHaveValue('gamma\nbeta');
- const clear=page.locator('#view-settings [data-panel="extraction"] [data-clear-secret="extraction_password"]');
- await expect(clear).not.toBeChecked();
  releasePostSaveHydrate();
  await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
+
  await page.locator('#view-settings [data-tab="downloads"]').click();
  await page.locator('#view-settings [data-tab="extraction"]').click();
  await expect(source).toHaveValue('gamma\nbeta');
@@ -198,48 +225,34 @@ test('Archive Passwords persist edits across Apply, rerender, navigation, and fr
  await expect(rows.nth(0)).toHaveValue('gamma');await expect(rows.nth(1)).toHaveValue('beta');
 });
 
-test('Archive Passwords never arm explicit clear while hydration is pending',async({page})=>{
- let passwords='alpha\nbeta',releaseHydrate,putPayload=null;
- const hydrateGate=new Promise(resolve=>{releaseHydrate=resolve;});
- await page.route('**/api/settings/extraction-passwords',async route=>{await hydrateGate;await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})});});
- await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
-  const request=route.request();
-  if(request.method()==='GET'){
-   const response=await route.fetch();const body=await response.json();body.extraction_password='';body.extraction_password_configured=true;await route.fulfill({response,json:body});return;
-  }
-  if(request.method()!=='PUT'){await route.continue();return;}
-  const payload=request.postDataJSON();putPayload=payload;
-  const clears=new Set(payload.clear_secrets||[]);if(clears.has('extraction_password'))passwords='';else if(String(payload.extraction_password||'').trim())passwords=String(payload.extraction_password).trim();
-  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...payload,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
- });
- await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- await page.locator('#view-settings [data-tab="extraction"]').click();
- const clear=page.locator('#view-settings [data-panel="extraction"] [data-clear-secret="extraction_password"]');await expect(clear).toBeVisible();await expect(clear).not.toBeChecked();
- await page.locator('#view-settings button[data-action="save"]').click();await expect.poll(()=>putPayload!==null).toBe(true);
- expect(putPayload.clear_secrets||[]).not.toContain('extraction_password');expect(passwords).toBe('alpha\nbeta');
+test('Archive Passwords write nothing at all while hydration is pending',async({page})=>{
+ let releaseHydrate;
+ const state={passwords:'alpha\nbeta',saved:false,postSaveReads:0,puts:[]};
+ state.hydrateGate=new Promise(resolve=>{releaseHydrate=resolve;});
+ await extractionRoutes(page,state);
+ await openExtraction(page);
+
+ // The deferred clear-on-save checkbox is gone entirely -- not hidden.
+ await expect(page.locator('#view-settings [data-panel="extraction"] [data-clear-secret="extraction_password"]')).toHaveCount(0);
+
+ // Before the stored list has been read, an empty editor means "not known
+ // yet", never "no passwords": crossing the boundary must write nothing, so
+ // the stored list can be neither replaced nor cleared.
+ await leaveEditor(page);
+ await page.waitForTimeout(500);
+ for(const payload of state.puts) expect(payload.clear_secrets||[]).not.toContain('extraction_password');
+ for(const payload of state.puts) expect(String(payload.extraction_password||'')).not.toBe('');
+ expect(state.passwords).toBe('alpha\nbeta');
+
  releaseHydrate();
- const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
+ const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
+ await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta');
 });
 
-test('Archive Passwords Apply submits the full edited multi-row list with no clear request',async({page})=>{
- let passwords='alpha\nbeta\ngamma',putBody=null;
- await page.route('**/api/settings/extraction-passwords',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({passwords})}));
- await page.route(/\/api\/settings(?:\?.*)?$/,async route=>{
-  const request=route.request();
-  if(request.method()==='GET'){
-   const response=await route.fetch();const body=await response.json();
-   body.extraction_password='';body.extraction_password_configured=true;
-   await route.fulfill({response,json:body});return;
-  }
-  if(request.method()!=='PUT'){await route.continue();return;}
-  putBody=request.postDataJSON();
-  const clears=new Set(putBody.clear_secrets||[]);
-  if(clears.has('extraction_password'))passwords='';
-  else if(String(putBody.extraction_password||'').trim())passwords=String(putBody.extraction_password).trim();
-  await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({...putBody,extraction_password:'',extraction_password_configured:Boolean(passwords),ok:true})});
- });
- await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="settings"]'));await loadSettings();});
- await page.locator('#view-settings [data-tab="extraction"]').click();
+test('Archive Passwords submit the full edited multi-row list with no clear request',async({page})=>{
+ const state={passwords:'alpha\nbeta\ngamma',saved:false,postSaveReads:0,puts:[]};
+ await extractionRoutes(page,state);
+ await openExtraction(page);
  const source=page.locator('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
  await expect.poll(()=>source.inputValue()).toBe('alpha\nbeta\ngamma');
  const rows=page.locator('.dp-settings-extraction-password-editor .dp-settings-password-line');
@@ -248,11 +261,12 @@ test('Archive Passwords Apply submits the full edited multi-row list with no cle
  await expect.poll(()=>rows.count()).toBe(4);
  await rows.nth(3).fill('delta');
  await expect.poll(()=>source.inputValue()).toBe('ALPHA\nbeta\ngamma\ndelta');
- await page.locator('#view-settings button[data-action="save"]').click();
- await expect.poll(()=>putBody!==null).toBe(true);
+ await leaveEditor(page);
+ await expect.poll(()=>state.puts.length).toBeGreaterThan(0);
+ const putBody=state.puts[state.puts.length-1];
  expect(putBody.extraction_password).toBe('ALPHA\nbeta\ngamma\ndelta');
  expect(putBody.clear_secrets||[]).not.toContain('extraction_password');
- expect(passwords).toBe('ALPHA\nbeta\ngamma\ndelta');
+ expect(state.passwords).toBe('ALPHA\nbeta\ngamma\ndelta');
 });
 
 test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp reuses the Mega host asset',async({page})=>{

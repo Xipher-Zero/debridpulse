@@ -143,8 +143,13 @@ test.describe('Usenet server cards populate a viewport-capacity grid', () => {
       expect(Math.abs(measured.rows[0].leading), 'the population recentred itself')
         .toBeLessThanOrEqual(1);
     }
-    expect(one.rows[0].count).toBe(2);
-    expect(two.rows[0].count).toBe(3);
+    // The first row holds as many occupants as the capacity allows; the rest
+    // wrap. What must not happen is the collection resizing itself to the
+    // population, which the equal tracks and the zero leading above prove.
+    expect(one.rows[0].count).toBe(Math.min(2, empty.capacity));
+    expect(two.rows[0].count).toBe(Math.min(3, empty.capacity));
+    expect(one.rows.reduce((n, r) => n + r.count, 0)).toBe(2);
+    expect(two.rows.reduce((n, r) => n + r.count, 0)).toBe(3);
   });
 
   test('capacity drops on its own as the viewport narrows, and never below one',
@@ -443,25 +448,6 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     return {left, right, centerX: (left + right) / 2};
   });
 
-  /* DP 1.0.13 Settings consolidation: the collection became a capacity grid,
-   * so a card's own width is now a function of the capacity rather than of the
-   * viewport, and the card asks ITS OWN width whether its internal rows still
-   * fit side by side. These two viewports put the card either side of that
-   * question -- 1440 gives four tracks (a narrow card), 1100 gives two (a wide
-   * one) -- so both states of every rule below are actually exercised. */
-  const WIDE_CARD_VIEWPORT = {width: 900, height: 1000};
-  const NARROW_CARD_VIEWPORT = {width: 1440, height: 1000};
-  const CARD_REFLOW_WIDTH = 330;
-
-  /* A container query measures the CONTENT box, so that is what the card's own
-   * rules actually see -- never its border box. */
-  const cardWidth = locator => locator.evaluate(el => {
-    const style = getComputedStyle(el);
-    return el.getBoundingClientRect().width
-      - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight)
-      - parseFloat(style.borderLeftWidth) - parseFloat(style.borderRightWidth);
-  });
-
   const only = page => serverCards(page).first();
 
   test('exactly one Test and one Remove exist in either disclosure state', async ({page}) => {
@@ -475,14 +461,12 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
   });
 
-  test('collapsed: Advanced stays left, and the pair shares its row while the card can hold it',
+  test('collapsed: Advanced stays left and the pair shares its row, centred on the card',
     async ({page}) => {
-      await page.setViewportSize(WIDE_CARD_VIEWPORT);
       const card = only(page);
-      expect(await cardWidth(card)).toBeGreaterThan(CARD_REFLOW_WIDTH);
-      let toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
-      let actions = await box(card.locator('.dp-usenet-actions'));
-      let content = await contentBox(card);
+      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      const actions = await box(card.locator('.dp-usenet-actions'));
+      const content = await contentBox(card);
       // One row.
       expect(Math.abs(toggle.centerY - actions.centerY)).toBeLessThanOrEqual(2);
       // Advanced is on the card's left datum.
@@ -493,51 +477,22 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       // And they do not overlap.
       expect(actions.left).toBeGreaterThan(toggle.right);
       // No dedicated action band beneath the row.
-      let advanced = await box(card.locator('[data-usenet-advanced]'));
+      const advanced = await box(card.locator('[data-usenet-advanced]'));
       expect(advanced.bottom - Math.max(toggle.bottom, actions.bottom)).toBeLessThanOrEqual(3);
-
-      // At a card width that cannot hold three tracks, the rail drops the pair
-      // to the row beneath instead of squeezing it -- Advanced still left, the
-      // pair still left-aligned under it, and still no overlap.
-      await page.setViewportSize(NARROW_CARD_VIEWPORT);
-      expect(await cardWidth(card)).toBeLessThan(CARD_REFLOW_WIDTH);
-      toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
-      actions = await box(card.locator('.dp-usenet-actions'));
-      content = await contentBox(card);
-      expect(actions.top).toBeGreaterThanOrEqual(toggle.bottom - 1);
-      expect(actions.left - content.left).toBeLessThanOrEqual(2);
-      const enable = await box(card.locator('.dp-usenet-enable'));
-      expect(enable.left).toBeGreaterThan(actions.right);
-      expect(Math.abs(enable.centerY - actions.centerY)).toBeLessThanOrEqual(3);
-      await page.setViewportSize(NARROW_CARD_VIEWPORT);
     });
 
-  test('expanded: the pair owns a row beneath every advanced field, in both card widths',
+  test('expanded: the pair owns the final row beneath every advanced field, still centred',
     async ({page}) => {
       const card = only(page);
       await card.locator('[data-usenet-advanced-toggle]').click();
       await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
-
-      for (const viewport of [WIDE_CARD_VIEWPORT, NARROW_CARD_VIEWPORT]) {
-        await page.setViewportSize(viewport);
-        const wide = (await cardWidth(card)) > CARD_REFLOW_WIDTH;
-        const body = await box(card.locator('.dp-usenet-advanced-body'));
-        const actions = await box(card.locator('.dp-usenet-actions'));
-        const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
-        const content = await contentBox(card);
-        expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
-        expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
-        if (wide) {
-          expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
-        } else {
-          // No third track to centre across: the pair takes the card's left
-          // datum and Enable keeps the far side of the same row.
-          expect(actions.left - content.left).toBeLessThanOrEqual(2);
-          const enable = await box(card.locator('.dp-usenet-enable'));
-          expect(enable.left).toBeGreaterThan(actions.right);
-        }
-      }
-      await page.setViewportSize(NARROW_CARD_VIEWPORT);
+      const body = await box(card.locator('.dp-usenet-advanced-body'));
+      const actions = await box(card.locator('.dp-usenet-actions'));
+      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      const content = await contentBox(card);
+      expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
+      expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
+      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
     });
 
   test('the Priority hint sits directly beneath the Priority input, in its column',
@@ -557,34 +512,17 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
       expect(Math.abs(connections.centerY - priority.centerY)).toBeLessThanOrEqual(2);
     });
 
-  test('SSL shares the Host/Port band while the card can hold it, and takes its own row when it cannot',
-    async ({page}) => {
-      await page.setViewportSize(WIDE_CARD_VIEWPORT);
-      const card = only(page);
-      expect(await cardWidth(card)).toBeGreaterThan(CARD_REFLOW_WIDTH);
-      let host = await box(card.locator('[data-usenet-field="host"]'));
-      let port = await box(card.locator('[data-usenet-field="port"]'));
-      let ssl = await box(card.locator('.dp-usenet-ssl'));
-      expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
-      // Centred against the INPUT boxes themselves...
-      expect(Math.abs(ssl.centerY - host.centerY)).toBeLessThanOrEqual(2);
-      // ...and not against the label+input wrapper, whose centre sits higher.
-      const wrapper = await box(card.locator('.dp-usenet-field--host'));
-      expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
-
-      // At a narrower card, squeezing the host name into a few characters is
-      // the wrong answer: SSL takes the row beneath, on the card's left datum.
-      await page.setViewportSize(NARROW_CARD_VIEWPORT);
-      expect(await cardWidth(card)).toBeLessThan(CARD_REFLOW_WIDTH);
-      host = await box(card.locator('[data-usenet-field="host"]'));
-      port = await box(card.locator('[data-usenet-field="port"]'));
-      ssl = await box(card.locator('.dp-usenet-ssl'));
-      const content = await contentBox(card);
-      expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
-      expect(ssl.top).toBeGreaterThanOrEqual(host.bottom - 1);
-      expect(ssl.left - content.left).toBeLessThanOrEqual(2);
-      await page.setViewportSize(NARROW_CARD_VIEWPORT);
-    });
+  test('SSL is centred against the Host and Port input boxes themselves', async ({page}) => {
+    const card = only(page);
+    const host = await box(card.locator('[data-usenet-field="host"]'));
+    const port = await box(card.locator('[data-usenet-field="port"]'));
+    const ssl = await box(card.locator('.dp-usenet-ssl'));
+    expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
+    expect(Math.abs(ssl.centerY - host.centerY)).toBeLessThanOrEqual(2);
+    // And not centred against the label+input wrapper, whose centre sits higher.
+    const wrapper = await box(card.locator('.dp-usenet-field--host'));
+    expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
+  });
 });
 
 /* DP 1.0.13 -- the Downloads tuning collections.

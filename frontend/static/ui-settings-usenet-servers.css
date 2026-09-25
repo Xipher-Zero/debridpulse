@@ -17,14 +17,22 @@
    count -- one server does not stretch to a giant card, and three do not
    recentre themselves.
 
-   The track minimum is the width a server card is given when four sit across
-   the current wide Services viewport, so four is the capacity there and it
-   falls to 3, 2 and 1 on its own as the viewport narrows. `auto-fill` is what
-   preserves the empty trailing capacity that `auto-fit` would collapse.
-   Nothing is measured and no column count is named. */
+   The track minimum is the width the CARD ITSELF needs to lay its own rows out
+   as intended -- measured, not chosen to make some viewport show a particular
+   number. The binding row is the Advanced rail (Advanced | Test + Remove |
+   Enable): it holds together down to 340px and no further, so 360px is that
+   requirement with headroom for wider font metrics than this machine's. Host +
+   Port + SSL and Password + Clear Password then have room by construction, and
+   the card never needs an emergency internal reflow to survive its own track.
+
+   Capacity follows from that minimum rather than the other way round: as the
+   viewport grows the collection holds more tracks, and as it shrinks it holds
+   fewer -- 4, 3, 2, 1 -- with every card at least as wide as it needs to be.
+   `auto-fill` preserves the empty trailing capacity that `auto-fit` would
+   collapse. Nothing is measured in script and no column count is named. */
 .dp-usenet-servers {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(248px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(360px, 1fr));
   align-items: stretch;
   gap: 12px;
 }
@@ -37,12 +45,6 @@
   border-radius: 12px;
   padding: 14px;
   background: var(--dp-surface-2, rgba(255, 255, 255, .03));
-  /* The card's own width -- not the viewport's -- is what decides whether its
-     internal rows still fit side by side, because a card in a four-track
-     collection and the same card alone at the same viewport are different
-     widths. */
-  container-type: inline-size;
-  container-name: dp-usenet-card;
 }
 
 .dp-usenet-server-head {
@@ -344,63 +346,4 @@
 
 @media (max-width: 720px) {
   .dp-usenet-row { flex-wrap: wrap; }
-}
-
-/* ── The card at a narrow TRACK ──────────────────────────────────────────
-   A card in a four-track collection and the same card alone are different
-   widths at the same viewport, so what its internal rows can hold is a
-   question about the CARD, asked of the card. Below the width at which Host,
-   Port and SSL still share one band, SSL takes its own row and the Advanced
-   rail drops its symmetric third track -- the action pair and Enable share the
-   row beneath, exactly as they share a row above it. Nothing is measured, no
-   node is moved, and no viewport breakpoint is involved. */
-@container dp-usenet-card (max-width: 330px) {
-  .dp-usenet-row--host { grid-template-columns: minmax(0, 1fr) 5.5rem; }
-
-  .dp-usenet-ssl {
-    grid-column: 1 / -1;
-    grid-row: 3;
-    justify-self: start;
-    margin-top: 2px;
-  }
-
-  .dp-usenet-advanced { grid-template-columns: minmax(0, 1fr) auto; }
-
-  .dp-usenet-advanced > .dp-usenet-advanced-toggle { grid-column: 1 / -1; }
-
-  .dp-usenet-advanced > .dp-usenet-actions {
-    grid-column: 1;
-    grid-row: 2;
-    justify-self: start;
-    justify-content: flex-start;
-  }
-
-  .dp-usenet-advanced > .dp-usenet-enable { grid-column: 2; grid-row: 2; }
-
-  /* Expanded, the advanced fields own row 2, so the pair and Enable move down
-     together -- the same two-state rule the wide rail already states. The
-     column is restated because the wide rail's expanded rule centres the pair
-     across every track, which is the third track this narrow rail does not
-     have. */
-  .dp-usenet-advanced:has(> .dp-usenet-advanced-body:not([hidden])) > .dp-usenet-actions {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-  }
-
-  .dp-usenet-advanced:has(> .dp-usenet-advanced-body:not([hidden])) > .dp-usenet-enable {
-    grid-row: 3;
-  }
-
-  /* The password and its destructive clear no longer share a band at this
-     width: the action takes the row beneath the field it is about. */
-  .dp-usenet-row--password:has(> .dp-usenet-clear-password:not([hidden])) {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .dp-usenet-row--password > .dp-usenet-clear-password {
-    grid-column: 1;
-    grid-row: 3;
-    justify-self: start;
-  }
 }

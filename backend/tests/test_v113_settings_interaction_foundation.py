@@ -331,15 +331,21 @@ def test_the_server_collection_is_a_viewport_capacity_grid():
     does not stretch into a giant card and three do not recentre themselves."""
     collection = rule(USENET_CSS, ".dp-usenet-servers {")
     assert "display: grid" in collection
-    assert "repeat(auto-fill, minmax(248px, 1fr))" in collection
+    # The minimum is the width the CARD needs to lay its own rows out, measured
+    # from the binding row (the Advanced rail) rather than chosen to make some
+    # viewport show a particular number. Capacity follows from it; it is never
+    # tuned to a capacity, and the card never needs an internal reflow to
+    # survive its own track.
+    assert "repeat(auto-fill, minmax(360px, 1fr))" in collection
     assert "auto-fit" not in collection, "empty trailing capacity would collapse"
     assert "justify-content: center" not in collection, "population-centred sizing returned"
     # Capacity is the layout's own behaviour, never a measured offset.
     for banned in ("margin-left", "margin-inline-start", "position: absolute", "transform"):
         assert banned not in collection, banned
-    # The card asks its OWN width about its internal rows, not the viewport's.
-    assert "container-name: dp-usenet-card" in USENET_CSS
-    assert "@container dp-usenet-card (max-width:" in USENET_CSS
+    # And with the track honest, there is no emergency internal reflow left:
+    # the card never asks its own width to survive a starved column.
+    assert "container-name: dp-usenet-card" not in USENET_CSS
+    assert "@container dp-usenet-card" not in USENET_CSS
 
 
 # --- Item 3: Usenet owns no notification system ----------------------------

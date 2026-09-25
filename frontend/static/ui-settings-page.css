@@ -541,6 +541,18 @@
   --dp-tuning-lane-min: 160px;
   /* The bounded card inside the lane. */
   --dp-tuning-card-max: 240px;
+  /* What a drawn relationship LOOKS like, declared exactly once for every set
+     that has one. The three switches below only turn it on; none of them
+     states an appearance, so there is no per-section variant to drift.
+
+     The hierarchy it has to sit in: the enclosing card body draws no edge at
+     all, and a tuning card draws a filled border over its own raised
+     background. A hairline in the strong border tone is therefore plainly
+     more present than the container -- it no longer reads as a rendering
+     artifact -- while remaining a single unfilled line against the cards'
+     border-plus-surface weight, so the cards still dominate. */
+  --dp-tuning-relation-line:
+    1px solid color-mix(in srgb, var(--dp-border-strong) 78%, transparent);
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(
     max(var(--dp-tuning-lane-min),
@@ -666,7 +678,7 @@
   #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
   }
 }
 
@@ -675,7 +687,7 @@
   #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
   }
 }
 
@@ -684,7 +696,7 @@
   #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: 1px solid var(--dp-divider, rgba(255, 255, 255, .14));
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
   }
 }
 
@@ -1086,7 +1098,14 @@
 }
 
 #view-settings .card.dp-settings-source-box {
+  /* Bounded and centred in its lane, exactly as a tuning card is: capacity
+     decides how many lanes exist, never how wide a box grows. Without this a
+     sparse population would stretch each box across its whole track, which is
+     the population-driven sizing the capacity grid exists to remove. */
+  width: 100%;
   min-width: 0;
+  max-width: 210px;
+  margin-inline: auto;
   box-sizing: border-box;
   /* The COLLECTION's gap owns the rhythm between boxes. A stacking margin
      inherited from the card material would also be subtracted from the flex

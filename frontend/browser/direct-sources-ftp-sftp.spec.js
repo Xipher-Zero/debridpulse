@@ -135,10 +135,18 @@ async function assertProtocolBoxes(page) {
   expect(Math.abs(heights[0] - heights[1])).toBeLessThanOrEqual(1);
 }
 
-/** Every row of the grid, including a wrapped or partial one, is centred. */
-async function assertCentredRows(page, width) {
-  const rows = await grid(page).evaluate(el => {
+/* DP 1.0.13 Settings consolidation: the collection stopped sizing itself from
+ * the population and became a CAPACITY grid. The available width alone decides
+ * how many equal tracks exist, the real members populate them left to right,
+ * and the tracks a sparse population does not reach stay empty so a protocol
+ * registered later consumes the next one. `auto-fill` is what preserves that
+ * trailing capacity; `auto-fit` would collapse it and recentre the members,
+ * which is exactly the population-centred sizing this replaced. */
+async function assertCapacityLanes(page, width) {
+  const measured = await grid(page).evaluate(el => {
     const host = el.getBoundingClientRect();
+    const tracks = getComputedStyle(el).gridTemplateColumns
+      .split(' ').filter(Boolean).map(parseFloat);
     const byTop = new Map();
     for (const child of el.children) {
       const r = child.getBoundingClientRect();
@@ -146,28 +154,45 @@ async function assertCentredRows(page, width) {
       if (!byTop.has(key)) byTop.set(key, []);
       byTop.get(key).push(r);
     }
-    return Array.from(byTop.values()).map(boxes => ({
-      count: boxes.length,
-      leading: Math.min(...boxes.map(b => b.left)) - host.left,
-      trailing: host.right - Math.max(...boxes.map(b => b.right)),
-    }));
+    return {
+      capacity: tracks.length,
+      lane: tracks[0],
+      spread: Math.max(...tracks) - Math.min(...tracks),
+      rows: Array.from(byTop.values()).map(boxes => ({
+        count: boxes.length,
+        leading: Math.min(...boxes.map(b => b.left)) - host.left,
+        box: Math.min(...boxes.map(b => b.width)),
+      })),
+    };
   });
-  expect(rows.length).toBeGreaterThan(0);
-  for (const row of rows) {
-    expect(Math.abs(row.leading - row.trailing),
-      `a row of ${row.count} is not centred at ${width}px`).toBeLessThanOrEqual(2);
+  expect(measured.capacity, `no capacity at ${width}px`).toBeGreaterThanOrEqual(1);
+  expect(measured.spread, `the tracks are not equal at ${width}px`).toBeLessThanOrEqual(1);
+  expect(measured.rows.length).toBeGreaterThan(0);
+  for (const row of measured.rows) {
+    // Left-filled: the row occupies the FIRST lane. A bounded box centred
+    // inside its own lane is the lane's slack, not a sparse-row offset.
+    expect(row.leading,
+      `a row of ${row.count} does not start at the first lane at ${width}px`)
+      .toBeLessThanOrEqual((measured.lane - row.box) / 2 + 2);
   }
   expect(await page.evaluate(() =>
     document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
     `horizontal overflow at ${width}px`).toBeTruthy();
 }
 
-test('Network Sources renders one compact centred protocol box per real provider in dark and light themes', async ({ page }) => {
+test('Network Sources renders one compact protocol box per real provider, left-filling its capacity, in dark and light themes', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await page.goto('/'); await openSettings(page);
   await assertProtocolBoxes(page);
-  await assertCentredRows(page, 1440);
+  await assertCapacityLanes(page, 1440);
+  // Two real members at the wide viewport leave trailing capacity for the
+  // source providers that do not exist yet, rather than expanding to fill it.
+  const wide = await grid(page).evaluate(el => ({
+    capacity: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
+    members: el.children.length,
+  }));
+  expect(wide.capacity).toBeGreaterThan(wide.members);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-dark.png'});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
@@ -184,7 +209,7 @@ test('Network Sources renders one compact centred protocol box per real provider
       await expect(integrationControl(page, identity)).toBeVisible();
       expect((await box.boundingBox()).width).toBeLessThanOrEqual(Math.min(220, width));
     }
-    await assertCentredRows(page, width);
+    await assertCapacityLanes(page, width);
   }
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-light-narrow.png'});
   expect(errors).toEqual([]);
