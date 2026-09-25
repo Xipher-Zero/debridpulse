@@ -112,7 +112,14 @@ def test_safety_recovery_is_equal_width_three_over_two_inverted_pyramid():
     assert "grid-column: 4 / span 2;" in css
 
 
-def test_alldebrid_additional_settings_matches_three_over_two_inverted_pyramid():
+def test_alldebrid_additional_settings_are_owned_solely_by_the_tuning_grid():
+    """DP 1.0.13 final interaction pass: that region became tuning-only, shown
+    as compact bounded cells by the reusable tuning grid in ui-settings-page.css.
+
+    This layer's six-column inverted pyramid was a SECOND owner of the same
+    surface, and a live conflict rather than dead CSS -- a ``display: grid`` on
+    the body would place the whole centred line inside one 1fr track. It is gone,
+    and the point of this case is that it stays gone."""
     css = read("ui-settings-downloads-completion.css")
     page = read("ui-settings-page.js")
 
@@ -127,12 +134,12 @@ def test_alldebrid_additional_settings_matches_three_over_two_inverted_pyramid()
         assert key in page
 
     selector = '[data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body'
-    assert selector in css
-    assert f"{selector} > .dp-settings-field:nth-child(4)" in css
-    assert f"{selector} > .dp-settings-field:nth-child(5)" in css
-    assert "grid-template-columns: repeat(6, minmax(0, 1fr));" in css
-    assert "grid-column: 2 / span 2;" in css
-    assert "grid-column: 4 / span 2;" in css
+    assert selector not in css, "a second owner of the tuning region survives here"
+    assert ".dp-settings-additional-body" not in css
+    # The one owner, and the cells it lays out.
+    settings_css = read("ui-settings-page.css")
+    assert "#view-settings .dp-settings-tuning-grid {" in settings_css
+    assert "dp-settings-tuning-grid" in page
 
 
 def test_sources_and_downloads_use_the_one_canonical_field_datum():

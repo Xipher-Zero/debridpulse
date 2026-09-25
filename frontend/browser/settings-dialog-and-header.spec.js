@@ -177,15 +177,25 @@ test('every provider/source card explains what enabling it allows', async ({page
   await serveUsenet(page);
   await page.goto('/');
   await openSettings(page, 'sources');
-  const copy = {
+  // The two expandable Premium Services cards say it in the canonical card
+  // header. The Network Sources members are compact protocol BOXES with no card
+  // header, so they keep the same promise as their two centred lines.
+  const headerCopy = {
     'usenet': 'Download NZB content from configured Usenet news servers.',
     'alldebrid': 'Resolve supported links and torrents through your AllDebrid account.',
-    'general-http': 'Direct downloads from standard HTTP and HTTPS URLs.',
-    'general-ftp': 'Direct downloads from FTP and SFTP URLs.',
   };
-  for (const [slug, text] of Object.entries(copy)) {
+  for (const [slug, text] of Object.entries(headerCopy)) {
     await expect(page.locator(`.dp-settings-provider-card--${slug} > .card-header .dp-settings-card-header-center`))
       .toHaveText(text);
+  }
+  const boxCopy = {
+    'general-http': 'Direct downloads from HTTP and HTTPS URLs.',
+    'general-ftp': 'Direct downloads from FTP and SFTP URLs.',
+  };
+  for (const [slug, text] of Object.entries(boxCopy)) {
+    const lines = page.locator(`.dp-settings-provider-card--${slug} .dp-settings-source-box-copy > span`);
+    await expect(lines).toHaveCount(2);
+    expect((await lines.allTextContents()).map(line => line.trim()).join(' ')).toBe(text);
   }
 });
 
@@ -220,6 +230,7 @@ test('header flavour copy is geometrically centred on the full card header', asy
     const out = [];
     for (const card of document.querySelectorAll('#view-settings .dp-settings-provider-card')) {
       const header = card.querySelector(':scope > .card-header');
+      if (!header) continue;
       const copy = header.querySelector('.dp-settings-card-header-center');
       if (!copy) continue;
       const h = header.getBoundingClientRect(), c = copy.getBoundingClientRect();
@@ -227,7 +238,9 @@ test('header flavour copy is geometrically centred on the full card header', asy
     }
     return out;
   });
-  expect(sources.length).toBe(4);
+  // The two expandable Premium Services cards. The Network Sources members are
+  // protocol boxes and have no card header to centre anything on.
+  expect(sources.length).toBe(2);
   for (const offset of sources) expect(Math.abs(offset)).toBeLessThan(1);
 });
 

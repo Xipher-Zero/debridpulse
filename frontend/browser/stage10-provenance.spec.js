@@ -73,7 +73,10 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
   await expect(page.locator('.dp-settings-general-sources')).toContainText('Network Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
   await expect(httpCard).toContainText('HTTP(S)');
-  await expect(httpCard).toContainText('Direct downloads from standard HTTP and HTTPS URLs.');
+  // The member is a compact protocol box now, so its promise is the two
+  // centred lines it presents.
+  await expect(httpCard).toContainText('Direct downloads from');
+  await expect(httpCard).toContainText('HTTP and HTTPS URLs.');
   await expect(integrationControl(page, 'general_http')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);

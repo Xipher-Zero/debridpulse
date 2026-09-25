@@ -68,7 +68,13 @@ async function openAdditional(page) {
 const settings = page => page.request.get('/api/settings').then(r => r.json());
 const toasts = page => page.locator('#toasts .toast');
 const clearButton = page => page.locator('[data-action="clear-alldebrid-key"]');
-const clearConfirm = page => page.locator('[data-alldebrid-clear-confirm]');
+
+/* The ONE canonical Settings confirmation (ui-settings-modal.js). A destructive
+ * action opens it; this spec drives that one dialog and never a card-local
+ * confirmation, because there no longer is one. */
+const dangerDialog = page => page.locator('.dp-modal-overlay .dp-modal-dialog[data-tone="danger"]');
+const acceptDanger = page => dangerDialog(page).locator('[data-modal-accept]');
+const cancelDanger = page => dangerDialog(page).locator('[data-modal-cancel]');
 
 async function clearToasts(page) {
   await page.evaluate(() => { const host = document.getElementById('toasts'); if (host) host.innerHTML = ''; });
@@ -262,10 +268,17 @@ async function preconfigure(page, key = 'DP-PRESET') {
   await revealAllDebrid(page);
 }
 
-test('no localized Save survives for the AllDebrid credential', async ({page}) => {
+test('no localized Save survives, and Test is the card header rail\'s one action', async ({page}) => {
   await expect(page.locator('[data-action="save-alldebrid"]')).toHaveCount(0);
-  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-actions button'))
+  const card = page.locator('.dp-settings-provider-card--alldebrid');
+  // The provider action footer is gone entirely; Test is a header action.
+  await expect(card.locator('.dp-settings-provider-actions')).toHaveCount(0);
+  await expect(card.locator(':scope > .card-header .dp-settings-header-action button'))
     .toHaveCount(1);
+  await expect(card.locator(':scope > .card-header [data-action="test-alldebrid"]'))
+    .toHaveCount(1);
+  await expect(card.locator(':scope > .card-body [data-action="test-alldebrid"]'))
+    .toHaveCount(0);
 });
 
 test('entering an API key commits on blur through the existing integration mutation',
@@ -333,7 +346,7 @@ test('the card reports the accepted projection after a credential write', async 
   await expect(status).toHaveText('Configured');
   expect((await settings(page)).integrations.alldebrid.verified).toBe(false);
   // The row now offers the explicit Clear, because a key is present.
-  await expect(clearConfirm(page)).toHaveCount(1);
+  await expect(clearButton(page)).toHaveCount(1);
 });
 
 test('a failed credential write rolls back to the safe blank state and says so',
@@ -349,28 +362,46 @@ test('a failed credential write rolls back to the safe blank state and says so',
     expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
   });
 
-test('Clear is inert until the removal is confirmed', async ({page}) => {
+test('Clear is the explicit red action, and it asks the canonical confirmation', async ({page}) => {
   await preconfigure(page);
-  await expect(clearButton(page)).toBeDisabled();
-  await expect(clearConfirm(page)).not.toBeChecked();
-  const seen = mutations(page);
-  await clearButton(page).click({force: true});
-  await page.waitForTimeout(500);
-  expect(seen).toEqual([]);
-  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
-
-  await clearConfirm(page).check();
+  // No card-local gate survives: the action is available, and the dialog asks.
   await expect(clearButton(page)).toBeEnabled();
-  // Arming the confirmation alone changes nothing.
-  await page.waitForTimeout(500);
+  await expect(clearButton(page)).toHaveText('Clear Stored API Key');
+  await expect(clearButton(page)).toHaveClass(/btn-danger/);
+  await expect(page.locator('[data-alldebrid-clear-confirm]')).toHaveCount(0);
+
+  const seen = mutations(page);
+  await clearButton(page).click();
+  // Opening the dialog is not a mutation.
+  await expect(dangerDialog(page)).toBeVisible();
+  await expect(dangerDialog(page).locator('.dp-modal-title')).toHaveText('Clear AllDebrid API key?');
+  await expect(acceptDanger(page)).toHaveText('Clear AllDebrid API Key');
+  await expect(acceptDanger(page)).toHaveClass(/btn-danger/);
+  await expect(cancelDanger(page)).toHaveText('Cancel');
+  await expect(dangerDialog(page).locator('.dp-modal-message')).toContainText(/removed/i);
   expect(scoped(seen, '/api/integrations/alldebrid/configuration')).toHaveLength(0);
 });
 
-test('a confirmed Clear erases the stored key and resets the confirmation', async ({page}) => {
+test('Cancelling the Clear confirmation performs no mutation', async ({page}) => {
   await preconfigure(page);
   const seen = mutations(page);
-  await clearConfirm(page).check();
   await clearButton(page).click();
+  await expect(dangerDialog(page)).toBeVisible();
+  await cancelDanger(page).click();
+  await expect(dangerDialog(page)).toHaveCount(0);
+
+  await page.waitForTimeout(500);
+  expect(scoped(seen, '/api/integrations/alldebrid/configuration')).toHaveLength(0);
+  // Accepted state is untouched, and so is the action that offers it.
+  expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
+  await expect(clearButton(page)).toBeEnabled();
+});
+
+test('a confirmed Clear erases the stored key exactly once', async ({page}) => {
+  await preconfigure(page);
+  const seen = mutations(page);
+  await clearButton(page).click();
+  await acceptDanger(page).click();
 
   await expect.poll(async () =>
     (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
@@ -379,22 +410,23 @@ test('a confirmed Clear erases the stored key and resets the confirmation', asyn
   expect(writes[0].body.clear_secrets).toEqual(['api_key']);
   // Clear never also saves a replacement key.
   expect(writes[0].body.options).toEqual({});
-  // The row now reports "no key", so the confirmed removal is consumed.
-  await expect(clearConfirm(page)).toHaveCount(0);
+  // The row now reports "no key", so the action it offered is gone with it.
+  await expect(clearButton(page)).toHaveCount(0);
 });
 
-test('a failed Clear keeps the confirmation armed', async ({page}) => {
+test('a failed Clear renders no false cleared state', async ({page}) => {
   await preconfigure(page);
   await page.route(url => url.pathname === '/api/integrations/alldebrid/configuration',
     route => route.request().method() === 'PATCH'
       ? route.fulfill({status: 502, contentType: 'application/json',
           body: JSON.stringify({detail: 'clear rejected'})})
       : route.continue());
-  await clearConfirm(page).check();
   await clearButton(page).click();
+  await acceptDanger(page).click();
 
   await expect(toasts(page).first()).toContainText(/reject|error|fail/i);
-  await expect(clearConfirm(page)).toBeChecked();
+  // The row still says a key is stored, because one still is.
+  await expect(clearButton(page)).toBeVisible();
   await expect(clearButton(page)).toBeEnabled();
   await page.unrouteAll({behavior: 'ignoreErrors'}).catch(() => {});
   expect((await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(true);
@@ -586,20 +618,25 @@ test('a credential write leaves a newer key typed while it was in flight alone',
     await expect(page.locator(API_KEY)).toHaveValue('');
   });
 
-test('a credential write never disarms a Clear confirmation armed after dispatch',
+/* A credential write converges the row. The destructive action is part of what
+ * the row SHOWS about the stored credential, so the invariant is that the
+ * re-render leaves it reachable and truthful -- there is no armed state to
+ * preserve any more, because the question is asked when the operator acts. */
+test('a credential write in flight leaves the Clear action reachable and truthful',
   async ({page}) => {
     await preconfigure(page);
     await delayNextAllDebridWrite(page, 1500);
     await page.locator(API_KEY).fill('DP-KEY-A');
     await page.locator(API_KEY).blur();          // dispatched with no removal intent
-    await clearConfirm(page).check();
 
     await page.waitForTimeout(2200);
-    // The newer intent survived the older response's re-render.
-    await expect(clearConfirm(page)).toBeChecked();
+    // The row re-rendered on the accepted state; a key is still stored, so the
+    // action it offers is still there and still enabled.
+    await expect(clearButton(page)).toBeVisible();
     await expect(clearButton(page)).toBeEnabled();
 
     await clearButton(page).click();
+    await acceptDanger(page).click();
     await expect.poll(async () =>
       (await settings(page)).integrations.alldebrid.options.api_key_configured).toBe(false);
   });

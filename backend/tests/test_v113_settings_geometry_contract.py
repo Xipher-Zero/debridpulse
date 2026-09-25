@@ -115,23 +115,25 @@ def test_the_canonical_checkbox_row_is_declared_once_by_the_form_layout_owner():
     assert offenders == [], offenders
 
 
-def test_the_clear_password_row_is_one_confirmed_destructive_action_group():
-    """DP 1.0.13: the confirmation stopped being a gated checkbox committed by
-    a Save and became the confirmation of an explicit destructive ACTION. It is
-    no longer a Settings checkbox ROW at all, so it no longer borrows that
-    primitive's geometry -- it is a button + confirmation + sentence group."""
+def test_the_clear_password_row_is_one_explicit_destructive_action():
+    """DP 1.0.13 final pass: the card-local confirmation checkbox is gone. The
+    group is exactly ONE destructive button, and whether the operator means it
+    is asked by the one canonical Settings confirmation dialog when they press
+    it -- so the card carries no armed state to render, gate or reset, and no
+    checkbox geometry to own."""
     block = SETTINGS_JS[SETTINGS_JS.index("function usenetServerCard("):
                         SETTINGS_JS.index("function usenetAddTile(")]
     row = block[block.index("dp-usenet-clear-password"):]
     row = row[:row.index("</div>")]
     assert 'data-usenet-action="clear-password"' in row
-    # The confirmation itself still uses the ONE canonical single-line Settings
-    # checkbox row, so its control keeps sitting on the label text's optical
-    # centreline -- that datum has one owner and this row does not restate it.
-    assert "dp-settings-inline-check" in row
-    # Interaction truth is unchanged: the label still wraps the control.
-    assert "<label" in row
-    assert "Confirm removal of the stored password for this server" in row
+    assert "btn-danger" in row
+    assert "Clear Stored Password" in row
+    # No second confirmation representation survives anywhere on the card.
+    assert "dp-settings-inline-check" not in row
+    assert "<label" not in row
+    assert 'type="checkbox"' not in row
+    assert "data-usenet-clear-password" not in SETTINGS_JS
+    assert "Confirm removal of the stored password for this server" not in SETTINGS_JS
 
 
 def test_the_clear_group_owns_its_geometry_without_a_positioning_hack():

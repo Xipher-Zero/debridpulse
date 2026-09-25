@@ -168,11 +168,15 @@ def test_every_provider_source_card_explains_what_enabling_it_allows():
                         SETTINGS_JS.index("const ARIA2_LIVE_FILTERS")]
     assert USENET_COPY in panel
     assert ALLDEBRID_COPY in panel
-    # The existing Network Sources copy is preserved verbatim.
-    assert "Direct downloads from standard HTTP and HTTPS URLs." in panel
-    assert "Direct downloads from FTP and SFTP URLs." in panel
-    # Four cards, four headerCopy values.
-    assert panel.count("headerCopy:") == 4
+    # The two expandable Premium Services cards carry their copy in the
+    # canonical card header. The Network Sources members are compact protocol
+    # BOXES rather than cards with headers, so the same promise is kept as the
+    # two centred lines each box presents, and its meaning is preserved.
+    assert panel.count("headerCopy:") == 2
+    copy = SETTINGS_JS[SETTINGS_JS.index("const SOURCE_BOX_COPY"):]
+    copy = copy[:copy.index("});")]
+    assert "'Direct downloads from', 'HTTP and HTTPS URLs.'" in copy
+    assert "'Direct downloads from', 'FTP and SFTP URLs.'" in copy
 
 
 def test_no_implementation_name_reaches_operator_copy():

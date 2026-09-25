@@ -220,31 +220,20 @@
 /* Erasing a stored credential is an explicit, deliberate act: the button, its
    confirmation and the sentence that describes it read as ONE group, left
    aligned with the card's form content and vertically centred together. */
+/* One explicit destructive action. What it MEANS is the canonical Settings
+   confirmation's question, asked when the operator acts -- not a checkbox the
+   card has to arm, gate and reset. */
 .dp-usenet-clear-password {
   display: flex;
   align-items: center;
   gap: 10px;
   margin: 2px 0 10px;
   font-size: .82rem;
-  opacity: .85;
 }
 
 .dp-usenet-clear-password[hidden] { display: none; }
 
 .dp-usenet-clear-password > .btn { flex: 0 0 auto; }
-
-/* The confirmation is the ONE canonical single-line Settings checkbox row
-   (.dp-settings-inline-check): its control is an inline sibling of its label
-   text, so `vertical-align: middle` puts the control on the text's OPTICAL
-   centreline -- the font's baseline + x-height/2 -- rather than on the centre
-   of a line box, which is what `align-items: center` would give and which
-   drifts badly once the sentence wraps. Only its placement inside the action
-   group is card-local. */
-#view-settings .dp-usenet-clear-confirm {
-  margin: 0;
-  min-width: 0;
-  cursor: pointer;
-}
 
 /* Inline FIELD validation only -- a missing or malformed value on this card.
    The RESULT of Save / Test / Remove belongs to the canonical toast owner;

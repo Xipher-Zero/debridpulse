@@ -291,8 +291,10 @@ def test_every_protocol_identity_uses_the_same_block():
     for protocol, glyph in (("direct_sources", "globe"), ("general_http", "globe"),
                             ("general_ftp", "arrow-up-down"), ("usenet", "newspaper")):
         assert f"{protocol}: '{glyph}'" in table, f"{protocol} has no frozen glyph"
-    # Six appearances, one composer: the definition plus five call sites.
-    assert SETTINGS.count("protocolIcon(") == 6
+    # One composer plus its call sites. The two Network Sources members each
+    # render their chip through the ONE protocol-box composer rather than
+    # through a call site of their own, so adding a member adds no call site.
+    assert SETTINGS.count("protocolIcon(") == 5
 
 
 # --- H. Downloads terminology --------------------------------------------------

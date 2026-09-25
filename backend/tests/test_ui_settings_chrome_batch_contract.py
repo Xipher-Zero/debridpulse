@@ -156,11 +156,15 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "CONFIGURED_SECRET_MASK" in runtime
     assert "ALLDEBRID_KEY_META(configured)" in key_helper
     assert "Key present" in runtime
-    # DP 1.0.13: the Save-oriented clear checkbox became an explicit confirmed
-    # Clear action; the row still owns both, in one place.
+    # DP 1.0.13: the Save-oriented clear checkbox became an explicit Clear
+    # action, and the final interaction pass moved the question it asked into
+    # the ONE canonical Settings confirmation -- so the row owns the action and
+    # nothing else, and no card-local confirmation representation survives.
     assert "Clear stored API Key" not in runtime
     assert 'data-action="clear-alldebrid-key"' in runtime
-    assert "Confirm removal of the stored API key" in runtime
+    assert "Clear Stored API Key" in runtime
+    assert "Confirm removal of the stored API key" not in runtime
+    assert "data-alldebrid-clear-confirm" not in runtime
     # The generic secretField() helper still uses that phrasing for the other
     # secrets; the AllDebrid row has always stated its own.
     assert "configured — blank keeps current value" not in key_helper
@@ -170,7 +174,9 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert '<details class="dp-settings-additional">' in sources
     assert '<details class="dp-settings-additional" open' not in sources
     assert '<summary><span>Additional Settings</span></summary>' in sources
+    # Tuning-only, as compact cells in the reusable neutral tuning grid.
     additional = sources[sources.index('class="dp-settings-additional-body"'):]
+    assert 'class="dp-settings-tuning-grid"' in additional
     for key in (
         "alldebrid_rate_limit_per_minute",
         "poll_interval_seconds",
@@ -189,6 +195,8 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "grid-row: 2;" in clear_rule
     assert "align-self: center;" in clear_rule
     assert "border-top" not in clear_rule
+    # The retired confirmation's own rule went with it.
+    assert ".dp-settings-alldebrid-key-confirm" not in page
     assert ".dp-settings-key-present" in page
     assert "text-align: right;" in page
     assert ".dp-settings-additional > summary" in page
@@ -265,6 +273,10 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     raw = read(LUCIDE / "flask-conical.svg")
 
     assert 'data-action="test-alldebrid"' in runtime
+    # Test is a provider-level action and now lives in the card's operational
+    # header rail. Its own treatment is unchanged; only its PLACE moved, so this
+    # owner still declares the whole of it.
+    assert "headerAction: providerTest" in runtime
     assert 'class="dp-settings-action-chip"' in runtime
     assert 'class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg"' in runtime
     action_owner = chrome.split("button[data-action='test-alldebrid'] {", 1)[1].split("}", 1)[0]

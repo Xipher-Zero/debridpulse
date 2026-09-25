@@ -1,9 +1,13 @@
 const { test, expect } = require('@playwright/test');
 
-// DP 1.0.13: Network Sources exposes two equal, header-only provider cards
-// (HTTP(S), (S)FTP) through the one shared providerCard() owner, and
-// the one INPUT_REQUIRED modal owner presents the neutral server-identity
-// challenge. The backend is the authority for every persisted toggle.
+// DP 1.0.13 final interaction pass: Network Sources exposes one compact
+// protocol BOX per real registered member, on a centred bounded grid. The boxes
+// are derived from the group the integrations themselves declare and labelled
+// from their own presentation metadata, so this spec asserts what is rendered
+// for the members that actually exist -- and that nothing is rendered for
+// protocols that do not. The one INPUT_REQUIRED modal owner presents the
+// neutral server-identity challenge. The backend is the authority for every
+// persisted toggle.
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status:200, contentType:'text/css', body:''}));
@@ -57,70 +61,159 @@ async function saveSettings(page) {
   await revealNetworkSources(page);
 }
 
+/* The two real registered members, with the labels their own integrations
+ * publish and the two lines each box presents. */
 const CARDS = [
-  ['general_http', '.dp-settings-provider-card--general-http', 'HTTP(S)', 'Direct downloads from standard HTTP and HTTPS URLs.'],
-  ['general_ftp', '.dp-settings-provider-card--general-ftp', '(S)FTP', 'Direct downloads from FTP and SFTP URLs.'],
+  ['general_http', '.dp-settings-provider-card--general-http', 'HTTP(S)',
+   ['Direct downloads from', 'HTTP and HTTPS URLs.']],
+  ['general_ftp', '.dp-settings-provider-card--general-ftp', '(S)FTP',
+   ['Direct downloads from', 'FTP and SFTP URLs.']],
 ];
 
-async function assertHeaderOnlyCards(page) {
+/* Protocols that do not exist yet. They appear when a real provider is
+ * registered through the canonical machinery, and never before. */
+const UNREGISTERED = ['WebDAV', 'SCP', 'rsync', 'Multilink'];
+
+const grid = page => page.locator('.dp-settings-general-sources .dp-settings-source-box-grid');
+
+async function assertProtocolBoxes(page) {
   const group = page.locator('.dp-settings-general-sources');
   await expect(group).toContainText('Network Sources');
-  await expect(group.locator('.dp-settings-provider-card')).toHaveCount(2);
-  const order = await group.locator('.dp-settings-provider-card .card-title').allTextContents();
-  expect(order.map(text => text.trim())).toEqual(['HTTP(S)', '(S)FTP']);
+  await expect(grid(page)).toHaveCount(1);
+  await expect(grid(page).locator(':scope > .dp-settings-source-box')).toHaveCount(CARDS.length);
+  const order = await grid(page).locator('.dp-settings-source-box .card-title').allTextContents();
+  expect(order.map(text => text.trim())).toEqual(CARDS.map(entry => entry[2]));
+
+  // No placeholder, no disabled future card, no fabricated capability.
+  for (const absent of UNREGISTERED) await expect(group).not.toContainText(absent);
+  await expect(group).not.toContainText(/coming soon/i);
+
   const heights = [];
-  for (const [identity, selector, title, copy] of CARDS) {
-    const card = page.locator(selector);
-    await expect(card).toBeVisible();
-    await expect(card).toHaveClass(/dp-settings-direct-source-card/);
-    await expect(card.locator(':scope > .card-body')).toHaveCount(0);
-    await expect(card.locator(':scope > *')).toHaveCount(1);
-    await expect(card.locator('.dp-settings-disclosure')).toHaveCount(0);
-    const header = card.locator(':scope > .card-header');
-    await expect(header.locator('.card-title')).toHaveText(title);
-    await expect(header.locator('.dp-settings-provider-header-copy')).toHaveText(copy);
+  for (const [identity, selector, title, lines] of CARDS) {
+    const box = page.locator(selector);
+    await expect(box).toBeVisible();
+    await expect(box).toHaveClass(/dp-settings-source-box/);
+    await expect(box.locator('.dp-settings-disclosure')).toHaveCount(0);
+    await expect(box.locator('.card-title')).toHaveText(title);
+
+    // Icon top-left, title at the top, centred on the BOX.
+    const mark = box.locator('.dp-settings-source-box-head .dp-settings-protocol-chip');
+    await expect(mark).toHaveCount(1);
+    const boxRect = await box.boundingBox();
+    const markRect = await mark.boundingBox();
+    const titleRect = await box.locator('.card-title').boundingBox();
+    expect(markRect.x).toBeLessThan(titleRect.x);
+    expect(Math.abs((titleRect.x + titleRect.width / 2) - (boxRect.x + boxRect.width / 2)))
+      .toBeLessThanOrEqual(2);
+
+    // Exactly two centred descriptive lines, beneath a centred Enable + toggle.
+    const copy = box.locator('.dp-settings-source-box-copy > span');
+    await expect(copy).toHaveCount(2);
+    expect((await copy.allTextContents()).map(text => text.trim())).toEqual(lines);
+    const toggleRect = await integrationControl(page, identity).boundingBox();
+    const copyRect = await box.locator('.dp-settings-source-box-copy').boundingBox();
+    expect(Math.abs((toggleRect.x + toggleRect.width / 2) - (boxRect.x + boxRect.width / 2)))
+      .toBeLessThanOrEqual(3);
+    expect(Math.abs((copyRect.x + copyRect.width / 2) - (boxRect.x + boxRect.width / 2)))
+      .toBeLessThanOrEqual(2);
+    expect(toggleRect.y).toBeGreaterThan(titleRect.y);
+    expect(copyRect.y).toBeGreaterThanOrEqual(toggleRect.y + toggleRect.height - 1);
+
+    // The toggle is the ONLY action, and the box holds exactly that one control.
     await expect(integrationControl(page, identity)).toBeVisible();
     await expect(integrationControl(page, identity)).toContainText('Enable');
-    await expect(card.locator('input')).toHaveCount(1);
-    for (const text of ['private key', 'Private key', 'password', 'Password', 'fingerprint']) await expect(card).not.toContainText(text);
-    const headerBox = await header.boundingBox();
-    const copyBox = await header.locator('.dp-settings-provider-header-copy').boundingBox();
-    const titleBox = await header.locator('.card-title').boundingBox();
-    const toggleBox = await integrationControl(page, identity).boundingBox();
-    const headerCenter = headerBox.x + headerBox.width / 2;
-    const copyCenter = copyBox.x + copyBox.width / 2;
-    expect(Math.abs(copyCenter - headerCenter)).toBeLessThanOrEqual(2);
-    expect(titleBox.x).toBeLessThan(copyBox.x);
-    expect(toggleBox.x).toBeGreaterThan(copyBox.x + copyBox.width - 1);
-    const cardBox = await card.boundingBox();
-    expect(cardBox.height).toBeLessThanOrEqual(headerBox.height + 4);
-    heights.push(Math.round(cardBox.height));
+    await expect(box.locator('input')).toHaveCount(1);
+    await expect(box.locator('button')).toHaveCount(0);
+    for (const text of ['Test', 'Save', 'private key', 'Private key', 'password',
+                        'Password', 'fingerprint']) {
+      await expect(box).not.toContainText(text);
+    }
+    // Compact and bounded rather than full-width.
+    expect(boxRect.width).toBeLessThanOrEqual(220);
+    heights.push(Math.round(boxRect.height));
   }
   expect(Math.abs(heights[0] - heights[1])).toBeLessThanOrEqual(1);
 }
 
-test('Network Sources renders two equal header-only cards with truly centered copy in dark and light themes', async ({ page }) => {
+/** Every row of the grid, including a wrapped or partial one, is centred. */
+async function assertCentredRows(page, width) {
+  const rows = await grid(page).evaluate(el => {
+    const host = el.getBoundingClientRect();
+    const byTop = new Map();
+    for (const child of el.children) {
+      const r = child.getBoundingClientRect();
+      const key = Math.round(r.top);
+      if (!byTop.has(key)) byTop.set(key, []);
+      byTop.get(key).push(r);
+    }
+    return Array.from(byTop.values()).map(boxes => ({
+      count: boxes.length,
+      leading: Math.min(...boxes.map(b => b.left)) - host.left,
+      trailing: host.right - Math.max(...boxes.map(b => b.right)),
+    }));
+  });
+  expect(rows.length).toBeGreaterThan(0);
+  for (const row of rows) {
+    expect(Math.abs(row.leading - row.trailing),
+      `a row of ${row.count} is not centred at ${width}px`).toBeLessThanOrEqual(2);
+  }
+  expect(await page.evaluate(() =>
+    document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
+    `horizontal overflow at ${width}px`).toBeTruthy();
+}
+
+test('Network Sources renders one compact centred protocol box per real provider in dark and light themes', async ({ page }) => {
   await isolateExternalFonts(page);
   const errors = observeRuntime(page);
   await page.goto('/'); await openSettings(page);
-  await assertHeaderOnlyCards(page);
+  await assertProtocolBoxes(page);
+  await assertCentredRows(page, 1440);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-dark.png'});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
-  await assertHeaderOnlyCards(page);
+  await assertProtocolBoxes(page);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-light.png'});
-  await page.setViewportSize({width:680, height:900});
-  for (const [identity, selector] of CARDS) {
-    const card = page.locator(selector);
-    await expect(card.locator(':scope > .card-body')).toHaveCount(0);
-    await expect(card.locator('.dp-settings-provider-header-copy')).toBeVisible();
-    await expect(integrationControl(page, identity)).toBeVisible();
-    const box = await card.boundingBox();
-    expect(box.width).toBeLessThanOrEqual(680);
+
+  // The boxes stay centred and bounded as the viewport narrows toward one column.
+  for (const width of [900, 680, 480, 360]) {
+    await page.setViewportSize({width, height:900});
+    await expect(grid(page)).toBeVisible();
+    for (const [identity, selector] of CARDS) {
+      const box = page.locator(selector);
+      await expect(box.locator('.dp-settings-source-box-copy > span')).toHaveCount(2);
+      await expect(integrationControl(page, identity)).toBeVisible();
+      expect((await box.boundingBox()).width).toBeLessThanOrEqual(Math.min(220, width));
+    }
+    await assertCentredRows(page, width);
   }
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-light-narrow.png'});
   expect(errors).toEqual([]);
 });
+
+/* The boxes are DERIVED: whoever declares the group is a member, labelled from
+ * their own presentation metadata. What is rendered is exactly what the backend
+ * currently registers -- no more, and nothing invented. */
+test('only the really registered Network Source providers render, with their own labels',
+  async ({ page }) => {
+    await isolateExternalFonts(page);
+    await page.goto('/'); await openSettings(page);
+    const canonical = await page.request.get('/api/settings').then(r => r.json());
+    const groupId = canonical.integrations.general_http.presentation.status_group;
+    const expected = Object.entries(canonical.integrations)
+      .filter(([, entry]) => entry?.presentation?.status_group === groupId)
+      .sort(([leftId, left], [rightId, right]) =>
+        (left.presentation.display_order - right.presentation.display_order)
+        || leftId.localeCompare(rightId));
+    expect(expected.length).toBeGreaterThan(0);
+
+    const rendered = await grid(page).locator(':scope > .dp-settings-source-box').evaluateAll(
+      boxes => boxes.map(box => ({
+        identity: box.querySelector('[data-integration-enabled]').dataset.integrationEnabled,
+        label: box.querySelector('.card-title').textContent.trim(),
+      })));
+    expect(rendered).toEqual(expected.map(([id, entry]) =>
+      ({identity: id, label: entry.presentation.status_name})));
+  });
 
 test('HTTP(S) and (S)FTP toggles persist independently and never touch aria2', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/');

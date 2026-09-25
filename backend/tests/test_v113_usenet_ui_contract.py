@@ -155,7 +155,9 @@ def test_a_blank_password_is_omitted_so_the_stored_one_survives():
 
 
 def test_clearing_a_stored_password_is_explicit():
-    assert "data-usenet-clear-password" in SETTINGS
+    # The explicit destructive ACTION; what it means is asked by the one
+    # canonical Settings confirmation at the moment the operator presses it.
+    assert 'data-usenet-action="clear-password"' in SETTINGS
     assert "clear_password" in SERVERS
 
 

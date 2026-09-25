@@ -175,12 +175,26 @@
   text-align: center;
 }
 
+/* The operational header RAIL: state, then the provider-level action, then the
+   participation control, on one vertical centreline. It wraps rather than
+   overflowing, and wrapping preserves that order because the order is the
+   source order -- there is no positioning to re-derive. */
 #view-settings .dp-settings-card-header > .dp-settings-card-header-controls {
   min-width: 0;
   justify-self: end;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 12px;
+}
+
+/* The neutral action slot. It contributes placement and nothing else, so the
+   action inside keeps whatever treatment its own owner gives it. */
+#view-settings .dp-settings-header-action {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
 }
 
 /* ── The ONE canonical Settings disclosure chip ──────────────────────────
@@ -393,8 +407,9 @@
   white-space: nowrap;
 }
 
-/* Button, confirmation and the sentence that describes it read as ONE
-   horizontal group, sitting on the API-key input's own grid row. */
+/* The explicit destructive action, sitting on the API-key input's own grid
+   row so it is centred against the control it is about. What it MEANS is the
+   canonical confirmation dialog's question, not a checkbox beside it. */
 #view-settings .dp-settings-alldebrid-key-clear {
   grid-column: 2;
   grid-row: 2;
@@ -409,52 +424,19 @@
   flex: 0 0 auto;
 }
 
-/* The confirmation is the ONE canonical single-line Settings checkbox row
-   (.dp-settings-inline-check), so its control sits on the label text's optical
-   centreline rather than on the centre of a line box. Only its placement
-   inside the clear group, and its muted weight, are local. */
-#view-settings .dp-settings-alldebrid-key-confirm {
-  margin: 0;
-  min-width: 0;
-  color: var(--dp-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-  cursor: pointer;
-}
-
 /* Secondary provider/engine tuning lives in native disclosures rather than
    nested cards. Native details/summary keeps collapsed state accessible and
-   requires no additional runtime state or event ownership. */
-/* The provider card's secondary-configuration row.
-   ONE grid row holds the Additional Settings disclosure and the card's action
-   group, so the actions never occupy a dedicated band of their own. Collapsed
-   the two are one centred row; expanded, the actions bottom-align with the
-   last row of the option grid, which is where the disclosure's own box ends.
-   The open state is read from the disclosure itself -- no measured offset, no
-   absolute positioning, no margin compensation. */
-#view-settings .dp-settings-provider-advanced {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 16px;
-  align-items: center;
-  /* The divider and the rhythm above it belong to the ROW, so it spans the
-     card rather than only the disclosure's column. */
-  margin-top: 14px;
-  border-top: 1px solid var(--dp-divider);
-}
+   requires no additional runtime state or event ownership.
 
-#view-settings .dp-settings-provider-advanced:has(> details[open]) {
-  align-items: end;
-}
-
-#view-settings .dp-settings-provider-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
+   The disclosure is now the WHOLE of the provider card's secondary row: the
+   provider-level action moved to the card's header rail, so there is no action
+   group to share a row with and no band beneath the options. The seam that
+   separated that row from the credential above it therefore belongs to the
+   disclosure itself. */
 #view-settings .dp-settings-additional {
   min-width: 0;
+  margin-top: 14px;
+  border-top: 1px solid var(--dp-divider);
 }
 
 #view-settings .dp-settings-additional > summary {
@@ -494,8 +476,65 @@
   padding: 2px 0 4px;
 }
 
-#view-settings .dp-settings-additional-body > .dp-settings-field + .dp-settings-field {
-  margin-top: 12px;
+/* ── The reusable tuning grid ────────────────────────────────────────────
+   Optional numeric tuning for one provider, as compact bounded cells in a
+   restrained version of the server-box language: a bounded basis the cells FIT
+   rather than fill, so a cell never stretches into a giant field to consume the
+   row, on a centred wrapping flex line that centres every row -- including a
+   partial one -- without ever needing horizontal scroll. The grid knows nothing
+   about which provider it holds. */
+#view-settings .dp-settings-tuning-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 12px;
+  padding: 4px 0 2px;
+}
+
+#view-settings .dp-settings-tuning-grid > .dp-settings-field {
+  flex: 0 1 170px;
+  min-width: 150px;
+  max-width: 190px;
+  margin-top: 0;
+  box-sizing: border-box;
+  border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
+  border-radius: 10px;
+  padding: 10px 10px 9px;
+  background: var(--dp-surface-2, rgba(255, 255, 255, .03));
+  /* Label, control and help text are each centred AS ELEMENTS on the cell's
+     own axis; the value inside the control keeps the canonical field
+     alignment, restored explicitly below because this centring inherits. */
+  display: grid;
+  justify-items: center;
+  align-content: start;
+  row-gap: 6px;
+  text-align: center;
+}
+
+/* The control is an element centred in the cell, bounded so a number field
+   stays a number field. */
+#view-settings .dp-settings-tuning-grid > .dp-settings-field > .input {
+  width: min(100%, 112px);
+  min-width: 0;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* Help text wraps to different heights, so the row itself keeps the cells on a
+   common top edge and the controls on a common visual baseline as far as the
+   longest label allows. */
+#view-settings .dp-settings-tuning-grid > .dp-settings-field > .form-label {
+  min-height: 2.4em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#view-settings .dp-settings-tuning-grid > .dp-settings-field > .form-hint {
+  text-align: center;
+  font-size: 10.5px;
+  line-height: 1.4;
 }
 
 /* aria2 tuning follows the Settings field grammar in a compact two-
@@ -889,10 +928,90 @@
 }
 #view-settings .dp-settings-integration-header-enable { flex:0 0 auto; }
 
-/* Direct Sources are header-only cards; the canonical three-region header owns
-   their layout, so only the seam treatment is card-specific here. */
-#view-settings .dp-settings-direct-source-card > .card-header {
-  border-bottom-color: transparent;
+/* ── The Network Source protocol boxes ───────────────────────────────────
+   A compact bounded box per real registered member, on a centred wrapping flex
+   line -- the established server-box language, chosen because a flex line
+   centres EVERY row, including a wrapped one and a row that is not full, which
+   a grid does not: a grid's partial last row sits in its own columns. A bounded
+   basis is what makes the distribution fall out of the viewport and the member
+   count alone: six members read 6x1 wide, then 3x2, 2x3, 1x6, with no
+   breakpoint naming a count and no horizontal scroll at any width. */
+#view-settings .dp-settings-source-box-grid {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: 12px;
+}
+
+#view-settings .card.dp-settings-source-box {
+  flex: 0 1 170px;
+  min-width: 150px;
+  max-width: 190px;
+  box-sizing: border-box;
+  /* The COLLECTION's gap owns the rhythm between boxes. A stacking margin
+     inherited from the card material would also be subtracted from the flex
+     line's cross size, which is what made two boxes on one line disagree about
+     their height. */
+  margin: 0;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  justify-items: center;
+  align-content: start;
+  row-gap: 8px;
+  border-radius: 12px;
+  padding: 12px 10px;
+}
+
+/* The head is the same proven three-region model as the canonical card header,
+   for the same reason: the outer tracks are equal `1fr`s, so the centre track's
+   midpoint is the HEAD's midpoint for any mark or title width. An `auto`
+   leading track would instead centre the title inside whatever the mark left
+   over, which is exactly the drift this model removes. The mark sits at the
+   start of the box and the trailing track stays empty. */
+#view-settings .dp-settings-source-box-head {
+  width: 100%;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+}
+
+#view-settings .dp-settings-source-box-head > .dp-settings-protocol-chip {
+  justify-self: start;
+}
+
+#view-settings .dp-settings-source-box-head > .card-title {
+  min-width: 0;
+  justify-self: center;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+/* The toggle is the only action in the box, so it is centred on the box's own
+   axis. The shared header-rail control places itself at the END of a card
+   header, which is right there and wrong here: a box has no rail, so this is
+   the one placement the box states for it. */
+#view-settings .card.dp-settings-source-box .dp-settings-source-box-enable {
+  justify-self: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+#view-settings .dp-settings-source-box-copy {
+  margin: 0;
+  min-width: 0;
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: center;
+}
+
+/* Two lines, as two lines: each is its own row, so neither depends on where
+   the box happens to wrap. */
+#view-settings .dp-settings-source-box-copy > span {
+  display: block;
 }
 #view-settings .dp-settings-provider-header-copy {
   min-width: 0;

@@ -200,10 +200,27 @@ def test_apply_settings_no_longer_owns_integration_enablement():
 
 
 def test_every_current_toggle_of_this_class_uses_the_shared_path():
-    """The four header toggles are rendered by one owner, so they cannot drift."""
-    calls = re.findall(r"providerCard\('([a-z_]+)'", SETTINGS_JS)
-    assert sorted(calls) == sorted(TOGGLED_INTEGRATIONS)
-    assert SETTINGS_JS.count("integrationHeaderToggle(") == 2  # definition + its one call site
+    """Every toggle of this class is rendered by ONE control owner, so they
+    cannot drift.
+
+    DP 1.0.13 final interaction pass: the two expandable Premium Services cards
+    come from providerCard(); the Network Sources members are compact protocol
+    boxes from sourceProtocolBox(), derived from the group they declare rather
+    than named here. Both composers render the SAME
+    ``integrationHeaderToggle()``, which is what makes the shared immediate
+    path shared -- so the invariant is the one control owner, not one card
+    composer."""
+    cards = re.findall(r"providerCard\('([a-z_]+)'", SETTINGS_JS)
+    assert sorted(cards) == ["alldebrid", "usenet"]
+    assert "sourceProtocolBox(" in SETTINGS_JS
+    # One toggle owner: its definition plus the two composers that render it.
+    assert SETTINGS_JS.count("integrationHeaderToggle(") == 3
+    for composer in ("function providerCard(", "function sourceProtocolBox("):
+        block = SETTINGS_JS[SETTINGS_JS.index(composer):]
+        block = block[:block.index("\n  function ", 1)]
+        assert "integrationHeaderToggle(" in block, composer
+        assert "data-integration-enabled" not in block, \
+            f"{composer} emits its own toggle instead of the shared one"
 
 
 def test_ordinary_settings_fields_remain_deferred():

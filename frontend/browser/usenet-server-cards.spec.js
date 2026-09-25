@@ -65,7 +65,21 @@ const addTile = page => collection(page).locator('[data-usenet-action="add"]');
 const cardFor = (page, id) => collection(page).locator(`[data-usenet-server-id="${id}"]`);
 const field = (card, name) => card.locator(`[data-usenet-field="${name}"]`);
 const clearButton = card => card.locator('[data-usenet-action="clear-password"]');
-const clearConfirm = card => card.locator('[data-usenet-clear-password]');
+const removeButton = card => card.locator('[data-usenet-action="remove"]');
+
+/* The ONE canonical Settings confirmation (ui-settings-modal.js). Both
+ * destructive server actions open it; the card itself carries no confirmation
+ * representation at all, so this spec drives that one dialog. */
+const dangerDialog = page => page.locator('.dp-modal-overlay .dp-modal-dialog[data-tone="danger"]');
+const acceptDanger = page => dangerDialog(page).locator('[data-modal-accept]');
+const cancelDanger = page => dangerDialog(page).locator('[data-modal-cancel]');
+/** Press a destructive control and agree to what it asks. */
+async function confirmDanger(page, control) {
+  await control.click();
+  await expect(dangerDialog(page)).toBeVisible();
+  await acceptDanger(page).click();
+  await expect(dangerDialog(page)).toHaveCount(0);
+}
 const toasts = page => page.locator('#toasts .toast');
 
 async function rename(page, card, value) {
@@ -336,10 +350,9 @@ test('clearing the password is explicit, confirmed, and does erase it', async ({
   await openSources(page);
   await enableUsenet(page);
   const card = collection(page).locator(`[data-usenet-server-id="${id}"]`);
-  await expect(clearButton(card)).toBeDisabled();
-  await clearConfirm(card).check();
   await expect(clearButton(card)).toBeEnabled();
-  await clearButton(card).click();
+  await expect(clearButton(card)).toHaveText('Clear Stored Password');
+  await confirmDanger(page, clearButton(card));
   await expect.poll(async () => (await storedServers(page))[0].password_configured).toBe(false);
 });
 
@@ -373,8 +386,8 @@ test('removing one server preserves every survivor credential and packs left', a
   await openSources(page);
   await enableUsenet(page);
 
-  await collection(page).locator(`[data-usenet-server-id="${middle}"]`)
-    .locator('[data-usenet-action="remove"]').click();
+  await confirmDanger(page, removeButton(
+    collection(page).locator(`[data-usenet-server-id="${middle}"]`)));
   await expect.poll(async () => (await storedServers(page)).length).toBe(2);
 
   const stored = await storedServers(page);
@@ -388,8 +401,8 @@ test('removing one server preserves every survivor credential and packs left', a
 
 test('removing the final server returns to the Add tile with Usenet still ON', async ({page}) => {
   const only = await addServer(page, {host: 'news.only.net', username: 'o', password: 'PW-O'});
-  await collection(page).locator(`[data-usenet-server-id="${only}"]`)
-    .locator('[data-usenet-action="remove"]').click();
+  await confirmDanger(page, removeButton(
+    collection(page).locator(`[data-usenet-server-id="${only}"]`)));
   await expect.poll(async () => (await storedServers(page)).length).toBe(0);
   await expect(serverCards(page)).toHaveCount(0);
   await expect(addTile(page)).toBeVisible();
@@ -606,7 +619,7 @@ test('a blank password is "no replacement", never a removal', async ({page}) => 
   expect((await record(page, id)).password_configured).toBe(true);
 });
 
-test('Clear is inert until the removal is confirmed, and resets only on success',
+test('Clear is confirmation-gated, carries only the removal, and converges on success',
   async ({page}) => {
     const id = await seed(page);
     await page.reload();
@@ -614,30 +627,53 @@ test('Clear is inert until the removal is confirmed, and resets only on success'
     const card = cardFor(page, id);
     const seen = writes(page);
 
-    await expect(clearButton(card)).toBeDisabled();
-    await clearButton(card).click({force: true});
+    // No card-local gate survives: the action is available, and opening the
+    // canonical confirmation is not a mutation. Cancelling performs none.
+    await expect(clearButton(card)).toBeEnabled();
+    await clearButton(card).click();
+    await expect(dangerDialog(page)).toBeVisible();
+    await expect(acceptDanger(page)).toHaveText('Clear Password');
+    await cancelDanger(page).click();
+    await expect(dangerDialog(page)).toHaveCount(0);
     await page.waitForTimeout(500);
     expect(seen).toEqual([]);
     expect((await record(page, id)).password_configured).toBe(true);
 
-    await clearConfirm(card).check();
-    await expect(clearButton(card)).toBeEnabled();
-    // Arming the confirmation alone changes nothing.
-    await page.waitForTimeout(500);
-    expect(seen).toEqual([]);
-
-    await clearButton(card).click();
+    await confirmDanger(page, clearButton(card));
     await expect.poll(async () => (await record(page, id)).password_configured).toBe(false);
     // Clear carries only the removal -- never a replacement value.
     const sent = seen.filter(entry => entry.method === 'PUT');
     expect(sent).toHaveLength(1);
     expect(sent[0].body).toEqual({clear_password: true});
-    // Consumed only by a clear that actually happened.
-    await expect(clearConfirm(card)).not.toBeChecked();
-    await expect(clearButton(card)).toBeDisabled();
+    // Nothing is left to clear, so the action the row offered is put away.
+    await expect(clearButton(card)).toBeHidden();
   });
 
-test('a failed Clear keeps the confirmation armed', async ({page}) => {
+test('the clear confirmation names the server, and falls back to its host', async ({page}) => {
+  const id = await seed(page, {host: 'news.identity.net'});
+  await page.reload();
+  await openSources(page);
+  const card = cardFor(page, id);
+
+  // No chosen display name: the host is the server's visible identity.
+  await clearButton(card).click();
+  await expect(dangerDialog(page).locator('.dp-modal-title'))
+    .toHaveText('Clear password for news.identity.net?');
+  await expect(dangerDialog(page).locator('.dp-modal-message'))
+    .toContainText('news.identity.net');
+  await cancelDanger(page).click();
+
+  // A chosen display name outranks the host.
+  await page.request.put(`/api/usenet/servers/${id}`, {data: {display_name: 'Primary Feed'}});
+  await page.reload();
+  await openSources(page);
+  await clearButton(cardFor(page, id)).click();
+  await expect(dangerDialog(page).locator('.dp-modal-title'))
+    .toHaveText('Clear password for Primary Feed?');
+  await cancelDanger(page).click();
+});
+
+test('a failed Clear renders no false cleared state', async ({page}) => {
   const id = await seed(page);
   await page.reload();
   await openSources(page);
@@ -649,13 +685,61 @@ test('a failed Clear keeps the confirmation armed', async ({page}) => {
           body: JSON.stringify({detail: 'news server rejected'})})
       : route.continue());
 
-  await clearConfirm(card).check();
-  await clearButton(card).click();
+  await confirmDanger(page, clearButton(card));
   await expect(toasts(page).first()).toContainText(/reject|could not|fail/i);
-  await expect(clearConfirm(card)).toBeChecked();
+  // A password is still stored, so the action that erases one is still offered.
+  await expect(clearButton(card)).toBeVisible();
   await expect(clearButton(card)).toBeEnabled();
   await page.unrouteAll({behavior: 'ignoreErrors'}).catch(() => {});
   expect((await record(page, id)).password_configured).toBe(true);
+});
+
+test('Remove is confirmation-gated and names the server', async ({page}) => {
+  const id = await seed(page, {host: 'news.removable.net'});
+  await page.reload();
+  await openSources(page);
+  const card = cardFor(page, id);
+  const seen = writes(page);
+
+  await removeButton(card).click();
+  await expect(dangerDialog(page)).toBeVisible();
+  await expect(dangerDialog(page).locator('.dp-modal-title'))
+    .toHaveText('Remove news.removable.net?');
+  await expect(acceptDanger(page)).toHaveText('Remove Server');
+  await expect(dangerDialog(page).locator('.dp-modal-message'))
+    .toContainText(/removed from DebridPulse/i);
+
+  // Cancel removes nothing: not the card, and not the record.
+  await cancelDanger(page).click();
+  await expect(dangerDialog(page)).toHaveCount(0);
+  await page.waitForTimeout(500);
+  await expect(card).toBeVisible();
+  expect(seen.filter(entry => entry.method === 'DELETE')).toEqual([]);
+  expect(await record(page, id)).toBeTruthy();
+
+  // Confirming runs the existing removal owner exactly once.
+  await confirmDanger(page, removeButton(card));
+  await expect.poll(async () => (await storedServers(page)).length).toBe(0);
+  await expect(card).toHaveCount(0);
+});
+
+test('an unsaved draft is confirmed too, and invents no backend DELETE', async ({page}) => {
+  const seen = writes(page);
+  await addTile(page).click();
+  const card = serverCards(page).last();
+  // A blank local draft has no identity to state, so the dialog says so.
+  await removeButton(card).click();
+  await expect(dangerDialog(page).locator('.dp-modal-title'))
+    .toHaveText('Remove this Usenet server?');
+  await cancelDanger(page).click();
+  await expect(card).toBeVisible();
+
+  await confirmDanger(page, removeButton(card));
+  await expect(serverCards(page)).toHaveCount(0);
+  await page.waitForTimeout(700);
+  // The draft was never a record, so nothing was asked of the backend.
+  expect(seen.filter(entry => entry.method === 'DELETE')).toEqual([]);
+  expect(await storedServers(page)).toEqual([]);
 });
 
 test('no Save action survives on a server card', async ({page}) => {
@@ -1025,10 +1109,10 @@ test('a credential write leaves a newer password typed while it was in flight al
     await expect(field(card, 'password')).toHaveValue('');
   });
 
-test('a credential write never disarms a Clear confirmation armed after dispatch',
+test('a credential write in flight leaves the Clear action reachable and truthful',
   async ({page}) => {
-    // Seeded WITH a credential: the Clear confirmation only applies to a card
-    // that has something stored to clear.
+    // Seeded WITH a credential: the Clear action only exists on a card that has
+    // something stored to clear.
     const id = await seed(page);
     await page.reload();
     await openSources(page);
@@ -1037,15 +1121,16 @@ test('a credential write never disarms a Clear confirmation armed after dispatch
     await delayNextWrite(page, id, 1500);
     await field(card, 'password').fill('PW-A');
     await field(card, 'password').blur();
-    // The operator changes their mind while the write is in flight.
-    await clearConfirm(card).check();
 
     await page.waitForTimeout(2200);
-    // The newer intent survived the older response.
-    await expect(clearConfirm(card)).toBeChecked();
+    // The card converged on the accepted record. A password is still stored, so
+    // the destructive action it offers is still reachable and still truthful --
+    // there is no armed state to preserve, because the question is asked when
+    // the operator acts.
+    await expect(clearButton(card)).toBeVisible();
     await expect(clearButton(card)).toBeEnabled();
 
-    await clearButton(card).click();
+    await confirmDanger(page, clearButton(card));
     await expect.poll(async () => (await record(page, id)).password_configured).toBe(false);
   });
 
@@ -1232,7 +1317,9 @@ test('removing a card while its record is being minted never leaves an orphan re
     await delayNextCreate(page, 1500);
     const card = await draftCard(page, 'news.creation-orphan.net');
     await field(card, 'host').blur();
-    await card.locator('[data-usenet-action="remove"]').click();
+    // The confirmation gates the existing removal owner; it does not replace
+    // any part of its creation serialization.
+    await confirmDanger(page, removeButton(card));
 
     // The minting may well succeed; what may never happen is a surviving
     // backend record with no card to govern it.

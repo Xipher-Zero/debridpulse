@@ -89,6 +89,11 @@ const measure = (page, tab) => page.evaluate(tab => {
     // is no control above the label for it to share an origin with.
     const style = getComputedStyle(field);
     if (style.display.includes('grid') && style.gridTemplateColumns.split(' ').length > 1) continue;
+    // A deliberately CENTRED tuning cell is a different pattern as well: its
+    // label, control and help text are each centred on the cell's own axis, so
+    // they have no shared left origin to share. Read off the rendered style,
+    // never a list of selectors.
+    if (style.justifyItems === 'center') continue;
     const label = field.querySelector(':scope > .form-label');
     const hint = field.querySelector(':scope > .form-hint');
     rows.push({
@@ -164,10 +169,11 @@ test('a themed select is measured as the control the operator can see', async ({
 });
 
 /* DP 1.0.13: erasing a stored credential stopped being a gated checkbox that a
- * Save committed and became an explicit CONFIRMED ACTION. The row is therefore
- * no longer a centred checkbox row -- it is a left-aligned action group,
- * button first, then the confirmation and the sentence that describes it,
- * vertically centred together. */
+ * Save committed and became an explicit destructive ACTION. The final
+ * interaction pass moved the question it asked into the ONE canonical Settings
+ * confirmation, so the group is now exactly that one button -- and what this
+ * spine spec still owns is that the button sits on the card's own form datum
+ * rather than being centred in the card. */
 test('the clear-password group is left-aligned with the card form content', async ({page}) => {
   await openSettings(page);
   await expandAll(page, 'sources');
@@ -177,30 +183,22 @@ test('the clear-password group is left-aligned with the card form content', asyn
     const card = row.closest('[data-usenet-server-id]');
     const datum = card.querySelector('[data-usenet-field="username"]').getBoundingClientRect();
     const button = row.querySelector('[data-usenet-action="clear-password"]').getBoundingClientRect();
-    const input = row.querySelector('input[type="checkbox"]').getBoundingClientRect();
-    const span = row.querySelector('span');
-    const range = document.createRange();
-    range.selectNodeContents(span);
-    const text = range.getBoundingClientRect();
+    const host = row.getBoundingClientRect();
     return {
       datumLeft: datum.left,
       buttonLeft: button.left,
+      buttonRight: button.right,
       buttonCentreY: (button.top + button.bottom) / 2,
-      inputLeft: input.left,
-      inputCentreY: (input.top + input.bottom) / 2,
-      textLeft: text.left,
-      rowCentreY: (row.getBoundingClientRect().top + row.getBoundingClientRect().bottom) / 2,
+      rowRight: host.right,
+      rowCentreY: (host.top + host.bottom) / 2,
+      controls: row.querySelectorAll('input, label').length,
     };
   });
   expect(geometry, 'the clear-password row did not render').toBeTruthy();
   // Left-aligned with the card's own form datum, never centred in the card.
   expect(Math.abs(geometry.buttonLeft - geometry.datumLeft)).toBeLessThanOrEqual(1);
-  // Button, then the confirmation, then its text.
-  expect(geometry.inputLeft).toBeGreaterThan(geometry.buttonLeft);
-  expect(geometry.textLeft).toBeGreaterThan(geometry.inputLeft);
-  // One group: the button is centred on the row it shares with the confirmation.
+  // The group is the button: nothing follows it, and it is not stretched.
+  expect(geometry.controls).toBe(0);
+  expect(geometry.buttonRight).toBeLessThan(geometry.rowRight);
   expect(Math.abs(geometry.buttonCentreY - geometry.rowCentreY)).toBeLessThanOrEqual(1);
-  // The control's OPTICAL alignment against its own label text has one owner
-  // and one datum already: settings-field-geometry.spec.js measures it from
-  // the rendered font's baseline and x-height. It is not restated here.
 });

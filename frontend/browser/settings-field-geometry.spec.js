@@ -115,49 +115,40 @@ test('representative pre-existing Settings fields use the same canonical datum',
   expect(checked).toBeGreaterThanOrEqual(3);
 });
 
-test('the clear-stored-password checkbox is optically centred on its label text', async ({page}) => {
+/* DP 1.0.13 final interaction pass: the clear-stored-password CHECKBOX is gone.
+ * Whether the operator means a destructive action is now the one canonical
+ * Settings confirmation's question, asked when they act -- so there is no
+ * card-local checkbox to align against its own label text, and no datum here to
+ * restate. What the group must still be is ONE explicit destructive control,
+ * which is the shared-datum invariant below. */
+test('the clear-stored-password group is one explicit destructive control', async ({page}) => {
   await isolateExternalFonts(page);
   const card = await usenetServerCard(page);
   const row = card.locator('.dp-usenet-clear-password');
   await expect(row).toHaveCount(1);
 
+  const action = row.locator('[data-usenet-action="clear-password"]');
+  await expect(action).toHaveCount(1);
+  await expect(action).toHaveClass(/btn-danger/);
+  await expect(action).toHaveText('Clear Stored Password');
+  await expect(action).toBeEnabled();
+  // No confirmation representation survives on the card, in either theme.
+  await expect(row.locator('input[type="checkbox"]')).toHaveCount(0);
+  await expect(row.locator('label')).toHaveCount(0);
+
   for (const light of [false, true]) {
     await page.evaluate(isLight => document.body.classList.toggle('light', isLight), light);
-    const geometry = await page.evaluate(() => {
+    // The control is vertically centred on the group it is the whole of.
+    const delta = await page.evaluate(() => {
       const target = document.querySelector('.dp-usenet-clear-password');
-      const box = target.querySelector('input[type="checkbox"]');
-      const text = target.querySelector('span');
-      // The TEXT's optical centreline, derived from the rendered font's own
-      // metrics: the baseline (a zero-size baseline-aligned strut) minus half
-      // the x-height (a 1ex-tall strut). A line box's geometric centre is NOT
-      // that line -- which is precisely the defect being measured.
-      const baseline = document.createElement('span');
-      baseline.style.cssText = 'display:inline-block;width:0;height:0;vertical-align:baseline';
-      const exHeight = document.createElement('span');
-      exHeight.style.cssText = 'display:inline-block;width:0;height:1ex;vertical-align:baseline';
-      text.appendChild(baseline);
-      text.appendChild(exHeight);
-      const baselineY = baseline.getBoundingClientRect().top;
-      const xHeight = exHeight.getBoundingClientRect().height;
-      baseline.remove();
-      exHeight.remove();
-      const b = box.getBoundingClientRect();
-      return {delta: ((b.top + b.bottom) / 2) - (baselineY - xHeight / 2), xHeight};
+      const button = target.querySelector('[data-usenet-action="clear-password"]')
+        .getBoundingClientRect();
+      const host = target.getBoundingClientRect();
+      return ((button.top + button.bottom) / 2) - ((host.top + host.bottom) / 2);
     });
-    expect(geometry.xHeight).toBeGreaterThan(0);
-    expect(Math.abs(geometry.delta), `theme light=${light} delta ${geometry.delta}`).toBeLessThanOrEqual(0.75);
+    expect(Math.abs(delta), `theme light=${light} delta ${delta}`).toBeLessThanOrEqual(1);
   }
   await page.evaluate(() => document.body.classList.remove('light'));
-
-  // Interaction truth is unchanged.
-  const box = row.locator('input[type="checkbox"]');
-  await expect(box).not.toBeChecked();
-  await row.locator('span').click();
-  await expect(box).toBeChecked();
-  await box.focus();
-  await expect(box).toBeFocused();
-  await page.keyboard.press('Space');
-  await expect(box).not.toBeChecked();
 });
 
 /* The Usenet card renders COLLAPSED: expansion is LOCAL presentation state,

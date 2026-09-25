@@ -64,7 +64,7 @@ def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() ->
     # footer payload, and the canonical single-field settings-document commit
     # (which reads canonical truth and overrides exactly one field).
     assert runtime.count("request('PUT', '/settings'") == 2
-    scope = section(runtime, "function registerCommitScopes", "function refreshAllDebridClearGate")
+    scope = section(runtime, "function registerCommitScopes", "function renderAllDebridCredential")
     assert scope.count("request('PUT', '/settings'") == 1
     assert "[option]: committedValue(key, draft)" in scope
     assert runtime.count("persistNonAuth(") == 2  # declaration + Apply Settings path
@@ -89,10 +89,11 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
 
     expected = (
         "Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.",
-        # Entry/replacement is changed-blur and removal is an explicit confirmed
-        # action, so neither sentence mentions a Save any more.
+        # Entry/replacement is changed-blur and removal is an explicit action
+        # behind the canonical confirmation, so neither sentence mentions a Save
+        # any more, and the removal names exactly what it erases.
         "Enter a new API key to replace the stored key. Leave this field blank to keep the current key.",
-        "Confirm removal of the stored API key",
+        "Clear Stored API Key",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
         "How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.",
         "How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.",

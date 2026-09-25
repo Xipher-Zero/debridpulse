@@ -272,13 +272,26 @@ def test_the_downloads_executor_tuning_family_matches_the_services_name():
 
 
 def test_the_services_page_renders_the_new_network_source_names():
+    """The operator-facing names are the ones the INTEGRATIONS publish.
+
+    The final pass removed the two hard-coded child cards: members are derived
+    from the group they declare and labelled from their own
+    ``presentation.status_name``, so HTTP(S) and (S)FTP reach the page without
+    this renderer naming either of them, and neither name can drift from the
+    Provider Status panel's."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "providerCard('general_http', 'HTTP(S)'" in panel
-    assert "providerCard('general_ftp', '(S)FTP'" in panel
+    assert "providerCard('general_http'" not in panel
+    assert "providerCard('general_ftp'" not in panel
+    assert "entry.presentation?.status_name || id" in panel, \
+        "the box label is not taken from the integration's own presentation"
+    assert "entry?.presentation?.status_group === groupId" in panel, \
+        "membership is not derived from the metadata the members publish"
     assert "HTTP & HTTPS" not in panel
     assert "FTP & SFTP" not in panel
-    # The durable identities the card addresses are untouched.
-    assert "'general_http'" in panel and "'general_ftp'" in panel
+    # The durable identities remain the only hard-coded reference, and only as
+    # the copy table's keys.
+    copy = block(SETTINGS_JS, "const SOURCE_BOX_COPY")
+    assert "general_http:" in copy and "general_ftp:" in copy
 
 
 def test_usenet_stays_first_in_settings_premium_services():
@@ -428,38 +441,47 @@ def test_no_owner_renders_a_save_action_for_a_usenet_server():
 
 
 def test_erasing_a_stored_credential_is_an_explicit_confirmed_clear():
-    rendered = SERVER_CARDS[0][1]
-    action = control(rendered, 'data-usenet-action="clear-password"')
-    assert "btn-danger" in action, "the canonical destructive treatment is not used"
-    assert "disabled" in action, "Clear must arrive disabled until the confirmation is checked"
-    confirm = control(rendered, "data-usenet-clear-password")
-    assert 'type="checkbox"' in confirm
-    assert 'data-commit' not in confirm, "a confirmation is not a persisted value"
-    # Button first, checkbox second, text third.
-    group = rendered[rendered.index("dp-usenet-clear-password"):]
-    group = group[:group.index("</div>")]
-    assert group.index('data-usenet-action="clear-password"') < group.index("data-usenet-clear-password")
-    assert group.index("data-usenet-clear-password") < group.index(
-        "Confirm removal of the stored password for this server")
-    # The retired gated checkbox and its copy are gone.
+    """Both renderings of the card expose exactly one destructive control, and
+    the card itself carries NO confirmation representation: the one canonical
+    Settings confirmation asks the question when the operator acts."""
+    for label, rendered in SERVER_CARDS:
+        action = control(rendered, 'data-usenet-action="clear-password"')
+        assert "btn-danger" in action, f"{label}: the canonical destructive treatment is not used"
+        # It is NOT pre-disabled: the action is available whenever there is
+        # something stored to clear, and the dialog is the gate.
+        assert "disabled" not in action, f"{label}: the action still carries a local gate"
+        group = rendered[rendered.index("dp-usenet-clear-password"):]
+        group = group[:group.index("</div>")]
+        assert "Clear Stored Password" in group, label
+        assert 'type="checkbox"' not in group, label
+        assert "<label" not in group, label
+    # The retired gated checkbox and every trace of its copy are gone.
     assert "<span>Clear the stored password for this server</span>" not in SETTINGS_JS
     assert "dp-settings-inline-check dp-usenet-clear-password" not in SETTINGS_JS
+    assert "data-usenet-clear-password" not in SETTINGS_JS
+    assert "data-usenet-clear-password" not in USENET_JS
+    assert "Confirm removal of the stored password for this server" not in SETTINGS_JS
+    assert "Confirm removal of the stored password for this server" not in USENET_JS
 
 
-def test_the_clear_action_writes_only_the_removal_and_resets_only_on_success():
+def test_the_clear_action_writes_only_the_removal_and_is_confirmation_gated():
     body = block(USENET_JS, "async function clearPassword(")
     assert "{clear_password: true}" in body, "Clear must carry only the removal"
     assert "password:" not in body.replace("clear_password", ""), \
         "Clear must never also save a replacement credential"
-    # The confirmation is consumed only by a clear that actually happened: the
-    # reset is on the success path, never in the finally.
-    success = body[:body.index("} catch (error) {")]
+    # The ONE canonical confirmation is the gate, and declining it returns
+    # BEFORE anything is settled, written or converged.
+    assert "window.DPSettingsModal.confirm(" in body
+    assert "tone: 'danger'" in body
+    assert "confirmLabel: 'Clear Password'" in body
+    gate = body.index("if (!confirmed) return;")
+    assert gate < body.index("writeServer("), "the write is not behind the confirmation"
+    assert gate < body.index("settle("), "a commit is settled before the operator has agreed"
+    # Identity: the name the operator chose, else the host, else neither.
+    assert "confirmSubject(card)" in body
     failure = body[body.index("} catch (error) {"):]
-    assert "gate.checked = false" in success
-    assert "gate.checked = false" not in failure
     assert "toast(" in failure, "a failed clear must report itself"
-    # It refuses to act at all until the operator has confirmed.
-    assert "gate?.checked" in body or "gate.checked" in body.split("\n")[1]
+    assert "converge(" not in failure, "a failed clear must not converge the card"
 
 
 def test_a_blank_password_is_never_a_clear():
@@ -597,66 +619,121 @@ def test_the_canonical_toast_owner_is_the_only_notification_owner_on_this_page()
     assert "window.toast" in read("ui-toast-contract.js")
 
 
-# --- Items 4/5/13: the AllDebrid action row --------------------------------
+# --- Items 4/5/13: the provider card's operational header rail -------------
 
-def test_the_disclosure_and_the_action_group_share_one_row():
+def test_the_header_rail_reads_state_then_action_then_participation():
+    """A provider-level action belongs beside the state it proves and the
+    participation control it is about -- not in the body, where its position
+    would depend on the body's geometry."""
+    card = block(SETTINGS_JS, "function providerCard(")
+    controls = card[card.index("dp-settings-card-header-controls"):]
+    assert controls.index("dp-settings-provider-config-status") \
+        < controls.index("dp-settings-header-action") \
+        < controls.index("${enable}"), "the rail is not state -> action -> Enable"
+
+
+def test_the_header_action_slot_is_neutral_and_optional():
+    """The slot is the CARD's grammar, not any one provider's: it is named for
+    what it is, it is rendered only when the card has such an action, and it is
+    applied to no card that does not ask for one."""
+    card = block(SETTINGS_JS, "function providerCard(")
+    assert "headerAction = ''" in card, "the slot is not optional"
+    assert "headerAction ? " in card, "an empty slot still emits a wrapper"
+    assert "alldebrid" not in card.lower(), "the generic card names a provider"
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "dp-settings-provider-advanced" in panel
-    group = panel.index("dp-settings-provider-advanced")
-    assert panel.index("dp-settings-additional", group) < panel.index("dp-settings-provider-actions", group)
+    assert panel.count("headerAction:") == 1, \
+        "the rail was applied to a card that did not ask for it"
 
 
-def test_the_action_row_geometry_has_one_owner_and_no_positioning_hack():
+def test_the_test_action_lives_in_the_header_and_not_in_the_body():
+    """It is not in the credential row (it saves nothing) and not in the
+    optional-tuning disclosure (its position must not depend on that being
+    open). There is no provider action footer left at all."""
+    panel = block(SETTINGS_JS, "function sourcesPanel(")
+    assert panel.count('data-action="test-alldebrid"') == 1
+    assert panel.index('data-action="test-alldebrid"') < panel.index("headerAction:") \
+        or "providerTest" in panel
+    assert "headerAction: providerTest" in panel
+    body = panel[panel.index("dp-settings-copy"):panel.index("`, allDebrid, {")]
+    assert "test-alldebrid" not in body, "Test is still rendered in the card body"
+    # The retired footer machinery is gone, not merely unused.
+    assert "dp-settings-provider-actions" not in SETTINGS_JS
+    assert "dp-settings-provider-advanced" not in SETTINGS_JS
+    assert "dp-settings-provider-actions" not in SETTINGS_CSS
+    assert "dp-settings-provider-advanced" not in SETTINGS_CSS
+
+
+def test_the_header_rail_geometry_has_one_owner_and_no_positioning_hack():
     owners = [p.name for p in MAINTAINED_CSS
-              if "dp-settings-provider-advanced" in p.read_text(encoding="utf-8")]
+              if "dp-settings-header-action" in p.read_text(encoding="utf-8")]
     assert owners == ["ui-settings-page.css"], owners
-    group = rule(SETTINGS_CSS, "#view-settings .dp-settings-provider-advanced {")
-    assert "display: grid" in group
-    for banned in ("position: absolute", "margin-left", "margin-inline-start", "transform"):
-        assert banned not in group, banned
-    # The action group's placement is the grid's, never a nudge of its own.
-    actions = rule(SETTINGS_CSS, "#view-settings .dp-settings-provider-actions {")
+    rail = rule(SETTINGS_CSS,
+                "#view-settings .dp-settings-card-header > .dp-settings-card-header-controls {")
+    assert "display: flex" in rail
+    # Narrow layouts reflow; they do not overflow, and wrapping preserves the
+    # rail's order because the order is the source order.
+    assert "flex-wrap: wrap" in rail
+    assert "align-items: center" in rail
+    slot = rule(SETTINGS_CSS, "#view-settings .dp-settings-header-action {")
     for banned in ("position: absolute", "margin", "top:", "transform"):
-        assert banned not in actions, banned
-
-
-def test_the_expanded_state_bottom_aligns_the_action_group():
-    # Declarative, driven by the disclosure's own open state -- never a
-    # measured offset and never a second stylesheet.
-    assert ":has(> details[open])" in SETTINGS_CSS
+        assert banned not in slot, banned
 
 
 def test_no_localized_save_action_survives_for_the_alldebrid_credential():
-    """Item 13: the localized Save is gone entirely, not merely hidden. Test
-    inherits the action group's right-hand position it occupied."""
+    """Item 13: the localized Save is gone entirely, not merely hidden."""
     assert 'data-action="save-alldebrid"' not in SETTINGS_JS
     for retired in ("function saveAllDebridCredentials(", "function allDebridGatedIntent(",
                     "function refreshGatedSave(", "function scopedClears("):
         assert retired not in SETTINGS_JS, retired
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    actions = panel[panel.index("dp-settings-provider-actions"):]
-    actions = actions[:actions.index("</div>")]
-    assert 'data-action="test-alldebrid"' in actions
-    assert "Save" not in actions
+    for banned in (">Save", "Save Settings", 'data-action="save', "btn-save"):
+        assert banned not in panel, banned
 
 
-def test_the_action_group_keeps_its_single_right_hand_datum():
-    """The only geometric consequence of removing Save: the group now holds one
-    button, which the existing right-aligned flex row places exactly where Save
-    used to sit."""
-    actions = rule(SETTINGS_CSS, "#view-settings .dp-settings-provider-actions {")
-    assert "display: flex" in actions
-    assert "justify-content: flex-end" in actions
-
-
-def test_the_alldebrid_expanded_additional_settings_are_untouched():
-    """Explicitly out of scope: the expanded layout keeps every field it had."""
+def test_the_alldebrid_additional_settings_are_five_tuning_cells():
+    """Tuning-only behind its disclosure: the five existing controls, each still
+    bound to the same canonical setting, in the reusable tuning grid. The
+    disclosure row carries no Test, no Save and no action footer."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    additional = panel[panel.index("dp-settings-additional"):panel.index("dp-settings-provider-actions")]
+    additional = panel[panel.index("dp-settings-additional"):panel.index("`, allDebrid, {")]
+    assert "dp-settings-tuning-grid" in additional
     for field in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
                   "full_sync_interval_minutes", "upload_fail_retry_count",
                   "upload_fail_retry_delay_minutes"):
         assert field in additional, field
+    assert additional.count("${input(") == 5, "the grid does not hold exactly five cells"
+    for banned in ("test-alldebrid", "Save", "dp-settings-provider-actions"):
+        assert banned not in additional, banned
+
+
+def test_the_tuning_grid_is_a_neutral_bounded_reusable_primitive():
+    """Compact cells the row FITS rather than fills, wrapping responsively with
+    no horizontal scroll, and centring each cell's label/control/help as
+    ELEMENTS while the value inside the control keeps canonical alignment.
+
+    It is a centred wrapping FLEX line, deliberately: a flex line centres every
+    row including a partial one, which a grid does not -- a grid's partial last
+    row sits in its own columns."""
+    owners = [p.name for p in MAINTAINED_CSS
+              if "dp-settings-tuning-grid" in p.read_text(encoding="utf-8")]
+    assert owners == ["ui-settings-page.css"], owners
+    grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
+    assert "display: flex" in grid
+    assert "flex-wrap: wrap" in grid
+    assert "justify-content: center" in grid
+    cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid > .dp-settings-field {")
+    assert "flex: 0 1 170px" in cell, \
+        "the basis is not bounded, so a cell can stretch to fill the row"
+    assert "max-width: 190px" in cell
+    assert "justify-items: center" in cell
+    assert "text-align: center" in cell
+    control = rule(SETTINGS_CSS,
+                   "#view-settings .dp-settings-tuning-grid > .dp-settings-field > .input {")
+    assert "text-align: left" in control, \
+        "the cell's centring leaked into the value inside the control"
+    assert "overflow-x" not in SETTINGS_CSS.split("dp-settings-tuning-grid")[1][:400]
+    # The primitive names no provider.
+    assert "alldebrid" not in grid.lower() and "alldebrid" not in cell.lower()
 
 
 # --- Items 6/9: one canonical persistence owner ----------------------------
@@ -945,25 +1022,41 @@ def test_the_explicit_clear_is_the_only_destructive_credential_writer():
     assert "clear_secrets: ['api_key']" in body
     assert "options: {}" in body, "Clear must never also save a replacement key"
     assert "/integrations/alldebrid/configuration" in body
+    # The ONE canonical confirmation gates it, with the required wording.
+    assert "window.DPSettingsModal.confirm(" in body
+    assert "tone: 'danger'" in body
+    assert "title: 'Clear AllDebrid API key?'" in body
+    assert "confirmLabel: 'Clear AllDebrid API Key'" in body
+    # Declining performs no mutation: nothing is settled or written first.
+    gate = body.index("if (!confirmed) return;")
+    assert gate < body.index("settle("), "a commit is settled before the operator agrees"
+    assert gate < body.index("clear_secrets"), "the clear is not behind the confirmation"
     # Settled first, so the clear is the LAST write on this namespace.
     assert "settle(" in body
-    # The confirmation is consumed only by a clear that actually happened.
+    # Exactly one canonical clear, and a failure converges nothing.
+    assert body.count("request('PATCH'") == 1
     success = body[:body.index("} catch (error) {")]
     failure = body[body.index("} catch (error) {"):]
     assert "renderAllDebridCredential('')" in success
     assert "renderAllDebridCredential(" not in failure, \
-        "a failed clear must leave the confirmation armed"
+        "a failed clear must not render a false cleared state"
     assert "notify(" in failure
 
 
-def test_the_clear_group_is_button_then_confirmation_then_text():
+def test_the_clear_group_is_one_explicit_destructive_action():
+    """The card-local confirmation checkbox is gone: the group is one red button
+    naming exactly what it erases, and whether the operator means it is the one
+    canonical Settings confirmation's question."""
     group = block(SETTINGS_JS, "const ALLDEBRID_KEY_CLEAR")
     action = control(group, 'data-action="clear-alldebrid-key"')
     assert "btn-danger" in action
-    assert "disabled" in action, "Clear must arrive disabled until confirmed"
-    assert group.index('data-action="clear-alldebrid-key"') < group.index("data-alldebrid-clear-confirm")
-    assert group.index("data-alldebrid-clear-confirm") < group.index(
-        "Confirm removal of the stored API key")
+    assert "disabled" not in action, "the action still carries a local gate"
+    assert "Clear Stored API Key" in group
+    assert 'type="checkbox"' not in group
+    assert "<label" not in group
+    assert "data-alldebrid-clear-confirm" not in SETTINGS_JS
+    assert "Confirm removal of the stored API key" not in SETTINGS_JS
+    assert "function refreshAllDebridClearGate(" not in SETTINGS_JS
     # The row renders that one declaration, and nothing else does.
     assert "ALLDEBRID_KEY_CLEAR" in block(SETTINGS_JS, "function allDebridApiKeyField(")
     assert SETTINGS_JS.count("dp-settings-alldebrid-key-clear\"") == 1
@@ -972,7 +1065,9 @@ def test_the_clear_group_is_button_then_confirmation_then_text():
 def test_the_clear_group_is_centred_against_the_api_key_input_itself():
     """Structural: the clear group occupies the INPUT's own grid row, so it is
     centred against the control rather than the label+hint stack, and it takes
-    horizontal room from the field instead of adding an action band."""
+    horizontal room from the field instead of adding an action band. The retired
+    confirmation's own rule is gone with it."""
+    assert "dp-settings-alldebrid-key-confirm" not in SETTINGS_CSS
     row = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-row {")
     assert "display: grid" in row
     clear = rule(SETTINGS_CSS, "#view-settings .dp-settings-alldebrid-key-clear {")

@@ -140,31 +140,12 @@
   width: 100%;
 }
 
-/* AllDebrid Additional Settings deliberately mirrors Safety & Recovery. */
-#view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 20px 28px;
-  align-items: start;
-}
-
-#view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field {
-  min-width: 0;
-  grid-column: span 2;
-  margin-top: 0 !important;
-}
-
-#view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field:nth-child(4) {
-  grid-column: 2 / span 2;
-}
-
-#view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field:nth-child(5) {
-  grid-column: 4 / span 2;
-}
-
-#view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body .input {
-  width: 100%;
-}
+/* AllDebrid Additional Settings used to mirror Safety & Recovery here, as a
+   six-column inverted pyramid of full-width fields. DP 1.0.13's final
+   interaction pass made that region tuning-only, presented as compact bounded
+   cells by the reusable tuning grid in ui-settings-page.css -- which is now its
+   ONE owner. Nothing is declared for it here: a `display: grid` on the body
+   would place that whole centred line inside a single 1fr track. */
 
 /* ── Automatic Extraction ───────────────────────────────────────────── */
 /* Match Download Engine's three-part card-header grammar: identity left,
@@ -379,18 +360,14 @@
 }
 
 @media (max-width: 900px) {
-  #view-settings .dp-settings-download-recovery-card > .card-body,
-  #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body {
+  #view-settings .dp-settings-download-recovery-card > .card-body {
     grid-template-columns: minmax(0, 1fr);
     gap: 14px;
   }
 
   #view-settings .dp-settings-download-recovery-card > .card-body > .dp-settings-field,
   #view-settings .dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(4),
-  #view-settings .dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(5),
-  #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field,
-  #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field:nth-child(4),
-  #view-settings [data-panel="sources"] .dp-settings-provider-card--alldebrid .dp-settings-additional-body > .dp-settings-field:nth-child(5) {
+  #view-settings .dp-settings-download-recovery-card > .card-body > .dp-settings-field:nth-child(5) {
     grid-column: 1;
   }
 

@@ -444,11 +444,7 @@
   const ALLDEBRID_KEY_CLEAR = `
           <div class="dp-settings-alldebrid-key-clear">
             <button type="button" class="btn btn-danger btn-sm" data-action="clear-alldebrid-key"
-                    aria-label="Clear the stored AllDebrid API key" disabled>Clear</button>
-            <label class="dp-settings-inline-check dp-settings-alldebrid-key-confirm">
-              <input type="checkbox" data-alldebrid-clear-confirm>
-              <span>Confirm removal of the stored API key</span>
-            </label>
+                    aria-label="Clear the stored AllDebrid API key">Clear Stored API Key</button>
           </div>`;
 
   function allDebridApiKeyField(configured) {
@@ -520,6 +516,16 @@
       + `<img src="/icons/lucide/${glyph}.svg" alt="" decoding="async"></span>`;
   }
 
+  /* What enabling one Network Source allows, as the two lines its protocol box
+   * presents. COPY ONLY: the box's identity, label, order and enable state all
+   * come from the integration's own published metadata, so this adds no second
+   * display-name system and declares no protocol that does not exist. A member
+   * with nothing to say here simply says nothing. */
+  const SOURCE_BOX_COPY = Object.freeze({
+    general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
+    general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
+  });
+
   function groupHeaderToggle(groupId, label, value) {
     const safeGroup = String(groupId || '').replace(/[^a-z0-9_-]/gi, '-');
     const id = `dp-settings-integration-group-${safeGroup}-enabled`;
@@ -577,9 +583,21 @@
     return enabled ? {text: 'Unconfigured', tone: 'error'} : {text: '', tone: 'none'};
   }
 
-  // headerOnly renders the whole card as its header -- title, centered
-  // headerCopy, Enable -- with no .card-body at all (Direct Sources).
-  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerOnly = false}) {
+  /* The card's operational header rail.
+   *
+   * The right-hand region of the ONE canonical Settings card header reads, in
+   * this order: what the provider's configuration currently IS, the
+   * provider-level action that can prove it, then whether the provider
+   * participates at all. `headerAction` is the neutral slot in the middle --
+   * neutral because the grammar is the card's, not any one provider's, so an
+   * auth/integration card that acquires a provider-level action later renders
+   * it in the same place without a second layout. A card that has no such
+   * action renders no slot.
+   *
+   * Everything about the CONFIGURATION -- credentials, optional tuning behind
+   * its disclosure -- stays in the body. The rail therefore never moves when
+   * the body grows, shrinks, opens or closes, because it is not in it. */
+  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerAction = ''}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
     const verified = !!entry.verified;
@@ -591,24 +609,49 @@
       ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
       : `<span class="card-title">${html(title)}${crown}</span>`;
     const bodyId = `dp-settings-provider-body-${safe}`;
-    // headerOnly renders the whole card as its header (Direct Sources): no
-    // body, therefore no disclosure and no configuration-status region.
     // Every expandable card renders CLOSED. Arriving at Services is
     // not an opinion about what should be open, and enabled/configured/verified
     // state is canonical truth about the provider, never about the card.
-    const disclosure = headerOnly ? '' : settingsDisclosure(bodyId, false, 'provider configuration');
-    const status = headerOnly ? null : providerStatus(enabled, configured, verified);
-    const collapsed = !headerOnly;
+    const disclosure = settingsDisclosure(bodyId, false, 'provider configuration');
+    const status = providerStatus(enabled, configured, verified);
     return `
-      <section class="card dp-settings-card dp-large-panel-surface ${className}${collapsed ? ' dp-settings-provider-card--collapsed' : ''}" data-provider-configured="${configured}">
+      <section class="card dp-settings-card dp-large-panel-surface ${className} dp-settings-provider-card--collapsed" data-provider-configured="${configured}">
         <div class="card-header dp-settings-card-header">
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
           <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
-          <div class="dp-settings-card-header-controls">${status
-            ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>`
-            : ''}${enable}</div>
-        </div>${headerOnly ? '' : `
-        <div class="card-body" id="${bodyId}" hidden>${body}</div>`}
+          <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>${
+            headerAction ? `<div class="dp-settings-header-action">${headerAction}</div>` : ''}${enable}</div>
+        </div>
+        <div class="card-body" id="${bodyId}" hidden>${body}</div>
+      </section>`;
+  }
+
+  /* The ONE Network Source child box.
+   *
+   * A compact bounded protocol entry: the canonical protocol chip top-left, the
+   * canonical presentation label at the top, the canonical immediate Enable in
+   * the middle, and the two lines that say what enabling it allows. The toggle
+   * is the only action -- a network source holds no credential, so there is
+   * nothing to configure, test or save, and therefore no disclosure, no status
+   * region and no footer.
+   *
+   * Neither this nor the grid that arranges it knows which protocols exist:
+   * identity, label, order and enable state all come from the integration's own
+   * published metadata, so a newly registered member appears by existing. */
+  function sourceProtocolBox(identity, label, lines, entry) {
+    const enabled = entry.enabled !== false;
+    // The provider-card class family is hyphenated, so the durable identity's
+    // separators are normalized for the CLASS only; the identity itself, which
+    // every control and mutation addresses, is untouched.
+    const slug = String(identity).replace(/[^a-z0-9]+/gi, '-');
+    return `
+      <section class="card dp-settings-card dp-settings-provider-card dp-settings-source-box dp-settings-provider-card--${slug}" data-provider-configured="${!!entry.configured}">
+        <div class="dp-settings-source-box-head">
+          ${protocolIcon(identity)}
+          <span class="card-title"><span class="dp-settings-card-title-text">${html(label)}</span></span>
+        </div>
+        ${integrationHeaderToggle(identity, enabled, label, 'dp-settings-source-box-enable')}
+        <p class="dp-settings-source-box-copy">${lines.map(line => `<span>${html(line)}</span>`).join('')}</p>
       </section>`;
   }
 
@@ -621,10 +664,9 @@
   /* One server card.
    *
    * Erasing a stored credential is destructive, so it is an explicit action
-   * behind its own confirmation -- button, checkbox, then the sentence that
-   * describes it, as one left-aligned group. It is rendered on every card and
-   * hidden while the server has nothing stored to clear, so the behaviour
-   * owner toggles STATE rather than markup.
+   * behind the ONE canonical Settings confirmation. The button is rendered on
+   * every card and the group is hidden while the server has nothing stored to
+   * clear, so the behaviour owner toggles STATE rather than markup.
    *
    * Test and Remove are rendered exactly once, inside the Advanced grid. Their
    * placement in BOTH disclosure states belongs to that grid
@@ -682,11 +724,7 @@
         </div>
         <div class="dp-usenet-clear-password"${configured ? '' : ' hidden'}>
           <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                  aria-label="Clear the stored password for this server" disabled>Clear</button>
-          <label class="dp-settings-inline-check dp-usenet-clear-confirm">
-            <input type="checkbox" data-usenet-clear-password>
-            <span>Confirm removal of the stored password for this server</span>
-          </label>
+                  aria-label="Clear the stored password for this server">Clear Stored Password</button>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
@@ -768,18 +806,29 @@
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
     const generalHttp = integrations.general_http || {};
-    const generalFtp = integrations.general_ftp || {};
     const providerIdentity = `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--alldebrid" aria-hidden="true">
         <img class="dp-settings-provider-logo dp-settings-provider-logo--alldebrid" src="/icons/providers/alldebrid.svg" alt="">
       </span>`;
+    // Test is a PROVIDER-level action, so it belongs to the card's operational
+    // header rail beside the state it proves and the participation control it
+    // is about -- never in the credential row (it saves nothing) and never in
+    // the optional-tuning disclosure (it is not tuning, and its position must
+    // not depend on whether that is open).
+    const providerTest = `
+          <button class="btn btn-ghost btn-sm" type="button" data-action="test-alldebrid">
+            <span class="dp-settings-action-chip" aria-hidden="true">
+              <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
+            </span>
+            <span>Test</span>
+          </button>`;
     const provider = providerCard('alldebrid', 'AllDebrid', `
       <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
-      <div class="dp-settings-provider-advanced">
-        <details class="dp-settings-additional">
-          <summary><span>Additional Settings</span></summary>
-          <div class="dp-settings-additional-body">
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          <div class="dp-settings-tuning-grid">
             ${input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
               type: 'number', min: 0, max: 300,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
@@ -801,36 +850,14 @@
               hint: 'How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.'
             })}
           </div>
-        </details>
-        <div class="dp-settings-provider-actions">
-          <button class="btn btn-ghost" type="button" data-action="test-alldebrid">
-            <span class="dp-settings-action-chip" aria-hidden="true">
-              <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
-            </span>
-            <span>Test</span>
-          </button>
         </div>
-      </div>
+      </details>
 `, allDebrid, {
       className: 'dp-settings-provider-card dp-settings-provider-card--alldebrid',
       titlePrefix: providerIdentity,
       displayName: 'AllDebrid',
       headerCopy: 'Resolve supported links and torrents through your AllDebrid account.',
-    });
-
-    const generalHttpCard = providerCard('general_http', 'HTTP(S)', '', generalHttp, {
-      className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-http',
-      titlePrefix: protocolIcon('general_http'),
-      displayName: 'HTTP(S)',
-      headerCopy: 'Direct downloads from standard HTTP and HTTPS URLs.',
-      headerOnly: true,
-    });
-    const generalFtpCard = providerCard('general_ftp', '(S)FTP', '', generalFtp, {
-      className: 'dp-settings-provider-card dp-settings-direct-source-card dp-settings-provider-card--general-ftp',
-      titlePrefix: protocolIcon('general_ftp'),
-      displayName: '(S)FTP',
-      headerCopy: 'Direct downloads from FTP and SFTP URLs.',
-      headerOnly: true,
+      headerAction: providerTest,
     });
 
     // Absent means OFF for Usenet: it participates only once an operator turns
@@ -859,7 +886,17 @@
     const groupLabel = (s.integration_groups?.[groupId]?.label)
       || generalHttp.presentation?.status_group_label || 'Network Sources';
     const groupEnabled = s.integration_groups?.[groupId]?.enabled !== false;
-    const generalSources = groupCard(groupLabel, generalHttpCard + generalFtpCard, {
+    // The members ARE whoever currently declares this group, in the one
+    // ordering authority's order. Nothing here enumerates protocols, so a
+    // protocol that does not exist yet cannot be rendered as though it did.
+    const members = groupId ? Object.entries(integrations)
+      .filter(([, entry]) => entry?.presentation?.status_group === groupId)
+      .sort(([leftId, left], [rightId, right]) =>
+        ((left.presentation?.display_order ?? 0) - (right.presentation?.display_order ?? 0))
+        || leftId.localeCompare(rightId)) : [];
+    const generalSources = groupCard(groupLabel,
+      `<div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
+        sourceProtocolBox(id, entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
       titlePrefix: protocolIcon(groupId),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
@@ -1764,7 +1801,6 @@
     snapshotProviderControls(view);
     // Whatever was just rendered FROM canonical state IS the accepted baseline.
     window.DPSettingsPersistence.adopt(view);
-    refreshAllDebridClearGate();
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
 
@@ -1975,7 +2011,6 @@
       if (event.target.id === 'dp-auth-public-base-url') updateOidcCallbackPreview();
       if (event.target.id === 'dp-settings-avatar-file') uploadAvatar(event.target);
       if (event.target.matches(`[data-setting="api_token_enabled"]`)) setApiTokenEnabled(event.target);
-      if (event.target.matches('[data-alldebrid-clear-confirm]')) refreshAllDebridClearGate();
     });
 
     view.addEventListener('click', event => {
@@ -2306,15 +2341,6 @@
     return proofs.length ? {...body, verification: proofs} : body;
   }
 
-  /* Whether the destructive Clear may act at all. It is inert until the
-   * operator has confirmed the removal, and it converges from the accepted
-   * integration projection the row was rendered from. */
-  function refreshAllDebridClearGate() {
-    const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
-    const button = card?.querySelector('[data-action="clear-alldebrid-key"]');
-    if (button) button.disabled = !card?.querySelector('[data-alldebrid-clear-confirm]')?.checked;
-  }
-
   /* Converge the credential row on ACCEPTED canonical state.
    *
    * The row has to change, because the accepted state changes what it SHOWS --
@@ -2347,24 +2373,32 @@
     if (configured && !clear) row.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_CLEAR);
     else if (!configured && clear) clear.remove();
 
-    refreshAllDebridClearGate();
     renderIntegrationState(card, 'alldebrid');
   }
 
   /* Erasing the stored credential.
    *
-   * Destructive, so it is an explicit confirmed action and never a commit
-   * boundary. It carries ONLY the removal, through the same canonical
-   * integration mutation every other AllDebrid write uses: a replacement the
-   * operator typed belongs to its own changed-blur boundary, which the settle
-   * below orders before this, so the stored key ends up removed either way and
-   * this request never saves one.
+   * Destructive, so it is an explicit action behind the ONE canonical Settings
+   * confirmation (ui-settings-modal.js) and never a commit boundary. The dialog
+   * is a GATE in front of this owner: declining it performs no mutation at all,
+   * and the accepted canonical projection is what renders on success.
    *
-   * The confirmation is consumed only by a clear that actually happened: a
-   * failure leaves it armed. */
+   * It carries ONLY the removal, through the same canonical integration
+   * mutation every other AllDebrid write uses: a replacement the operator typed
+   * belongs to its own changed-blur boundary, which the settle below orders
+   * before this, so the stored key ends up removed either way and this request
+   * never saves one. A failure converges nothing. */
   async function clearAllDebridKey(button) {
     const card = root()?.querySelector('.dp-settings-provider-card--alldebrid');
-    if (!card?.querySelector('[data-alldebrid-clear-confirm]')?.checked) return;
+    if (!card) return;
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: 'Clear AllDebrid API key?',
+      message: 'The stored AllDebrid API key will be removed. AllDebrid cannot be used '
+        + 'again until a key is configured.',
+      confirmLabel: 'Clear AllDebrid API Key',
+    });
+    if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Clearing…');
     try {
@@ -2378,7 +2412,6 @@
       notify(error.message, 'error');
     } finally {
       setBusy(button, false);
-      refreshAllDebridClearGate();
     }
   }
 

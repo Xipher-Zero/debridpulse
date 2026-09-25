@@ -413,17 +413,26 @@
     if (field && field.value === dispatched) field.value = '';
   }
 
-  /* The destructive Clear is inert until the operator has confirmed it, and
-   * the whole group is hidden while this server has nothing stored to clear.
-   * Both are state, converged from the accepted record -- never markup this
-   * owner rewrites. */
+  /* The whole clear group is hidden while this server has nothing stored to
+   * clear. That is STATE, converged from the accepted record -- never markup
+   * this owner rewrites. Whether the operator MEANS it is the canonical
+   * confirmation's question, asked at the moment they act. */
   function refreshClearGate(card) {
     const configured = card.dataset.usenetPasswordConfigured === '1';
     const group = card.querySelector('.dp-usenet-clear-password');
-    const gate = card.querySelector('[data-usenet-clear-password]');
-    const button = card.querySelector('[data-usenet-action="clear-password"]');
     if (group) group.hidden = !configured;
-    if (button) button.disabled = !configured || !gate?.checked;
+  }
+
+  /* The operator-facing subject of a destructive confirmation about one card.
+   *
+   * The name the operator CHOSE, else the host they typed, else nothing -- a
+   * host-derived display name must not masquerade as a chosen one, and a blank
+   * local draft has no identity to state. This reads the card's own accepted,
+   * visible identity; it never asks the backend a second time. */
+  function confirmSubject(card) {
+    const chosen = card.dataset.usenetNameOverride === '1'
+      ? String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim() : '';
+    return chosen || String(fieldValue(card, 'host') || '').trim();
   }
 
   /* A brand-new card carries an EMPTY canonical id: the backend mints one when
@@ -478,11 +487,7 @@
         </div>
         <div class="dp-usenet-clear-password" hidden>
           <button type="button" class="btn btn-danger btn-sm" data-usenet-action="clear-password"
-                  aria-label="Clear the stored password for this server" disabled>Clear</button>
-          <label class="dp-settings-inline-check dp-usenet-clear-confirm">
-            <input type="checkbox" data-usenet-clear-password>
-            <span>Confirm removal of the stored password for this server</span>
-          </label>
+                  aria-label="Clear the stored password for this server">Clear Stored Password</button>
         </div>
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
@@ -547,11 +552,18 @@
    * before this on the record's own lane, so the stored credential ends up
    * removed either way and this request never saves one.
    *
-   * The confirmation is consumed only by a clear that actually happened; a
-   * failure leaves it armed. */
+   * The ONE canonical Settings confirmation is the GATE in front of this
+   * owner: declining it performs no mutation at all. */
   async function clearPassword(card, button) {
-    const gate = card.querySelector('[data-usenet-clear-password]');
-    if (!serverId(card) || !gate?.checked) return;
+    if (!serverId(card)) return;
+    const subject = confirmSubject(card);
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: subject ? `Clear password for ${subject}?` : 'Clear password for this Usenet server?',
+      message: `The stored password for ${subject || 'this Usenet server'} will be removed.`,
+      confirmLabel: 'Clear Password',
+    });
+    if (!confirmed) return;
     await window.DPSettingsPersistence.settle(card);
     const name = serverName(card);
     busy(button, true);
@@ -560,7 +572,6 @@
       // This action wrote no ordinary control, so it converges none -- only
       // what the card must now show about the stored credential.
       converge(card, result, {});
-      gate.checked = false;
       const native = nativeMessage(result);
       toast(native || `${name} password cleared`, native ? 'warn' : 'success');
     } catch (error) {
@@ -693,8 +704,22 @@
   /* Removal is serialized behind creation. A card removed while its record is
    * being minted cannot simply vanish: the creation write is already on its
    * way, so removal waits for the id and deletes the record it mints. A
-   * backend record with no card is never an acceptable outcome. */
+   * backend record with no card is never an acceptable outcome.
+   *
+   * The ONE canonical Settings confirmation gates that owner and does not
+   * replace any part of it: declining removes nothing, locally or durably, and
+   * accepting runs exactly the sequence below. A card that is still a local
+   * draft has no record to delete, so confirming it removes only the draft --
+   * the DELETE below is reached only when an id actually exists. */
   async function removeCard(host, card, button) {
+    const subject = confirmSubject(card);
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: subject ? `Remove ${subject}?` : 'Remove this Usenet server?',
+      message: `The configuration for ${subject || 'this Usenet server'} will be removed from DebridPulse.`,
+      confirmLabel: 'Remove Server',
+    });
+    if (!confirmed) return;
     const name = serverName(card);
     busy(button, true);
     card.dataset.usenetRemoving = '1';
@@ -847,7 +872,6 @@
     const card = event.target.closest('[data-usenet-server-id]');
     if (!card) return;
     if (event.target.dataset?.usenetField === 'ssl') void sslChanged(card, event.target);
-    else if (event.target.matches('[data-usenet-clear-password]')) refreshClearGate(card);
   }
 
   /* Every render re-establishes the canonical baseline for this collection's

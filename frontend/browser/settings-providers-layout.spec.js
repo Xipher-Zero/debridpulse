@@ -139,17 +139,30 @@ test.describe('Usenet server cards centre on their own viewport', () => {
   });
 });
 
-test.describe('the AllDebrid disclosure and its action group share one row', () => {
+/* DP 1.0.13 final interaction pass -- the provider card's operational header
+ * rail, and the tuning-only disclosure beneath it.
+ *
+ * Test is a PROVIDER-level action, so it lives in the header beside the state it
+ * proves and the participation control it is about. Every invariant below is
+ * measured against the RENDERED layout, and the point of them is that the rail
+ * does not move: not when the body opens, not when the credential state
+ * changes, not when the body grows. */
+test.describe('the AllDebrid card header rail carries state, Test and Enable', () => {
   const card = page => page.locator('.dp-settings-provider-card--alldebrid');
-  const group = page => card(page).locator('.dp-settings-provider-advanced');
+  const header = page => card(page).locator(':scope > .card-header');
+  const rail = page => header(page).locator('.dp-settings-card-header-controls');
+  const status = page => rail(page).locator('.dp-settings-provider-config-status');
+  const testButton = page => rail(page).locator('[data-action="test-alldebrid"]');
+  const enable = page => rail(page).locator('.dp-settings-integration-header-enable');
   const summary = page => card(page).locator('.dp-settings-additional > summary');
-  const actions = page => card(page).locator('.dp-settings-provider-actions');
   const optionBody = page => card(page).locator('.dp-settings-additional-body');
+  const cells = page => card(page).locator('.dp-settings-tuning-grid > .dp-settings-field');
 
   const boxOf = locator => locator.evaluate(el => {
     const r = el.getBoundingClientRect();
     return {top: r.top, bottom: r.bottom, left: r.left, right: r.right,
-            centerY: (r.top + r.bottom) / 2};
+            width: r.width, height: r.height,
+            centerX: (r.left + r.right) / 2, centerY: (r.top + r.bottom) / 2};
   });
 
   /* The card body is hidden while the integration is switched off. Expanding
@@ -165,65 +178,155 @@ test.describe('the AllDebrid disclosure and its action group share one row', () 
     await expect(card(page).locator(':scope > .card-body')).toBeVisible();
   });
 
-  test('collapsed: Additional Settings and the action group occupy the same row', async ({page}) => {
-    await expect(page.locator('.dp-settings-additional')).not.toHaveAttribute('open', /.*/);
-    const head = await boxOf(summary(page));
-    const bar = await boxOf(actions(page));
-    // One row: the action group's vertical centre matches the summary's, and
-    // it introduces no band of its own above or below that row.
-    expect(Math.abs(head.centerY - bar.centerY)).toBeLessThanOrEqual(2);
-    expect(bar.top).toBeGreaterThanOrEqual(head.top - 2);
-    expect(bar.bottom).toBeLessThanOrEqual(head.bottom + 2);
+  test('the rail reads state, then Test, then Enable/toggle', async ({page}) => {
+    // Semantic order, read off the rendered DOM.
+    const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
+      child.matches('.dp-settings-provider-config-status') ? 'state'
+        : child.matches('.dp-settings-header-action') ? 'action'
+        : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
+    expect(order).toEqual(['state', 'action', 'enable']);
+    // Visual order, left to right, on one shared centreline.
+    const [s, t, e] = [await boxOf(status(page)), await boxOf(testButton(page)),
+                       await boxOf(enable(page))];
+    expect(s.right).toBeLessThanOrEqual(t.left + 1);
+    expect(t.right).toBeLessThanOrEqual(e.left + 1);
+    expect(Math.abs(s.centerY - t.centerY)).toBeLessThanOrEqual(2);
+    expect(Math.abs(t.centerY - e.centerY)).toBeLessThanOrEqual(2);
+    await expect(enable(page)).toContainText('Enable');
   });
 
-  test('collapsed: the action group is flush with the card viewport right edge', async ({page}) => {
-    const bar = await boxOf(actions(page));
-    const row = await boxOf(group(page));
-    expect(Math.abs(row.right - bar.right)).toBeLessThanOrEqual(1);
-  });
+  test('Test stays in the header rail collapsed and expanded, and the body never holds it',
+    async ({page}) => {
+      await expect(page.locator('.dp-settings-additional')).not.toHaveAttribute('open', /.*/);
+      const collapsed = await boxOf(testButton(page));
+      // Test is the header's, so the body cannot hold a copy of it in either state.
+      await expect(card(page).locator(':scope > .card-body [data-action="test-alldebrid"]'))
+        .toHaveCount(0);
 
-  test('collapsed: no dedicated action row is created beneath the disclosure', async ({page}) => {
-    const row = await boxOf(group(page));
-    const head = await boxOf(summary(page));
-    // The whole group is exactly the disclosure row, not the row plus a band.
-    expect(row.bottom - head.bottom).toBeLessThanOrEqual(2);
-  });
+      await summary(page).click();
+      await expect(optionBody(page)).toBeVisible();
+      const expanded = await boxOf(testButton(page));
+      // The body grew by a whole option grid; the rail did not move at all.
+      expect(Math.abs(expanded.top - collapsed.top)).toBeLessThanOrEqual(1);
+      expect(Math.abs(expanded.left - collapsed.left)).toBeLessThanOrEqual(1);
+      await expect(card(page).locator(':scope > .card-body [data-action="test-alldebrid"]'))
+        .toHaveCount(0);
+      await expect(testButton(page)).toHaveCount(1);
+      // Still exactly one Test on the page.
+      await expect(page.locator('[data-action="test-alldebrid"]')).toHaveCount(1);
+    });
 
-  test('expanded: the action group stays right-aligned and bottom-aligned with the options', async ({page}) => {
-    const collapsedRight = (await boxOf(actions(page))).right;
-    await summary(page).click();
-    await expect(optionBody(page)).toBeVisible();
-    const bar = await boxOf(actions(page));
-    const body = await boxOf(optionBody(page));
-    const row = await boxOf(group(page));
-    expect(Math.abs(bar.right - collapsedRight)).toBeLessThanOrEqual(1);
-    // Vertically aligned with the bottom row of the expanded option controls.
-    expect(Math.abs(bar.bottom - body.bottom)).toBeLessThanOrEqual(2);
-    // And no blank band beneath the option grid.
-    expect(row.bottom - body.bottom).toBeLessThanOrEqual(2);
-  });
+  test('Test is not in the credential row, and clicking it writes no credential',
+    async ({page}) => {
+      await expect(card(page).locator('.dp-settings-alldebrid-key-row [data-action="test-alldebrid"]'))
+        .toHaveCount(0);
+      const writes = [];
+      page.on('request', request => {
+        if (new URL(request.url()).pathname === '/api/integrations/alldebrid/configuration'
+            && request.method() === 'PATCH') writes.push(request.postDataJSON());
+      });
+      // Nothing typed, so there is no pending commit for Test to settle: a Test
+      // on its own must not produce a credential write of its own.
+      await testButton(page).click();
+      await page.waitForTimeout(1200);
+      expect(writes).toEqual([]);
+    });
 
-  /* Item 13: the localized Save is gone entirely, and Test inherits the
-   * right-hand action position Save occupied -- the only geometric
-   * consequence of there now being one button. */
-  test('no Save action survives, and Test alone occupies the right-hand datum', async ({page}) => {
+  test('no provider action footer survives beneath the disclosure', async ({page}) => {
     await expect(card(page).locator('[data-action="save-alldebrid"]')).toHaveCount(0);
-    await expect(actions(page).locator('button')).toHaveCount(1);
-    const testButton = await boxOf(actions(page).locator('[data-action="test-alldebrid"]'));
-    const row = await boxOf(group(page));
-    expect(Math.abs(row.right - testButton.right)).toBeLessThanOrEqual(1);
+    await expect(card(page).locator('.dp-settings-provider-actions')).toHaveCount(0);
+    await expect(card(page).locator('.dp-settings-provider-advanced')).toHaveCount(0);
+    // The disclosure is the whole of the card's secondary row: it is the last
+    // thing in the body, so nothing sits to its right and no band follows it.
+    expect(await card(page).locator(':scope > .card-body').evaluate(el =>
+      el.lastElementChild.classList.contains('dp-settings-additional'))).toBe(true);
+    const head = await boxOf(summary(page));
+    const details = await boxOf(card(page).locator('.dp-settings-additional'));
+    expect(details.bottom - head.bottom).toBeLessThanOrEqual(2);
   });
 
-  test('the expanded Additional Settings keep every field they had', async ({page}) => {
-    await summary(page).click();
-    await expect(optionBody(page)).toBeVisible();
-    for (const id of ['#dp-settings-field-alldebrid-rate-limit-per-minute',
-                      '#dp-settings-field-poll-interval-seconds',
-                      '#dp-settings-field-full-sync-interval-minutes',
-                      '#dp-settings-field-upload-fail-retry-count',
-                      '#dp-settings-field-upload-fail-retry-delay-minutes']) {
-      await expect(page.locator(id)).toBeVisible();
-    }
+  test('expanded: exactly five compact tuning cells, each still bound to its setting',
+    async ({page}) => {
+      await summary(page).click();
+      await expect(optionBody(page)).toBeVisible();
+      await expect(cells(page)).toHaveCount(5);
+      for (const id of ['#dp-settings-field-alldebrid-rate-limit-per-minute',
+                        '#dp-settings-field-poll-interval-seconds',
+                        '#dp-settings-field-full-sync-interval-minutes',
+                        '#dp-settings-field-upload-fail-retry-count',
+                        '#dp-settings-field-upload-fail-retry-delay-minutes']) {
+        await expect(page.locator(id)).toBeVisible();
+        // Each control is inside a cell of the grid, and none lost its binding.
+        await expect(page.locator(`.dp-settings-tuning-grid ${id}`)).toHaveCount(1);
+        await expect(page.locator(id)).toHaveAttribute('data-setting', /.+/);
+      }
+      // No Test, no Save, no footer inside the tuning region.
+      await expect(optionBody(page).locator('button')).toHaveCount(0);
+    });
+
+  test('the tuning cells are bounded, centred and never overflow horizontally',
+    async ({page}) => {
+      await summary(page).click();
+      await expect(optionBody(page)).toBeVisible();
+      const grid = await boxOf(card(page).locator('.dp-settings-tuning-grid'));
+
+      for (let i = 0; i < 5; i += 1) {
+        const cell = cells(page).nth(i);
+        const cellBox = await boxOf(cell);
+        // Bounded: a cell does not stretch to consume the row.
+        expect(cellBox.width).toBeLessThanOrEqual(220);
+        // Label, control and help are each centred AS ELEMENTS on the cell axis.
+        for (const part of ['.form-label', '.input', '.form-hint']) {
+          const partBox = await boxOf(cell.locator(part));
+          expect(Math.abs(partBox.centerX - cellBox.centerX),
+            `cell ${i} ${part} is not centred`).toBeLessThanOrEqual(2);
+        }
+        // The value inside the control keeps the canonical field alignment.
+        expect(await cell.locator('.input').evaluate(el =>
+          getComputedStyle(el).textAlign)).toBe('left');
+      }
+
+      // Wrapped rows stay centred inside the grid, and nothing scrolls.
+      for (const width of [1440, 900, 700, 420]) {
+        await page.setViewportSize({width, height: 1000});
+        await expect(optionBody(page)).toBeVisible();
+        const rows = await card(page).locator('.dp-settings-tuning-grid').evaluate(el => {
+          const host = el.getBoundingClientRect();
+          const byTop = new Map();
+          for (const child of el.children) {
+            const r = child.getBoundingClientRect();
+            const key = Math.round(r.top);
+            if (!byTop.has(key)) byTop.set(key, []);
+            byTop.get(key).push(r);
+          }
+          return Array.from(byTop.values()).map(boxes => ({
+            leading: Math.min(...boxes.map(b => b.left)) - host.left,
+            trailing: host.right - Math.max(...boxes.map(b => b.right)),
+          }));
+        });
+        for (const row of rows) {
+          expect(Math.abs(row.leading - row.trailing),
+            `tuning row is not centred at ${width}px`).toBeLessThanOrEqual(2);
+        }
+        expect(await page.evaluate(() =>
+          document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
+          `horizontal overflow at ${width}px`).toBeTruthy();
+      }
+      await page.setViewportSize({width: 1440, height: 1000});
+    });
+
+  test('the rail keeps its order when it reflows at a narrow width', async ({page}) => {
+    await page.setViewportSize({width: 560, height: 1000});
+    await expect(testButton(page)).toBeVisible();
+    // Reflow is allowed; losing the order, or overflowing, is not.
+    const order = await rail(page).evaluate(el => Array.from(el.children).map(child =>
+      child.matches('.dp-settings-provider-config-status') ? 'state'
+        : child.matches('.dp-settings-header-action') ? 'action'
+        : child.matches('.dp-settings-integration-header-enable') ? 'enable' : 'other'));
+    expect(order).toEqual(['state', 'action', 'enable']);
+    expect(await page.evaluate(() =>
+      document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1)).toBeTruthy();
+    await page.setViewportSize({width: 1440, height: 1000});
   });
 });
 
