@@ -163,25 +163,38 @@ test('the Usenet server fields obey the same spine as every other tab', async ({
 });
 
 test('a themed select is measured as the control the operator can see', async ({page}) => {
+  /* The native <select> is clipped to 1px and visually replaced by
+     .dp-dropdown__trigger, so the trigger is the control the spine has to
+     reason about. Report Window is now an INLINE field like every other
+     Notifications control, so the relationship to hold is the inline one: the
+     trigger occupies the control slot and is centred against the descriptive
+     block, rather than sharing a left edge with a label stacked above it. */
   await openSettings(page);
   await expandAll(page, 'notifications');
   const geometry = await page.evaluate(() => {
     const trigger = document.querySelector(
       '.dp-settings-panel[data-panel="notifications"] .dp-dropdown__trigger');
     if (!trigger) return null;
-    const field = trigger.closest('.dp-settings-field');
+    const field = trigger.closest('.dp-settings-inline-field');
+    if (!field) return null;
     const native = field.querySelector('select.input');
+    const control = field.querySelector(':scope > .dp-settings-inline-field-control');
+    const info = field.querySelector(':scope > .dp-settings-inline-field-info');
+    const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
     return {
       nativeWidth: native ? native.getBoundingClientRect().width : null,
-      delta: field.querySelector(':scope > .form-label').getBoundingClientRect().left
-        - trigger.getBoundingClientRect().left,
+      triggerInControl: control.contains(trigger),
+      rightOfInfo: trigger.getBoundingClientRect().left >= info.getBoundingClientRect().right,
+      centred: Math.abs(mid(info) - mid(trigger)),
     };
   });
   expect(geometry, 'no themed select rendered on this tab').toBeTruthy();
   // The native control really is the clipped one, so the trigger really is
   // what the spine has to align to.
   expect(geometry.nativeWidth).toBeLessThan(2);
-  expect(Math.abs(geometry.delta)).toBeLessThanOrEqual(TOLERANCE);
+  expect(geometry.triggerInControl).toBe(true);
+  expect(geometry.rightOfInfo).toBe(true);
+  expect(geometry.centred).toBeLessThanOrEqual(TOLERANCE + 1);
 });
 
 /* DP 1.0.13: erasing a stored credential stopped being a gated checkbox that a

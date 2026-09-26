@@ -34,94 +34,107 @@ def _state(**fields):
     return AppSettings(**fields)
 
 
+def _client(sent=True, error=None):
+    """Stand in for the ONE transport, and remember the destination it got."""
+    built = {}
+
+    class _Client:
+        def __init__(self, url):
+            built["url"] = url
+
+        async def test(self, *, strict=False):
+            built["strict"] = strict
+            if error is not None:
+                raise error
+            return sent
+
+    return _Client, built
+
+
 class DiscordOperationTests(unittest.IsolatedAsyncioTestCase):
-    async def _run(self, cfg, sender=None, recorded=None):
+    async def _run(self, cfg, client=None, built=None, recorded=None):
         recorded = recorded if recorded is not None else []
+        if client is None:
+            client, built = _client()
 
         async def record(subject, fingerprint, ok):
             recorded.append((subject, fingerprint, ok))
             return notifications.notification_state(cfg)
 
         with patch.object(routes, "get_settings", return_value=cfg), \
-             patch.object(routes, "_send_discord_test", new=sender or AsyncMock()), \
+             patch.object(routes, "NotificationService", client), \
              patch.object(routes, "_record_notification_outcome", new=record):
-            return await routes.validate_discord(), recorded
+            return await routes.validate_discord(), recorded, built
 
     async def test_the_saved_primary_webhook_is_what_gets_tested(self):
         cfg = _state(discord_webhook_url=PRIMARY, discord_username="Bot")
-        sender = AsyncMock()
-        result, recorded = await self._run(cfg, sender)
+        client, built = _client()
+        result, _recorded, built = await self._run(cfg, client, built)
 
-        sender.assert_awaited_once_with(PRIMARY)
+        self.assertEqual(built["url"], PRIMARY)
+        # An operator is waiting, so the transport is asked for the reason.
+        self.assertTrue(built["strict"])
         self.assertTrue(result["ok"])
         # It carries no draft of any kind -- the route takes no request body.
         self.assertEqual(routes.validate_discord.__code__.co_argcount, 0)
 
     async def test_success_records_evidence_for_exactly_the_saved_material(self):
         cfg = _state(discord_webhook_url=PRIMARY, discord_username="Bot")
-        _result, recorded = await self._run(cfg)
+        _result, recorded, _built = await self._run(cfg)
 
         expected = notifications.verification_fingerprints(cfg)[notifications.DISCORD_SUBJECT]
         self.assertEqual(recorded, [(notifications.DISCORD_SUBJECT, expected, True)])
 
     async def test_failure_retires_the_proof_and_reports_the_real_error(self):
+        """The transport's own sanitised reason reaches the operator: there is
+        no second sender left to produce one."""
         cfg = _state(discord_webhook_url=PRIMARY)
-        sender = AsyncMock(side_effect=RuntimeError("Discord webhook returned HTTP 404"))
-        with self.assertRaises(HTTPException) as raised:
-            await self._run(cfg, sender)
-        self.assertEqual(raised.exception.status_code, 502)
-
+        client, _built = _client(error=RuntimeError("Discord webhook 404: no such webhook"))
         recorded = []
         with patch.object(routes, "get_settings", return_value=cfg), \
-             patch.object(routes, "_send_discord_test", new=sender), \
+             patch.object(routes, "NotificationService", client), \
              patch.object(routes, "_record_notification_outcome",
                           new=AsyncMock(side_effect=lambda s, f, ok: recorded.append((s, ok)))):
-            with self.assertRaises(HTTPException):
+            with self.assertRaises(HTTPException) as raised:
                 await routes.validate_discord()
+        self.assertEqual(raised.exception.status_code, 502)
+        self.assertIn("404", str(raised.exception.detail))
         self.assertEqual(recorded, [(notifications.DISCORD_SUBJECT, False)])
 
     async def test_an_unconfigured_section_is_refused_before_anything_is_recorded(self):
-        sender = AsyncMock()
+        client, built = _client()
         recorded = []
         with patch.object(routes, "get_settings", return_value=_state()), \
-             patch.object(routes, "_send_discord_test", new=sender), \
+             patch.object(routes, "NotificationService", client), \
              patch.object(routes, "_record_notification_outcome",
                           new=AsyncMock(side_effect=lambda *a: recorded.append(a))):
             with self.assertRaises(HTTPException) as raised:
                 await routes.validate_discord()
         self.assertEqual(raised.exception.status_code, 400)
-        sender.assert_not_awaited()
+        self.assertEqual(built, {})
         self.assertEqual(recorded, [])
 
     async def test_a_disabled_section_can_still_be_tested(self):
         """Participation and configuration are separate facts, so proving a
         switched-off but configured destination is exactly the point."""
         cfg = _state(discord_webhook_url=PRIMARY, discord_notifications_enabled=False)
-        sender = AsyncMock()
-        result, _recorded = await self._run(cfg, sender)
-        sender.assert_awaited_once_with(PRIMARY)
+        result, _recorded, built = await self._run(cfg)
+        self.assertEqual(built["url"], PRIMARY)
         self.assertTrue(result["ok"])
 
-    async def test_a_non_discord_webhook_uses_the_ordinary_notification_client(self):
+    async def test_a_non_discord_destination_takes_the_same_one_sender(self):
+        """No dialect branch survives in the route: the transport decides."""
         cfg = _state(discord_webhook_url=GENERIC)
-        client = AsyncMock()
-        client.test = AsyncMock(return_value=True)
-        with patch.object(routes, "get_settings", return_value=cfg), \
-             patch.object(routes, "NotificationService", return_value=client), \
-             patch.object(routes, "_record_notification_outcome",
-                          new=AsyncMock(return_value={})):
-            result = await routes.validate_discord()
-        client.test.assert_awaited_once()
+        result, _recorded, built = await self._run(cfg)
+        self.assertEqual(built["url"], GENERIC)
         self.assertTrue(result["ok"])
 
-    async def test_the_test_posts_as_the_saved_identity(self):
-        """No draft identity exists any more: the sender reads the canonical
-        one through the notification client's own accessor."""
+    def test_the_route_holds_no_sender_and_no_endpoint_classifier(self):
         source = Path(routes.__file__).read_text(encoding="utf-8")
-        sender = source[source.index("async def _send_discord_test("):]
-        sender = sender[:sender.index("\n@router")]
-        self.assertIn("_get_discord_identity()", sender)
-        self.assertNotIn("username", sender.split("payload = {")[0])
+        for retired in ("_send_discord_test", "_is_discord_webhook", "aiohttp",
+                        "urlparse", "embeds"):
+            self.assertNotIn(retired, source, retired)
+        self.assertIn("NotificationService(webhook_url).test(strict=True)", source)
 
 
 class StatisticsReportOperationTests(unittest.IsolatedAsyncioTestCase):

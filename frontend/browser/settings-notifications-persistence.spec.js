@@ -438,12 +438,13 @@ test('the destination row keeps its geometry in both disclosure states', async (
   // No horizontal overflow, and each Clear action is centred on its own field's
   // control rather than on the whole title/hint stack.
   const measured = await panel.evaluate(el => {
-    const rows = [...el.querySelectorAll('.dp-settings-field-row')];
+    const rows = [...el.querySelectorAll('.dp-settings-inline-field')]
+      .filter(row => row.querySelector(':scope > .dp-settings-inline-field-action'));
     return {
       overflow: el.scrollWidth - el.clientWidth,
       offsets: rows.map(row => {
-        const control = row.querySelector('.input, .dp-action-field');
-        const action = row.querySelector(':scope > button');
+        const control = row.querySelector(':scope > .dp-settings-inline-field-control');
+        const action = row.querySelector(':scope > .dp-settings-inline-field-action');
         const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
         return Math.round(mid(action) - mid(control));
       }),
@@ -453,4 +454,67 @@ test('the destination row keeps its geometry in both disclosure states', async (
   expect(measured.overflow).toBeLessThanOrEqual(0);
   expect(measured.rows).toBe(4);   // three webhooks, plus the avatar
   for (const offset of measured.offsets) expect(Math.abs(offset)).toBeLessThanOrEqual(1);
+});
+
+test('every control renders the shared horizontal title/hint + control grammar', async ({page}) => {
+  await openSettings(page, 'notifications');
+  await page.locator('#view-settings .dp-settings-subsection .dp-settings-disclosure').click();
+  await expect(page.locator('#view-settings .dp-settings-subsection-body')).toBeVisible();
+
+  const measured = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
+    const rows = ['.dp-settings-notifications-identity-row', '.dp-settings-notifications-delivery-row',
+                  '.dp-settings-statistics-reporting-row'];
+    const fields = rows.flatMap(row =>
+      [...panel.querySelectorAll(`${row} > .dp-settings-inline-field`)]);
+    const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
+    return {
+      // Only the shared inline field; no stacked field survives in these rows.
+      stacked: rows.reduce((n, row) => n + panel.querySelectorAll(`${row} > .dp-settings-field`).length, 0),
+      fields: fields.map(field => {
+        const info = field.querySelector(':scope > .dp-settings-inline-field-info');
+        const label = info.querySelector('.form-label');
+        const hint = info.querySelector('.form-hint');
+        const control = field.querySelector(':scope > .dp-settings-inline-field-control');
+        return {
+          key: field.querySelector('[data-setting]').dataset.setting,
+          titleAboveHint: Math.round(hint.getBoundingClientRect().y - label.getBoundingClientRect().bottom),
+          controlIsRightOfInfo: control.getBoundingClientRect().left >= info.getBoundingClientRect().right,
+          infoCentredOnControl: Math.abs(mid(info) - mid(control)),
+          controlWidth: Math.round(control.getBoundingClientRect().width),
+        };
+      }),
+    };
+  });
+
+  expect(measured.stacked).toBe(0);
+  expect(measured.fields.map(f => f.key)).toEqual([
+    'discord_username', 'discord_avatar_url',
+    'discord_webhook_url', 'discord_webhook_added',
+    'stats_report_webhook_url', 'stats_report_interval_hours', 'stats_report_window_hours',
+  ]);
+  for (const field of measured.fields) {
+    expect(field.titleAboveHint, `${field.key} hint is not beneath its title`).toBeGreaterThanOrEqual(0);
+    expect(field.controlIsRightOfInfo, `${field.key} control is not to the right`).toBe(true);
+    expect(field.infoCentredOnControl, `${field.key} block is not centred`).toBeLessThanOrEqual(1);
+    expect(field.controlWidth, `${field.key} control is starved`).toBeGreaterThan(90);
+  }
+});
+
+test('both Discord rows share the same card-body rails', async ({page}) => {
+  await openSettings(page, 'notifications');
+  const rails = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
+    const edges = selector => {
+      const r = panel.querySelector(selector).getBoundingClientRect();
+      return [Math.round(r.left), Math.round(r.right)];
+    };
+    return {
+      identity: edges('.dp-settings-notifications-identity-row'),
+      delivery: edges('.dp-settings-notifications-delivery-row'),
+      statistics: edges('.dp-settings-statistics-reporting-row'),
+      overflow: panel.scrollWidth - panel.clientWidth,
+    };
+  });
+  expect(rails.delivery).toEqual(rails.identity);
+  expect(rails.statistics).toEqual(rails.identity);
+  expect(rails.overflow).toBeLessThanOrEqual(0);
 });

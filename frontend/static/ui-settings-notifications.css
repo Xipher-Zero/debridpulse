@@ -33,22 +33,37 @@
   text-align: center;
 }
 
-/* The stacked field rhythm of this page's three ROWS. It is deliberately not
-   stated for the whole panel: the compact cells inside the disclosure are the
-   tuning-cell collection's own shape, and that collection owns their rhythm. */
-#view-settings .dp-settings-notifications-identity-row .dp-settings-field > .form-label,
-#view-settings .dp-settings-notifications-delivery-row .dp-settings-field > .form-label,
-#view-settings .dp-settings-statistics-reporting-row .dp-settings-field > .form-label {
-  display: block;
-  margin-bottom: 7px;
+/* Every control on this page is the shared inline field: a left descriptive
+   block (title over hint) centred against its control on the right. The
+   primitive itself is declared once in ui-settings-page.css; a row states only
+   how much room its own descriptive block and control deserve, exactly as the
+   AllDebrid credential row does. */
+#view-settings .dp-settings-notifications-identity-row > .dp-settings-inline-field,
+#view-settings .dp-settings-notifications-delivery-row > .dp-settings-inline-field,
+#view-settings .dp-settings-statistics-reporting-row > .dp-settings-inline-field {
+  min-width: 0;
+  margin: 0;
 }
 
-#view-settings .dp-settings-notifications-identity-row .dp-settings-field > .form-hint,
-#view-settings .dp-settings-notifications-delivery-row .dp-settings-field > .form-hint,
-#view-settings .dp-settings-statistics-reporting-row .dp-settings-field > .form-hint {
-  display: block;
-  margin-top: 7px;
-  line-height: 1.4;
+/* The descriptive block takes what it needs and no more; the field is the
+   flexible element between it and any trailing action. */
+#view-settings [data-panel="notifications"] .dp-settings-inline-field > .dp-settings-inline-field-info {
+  flex: 0 1 auto;
+  /* Bounded hard: a hint is a sentence, and spare row width belongs to the
+     control. Widening a row that does not bound its descriptive block spends
+     the new room on prose and never reaches the field. */
+  max-width: 190px;
+}
+
+#view-settings [data-panel="notifications"] .dp-settings-inline-field > .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+#view-settings [data-panel="notifications"] .dp-settings-inline-field-control > :is(.input, .dp-action-field) {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 #view-settings .dp-settings-notifications-identity-row,
@@ -63,12 +78,6 @@
   grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr);
   align-items: start;
   gap: 28px;
-}
-
-#view-settings .dp-settings-notifications-identity-row > .dp-settings-field,
-#view-settings .dp-settings-notifications-identity-row > .dp-settings-field-row {
-  min-width: 0;
-  margin: 0;
 }
 
 /* The avatar preview belongs under the field's hint, as a reading of what is
@@ -115,42 +124,45 @@
   white-space: nowrap;
 }
 
-/* The primary destination row. Both webhooks get the same useful width, and
-   each carries its own explicit Clear Webhook beside its own control. The
-   disclosure below is a separate block, so opening it changes nothing here. */
+/* The primary destination row shares the identity row's card-body rails: same
+   left and right edge, same two-column split. Each webhook carries its own
+   explicit Clear Webhook beside its own control. The disclosure below is a
+   separate block, so opening it changes nothing here. */
 #view-settings .dp-settings-notifications-delivery-row {
-  width: min(92%, 1500px);
-  margin: 26px auto 0;
+  margin-top: 26px;
   display: grid;
+  /* Two peers, unlike the identity row above it: neither webhook deserves more
+     room than the other. */
   grid-template-columns: repeat(2, minmax(320px, 1fr));
   align-items: start;
   gap: 28px;
 }
 
-#view-settings .dp-settings-notifications-delivery-row > .dp-settings-field-row {
-  min-width: 0;
-  margin: 0;
-}
-
-/* Statistics Reporting is one centred configuration row: the destination gets
-   most of the width while cadence and window stay compact. */
+/* Statistics Reporting on the same card-body rails and the same two-column
+   split as the Discord rows. The destination is the one control with a
+   variable-length value, so it takes the full row and the two compact controls
+   share the one beneath -- which is what gives all three room for the
+   horizontal title/hint + control grammar. */
 #view-settings .dp-settings-statistics-reporting-row {
-  width: min(88%, 1450px);
-  margin: 0 auto;
   display: grid;
-  grid-template-columns: minmax(430px, 2fr) minmax(240px, .8fr) minmax(220px, .7fr);
+  grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr);
   align-items: start;
-  gap: 28px;
+  gap: 18px 28px;
 }
 
-#view-settings .dp-settings-statistics-reporting-row > .dp-settings-field,
-#view-settings .dp-settings-statistics-reporting-row > .dp-settings-field-row {
-  min-width: 0;
-  margin: 0;
+#view-settings .dp-settings-statistics-reporting-row > .dp-settings-webhook-row {
+  grid-column: 1 / -1;
 }
 
-/* An interval is a small number with a unit, not a destination. */
-#view-settings .dp-settings-statistics-reporting-row .dp-settings-unit-field {
+/* A cadence and a window are small readings, not destinations: they take the
+   room they need and leave the rest of the row alone. */
+#view-settings [data-panel="notifications"] .dp-settings-report-interval-row > .dp-settings-inline-field-control,
+#view-settings [data-panel="notifications"] .dp-settings-report-window-row > .dp-settings-inline-field-control {
+  flex: 0 0 auto;
+}
+
+#view-settings [data-panel="notifications"] .dp-settings-report-interval-row .dp-settings-unit-field,
+#view-settings [data-panel="notifications"] .dp-settings-report-window-row .input {
   width: min(100%, 170px);
 }
 
@@ -166,15 +178,13 @@
   }
 
   #view-settings .dp-settings-notifications-delivery-row {
-    width: 96%;
     grid-template-columns: repeat(2, minmax(260px, 1fr));
     gap: 22px;
   }
 
   #view-settings .dp-settings-statistics-reporting-row {
-    width: 94%;
-    grid-template-columns: minmax(340px, 1.6fr) minmax(220px, .8fr) minmax(190px, .6fr);
-    gap: 22px;
+    grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.25fr);
+    gap: 18px 22px;
   }
 }
 
@@ -182,14 +192,7 @@
   #view-settings .dp-settings-notifications-identity-row,
   #view-settings .dp-settings-notifications-delivery-row,
   #view-settings .dp-settings-statistics-reporting-row {
-    width: 100%;
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  #view-settings .dp-settings-statistics-reporting-row > :last-child {
-    grid-column: 1 / -1;
-    width: min(320px, 100%);
-    justify-self: center;
   }
 }
 
@@ -221,11 +224,5 @@
   #view-settings .dp-settings-notifications-delivery-row,
   #view-settings .dp-settings-statistics-reporting-row {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  #view-settings .dp-settings-statistics-reporting-row > :last-child {
-    grid-column: auto;
-    width: 100%;
-    justify-self: stretch;
   }
 }

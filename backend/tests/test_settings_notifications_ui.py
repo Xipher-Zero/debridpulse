@@ -47,7 +47,8 @@ def reports_card() -> str:
 def test_both_cards_render_the_shared_rail_in_the_locked_order():
     """Status -> Test -> Enable, from the card primitive's own rail slots."""
     for card in (discord_card(), reports_card()):
-        assert card.index("headerStatus:") < card.index("headerAction:") < card.index("action:")
+        rail = card[card.index("headerStatus:"):]
+        assert rail.index("headerStatus:") < rail.index("headerAction:") < rail.index("headerEnableToggle(")
         assert "notificationStatus(" in card
         assert "providerTestAction(" in card
         assert "headerEnableToggle(" in card
@@ -97,8 +98,7 @@ def test_upload_avatar_is_inside_the_avatar_field_and_clear_avatar_is_beside_it(
     card = discord_card()
     # Inside the field, through the ONE embedded-action primitive.
     assert "embedAction: AVATAR_UPLOAD" in card
-    assert "fieldRow(" in card
-    assert "AVATAR_CLEAR(" in card
+    assert "action: AVATAR_CLEAR(" in card
     # One markup owner each; the only other mentions are the action router and
     # the convergence read, neither of which renders a control.
     assert runtime.count(">Upload Avatar<") == 1
@@ -134,7 +134,7 @@ def test_both_webhooks_use_the_standard_field_grammar_with_one_clear_each():
     composer = block(runtime, "function webhookField(key, configured)", "/* Upload Avatar belongs")
     assert "input(key, spec.label, ''" in composer
     assert "hint: spec.hint" in composer
-    assert "fieldRow(" in composer and "WEBHOOK_CLEAR(key" in composer
+    assert "inline: true" in composer and "action: WEBHOOK_CLEAR(key" in composer
 
     controls = block(runtime, "const WEBHOOK_CONTROLS = Object.freeze({", "const webhookPlaceholder")
     assert "'Discord Webhook'" in controls
@@ -290,21 +290,77 @@ def test_statistics_reporting_is_three_standard_controls_and_no_disclosure():
 
 # ── Geometry that IS the contract ────────────────────────────────────────────
 
-def test_a_clear_action_shares_its_own_field_control_row():
-    """The action is centred against the CONTROL, not against the whole stack,
-    and it keeps its track in both states -- so the row does not reflow when a
-    stored value appears or disappears."""
-    shared = source(SHARED)
-    row = block(shared, "#view-settings .dp-settings-field-row {", "}")
-    assert "display: grid" in row
-    assert "grid-template-columns: minmax(0, 1fr) auto;" in row
+def test_every_control_uses_the_shared_horizontal_field_grammar():
+    """Correction 1. All seven controls render the ONE shared inline field --
+    a left descriptive block (title over hint) centred against its control on
+    the right -- and none of them renders the stacked title/control/hint stack
+    or any page-local rearrangement of it."""
+    runtime = source(RUNTIME)
+    panel = block(runtime, "function notificationsPanel(s) {", "/* Converge the Notifications surface")
+    composer = block(runtime, "function webhookField(key, configured)", "/* Upload Avatar belongs")
 
-    assert "#view-settings .dp-settings-field-row > .dp-settings-field {\n  display: contents;\n}" in shared
-    action = block(shared, "#view-settings .dp-settings-field-row > :not(.dp-settings-field) {", "}")
-    assert "grid-column: 2" in action and "grid-row: 2" in action
-    assert "align-self: center" in action
-    for banned in ("position: absolute", "transform", "top:"):
-        assert banned not in action, banned
+    inline_declared = [
+        ("discord_username", panel), ("discord_avatar_url", panel),
+        ("stats_report_interval_hours", panel), ("stats_report_window_hours", panel),
+    ]
+    for key, where in inline_declared:
+        call = where[where.index(f"'{key}'"):]
+        call = call[:call.index("})") + 2]
+        assert "inline: true" in call, key
+    # The three webhooks share one composer, which declares it once.
+    assert "inline: true" in composer
+    for key in ("discord_webhook_url", "discord_webhook_added", "stats_report_webhook_url"):
+        assert f"webhookField('{key}'" in panel, key
+
+    # The stacked composer this page briefly used is gone, not merely unused.
+    assert "fieldRow(" not in runtime
+    assert "dp-settings-field-row" not in runtime
+    assert "dp-settings-field-row" not in source(SHARED)
+
+    # It is the SHARED primitive: the page composes it, never restates it.
+    assert "function inlineField(id, label, hint, control" in runtime
+    assert "dp-settings-inline-field" not in panel
+
+
+def test_the_shared_inline_primitive_puts_the_title_over_its_hint():
+    """The grammar itself has one owner, and this is what it renders."""
+    runtime = source(RUNTIME)
+    primitive = block(runtime, "function inlineField(id, label, hint, control", "const CONFIGURED_SECRET_MASK")
+    info = primitive[primitive.index("dp-settings-inline-field-info"):]
+    assert info.index("${title}") < info.index("form-hint")
+    layout = block(source(SHARED), "#view-settings .dp-settings-inline-field {", "}")
+    assert "display: flex" in layout and "align-items: center" in layout
+    stack = block(source(SHARED), "#view-settings .dp-settings-inline-field-info {", "}")
+    assert "flex-direction: column" in stack
+
+
+def test_the_page_states_no_field_layout_of_its_own():
+    """Correction 1's implementation rule: no Notifications-only offsets, no
+    absolutely positioned hint, no cloned component, no second abstraction."""
+    css = source(STYLE)
+    for banned in ("position: absolute", "inset-inline-start", "float:",
+                   "#view-settings .dp-settings-inline-field {",
+                   "#view-settings .dp-settings-inline-field-info {",
+                   "#view-settings .dp-settings-inline-field-control {",
+                   "#view-settings .dp-settings-inline-field-action {"):
+        assert banned not in css, banned
+
+
+def test_both_discord_rows_share_the_card_body_rails():
+    """Correction 2. The webhook row carries no inset or width of its own, so
+    it begins and ends exactly where the identity row above it does."""
+    css = source(STYLE)
+    delivery = block(css, "#view-settings .dp-settings-notifications-delivery-row {", "}")
+    assert "width:" not in delivery, "the row narrows itself again"
+    assert "margin: " not in delivery and "auto" not in delivery
+    assert "display: grid" in delivery
+    # ... and no breakpoint reintroduces one.
+    for chunk in css.split("}"):
+        if "dp-settings-notifications-delivery-row {" in chunk:
+            assert "width:" not in chunk, chunk
+    # The identity row it must match states no width either.
+    identity = block(css, "#view-settings .dp-settings-notifications-identity-row {", "}")
+    assert "width:" not in identity
 
 
 def test_the_in_field_unit_is_a_reading_not_a_control():

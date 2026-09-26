@@ -245,16 +245,28 @@ class NotificationService:
             fields=fields,
         )
 
-    async def send(self, title: str, description: str, color: int = COLOR_INFO) -> None:
-        """Backward-compatible simple message without fields."""
+    async def send(self, title: str, description: str, color: int = COLOR_INFO, *,
+                   fields: Optional[List[Dict[str, Any]]] = None,
+                   bypass_dedup: bool = False) -> bool:
+        """The neutral message every caller outside this module sends through.
+
+        ``fields`` is the same neutral ``{name, value, inline}`` structure every
+        event method above already builds, so a caller with structured content
+        -- a statistics report, say -- needs no transport of its own and this
+        transport needs to know nothing about what that content means. Dialect
+        selection, payload shaping, dedup, rate limiting, retry and failure
+        sanitisation all stay here, once.
+        """
         if not self.webhook_url:
-            return
-        await self._send(
+            return False
+        return bool(await self._send(
             url=self.webhook_url,
             title=title,
             description=description,
             color=color,
-        )
+            fields=fields or None,
+            bypass_dedup=bypass_dedup,
+        ))
 
     async def send_extract_complete(
         self,
@@ -333,8 +345,15 @@ class NotificationService:
             fields=fields or None,
         )
 
-    async def test(self) -> bool:
-        """Sends a test message. Returns True if actually sent to Discord."""
+    async def test(self, *, strict: bool = False) -> bool:
+        """Send a test message to this destination, in its own dialect.
+
+        The ONE test sender for every destination: a Discord webhook gets the
+        Discord embed and anything else gets the generic shape, decided in
+        ``_send`` like every other message. ``strict`` propagates the delivery
+        failure so an operator-initiated Test can report what actually went
+        wrong instead of only that nothing was sent.
+        """
         if not self.webhook_url:
             return False
         return await self._send(
@@ -346,7 +365,8 @@ class NotificationService:
                 {"name": "Version", "value": APP_VERSION, "inline": True},
                 {"name": "Time",    "value": _now_utc(),  "inline": True},
             ],
-            bypass_dedup=True,  # Test button should always reach Discord
+            bypass_dedup=True,  # Test button should always reach the destination
+            strict=strict,
         )
 
     # ── Internal implementation ───────────────────────────────────────────────
@@ -359,8 +379,17 @@ class NotificationService:
         color: int = COLOR_INFO,
         fields: Optional[List[Dict[str, Any]]] = None,
         bypass_dedup: bool = False,
+        strict: bool = False,
     ) -> bool:
-        """Send a Discord embed. Returns True if sent, False if deduplicated or failed."""
+        """Send a webhook message. Returns True if sent, False if deduplicated or failed.
+
+        ``strict`` decides who owns the failure. A lifecycle event is
+        fire-and-forget: it is logged and swallowed, because nothing is waiting
+        to be told and a webhook outage must not fail a download. An operator
+        pressed Test and IS waiting, so that caller asks for the reason -- the
+        same reason this method already derives, sanitised here rather than
+        rebuilt by a second sender.
+        """
         if not url:
             return
 
@@ -474,4 +503,7 @@ class NotificationService:
                 exc.__class__.__name__,
                 detail,
             )
+            if strict:
+                # Already sanitised: the destination is never part of it.
+                raise RuntimeError(detail) from None
             return False

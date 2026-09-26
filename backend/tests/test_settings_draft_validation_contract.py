@@ -146,7 +146,12 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
 
     assert "AllDebridService(api_key, alldebrid.agent)" in validation
     assert "alldebrid_canonical_options(get_settings())" in validation
-    assert "NotificationService(webhook_url).test()" in validation
+    # DP 1.0.13 transport consolidation: the Discord Test has no sender and no
+    # endpoint classifier of its own -- it asks the ONE transport, strictly, so
+    # the operator still gets the real delivery failure.
+    assert "NotificationService(webhook_url).test(strict=True)" in validation
+    for retired in ("_send_discord_test", "_is_discord_webhook"):
+        assert retired not in validation, retired
     assert "clear_api_key" in validation
     # DP 1.0.13 Notifications migration: the Discord and statistics-report
     # operations exercise the SAVED configuration through the one

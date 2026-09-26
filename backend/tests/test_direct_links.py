@@ -16,17 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # The scratch verification environment intentionally has no runtime wheels.
 # Match the upstream suite's lightweight import stubs.
-if "aiohttp" not in sys.modules:
-    sys.modules["aiohttp"] = types.SimpleNamespace(
-        ClientTimeout=lambda *args, **kwargs: None,
-        ClientSession=object,
-        TCPConnector=lambda **kwargs: None,
-        FormData=object,
-        ClientError=Exception,
-        ServerDisconnectedError=Exception,
-        ClientConnectorError=Exception,
-        ClientOSError=Exception,
-    )
+# aiohttp is NOT stubbed: it is a real installed dependency, and replacing it
+# with a namespace decides for every module imported afterwards whether it sees
+# the real package -- one that needs `aiohttp.abc` then cannot import at all.
 if "aiofiles" not in sys.modules:
     sys.modules["aiofiles"] = types.SimpleNamespace(open=lambda *args, **kwargs: None)
 if "aiosqlite" not in sys.modules:

@@ -443,14 +443,22 @@
       </label>`;
   }
 
-  function selectField(key, label, value, choices, hint = '') {
+  function selectField(key, label, value, choices, hint = '', options = {}) {
     const id = fieldId(key);
+    const control = `
+        <select class="input" id="${id}" data-setting="${html(key)}" ${commitAttributes(key)}>
+          ${choices.map(([v, labelText]) => `<option value="${html(v)}" ${selected(value, v)}>${html(labelText)}</option>`).join('')}
+        </select>`;
+    // The SAME control, in whichever of the two Settings field grammars the
+    // caller asked for -- exactly as input(), directoryField() and
+    // tuningToggle() already offer it.
+    if (options.inline) {
+      return inlineField(id, label, hint, control, {className: options.className});
+    }
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
-        <select class="input" id="${id}" data-setting="${html(key)}" ${commitAttributes(key)}>
-          ${choices.map(([v, labelText]) => `<option value="${html(v)}" ${selected(value, v)}>${html(labelText)}</option>`).join('')}
-        </select>
+        ${control}
         ${hint ? `<span class="form-hint">${hint}</span>` : ''}
       </div>`;
   }
@@ -493,27 +501,6 @@
         <div class="dp-settings-inline-field-control">${control}</div>${
           action ? `<div class="dp-settings-inline-field-action">${action}</div>` : ''}
       </div>`;
-  }
-
-  /* A standard stacked field that carries an action BESIDE its control.
-   *
-   *   [ title            ]
-   *   [ control          ]  [ action ]
-   *   [ hint             ]
-   *
-   * The field keeps the ordinary Title + hint + field grammar exactly -- it is
-   * the same `input()` every other surface renders -- and the action joins it
-   * on the CONTROL's own row rather than under the whole stack, so the two are
-   * centred against each other however the title or hint wraps. Nothing is
-   * positioned over anything and nothing is measured: the field is promoted
-   * into this row's grid (`display: contents`, ui-settings-page.css), so the
-   * relationship is structural.
-   *
-   * Whether the action has anything to act on is a STATE of that action, never
-   * a reason to remove it: a row that gains and loses a control as secrets come
-   * and go reflows under the operator's hands. */
-  function fieldRow(field, action, className = '') {
-    return `<div class="dp-settings-field-row${className ? ` ${className}` : ''}">${field}${action}</div>`;
   }
 
   /* The UNIT a numeric field carries, inside its own trailing edge.
@@ -1622,15 +1609,15 @@
 
   function webhookField(key, configured) {
     const spec = WEBHOOK_CONTROLS[key];
-    return fieldRow(
-      input(key, spec.label, '', {
-        type: 'password',
-        autocomplete: 'off',
-        placeholder: webhookPlaceholder(key, !!configured),
-        hint: spec.hint,
-      }),
-      WEBHOOK_CLEAR(key, !!configured),
-      'dp-settings-webhook-row');
+    return input(key, spec.label, '', {
+      type: 'password',
+      autocomplete: 'off',
+      placeholder: webhookPlaceholder(key, !!configured),
+      hint: spec.hint,
+      inline: true,
+      className: 'dp-settings-webhook-row',
+      action: WEBHOOK_CLEAR(key, !!configured),
+    });
   }
 
   /* Upload Avatar belongs to the Avatar URL field, so it is IN it -- through
@@ -1656,18 +1643,19 @@
     const discord = card('Discord Notifications', `
       <div class="dp-settings-notifications-identity-row">
         ${input('discord_username', 'Display Name', s.discord_username || 'DebridPulse', {
-          hint: 'Name shown as the sender of Discord notifications.'
+          hint: 'Name shown as the sender of Discord notifications.',
+          inline: true,
         })}
-        ${fieldRow(
-          input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
-            placeholder: 'https://example.com/avatar.png',
-            hint: 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
-            embedAction: AVATAR_UPLOAD,
-            controlClass: 'dp-settings-avatar-field-control',
-            after: avatarPreview(s.discord_avatar_url || ''),
-          }),
-          AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
-          'dp-settings-avatar-row')}
+        ${input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
+          placeholder: 'https://example.com/avatar.png',
+          hint: 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
+          embedAction: AVATAR_UPLOAD,
+          controlClass: 'dp-settings-avatar-field-control',
+          after: avatarPreview(s.discord_avatar_url || ''),
+          inline: true,
+          className: 'dp-settings-avatar-row',
+          action: AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
+        })}
       </div>
       <div class="dp-settings-notifications-delivery-row">
         ${webhookField('discord_webhook_url', s.discord_webhook_url_configured)}
@@ -1708,13 +1696,15 @@
           hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
           embedAction: fieldUnit('hours'),
           controlClass: 'dp-settings-unit-field',
+          inline: true, className: 'dp-settings-report-interval-row',
         })}
         ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
           [24, '24 hours'],
           [168, '7 days'],
           [720, '30 days'],
           [8760, '1 year'],
-        ], 'Choose how much recent activity each statistics report includes.')}
+        ], 'Choose how much recent activity each statistics report includes.',
+          {inline: true, className: 'dp-settings-report-window-row'})}
       </div>
     `, {
       className: 'dp-settings-statistics-reporting-card',

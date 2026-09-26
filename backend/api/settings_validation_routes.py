@@ -18,13 +18,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
-from urllib.parse import urlparse
 
-import aiohttp
 from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from pydantic import BaseModel, Field
 
-from core.branding import APP_SHORT_NAME
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.version import read_version
@@ -456,47 +453,6 @@ def _accepted(integration_id: str, projection) -> dict:
     return {"integration_id": integration_id, "integration": projection}
 
 
-def _is_discord_webhook(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower()
-    except Exception:
-        return False
-    return host in {"discord.com", "discordapp.com", "canary.discord.com", "ptb.discord.com"}
-
-
-async def _send_discord_test(webhook_url: str) -> None:
-    """Send the Discord test AS the SAVED notification identity.
-
-    There is no draft identity any more: Display Name and Avatar URL each
-    commit at their own field boundary, and the action settles every pending
-    write before it runs, so what is saved is what the operator just entered.
-    The identity is read through the notification client's own canonical
-    accessor, so the test posts exactly as a real notification would.
-    """
-    from services.notifications import _get_discord_identity
-
-    name, avatar = _get_discord_identity()
-    payload = {
-        "username": name,
-        "embeds": [
-            {
-                "title": "🔔 Test Notification",
-                "description": f"**{APP_SHORT_NAME}** is connected and ready.",
-                "color": 0x3B82F6,
-            }
-        ],
-    }
-    if avatar:
-        payload["avatar_url"] = avatar
-
-    timeout = aiohttp.ClientTimeout(total=15)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(webhook_url, json=payload) as response:
-            if response.status not in (200, 204):
-                body = await response.text()
-                raise RuntimeError(f"Discord webhook returned HTTP {response.status}: {body[:200]}")
-
-
 @router.get("/legal-documents/{document_id}")
 async def get_bundled_legal_document(document_id: str):
     """Return one fixed, locally bundled legal/reference document."""
@@ -598,12 +554,10 @@ async def validate_discord():
     fingerprint = notifications.verification_fingerprints(cfg)[notifications.DISCORD_SUBJECT]
 
     try:
-        if _is_discord_webhook(webhook_url):
-            await _send_discord_test(webhook_url)
-            sent = True
-        else:
-            sent = await NotificationService(webhook_url).test()
-        if not sent:
+        # One sender, one dialect decision. ``strict`` is what lets an
+        # operator-initiated Test report the actual delivery failure without a
+        # second transport existing to produce it.
+        if not await NotificationService(webhook_url).test(strict=True):
             raise RuntimeError("Discord test did not send a notification")
     except Exception as exc:
         # A failure is the newest truth about this material: it retires a proof

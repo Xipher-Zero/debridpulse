@@ -9,17 +9,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-if "aiohttp" not in sys.modules:
-    sys.modules["aiohttp"] = types.SimpleNamespace(
-        ClientTimeout=lambda *a, **kw: None,
-        ClientSession=object,
-        TCPConnector=lambda **kw: None,
-        FormData=object,
-        ClientError=Exception,
-        ServerDisconnectedError=Exception,
-        ClientConnectorError=Exception,
-        ClientOSError=Exception,
-    )
+# aiohttp is a real runtime dependency and is installed, so this module must
+# not substitute a namespace for it: whichever test file imported first would
+# then decide whether every LATER module sees the real package, and one that
+# needs `aiohttp.abc` fails to import at all. The cases below patch the ONE
+# transport's session (`services.notifications.aiohttp.ClientSession`) instead,
+# which reaches no network and leaves the module itself intact.
 
 if "aiofiles" not in sys.modules:
     sys.modules["aiofiles"] = types.SimpleNamespace(open=lambda *a, **kw: None)
@@ -42,6 +37,8 @@ if "multipart" not in sys.modules:
 from api import routes
 from core.scheduler import _has_reporting_webhook
 from executors.aria2.definition import definition as aria2_definition
+import services.notifications as notifications_module
+import services.stats as stats_module
 from services.stats import send_stats_report
 
 
@@ -368,9 +365,8 @@ class DatabaseBackupServiceTests(unittest.IsolatedAsyncioTestCase):
 
 
 class _FakeResponse:
-    def __init__(self, payload_store):
-        self.status = 204
-        self._payload_store = payload_store
+    def __init__(self, status=204):
+        self.status = status
 
     async def __aenter__(self):
         return self
@@ -381,9 +377,15 @@ class _FakeResponse:
     async def text(self):
         return ""
 
+    async def json(self, content_type=None):
+        return {}
+
 
 class _FakeSession:
-    last_json = None
+    """Stands in for the ONE transport's HTTP session, never Statistics' own."""
+
+    posts: list = []
+    status = 204
 
     def __init__(self, *args, **kwargs):
         pass
@@ -395,38 +397,126 @@ class _FakeSession:
         return False
 
     def post(self, url, json):
-        _FakeSession.last_json = {"url": url, "json": json}
-        return _FakeResponse(_FakeSession.last_json)
+        _FakeSession.posts.append({"url": url, "json": json})
+        return _FakeResponse(_FakeSession.status)
 
 
-class StatsWebhookTests(unittest.IsolatedAsyncioTestCase):
-    async def test_stats_report_falls_back_to_main_discord_webhook(self):
-        summary = {
-            "torrents_processed": 5,
-            "completed": 4,
-            "errors": 1,
-            "success_rate": "80%",
-            "total_downloaded": "10 GB",
-            "avg_duration": "5m 0s",
-            "total_files": 7,
-            "blocked_files": 0,
-            "total_retries": 2,
-        }
-        cfg = SimpleNamespace(
-            stats_report_webhook_url="",
-            discord_webhook_url="https://discord.com/api/webhooks/test",
-        )
+SUMMARY = {
+    "torrents_processed": 5, "completed": 4, "errors": 1, "success_rate": "80%",
+    "total_downloaded": "10 GB", "avg_duration": "5m 0s", "total_files": 7,
+    "blocked_files": 0, "total_retries": 2,
+}
+
+
+class StatsReportTransportTests(unittest.IsolatedAsyncioTestCase):
+    """Statistics reports travel on the SAME webhook transport every other
+    notification uses. Each case patches ``services.notifications``' session --
+    the one transport -- because after the correction there is no other."""
+
+    def setUp(self):
+        _FakeSession.posts = []
+        _FakeSession.status = 204
+
+    async def _send(self, cfg):
         with patch("services.stats._cfg", return_value=cfg), \
-             patch("services.stats.generate_report", AsyncMock(return_value={"report": {"summary": summary}, "raw": {}})), \
+             patch("services.stats.generate_report",
+                   AsyncMock(return_value={"report": {"summary": SUMMARY}, "raw": {}})), \
              patch("services.notifications._get_discord_identity", return_value=("Webhook Bot", "")), \
-             patch("services.stats.aiohttp.ClientSession", _FakeSession):
-            result = await send_stats_report(hours=24, triggered_by="manual")
+             patch("services.notifications.aiohttp.ClientSession", _FakeSession):
+            return await send_stats_report(hours=24, triggered_by="manual")
+
+    async def test_report_falls_back_to_the_primary_discord_webhook(self):
+        cfg = SimpleNamespace(stats_report_webhook_url="",
+                              discord_webhook_url="https://discord.com/api/webhooks/test")
+        result = await self._send(cfg)
 
         self.assertTrue(result["ok"])
-        self.assertTrue(result["discord"])
-        self.assertEqual(_FakeSession.last_json["url"], "https://discord.com/api/webhooks/test")
-        self.assertEqual(_FakeSession.last_json["json"]["username"], "Webhook Bot")
-        self.assertNotIn("avatar_url", _FakeSession.last_json["json"])
+        self.assertEqual(len(_FakeSession.posts), 1)
+        sent = _FakeSession.posts[0]
+        self.assertEqual(sent["url"], "https://discord.com/api/webhooks/test")
+        # Shaped by the shared transport, exactly as any Discord notification is.
+        self.assertEqual(sent["json"]["username"], "Webhook Bot")
+        self.assertNotIn("avatar_url", sent["json"])
+        self.assertIn("embeds", sent["json"])
+        self.assertEqual(sent["json"]["embeds"][0]["title"], "📊 Statistics Report — Last 24h")
+
+    async def test_a_dedicated_reporting_webhook_wins_over_the_fallback(self):
+        cfg = SimpleNamespace(stats_report_webhook_url="https://discord.com/api/webhooks/report",
+                              discord_webhook_url="https://discord.com/api/webhooks/primary")
+        await self._send(cfg)
+        self.assertEqual(_FakeSession.posts[0]["url"], "https://discord.com/api/webhooks/report")
+
+    async def test_a_generic_endpoint_receives_the_shared_generic_shape(self):
+        """The Fluxer case. It works for the same reason an ordinary
+        notification does: one sender decided the dialect."""
+        cfg = SimpleNamespace(stats_report_webhook_url="https://fluxer.example.com/hooks/abc",
+                              discord_webhook_url="")
+        await self._send(cfg)
+
+        payload = _FakeSession.posts[0]["json"]
+        # The transport's own neutral envelope...
+        for key in ("event", "event_key", "severity", "app", "description", "fields", "embed"):
+            self.assertIn(key, payload)
+        self.assertEqual(payload["fields"]["Torrents"], "5")
+        self.assertEqual(payload["fields"]["Triggered"], "manual")
+        # ...and not the retired Statistics-only envelope.
+        for retired in ("report", "raw", "source", "triggered_by"):
+            self.assertNotIn(retired, payload)
+
+    async def test_the_same_sender_serves_an_ordinary_notification(self):
+        """Parity, without a provider branch anywhere: an ordinary event and a
+        report reach the same generic endpoint through the same code."""
+        from services.notifications import NotificationService as Client
+
+        with patch("services.notifications._get_discord_identity", return_value=("Webhook Bot", "")), \
+             patch("services.notifications.aiohttp.ClientSession", _FakeSession):
+            await Client("https://fluxer.example.com/hooks/abc").send_complete("payload.bin")
+        ordinary = _FakeSession.posts[0]["json"]
+
+        _FakeSession.posts = []
+        await self._send(SimpleNamespace(stats_report_webhook_url="https://fluxer.example.com/hooks/abc",
+                                         discord_webhook_url=""))
+        report = _FakeSession.posts[0]["json"]
+        self.assertEqual(set(ordinary), set(report))
+
+    async def test_a_refused_delivery_surfaces_the_transport_result(self):
+        _FakeSession.status = 500
+        cfg = SimpleNamespace(stats_report_webhook_url="",
+                              discord_webhook_url="https://discord.com/api/webhooks/test")
+        with self.assertRaises(RuntimeError) as raised:
+            await self._send(cfg)
+        # Sanitised by the sender; the destination is never echoed back.
+        self.assertNotIn("discord.com", str(raised.exception))
+
+    async def test_no_reporting_destination_is_refused_before_any_send(self):
+        cfg = SimpleNamespace(stats_report_webhook_url="", discord_webhook_url="")
+        with patch("services.stats._cfg", return_value=cfg):
+            with self.assertRaises(ValueError):
+                await send_stats_report(hours=24)
+        self.assertEqual(_FakeSession.posts, [])
+
+
+class StatsOwnsNoTransportTests(unittest.TestCase):
+    def test_statistics_holds_no_http_client_or_endpoint_classifier(self):
+        source = Path(stats_module.__file__).read_text(encoding="utf-8")
+        # No transport: no client, no endpoint classifier, no HTTP handling.
+        for retired in ("aiohttp", "ClientSession", "_is_discord_webhook", "urlparse",
+                        "session.post", "avatar_url", "embeds", "response.status"):
+            self.assertNotIn(retired, source, retired)
+        # ...and none of the retired Statistics-only wire envelope.
+        for retired in ('"event": "stats_report"', '"source": "debridpulse"',
+                        '"triggered_by": triggered_by,'):
+            self.assertNotIn(retired, source, retired)
+        # Report CONTENT generation stays here; only delivery moved.
+        self.assertIn("async def generate_report(", source)
+        self.assertIn('"raw": metrics,', source)
+        self.assertIn("NotificationService(url).send(", source)
+
+    def test_exactly_one_webhook_transport_owner_posts(self):
+        """Only the transport opens a session for a webhook."""
+        notifications = Path(notifications_module.__file__).read_text(encoding="utf-8")
+        self.assertEqual(notifications.count("aiohttp.ClientSession("), 1)
+        self.assertNotIn("aiohttp", Path(stats_module.__file__).read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

@@ -397,51 +397,6 @@
   line-height: 1.35;
 }
 
-/* ── A standard stacked field that carries an action beside its CONTROL ──
-   Rendered by ui-settings-page.js `fieldRow()`.
-
-     [ title   ]
-     [ control ]  [ action ]
-     [ hint    ]
-
-   The field keeps the ordinary Title + hint + field grammar untouched; it is
-   promoted into THIS grid (`display: contents`) so the action can share the
-   control's own row and be centred against it, however the title above or the
-   hint below happens to wrap. Nothing is positioned over anything, nothing
-   reserves a guessed width, and the action never moves when the row's copy
-   reflows -- the relationship is structural. */
-#view-settings .dp-settings-field-row {
-  min-width: 0;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: 12px;
-  align-items: start;
-}
-
-#view-settings .dp-settings-field-row > .dp-settings-field {
-  display: contents;
-}
-
-#view-settings .dp-settings-field-row > .dp-settings-field > * {
-  min-width: 0;
-  grid-column: 1;
-}
-
-#view-settings .dp-settings-field-row > .dp-settings-field > .form-label { grid-row: 1; }
-#view-settings .dp-settings-field-row > .dp-settings-field > :is(.input, .dp-action-field) { grid-row: 2; }
-#view-settings .dp-settings-field-row > .dp-settings-field > .form-hint { grid-row: 3; }
-
-/* Whether the action has anything to act on is a STATE of that action, never a
-   reason to remove it, so it keeps this track in both states and the row never
-   reflows as a stored value comes and goes. */
-#view-settings .dp-settings-field-row > :not(.dp-settings-field) {
-  grid-column: 2;
-  grid-row: 2;
-  align-self: center;
-  justify-self: start;
-  white-space: nowrap;
-}
-
 /* ── The UNIT a numeric field carries inside its trailing edge ───────────
    A sibling of the control within the one compound-field primitive, so the
    number physically ends where the unit begins. It is a reading, not a

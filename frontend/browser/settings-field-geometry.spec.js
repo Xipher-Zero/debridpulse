@@ -97,8 +97,13 @@ test('representative pre-existing Settings fields use the same canonical datum',
   const cases = [
     ['sources', 'dp-settings-field-alldebrid-api-key'],
     ['downloads', 'dp-settings-field-download-folder'],
-    ['notifications', 'dp-settings-field-discord-username'],
+    // DP 1.0.13: every Notifications control joined the inline grammar, so
+    // that tab carries no stacked field for this datum to sample -- its own
+    // geometry is proven by settings-notifications-persistence.spec.js. The
+    // stacked grammar now survives on two surfaces, so both contribute more
+    // than one field and the datum is still proven across them.
     ['maintenance', 'dp-settings-field-backup-interval-hours'],
+    ['maintenance', 'dp-settings-field-events-keep-days'],
     // DP 1.0.13: Username joined the inline grammar with the rest of the
     // Authentication card. The allowlists keep the stacked full-width field,
     // so they are what carries the datum on this tab.

@@ -14,10 +14,6 @@ import json
 import logging
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-from urllib.parse import urlparse
-
-import aiohttp
-
 from core.branding import APP_SHORT_NAME
 
 logger = logging.getLogger("debridpulse.stats")
@@ -26,14 +22,6 @@ logger = logging.getLogger("debridpulse.stats")
 def _cfg():
     from core.config import get_settings
     return get_settings()
-
-
-def _is_discord_webhook(url: str) -> bool:
-    try:
-        host = (urlparse(url).hostname or "").lower()
-        return host in {"discord.com", "discordapp.com", "canary.discord.com", "ptb.discord.com"}
-    except Exception:
-        return False
 
 
 # ── Type-safe numeric helpers (handle int / float / Decimal / None) ───────────
@@ -281,71 +269,63 @@ async def generate_report(hours: int = 24) -> Dict[str, Any]:
     }
 
 
+def _report_fields(summary: Dict[str, Any], triggered_by: str) -> list[dict]:
+    """The report, as the neutral field structure every notification carries.
+
+    Content only: no endpoint dialect, no payload envelope, no serialisation
+    decision. What a destination does with these is the transport's business.
+    """
+    named = (
+        ("Torrents", "torrents_processed"), ("Completed", "completed"),
+        ("Errors", "errors"), ("Success Rate", "success_rate"),
+        ("Downloaded", "total_downloaded"), ("Avg Duration", "avg_duration"),
+        ("Files", "total_files"), ("Blocked", "blocked_files"),
+        ("Retries", "total_retries"),
+    )
+    fields = [{"name": label, "value": str(summary.get(key, "")), "inline": True}
+              for label, key in named]
+    fields.append({"name": "Triggered", "value": str(triggered_by), "inline": True})
+    return fields
+
+
 async def send_stats_report(
     hours: int = 24,
     webhook_url: Optional[str] = None,
     triggered_by: str = "manual",
 ) -> Dict[str, Any]:
+    """Generate a report and hand it to the ONE webhook transport.
+
+    Statistics owns the metrics, the content and the window. It owns no
+    transport: there is no session here, no endpoint classification, no
+    per-destination payload and no HTTP status handling, so a destination that
+    works for an ordinary notification works for a report for the same reason
+    -- it is the same sender.
+    """
     from services.notification_service import reporting_destination
+    from services.notifications import COLOR_INFO, NotificationService
 
     cfg = _cfg()
     # The dedicated-webhook -> primary-Discord fallback has ONE owner
-    # (services.notification_service.reporting_destination), so the destination
-    # this delivery uses is the same one the Settings status projects and the
-    # scheduler admits.
+    # (services.notification_service.reporting_destination), resolved here so
+    # the transport receives an already-effective destination and never
+    # duplicates the fallback.
     url = (webhook_url or "").strip() or reporting_destination(cfg)
     if not url:
         raise ValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url")
 
     report = await generate_report(hours=hours)
     summary = report["report"]["summary"]
-    payload = {
-        "event": "stats_report",
-        "source": "debridpulse",
-        "triggered_by": triggered_by,
-        "report": report["report"],
-        "raw": report["raw"],
-    }
-
-    if _is_discord_webhook(url):
-        _app = APP_SHORT_NAME
-        try:
-            from services.notifications import _get_discord_identity
-            _botname, _avatar = _get_discord_identity()
-        except Exception:
-            _botname, _avatar = _app, ""
-        embeds = [{
-            "title":       f"📊 Statistics Report — Last {hours}h",
-            "description": f"Automated activity summary from {APP_SHORT_NAME}.",
-            "color":       0x3B82F6,
-            "fields": [
-                {"name": "Torrents",      "value": str(summary["torrents_processed"]), "inline": True},
-                {"name": "Completed",     "value": str(summary["completed"]),          "inline": True},
-                {"name": "Errors",        "value": str(summary["errors"]),             "inline": True},
-                {"name": "Success Rate",  "value": str(summary["success_rate"]),       "inline": True},
-                {"name": "Downloaded",    "value": str(summary["total_downloaded"]),   "inline": True},
-                {"name": "Avg Duration",  "value": str(summary["avg_duration"]),       "inline": True},
-                {"name": "Files",         "value": str(summary["total_files"]),        "inline": True},
-                {"name": "Blocked",       "value": str(summary["blocked_files"]),      "inline": True},
-                {"name": "Retries",       "value": str(summary["total_retries"]),      "inline": True},
-            ],
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "footer":    {"text": f"{_app} · {triggered_by}", "icon_url": _avatar},
-        }]
-        send_payload: Dict[str, Any] = {
-            "username": _botname,
-            "embeds":   embeds,
-        }
-        if _avatar:
-            send_payload["avatar_url"] = _avatar
-    else:
-        send_payload = payload
-
-    async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=20)) as session:
-        async with session.post(url, json=send_payload) as response:
-            if response.status >= 400:
-                body = await response.text()
-                raise RuntimeError(f"Reporting webhook returned HTTP {response.status}: {body[:200]}")
+    # Each report is a distinct generated artifact, so suppressing one as a
+    # near-duplicate would silently lose it.
+    sent = await NotificationService(url).send(
+        f"📊 Statistics Report — Last {hours}h",
+        f"Automated activity summary from {APP_SHORT_NAME}.",
+        color=COLOR_INFO,
+        fields=_report_fields(summary, triggered_by),
+        bypass_dedup=True,
+    )
+    if not sent:
+        raise RuntimeError("Reporting webhook did not accept the statistics report")
 
     logger.info("Statistics report sent via webhook (%sh, %s)", hours, triggered_by)
-    return {"ok": True, "hours": hours, "triggered_by": triggered_by, "discord": _is_discord_webhook(url)}
+    return {"ok": True, "hours": hours, "triggered_by": triggered_by}
