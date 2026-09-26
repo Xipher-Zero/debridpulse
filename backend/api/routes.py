@@ -78,6 +78,7 @@ from transfers import codec
 from application.service import ApplicationService
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
+from services import transfer_trace
 from api.serializers import (
     public_download_file,
     public_payload,
@@ -822,6 +823,20 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     if item is None:
         raise HTTPException(404, "Transfer not found")
     return _public_transfer_presentation(item, application.definitions)
+
+
+@router.get("/torrents/{torrent_id}/trace")
+async def export_transfer_trace(torrent_id: int):
+    """Transfer Trace Log download: the sanitized, read-only durable-state trace
+    built by ``services.transfer_trace`` (its one owner)."""
+    exported = await transfer_trace.export(torrent_id)
+    if exported is None:
+        raise HTTPException(404, "Transfer not found")
+    filename, body = exported
+    return Response(body, media_type="application/json", headers={
+        "Content-Disposition": f'attachment; filename="{filename}"',
+        "Cache-Control": "no-store",
+    })
 
 
 @router.delete("/torrents/{torrent_id}")

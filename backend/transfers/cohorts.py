@@ -12,6 +12,7 @@ import logging
 from types import SimpleNamespace
 
 from db.database import get_db
+from transfers.errors import TransferError
 from transfers.models import ExecutionSubject
 from transfers.mirrors import (
     EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence,
@@ -814,6 +815,93 @@ async def _bootstrap_admission(engine, record, incoming, disposition: str, conte
     return False
 
 
+async def _hold_for_collection_owner(engine, record, incoming) -> bool:
+    """DP 1.0.13 collection ownership: a member of a transfer already proven to
+    be the same multi-member collection as an earlier admitted transfer (its
+    collection owner, ``CanonicalOwnership.collection_owner``) must not become
+    an independent writer merely because the owner's corresponding member has
+    not resolved yet -- nothing canonical can pair with it until it does.
+    True (the request stays durably MATERIALIZING, re-evaluated by the
+    ordinary scheduler) while the owner still has an unresolved leaf that could
+    be this member: its prospective logical key is this member's key, or not
+    yet known (``_could_compete``). Once that leaf resolves the ordinary
+    mapping decides -- attach to it, or a real distinction -- and once it can
+    no longer resolve (failed, skipped, transfer settled) nothing holds."""
+    owner = await engine.canonical.collection_owner(record.transfer_id)
+    if owner is None:
+        return False
+    record_key = logical_key(incoming[0])
+    members = await engine.repository.requests(owner)
+    parents = {item.parent_id for item in members if item.parent_id is not None}
+    if not any(
+        item.id not in parents and item.state in _PENDING_STATES
+        and _could_compete(_prospective_logical_key(item), record_key)
+        for item in members
+    ):
+        return False
+    _decision(record, incoming, "hold_collection_owner", f"collection_owner_{owner}_member_unresolved")
+    return True
+
+
+async def _satisfied_by_completed_equivalent(engine, record, incoming, context) -> bool:
+    """DP 1.0.13 terminal collection boundary: completed material is
+    ownership-frozen. When no live canonical artifact pairs with ``record``,
+    a COMPLETED artifact of another transfer in the same recognized collection
+    (``CanonicalOwnership.completed_collection_equivalents``) that the one
+    mapping proves equivalent satisfies it: ``record`` attaches as that
+    artifact's contributing standby (``CanonicalOwnership.attach``'s bounded
+    completed branch) instead of becoming a second writer. The completed
+    artifact is never moved, re-parented or re-opened."""
+    completed = await engine.canonical.completed_collection_equivalents(record.transfer_id)
+    if not completed:
+        return False
+    mapping = await _mapping(completed, incoming, engine.registry, context)
+    if not mapping.matched:
+        return False
+    size = mapping.primary.expected_bytes or mapping.evidence.total_bytes
+    if not await engine.canonical.attach(mapping.primary, record, incoming, size):
+        return False
+    await _proof_disposition(record.id, "recovered", mapping.evidence.kind, clear_retry=True, preserve_reason=True)
+    _decision(record, incoming, "satisfied_by_completed", mapping.evidence.kind,
+              evidence=mapping.evidence, mapping_cardinality=1)
+    return True
+
+
+async def converge_collection_ownership(engine, transfer_id: int) -> int:
+    """Converge every inverted member ``transfer_id`` takes part in on its
+    collection owner; returns how many converged.
+
+    An inversion exists only where a later transfer's member became canonical
+    before the owner's matching member resolved -- before the collection
+    evidence existed, since ``_hold_for_collection_owner`` holds it afterwards
+    (and ``CanonicalOwnership.lower_materializing`` already fences an owner
+    member that has resolved but not yet materialized). The owner's member
+    takes the coordinate the ONE destination rule derives for it, under the
+    same path lock every materialization allocates under, with the demoted
+    artifact's own coordinate released. The handoff itself -- recovery claim,
+    retirement of any writer the later canonical has, the ownership
+    transaction -- is the recovery owner's ``converge_collection_member``; a
+    handoff that cannot complete now (claim held elsewhere, retirement
+    uncertain) changes nothing and is attempted again on the next decision."""
+    converged = 0
+    for inversion in await engine.canonical.collection_inversions(transfer_id):
+        transfer = await engine.repository.get(inversion.record.transfer_id)
+        if transfer is None:
+            continue
+        relative = engine._materialization_relative(inversion.record, inversion.candidates[0], transfer)
+        async with engine._paths_lock:
+            occupied = await engine.repository.occupied_paths() - {str(inversion.canonical.target).casefold()}
+            try:
+                target = engine._unique_target(inversion.record, relative, occupied)
+            except TransferError:
+                continue
+            if await engine.converge_collection_member(inversion, str(target)):
+                converged += 1
+                _decision(inversion.record, inversion.candidates, "collection_converged",
+                          f"from_artifact_{inversion.canonical.id}", mapping_cardinality=1)
+    return converged
+
+
 async def coordinate_collection(engine, record, candidates, context: EvidenceContext | None = None) -> bool:
     """Coordinate one request before ordinary path allocation.
 
@@ -871,6 +959,10 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
         if item.request_id != record.id and item.candidates
     )
     if not canonicals:
+        if await _satisfied_by_completed_equivalent(engine, record, incoming, context):
+            return True
+        if await _hold_for_collection_owner(engine, record, incoming):
+            return True
         return await _bootstrap_admission(engine, record, incoming, disposition, context)
 
     current_mapping = await _mapping(canonicals, incoming, engine.registry, context)
@@ -896,6 +988,10 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
             # than authorizing a writer.
             _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=current_mapping.cardinality)
+            return True
+        if current_mapping.outcome == MappingOutcome.NONPAIRING and (
+                await _satisfied_by_completed_equivalent(engine, record, incoming, context)
+                or await _hold_for_collection_owner(engine, record, incoming)):
             return True
         # Affirmatively contradictory (proven distinct), structurally
         # non-pairing (a cheap pairing rejection), or structurally unprovable

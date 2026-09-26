@@ -110,6 +110,88 @@ def resolve_candidate_index(artifact, candidate: TransferCandidate) -> int | Non
     )
 
 
+@dataclass(frozen=True)
+class WriterRetirement:
+    """Outcome of ``retire_writer``. ``reason`` is empty exactly when no writer
+    is left: there was none, or it is confirmed terminal. Otherwise it names
+    why the old writer is still (possibly) productive and nothing was
+    detached or retired."""
+    reason: str
+    retirement: str = "not_needed"
+    partial_decision: str = "not_applicable"
+
+
+async def retire_writer(engine, artifact, old_candidate, replacement_artifact, replacement_candidate) -> WriterRetirement:
+    """The one writer-retirement and partial-file/resume policy (Sections 27
+    and 28), for every caller that replaces an artifact's writer: candidate
+    activation (``activate_candidate``, where the replacement is the same
+    artifact on another candidate) and collection ownership convergence
+    (``convergence_engine.TransferEngine.converge_collection_member``, where it
+    is the collection owner's artifact at its own target).
+
+    A genuinely active writer is cancelled and must be observed terminal; an
+    already-succeeded writer is never retired; an uncertain stop detaches
+    nothing. Partial bytes are reused only when the same executor owns the same
+    materialization and footprint for the replacement; otherwise owned partial
+    material is retired and unowned material is never deleted. The caller holds
+    the recovery claim that fences all of this."""
+    transfer_id, artifact_id = artifact.transfer_id, artifact.id
+    partial_decision = "not_applicable"
+    old_executor = None
+    old_work = old_footprint = None
+    old_owned = False
+    retirement = "not_needed"
+    if artifact.execution is not None:
+        old_executor = engine.registry.executor_for_handle(artifact.execution)
+        if old_executor is None:
+            return WriterRetirement("old_executor_unavailable", "not_applicable")
+        if old_candidate is not None:
+            old_work = engine._work(artifact, old_candidate)
+            old_footprint = engine._footprint(old_executor, old_work)
+        old_owned = await engine.repository.execution_owns_target(artifact.execution)
+        async with engine._convergence_lock(artifact.execution.attempt_id):
+            current = await engine._current_artifact(transfer_id, artifact_id)
+            if current is None or current.execution != artifact.execution:
+                return WriterRetirement("execution_changed_concurrently", "not_applicable")
+            observed = await engine._observe_execution(old_executor, artifact.execution)
+            if observed.state == ExecutionState.SUCCEEDED:
+                await engine.repository.execution(observed)
+                return WriterRetirement("writer_already_succeeded", "not_applicable")
+            if observed.state in _TERMINAL_EXECUTION_STATES:
+                # Already confirmed terminal before we ever asked -- the
+                # automatic path's caller observed this upstream.
+                retirement = "confirmed"
+            else:
+                # Writer retirement requested: cancel a genuinely active writer.
+                # The executor reports observed stop truth; an unconfirmed or
+                # lost acknowledgement stays uncertain and nothing is detached.
+                observed = await engine._cancel_execution(old_executor, artifact.execution)
+                retirement = "requested_confirmed" if observed.stopped else "uncertain"
+            await engine.repository.execution(observed)
+            if observed.state not in _TERMINAL_EXECUTION_STATES or retirement == "uncertain":
+                return WriterRetirement("writer_retirement_uncertain", "uncertain")
+
+    # One partial-file/resume policy regardless of caller (Section 28): reuse
+    # partial bytes only when the same executor owns the same resumable
+    # sidecar contract; otherwise integrity wins.
+    if old_executor is not None and old_work is not None:
+        new_executor = engine.registry.executor_for_subject(ExecutionSubject.of(replacement_candidate))
+        new_work = engine._work(replacement_artifact, replacement_candidate)
+        new_footprint = engine._footprint(new_executor, new_work)
+        if (old_executor.descriptor.id != new_executor.descriptor.id or old_work.materialization != new_work.materialization
+                or old_footprint != new_footprint):
+            if old_owned:
+                retire_materialization(engine.root, old_work.materialization, old_footprint, owned=True)
+                partial_decision = "retired"
+            else:
+                # Material the retired writer does not durably own (it existed
+                # before that execution was admitted) is never deleted.
+                partial_decision = "preserved_unowned"
+        else:
+            partial_decision = "reused"
+    return WriterRetirement("", retirement, partial_decision)
+
+
 async def activate_candidate(
     engine, artifact, target_index: int, *, retry_at: float, claim: RecoveryClaim, error=None,
 ) -> ActivationResult:
@@ -238,78 +320,15 @@ async def activate_candidate(
             ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
         )
 
-    old_executor = None
-    old_work = old_footprint = None
-    old_owned = False
-    retirement = "not_needed"
-    if artifact.execution is not None:
-        old_executor = engine.registry.executor_for_handle(artifact.execution)
-        if old_executor is None:
-            return await _record(
-                ActivationResult(
-                    False, "old_executor_unavailable", old_candidate=old_candidate, new_candidate=new_candidate,
-                    transfer_id=transfer_id, artifact_id=artifact_id,
-                ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-            )
-        if old_candidate is not None:
-            old_work = engine._work(artifact, old_candidate)
-            old_footprint = engine._footprint(old_executor, old_work)
-        old_owned = await engine.repository.execution_owns_target(artifact.execution)
-        async with engine._convergence_lock(artifact.execution.attempt_id):
-            current = await engine._current_artifact(transfer_id, artifact_id)
-            if current is None or current.execution != artifact.execution:
-                return await _record(
-                    ActivationResult(
-                        False, "execution_changed_concurrently", old_candidate=old_candidate, new_candidate=new_candidate,
-                        transfer_id=transfer_id, artifact_id=artifact_id,
-                    ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-                )
-            observed = await engine._observe_execution(old_executor, artifact.execution)
-            if observed.state == ExecutionState.SUCCEEDED:
-                await engine.repository.execution(observed)
-                return await _record(
-                    ActivationResult(
-                        False, "writer_already_succeeded", old_candidate=old_candidate, new_candidate=new_candidate,
-                        transfer_id=transfer_id, artifact_id=artifact_id,
-                    ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-                )
-            if observed.state in _TERMINAL_EXECUTION_STATES:
-                # Already confirmed terminal before we ever asked -- the
-                # automatic path's caller observed this upstream.
-                retirement = "confirmed"
-            else:
-                # Writer retirement requested: cancel a genuinely active writer.
-                # The executor reports observed stop truth; an unconfirmed or
-                # lost acknowledgement stays uncertain and nothing is detached.
-                observed = await engine._cancel_execution(old_executor, artifact.execution)
-                retirement = "requested_confirmed" if observed.stopped else "uncertain"
-            await engine.repository.execution(observed)
-            if observed.state not in _TERMINAL_EXECUTION_STATES or retirement == "uncertain":
-                return await _record(
-                    ActivationResult(
-                        False, "writer_retirement_uncertain", old_candidate=old_candidate, new_candidate=new_candidate,
-                        retirement="uncertain", transfer_id=transfer_id, artifact_id=artifact_id,
-                    ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
-                )
-
-    # One partial-file/resume policy regardless of caller (Section 28): reuse
-    # partial bytes only when the same executor owns the same resumable
-    # sidecar contract; otherwise integrity wins.
-    if old_executor is not None and old_work is not None:
-        new_executor = engine.registry.executor_for_subject(ExecutionSubject.of(new_candidate))
-        new_work = engine._work(artifact, new_candidate)
-        new_footprint = engine._footprint(new_executor, new_work)
-        if (old_executor.descriptor.id != new_executor.descriptor.id or old_work.materialization != new_work.materialization
-                or old_footprint != new_footprint):
-            if old_owned:
-                retire_materialization(engine.root, old_work.materialization, old_footprint, owned=True)
-                partial_decision = "retired"
-            else:
-                # Material the retired writer does not durably own (it existed
-                # before that execution was admitted) is never deleted.
-                partial_decision = "preserved_unowned"
-        else:
-            partial_decision = "reused"
+    retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate)
+    retirement, partial_decision = retired.retirement, retired.partial_decision
+    if retired.reason:
+        return await _record(
+            ActivationResult(
+                False, retired.reason, old_candidate=old_candidate, new_candidate=new_candidate,
+                retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
+            ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
+        )
 
     current = await engine._current_artifact(transfer_id, artifact_id)
     if current is None:

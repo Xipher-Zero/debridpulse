@@ -22,6 +22,22 @@ from transfers.models import Artifact, ArtifactFingerprint, FingerprintKind, Req
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 
 
+_SETTLED_TRANSFER_STATES = "(" + ",".join(
+    f"'{state.value}'" for state in sorted(SIDE_STATE_RETIRING_TRANSFER_STATES, key=lambda state: state.value)) + ")"
+
+
+@dataclass(frozen=True)
+class CollectionInversion:
+    """One member whose canonical ownership is inverted against its collection
+    owner: ``canonical`` belongs to a later transfer and carries a contributing
+    standby (``contributor_id``) of ``record`` -- the collection owner's own
+    request for the same member, whose own routes are ``candidates``."""
+    canonical: Artifact
+    contributor_id: int
+    record: RequestRecord
+    candidates: tuple[TransferCandidate, ...]
+
+
 @dataclass(frozen=True)
 class CandidateOrigin:
     canonical_artifact_id: int
@@ -385,6 +401,237 @@ class CanonicalOwnership:
             targets = await _durable_canonical_targets_for_request(db, request_id)
         return next(iter(targets)) if len(targets) == 1 else None
 
+    @staticmethod
+    async def _collection_owner(db, transfer_id: int) -> int | None:
+        """The earliest admitted live transfer that owns a canonical artifact
+        one of ``transfer_id``'s members durably consolidated into, when it was
+        admitted before ``transfer_id``. That consolidation is the cross-transfer
+        evidence that both submissions are one logical collection; durable
+        admission order (``torrents.id``, the same order ``lower_materializing``
+        compares first) names its owner."""
+        row = await db.fetchone(
+            f"""SELECT MIN(c.torrent_id) AS owner FROM artifact_consolidations a
+                JOIN download_files c ON c.id=a.canonical_artifact_id
+                JOIN torrents t ON t.id=c.torrent_id
+                WHERE a.source_transfer_id=? AND c.torrent_id<? AND t.status NOT IN {_SETTLED_TRANSFER_STATES}""",
+            (int(transfer_id), int(transfer_id)),
+        )
+        return int(row["owner"]) if row and row.get("owner") is not None else None
+
+    @staticmethod
+    async def _collection_related(db, left: int, right: int) -> bool:
+        """Whether two distinct transfers are one recognized collection: a
+        member of either is durably consolidated beneath a canonical artifact
+        the other owns. Unlike ``_collection_owner`` this holds whatever the
+        transfers' lifecycle states: it is the fact that lets completed,
+        ownership-frozen material satisfy an equivalent member."""
+        if int(left) == int(right):
+            return False
+        row = await db.fetchone(
+            """SELECT 1 AS related FROM artifact_consolidations a JOIN download_files c ON c.id=a.canonical_artifact_id
+                WHERE (a.source_transfer_id=? AND c.torrent_id=?) OR (a.source_transfer_id=? AND c.torrent_id=?)
+                LIMIT 1""",
+            (int(left), int(right), int(right), int(left)),
+        )
+        return row is not None
+
+    async def completed_collection_equivalents(self, transfer_id: int) -> tuple[Artifact, ...]:
+        """Completed canonical artifacts of other transfers that are one
+        recognized collection with ``transfer_id``: the only material a member
+        of ``transfer_id`` may be satisfied by without becoming a writer once
+        ownership is frozen."""
+        await self.initialize()
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT f.*,e.handle FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                    LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                    WHERE f.torrent_id IN (
+                        SELECT c.torrent_id FROM artifact_consolidations a
+                            JOIN download_files c ON c.id=a.canonical_artifact_id WHERE a.source_transfer_id=?
+                        UNION
+                        SELECT a.source_transfer_id FROM artifact_consolidations a
+                            JOIN download_files c ON c.id=a.canonical_artifact_id WHERE c.torrent_id=?)
+                    AND f.torrent_id!=? AND f.status='completed' AND f.request_id IS NOT NULL
+                    AND COALESCE(f.blocked,0)=0 AND COALESCE(f.mirror_state,'')!='standby'
+                    AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)
+                    AND t.status NOT IN ('deleted','cancelled') ORDER BY f.torrent_id,f.id""",
+                (int(transfer_id), int(transfer_id), int(transfer_id)),
+            )
+        return tuple(self._artifact(row) for row in rows)
+
+    async def collection_owner(self, transfer_id: int) -> int | None:
+        await self.initialize()
+        async with get_db() as db:
+            return await self._collection_owner(db, transfer_id)
+
+    @staticmethod
+    async def _inversion_rows(db, condition: str, params: tuple):
+        """Canonical artifacts owned by a later transfer that hold a contributing
+        standby of their transfer's collection owner. A writer that has
+        succeeded is never an inversion here: its material is complete under
+        the later transfer."""
+        return await db.fetchall(
+            f"""SELECT c.id AS canonical_id,s.id AS contributor_id,s.request_id AS contributor_request_id
+                FROM download_files c
+                JOIN torrents ct ON ct.id=c.torrent_id
+                JOIN download_files s ON s.mirror_group_id=c.id AND s.mirror_state='standby' AND s.id!=c.id
+                JOIN torrents st ON st.id=s.torrent_id
+                JOIN artifact_consolidations a ON a.contributing_artifact_id=s.id AND a.canonical_artifact_id=c.id
+                WHERE c.request_id IS NOT NULL AND COALESCE(c.blocked,0)=0
+                AND COALESCE(c.mirror_state,'')!='standby' AND (c.mirror_group_id IS NULL OR c.mirror_group_id=c.id)
+                AND c.status NOT IN ('completed','duplicate')
+                AND NOT EXISTS(SELECT 1 FROM execution_attempts e WHERE e.artifact_id=c.id AND e.state='succeeded')
+                AND ct.status NOT IN {_SETTLED_TRANSFER_STATES} AND st.status NOT IN {_SETTLED_TRANSFER_STATES}
+                AND s.torrent_id<c.torrent_id
+                AND s.torrent_id=(SELECT MIN(o.torrent_id) FROM artifact_consolidations m
+                    JOIN download_files o ON o.id=m.canonical_artifact_id JOIN torrents ot ON ot.id=o.torrent_id
+                    WHERE m.source_transfer_id=c.torrent_id AND o.torrent_id<c.torrent_id
+                    AND ot.status NOT IN {_SETTLED_TRANSFER_STATES})
+                AND {condition}
+                ORDER BY c.torrent_id,c.id,s.id""",
+            params,
+        )
+
+    async def collection_inversions(self, transfer_id: int) -> tuple[CollectionInversion, ...]:
+        """Every inverted member ``transfer_id`` takes part in, as the later
+        canonical owner or as the collection owner."""
+        await self.initialize()
+        result = []
+        async with get_db() as db:
+            rows = await self._inversion_rows(db, "(c.torrent_id=? OR s.torrent_id=?)", (transfer_id, transfer_id))
+            for row in rows:
+                canonical = await db.fetchone(
+                    "SELECT f.*,NULL AS handle FROM download_files f WHERE f.id=?", (row["canonical_id"],),
+                )
+                contributor = await db.fetchone("SELECT candidates FROM download_files WHERE id=?",
+                                                (row["contributor_id"],))
+                request = await db.fetchone("SELECT * FROM transfer_requests WHERE id=?",
+                                            (row["contributor_request_id"],))
+                candidates = tuple(codec.candidate(item) for item in codec.load(contributor["candidates"], []))
+                if canonical and request and candidates:
+                    result.append(CollectionInversion(
+                        self._artifact(canonical), int(row["contributor_id"]), self._record(request), candidates,
+                    ))
+        return tuple(result)
+
+    async def converge(self, inversion: CollectionInversion, target: str, *, claim, now: float) -> bool:
+        """Converge one inverted collection member on its collection owner.
+
+        One ownership transaction under ``claim`` -- the later canonical's
+        current recovery claim, whose holder has already retired its writer
+        (``candidate_activation.retire_writer``) -- revalidated against the
+        same durable facts that named the inversion. Every execution attempt
+        the later canonical ever had must be terminal without success; each is
+        kept as history with its authorization revoked, and the artifact
+        detaches from it. The collection owner's contributing standby becomes
+        the member's one canonical artifact at ``target`` (its own route
+        first, every route the later canonical held retained as an alternate)
+        and is dispatched as ordinary queued work; the later canonical becomes
+        that transfer's contributing standby. Bindings move with their
+        candidates and keep every origin, the existing consolidation
+        relationship between the two artifacts is redirected, other
+        contributors follow the canonical, and each transfer's activity
+        history records the convergence. False when anything changed
+        underneath (nothing is written)."""
+        await self.initialize()
+        canonical_id, contributor_id = int(inversion.canonical.id), int(inversion.contributor_id)
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            if (int(claim.artifact_id) != canonical_id
+                    or not await self.repository.recovery_claim_current_in_db(db, claim, now=now)
+                    or not await self._inversion_rows(db, "c.id=? AND s.id=?", (canonical_id, contributor_id))
+                    or await db.fetchone(
+                        """SELECT 1 AS live FROM execution_attempts WHERE artifact_id=?
+                            AND state NOT IN ('failed','absent','cancelled')""", (canonical_id,))):
+                await db.rollback()
+                return False
+            await db.execute("UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?",
+                             (canonical_id,))
+            current = await db.fetchone("SELECT * FROM download_files WHERE id=?", (canonical_id,))
+            contributor = await db.fetchone("SELECT * FROM download_files WHERE id=?", (contributor_id,))
+            standbys = await db.fetchall(
+                "SELECT id,candidates FROM download_files WHERE mirror_group_id=? AND mirror_state='standby'",
+                (canonical_id,),
+            )
+            retained = [codec.candidate(item) for item in codec.load(current["candidates"], [])]
+            owned = [codec.candidate(item) for item in codec.load(contributor["candidates"], [])]
+            owned_ids = {str(item.id) for item in owned}
+            contributed = {str(item.get("id")) for row in standbys for item in codec.load(row["candidates"], [])}
+            later_own = [item for item in retained if str(item.id) not in contributed]
+            if not owned or not later_own:
+                await db.rollback()
+                return False
+            converged = owned + [item for item in retained if str(item.id) not in owned_ids]
+            owner_transfer_id, later_transfer_id = int(contributor["torrent_id"]), int(current["torrent_id"])
+
+            await db.execute(
+                """UPDATE download_files SET mirror_group_id=?,local_path=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE mirror_group_id=? AND mirror_state='standby' AND id!=?""",
+                (contributor_id, target, canonical_id, contributor_id),
+            )
+            await db.execute(
+                """UPDATE download_files SET status='queued',blocked=NULL,mirror_group_id=id,mirror_state='primary',
+                    candidates=?,selected_candidate=0,size_bytes=?,local_path=?,normalized_error=NULL,retry_at=0,
+                    download_client='',updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (codec.dump(tuple(converged)), current["size_bytes"], target, contributor_id),
+            )
+            await db.execute(
+                """UPDATE download_files SET status='duplicate',blocked=NULL,mirror_group_id=?,mirror_state='standby',
+                    candidates=?,selected_candidate=0,local_path=?,normalized_error=NULL,retry_at=0,download_client='',
+                    execution_attempt_id=NULL,continuation_reservation_expires_at=NULL,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                (contributor_id, codec.dump(tuple(later_own)), target, canonical_id),
+            )
+
+            await db.execute(
+                """UPDATE canonical_candidate_bindings SET canonical_artifact_id=?,candidate_order=candidate_order+100000,
+                    updated_at=CURRENT_TIMESTAMP WHERE canonical_artifact_id=?""",
+                (contributor_id, canonical_id),
+            )
+            order = 0
+            for candidate in converged:
+                cursor = await db.execute(
+                    """UPDATE canonical_candidate_bindings SET candidate_order=?
+                        WHERE canonical_artifact_id=? AND candidate_id=? AND candidate_order>100000""",
+                    (order + 1, contributor_id, str(candidate.id)),
+                )
+                order += int(cursor.rowcount or 0)
+            for binding in await db.fetchall(
+                    """SELECT id FROM canonical_candidate_bindings WHERE canonical_artifact_id=? AND candidate_order>100000
+                        ORDER BY candidate_order""", (contributor_id,)):
+                order += 1
+                await db.execute("UPDATE canonical_candidate_bindings SET candidate_order=? WHERE id=?",
+                                 (order, binding["id"]))
+            await db.execute(
+                """UPDATE canonical_candidate_bindings SET role=CASE WHEN EXISTS(
+                        SELECT 1 FROM canonical_candidate_origins o
+                        WHERE o.binding_id=canonical_candidate_bindings.id AND o.contributing_transfer_id=?)
+                    THEN 'canonical' ELSE 'alternate' END WHERE canonical_artifact_id=?""",
+                (owner_transfer_id, contributor_id),
+            )
+
+            await db.execute(
+                """UPDATE artifact_consolidations SET contributing_artifact_id=?,source_transfer_id=?,source_request_id=?,
+                    canonical_artifact_id=?,updated_at=CURRENT_TIMESTAMP WHERE contributing_artifact_id=?""",
+                (canonical_id, later_transfer_id, current["request_id"], contributor_id, contributor_id),
+            )
+            await db.execute(
+                """UPDATE artifact_consolidations SET canonical_artifact_id=?,updated_at=CURRENT_TIMESTAMP
+                    WHERE canonical_artifact_id=?""",
+                (contributor_id, canonical_id),
+            )
+            for transfer_id, message in (
+                (later_transfer_id, f"Collection member ownership converged into transfer {owner_transfer_id}"),
+                (owner_transfer_id, f"Collection member ownership converged from transfer {later_transfer_id}"),
+            ):
+                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)",
+                                 (transfer_id, message))
+            await self._finalize_transfer(db, later_transfer_id)
+            await db.commit()
+        if self.on_attached is not None:
+            await self.on_attached(later_transfer_id)
+        return True
+
     async def lower_materializing(self, record: RequestRecord):
         await self.initialize()
         async with get_db() as db:
@@ -432,7 +679,16 @@ class CanonicalOwnership:
         return tuple(result)
 
     async def attach(self, primary: Artifact, record: RequestRecord, candidates, size: int) -> bool:
-        """Atomically revalidate an established owner and attach one source."""
+        """Atomically revalidate an established owner and attach one source.
+
+        The owner is ordinarily a live canonical artifact. The one bounded
+        exception is the terminal collection case (DP 1.0.13): a COMPLETED
+        canonical artifact of a transfer that is one recognized collection
+        with ``record``'s (``_collection_related``). Completed material is
+        ownership-frozen -- its row, candidates, status and transfer are not
+        touched -- and the incoming source only becomes its contributing
+        standby with provenance (binding, origin, consolidation), so the
+        incoming transfer's member is satisfied without a second writer."""
         await self.initialize()
         alternatives = tuple(replace(item, expected_bytes=size) for item in candidates)
         if not alternatives:
@@ -440,14 +696,19 @@ class CanonicalOwnership:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await db.fetchone(
-                """SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                """SELECT f.*,t.status AS transfer_status FROM download_files f JOIN torrents t ON t.id=f.torrent_id
                     WHERE f.id=? AND f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0
                     AND COALESCE(f.mirror_state,'')!='standby'
-                    AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)
-                    AND f.status NOT IN ('completed','cancelled','error','duplicate')
-                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')""",
+                    AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)""",
                 (primary.id,),
             )
+            frozen = bool(current) and current["status"] == "completed"
+            if current and not (
+                (current["status"] not in {"completed", "cancelled", "error", "duplicate"}
+                 and current["transfer_status"] not in {"completed", "consolidated", "deleted", "cancelled", "error"})
+                or (frozen and current["transfer_status"] not in {"deleted", "cancelled"}
+                    and await self._collection_related(db, int(current["torrent_id"]), int(record.transfer_id)))):
+                current = None
             incoming = await db.fetchone(
                 """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                     WHERE r.id=? AND r.transfer_id=? AND r.state='materializing'
@@ -522,11 +783,12 @@ class CanonicalOwnership:
                     db, int(primary.id), int(current["torrent_id"]), candidate, origin, len(retained),
                 )
 
-            await db.execute(
-                """UPDATE download_files SET candidates=?,size_bytes=?,mirror_group_id=?,mirror_state='primary',
-                    updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (codec.dump(retained), size, primary.id, primary.id),
-            )
+            if not frozen:
+                await db.execute(
+                    """UPDATE download_files SET candidates=?,size_bytes=?,mirror_group_id=?,mirror_state='primary',
+                        updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+                    (codec.dump(retained), size, primary.id, primary.id),
+                )
             cursor = await db.execute(
                 "UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=? AND transfer_id=? AND state='materializing'",
                 (record.id, record.transfer_id),

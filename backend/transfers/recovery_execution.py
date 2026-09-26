@@ -19,6 +19,11 @@ class RecoveryTrigger(StrEnum):
     # types) instead of being an out-of-band mutation the recovery system
     # knows nothing about.
     USER_CANDIDATE_SWITCH = "user_candidate_switch"
+    # Collection ownership convergence (``convergence_engine.TransferEngine
+    # .converge_collection_member``) retires a later transfer's writer so the
+    # collection owner's artifact can become canonical. Claimed under the SAME
+    # exclusive fence as every other trigger; it resets nothing.
+    COLLECTION_CONVERGENCE = "collection_convergence"
 
 
 @dataclass(frozen=True)
@@ -40,6 +45,7 @@ _AUTHORITY = {
     # plain retry, and transition_recovery(candidate_switched=True) has
     # always reset the bounded no-progress streaks on a successful switch.
     RecoveryTrigger.USER_CANDIDATE_SWITCH: TriggerAuthority(reset_exhaustion=True, reset_bounded_streaks=True),
+    RecoveryTrigger.COLLECTION_CONVERGENCE: TriggerAuthority(),
 }
 
 

@@ -431,7 +431,11 @@ def test_one_canonical_candidate_activation_owner_for_both_engine_stacks():
     assert "activate_candidate(" in canonical_source
 
     activation_source = inspect.getsource(candidate_activation.activate_candidate)
-    assert "retire_materialization(" in activation_source
+    # Writer retirement and the partial-file policy are the one shared
+    # primitive every writer replacement uses (activation and collection
+    # ownership convergence alike).
+    assert "retire_writer(" in activation_source
+    assert "retire_materialization(" in inspect.getsource(candidate_activation.retire_writer)
     assert "transition_recovery(" in activation_source
     assert "record_candidate_attempt(" in activation_source
 

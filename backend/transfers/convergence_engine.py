@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, replace
 
-from transfers.candidate_activation import ActivationResult, activate_candidate
+from transfers.candidate_activation import ActivationResult, activate_candidate, retire_writer
 from transfers.cohorts import reopen_unverified_associations, unverified_association_count
 from transfers.contracts import CandidateRefresh, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
@@ -2008,6 +2008,53 @@ class TransferEngine(_QualifiedTransferEngine):
                 artifact=await self._current_artifact(transfer_id, artifact_id),
                 candidate_changed=bool(result is not None and result.committed),
                 retirement_reason=result.retirement if result is not None else None,
+            )
+
+    async def converge_collection_member(self, inversion, target: str) -> bool:
+        """Hand one inverted collection member to its collection owner
+        (``transfers.cohorts.converge_collection_ownership`` names the
+        inversion and the owner member's ``target``).
+
+        The later canonical is taken under a COLLECTION_CONVERGENCE recovery
+        claim -- the same exclusive fence every recovery trigger and operator
+        candidate switch uses -- so nothing else can mutate or re-dispatch it
+        meanwhile. Any writer it has is retired through the one shared writer-
+        retirement and partial-file policy (``candidate_activation
+        .retire_writer``), with the owner's artifact at ``target`` as the
+        replacement: partial bytes survive only where that policy already
+        allows it. Only a confirmed-terminal writer lets the ownership
+        transaction (``CanonicalOwnership.converge``) run, fenced by the same
+        claim; after it the owner's artifact is ordinary queued work that
+        dispatches normally. A claim held elsewhere, an uncertain retirement or
+        a changed state leaves ownership untouched, and the next decision tries
+        again. A writer that already succeeded is not retired."""
+        claim = await self.repository.claim_recovery(
+            inversion.canonical.id, RecoveryTrigger.COLLECTION_CONVERGENCE, self.clock(),
+            lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
+        )
+        if claim is None:
+            return False
+        current = None
+        reason, retirement, converged = "artifact_disappeared", None, False
+        try:
+            current = await self._current_artifact(inversion.canonical.transfer_id, inversion.canonical.id)
+            if current is None:
+                return False
+            retired = await retire_writer(
+                self, current, self._candidate(current), replace(current, target=target), inversion.candidates[0],
+            )
+            retirement = retired.retirement
+            if retired.reason:
+                reason = retired.reason
+                return False
+            converged = await self.canonical.converge(inversion, target, claim=claim, now=self.clock())
+            reason = "converged" if converged else "commit_conflict"
+            return converged
+        finally:
+            await self._finish_claim(
+                claim, action="collection_convergence", reason=reason,
+                outcome="converged" if converged else "not_applied", artifact=current,
+                retirement_reason=retirement,
             )
 
     # ------------------------------------------------------------------

@@ -128,6 +128,14 @@ body.light #modal.dp-detail-modal {
 #modal .dp-detail-close:hover {
   color: var(--dp-text-primary);
 }
+/* Transfer Trace Log: a Details-only header action, left of Close. */
+#modal .dp-detail-trace.btn {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+#modal:not([data-dp-modal-mode="details"]) .dp-detail-trace {
+  display: none;
+}
 
 #modal .modal-body.dp-card__body {
   padding: var(--dp-card-padding);

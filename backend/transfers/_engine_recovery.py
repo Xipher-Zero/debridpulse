@@ -29,7 +29,7 @@ import asyncio
 
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
-from transfers.cohorts import coordinate_collection
+from transfers.cohorts import converge_collection_ownership, coordinate_collection
 from transfers.mirrors import EvidenceContext
 from transfers.models import Artifact, ExecutionSubject
 from transfers.policy import RecoveryContext
@@ -110,15 +110,16 @@ class TransferEngine(_QualifiedTransferEngine):
             # read the same acquisitions (and the same transient input, when
             # this decision continues an answered evidence challenge).
             evidence = evidence if evidence is not None else EvidenceContext()
-            if await coordinate_collection(self, record, candidates, evidence):
-                return
-            await super()._materialize(record, candidates, evidence=evidence)
-            artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
-                             if item.request_id == record.id), None)
-            if artifact is None or len(artifact.candidates) < 2:
-                return
-            for candidate in artifact.candidates:
-                await self.canonical.origin_for(artifact, candidate)
+            if not await coordinate_collection(self, record, candidates, evidence):
+                await super()._materialize(record, candidates, evidence=evidence)
+                artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
+                                 if item.request_id == record.id), None)
+                if artifact is not None and len(artifact.candidates) >= 2:
+                    for candidate in artifact.candidates:
+                        await self.canonical.origin_for(artifact, candidate)
+            # Whatever this decision attached or allocated may have completed
+            # the evidence that this transfer and another are one collection.
+            await converge_collection_ownership(self, record.transfer_id)
 
     async def _next_alternate_index(self, artifact: Artifact) -> int | None:
         """First eligible, not-yet-attempted candidate in index order (DP 1.0.12

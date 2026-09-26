@@ -1500,6 +1500,8 @@ async function showDetail(id) {
   const modalBody = document.getElementById('modal-body');
 
   DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details'});
+  const traceButton = document.querySelector('#modal .dp-detail-trace');
+  if (traceButton) traceButton.dataset.dpTransferId = String(id);
 
   if (modalBody) {
     modalBody.innerHTML =
@@ -1613,6 +1615,35 @@ async function showDetail(id) {
       {detail: {transferId: Number(id), transfer: null, error: true}}));
   }
 }
+
+// Transfer Trace Log: the backend builds and sanitizes the trace
+// (GET /torrents/{id}/trace); this only hands the returned file to the browser.
+async function downloadTransferTrace(button) {
+  const id = button && button.dataset.dpTransferId;
+  if (!id) return;
+  setButtonPending(button, true, 'Generating…');
+  try {
+    const r = await window.debridPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
+    if (!r.ok) {
+      const data = await r.json().catch(() => ({detail: r.statusText}));
+      throw new Error(data.detail || r.statusText);
+    }
+    const named = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
+    const url = URL.createObjectURL(await r.blob());
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = named ? named[1] : `debridpulse-transfer-${id}-trace.json`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 0);
+  } catch(e) {
+    toast(sanitizeErrorMsg(e.message),'error');
+  } finally {
+    setButtonPending(button, false);
+  }
+}
+window.downloadTransferTrace = downloadTransferTrace;
 
 // Thin global entry retained for the inline #overlay / close-button handlers.
 // The shared modal coordinator owns the actual close decision and lifecycle

@@ -1333,9 +1333,7 @@ class TransferEngine:
         transfer = await self.repository.get(record.transfer_id)
         if transfer is None:
             return
-        relative = candidates[0].relative_path or candidates[0].name
-        if record.parent_id:
-            relative = str(Path(safe_name(transfer.name)) / relative)
+        relative = self._materialization_relative(record, candidates[0], transfer)
 
         existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
         if existing:
@@ -1448,6 +1446,15 @@ class TransferEngine:
                     return
             if retry_snapshot:
                 continue
+
+    @staticmethod
+    def _materialization_relative(record: RequestRecord, candidate: TransferCandidate, transfer) -> str:
+        """The download-root-relative coordinate of ``record``'s member: a
+        collection child lives under its transfer's folder."""
+        relative = candidate.relative_path or candidate.name
+        if record.parent_id:
+            relative = str(Path(safe_name(transfer.name)) / relative)
+        return relative
 
     def _unique_target(self, record: RequestRecord, relative: str, occupied: set[str]) -> Path:
         """The ONE durable-coordinate rule, for a first materialization and for

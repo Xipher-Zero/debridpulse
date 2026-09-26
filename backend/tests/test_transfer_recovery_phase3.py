@@ -90,6 +90,7 @@ def test_all_required_triggers_are_canonical():
         "provider_recovery",
         "executor_recovery",
         "user_candidate_switch",
+        "collection_convergence",
     }
 
 
