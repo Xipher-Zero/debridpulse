@@ -488,6 +488,40 @@
   align-items: center;
 }
 
+/* ── A field that owns a SECOND LINE ─────────────────────────────────────
+   [ stacked title + hint ]   [ control ]   [ optional action ]
+                              [ second line                   ]
+
+   A preview of what a value resolves to is a line of the FIELD, beneath the
+   control it describes -- not another item on the control row. So the field
+   that carries one is genuinely two rows: a two-row grid whose second line is
+   PLACED in row two of the control's column. Placement is what makes it
+   structural. No wrap decides it, no breakpoint forces it and no amount of
+   spare horizontal room can pull it up beside the input, because there is no
+   width at which row two becomes row one.
+
+   Everything else is the one grammar above: the same three regions on one
+   centre line, the same inherited column gap. Only the row the second line
+   occupies is stated here, and the rows are drawn tight against one another so
+   the second line's own material owns the distance between them.
+
+   Written as a modifier OF the base class, not as a class beside it: the two
+   are the same element in two forms, so the two-line form must win wherever the
+   base form is stated -- including the second `.dp-settings-inline-field`
+   declaration further down this sheet. */
+#view-settings .dp-settings-inline-field.dp-settings-inline-field--two-line {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  row-gap: 0;
+}
+
+#view-settings .dp-settings-inline-field.dp-settings-inline-field--two-line > .dp-settings-inline-field-second-line {
+  grid-row: 2;
+  grid-column: 2;
+  min-width: 0;
+}
+
 /* The AllDebrid credential row.
    The informational stack takes what it needs, the field is the flexible
    element between it and the destructive action, and all three peers share one
@@ -1108,6 +1142,14 @@
 
   #view-settings .dp-settings-inline-field,
   #view-settings .dp-settings-result-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  /* The two-line variant collapses the same way every inline field does: one
+     column, with its second line still the line beneath the control. */
+  #view-settings .dp-settings-inline-field.dp-settings-inline-field--two-line {
+    display: flex;
     align-items: stretch;
     flex-direction: column;
   }

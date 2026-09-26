@@ -10,6 +10,7 @@ These cases hold that -- and, just as importantly, that none of it was
 re-invented locally. Where a primitive is shared, the assertion is that the
 Notifications surface RENDERS it rather than that it describes a lookalike.
 """
+import re
 from pathlib import Path
 
 
@@ -27,6 +28,31 @@ def source(path: Path) -> str:
 
 def block(text: str, start: str, end: str) -> str:
     return text[text.index(start):text.index(end, text.index(start))]
+
+
+def media_blocks(text: str) -> list[str]:
+    """Every `@media` block in a sheet, brace-balanced, so a rule can be told
+    apart from a rule a breakpoint states."""
+    blocks, at = [], text.find("@media")
+    while at != -1:
+        depth, i = 0, text.index("{", at)
+        while True:
+            if text[i] == "{":
+                depth += 1
+            elif text[i] == "}":
+                depth -= 1
+                if depth == 0:
+                    break
+            i += 1
+        blocks.append(text[at:i + 1])
+        at = text.find("@media", i)
+    return blocks
+
+
+def declarations(path: Path) -> str:
+    """A stylesheet with its prose removed: a comment that names another
+    sheet's selector is a cross-reference, never a rule of this sheet's own."""
+    return re.sub(r"/\*.*?\*/", "", source(path), flags=re.S)
 
 
 def panel() -> str:
@@ -354,13 +380,170 @@ def test_both_discord_rows_share_the_card_body_rails():
     assert "width:" not in delivery, "the row narrows itself again"
     assert "margin: " not in delivery and "auto" not in delivery
     assert "display: grid" in delivery
-    # ... and no breakpoint reintroduces one.
+    # ... and no breakpoint reintroduces one. What is read is the rule's own
+    # DECLARATIONS: a breakpoint's condition is itself spelled `max-width`, and
+    # a condition is not a width the row gives itself.
+    marker = "dp-settings-notifications-delivery-row {"
     for chunk in css.split("}"):
-        if "dp-settings-notifications-delivery-row {" in chunk:
-            assert "width:" not in chunk, chunk
+        if marker in chunk:
+            assert "width:" not in chunk.split(marker, 1)[1], chunk
     # The identity row it must match states no width either.
     identity = block(css, "#view-settings .dp-settings-notifications-identity-row {", "}")
     assert "width:" not in identity
+
+
+def test_the_avatar_preview_is_the_fields_own_second_line():
+    """The preview is a reading of the stored value, so it belongs BENEATH the
+    Avatar URL control row -- and it is placed there, not left to reach it by
+    running out of horizontal room."""
+    runtime = source(RUNTIME)
+    card = discord_card()
+
+    # The panel hands it to the field's second-line slot. ``after`` is content
+    # inside the control's own box (the AllDebrid in-field status); the preview
+    # is not that, so it is not passed that way.
+    call = card[card.index("'discord_avatar_url'"):]
+    call = call[:call.index("})") + 2]
+    assert "secondLine: avatarPreview(" in call
+    assert "after:" not in call
+    assert runtime.count("secondLine: avatarPreview(") == 1
+    # Upload stays INSIDE the field and Clear stays beside it, unchanged.
+    assert "embedAction: AVATAR_UPLOAD" in call
+    assert "action: AVATAR_CLEAR(" in call
+
+    # The one field primitive renders it as its own region, AFTER the control
+    # and the action -- never inside the control box that holds the input.
+    primitive = block(runtime, "function inlineField(id, label, hint, control",
+                      "const CONFIGURED_SECRET_MASK")
+    assert "secondLine = ''" in primitive
+    assert "dp-settings-inline-field--two-line" in primitive
+    second = primitive.index("dp-settings-inline-field-second-line")
+    assert primitive.index("dp-settings-inline-field-control") < second
+    assert primitive.index("dp-settings-inline-field-action") < second
+    control_region = primitive[primitive.index('<div class="dp-settings-inline-field-control">'):]
+    control_region = control_region[:control_region.index("</div>")]
+    assert "second-line" not in control_region
+
+
+def test_the_second_line_is_placed_in_a_row_of_its_own_not_wrapped_into_one():
+    """Two rows is the field's STRUCTURE: the second line is placed in row two
+    of a two-row grid, so no width exists at which it becomes row one."""
+    shared = source(SHARED)
+    # Written as a modifier OF the base class, so the two-line form wins wherever
+    # the base form is stated rather than depending on where in the sheet it sits.
+    variant_selector = ("#view-settings .dp-settings-inline-field"
+                        ".dp-settings-inline-field--two-line {")
+    variant = block(shared, variant_selector, "}")
+    assert "display: grid" in variant
+    assert "grid-template-rows: auto auto" in variant
+    placed = block(shared, variant_selector.replace(
+        " {", " > .dp-settings-inline-field-second-line {"), "}")
+    assert "grid-row: 2" in placed
+    # Explicitly the control's column, and explicitly the row beneath it.
+    assert "grid-column: 2" in placed
+    # None of the forbidden ways of getting there, in either sheet.
+    for banned in ("flex-wrap", "flex-basis", "position: absolute", "float:", "width: 100%"):
+        assert banned not in variant, banned
+        assert banned not in placed, banned
+    # This page declares no rule for the variant at all -- the primitive's own
+    # sheet owns it, and the page only cross-references it in prose.
+    assert "dp-settings-inline-field--two-line" not in declarations(STYLE)
+    # The variant is declared unconditionally -- a rule of the sheet, not of a
+    # breakpoint -- and exactly one breakpoint says anything about it: the
+    # primitive's OWN narrow-width collapse, where every inline field becomes a
+    # single column.
+    blocks = media_blocks(shared)
+    unconditional = shared
+    for chunk in blocks:
+        unconditional = unconditional.replace(chunk, "")
+    assert variant_selector in unconditional
+    narrow = [chunk for chunk in blocks if "--two-line" in chunk]
+    assert len(narrow) == 1, [chunk[:40] for chunk in narrow]
+    assert narrow[0].startswith("@media (max-width: 700px)")
+    assert "flex-direction: column" in narrow[0]
+
+
+def test_the_webhook_row_clears_the_avatars_second_line():
+    """Correction 2. Row 2 begins after the WHOLE of row 1: the identity row is
+    sized by its tallest field, and the destinations row keeps a spacing-scale
+    step below it rather than a pixel value chosen against a screenshot."""
+    css = source(STYLE)
+    identity = block(css, "#view-settings .dp-settings-notifications-identity-row {", "}")
+    # The taller field decides the row's height, so a two-line field cannot be
+    # overlapped by what follows.
+    assert "align-items: start" in identity
+    delivery = block(css, "#view-settings .dp-settings-notifications-delivery-row {", "}")
+    assert "margin-top: var(--dp-space-" in delivery
+    # A shared scale step, not a local nudge.
+    import re
+    assert not re.search(r"margin-top:\s*\d+px", delivery), delivery
+
+
+def test_the_report_cadence_and_window_are_one_centred_bordered_group():
+    """Correction 3. Both settings, side by side, in one content-bounded island
+    centred in the card body -- the same island the Download Engine and
+    Extraction surfaces already use, not a new decorative language."""
+    card = reports_card()
+    group = block(card, 'class="dp-settings-statistics-cadence-group"', "</div>")
+    assert "stats_report_interval_hours" in group
+    assert "stats_report_window_hours" in group
+    # The destination is NOT in it: it keeps the full row above.
+    assert "stats_report_webhook_url" not in group
+    assert card.index("webhookField('stats_report_webhook_url'") \
+        < card.index('class="dp-settings-statistics-cadence-group"')
+    # Nothing new was introduced around it.
+    assert "disclosureSection(" not in card
+    assert "card(" not in group and "form-label" not in group
+
+    css = source(STYLE)
+    island = block(css, "#view-settings .dp-settings-statistics-cadence-group {", "}")
+    # Centred and content-bounded, never stretched across the card.
+    assert "justify-content: center" in island
+    assert "width: max-content" in island
+    assert "margin-inline: auto" in island
+    # Side by side, with ONE declared moderate gap -- not a distribution.
+    assert "display: flex" in island
+    assert "flex-direction: column" not in island
+    assert "space-between" not in island
+    assert "space-around" not in island and "space-evenly" not in island
+    assert "gap: 18px 44px" in island
+    # The subtle shared group border, and nothing decorative.
+    assert "border: 1px solid var(--dp-divider)" in island
+    assert "box-shadow" not in island and "glow" not in island
+    # It is the SAME island treatment the accepted surfaces declare.
+    engine = block(source(SHARED), "#view-settings .dp-settings-download-engine-row {", "}")
+    for shared_material in ("justify-content: center", "gap: 18px 44px", "width: max-content",
+                            "border: 1px solid var(--dp-divider)", "border-radius: 12px",
+                            "padding: 16px 22px 17px"):
+        assert shared_material in engine, shared_material
+        assert shared_material in island, shared_material
+
+
+def test_the_reporting_row_distributes_nothing_and_the_compact_widths_survive():
+    css = source(STYLE)
+    # One column: the row places the destination and the island, and decides
+    # nothing about how the two settings inside the island sit.
+    marker = "#view-settings .dp-settings-statistics-reporting-row {"
+    bodies = [css[i + len(marker):css.index("}", i)]
+              for i in range(len(css)) if css.startswith(marker, i)]
+    layout = [body for body in bodies if "display: grid" in body]
+    assert len(layout) == 1, bodies
+    assert "grid-template-columns: minmax(0, 1fr)" in layout[0]
+    assert "space-between" not in layout[0]
+    # ... and no breakpoint gives it a second column back.
+    unconditional, *breakpoints = css.split("@media")
+    assert marker in unconditional
+    for chunk in breakpoints:
+        assert marker not in chunk, chunk
+    # The compact controls are exactly as accepted.
+    compact = block(css,
+                    '#view-settings [data-panel="notifications"] .dp-settings-report-interval-row .dp-settings-unit-field,',
+                    "}")
+    assert "width: min(100%, 170px)" in compact
+    bounded = block(css,
+                    '#view-settings [data-panel="notifications"] .dp-settings-report-interval-row > .dp-settings-inline-field-control,',
+                    "}")
+    assert "flex: 0 0 auto" in bounded
 
 
 def test_the_in_field_unit_is_a_reading_not_a_control():

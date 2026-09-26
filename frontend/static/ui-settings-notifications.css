@@ -40,7 +40,8 @@
    AllDebrid credential row does. */
 #view-settings .dp-settings-notifications-identity-row > .dp-settings-inline-field,
 #view-settings .dp-settings-notifications-delivery-row > .dp-settings-inline-field,
-#view-settings .dp-settings-statistics-reporting-row > .dp-settings-inline-field {
+#view-settings .dp-settings-statistics-reporting-row > .dp-settings-inline-field,
+#view-settings .dp-settings-statistics-cadence-group > .dp-settings-inline-field {
   min-width: 0;
   margin: 0;
 }
@@ -80,8 +81,12 @@
   gap: 28px;
 }
 
-/* The avatar preview belongs under the field's hint, as a reading of what is
-   currently stored -- never a control and never part of the field's own box. */
+/* The avatar preview is a reading of what is currently stored -- never a
+   control, and never part of the field's own box. It sits on the Avatar URL
+   field's SECOND LINE, which the shared field primitive places for it
+   (.dp-settings-inline-field--two-line in ui-settings-page.css); this sheet
+   states only the reading's own material and the distance it keeps from the
+   control row above it. */
 #view-settings .dp-settings-avatar-preview--compact {
   display: flex;
   align-items: center;
@@ -129,7 +134,11 @@
    explicit Clear Webhook beside its own control. The disclosure below is a
    separate block, so opening it changes nothing here. */
 #view-settings .dp-settings-notifications-delivery-row {
-  margin-top: 26px;
+  /* One step of the shared spacing scale, wider than the 28px gap INSIDE a
+     row, so the destinations read as the row after the identity row rather
+     than as more of it -- and so the avatar's second line has somewhere to be.
+     A scale step, never a nudge measured against a screenshot. */
+  margin-top: var(--dp-space-11);
   display: grid;
   /* Two peers, unlike the identity row above it: neither webhook deserves more
      room than the other. */
@@ -138,20 +147,54 @@
   gap: 28px;
 }
 
-/* Statistics Reporting on the same card-body rails and the same two-column
-   split as the Discord rows. The destination is the one control with a
-   variable-length value, so it takes the full row and the two compact controls
-   share the one beneath -- which is what gives all three room for the
-   horizontal title/hint + control grammar. */
+/* Statistics Reporting on the same card-body rails as the Discord rows: the
+   destination is the one control with a variable-length value, so it takes the
+   row, and the cadence pair reads as one cluster on the line beneath it. One
+   column, so the row itself never distributes anything -- what sits where
+   inside it is each child's own business. */
 #view-settings .dp-settings-statistics-reporting-row {
   display: grid;
-  grid-template-columns: minmax(260px, .9fr) minmax(420px, 1.35fr);
+  grid-template-columns: minmax(0, 1fr);
   align-items: start;
-  gap: 18px 28px;
+  row-gap: 18px;
 }
 
-#view-settings .dp-settings-statistics-reporting-row > .dp-settings-webhook-row {
-  grid-column: 1 / -1;
+/* The cadence and the window are ONE reading: how often a report is sent, and
+   how much it covers. They are read together, so they are grouped together --
+   one CENTRED bounded island with the same relationship container and the same
+   padding density as the accepted Download Engine and Extraction behaviour
+   islands, so every Settings control cluster speaks one language.
+
+   Content-bounded and centred in the card body: an intentional pair, not a band
+   stretched across whatever width happens to exist and not anchored to one
+   edge. The two settings are separated by one declared gap -- the same one those
+   islands use -- so nothing distributes them against the card's width and no
+   spare room can drift them apart. */
+#view-settings .dp-settings-statistics-cadence-group {
+  min-width: 0;
+  display: flex;
+  /* STRETCH, not centre: the two settings' informational stacks wrap to
+     different line counts as text reflows, and centring items of unequal
+     height pulls the taller one's top upward -- so two settings genuinely on
+     one row stop sharing a baseline. Each field still centres its own control
+     against its own stack. */
+  align-items: stretch;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px 44px;
+  width: max-content;
+  /* Bounded by the card, not by a number: the island holds font-sized content,
+     so any declared ceiling would be a guess about text this stylesheet cannot
+     measure. `max-content` is what keeps it content-bounded. */
+  max-width: 100%;
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
+#view-settings .dp-settings-statistics-cadence-group > .dp-settings-inline-field {
+  flex: 0 1 auto;
 }
 
 /* A cadence and a window are small readings, not destinations: they take the
@@ -181,17 +224,11 @@
     grid-template-columns: repeat(2, minmax(260px, 1fr));
     gap: 22px;
   }
-
-  #view-settings .dp-settings-statistics-reporting-row {
-    grid-template-columns: minmax(220px, .9fr) minmax(320px, 1.25fr);
-    gap: 18px 22px;
-  }
 }
 
 @media (max-width: 1000px) {
   #view-settings .dp-settings-notifications-identity-row,
-  #view-settings .dp-settings-notifications-delivery-row,
-  #view-settings .dp-settings-statistics-reporting-row {
+  #view-settings .dp-settings-notifications-delivery-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
@@ -221,8 +258,7 @@
 
 @media (max-width: 700px) {
   #view-settings .dp-settings-notifications-identity-row,
-  #view-settings .dp-settings-notifications-delivery-row,
-  #view-settings .dp-settings-statistics-reporting-row {
+  #view-settings .dp-settings-notifications-delivery-row {
     grid-template-columns: minmax(0, 1fr);
   }
 }

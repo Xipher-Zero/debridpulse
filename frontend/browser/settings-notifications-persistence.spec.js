@@ -463,7 +463,10 @@ test('every control renders the shared horizontal title/hint + control grammar',
 
   const measured = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
     const rows = ['.dp-settings-notifications-identity-row', '.dp-settings-notifications-delivery-row',
-                  '.dp-settings-statistics-reporting-row'];
+                  '.dp-settings-statistics-reporting-row',
+                  // The cadence pair reads as one cluster, so its two settings
+                  // are placed by the island rather than by the row.
+                  '.dp-settings-statistics-cadence-group'];
     const fields = rows.flatMap(row =>
       [...panel.querySelectorAll(`${row} > .dp-settings-inline-field`)]);
     const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
@@ -497,6 +500,187 @@ test('every control renders the shared horizontal title/hint + control grammar',
     expect(field.controlIsRightOfInfo, `${field.key} control is not to the right`).toBe(true);
     expect(field.infoCentredOnControl, `${field.key} block is not centred`).toBeLessThanOrEqual(1);
     expect(field.controlWidth, `${field.key} control is starved`).toBeGreaterThan(90);
+  }
+});
+
+/* Measure the Avatar field as it is DRAWN: where the preview sits relative to
+ * the control row that owns it. */
+async function avatarGeometry(page) {
+  return page.locator('#view-settings .dp-settings-avatar-row').evaluate(row => {
+    const box = node => {
+      const r = node.getBoundingClientRect();
+      return {top: Math.round(r.top), bottom: Math.round(r.bottom),
+              left: Math.round(r.left), right: Math.round(r.right)};
+    };
+    const control = row.querySelector(':scope > .dp-settings-inline-field-control');
+    const action = row.querySelector(':scope > .dp-settings-inline-field-action');
+    const line = row.querySelector(':scope > .dp-settings-inline-field-second-line');
+    const preview = row.querySelector('#dp-settings-avatar-preview');
+    return {
+      control: box(control), action: box(action), line: box(line), preview: box(preview),
+      // The preview is the SECOND LINE's content, not the control's.
+      previewInSecondLine: line.contains(preview),
+      previewInsideControl: control.contains(preview),
+      rowWidth: Math.round(row.getBoundingClientRect().width),
+    };
+  });
+}
+
+/** Render the panel with a stored avatar, whatever was there before. */
+async function withStoredAvatar(page, before, url) {
+  await page.request.put('/api/settings', {data: {...before, discord_avatar_url: url}});
+  await page.reload();
+  await openSettings(page, 'notifications');
+  await expect(page.locator('#dp-settings-avatar-preview')).toBeVisible();
+}
+
+test('the avatar preview is a dedicated second line beneath the Avatar URL row', async ({page}) => {
+  const before = await canonical(page);
+
+  try {
+    await withStoredAvatar(page, before, 'https://example.com/a-fairly-long-avatar-name.png');
+
+    // Wide, wider, and the widest this layout is asked to serve: the preview is
+    // the row beneath the control at every one of them, because its place is
+    // declared rather than reached by running out of room.
+    for (const width of [1280, 1440, 1920, 2560]) {
+      await page.setViewportSize({width, height: 1000});
+      const g = await avatarGeometry(page);
+
+      expect(g.previewInSecondLine, `${width}px: preview is not the field's second line`).toBe(true);
+      expect(g.previewInsideControl, `${width}px: preview is inside the control box`).toBe(false);
+      // Structurally below: the whole preview clears the whole control row, and
+      // clears the Clear Avatar action beside it too. No shared line at any width.
+      expect(g.preview.top, `${width}px: preview shares the control's line`)
+        .toBeGreaterThanOrEqual(g.control.bottom);
+      expect(g.preview.top, `${width}px: preview shares the action's line`)
+        .toBeGreaterThanOrEqual(g.action.bottom);
+      // ... and beneath the control, not beneath the title block.
+      expect(g.line.left, `${width}px: second line is not under the control`)
+        .toBeGreaterThanOrEqual(g.control.left - 1);
+      // Upload stays INSIDE the field; Clear stays outside it, on the control's line.
+      const placement = await page.locator('#view-settings .dp-settings-avatar-row').evaluate(row => {
+        const input = row.querySelector('#dp-settings-field-discord-avatar-url');
+        const compound = input.closest('.dp-action-field');
+        const clear = row.querySelector('[data-action="clear-avatar"]');
+        const mid = node => { const b = node.getBoundingClientRect(); return b.y + b.height / 2; };
+        return {
+          uploadInsideField: !!compound.querySelector('[data-action="upload-avatar"]'),
+          clearOutsideField: !clear.closest('.dp-action-field'),
+          clearOnTheControlLine: Math.abs(mid(clear) - mid(compound)) < 2,
+        };
+      });
+      expect(placement, `${width}px`).toEqual({
+        uploadInsideField: true, clearOutsideField: true, clearOnTheControlLine: true,
+      });
+    }
+  } finally {
+    await page.setViewportSize({width: 1440, height: 1000});
+    await page.request.put('/api/settings', {data: {...before}});
+  }
+});
+
+test('the webhook row begins below the avatar preview, with room to breathe', async ({page}) => {
+  const before = await canonical(page);
+
+  try {
+    await withStoredAvatar(page, before, 'https://example.com/avatar.png');
+
+    const measured = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
+      const rect = selector => panel.querySelector(selector).getBoundingClientRect();
+      const identity = rect('.dp-settings-notifications-identity-row');
+      const delivery = rect('.dp-settings-notifications-delivery-row');
+      const preview = rect('#dp-settings-avatar-preview');
+      return {
+        // Row 1 is sized by its tallest field, so the preview is INSIDE it.
+        previewWithinRowOne: Math.round(identity.bottom - preview.bottom) >= 0,
+        gapBelowPreview: Math.round(delivery.top - preview.bottom),
+        gapBelowRowOne: Math.round(delivery.top - identity.bottom),
+        rails: [Math.round(identity.left), Math.round(identity.right),
+                Math.round(delivery.left), Math.round(delivery.right)],
+      };
+    });
+
+    expect(measured.previewWithinRowOne).toBe(true);
+    // Row 2 begins after ALL of row 1, and is not crowded against it.
+    expect(measured.gapBelowPreview).toBeGreaterThanOrEqual(32);
+    expect(measured.gapBelowRowOne).toBe(32);
+    // Both rows still begin and end on the same card-body rails.
+    expect(measured.rails[0]).toBe(measured.rails[2]);
+    expect(measured.rails[1]).toBe(measured.rails[3]);
+  } finally {
+    await page.request.put('/api/settings', {data: {...before}});
+  }
+});
+
+test('the report cadence and window are one centred bordered group, side by side', async ({page}) => {
+  await openSettings(page, 'notifications');
+
+  const measured = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
+    const group = panel.querySelector('.dp-settings-statistics-cadence-group');
+    const row = panel.querySelector('.dp-settings-statistics-reporting-row');
+    const field = key => panel.querySelector(`[data-setting="${key}"]`).closest('.dp-settings-inline-field');
+    const interval = field('stats_report_interval_hours');
+    const window_ = field('stats_report_window_hours');
+    const style = getComputedStyle(group);
+    const g = group.getBoundingClientRect();
+    const r = row.getBoundingClientRect();
+    const a = interval.getBoundingClientRect();
+    const b = window_.getBoundingClientRect();
+    // The control region is what carries the compact width: the number field
+    // shares its box with the `hours` unit, and the select with its projected
+    // listbox shell, so neither bare element is the measurement.
+    const controlWidth = key => Math.round(field(key)
+      .querySelector(':scope > .dp-settings-inline-field-control').getBoundingClientRect().width);
+    return {
+      // One wrapper holding exactly these two settings, and not the destination.
+      holdsBoth: group.contains(interval) && group.contains(window_),
+      holdsTheWebhook: !!group.querySelector('[data-setting="stats_report_webhook_url"]'),
+      fieldsInside: group.querySelectorAll('.dp-settings-inline-field').length,
+      // Centred in the card body: equal air either side, and narrower than the
+      // row it sits in rather than stretched across it.
+      leftAir: Math.round(g.left - r.left),
+      rightAir: Math.round(r.right - g.right),
+      narrowerThanTheRow: Math.round(r.width - g.width) > 0,
+      // Side by side on one line, separated by ONE moderate declared gap.
+      sameLine: Math.abs(Math.round(a.top - b.top)) <= 1,
+      between: Math.round(b.left - a.right),
+      // The distribution is centring, not space-between.
+      justifyContent: style.justifyContent,
+      flexDirection: style.flexDirection,
+      // A subtle single border, nothing decorative.
+      borderWidth: style.borderTopWidth,
+      borderStyle: style.borderTopStyle,
+      boxShadow: style.boxShadow,
+      // Compact widths, exactly as accepted.
+      intervalWidth: controlWidth('stats_report_interval_hours'),
+      windowWidth: controlWidth('stats_report_window_hours'),
+    };
+  });
+
+  expect(measured.holdsBoth).toBe(true);
+  expect(measured.holdsTheWebhook).toBe(false);
+  expect(measured.fieldsInside).toBe(2);
+
+  expect(measured.narrowerThanTheRow).toBe(true);
+  expect(Math.abs(measured.leftAir - measured.rightAir)).toBeLessThanOrEqual(1);
+  expect(measured.leftAir).toBeGreaterThan(0);
+
+  expect(measured.sameLine).toBe(true);
+  expect(measured.flexDirection).toBe('row');
+  expect(measured.justifyContent).toBe('center');
+  // Moderate: they neither touch nor sit half a viewport apart.
+  expect(measured.between).toBe(44);
+
+  expect(measured.borderWidth).toBe('1px');
+  expect(measured.borderStyle).toBe('solid');
+  expect(measured.boxShadow).toBe('none');
+
+  // Compact, and bounded by the ceiling the sheet declares -- not pinned to a
+  // measured constant, because both are font-sized.
+  for (const width of [measured.intervalWidth, measured.windowWidth]) {
+    expect(width).toBeLessThanOrEqual(170);
+    expect(width).toBeGreaterThan(90);
   }
 });
 

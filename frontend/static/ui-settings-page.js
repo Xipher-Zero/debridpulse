@@ -391,15 +391,20 @@
     // The SAME control, in whichever of the two Settings field grammars the
     // caller asked for. Nothing about the control -- its bounds, its commit
     // class, its identity -- differs between them.
+    //
+    // ``after`` is content INSIDE the control's own box -- the in-field status
+    // the AllDebrid credential carries. ``secondLine`` is the field's own
+    // second line, beneath the control row: a different place, so it is a
+    // different slot rather than the same string in a different mood.
     if (options.inline) {
       return inlineField(id, label, options.hint, control + (options.after || ''),
-        {className: options.className, action: options.action});
+        {className: options.className, action: options.action, secondLine: options.secondLine});
     }
     return `
       <div class="dp-settings-field">
         <label class="form-label" for="${id}">${html(label)}</label>
         ${control}
-        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}${options.after || ''}
+        ${options.hint ? `<span class="form-hint">${options.hint}</span>` : ''}${options.after || ''}${options.secondLine || ''}
       </div>`;
   }
 
@@ -486,20 +491,27 @@
     return `<div class="dp-action-field${className ? ` ${className}` : ''}">${control}${action}</div>`;
   }
 
-  function inlineField(id, label, hint, control, {className = '', action = ''} = {}) {
+  /* ``secondLine`` is content the field renders on a line of its OWN, beneath
+   * the title/control/action row: a preview of what a value resolves to is a
+   * second line of the field, not another item on the field's one line. It is a
+   * declared slot with a declared place, so the field is two rows whenever it
+   * carries one -- it never becomes two rows because a viewport ran out of room,
+   * and spare width can never pull it back up beside the control. */
+  function inlineField(id, label, hint, control, {className = '', action = '', secondLine = ''} = {}) {
     // A READING -- a derived count, a status value -- has no control to label,
     // so it takes the same grammar with a plain caption instead of a <label>.
     const title = id
       ? `<label class="form-label" for="${id}">${html(label)}</label>`
       : `<span class="form-label">${html(label)}</span>`;
     return `
-      <div class="dp-settings-inline-field${className ? ` ${className}` : ''}">
+      <div class="dp-settings-inline-field${secondLine ? ' dp-settings-inline-field--two-line' : ''}${className ? ` ${className}` : ''}">
         <div class="dp-settings-inline-field-info">
           ${title}
           ${hint ? `<span class="form-hint">${hint}</span>` : ''}
         </div>
         <div class="dp-settings-inline-field-control">${control}</div>${
-          action ? `<div class="dp-settings-inline-field-action">${action}</div>` : ''}
+          action ? `<div class="dp-settings-inline-field-action">${action}</div>` : ''}${
+          secondLine ? `<div class="dp-settings-inline-field-second-line">${secondLine}</div>` : ''}
       </div>`;
   }
 
@@ -1635,6 +1647,9 @@
                     data-action="clear-avatar" aria-label="Clear the Discord avatar"${
                       configured ? '' : ' disabled'}>Clear Avatar</button>`;
 
+  /* What the stored URL currently resolves to -- a reading, never a control. It
+   * belongs BENEATH the Avatar URL control row, so it is handed to the field's
+   * own second-line slot rather than dropped in beside the input. */
   const avatarPreview = url => `
             <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact"${
               url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : ''}</div>`;
@@ -1651,7 +1666,7 @@
           hint: 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
           embedAction: AVATAR_UPLOAD,
           controlClass: 'dp-settings-avatar-field-control',
-          after: avatarPreview(s.discord_avatar_url || ''),
+          secondLine: avatarPreview(s.discord_avatar_url || ''),
           inline: true,
           className: 'dp-settings-avatar-row',
           action: AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
@@ -1691,20 +1706,22 @@
     const reports = card('Statistics Reporting', `
       <div class="dp-settings-statistics-reporting-row">
         ${webhookField('stats_report_webhook_url', s.stats_report_webhook_url_configured)}
-        ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
-          type: 'number', min: 0, max: 168, step: 1,
-          hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
-          embedAction: fieldUnit('hours'),
-          controlClass: 'dp-settings-unit-field',
-          inline: true, className: 'dp-settings-report-interval-row',
-        })}
-        ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
-          [24, '24 hours'],
-          [168, '7 days'],
-          [720, '30 days'],
-          [8760, '1 year'],
-        ], 'Choose how much recent activity each statistics report includes.',
-          {inline: true, className: 'dp-settings-report-window-row'})}
+        <div class="dp-settings-statistics-cadence-group">
+          ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
+            type: 'number', min: 0, max: 168, step: 1,
+            hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
+            embedAction: fieldUnit('hours'),
+            controlClass: 'dp-settings-unit-field',
+            inline: true, className: 'dp-settings-report-interval-row',
+          })}
+          ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
+            [24, '24 hours'],
+            [168, '7 days'],
+            [720, '30 days'],
+            [8760, '1 year'],
+          ], 'Choose how much recent activity each statistics report includes.',
+            {inline: true, className: 'dp-settings-report-window-row'})}
+        </div>
       </div>
     `, {
       className: 'dp-settings-statistics-reporting-card',
