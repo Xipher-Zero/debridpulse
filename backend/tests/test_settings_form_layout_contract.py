@@ -86,6 +86,15 @@ def test_archive_password_editor_fills_remaining_extraction_card_height() -> Non
     assert "display: flex;" in password_field
     assert "flex-direction: column;" in password_field
 
-    editor = css.split(".dp-settings-extraction-password-editor {", 1)[1].split("}", 1)[0]
-    assert "flex: 1 1 auto;" in editor
-    assert "max-height: none;" in editor
+    # The chain ends at the FIELD. What the editor does with the height it is
+    # handed belongs to the editor's one geometry owner, so this layer states
+    # nothing about it -- and the chain's root is bounded to exactly the scroll
+    # viewport, which is what stops the card growing as passwords are added.
+    assert ".dp-settings-extraction-password-editor" not in css
+    panels = css.split('.dp-settings-scroll:has([data-panel="extraction"]:not([hidden])) .dp-settings-panels', 1)[1].split("}", 1)[0]
+    assert "min-height: 100%;" in panels
+    assert "max-height: 100%;" in panels
+
+    archive = (STATIC / "ui-settings-archive-passwords.css").read_text(encoding="utf-8")
+    editor = archive.split("#view-settings .dp-settings-extraction-password-editor {", 1)[1].split("}", 1)[0]
+    assert "max-height: min(58vh, 460px);" in editor

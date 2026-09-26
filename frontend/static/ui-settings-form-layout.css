@@ -17,8 +17,14 @@
   /* The Extraction panel owns the available Settings viewport height. The
      password editor then flexes into the remaining card body instead of ending
      at an arbitrary textarea-height cap and leaving a large dead area below. */
+  /* EXACTLY the scroll viewport, not merely at least it. `min-height` alone
+     let the flex chain below grow past the viewport as the password list grew,
+     which is the page growth the bounded editor exists to prevent; the editor
+     can only hand its region a finite height if the chain it hangs from has
+     one. Extraction is the only panel this applies to. */
   #view-settings .dp-settings-scroll:has([data-panel="extraction"]:not([hidden])) .dp-settings-panels {
     min-height: 100%;
+    max-height: 100%;
     display: flex;
     flex-direction: column;
   }
@@ -51,12 +57,10 @@
     display: flex;
     flex-direction: column;
   }
-
-  #view-settings .dp-settings-extraction-password-editor {
-    flex: 1 1 auto;
-    min-height: 118px;
-    max-height: none;
-  }
+  /* The chain ends at the FIELD. What the editor then does with the height it
+     is handed -- its bounded list region, its reserved footer row -- belongs to
+     the editor's one geometry owner (ui-settings-archive-passwords.css), which
+     states the matching `flex` there rather than here. */
 }
 
 /* ── The ONE canonical Settings field datum ───────────────────────────────

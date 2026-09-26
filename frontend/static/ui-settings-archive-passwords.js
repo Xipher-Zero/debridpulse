@@ -12,7 +12,19 @@
  * boundary is. A list edited across many line inputs has no single blur of its own, so
  * the boundary is focus leaving the editor -- and it is reported by calling the
  * canonical owner's own commit(). Baseline, dispatch, serialization, stale-response
- * protection and rollback all stay there; none of it is reimplemented here. */
+ * protection and rollback all stay there; none of it is reimplemented here.
+ *
+ * THIS MODULE IS ALSO THE ONE LAYOUT OWNER for the list region. Four decisions --
+ * rows per column, visible column count, overflow mode and separator geometry --
+ * are made HERE, from measured geometry, and expressed by setting the grid's two
+ * templates and the separators' offsets. The stylesheet owns material and the gaps
+ * this reads back; it states no count and no capacity, so the two cannot disagree.
+ *
+ * The model is fill-downward-first: entries fill a column top to bottom, then the
+ * next column to the right while another useful column still fits, and only once
+ * both are exhausted does the region itself scroll VERTICALLY with the column count
+ * held at its width-derived maximum. DOM order stays the logical password order, so
+ * the visual reflow never changes tab order. */
 (function(){
 'use strict';
 let rows=null,editorNode=null,sourceNode=null,keySerial=0,revealAll=false,activeKey=null,scheduled=false;
@@ -22,6 +34,9 @@ let hydratedSource=null,hydratedEditor=null,hydrationPromise=null,hydrationGener
  * owner sets it when it is about to re-render AND hand focus back, and clears
  * it once it has. Nothing else distinguishes them, because nothing else can. */
 let refocusing=false;
+// ONE observer for the whole page lifetime, and one coalescing frame. Re-applying
+// re-points the observer instead of adding another, so no rerender can accumulate them.
+let regionObserver=null,layoutFrame=0;
 const source=()=>document.querySelector('#view-settings [data-panel="extraction"] [data-setting="extraction_password"]');
 const editor=()=>document.querySelector('#view-settings [data-panel="extraction"] .dp-settings-extraction-password-editor');
 const nextKey=()=>`row:${keySerial++}`;
@@ -43,7 +58,111 @@ function focusKey(e,key){if(!e||!key){refocusing=false;return;}requestAnimationF
 function present(input,row,raw){if(!input||!row)return;input.type='text';input.dataset.passwordDisplay=raw?'raw':'masked';const next=raw?String(row.value||''):mask(row.value);if(input.value!==next)input.value=next;}
 function refreshPresentation(e){if(!e||!rows)return;e.querySelectorAll('.dp-settings-password-line').forEach(input=>{const row=rows.find(item=>item.key===input.dataset.passwordKey);if(row)present(input,row,revealAll||activeKey===row.key);});}
 function markDirty(){dirty=true;}
-function render(e,s,focus=null){if(!e||!s||!rows)return;refocusing=!!focus;normalize(rows);let host=e.querySelector('.dp-settings-password-rows');if(!host){host=document.createElement('div');host.className='dp-settings-password-rows';e.prepend(host);}host.replaceChildren();rows.forEach((row,index)=>{const input=document.createElement('input');input.className='dp-settings-password-line';input.type='text';input.dataset.passwordKey=row.key;input.dataset.passwordIndex=String(index);input.autocomplete='off';input.autocapitalize='none';input.spellcheck=false;input.setAttribute('aria-label',`Archive password ${index+1}`);if(index===rows.length-1&&!row.value)input.placeholder='Add an archive password';present(input,row,revealAll||activeKey===row.key);input.addEventListener('focus',()=>{input.dataset.passwordEditStart=row.value;activeKey=row.key;present(input,row,true);try{input.select();}catch(_){}});input.addEventListener('input',()=>{if(input.dataset.passwordDisplay!=='raw')return;markDirty();row.value=input.value;syncSource(s);if(index===rows.length-1&&row.value!==''){normalize(rows);activeKey=row.key;render(e,s,row.key);}});input.addEventListener('blur',()=>{if(input.dataset.passwordDisplay==='raw'){row.value=input.value;syncSource(s);}queueMicrotask(()=>{const i=rows.indexOf(row);if(i>=0&&i<rows.length-1&&String(row.value||'').trim()===''){markDirty();rows.splice(i,1);normalize(rows);activeKey=null;render(e,s);return;}if(document.activeElement?.closest('.dp-settings-extraction-password-editor')!==e&&!revealAll){activeKey=null;refreshPresentation(e);}});});input.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();row.value=input.dataset.passwordEditStart??row.value;input.value=row.value;syncSource(s);input.blur();return;}if(event.key==='Enter'){event.preventDefault();if(input.dataset.passwordDisplay==='raw'){row.value=input.value;syncSource(s);}markDirty();const inserted={key:nextKey(),value:''};rows.splice(index+1,0,inserted);normalize(rows);activeKey=inserted.key;render(e,s,inserted.key);return;}if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){const to=event.key==='ArrowUp'?index-1:index+1;if(to<0||to>=rows.length)return;event.preventDefault();if(input.dataset.passwordDisplay==='raw')row.value=input.value;markDirty();[rows[index],rows[to]]=[rows[to],rows[index]];activeKey=row.key;syncSource(s);render(e,s,row.key);}});input.addEventListener('paste',event=>{const pasted=event.clipboardData?.getData('text')||'';if(!/[\r\n]/.test(pasted))return;event.preventDefault();markDirty();const incoming=pasted.replace(/\r\n?/g,'\n').split('\n').map(value=>({key:nextKey(),value}));rows.splice(index,1,...incoming);normalize(rows);const target=incoming.at(-1);activeKey=target.key;syncSource(s);render(e,s,target.key);});host.appendChild(input);});const eye=e.querySelector('.dp-settings-password-eye');if(eye&&eye.dataset.dpArchiveOwner!=='1'){eye.dataset.dpArchiveOwner='1';eye.addEventListener('click',()=>{revealAll=!revealAll;if(!revealAll)activeKey=null;setEye(eye);refreshPresentation(e);});}setEye(eye);const clearAction=e.querySelector('.dp-settings-password-clear');if(clearAction)clearAction.disabled=serialized().length===0;if(e.dataset.dpArchiveOwner!=='1'){e.addEventListener('focusout',event=>{if(!event.relatedTarget||!e.contains(event.relatedTarget))commitSource();});}e.dataset.dpArchiveOwner='1';syncSource(s);if(focus)focusKey(e,focus);}
+
+/* ── The list layout owner ────────────────────────────────────────────────
+ *
+ * Everything here is derived from what is actually rendered: the canonical entry
+ * row's own height, the grid's own gaps, the region's own usable box and the
+ * minimum useful column width the stylesheet declares. No row count, column count
+ * or breakpoint is written down anywhere. */
+const region=e=>e?.querySelector('.dp-settings-password-region');
+const canvasOf=e=>e?.querySelector('.dp-settings-password-canvas');
+
+function geometry(host,grid){
+  const line=grid.querySelector('.dp-settings-password-line');
+  if(!line)return null;
+  const style=getComputedStyle(grid);
+  const g={
+    rowHeight:line.getBoundingClientRect().height,
+    rowGap:parseFloat(style.rowGap)||0,
+    columnGap:parseFloat(style.columnGap)||0,
+    minColumn:parseFloat(style.getPropertyValue('--dp-password-column-min'))||0,
+    available:host.clientHeight,
+    width:grid.clientWidth,
+  };
+  // A hidden panel measures zero. Nothing is laid out from that; the region's own
+  // observer brings us back the moment it has a box.
+  if(g.rowHeight<1||g.available<1||g.width<1||g.minColumn<1)return null;
+  return g;
+}
+
+/* One separator per visible inter-column gap, centred in the gap it belongs to.
+ * They are children of the canvas rather than of either column, so they are
+ * attached to neither, and they are rebuilt to the exact count every pass -- a
+ * narrower viewport leaves none behind. */
+function paintSeparators(canvas,columns,g){
+  const want=Math.max(0,columns-1);
+  let rules=Array.from(canvas.querySelectorAll('.dp-settings-password-separator'));
+  for(let i=rules.length;i>want;i-=1)rules[i-1].remove();
+  for(let i=rules.length;i<want;i+=1){
+    const rule=document.createElement('span');
+    rule.className='dp-settings-password-separator';
+    rule.setAttribute('aria-hidden','true');
+    canvas.appendChild(rule);
+  }
+  if(!want)return;
+  const columnWidth=(g.width-(columns-1)*g.columnGap)/columns;
+  canvas.querySelectorAll('.dp-settings-password-separator').forEach((rule,index)=>{
+    rule.style.left=`${(index+1)*columnWidth+(index+0.5)*g.columnGap}px`;
+  });
+}
+
+function layout(){
+  const e=editorNode;if(!e)return;
+  const host=region(e),canvas=canvasOf(e),grid=e.querySelector('.dp-settings-password-rows');
+  if(!host||!canvas||!grid)return;
+  const count=grid.childElementCount;
+  const g=count?geometry(host,grid):null;
+  if(!g){paintSeparators(canvas,1,{width:0,columnGap:0});return;}
+  // How many entries fit in one visible column, and how many useful columns fit
+  // across. A column is only added while a WHOLE further column and its gap fit.
+  const perColumn=Math.max(1,Math.floor((g.available+g.rowGap)/(g.rowHeight+g.rowGap)));
+  const maxColumns=Math.max(1,Math.floor((g.width+g.columnGap)/(g.minColumn+g.columnGap)));
+  const columns=Math.min(maxColumns,Math.max(1,Math.ceil(count/perColumn)));
+  // Fill downward FIRST: a column takes its full visible capacity before the next
+  // one starts. Only when every visible column is full do the columns grow taller
+  // than the region -- which is what makes the region, and nothing else, scroll.
+  const rows=Math.max(perColumn,Math.ceil(count/columns));
+  grid.style.gridTemplateRows=`repeat(${rows}, min-content)`;
+  grid.style.gridTemplateColumns=`repeat(${columns}, minmax(0, 1fr))`;
+  paintSeparators(canvas,columns,g);
+  centreGuidance(e);
+}
+
+/* The footer's leading spacer takes the action group's own measured width, so
+ * the guidance is centred on the editor rather than on whatever the flex
+ * algorithm left over. The stylesheet cannot know that width; this owner can,
+ * and it is the same kind of decision as the rest of this function. */
+function centreGuidance(e){
+  const footer=e.querySelector('.dp-settings-password-footer');
+  const actions=footer?.querySelector('.dp-settings-password-actions');
+  if(!footer||!actions)return;
+  const style=getComputedStyle(footer);
+  const controls=actions.getBoundingClientRect().width;
+  const gaps=(parseFloat(style.columnGap)||0)*2;
+  const floor=parseFloat(getComputedStyle(e).getPropertyValue('--dp-password-guidance-min'))||0;
+  if(controls<=0)return;
+  // Centring is worth having only while the hint still has room to read. Where
+  // it does not, the spacer gives way entirely rather than wrapping the hint
+  // into a column tall enough to consume the list region below it.
+  const affordable=footer.clientWidth-controls-gaps-floor;
+  footer.style.setProperty('--dp-password-lead',`${Math.max(0,Math.min(controls,affordable))}px`);
+}
+
+function scheduleLayout(){
+  if(layoutFrame)return;
+  layoutFrame=requestAnimationFrame(()=>{layoutFrame=0;layout();});
+}
+
+/* The region's own size is the only input that changes without a render, so it is
+ * the only thing observed -- not a timer, and not the document. */
+function observeRegion(e){
+  const host=region(e);if(!host)return;
+  if(!regionObserver)regionObserver=new ResizeObserver(()=>scheduleLayout());
+  regionObserver.disconnect();
+  regionObserver.observe(host);
+}
+function render(e,s,focus=null){if(!e||!s||!rows)return;refocusing=!!focus;normalize(rows);let host=e.querySelector('.dp-settings-password-rows');if(!host){host=document.createElement('div');host.className='dp-settings-password-rows';(canvasOf(e)||e).prepend(host);}host.replaceChildren();rows.forEach((row,index)=>{const input=document.createElement('input');input.className='dp-settings-password-line';input.type='text';input.dataset.passwordKey=row.key;input.dataset.passwordIndex=String(index);input.autocomplete='off';input.autocapitalize='none';input.spellcheck=false;input.setAttribute('aria-label',`Archive password ${index+1}`);if(index===rows.length-1&&!row.value)input.placeholder='Add an archive password';present(input,row,revealAll||activeKey===row.key);input.addEventListener('focus',()=>{input.dataset.passwordEditStart=row.value;activeKey=row.key;present(input,row,true);try{input.select();}catch(_){}});input.addEventListener('input',()=>{if(input.dataset.passwordDisplay!=='raw')return;markDirty();row.value=input.value;syncSource(s);if(index===rows.length-1&&row.value!==''){normalize(rows);activeKey=row.key;render(e,s,row.key);}});input.addEventListener('blur',()=>{if(input.dataset.passwordDisplay==='raw'){row.value=input.value;syncSource(s);}queueMicrotask(()=>{const i=rows.indexOf(row);if(i>=0&&i<rows.length-1&&String(row.value||'').trim()===''){markDirty();rows.splice(i,1);normalize(rows);activeKey=null;render(e,s);return;}if(document.activeElement?.closest('.dp-settings-extraction-password-editor')!==e&&!revealAll){activeKey=null;refreshPresentation(e);}});});input.addEventListener('keydown',event=>{if(event.key==='Escape'){event.preventDefault();row.value=input.dataset.passwordEditStart??row.value;input.value=row.value;syncSource(s);input.blur();return;}if(event.key==='Enter'){event.preventDefault();if(input.dataset.passwordDisplay==='raw'){row.value=input.value;syncSource(s);}markDirty();const inserted={key:nextKey(),value:''};rows.splice(index+1,0,inserted);normalize(rows);activeKey=inserted.key;render(e,s,inserted.key);return;}if(event.altKey&&(event.key==='ArrowUp'||event.key==='ArrowDown')){const to=event.key==='ArrowUp'?index-1:index+1;if(to<0||to>=rows.length)return;event.preventDefault();if(input.dataset.passwordDisplay==='raw')row.value=input.value;markDirty();[rows[index],rows[to]]=[rows[to],rows[index]];activeKey=row.key;syncSource(s);render(e,s,row.key);}});input.addEventListener('paste',event=>{const pasted=event.clipboardData?.getData('text')||'';if(!/[\r\n]/.test(pasted))return;event.preventDefault();markDirty();const incoming=pasted.replace(/\r\n?/g,'\n').split('\n').map(value=>({key:nextKey(),value}));rows.splice(index,1,...incoming);normalize(rows);const target=incoming.at(-1);activeKey=target.key;syncSource(s);render(e,s,target.key);});host.appendChild(input);});const eye=e.querySelector('.dp-settings-password-eye');if(eye&&eye.dataset.dpArchiveOwner!=='1'){eye.dataset.dpArchiveOwner='1';eye.addEventListener('click',()=>{revealAll=!revealAll;if(!revealAll)activeKey=null;setEye(eye);refreshPresentation(e);});}setEye(eye);const clearAction=e.querySelector('.dp-settings-password-clear');if(clearAction)clearAction.disabled=serialized().length===0;if(e.dataset.dpArchiveOwner!=='1'){e.addEventListener('focusout',event=>{if(!event.relatedTarget||!e.contains(event.relatedTarget))commitSource();});}e.dataset.dpArchiveOwner='1';syncSource(s);observeRegion(e);layout();if(focus)focusKey(e,focus);}
 function hydrate(s,e){if(!s||!e||typeof api!=='function')return null;if(hydratedSource===s&&hydratedEditor===e)return hydrationPromise;hydratedSource=s;hydratedEditor=e;hydrated=false;const generation=++hydrationGeneration,localAtStart=serialized(),dirtyAtStart=dirty;hydrationPromise=(async()=>{try{const payload=await api('GET','/settings/extraction-passwords');if(generation!==hydrationGeneration||source()!==s||editor()!==e)return;hydrated=true;const remote=canonical(payload?.passwords||'');acceptSource(remote);if(dirtyAtStart){if(dirty&&serialized()===localAtStart&&remote===localAtStart)dirty=false;return;}if(dirty)return;reset(s,e,remote);dirty=false;render(e,s);}catch(_){/* Existing source state remains the fallback if the narrow editor read is unavailable. */}finally{if(generation===hydrationGeneration)hydrationPromise=null;}})();return hydrationPromise;}
 function apply(){const s=source();if(!s)return;const e=editor();if(!e)return;const changed=e!==editorNode||s!==sourceNode||!rows;if(changed){const carried=rows?serialized():null,carriedDirty=dirty;reset(s,e,carried!==null?carried:String(s?.value||''));dirty=carriedDirty;render(e,s);}if(e.dataset.dpArchiveOwner!=='1')render(e,s);void hydrate(s,e);}
 function scheduleApply(){if(scheduled)return;scheduled=true;queueMicrotask(()=>{scheduled=false;apply();});}

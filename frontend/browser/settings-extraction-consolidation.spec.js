@@ -569,3 +569,395 @@ test('Download Location & Limits keeps one shared baseline at any text size',
       }
     }
   });
+
+
+/* ── Archive Passwords: the responsive column flow ────────────────────────
+ *
+ * DP 1.0.13. The list is a bounded, vertical-first packing surface: entries
+ * fill a column top to bottom, then the next column to the right while another
+ * useful column still fits, and only once BOTH are exhausted does the region
+ * itself scroll -- vertically, with the column count held at its width-derived
+ * maximum. The hint and the collection controls sit in a reserved footer row
+ * outside that scroll surface, and a subtle separator sits centred in each
+ * inter-column gap.
+ *
+ * Every number below is derived from what the page actually rendered -- the
+ * entry row's own height, the grid's own gaps -- so nothing here encodes a row
+ * count, a column count or a viewport.
+ *
+ * These cases live in THIS file, beside the rest of Extraction, because the
+ * suite shares one backend and its files run concurrently: `extraction_password`
+ * has exactly one owning spec file, and a second file seeding it would make
+ * both report failures against innocent code. */
+
+const EDITOR = '#view-settings .dp-settings-extraction-password-editor';
+
+async function seedPasswords(page, count) {
+  const list = Array.from({length: count},
+    (_, index) => `archive-password-${String(index + 1).padStart(3, '0')}`).join('\n');
+  const current = await canonical(page);
+  await page.request.put('/api/settings', {data: {
+    ...current,
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined, clear_secrets: [],
+    extraction_password: list,
+  }});
+}
+
+async function openExtraction(page) {
+  await page.goto('/');
+  await openSettings(page, 'extraction');
+  await expect(page.locator(`${EDITOR} .dp-settings-password-region`)).toBeVisible();
+  await expect.poll(() => page.evaluate(() => !!window.DPArchivePasswords?.hydrated)).toBe(true);
+  await settled(page);
+}
+
+/** Let the layout owner's next animation frame land. */
+const settled = page => page.evaluate(() => new Promise(resolve =>
+  requestAnimationFrame(() => requestAnimationFrame(resolve))));
+
+/** Everything this contract is about, measured from the rendered page. */
+const measure = page => page.evaluate(() => {
+  const editor = document.querySelector('#view-settings .dp-settings-extraction-password-editor');
+  const region = editor.querySelector('.dp-settings-password-region');
+  const canvas = editor.querySelector('.dp-settings-password-canvas');
+  const grid = editor.querySelector('.dp-settings-password-rows');
+  const footer = editor.querySelector('.dp-settings-password-footer');
+  const style = getComputedStyle(grid);
+  const lines = [...grid.querySelectorAll('.dp-settings-password-line')];
+  const separators = [...canvas.querySelectorAll('.dp-settings-password-separator')];
+  const canvasBox = canvas.getBoundingClientRect();
+  const box = node => node.getBoundingClientRect();
+  const columnGap = parseFloat(style.columnGap);
+  const rowGap = parseFloat(style.rowGap);
+  const minColumn = parseFloat(style.getPropertyValue('--dp-password-column-min'));
+  const xs = [...new Set(lines.map(line => Math.round(box(line).left)))].sort((a, b) => a - b);
+  const rowHeight = lines.length ? box(lines[0]).height : 0;
+  return {
+    entries: lines.length,
+    order: lines.map(line => line.getAttribute('aria-label')),
+    columnX: xs,
+    columns: xs.length,
+    // index of the first entry rendered in each column, in DOM order
+    columnStarts: xs.map(x => lines.findIndex(line => Math.round(box(line).left) === x)),
+    perColumn: xs.length > 1 ? lines.filter(l => Math.round(box(l).left) === xs[0]).length : lines.length,
+    rowHeight, rowGap, columnGap, minColumn,
+    columnWidth: lines.length ? Math.round(box(lines[0]).width) : 0,
+    regionHeight: region.clientHeight,
+    regionWidth: grid.clientWidth,
+    scrollsVertically: region.scrollHeight > region.clientHeight + 1,
+    scrollsHorizontally: region.scrollWidth > region.clientWidth + 1,
+    editorOverflowsX: editor.scrollWidth > editor.clientWidth + 1,
+    documentOverflowsX: document.scrollingElement.scrollWidth > window.innerWidth + 1,
+    separators: separators.length,
+    separatorCentres: separators.map(s => Math.round(box(s).left + box(s).width / 2 - canvasBox.left)),
+    separatorHeightRatio: separators.length
+      ? +(box(separators[0]).height / canvasBox.height).toFixed(2) : null,
+    separatorTopRatio: separators.length
+      ? +((box(separators[0]).top - canvasBox.top) / canvasBox.height).toFixed(2) : null,
+    separatorsAriaHidden: separators.every(s => s.getAttribute('aria-hidden') === 'true'),
+    footerInsideScrollRegion: region.contains(footer),
+    footerBelowRegion: box(footer).top >= box(region).bottom - 1,
+    footerWithinEditor: box(footer).bottom <= box(editor).bottom + 1,
+    /* An entry can only reach the footer if it is actually PAINTED there. The
+       region clips its own content, so what matters is each entry's visible
+       rect -- its box intersected with the region's -- against the footer. */
+    footerOverlapsAnyEntry: lines.some(line => {
+      const entry = box(line);
+      const clip = box(region);
+      const top = Math.max(entry.top, clip.top);
+      const bottom = Math.min(entry.bottom, clip.bottom);
+      if (bottom <= top) return false;               // entirely clipped away
+      const bar = box(footer);
+      return bottom > bar.top + 1 && top < bar.bottom - 1
+        && entry.right > bar.left + 1 && entry.left < bar.right - 1;
+    }),
+    /* ...which holds because the region CLIPS. An entry scrolled out of view
+       still has a box below the fold; what matters is that it is not painted
+       there, and that is a property of the region, not of the entry. */
+    regionClips: getComputedStyle(region).overflowY,
+    regionClipsX: getComputedStyle(region).overflowX,
+    // the footer's own members, and whether any of them is overlapped
+    guidanceRight: Math.round(box(footer.querySelector('.dp-settings-password-guidance')).right),
+    actionsLeft: Math.round(box(footer.querySelector('.dp-settings-password-actions')).left),
+    clearLeft: Math.round(box(footer.querySelector('.dp-settings-password-clear')).left),
+    settingsScrollHeight: document.querySelector('#view-settings .dp-settings-scroll').scrollHeight,
+  };
+});
+
+
+test.afterAll(async ({browser}) => {
+  const page = await browser.newPage();
+  const current = await page.request.get('/api/settings').then(r => r.json());
+  await page.request.put('/api/settings', {data: {
+    ...current,
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined,
+    clear_secrets: ['extraction_password'], extraction_password: '',
+  }});
+  await page.close();
+});
+
+// --- flow ------------------------------------------------------------------
+
+test('a short list is one column that fills downward, with no separator',
+  async ({page}) => {
+    await seedPasswords(page, 4);
+    await openExtraction(page);
+    const m = await measure(page);
+    expect(m.columns).toBe(1);
+    expect(m.separators).toBe(0);
+    expect(m.scrollsVertically).toBe(false);
+    expect(m.scrollsHorizontally).toBe(false);
+  });
+
+test('a column takes its full visible capacity before the next one starts',
+  async ({page}) => {
+    // Enough to need a second column at any sane height, not enough to scroll.
+    await seedPasswords(page, 24);
+    await openExtraction(page);
+    const m = await measure(page);
+    expect(m.columns).toBeGreaterThan(1);
+
+    // Visible vertical capacity, derived the same way the owner derives it.
+    const capacity = Math.floor((m.regionHeight + m.rowGap) / (m.rowHeight + m.rowGap));
+    // Column one holds exactly that, and column two begins at that DOM index --
+    // which is what "fills downward first" means, as opposed to balancing.
+    expect(m.perColumn).toBe(capacity);
+    expect(m.columnStarts[0]).toBe(0);
+    expect(m.columnStarts[1]).toBe(capacity);
+    expect(m.scrollsVertically).toBe(false);
+  });
+
+test('columns are added only while another useful column still fits',
+  async ({page}) => {
+    await seedPasswords(page, 400);
+    await openExtraction(page);
+    const m = await measure(page);
+    // The width-derived ceiling, computed from the same two numbers the owner uses.
+    const ceiling = Math.floor((m.regionWidth + m.columnGap) / (m.minColumn + m.columnGap));
+    expect(m.columns).toBe(ceiling);
+    expect(m.columnWidth).toBeGreaterThanOrEqual(m.minColumn - 1);
+    // One more column plus its gap demonstrably does not fit.
+    expect((m.columns + 1) * m.minColumn + m.columns * m.columnGap)
+      .toBeGreaterThan(m.regionWidth);
+  });
+
+// --- width -----------------------------------------------------------------
+
+test('no horizontal scrollbar and no off-screen column, at any list size',
+  async ({page}) => {
+    for (const count of [4, 24, 400]) {
+      await seedPasswords(page, count);
+      await openExtraction(page);
+      const m = await measure(page);
+      expect(m.scrollsHorizontally, `${count}`).toBe(false);
+      expect(m.editorOverflowsX, `${count}`).toBe(false);
+      expect(m.documentOverflowsX, `${count}`).toBe(false);
+      // Every rendered column starts inside the grid's own width.
+      for (const x of m.columnX) {
+        expect(x - m.columnX[0], `${count}`).toBeLessThan(m.regionWidth);
+      }
+    }
+  });
+
+// --- footer ----------------------------------------------------------------
+
+test('the footer is structurally reserved and never covered, however long the list',
+  async ({page}) => {
+    for (const count of [4, 400]) {
+      await seedPasswords(page, count);
+      await openExtraction(page);
+      const m = await measure(page);
+      expect(m.footerInsideScrollRegion, `${count}`).toBe(false);
+      expect(m.footerBelowRegion, `${count}`).toBe(true);
+      expect(m.footerWithinEditor, `${count}`).toBe(true);
+      expect(m.footerOverlapsAnyEntry, `${count}`).toBe(false);
+      expect(['auto', 'scroll'], `${count}`).toContain(m.regionClips);
+      expect(m.regionClipsX, `${count}`).toBe('hidden');
+      // The hint and the controls do not overlap each other either.
+      expect(m.actionsLeft, `${count}`).toBeGreaterThanOrEqual(m.guidanceRight);
+      expect(m.clearLeft, `${count}`).toBeGreaterThanOrEqual(m.actionsLeft);
+      // All three stay operable while the region scrolls.
+      await expect(page.locator(`${EDITOR} .dp-settings-password-clear`)).toBeVisible();
+      await expect(page.locator(`${EDITOR} .dp-settings-password-eye`)).toBeVisible();
+      await expect(page.locator(`${EDITOR} .dp-settings-password-guidance`)).toBeVisible();
+    }
+  });
+
+test('scrolling the region to the bottom leaves the footer exactly where it was',
+  async ({page}) => {
+    await seedPasswords(page, 400);
+    await openExtraction(page);
+    const before = await measure(page);
+    expect(before.scrollsVertically).toBe(true);
+    await page.locator(`${EDITOR} .dp-settings-password-region`)
+      .evaluate(node => { node.scrollTop = node.scrollHeight; });
+    await settled(page);
+    const after = await measure(page);
+    expect(after.footerBelowRegion).toBe(true);
+    expect(after.footerOverlapsAnyEntry).toBe(false);
+    expect(after.guidanceRight).toBe(before.guidanceRight);
+  });
+
+// --- overflow --------------------------------------------------------------
+
+test('internal scrolling begins only after vertical AND horizontal capacity are full',
+  async ({page}) => {
+    await seedPasswords(page, 24);
+    await openExtraction(page);
+    const few = await measure(page);
+    expect(few.scrollsVertically).toBe(false);   // a spare column still exists
+
+    await seedPasswords(page, 400);
+    await openExtraction(page);
+    const many = await measure(page);
+    const ceiling = Math.floor((many.regionWidth + many.columnGap) / (many.minColumn + many.columnGap));
+    const capacity = Math.floor((many.regionHeight + many.rowGap) / (many.rowHeight + many.rowGap));
+    expect(many.columns).toBe(ceiling);
+    expect(many.entries).toBeGreaterThan(ceiling * capacity);   // both are exhausted
+    expect(many.scrollsVertically).toBe(true);
+    expect(many.scrollsHorizontally).toBe(false);
+  });
+
+test('the Settings surface stops growing once the region is full', async ({page}) => {
+  await seedPasswords(page, 24);
+  await openExtraction(page);
+  const modest = await measure(page);
+  await seedPasswords(page, 400);
+  await openExtraction(page);
+  const huge = await measure(page);
+  // Sixteen times the passwords, and the page is no taller.
+  expect(huge.settingsScrollHeight).toBe(modest.settingsScrollHeight);
+});
+
+// --- separators ------------------------------------------------------------
+
+test('one separator per visible gap, centred in it, shortened and centred vertically',
+  async ({page}) => {
+    await seedPasswords(page, 400);
+    await openExtraction(page);
+    const m = await measure(page);
+    expect(m.separators).toBe(m.columns - 1);
+    expect(m.separatorsAriaHidden).toBe(true);
+    // Deliberately not edge to edge: about four fifths of the list, centred.
+    expect(m.separatorHeightRatio).toBeGreaterThan(0.75);
+    expect(m.separatorHeightRatio).toBeLessThan(0.85);
+    expect(m.separatorTopRatio).toBeGreaterThan(0.05);
+    expect(m.separatorTopRatio).toBeLessThan(0.15);
+    // Each one sits on the centre line of the gap it belongs to, which is
+    // derived from the column width and the gap rather than asserted as pixels.
+    const columnWidth = (m.regionWidth - (m.columns - 1) * m.columnGap) / m.columns;
+    m.separatorCentres.forEach((centre, index) => {
+      const expected = (index + 1) * columnWidth + (index + 0.5) * m.columnGap;
+      expect(Math.abs(centre - expected), `gap ${index + 1}`).toBeLessThanOrEqual(1.5);
+    });
+  });
+
+// --- responsive reflow -----------------------------------------------------
+
+test('narrowing the viewport drops columns and separators together, with no overflow',
+  async ({page}) => {
+    await seedPasswords(page, 400);
+    await openExtraction(page);
+    const wide = await measure(page);
+    expect(wide.columns).toBeGreaterThan(1);
+
+    await page.setViewportSize({width: 900, height: 1000});
+    await settled(page);
+    await settled(page);
+    const narrow = await measure(page);
+    expect(narrow.columns).toBeLessThan(wide.columns);
+    expect(narrow.separators).toBe(narrow.columns - 1);
+    expect(narrow.columnWidth).toBeGreaterThanOrEqual(narrow.minColumn - 1);
+    expect(narrow.scrollsHorizontally).toBe(false);
+    expect(narrow.documentOverflowsX).toBe(false);
+
+    // Widening again restores them, and leaves no stale separator behind.
+    await page.setViewportSize({width: 1440, height: 1000});
+    await settled(page);
+    await settled(page);
+    const restored = await measure(page);
+    expect(restored.columns).toBe(wide.columns);
+    expect(restored.separators).toBe(wide.columns - 1);
+  });
+
+test('a taller viewport raises row capacity and can retire the scrollbar',
+  async ({page}) => {
+    await page.setViewportSize({width: 1440, height: 760});
+    await seedPasswords(page, 24);
+    await openExtraction(page);
+    const short = await measure(page);
+
+    await page.setViewportSize({width: 1440, height: 1400});
+    await settled(page);
+    await settled(page);
+    const tall = await measure(page);
+    // More height, more rows per column -- derived, never a fixed number.
+    expect(tall.perColumn).toBeGreaterThan(short.perColumn);
+    expect(tall.scrollsVertically).toBe(false);
+  });
+
+test('logical password order is stable across every reflow', async ({page}) => {
+  await seedPasswords(page, 400);
+  await openExtraction(page);
+  const wide = await measure(page);
+  await page.setViewportSize({width: 900, height: 1000});
+  await settled(page);
+  const narrow = await measure(page);
+  await page.setViewportSize({width: 1440, height: 1400});
+  await settled(page);
+  const tall = await measure(page);
+  // DOM order IS the logical order, so tab order follows it too.
+  expect(narrow.order).toEqual(wide.order);
+  expect(tall.order).toEqual(wide.order);
+  expect(wide.order.slice(0, 3)).toEqual(
+    ['Archive password 1', 'Archive password 2', 'Archive password 3']);
+});
+
+test('reflow creates no duplicate entry controls and no duplicate observers',
+  async ({page}) => {
+    await seedPasswords(page, 24);
+    await openExtraction(page);
+    const before = await measure(page);
+    for (const [width, height] of [[1100, 900], [900, 1200], [1440, 1000]]) {
+      await page.setViewportSize({width, height});
+      await settled(page);
+    }
+    await settled(page);
+    const after = await measure(page);
+    // One control per password, still, and exactly one of each footer control.
+    expect(after.entries).toBe(before.entries);
+    expect(after.order).toEqual(before.order);
+    for (const selector of ['.dp-settings-password-clear', '.dp-settings-password-eye',
+                            '.dp-settings-password-guidance', '.dp-settings-password-region',
+                            '.dp-settings-password-canvas', '.dp-settings-password-rows']) {
+      await expect(page.locator(`${EDITOR} ${selector}`)).toHaveCount(1);
+    }
+    // Separators are rebuilt to the exact count, never accumulated.
+    expect(after.separators).toBe(after.columns - 1);
+  });
+
+// --- the add slot and existing behaviour -----------------------------------
+
+test('Add Archive Password is the next slot in the same flow, not a pinned row',
+  async ({page}) => {
+    await seedPasswords(page, 24);
+    await openExtraction(page);
+    const m = await measure(page);
+    const placeholder = await page.locator(`${EDITOR} .dp-settings-password-line[placeholder]`)
+      .evaluate(node => ({
+        placeholder: node.placeholder,
+        index: [...node.parentElement.children].indexOf(node),
+        left: Math.round(node.getBoundingClientRect().left),
+      }));
+    expect(placeholder.placeholder).toBe('Add an archive password');
+    // It is the LAST slot in the packing flow, in whichever column that lands.
+    expect(placeholder.index).toBe(m.entries - 1);
+    expect(m.columnX).toContain(placeholder.left);
+    // ...and it is a real, keyboard-reachable control.
+    await page.locator(`${EDITOR} .dp-settings-password-line[placeholder]`).focus();
+    await expect(page.locator(`${EDITOR} .dp-settings-password-line[placeholder]`)).toBeFocused();
+  });

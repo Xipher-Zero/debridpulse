@@ -441,10 +441,19 @@
       </div>`;
   }
 
-  // The archive-password field is rendered complete: the form-field textarea that
-  // carries the persisted value (hidden from assistive tech and the tab order), the
-  // editor container the ui-settings-archive-passwords owner fills, its reveal button
-  // and the hint. The owner adds behavior only.
+  /* The archive-password field is rendered complete: the form-field textarea that
+   * carries the persisted value (hidden from assistive tech and the tab order), the
+   * editor container the ui-settings-archive-passwords owner fills, its reveal button
+   * and the hint. The owner adds behavior and layout only.
+   *
+   * The editor is TWO structural regions, and that is what keeps the controls
+   * usable at any password count: a bounded, scrollable list region, and a
+   * footer row that is its SIBLING rather than something floated over it. The
+   * footer therefore occupies real space the list can never take, is never
+   * overlapped, and stays put while the region scrolls -- no absolute band and
+   * no reserved bottom padding standing in for its height. The canvas inside
+   * the region is the positioning context for the column separators, which are
+   * decorative and belong to the gaps rather than to any column. */
   function archivePasswordField(configured) {
     const id = fieldId('extraction_password');
     const placeholder = configured ? 'Stored password list configured — blank keeps it' : 'Optional archive passwords';
@@ -452,7 +461,7 @@
       <div class="dp-settings-field dp-settings-extraction-password-field">
         <label class="form-label" for="${id}">Archive Passwords (one per line)</label>
         <textarea class="input dp-settings-extraction-password-source" id="${id}" data-setting="extraction_password" rows="4" placeholder="${html(placeholder)}" aria-hidden="true" tabindex="-1" ${commitAttributes('extraction_password')}></textarea>
-        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-rows"></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true">One password per line. Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
+        <div class="input dp-settings-extraction-password-editor" role="group" aria-label="Archive passwords"><div class="dp-settings-password-region"><div class="dp-settings-password-canvas"><div class="dp-settings-password-rows"></div></div></div><div class="dp-settings-password-footer"><p class="form-hint dp-settings-password-guidance" aria-hidden="true">One password per line. Passwords are saved as you finish editing. Use Show all to reveal them, and Clear Passwords to erase the stored list.</p><div class="dp-settings-password-actions"><button type="button" class="btn btn-danger btn-sm dp-settings-password-clear" data-action="clear-archive-passwords" aria-label="Clear the stored archive passwords">Clear Passwords</button><button type="button" class="dp-settings-password-eye"></button></div></div></div>
       </div>`;
   }
 

@@ -41,13 +41,25 @@ def test_archive_password_editor_uses_click_reveal_and_line_editing() -> None:
     # now a true no-op, exactly as browsers already do for empty inputs.
     assert "Backspace" not in archive
     compact = css.replace(" ", "")
-    assert "max-height:none!important" in compact
-    assert "overflow:visible!important" in compact
-    # The editor reserves bottom room for its own footer -- the bottom-centred
-    # guidance beside the Clear Passwords / Show all controls -- so editable
-    # password content can never collide with either.
-    assert "padding:8px11px68px!important" in compact
-    assert "box-shadow:var(--dp-focus-ring)!important" in compact
+    assert "box-shadow:var(--dp-focus-ring)" in compact
+    # DP 1.0.13 responsive column flow: the editor is two structural regions --
+    # a bounded, vertically scrolling list region and a footer row that is its
+    # SIBLING. The footer therefore occupies space the list cannot take, which
+    # is what replaced the absolute band plus 68px of reserved bottom padding;
+    # neither that reserved constant nor the `overflow: visible` that let the
+    # card grow without limit may come back.
+    assert "padding:8px11px68px" not in compact
+    assert "overflow:visible" not in compact
+    editor = css.split("#view-settings .dp-settings-extraction-password-editor {", 1)[1].split("}", 1)[0]
+    assert "display: flex;" in editor
+    assert "flex-direction: column;" in editor
+    assert "overflow: hidden;" in editor
+    region = css.split("#view-settings .dp-settings-password-region {", 1)[1].split("}", 1)[0]
+    assert "overflow-y: auto;" in region
+    assert "overflow-x: hidden;" in region
+    footer = css.split("#view-settings .dp-settings-password-footer {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto;" in footer
+    assert "position: absolute" not in footer
 
 
 def test_archive_password_editor_is_the_sole_owner() -> None:
@@ -128,3 +140,95 @@ def test_archive_passwords_never_commit_before_the_stored_list_is_read() -> None
     merge = routes.split("def _merge_secret_settings", 1)[1].split("\n\n", 1)[0]
     assert 'if str(merged.get(field) or "").strip():' in merge
     assert merge.index('if str(merged.get(field) or "").strip():') < merge.index("if field in requested_clears:")
+
+
+def test_the_password_list_has_exactly_one_layout_owner() -> None:
+    """DP 1.0.13 responsive column flow.
+
+    Four decisions -- rows per column, visible column count, overflow mode and
+    separator offsets -- are made in ONE place, from measured geometry. The
+    stylesheet states material and the two gaps that owner reads back; it
+    states no count. Two other stylesheets used to state the editor's geometry
+    as well, and disagreed with this one through `!important`; neither may
+    describe it again.
+    """
+    archive_js = read("frontend/static/ui-settings-archive-passwords.js")
+    archive_css = read("frontend/static/ui-settings-archive-passwords.css")
+    completion = read("frontend/static/ui-settings-downloads-completion.css")
+    layout = read("frontend/static/ui-settings-form-layout.css")
+
+    for owned in ("dp-settings-password-region", "dp-settings-password-canvas",
+                  "dp-settings-password-rows", "dp-settings-password-footer",
+                  "dp-settings-password-separator", "dp-settings-password-line",
+                  "dp-settings-extraction-password-editor"):
+        assert owned in archive_css, owned
+        assert owned not in layout, f"{owned} is stated twice (form-layout)"
+    for owned in ("dp-settings-password-region", "dp-settings-password-canvas",
+                  "dp-settings-password-rows", "dp-settings-password-footer",
+                  "dp-settings-password-separator", "dp-settings-password-line",
+                  "dp-settings-extraction-password-editor {"):
+        assert owned not in completion, f"{owned} is stated twice (downloads-completion)"
+
+    # The capacity decisions, and only they, live in the JS owner.
+    for decision in ("const perColumn=", "const maxColumns=", "const columns=", "const rows="):
+        assert decision in archive_js, decision
+    assert "gridTemplateRows" in archive_js and "gridTemplateColumns" in archive_js
+    # ...and the stylesheet names neither count.
+    assert "grid-template-rows: repeat(1, min-content);" in archive_css   # the inert default
+    assert "grid-auto-flow: column;" in archive_css                       # vertical-first fill
+
+
+def test_row_and_column_capacity_are_measured_never_written_down() -> None:
+    """No row count, no column count and no breakpoint standing in for one."""
+    archive_js = read("frontend/static/ui-settings-archive-passwords.js")
+
+    # Capacity comes from the rendered entry row, the grid's own gaps, the
+    # region's own box and the declared minimum useful column width.
+    for measured in ("line.getBoundingClientRect().height", "parseFloat(style.rowGap)",
+                     "parseFloat(style.columnGap)", "--dp-password-column-min",
+                     "host.clientHeight", "grid.clientWidth"):
+        assert measured in archive_js, measured
+    # The two capacities are floors of real geometry, not constants.
+    assert "Math.floor((g.available+g.rowGap)/(g.rowHeight+g.rowGap))" in archive_js
+    assert "Math.floor((g.width+g.columnGap)/(g.minColumn+g.columnGap))" in archive_js
+    # A fixed per-column row count -- the observed ~15 -- appears nowhere.
+    assert "15" not in archive_js.replace("0.15", "")
+
+
+def test_reflow_is_observed_once_and_separators_are_decorative() -> None:
+    archive_js = read("frontend/static/ui-settings-archive-passwords.js")
+
+    # ONE observer for the page's lifetime: re-applying re-points it rather
+    # than adding another, so no rerender can accumulate them.
+    assert archive_js.count("new ResizeObserver(") == 1
+    assert "regionObserver.disconnect();" in archive_js
+    assert "regionObserver.observe(host);" in archive_js
+    # Coalesced on a frame, never polled.
+    assert "requestAnimationFrame(()=>{layoutFrame=0;layout();})" in archive_js
+    assert "setInterval" not in archive_js
+
+    # Separators track the visible column count exactly, and leave nothing behind.
+    assert "const want=Math.max(0,columns-1);" in archive_js
+    assert "rules[i-1].remove();" in archive_js
+    assert "rule.setAttribute('aria-hidden','true');" in archive_js
+
+
+def test_the_footer_is_a_sibling_of_the_scroll_region_not_an_overlay() -> None:
+    """Structurally reserved: the hint and the collection controls occupy real
+    space the list cannot take, rather than being floated over it."""
+    page = read("frontend/static/ui-settings-page.js")
+    archive_css = read("frontend/static/ui-settings-archive-passwords.css")
+
+    editor = page.split('class="input dp-settings-extraction-password-editor"', 1)[1].split("</div>\n", 1)[0]
+    assert editor.index('dp-settings-password-region') < editor.index('dp-settings-password-footer')
+    assert 'dp-settings-password-canvas' in editor
+    # The footer is NOT inside the region.
+    region_markup = editor.split('dp-settings-password-region', 1)[1].split('dp-settings-password-footer', 1)[0]
+    assert 'dp-settings-password-clear' not in region_markup
+    assert 'dp-settings-password-eye' not in region_markup
+    assert 'dp-settings-password-guidance' not in region_markup
+
+    footer = archive_css.split("#view-settings .dp-settings-password-footer {", 1)[1].split("}", 1)[0]
+    assert "flex: 0 0 auto;" in footer
+    for overlay in ("position: absolute", "position: fixed", "z-index"):
+        assert overlay not in footer, overlay
