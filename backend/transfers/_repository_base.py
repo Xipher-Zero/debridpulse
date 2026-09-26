@@ -1943,8 +1943,12 @@ class TransferRepository:
             parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
             if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return
+            missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
+            identities = [uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
+                          for entry in entries]
+            await self._retire_superseded_children(db, record, identities, missing_error)
             for ordinal, entry in enumerate(entries):
-                identity = uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
+                identity = identities[ordinal]
                 await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata,materialized_selection_id)
                     VALUES(?,?,?,?,?,?,?)""",
                     (identity, record.transfer_id, record.id, ordinal, codec.dump(entry.request), codec.dump(entry), selection_id))
@@ -1980,13 +1984,96 @@ class TransferRepository:
                 await db.execute("""UPDATE transfer_requests SET payload=?,metadata=?,state=CASE WHEN state='waiting_parent' THEN 'pending' ELSE state END,
                     materialized_selection_id=COALESCE(?,materialized_selection_id)
                     WHERE id=?""", (codec.dump(entry.request), codec.dump(entry), advance_selection_id, identity))
-            missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
-            missing = await db.fetchall("SELECT id FROM transfer_requests WHERE parent_id=? AND state='waiting_parent'", (record.id,))
-            for child in missing:
-                await db.execute("UPDATE transfer_requests SET state='failed',error=? WHERE id=?", (codec.dump(missing_error), child["id"]))
-                await db.execute("UPDATE download_files SET status='error',normalized_error=? WHERE request_id=? AND status!='completed'", (codec.dump(missing_error), child["id"]))
             await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=?", (record.id,))
             await db.commit()
+
+    @staticmethod
+    async def _retire_superseded_children(db, record: RequestRecord, identities: list[str],
+                                          missing_error: NormalizedError) -> None:
+        """Make the supplied entries authoritative for this parent's child slots.
+
+        A member's canonical identity is ``uuid5(parent, relative_path)``, so a
+        provider that changes a member's canonical coordinate publishes a
+        DIFFERENT logical child -- and the child the previous acquisition
+        generation created is no longer part of current manifest truth. Two
+        things follow, and this method owns both:
+
+        * that child is retired. A child the manifest never delivered at all
+          is still a genuine ``SOURCE_NOT_FOUND`` failure, exactly as before.
+          A child a PREVIOUS generation established is not a failure -- it was
+          superseded -- so it takes the state the architecture already has for
+          "retained, readable as history, but not part of current work":
+          ``skipped``/``blocked``. That keeps it out of lifecycle aggregation,
+          presentation voting and recovery eligibility
+          (``canonical_artifact_membership_sql``) without inventing a status,
+          and without a superseded coordinate failing a transfer that is
+          converging perfectly well on its current one. Its row, its artifact,
+          its execution attempts and all of its provenance remain untouched as
+          history; only its state and its slot change.
+        * it RELEASES its ordinal. ``transfer_requests`` is keyed
+          ``UNIQUE(transfer_id,parent_id,ordinal)``, and the fan-out below
+          inserts the current entries at ordinals ``0..n-1``. A superseded
+          child sitting in one of those slots therefore made the current
+          member's ``INSERT OR IGNORE`` a silent no-op: the current generation
+          could never establish its own children, and the transfer churned
+          against coordinates no current manifest contains. Ordinal is a slot
+          index used only for ordering, never provenance, so retired children
+          are simply moved above the current range -- history sorts after
+          current work and can never collide with it again.
+
+        A child holding a LIVE execution is left entirely alone -- not retired,
+        and its slot not taken. Cancelling a native writer needs the executor,
+        which this pure-repository method does not hold; the existing canonical
+        STALE-retirement machinery (``ConvergenceEngine._retire_stale_execution``)
+        does that on the next dispatch/recovery pass, and the following
+        manifest pass then completes the fan-out. This is the same handshake
+        the generation-advance branch above already relies on.
+
+        Nothing here inspects a path. Membership of the current generation is
+        decided by identity alone, so this converges any superseded coordinate
+        model rather than one historical path shape.
+        """
+        existing = await db.fetchall(
+            "SELECT id,ordinal FROM transfer_requests WHERE parent_id=? ORDER BY ordinal,id", (record.id,))
+        current = set(identities)
+        superseded = [child for child in existing if child["id"] not in current]
+        if not superseded:
+            return
+        highest = max([int(child["ordinal"] or 0) for child in existing] + [len(identities) - 1])
+        for child in superseded:
+            live = await db.fetchone(
+                """SELECT f.id FROM download_files f JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                    WHERE f.request_id=? AND e.state IN ('prepared','queued','running','paused','unknown')""",
+                (child["id"],))
+            if live:
+                continue
+            established = await db.fetchone(
+                "SELECT id FROM download_files WHERE request_id=?", (child["id"],))
+            if not established:
+                # Never established: the manifest simply does not contain a
+                # member this transfer was waiting for. (State is not the
+                # discriminator -- ``renew_parent`` puts an ESTABLISHED child
+                # back into ``waiting_parent`` on the reacquisition path, so
+                # only the presence of a durable artifact distinguishes a
+                # member a previous generation actually built.)
+                await db.execute("UPDATE transfer_requests SET state='failed',error=? WHERE id=?",
+                                 (codec.dump(missing_error), child["id"]))
+                await db.execute(
+                    "UPDATE download_files SET status='error',normalized_error=? WHERE request_id=? AND status!='completed'",
+                    (codec.dump(missing_error), child["id"]))
+            else:
+                # Established by a previous generation and superseded by this
+                # one. Generic and generation-oriented: it names what happened
+                # to the member, never why a particular coordinate moved.
+                await db.execute("UPDATE transfer_requests SET state='skipped',error=NULL WHERE id=?", (child["id"],))
+                await db.execute(
+                    """UPDATE download_files SET blocked=1,block_reason='superseded_generation',
+                        status=CASE WHEN status='completed' THEN status ELSE 'blocked' END,
+                        normalized_error=NULL,updated_at=CURRENT_TIMESTAMP WHERE request_id=?""",
+                    (child["id"],))
+            if int(child["ordinal"] or 0) < len(identities):
+                highest += 1
+                await db.execute("UPDATE transfer_requests SET ordinal=? WHERE id=?", (highest, child["id"]))
 
     async def resource_observation(self, transfer_id: int, resource: ProviderResource, state: ResourceState):
         async with get_db() as db:
@@ -2004,10 +2091,20 @@ class TransferRepository:
                 return None
             previous = await db.fetchone("SELECT id FROM download_files WHERE request_id=?", (record.id,))
             if previous:
+                # ``target`` is the coordinate the caller derived from CURRENT
+                # canonical truth. It is applied under exactly the condition
+                # this row is already re-queued under -- released to
+                # ``unresolved`` holding no execution pointer -- so rebuilding
+                # a member's executable state and moving it to its current
+                # coordinate are one act, evaluated once, in one transaction.
+                # A completed artifact, or one an authorized writer still owns,
+                # keeps both its status and its target: there is no path by
+                # which a live writer can be retargeted underneath itself.
                 await db.execute("""UPDATE download_files SET candidates=?,selected_candidate=0,
                     size_bytes=?,normalized_error=NULL,
+                    local_path=CASE WHEN status='unresolved' AND execution_attempt_id IS NULL THEN ? ELSE local_path END,
                     status=CASE WHEN status='unresolved' AND execution_attempt_id IS NULL THEN 'queued' ELSE status END
-                    WHERE id=?""", (codec.dump(candidates), chosen.expected_bytes, previous["id"]))
+                    WHERE id=?""", (codec.dump(candidates), chosen.expected_bytes, target, previous["id"]))
             else:
                 await db.execute("""INSERT INTO download_files(torrent_id,request_id,filename,size_bytes,local_path,status,candidates,download_client)
                     VALUES(?,?,?,?,?,'queued',?,'')""",

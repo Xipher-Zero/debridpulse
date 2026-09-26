@@ -1330,16 +1330,39 @@ class TransferEngine:
         if record.entry:
             candidates = tuple(replace(candidate, name=record.entry.name, relative_path=record.entry.relative_path,
                                        expected_bytes=candidate.expected_bytes or record.entry.expected_bytes) for candidate in candidates)
-        existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
-        if existing:
-            await self.repository.materialize(record, candidates, existing.target)
-            return
         transfer = await self.repository.get(record.transfer_id)
         if transfer is None:
             return
         relative = candidates[0].relative_path or candidates[0].name
         if record.parent_id:
             relative = str(Path(safe_name(transfer.name)) / relative)
+
+        existing = next((item for item in await self.repository.artifacts(record.transfer_id) if item.request_id == record.id), None)
+        if existing:
+            # An artifact row carries HISTORY and current executable state. Its
+            # durable target is the latter: when a new acquisition generation
+            # rebuilds this member, the coordinate it will be written to comes
+            # from the manifest truth that acquisition just obtained, derived
+            # through the SAME destination owner a first materialization uses
+            # -- never carried forward because a row happened to exist.
+            #
+            # Offering it is not applying it. The repository takes the new
+            # coordinate only under the one condition it already re-queues an
+            # artifact under -- released to ``unresolved`` with no execution
+            # pointer -- so a completed artifact and a live writer both keep
+            # their target, and retargeting is the same act as requeueing
+            # rather than a second owner of the same column.
+            #
+            # An unchanged coordinate is the ordinary case and stays exactly
+            # that: no lock, no conflict scan, no mutation.
+            if str(destination(self.root, relative)).casefold() == str(existing.target).casefold():
+                await self.repository.materialize(record, candidates, existing.target)
+                return
+            async with self._paths_lock:
+                occupied = await self.repository.occupied_paths() - {str(existing.target).casefold()}
+                target = self._unique_target(record, relative, occupied)
+                await self.repository.materialize(record, candidates, str(target))
+            return
 
         async def equivalent_size(other_candidates):
             for left in other_candidates:
@@ -1419,20 +1442,29 @@ class TransferEngine:
                 if (fresh_canonical_keys - canonical_keys) or (fresh_contender_keys - contender_keys):
                     retry_snapshot = True
                 else:
-                    target = destination(self.root, relative)
                     occupied = await self.repository.occupied_paths()
-                    if record.parent_id and str(target).casefold() in occupied:
-                        raise TransferError(self._error(Category.LOCAL_PATH_CONFLICT, Stage.CANDIDATE_PREPARATION,
-                            domain=Domain.LOCAL_RESOURCE, retryability=Retryability.AFTER_RESOURCE_CHANGE))
-                    if not record.parent_id:
-                        original, index = target, 2
-                        while target.exists() or target.is_symlink() or str(target).casefold() in occupied:
-                            target = original.with_name(f"{original.stem} ({index}){original.suffix}")
-                            index += 1
+                    target = self._unique_target(record, relative, occupied)
                     await self.repository.materialize(record, candidates, str(target))
                     return
             if retry_snapshot:
                 continue
+
+    def _unique_target(self, record: RequestRecord, relative: str, occupied: set[str]) -> Path:
+        """The ONE durable-coordinate rule, for a first materialization and for
+        a rebuild alike: derive through the canonical destination owner, refuse
+        a collection member that would collide with live work, and disambiguate
+        a standalone payload. No caller constructs a path of its own."""
+        target = destination(self.root, relative)
+        if record.parent_id:
+            if str(target).casefold() in occupied:
+                raise TransferError(self._error(Category.LOCAL_PATH_CONFLICT, Stage.CANDIDATE_PREPARATION,
+                    domain=Domain.LOCAL_RESOURCE, retryability=Retryability.AFTER_RESOURCE_CHANGE))
+            return target
+        original, index = target, 2
+        while target.exists() or target.is_symlink() or str(target).casefold() in occupied:
+            target = original.with_name(f"{original.stem} ({index}){original.suffix}")
+            index += 1
+        return target
 
     async def _retire_stale_materialization(self, artifact: Artifact) -> None:
         """Retire executable work superseded by a newer materialization
