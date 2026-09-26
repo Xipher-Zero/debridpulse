@@ -143,6 +143,33 @@
     extract_max_concurrent: {scope: 'settings-document', option: 'extract_max_concurrent'},
     extraction_password: {scope: 'settings-document', option: 'extraction_password', redacted: true},
 
+    // Notifications -- ordinary settings-document values on exactly the same
+    // two boundaries every other Settings control uses. ``secret`` marks a
+    // stored webhook, whose accepted PRESENTATION is always blank: it is not a
+    // different commit class and not a different write, and blanking one is
+    // therefore never a clear -- erasing a stored webhook is its own explicit
+    // destructive action.
+    //
+    // Section participation is a real canonical setting owned by the backend,
+    // never derived from webhook presence, event-toggle combinations, the
+    // report interval or verification state.
+    discord_notifications_enabled: {scope: 'settings-document', option: 'discord_notifications_enabled', commit: 'immediate'},
+    discord_username: {scope: 'settings-document', option: 'discord_username'},
+    discord_avatar_url: {scope: 'settings-document', option: 'discord_avatar_url'},
+    discord_webhook_url: {scope: 'settings-document', option: 'discord_webhook_url', secret: true},
+    discord_webhook_added: {scope: 'settings-document', option: 'discord_webhook_added', secret: true},
+    discord_notify_added: {scope: 'settings-document', option: 'discord_notify_added', commit: 'immediate'},
+    discord_notify_finished: {scope: 'settings-document', option: 'discord_notify_finished', commit: 'immediate'},
+    discord_notify_error: {scope: 'settings-document', option: 'discord_notify_error', commit: 'immediate'},
+    discord_notify_extract: {scope: 'settings-document', option: 'discord_notify_extract', commit: 'immediate'},
+    discord_notify_update: {scope: 'settings-document', option: 'discord_notify_update', commit: 'immediate'},
+    update_check_interval_hours: {scope: 'settings-document', option: 'update_check_interval_hours'},
+
+    stats_reporting_enabled: {scope: 'settings-document', option: 'stats_reporting_enabled', commit: 'immediate'},
+    stats_report_webhook_url: {scope: 'settings-document', option: 'stats_report_webhook_url', secret: true},
+    stats_report_interval_hours: {scope: 'settings-document', option: 'stats_report_interval_hours'},
+    stats_report_window_hours: {scope: 'settings-document', option: 'stats_report_window_hours'},
+
     // Authentication -- the /auth/config namespace. An ordinary authentication
     // value is an ordinary value: it crosses one of the same two boundaries
     // every other Settings control uses, through one scope that writes exactly
@@ -468,6 +495,37 @@
       </div>`;
   }
 
+  /* A standard stacked field that carries an action BESIDE its control.
+   *
+   *   [ title            ]
+   *   [ control          ]  [ action ]
+   *   [ hint             ]
+   *
+   * The field keeps the ordinary Title + hint + field grammar exactly -- it is
+   * the same `input()` every other surface renders -- and the action joins it
+   * on the CONTROL's own row rather than under the whole stack, so the two are
+   * centred against each other however the title or hint wraps. Nothing is
+   * positioned over anything and nothing is measured: the field is promoted
+   * into this row's grid (`display: contents`, ui-settings-page.css), so the
+   * relationship is structural.
+   *
+   * Whether the action has anything to act on is a STATE of that action, never
+   * a reason to remove it: a row that gains and loses a control as secrets come
+   * and go reflows under the operator's hands. */
+  function fieldRow(field, action, className = '') {
+    return `<div class="dp-settings-field-row${className ? ` ${className}` : ''}">${field}${action}</div>`;
+  }
+
+  /* The UNIT a numeric field carries, inside its own trailing edge.
+   *
+   * It is a sibling of the control within the ONE compound field primitive
+   * (`.dp-action-field`), not something floated over it -- so the number ends
+   * where the unit begins, and no reserved constant has to be guessed for a
+   * font-sized thing. */
+  function fieldUnit(text) {
+    return `<span class="dp-settings-field-unit" aria-hidden="true">${html(text)}</span>`;
+  }
+
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
 
   // Inner-card title icons, keyed by the card's title.
@@ -551,25 +609,6 @@
         </div>
         <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
       </section>`;
-  }
-
-  function secretField(key, label, configured, placeholder, hint, options = {}) {
-    const clear = configured ? `
-        <label class="dp-settings-clear-secret${options.clearClass ? ` ${options.clearClass}` : ''}">
-          <span>
-            <b>${html(options.clearTitle || `Clear stored ${label}`)}</b>
-            <small>${html(options.clearDetail || 'Erase the stored value when Settings are saved.')}</small>
-          </span>
-          <input type="checkbox" data-clear-secret="${html(key)}">
-        </label>` : '';
-    const field = input(key, options.label || label, '', {
-      type: 'password',
-      placeholder: configured ? `${placeholder || label} configured — blank keeps current value` : (placeholder || label),
-      autocomplete: 'off',
-      hint,
-      after: options.clearInside ? clear : '',
-    });
-    return options.clearInside ? field : field + clear;
   }
 
   // Directory-valued field with its Browse control (the picker itself is owned
@@ -818,6 +857,33 @@
   const disclosureOpen = (persistKey, fallback) =>
     (persistKey && disclosureChoices.has(persistKey))
       ? disclosureChoices.get(persistKey) : !!fallback;
+
+  /* A named, collapsible SUBSECTION inside a card body.
+   *
+   * It renders the same canonical disclosure chip beside its own title that a
+   * card renders beside its title, addressed through `aria-controls`, so the
+   * one disclosure behaviour already bound in bindEvents() serves it without
+   * knowing it is a subsection: same chip, same keyboard operation, same
+   * expanded/collapsed exposure, same remembered choice, same default-closed
+   * policy. It is a block in the flow with its own body, so opening it cannot
+   * resize or rebalance the rows above it -- they are not in it.
+   *
+   * Expansion is presentation, never configuration: the choice is remembered
+   * for the page's lifetime by the disclosure owner and is written nowhere. */
+  function disclosureSection(title, key, body, expanded = false) {
+    const safe = String(key).replace(/[^a-z0-9_-]/gi, '-');
+    const bodyId = `dp-settings-section-body-${safe}`;
+    const persistKey = `section:${safe}`;
+    const open = disclosureOpen(persistKey, expanded);
+    return `
+      <section class="dp-settings-subsection">
+        <div class="dp-settings-subsection-header">
+          <span class="dp-settings-subsection-title">${html(title)}</span>
+          ${settingsDisclosure(bodyId, open, title, persistKey)}
+        </div>
+        <div class="dp-settings-subsection-body" id="${bodyId}"${open ? '' : ' hidden'}>${body}</div>
+      </section>`;
+  }
 
   // Provider card: the title (with its premium mark), the configuration status,
   // the collapse control and the Enable toggle are all part of the card's own
@@ -1464,68 +1530,184 @@
     });
   }
 
+  /* ── Notifications ────────────────────────────────────────────────────────
+   *
+   * Two cards, each reading as the same operational object every other
+   * configured surface on Settings reads as: what it IS on the left, what its
+   * configuration currently amounts to / the action that can prove it /
+   * whether it participates at all on the right, and the configuration itself
+   * in the body. Nothing here is a Notifications invention -- the rail, the
+   * status treatment, the Test action, the Enable control, the field grammar,
+   * the destructive two-state clear, the disclosure and the compact cell
+   * collection are all the canonical primitives declared above. */
+
+  /* The two cards' configuration report, in the shared plain-text status
+   * treatment and the shared three-state vocabulary.
+   *
+   * It says the two things the Enable toggle beside it cannot: whether there
+   * is a usable saved destination at all, and whether that exact saved
+   * configuration has been proven by a Test. Both facts are canonical and
+   * backend-derived -- the effective-destination rule (including Statistics
+   * Reporting's fallback to the primary Discord webhook) and the durable
+   * verification evidence both belong to services/notification_service.py.
+   * This function only reports them.
+   *
+   * It is deliberately never blank: participation is a separate fact, so a
+   * switched-off section still tells the operator what it is holding. */
+  function notificationStatus(configured, verified) {
+    if (!configured) return {text: 'Unconfigured', tone: 'error'};
+    return verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
+  }
+
+  /* The three stored webhooks, declared ONCE.
+   *
+   * Every part of a webhook row that depends on which webhook it is -- its
+   * title, its hint, its placeholder, what erasing it means and what the
+   * operator is asked before it happens -- is stated here, and the row is both
+   * RENDERED and CONVERGED from this table. One markup owner in either
+   * direction, and no third copy of the same sentence.
+   *
+   * ``fallback`` is what the operator loses by erasing this one, in the
+   * application's own terms; it is copy, not a second definition of the
+   * delivery fallback, which the backend owns. */
+  const WEBHOOK_CONTROLS = Object.freeze({
+    discord_webhook_url: {
+      label: 'Discord Webhook',
+      placeholder: 'Primary Discord webhook',
+      hint: 'Primary Discord destination for enabled notifications.',
+      aria: 'Clear the stored primary Discord webhook',
+      confirm: {
+        title: 'Clear the Discord webhook?',
+        message: 'The stored primary Discord webhook will be removed. Discord notifications '
+          + 'cannot be delivered until a webhook is configured again.',
+      },
+    },
+    discord_webhook_added: {
+      label: 'Download Added Webhook',
+      placeholder: 'Optional added-event webhook',
+      hint: 'Optional destination for new-download notifications. Leave blank to use the primary webhook.',
+      aria: 'Clear the stored Download Added webhook',
+      confirm: {
+        title: 'Clear the Download Added webhook?',
+        message: 'The dedicated Download Added destination will be removed. New-download '
+          + 'notifications return to the primary Discord webhook.',
+      },
+    },
+    stats_report_webhook_url: {
+      label: 'Reporting Webhook',
+      placeholder: 'Optional reporting webhook',
+      hint: 'Optional destination for statistics reports. Leave blank to use the primary Discord webhook.',
+      aria: 'Clear the stored reporting webhook',
+      confirm: {
+        title: 'Clear the reporting webhook?',
+        message: 'The dedicated statistics-report destination will be removed. Reports return '
+          + 'to the primary Discord webhook when one is configured.',
+      },
+    },
+  });
+
+  const webhookPlaceholder = (key, configured) => configured
+    ? `${WEBHOOK_CONTROLS[key].placeholder} configured — blank keeps current value`
+    : WEBHOOK_CONTROLS[key].placeholder;
+
+  /* Erasing a stored webhook is destructive, so it is an explicit action behind
+   * the ONE canonical Settings confirmation -- never a commit boundary, never a
+   * checkbox the page has to arm and reset, and never something a blanked field
+   * can trigger by accident. The action keeps its place whether or not there is
+   * anything to erase; only its state converges. */
+  const WEBHOOK_CLEAR = (key, configured) => `
+            <button type="button" class="btn btn-danger btn-sm dp-settings-webhook-clear"
+                    data-action="clear-webhook" data-webhook="${html(key)}"
+                    aria-label="${html(WEBHOOK_CONTROLS[key].aria)}"${configured ? '' : ' disabled'}>Clear Webhook</button>`;
+
+  function webhookField(key, configured) {
+    const spec = WEBHOOK_CONTROLS[key];
+    return fieldRow(
+      input(key, spec.label, '', {
+        type: 'password',
+        autocomplete: 'off',
+        placeholder: webhookPlaceholder(key, !!configured),
+        hint: spec.hint,
+      }),
+      WEBHOOK_CLEAR(key, !!configured),
+      'dp-settings-webhook-row');
+  }
+
+  /* Upload Avatar belongs to the Avatar URL field, so it is IN it -- through
+   * the same embedded-action primitive Browse and Copy use. It is a real
+   * button (the file input it opens is the hidden one beside it), so it keeps
+   * its own tab stop and stays keyboard reachable. */
+  const AVATAR_UPLOAD = `
+            <button type="button" class="btn btn-ghost btn-sm dp-settings-avatar-upload"
+                    data-action="upload-avatar">Upload Avatar</button>
+            <input id="dp-settings-avatar-file" type="file"
+                   accept="image/png,image/jpeg,image/gif,image/webp" hidden>`;
+
+  const AVATAR_CLEAR = configured => `
+            <button type="button" class="btn btn-danger btn-sm dp-settings-avatar-clear"
+                    data-action="clear-avatar" aria-label="Clear the Discord avatar"${
+                      configured ? '' : ' disabled'}>Clear Avatar</button>`;
+
+  const avatarPreview = url => `
+            <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact"${
+              url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : ''}</div>`;
+
   function notificationsPanel(s) {
     const discord = card('Discord Notifications', `
       <div class="dp-settings-notifications-identity-row">
         ${input('discord_username', 'Display Name', s.discord_username || 'DebridPulse', {
           hint: 'Name shown as the sender of Discord notifications.'
         })}
-        <div class="dp-settings-field">
-          <label class="form-label" for="${fieldId('discord_avatar_url')}">Avatar URL</label>
-          <input class="input" id="${fieldId('discord_avatar_url')}" data-setting="discord_avatar_url" type="text" value="${html(s.discord_avatar_url || '')}" placeholder="https://example.com/avatar.png">
-          <span class="form-hint">Image shown with Discord notifications. Paste a direct image URL or upload one.</span>
-          <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact" ${s.discord_avatar_url ? '' : 'hidden'}>
-            ${s.discord_avatar_url ? `<img src="${html(s.discord_avatar_url)}" alt="Discord avatar preview">` : ''}
-            <span>${s.discord_avatar_url ? html(s.discord_avatar_url) : ''}</span>
-          </div>
-        </div>
-        <div class="dp-settings-actions dp-settings-avatar-actions">
-          <label class="btn btn-ghost btn-sm dp-settings-file-button">
-            Upload Avatar
-            <input id="dp-settings-avatar-file" type="file" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-          </label>
-          <button class="btn btn-ghost btn-sm" type="button" data-action="clear-avatar">Clear Avatar</button>
-        </div>
+        ${fieldRow(
+          input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
+            placeholder: 'https://example.com/avatar.png',
+            hint: 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
+            embedAction: AVATAR_UPLOAD,
+            controlClass: 'dp-settings-avatar-field-control',
+            after: avatarPreview(s.discord_avatar_url || ''),
+          }),
+          AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
+          'dp-settings-avatar-row')}
       </div>
       <div class="dp-settings-notifications-delivery-row">
-        ${secretField('discord_webhook_url', 'Discord Webhook', !!s.discord_webhook_url_configured, 'Primary Discord webhook', 'Primary Discord destination for enabled notifications.', {
-          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
-          clearTitle: 'Clear Stored Webhook', clearDetail: 'Remove the saved primary webhook when Settings are applied.',
-        })}
-        ${secretField('discord_webhook_added', 'Download Added Webhook', !!s.discord_webhook_added_configured, 'Optional added-event webhook', 'Optional destination for new-download notifications. Leave blank to use the primary webhook.', {
-          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
-          clearTitle: 'Clear Stored Download Added Webhook', clearDetail: 'Remove the saved Download Added webhook when Settings are applied.',
-        })}
-        ${input('update_check_interval_hours', 'Update Check Interval (Hours Between Checks)', s.update_check_interval_hours ?? 12, {
+        ${webhookField('discord_webhook_url', s.discord_webhook_url_configured)}
+        ${webhookField('discord_webhook_added', s.discord_webhook_added_configured)}
+      </div>
+      ${disclosureSection('Notification Events & Delivery Options', 'notifications-events', tuningCells(
+        tuningToggle('discord_notify_added', 'Download Added',
+          'Send a notification when a new download is accepted.', s.discord_notify_added),
+        tuningToggle('discord_notify_finished', 'Download Completed',
+          'Send a notification when a download finishes successfully.', s.discord_notify_finished),
+        tuningToggle('discord_notify_error', 'Download Error',
+          'Send a notification when a download fails.', s.discord_notify_error),
+        tuningToggle('discord_notify_extract', 'Extraction Result',
+          'Send a notification when archive extraction completes or fails.', s.discord_notify_extract),
+        tuningToggle('discord_notify_update', 'Update Available',
+          'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update),
+        input('update_check_interval_hours', 'Update Check Interval', s.update_check_interval_hours ?? 12, {
           type: 'number', min: 0, max: 168, step: 1,
-          hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.'
-        })}
-      </div>
-      <div class="dp-settings-notifications-toggle-row dp-settings-notifications-toggle-row--primary">
-        ${toggle('discord_notify_added', 'Download Added', 'Send a notification when a new download is accepted.', s.discord_notify_added)}
-        ${toggle('discord_notify_finished', 'Download Completed', 'Send a notification when a download finishes successfully.', s.discord_notify_finished)}
-        ${toggle('discord_notify_error', 'Download Error', 'Send a notification when a download fails.', s.discord_notify_error)}
-      </div>
-      <div class="dp-settings-notifications-toggle-row dp-settings-notifications-toggle-row--secondary">
-        ${toggle('discord_notify_extract', 'Extraction Result', 'Send a notification when archive extraction completes or fails.', s.discord_notify_extract)}
-        ${toggle('discord_notify_update', 'Update Available', 'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update)}
-      </div>
+          hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.',
+          embedAction: fieldUnit('hours'),
+          controlClass: 'dp-settings-unit-field',
+        }),
+      ))}
     `, {
       className: 'dp-settings-discord-card',
       headerCenter: 'Configure notification identity, delivery destinations, and event alerts.',
       headerCenterClass: 'dp-settings-notifications-header-copy',
-      action: '<div class="dp-settings-notifications-header-spacer" aria-hidden="true"></div>',
+      headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
+      headerAction: providerTestAction('test-discord'),
+      action: headerEnableToggle('discord_notifications_enabled', s.discord_notifications_enabled !== false),
     });
 
     const reports = card('Statistics Reporting', `
       <div class="dp-settings-statistics-reporting-row">
-        ${secretField('stats_report_webhook_url', 'Reporting Webhook', !!s.stats_report_webhook_url_configured, 'Optional reporting webhook', 'Optional destination for statistics reports. Leave blank to use the primary Discord webhook.', {
-          clearInside: true, clearClass: 'dp-settings-notifications-clear-secret',
-          clearTitle: 'Clear Stored Reporting Webhook', clearDetail: 'Remove the saved reporting webhook when Settings are applied.',
-        })}
-        ${input('stats_report_interval_hours', 'Automatic Report Interval (Hours Between Reports)', s.stats_report_interval_hours ?? 0, {
+        ${webhookField('stats_report_webhook_url', s.stats_report_webhook_url_configured)}
+        ${input('stats_report_interval_hours', 'Automatic Report Interval', s.stats_report_interval_hours ?? 0, {
           type: 'number', min: 0, max: 168, step: 1,
-          hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.'
+          hint: 'Set how often DebridPulse sends statistics reports. Enter 0 to disable automatic reports.',
+          embedAction: fieldUnit('hours'),
+          controlClass: 'dp-settings-unit-field',
         })}
         ${selectField('stats_report_window_hours', 'Report Window', s.stats_report_window_hours ?? 24, [
           [24, '24 hours'],
@@ -1538,10 +1720,76 @@
       className: 'dp-settings-statistics-reporting-card',
       headerCenter: 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
       headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
-      action: '<div class="dp-settings-notifications-header-spacer" aria-hidden="true"></div>',
+      headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
+      headerAction: providerTestAction('send-report'),
+      action: headerEnableToggle('stats_reporting_enabled', s.stats_reporting_enabled !== false),
     });
 
     return discord + reports;
+  }
+
+  /* Converge the Notifications surface on ACCEPTED canonical state.
+   *
+   * What each card REPORTS, and whether each destructive action has anything
+   * to act on, both change with canonical truth -- so both are projected here
+   * rather than by a re-render. NO INPUT ELEMENT IS EVER REPLACED: destroying a
+   * control the operator may still be editing would remove focus from it, which
+   * IS its commit boundary, and a draft they had not finished would be written
+   * by this owner's re-render rather than by them leaving the field.
+   *
+   * Safe to call whenever canonical state moves; it does nothing at all when
+   * the Notifications panel is not on the page. */
+  function paintNotifications() {
+    const view = root();
+    const panel = view?.querySelector('[data-panel="notifications"]');
+    const s = state.settings;
+    if (!panel || !s) return;
+    paintCardStatus(panel, '.dp-settings-discord-card',
+      notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified));
+    paintCardStatus(panel, '.dp-settings-statistics-reporting-card',
+      notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified));
+    for (const key of Object.keys(WEBHOOK_CONTROLS)) renderWebhookRow(key);
+    renderAvatarPresence();
+  }
+
+  /* The two parts of a webhook row that depend on whether one is STORED: what
+   * the empty field says about itself, and whether the destructive action has
+   * anything to destroy. The action never appears or disappears. */
+  function renderWebhookRow(key) {
+    const configured = !!state.settings?.[`${key}_configured`];
+    const field = fieldFor(key);
+    if (field) field.placeholder = webhookPlaceholder(key, configured);
+    const clear = root()?.querySelector(`[data-action="clear-webhook"][data-webhook="${key}"]`);
+    if (clear) clear.disabled = !configured;
+  }
+
+  function renderAvatarPresence() {
+    const url = String(state.settings?.discord_avatar_url || '').trim();
+    const clear = root()?.querySelector('[data-action="clear-avatar"]');
+    if (clear) clear.disabled = !url;
+    const preview = byId('dp-settings-avatar-preview');
+    if (!preview) return;
+    preview.hidden = !url;
+    preview.innerHTML = url
+      ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : '';
+  }
+
+  /* The accepted notification state a Test just established, adopted through
+   * the same cached-document seam every other accepted canonical change uses. */
+  function adoptNotifications(projection) {
+    if (!projection || !state.settings) return;
+    syncGlobalSettings({...state.settings, ...projection});
+    paintNotifications();
+  }
+
+  /* A Test that FAILED may have retired durable evidence, so the card must stop
+   * claiming Verified about a configuration this very action just disproved.
+   * Canonical truth is re-read rather than guessed at. */
+  async function refreshNotificationState() {
+    try {
+      syncGlobalSettings(await request('GET', '/settings', null, 15000));
+      paintNotifications();
+    } catch (_) { /* the failure the operator is being told about is the story */ }
   }
 
   function fieldClass(markup, ...classes) {
@@ -1550,7 +1798,12 @@
     return markup.replace('class="dp-settings-field"', `class="dp-settings-field ${className}"`);
   }
 
-  function authHeaderToggle(key, value, extraClass = '') {
+  /* The CARD's participation control, for the far-right slot of its header
+   * rail. Whether a section takes part is the same question everywhere on
+   * Settings, so it is the same control everywhere: one declaration, one
+   * appearance, one commit class, and the same treatment an integration's own
+   * header Enable already renders. */
+  function headerEnableToggle(key, value, extraClass = '') {
     const id = fieldId(key);
     return `
       <label class="toggle-row dp-settings-toggle dp-settings-auth-header-enable ${html(extraClass)}" for="${id}">
@@ -2042,7 +2295,7 @@
       className: 'dp-settings-username-password-card',
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
-      action: authHeaderToggle('auth_password_enabled', a.password_enabled),
+      action: headerEnableToggle('auth_password_enabled', a.password_enabled),
     });
 
     const providerField = input('oidc_provider_name', 'Provider Name', a.oidc_provider_name || 'OpenID Connect', {
@@ -2159,7 +2412,7 @@
       // OIDC-specific Test.
       headerStatus: oidcHeaderStatus(a),
       headerAction: providerTestAction('verify-oidc'),
-      action: authHeaderToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
+      action: headerEnableToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
     });
 
     const configured = !!a.api_token_configured;
@@ -2192,7 +2445,7 @@
       headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
       headerStatus: tokenReadyStatus(a),
-      action: authHeaderToggle('api_token_enabled', a.api_token_enabled),
+      action: headerEnableToggle('api_token_enabled', a.api_token_enabled),
     });
 
     return authStatusCard(a) + credentials + oidc + apiAccess;
@@ -2333,10 +2586,6 @@
 
         <div class="dp-settings-master-footer" aria-label="Settings actions">
           <span class="dp-settings-save-hint">Changes remain unsaved until Apply Settings is selected.</span>
-          <div class="dp-settings-context-actions">
-            <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="test-discord"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt=""></span><span>Test Discord</span></button>
-            <button class="btn btn-ghost" type="button" data-context-action="notifications" data-action="send-report"><span class="dp-settings-action-icon"><img class="dp-settings-action-glyph" src="/icons/lucide/send.svg" alt=""></span><span>Send Report Now</span></button>
-          </div>
           <button class="btn btn-primary" type="button" data-action="save" data-deferred-apply>Apply Settings</button>
         </div>
       </section>`;
@@ -2352,7 +2601,7 @@
 
   /* Tabs that carry NO deferred Apply contract: every control on them is
    * committed by the canonical persistence owner at its own field boundary. */
-  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'authentication']);
+  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'notifications', 'authentication']);
 
   function activateTab(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
@@ -2367,10 +2616,6 @@
 
     root()?.querySelectorAll('[data-panel]').forEach(section => {
       section.hidden = section.dataset.panel !== name;
-    });
-
-    root()?.querySelectorAll('[data-context-action]').forEach(button => {
-      button.hidden = button.dataset.contextAction !== name;
     });
 
     // A tab whose every control commits at its own field boundary has no
@@ -2593,11 +2838,13 @@
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
       else if (action === 'clear-archive-passwords') clearArchivePasswords(button);
-      else if (action === 'test-discord') testConnection('discord', button);
-      else if (action === 'clear-avatar') clearAvatar();
+      else if (action === 'test-discord') testDiscordDelivery(button);
+      else if (action === 'clear-webhook') clearWebhook(button);
+      else if (action === 'upload-avatar') byId('dp-settings-avatar-file')?.click();
+      else if (action === 'clear-avatar') clearAvatar(button);
       else if (action === 'browse-download-folder') window.DPSettingsDirectoryPicker?.open('download');
       else if (action === 'browse-backup-folder') window.DPSettingsDirectoryPicker?.open('backup');
-      else if (action === 'send-report') sendReport(button);
+      else if (action === 'send-report') sendStatsReport(button);
       else if (action === 'run-backup') runBackup(button);
       else if (action === 'list-backups') listBackups(button);
       else if (action === 'wipe-database') wipeDatabaseClean(button);
@@ -2632,12 +2879,6 @@
     return !!fieldFor(key)?.checked;
   }
 
-  function clearSecrets() {
-    return Array.from(root()?.querySelectorAll('[data-clear-secret]:checked') || [])
-      .map(input => input.dataset.clearSecret)
-      .filter(Boolean);
-  }
-
   // Provider, executor, transfer-policy, Extraction and runtime-limit settings
   // are owned by their canonical namespaces and are written exclusively through
   // the scoped field-boundary surfaces, never through the whole-settings
@@ -2656,28 +2897,17 @@
     const current = settingsDocument(state.settings);
     return {
       ...current,
-      // Integration-owned secret clears travel with their own scoped request.
-      clear_secrets: clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control]),
       // Locally owned field-boundary values -- the Services full-sync interval
-      // and every Downloads- and Extraction-owned value -- are carried forward
-      // from the canonical document this write was built on by the spread
-      // above, and are never re-read from the page. Naming one here would be
-      // exactly the stale replay this removal exists to prevent.
+      // and every Downloads-, Extraction- and Notifications-owned value -- are
+      // carried forward from the canonical document this write was built on by
+      // the spread above, and are never re-read from the page. Naming one here
+      // would be exactly the stale replay this removal exists to prevent.
+      //
+      // No secret clear travels with this write either: erasing a stored
+      // credential is an explicit destructive action through its own canonical
+      // path, and there is no clear-on-Apply control left anywhere on Settings
+      // for a deferred payload to collect.
       full_sync_interval_minutes: Number(current.full_sync_interval_minutes ?? 5),
-
-      discord_username: valueOf('discord_username', 'DebridPulse'),
-      discord_avatar_url: valueOf('discord_avatar_url'),
-      discord_webhook_url: valueOf('discord_webhook_url'),
-      discord_webhook_added: valueOf('discord_webhook_added'),
-      discord_notify_added: boolOf('discord_notify_added'),
-      discord_notify_finished: boolOf('discord_notify_finished'),
-      discord_notify_error: boolOf('discord_notify_error'),
-      discord_notify_extract: boolOf('discord_notify_extract'),
-      discord_notify_update: boolOf('discord_notify_update'),
-      update_check_interval_hours: intOf('update_check_interval_hours', 12),
-      stats_report_webhook_url: valueOf('stats_report_webhook_url'),
-      stats_report_interval_hours: intOf('stats_report_interval_hours', 0),
-      stats_report_window_hours: intOf('stats_report_window_hours', Number(current.stats_report_window_hours ?? 24)),
 
       backup_enabled: boolOf('backup_enabled'),
       backup_folder: valueOf('backup_folder', current.backup_folder || '/app/data/backups'),
@@ -2853,12 +3083,24 @@
 
     persistence.defineScope('settings-document', {
       commit: async ({key, draft}) => {
-        const option = COMMIT_FIELDS[key].option;
+        const declared = COMMIT_FIELDS[key];
+        const option = declared.option;
         const result = await writeSettingsDocument({[option]: committedValue(key, draft)});
+        // What this document holds decides what several Notifications controls
+        // SHOW -- each card's status, and whether each destructive action has
+        // anything to act on -- so the surface converges on whatever the server
+        // accepted. It repaints; it never rebuilds a control.
+        paintNotifications();
+        // A stored secret is NEVER projected back into the browser. The
+        // accepted presentation of one is the blank/configured row the
+        // backend's own redacted projection describes, so returning '' is what
+        // makes the canonical baseline hold no secret -- and what returns the
+        // visible field to that presentation.
+        if (declared.secret) return '';
         // A redacted option's canonical echo is blank BY DESIGN, so it cannot
         // describe what the server accepted. The draft it accepted is the
         // accepted value; nothing else here differs.
-        return COMMIT_FIELDS[key].redacted ? draft : acceptedValue(key, result?.[option], draft);
+        return declared.redacted ? draft : acceptedValue(key, result?.[option], draft);
       },
     });
   }
@@ -3091,21 +3333,12 @@
   }
 
   function connectionTestPayload(kind) {
-    const clears = new Set(clearSecrets());
     if (kind === 'alldebrid') {
       // Entry/replacement commits on changed blur and removal is its own
       // explicit action, so no credential intent is ever pending at Test time:
       // the draft this reads is whatever the field still holds -- after the
       // settle above, ordinarily nothing -- and never a removal.
       return {api_key: valueOf('alldebrid_api_key')};
-    }
-    if (kind === 'discord') {
-      return {
-        webhook_url: valueOf('discord_webhook_url'),
-        clear_webhook: clears.has('discord_webhook_url'),
-        username: valueOf('discord_username'),
-        avatar_url: valueOf('discord_avatar_url'),
-      };
     }
     throw new Error(`Unsupported connection test: ${kind}`);
   }
@@ -3116,26 +3349,66 @@
     await window.DPSettingsPersistence.settle(root());
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
-      discord: '/settings/validate-discord',
     };
-    const labels = {alldebrid: 'AllDebrid', discord: 'Discord'};
+    const labels = {alldebrid: 'AllDebrid'};
     setBusy(button, true, 'Testing…');
     try {
       const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
-      if (kind === 'alldebrid') {
-        rememberTestedDraft('alldebrid', result.verification);
-        // A Test of exactly the SAVED configuration establishes durable
-        // verification, so the header must stop saying Unverified about a
-        // configuration this action just proved. Published through the one
-        // acceptance seam, like every other accepted canonical change.
-        publishAccepted(result);
-        notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
-      } else {
-        notify('Discord notification sent', 'success');
-      }
+      rememberTestedDraft('alldebrid', result.verification);
+      // A Test of exactly the SAVED configuration establishes durable
+      // verification, so the header must stop saying Unverified about a
+      // configuration this action just proved. Published through the one
+      // acceptance seam, like every other accepted canonical change.
+      publishAccepted(result);
+      notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
     } catch (error) {
-      if (kind === 'alldebrid') forgetTestedDrafts('alldebrid');
+      forgetTestedDrafts('alldebrid');
       notify(`${labels[kind]}: ${error.message}`, 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  /* The Discord section's own Test.
+   *
+   * It proves the SAVED configuration -- there is no draft left to carry,
+   * because every field on this page commits at its own boundary and the
+   * settle below finishes any that is still pending, so the value the operator
+   * just entered IS what gets exercised. Participation is deliberately
+   * irrelevant: a switched-off section that is still configured can be proven.
+   *
+   * It persists nothing. What it establishes is durable VERIFICATION EVIDENCE,
+   * recorded by the backend about the exact material it tested, and this page
+   * only adopts and reports the derived answer. There is no local `verified`
+   * bit anywhere. */
+  async function testDiscordDelivery(button) {
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Testing…');
+    try {
+      const result = await request('POST', '/settings/validate-discord', undefined, 20000);
+      adoptNotifications(result.notifications);
+      notify('Discord notification sent', 'success');
+    } catch (error) {
+      await refreshNotificationState();
+      notify(`Discord: ${error.message}`, 'error');
+    } finally {
+      setBusy(button, false);
+    }
+  }
+
+  /* The Statistics Reporting section's own Test: the existing immediate-report
+   * pipeline, against the saved effective destination and the saved window, on
+   * exactly the terms above. */
+  async function sendStatsReport(button) {
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Sending…');
+    try {
+      const result = await request('POST', '/settings/send-stats-report', undefined, 20000);
+      adoptNotifications(result.notifications);
+      notify(`Test report sent (${result.hours}h)`, 'success');
+    } catch (error) {
+      await refreshNotificationState();
+      notify(`Statistics report: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);
     }
@@ -3172,19 +3445,26 @@
     }
   }
 
+  /* Uploading an avatar produces a canonical URL, so it is completed the way
+   * any other value change is: the field takes the accepted URL and commits it
+   * through the ONE persistence owner. There is no second upload path and no
+   * value that is durable only until the page is left.
+   *
+   * Pending field-boundary writes are settled first, so the Display Name the
+   * operator typed immediately before reaching for the file picker is saved in
+   * the order they did it. */
   async function uploadAvatar(inputEl) {
     const file = inputEl.files?.[0];
     if (!file) return;
+    await window.DPSettingsPersistence.settle(root());
     const body = new FormData();
     body.append('file', file);
     try {
       const result = await request('POST', '/settings/upload-avatar', body, 20000);
       const avatar = fieldFor('discord_avatar_url');
-      if (avatar) avatar.value = result.url || '';
-      const preview = byId('dp-settings-avatar-preview');
-      if (preview) {
-        preview.hidden = false;
-        preview.innerHTML = `<img src="${html(result.url || '')}" alt="Discord avatar preview"><span>${html(file.name)}</span>`;
+      if (avatar) {
+        avatar.value = result.url || '';
+        window.DPSettingsPersistence.commit(avatar);
       }
       notify('Avatar uploaded', 'success');
       if (result.warning) notify(result.warning, 'warn');
@@ -3195,35 +3475,81 @@
     }
   }
 
-  function clearAvatar() {
-    const avatar = fieldFor('discord_avatar_url');
-    if (avatar) avatar.value = '';
-    const preview = byId('dp-settings-avatar-preview');
-    if (preview) {
-      preview.hidden = true;
-      preview.textContent = '';
-    }
-  }
-
-  // Sends a report using the webhooks currently in the form, not only the
-  // stored ones, so an unsaved destination can be verified before it is applied.
-  async function sendReport(button) {
-    setBusy(button, true, 'Sending…');
+  /* Erasing the stored avatar.
+   *
+   * The same act, the same machinery and the same order as erasing the stored
+   * AllDebrid key or the archive-password list: destructive, therefore an
+   * explicit action behind the ONE canonical Settings confirmation and never a
+   * commit boundary. Declining performs no mutation at all. Every pending
+   * field commit is settled first, so a URL the operator was still editing is
+   * written before -- never after -- the removal. */
+  async function clearAvatar(button) {
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: 'Clear the Discord avatar?',
+      message: 'The stored avatar URL will be removed. Discord notifications will be sent '
+        + 'without a custom avatar until a new one is set.',
+      confirmLabel: 'Clear Avatar',
+    });
+    if (!confirmed) return;
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing\u2026');
     try {
-      const hours = Math.max(1, intOf('stats_report_window_hours', 24));
-      const result = await request('POST', '/settings/send-stats-report', {
-        hours,
-        stats_report_webhook_url: valueOf('stats_report_webhook_url'),
-        clear_stats_report_webhook: clearSecrets().includes('stats_report_webhook_url'),
-        discord_webhook_url: valueOf('discord_webhook_url'),
-        clear_discord_webhook: clearSecrets().includes('discord_webhook_url'),
-      }, 20000);
-      notify(`Report sent (${result.hours || hours}h)`, 'success');
+      await writeSettingsDocument({discord_avatar_url: ''});
+      const avatar = fieldFor('discord_avatar_url');
+      if (avatar) {
+        avatar.value = '';
+        // The removal IS canonical now, so it becomes the control's accepted
+        // baseline; otherwise the next blur would re-commit the erased URL.
+        window.DPSettingsPersistence.accept(avatar, '');
+      }
+      // Releasing the busy state re-enables the button, so convergence has to
+      // be the LAST word: with nothing stored the action must end up disabled,
+      // not resurrected by the spinner being taken off it.
+      setBusy(button, false);
+      paintNotifications();
+      notify('Avatar cleared', 'success');
+      return;
     } catch (error) {
       notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
     }
+    setBusy(button, false);
+  }
+
+  /* Erasing ONE stored webhook.
+   *
+   * The canonical way to remove a destination, and the only one: a blanked
+   * field is never a clear, so nothing an operator types can quietly destroy a
+   * stored secret. It carries only the removal -- a replacement they typed
+   * belongs to its own changed-blur boundary, which the settle below orders
+   * before this -- and it touches no other destination: clearing the Download
+   * Added override restores the primary-webhook fallback, and clearing the
+   * reporting override restores the primary-Discord fallback, both entirely by
+   * the backend's own effective-destination rule rather than by anything
+   * written here. */
+  async function clearWebhook(button) {
+    const key = String(button?.dataset.webhook || '');
+    const spec = WEBHOOK_CONTROLS[key];
+    if (!spec) return;
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: spec.confirm.title,
+      message: spec.confirm.message,
+      confirmLabel: 'Clear Webhook',
+    });
+    if (!confirmed) return;
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing\u2026');
+    try {
+      await writeSettingsDocument({}, [key]);
+      setBusy(button, false);
+      paintNotifications();
+      notify(`${spec.label} cleared`, 'success');
+      return;
+    } catch (error) {
+      notify(error.message, 'error');
+    }
+    setBusy(button, false);
   }
 
   async function runBackup(button) {

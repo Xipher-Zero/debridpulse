@@ -348,12 +348,13 @@ test('an Apply on another tab cannot replay Extraction state', async ({page}) =>
     await concurrency(page).blur();
     await expect.poll(async () => (await canonical(page)).extract_max_concurrent).toBe(target);
 
-    // A deferred write on a tab that still has an Apply contract.
-    await page.locator('#view-settings [data-tab="notifications"]').click();
-    await page.locator('#dp-settings-field-discord-username').fill('ExtractionReplayProbe');
+    // A deferred write on the one tab that still has an Apply contract: DP
+    // 1.0.13 migrated Notifications too, so Data & Maintenance is the only
+    // surface the footer still writes for.
+    await page.locator('#view-settings [data-tab="maintenance"]').click();
+    await page.locator('#dp-settings-field-events-keep-days').fill('26');
     await page.locator('#view-settings [data-action="save"]').click();
-    await expect.poll(async () => (await canonical(page)).discord_username)
-      .toBe('ExtractionReplayProbe');
+    await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(26);
 
     const after = await canonical(page);
     expect(after.extract_max_concurrent, 'Apply replayed a stale Extraction value').toBe(target);
@@ -366,7 +367,7 @@ test('an Apply on another tab cannot replay Extraction state', async ({page}) =>
       transfer_policy: undefined, execution_runtime_limits: undefined,
       compatibility_fields: undefined,
       clear_secrets: [],
-      discord_username: before.discord_username,
+      events_keep_days: before.events_keep_days,
     }});
     await restoreExtraction(page, before);
   }

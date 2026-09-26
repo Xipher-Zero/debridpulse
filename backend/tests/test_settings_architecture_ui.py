@@ -287,8 +287,12 @@ def test_non_auth_serializer_never_writes_a_canonical_namespace_or_flat_alias():
     # The read-only compatibility names are dropped using the list the server
     # supplies, never a list kept in the page.
     assert "for (const name of document.compatibility_fields || []) delete document[name];" in document
-    # Integration-owned secret clears travel with their own scoped request.
-    assert "clearSecrets().filter(control => !INTEGRATION_SECRET_CONTROLS[control])" in serializer
+    # DP 1.0.13 Notifications migration: no clear-on-Apply control exists
+    # anywhere on Settings any more, so this payload collects no clear intent at
+    # all. Erasing a stored secret is an explicit destructive action through its
+    # own canonical path.
+    assert "clear_secrets" not in serializer
+    assert "clearSecrets" not in runtime
     # None of the canonicalized fields is re-added as an override of the
     # whole-settings payload under either its canonical or its flat name.
     assignment_region = serializer[serializer.index("return {"):]

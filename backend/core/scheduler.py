@@ -7,7 +7,7 @@ from core.config import get_settings
 from core.logging_utils import sanitize_exception
 from core.performance import async_timer
 from core.version import is_version_newer, normalize_version_tag
-from services.notification_service import NotificationService
+from services.notification_service import NotificationService, reporting_participates
 
 application = None
 
@@ -36,15 +36,26 @@ def _coerce_int_setting(value, default: int) -> int:
 
 
 def _has_reporting_webhook(cfg) -> bool:
-    """Return True when reporting can send to either the dedicated or Discord webhook."""
-    stats_webhook = (getattr(cfg, "stats_report_webhook_url", "") or "").strip()
-    discord_webhook = (getattr(cfg, "discord_webhook_url", "") or "").strip()
-    return bool(stats_webhook or discord_webhook)
+    """Return True when reporting has an effective destination.
+
+    The dedicated-webhook -> primary-Discord fallback is not re-derived here:
+    it belongs to the one notification-boundary owner, so admission and
+    delivery can never disagree about where a report would go.
+    """
+    from services.notification_service import reporting_destination
+
+    return bool(reporting_destination(cfg))
 
 
 def _stats_report_window_hours(cfg) -> int:
-    """Return the configured report window in hours for webhook reporting."""
-    return max(1, _coerce_int_setting(getattr(cfg, "stats_report_window_hours", 24), 24))
+    """Return the configured report window in hours for webhook reporting.
+
+    Bounded by the one notification-boundary owner, so a scheduled report and an
+    operator-triggered one always summarise the same period.
+    """
+    from services.notification_service import report_window_hours
+
+    return report_window_hours(cfg)
 
 
 def _application_storage_ready() -> bool:
@@ -354,7 +365,10 @@ async def stats_report_loop():
         cfg = get_settings()
         interval_h = max(0, _coerce_int_setting(getattr(cfg, "stats_report_interval_hours", 0), 0))
         window_h = _stats_report_window_hours(cfg)
-        if interval_h <= 0 or not _has_reporting_webhook(cfg):
+        # Three separate facts, all of which must hold for a SCHEDULED report:
+        # the section takes part at all, it has an automatic cadence, and it has
+        # somewhere to send. None of them is derived from another.
+        if not reporting_participates(cfg) or interval_h <= 0 or not _has_reporting_webhook(cfg):
             await asyncio.sleep(300)
             continue
         await asyncio.sleep(max(300, interval_h * 3600))

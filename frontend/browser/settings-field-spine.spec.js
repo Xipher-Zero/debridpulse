@@ -79,6 +79,11 @@ const measure = (page, tab) => page.evaluate(tab => {
   const rows = [];
   for (const field of panel.querySelectorAll('.dp-settings-field, .dp-usenet-field')) {
     const control = field.querySelector('.dp-dropdown__trigger')
+      // The ONE compound field: a control and a trailing action inside a single
+      // border (Browse, Upload Avatar, a unit). Its own box is the control the
+      // operator sees, so the bare input inside it -- drawn borderless, one
+      // pixel in -- is not what the spine is measured against.
+      || field.querySelector(':scope > .dp-action-field')
       || field.querySelector('.dp-settings-directory-field-control')
       || field.querySelector('input.input, textarea.input, select.input, .dp-field');
     if (!control) continue;

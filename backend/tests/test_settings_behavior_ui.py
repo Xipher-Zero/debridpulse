@@ -118,7 +118,10 @@ def test_typed_confirmation_gates_destructive_action_until_exact_phrase():
 def test_settings_action_rerenders_use_viewport_preserving_refresh():
     js = source(SETTINGS)
     for start, end in [
-        ("async function sendReport", "async function runBackup"),
+        ("async function sendStatsReport", "async function uploadAvatar"),
+        ("async function testDiscordDelivery", "async function sendStatsReport"),
+        ("async function clearAvatar", "async function clearWebhook"),
+        ("async function clearWebhook", "async function runBackup"),
         ("async function wipeDatabaseClean", "/* Erasing a stored credential"),
         ("async function generateToken", "async function clearToken"),
         ("async function clearToken", "async function copyToken"),

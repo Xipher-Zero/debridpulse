@@ -92,7 +92,7 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
     # path left to build or replay one.
     assert "function authPayload()" not in module
     assert "function persistAuth(" not in module
-    assert "FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'authentication'])" in module
+    assert "'authentication'" in module.split("FIELD_BOUNDARY_TABS = new Set(", 1)[1].split(")", 1)[0]
     assert "persistence.defineScope('auth-config'" in module
     assert "function writeAuthentication(changes)" in module
 

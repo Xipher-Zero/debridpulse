@@ -697,8 +697,10 @@ def test_the_header_rail_geometry_has_one_owner_and_no_positioning_hack():
     owners = [p.name for p in MAINTAINED_CSS
               if "dp-settings-header-action" in p.read_text(encoding="utf-8")]
     assert owners == ["ui-settings-page.css"], owners
-    rail = rule(SETTINGS_CSS,
-                "#view-settings .dp-settings-card-header > .dp-settings-card-header-controls {")
+    # The rail is declared for the RAIL, not for one card family's header grid:
+    # a provider card, an Authentication card and a Notifications card all
+    # render it, and each used to restate it.
+    rail = rule(SETTINGS_CSS, "#view-settings .dp-settings-card-header-controls {")
     assert "display: flex" in rail
     # Narrow layouts reflow; they do not overflow, and wrapping preserves the
     # rail's order because the order is the source order.
@@ -1396,15 +1398,22 @@ def test_footer_apply_no_longer_reads_migrated_providers_page_controls():
         assert f"valueOf('{migrated}'" not in document, migrated
         assert f"floatOf('{migrated}'" not in document, migrated
         assert f"{migrated}:" not in document, migrated
-    # DP 1.0.13 Settings consolidation: Extraction joined them, so its four
-    # values are carried forward from canonical truth too.
+    # DP 1.0.13 Settings consolidation: Extraction joined them, then
+    # Notifications, so their values are carried forward from canonical truth
+    # too -- including every stored webhook, whose clear is now its own
+    # explicit action rather than a deferred payload field.
     for migrated in ("extract_enabled", "extract_delete_archive",
-                     "extract_max_concurrent", "extraction_password"):
+                     "extract_max_concurrent", "extraction_password",
+                     "discord_notify_added", "discord_webhook_url", "discord_avatar_url",
+                     "stats_report_webhook_url", "stats_report_window_hours",
+                     "update_check_interval_hours"):
         assert f"boolOf('{migrated}')" not in document, migrated
         assert f"intOf('{migrated}'" not in document, migrated
+        assert f"valueOf('{migrated}'" not in document, migrated
         assert f"{migrated}:" not in document, migrated
+    assert "clear_secrets" not in document
     # Positive control: an unmigrated top-level field is still read from the form.
-    assert "boolOf('discord_notify_added')" in document
+    assert "boolOf('db_wipe_enabled')" in document
 
 
 def test_footer_apply_writes_no_integration_namespace_at_all():

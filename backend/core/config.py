@@ -61,6 +61,18 @@ class AppSettings(BaseModel):
     download_folder: str = "/download"
 
     # Discord
+    # Section participation. Whether the feature takes part at all is a
+    # different fact from whether it is configured: disabling stops delivery
+    # and erases nothing, and the status projection keeps reporting the truth
+    # about the stored configuration either way.
+    #
+    # It defaults to True so a configuration written before this field existed
+    # -- where Discord delivery was gated only by a stored webhook and the
+    # per-event toggles -- keeps behaving exactly as it did. A fresh install is
+    # equally sane: participation is on, nothing is configured, so nothing is
+    # delivered. Its canonical runtime gate is
+    # ``services.notification_service.NotificationService.client()``.
+    discord_notifications_enabled: bool = True
     discord_webhook_url: str = ""
     discord_webhook_added: str = ""
     discord_username: str = APP_SHORT_NAME
@@ -100,10 +112,29 @@ class AppSettings(BaseModel):
     # ── Statistics & Reporting ────────────────────────────────────────────────
     stats_snapshot_interval_minutes: int = 60
     stats_snapshot_keep_days: int = 30
+    # Section participation, on the same terms as Discord above: it gates
+    # SCHEDULED reporting only, never the stored destination, interval or
+    # window, and never Discord. ``stats_report_interval_hours = 0`` remains
+    # its own separate cadence fact ("no automatic reports"); the two are not
+    # conflated. Defaults to True for the same upgrade reason.
+    stats_reporting_enabled: bool = True
     stats_report_interval_hours: int = 0
     update_check_interval_hours: int = 12
     stats_report_window_hours: int = 24
     stats_report_webhook_url: str = ""
+
+    # Durable notification verification evidence: ``{subject id: fingerprint}``,
+    # exactly the shape and the meaning ``IntegrationSettings.verification``
+    # carries -- one entry per independently testable notification subject
+    # whose CURRENT SAVED material a successful Test has covered.
+    #
+    # It lives with the configuration it describes because that is the only
+    # place it can stay true across a reload, and current truth is DERIVED
+    # (does a stored fingerprint still describe what is saved?) rather than a
+    # flag somebody has to remember to clear. It is internal: never published,
+    # never accepted from a request. Its one owner is
+    # ``services.notification_service``.
+    notification_verification: dict[str, str] = Field(default_factory=dict, repr=False)
 
     # ── Event log TTL ─────────────────────────────────────────────────────────
     events_keep_days: int = 30

@@ -175,11 +175,16 @@
   text-align: center;
 }
 
-/* The operational header RAIL: state, then the provider-level action, then the
+/* The operational header RAIL: state, then the card-level action, then the
    participation control, on one vertical centreline. It wraps rather than
    overflowing, and wrapping preserves that order because the order is the
-   source order -- there is no positioning to re-derive. */
-#view-settings .dp-settings-card-header > .dp-settings-card-header-controls {
+   source order -- there is no positioning to re-derive.
+
+   Declared for the rail itself rather than for one card family's header grid:
+   a provider card, an Authentication card and a Notifications card all render
+   THIS rail, and each used to restate it. `justify-self` is inert outside a
+   grid, so the one rule serves every header that has one. */
+#view-settings .dp-settings-card-header-controls {
   min-width: 0;
   justify-self: end;
   display: flex;
@@ -187,6 +192,14 @@
   align-items: center;
   justify-content: flex-end;
   gap: 12px;
+}
+
+/* The status sits WITH its rail, so it is not the centred provider variant. */
+#view-settings .dp-settings-card-header-controls > .dp-settings-provider-config-status {
+  justify-self: auto;
+  flex: 0 0 auto;
+  text-align: right;
+  white-space: nowrap;
 }
 
 /* The neutral action slot. It contributes placement and nothing else, so the
@@ -257,9 +270,7 @@
 #view-settings .dp-settings-field + .dp-settings-field,
 #view-settings .dp-settings-toggle + .dp-settings-field,
 #view-settings .dp-settings-field + .dp-settings-toggle,
-#view-settings .dp-settings-toggle + .dp-settings-toggle,
-#view-settings .dp-settings-clear-secret + .dp-settings-field,
-#view-settings .dp-settings-field + .dp-settings-clear-secret {
+#view-settings .dp-settings-toggle + .dp-settings-toggle {
   margin-top: 12px;
 }
 
@@ -380,35 +391,105 @@
   padding-block: 4px;
 }
 
-#view-settings .dp-settings-clear-secret {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid var(--dp-divider);
-  color: var(--dp-text-primary);
-  cursor: pointer;
-}
-
-#view-settings .dp-settings-clear-secret > span {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-#view-settings .dp-settings-clear-secret b {
-  font-size: 12px;
-  font-weight: 600;
-}
-
-#view-settings .dp-settings-clear-secret small,
 #view-settings .dp-settings-inline-check {
   color: var(--dp-text-muted);
   font-size: 11px;
   line-height: 1.35;
+}
+
+/* ── A standard stacked field that carries an action beside its CONTROL ──
+   Rendered by ui-settings-page.js `fieldRow()`.
+
+     [ title   ]
+     [ control ]  [ action ]
+     [ hint    ]
+
+   The field keeps the ordinary Title + hint + field grammar untouched; it is
+   promoted into THIS grid (`display: contents`) so the action can share the
+   control's own row and be centred against it, however the title above or the
+   hint below happens to wrap. Nothing is positioned over anything, nothing
+   reserves a guessed width, and the action never moves when the row's copy
+   reflows -- the relationship is structural. */
+#view-settings .dp-settings-field-row {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: start;
+}
+
+#view-settings .dp-settings-field-row > .dp-settings-field {
+  display: contents;
+}
+
+#view-settings .dp-settings-field-row > .dp-settings-field > * {
+  min-width: 0;
+  grid-column: 1;
+}
+
+#view-settings .dp-settings-field-row > .dp-settings-field > .form-label { grid-row: 1; }
+#view-settings .dp-settings-field-row > .dp-settings-field > :is(.input, .dp-action-field) { grid-row: 2; }
+#view-settings .dp-settings-field-row > .dp-settings-field > .form-hint { grid-row: 3; }
+
+/* Whether the action has anything to act on is a STATE of that action, never a
+   reason to remove it, so it keeps this track in both states and the row never
+   reflows as a stored value comes and goes. */
+#view-settings .dp-settings-field-row > :not(.dp-settings-field) {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: center;
+  justify-self: start;
+  white-space: nowrap;
+}
+
+/* ── The UNIT a numeric field carries inside its trailing edge ───────────
+   A sibling of the control within the one compound-field primitive, so the
+   number physically ends where the unit begins. It is a reading, not a
+   control: no pointer events, no selection, no tab stop. */
+#view-settings .dp-settings-field-unit {
+  flex: 0 0 auto;
+  padding-inline: 2px 4px;
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* ── A named, collapsible SUBSECTION inside a card body ──────────────────
+   Rendered by ui-settings-page.js `disclosureSection()` with the ONE canonical
+   disclosure chip. It is a block in the card's own flow with its own body, so
+   opening it adds height beneath the rows above and cannot resize or
+   rebalance them. */
+#view-settings .dp-settings-subsection {
+  min-width: 0;
+  margin-top: 26px;
+}
+
+#view-settings .dp-settings-subsection-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--dp-divider);
+}
+
+#view-settings .dp-settings-subsection-title {
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+  font-weight: 650;
+  letter-spacing: .01em;
+}
+
+#view-settings .dp-settings-subsection-body {
+  min-width: 0;
+  padding-top: 14px;
+}
+
+#view-settings .dp-settings-subsection-body[hidden] {
+  display: none !important;
 }
 
 /* ── The ONE inline Settings field ───────────────────────────────────────
@@ -618,6 +699,7 @@
    cardinality, and nothing else: no set names a column count of its own. */
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] { --dp-tuning-lanes: 4; --dp-tuning-lane-min: 200px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] { --dp-tuning-lanes: 5; --dp-tuning-lane-min: 160px; }
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="6"] { --dp-tuning-lanes: 6; --dp-tuning-lane-min: 140px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] { --dp-tuning-lanes: 7; --dp-tuning-lane-min: 120px; }
 
 /* A relationship between adjacent cells, and nothing more.
@@ -659,6 +741,17 @@
 #view-settings .dp-settings-tuning-grid .dp-settings-field > select.input,
 #view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell {
   width: min(100%, 112px) !important;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+/* A control that carries a unit inside its own border is the same cell control
+   in the same place; it is simply wider, because the number and the unit are
+   siblings rather than one overlapping the other. */
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-action-field {
+  width: min(100%, 150px);
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
@@ -776,10 +869,6 @@
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 12px;
-}
-
-#view-settings .dp-settings-file-button {
-  cursor: pointer;
 }
 
 #view-settings .dp-settings-avatar-preview {
@@ -945,17 +1034,6 @@
   line-height: 1.35;
 }
 
-#view-settings .dp-settings-context-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-left: auto;
-}
-
-#view-settings .dp-settings-context-actions [hidden] {
-  display: none !important;
-}
-
 #view-settings .dp-settings-master-footer .btn {
   min-height: 36px;
   margin: 0;
@@ -1042,13 +1120,6 @@
   #view-settings .dp-settings-master-footer {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  #view-settings .dp-settings-context-actions {
-    width: 100%;
-    justify-content: flex-start;
-    margin-left: 0;
-    flex-wrap: wrap;
   }
 }
 

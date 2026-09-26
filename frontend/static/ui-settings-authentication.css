@@ -394,32 +394,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 /* The Authentication cards use the SAME operational header rail as a provider
    card -- state, then the action that proves it, then participation -- so
-   status is the canonical coloured text, never a badge of its own. The rail's
-   own placement rule is scoped to the provider header, so the auth cards'
-   three-column header grid places it here. */
-#view-settings .dp-settings-oidc-grouped-card > .card-header > .dp-settings-card-header-controls,
-#view-settings .dp-settings-api-access-card > .card-header > .dp-settings-card-header-controls,
-#view-settings .dp-settings-username-password-card > .card-header > .dp-settings-card-header-controls {
-  min-width: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  justify-self: end;
-  gap: 12px;
-}
-
+   status is the canonical coloured text, never a badge of its own. The rail
+   itself, and the rail's own status treatment, are declared ONCE by the
+   Settings card owner (ui-settings-page.css); this file restated both, and a
+   third copy would have appeared with the Notifications cards. Only what is
+   genuinely local to these cards stays here. */
 #view-settings .dp-settings-oidc-grouped-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable,
 #view-settings .dp-settings-api-access-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable {
   justify-self: auto;
-}
-
-/* The status sits with its rail, so it is not the centred provider variant. */
-#view-settings .dp-settings-card-header-controls > .dp-settings-provider-config-status {
-  justify-self: auto;
-  flex: 0 0 auto;
-  text-align: right;
-  white-space: nowrap;
 }
 
 @media (max-width: 1280px) {

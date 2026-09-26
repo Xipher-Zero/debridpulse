@@ -233,17 +233,16 @@ def test_ordinary_settings_fields_remain_deferred():
     """Scope boundary: the deferred footer still owns the tabs that have not
     been migrated.
 
-    DP 1.0.13 Settings consolidation migrated Extraction, so its four values
-    left this payload and became declared field-boundary controls like every
-    Downloads value before them. Notifications and Data & Maintenance still
-    commit through the footer, and that is what this case holds.
+    DP 1.0.13 Settings consolidation migrated Extraction, then Notifications,
+    so their values left this payload and became declared field-boundary
+    controls like every Downloads value before them. Data & Maintenance still
+    commits through the footer, and that is what this case holds.
     """
     persist = _function("persistNonAuth")
     assert "PUT" in persist and "/settings" in persist
     payload = _function("nonAuthPayload")
-    assert "discord_notify_added: boolOf('discord_notify_added')" in payload
     assert "backup_interval_hours: intOf('backup_interval_hours', 24)" in payload
-    # Nothing Extraction owns is read from the page here any more.
+    # Nothing Extraction or Notifications owns is read from the page here.
     for name in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent",
-                 "extraction_password"):
+                 "extraction_password", "discord_", "stats_report", "update_check_interval_hours"):
         assert name not in payload, name

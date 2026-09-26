@@ -78,7 +78,6 @@ from transfers import codec
 from application.service import ApplicationService
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
-from services.notification_service import NotificationService
 from api.serializers import (
     public_download_file,
     public_payload,
@@ -194,6 +193,13 @@ def _public_settings(settings: AppSettings, definitions=()) -> dict:
         if field in data:
             data[f"{field}_configured"] = bool(str(data.get(field) or "").strip())
             data[field] = ""
+    # Verification evidence is internal: a fingerprint is never served. What is
+    # published is the DERIVED notification state -- whether each section has an
+    # effective destination, and whether a Test has covered exactly what is
+    # saved -- computed by the one notification-boundary owner.
+    data.pop("notification_verification", None)
+    from services.notification_service import notification_state
+    data.update(notification_state(settings))
     data["database_backend"] = "sqlite"
     data["timezone"] = (os.getenv("TZ", "UTC") or "UTC").strip() or "UTC"
     return data
@@ -396,8 +402,17 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             merged["integration_groups"] = previous.integration_groups
             merged["transfer_policy"] = previous.transfer_policy
             merged["execution_runtime_limits"] = previous.execution_runtime_limits
+            # Notification verification evidence is metadata ABOUT canonical
+            # configuration and is never accepted from a request, so it is
+            # carried forward here exactly like the canonical namespaces above.
+            merged["notification_verification"] = previous.notification_verification
             clean = normalize_settings(AppSettings(**merged), definitions, previous=previous)
             clean = validate_and_sanitise(clean)
+            # ... and then retired where it no longer describes what is about to
+            # be saved. Sanitisation can itself change material (a rejected
+            # avatar URL is cleared), so this is the last word before the write.
+            from services.notification_service import carried_verification
+            clean = carried_verification(clean)
             try:
                 await application.validate_configuration(previous, clean)
             except ValueError as exc:
@@ -472,19 +487,6 @@ async def serve_avatar():
 
 
 # ── Connection tests ───────────────────────────────────────────────────────────
-
-@router.post("/settings/test-discord")
-async def test_discord():
-    cfg = get_settings()
-    if not cfg.discord_webhook_url:
-        raise HTTPException(400, "No Discord webhook configured")
-    from services.notifications import NotificationService
-    svc = NotificationService(cfg.discord_webhook_url)
-    ok = await svc.test()
-    if not ok:
-        raise HTTPException(502, "Discord test failed — check webhook URL")
-    return {"ok": True}
-
 
 @router.post("/settings/test-alldebrid")
 async def test_alldebrid():

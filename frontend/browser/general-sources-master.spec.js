@@ -251,14 +251,15 @@ test('a later Apply Settings cannot replay a stale master or child value', async
   await flipChild(page, 'general_ftp');
   await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
 
-  // An unrelated DEFERRED edit, then the page-level write. It is made on a tab
-  // that still has an Apply contract: DP 1.0.13 made Downloads a field-boundary
-  // surface and the Settings consolidation did the same for Extraction, so
-  // neither offers an Apply at all and neither could carry one.
-  await page.locator('#view-settings [data-tab="notifications"]').click();
-  await page.locator('#view-settings [data-setting="discord_username"]').fill('ReplayProbe');
+  // An unrelated DEFERRED edit, then the page-level write. It is made on the one
+  // tab that still has an Apply contract: DP 1.0.13 made Downloads a
+  // field-boundary surface and the Settings consolidation did the same for
+  // Extraction and then Notifications, so none of them offers an Apply at all
+  // and none of them could carry one.
+  await page.locator('#view-settings [data-tab="maintenance"]').click();
+  await page.locator('#view-settings [data-setting="events_keep_days"]').fill('27');
   await page.locator('#view-settings [data-action="save"]').click();
-  await expect.poll(async () => (await canonical(page)).discord_username).toBe('ReplayProbe');
+  await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(27);
 
   const settings = await canonical(page);
   expect(settings.integration_groups[GROUP].enabled, 'Apply replayed a stale master').toBe(false);

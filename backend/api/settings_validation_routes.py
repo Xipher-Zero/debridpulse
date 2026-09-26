@@ -77,21 +77,6 @@ class AllDebridValidationRequest(BaseModel):
     clear_api_key: bool = False
 
 
-class DiscordValidationRequest(BaseModel):
-    webhook_url: str = Field(default="", max_length=8192)
-    clear_webhook: bool = False
-    username: str = Field(default="", max_length=80)
-    avatar_url: str = Field(default="", max_length=8192)
-
-
-class StatisticsReportDraftRequest(BaseModel):
-    hours: int = Field(default=24, ge=1, le=8760)
-    stats_report_webhook_url: str = Field(default="", max_length=8192)
-    clear_stats_report_webhook: bool = False
-    discord_webhook_url: str = Field(default="", max_length=8192)
-    clear_discord_webhook: bool = False
-
-
 class DirectoryCapacity(BaseModel):
     total_bytes: int | None = None
     free_bytes: int | None = None
@@ -415,7 +400,7 @@ async def _record_verification_outcome(application: ApplicationService, integrat
     ``Configured`` about a configuration this very request just proved. ``None``
     means nothing changed and there is nothing to publish.
     """
-    from core.config import apply_settings, config_write_lock, load_settings, save_settings
+    from core.config import config_write_lock, load_settings
     from integrations.configuration import public_integrations, record_verification_outcome
 
     definition = next((item for item in application.definitions if item.id == integration_id), None)
@@ -425,12 +410,43 @@ async def _record_verification_outcome(application: ApplicationService, integrat
         updated = record_verification_outcome(load_settings(), definition, fingerprint, ok)
         if updated is None:
             return None
-        # Evidence is metadata ABOUT canonical configuration, not configuration:
-        # nothing routable, native or lifecycle-bound changed, so this persists
-        # and republishes the document without a reconfigure.
-        save_settings(updated)
-        apply_settings(updated)
+        _persist_evidence(updated)
         return public_integrations(updated, application.definitions).get(integration_id)
+
+
+def _persist_evidence(updated) -> None:
+    """The ONE write in this file.
+
+    Evidence is metadata ABOUT canonical configuration, not configuration:
+    nothing routable, native or lifecycle-bound changed, so this persists and
+    republishes the document without a reconfigure. What it writes is whatever
+    the generic evidence owner returned -- never anything assembled from a
+    request -- which is why a validation route can hold a save site at all.
+    """
+    from core.config import apply_settings, save_settings
+
+    save_settings(updated)
+    apply_settings(updated)
+
+
+async def _record_notification_outcome(subject: str, fingerprint: str, ok: bool) -> dict:
+    """The same act for a notification subject, through its own evidence owner.
+
+    Notifications are not an integration namespace, so the evidence owner is
+    ``services.notification_service`` -- but the pattern, the lock, the write
+    and the meaning are identical, and there is no Notifications-only
+    verification subsystem. Returns the derived public notification state so
+    the caller can publish what this request actually established.
+    """
+    from core.config import config_write_lock, get_settings, load_settings
+    from services.notification_service import (
+        notification_state, record_verification_outcome as record_notification)
+
+    async with config_write_lock():
+        updated = record_notification(load_settings(), subject, fingerprint, ok)
+        if updated is not None:
+            _persist_evidence(updated)
+    return notification_state(get_settings())
 
 
 def _accepted(integration_id: str, projection) -> dict:
@@ -438,20 +454,6 @@ def _accepted(integration_id: str, projection) -> dict:
     if not projection:
         return {}
     return {"integration_id": integration_id, "integration": projection}
-
-
-def _resolve_secret_candidate(candidate: str, stored: str, *, clear: bool) -> str:
-    """Resolve a redacted Settings secret without persisting draft state.
-
-    A non-empty candidate wins. A blank candidate preserves the stored value
-    unless the operator explicitly checked the corresponding clear control.
-    """
-    if clear:
-        return ""
-    typed = str(candidate or "").strip()
-    if typed:
-        return typed
-    return str(stored or "").strip()
 
 
 def _is_discord_webhook(url: str) -> bool:
@@ -462,17 +464,18 @@ def _is_discord_webhook(url: str) -> bool:
     return host in {"discord.com", "discordapp.com", "canary.discord.com", "ptb.discord.com"}
 
 
-def _draft_discord_identity(username: str, avatar_url: str) -> tuple[str, str]:
-    name = str(username or "").strip() or APP_SHORT_NAME
-    avatar = str(avatar_url or "").strip()
-    if avatar.startswith("data:") or avatar.lower().endswith(".svg"):
-        avatar = ""
-    return name, avatar
+async def _send_discord_test(webhook_url: str) -> None:
+    """Send the Discord test AS the SAVED notification identity.
 
+    There is no draft identity any more: Display Name and Avatar URL each
+    commit at their own field boundary, and the action settles every pending
+    write before it runs, so what is saved is what the operator just entered.
+    The identity is read through the notification client's own canonical
+    accessor, so the test posts exactly as a real notification would.
+    """
+    from services.notifications import _get_discord_identity
 
-async def _send_discord_draft_test(webhook_url: str, username: str, avatar_url: str) -> None:
-    """Send the Discord test using the identity currently shown in Settings."""
-    name, avatar = _draft_discord_identity(username, avatar_url)
+    name, avatar = _get_discord_identity()
     payload = {
         "username": name,
         "embeds": [
@@ -578,68 +581,74 @@ async def validate_alldebrid(payload: AllDebridValidationRequest,
 
 
 @router.post("/settings/validate-discord")
-async def validate_discord(payload: DiscordValidationRequest):
+async def validate_discord():
+    """Prove the SAVED Discord configuration, and record what that proved.
+
+    Participation is deliberately not consulted: a disabled section that is
+    still configured can be tested, which is the whole point of separating the
+    two facts. The test carries no payload because there is nothing left to
+    carry -- every field on the page is already canonical by the time it runs.
+    """
+    from services import notification_service as notifications
+
     cfg = get_settings()
-    webhook_url = _resolve_secret_candidate(
-        payload.webhook_url,
-        str(cfg.discord_webhook_url or ""),
-        clear=payload.clear_webhook,
-    )
+    webhook_url = notifications.discord_destination(cfg)
     if not webhook_url:
-        raise HTTPException(400, "No Discord webhook configured or entered")
+        raise HTTPException(400, "No Discord webhook configured")
+    fingerprint = notifications.verification_fingerprints(cfg)[notifications.DISCORD_SUBJECT]
 
     try:
         if _is_discord_webhook(webhook_url):
-            await _send_discord_draft_test(
-                webhook_url,
-                payload.username,
-                payload.avatar_url,
-            )
+            await _send_discord_test(webhook_url)
             sent = True
         else:
             sent = await NotificationService(webhook_url).test()
         if not sent:
             raise RuntimeError("Discord test did not send a notification")
-        return {"ok": True}
     except Exception as exc:
+        # A failure is the newest truth about this material: it retires a proof
+        # that has stopped being true rather than leaving the card claiming
+        # Verified. It changes no configuration.
+        await _record_notification_outcome(notifications.DISCORD_SUBJECT, fingerprint, False)
         raise HTTPException(502, _safe_failure(exc)) from exc
+    return {"ok": True, "notifications": await _record_notification_outcome(
+        notifications.DISCORD_SUBJECT, fingerprint, True)}
 
 
 @router.post("/settings/send-stats-report")
-async def send_stats_report_from_draft(payload: StatisticsReportDraftRequest):
-    """Send a report using the current Notifications draft without saving it.
+async def send_statistics_report():
+    """Send one report NOW against the saved configuration, and record it.
 
-    Secret fields preserve their stored value while redacted/blank, respect an
-    explicit clear request, and retain the normal reporting -> primary Discord
-    webhook fallback. Only Apply Settings persists any of these draft values.
+    The immediate-report pipeline is unchanged; what changed is that it reads
+    the saved reporting destination through the one owner -- dedicated webhook,
+    or the primary Discord fallback -- and the saved report window, instead of
+    resolving a draft. Participation is not consulted: an operator may prove a
+    configured destination while scheduled reporting is switched off.
     """
+    from services import notification_service as notifications
+
     cfg = get_settings()
-    reporting_url = _resolve_secret_candidate(
-        payload.stats_report_webhook_url,
-        str(getattr(cfg, "stats_report_webhook_url", "") or ""),
-        clear=payload.clear_stats_report_webhook,
-    )
+    reporting_url = notifications.reporting_destination(cfg)
     if not reporting_url:
-        reporting_url = _resolve_secret_candidate(
-            payload.discord_webhook_url,
-            str(getattr(cfg, "discord_webhook_url", "") or ""),
-            clear=payload.clear_discord_webhook,
-        )
-    if not reporting_url:
-        raise HTTPException(400, "No reporting or primary Discord webhook configured or entered")
+        raise HTTPException(400, "No reporting or primary Discord webhook configured")
+    fingerprint = notifications.verification_fingerprints(cfg)[notifications.REPORTING_SUBJECT]
+    hours = notifications.report_window_hours(cfg)
 
     try:
         from services.stats import send_stats_report
 
-        return await send_stats_report(
-            hours=payload.hours,
+        result = await send_stats_report(
+            hours=hours,
             webhook_url=reporting_url,
             triggered_by="manual",
         )
     except HTTPException:
         raise
     except Exception as exc:
+        await _record_notification_outcome(notifications.REPORTING_SUBJECT, fingerprint, False)
         raise HTTPException(502, _safe_failure(exc)) from exc
+    return {**result, "notifications": await _record_notification_outcome(
+        notifications.REPORTING_SUBJECT, fingerprint, True)}
 
 
 # --- Usenet (SAB-backed) integration surfaces --------------------------------

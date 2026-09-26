@@ -35,20 +35,13 @@ def test_settings_events_are_delegated_once_on_the_persistent_root() -> None:
 def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -> None:
     runtime = read(RUNTIME)
     payload = section(runtime, "function connectionTestPayload(kind)", "async function testConnection")
-    test_connection = section(runtime, "async function testConnection", "async function uploadAvatar")
+    test_connection = section(runtime, "async function testConnection", "async function testDiscordDelivery")
 
     assert "api_key: valueOf('alldebrid_api_key')" in payload
     # DP 1.0.13: credential removal became an explicit confirmed action, so no
     # removal intent is ever pending at Test time and none is carried.
     assert "clear_api_key" not in payload
-    assert "webhook_url: valueOf('discord_webhook_url')" in payload
-    assert "clear_webhook: clears.has('discord_webhook_url')" in payload
-
-    for endpoint in (
-        "/settings/validate-alldebrid",
-        "/settings/validate-discord",
-    ):
-        assert endpoint in test_connection
+    assert "/settings/validate-alldebrid" in test_connection
     # DP 1.0.13: the Download Engine test is removed from the UI, so no draft
     # validation path reaches it at all.
     assert "test-aria2" not in test_connection
@@ -58,22 +51,59 @@ def test_connection_tests_use_transient_drafts_without_saving_or_rerendering() -
     assert "setDot(" not in test_connection
 
 
+def test_notification_tests_exercise_the_saved_configuration_and_carry_no_draft() -> None:
+    """DP 1.0.13 Notifications migration.
+
+    Every Notifications field commits at its own boundary, so by the time a
+    Test runs there is no draft left to send: the actions settle any pending
+    write and then ask the backend to prove what is SAVED. They persist
+    nothing, they adopt the derived verification state the backend returns, and
+    a failure re-reads canonical truth rather than guessing at it.
+    """
+    runtime = read(RUNTIME)
+    discord = section(runtime, "async function testDiscordDelivery", "async function sendStatsReport")
+    report = section(runtime, "async function sendStatsReport", "async function uploadAvatar")
+
+    for action in (discord, report):
+        assert "await window.DPSettingsPersistence.settle(root());" in action
+        assert ", undefined, 20000)" in action          # no payload at all
+        assert "adoptNotifications(result.notifications);" in action
+        assert "await refreshNotificationState();" in action
+        assert "persistNonAuth" not in action
+        assert "render();" not in action
+        assert "valueOf(" not in action
+
+    assert "'/settings/validate-discord'" in discord
+    assert "'/settings/send-stats-report'" in report
+
+    # Verification is canonical and derived; the page holds no bit of its own.
+    assert "state.verified" not in runtime
+    assert "verified = true" not in runtime
+    status = section(runtime, "function notificationStatus(", "/* The three stored webhooks")
+    assert "{text: 'Unconfigured', tone: 'error'}" in status
+    assert "{text: 'Verified', tone: 'success'}" in status
+    assert "{text: 'Configured', tone: 'warning'}" in status
+
+
 def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() -> None:
     runtime = read(RUNTIME)
     # Two writers of the whole-settings surface, and only two: the deferred
     # footer payload, and the canonical single-field settings-document commit
     # (which reads canonical truth and overrides exactly one field).
     assert runtime.count("request('PUT', '/settings'") == 2
-    scope = section(runtime, "function registerCommitScopes", "function renderAllDebridCredential")
+    scope = section(runtime, "async function writeSettingsDocument", "/* Proof of what a successful Test")
     assert scope.count("request('PUT', '/settings'") == 1
-    assert "[option]: committedValue(key, draft)" in scope
+    document_scope = section(runtime, "persistence.defineScope('settings-document'",
+                             "/* The ONE whole-settings write.")
+    assert "writeSettingsDocument({[option]: committedValue(key, draft)})" in document_scope
     assert runtime.count("persistNonAuth(") == 2  # declaration + Apply Settings path
 
     save_current = section(runtime, "async function saveCurrent", "function connectionTestPayload")
     assert "await persistNonAuth();" in save_current
 
     for start, end in (
-        ("async function sendReport", "async function runBackup"),
+        ("async function sendStatsReport", "async function uploadAvatar"),
+        ("async function clearWebhook", "async function runBackup"),
         ("async function runBackup", "async function listBackups"),
         ("async function wipeDatabaseClean", "async function clearPassword"),
     ):
@@ -118,7 +148,16 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     assert "alldebrid_canonical_options(get_settings())" in validation
     assert "NotificationService(webhook_url).test()" in validation
     assert "clear_api_key" in validation
-    assert "clear_webhook" in validation
+    # DP 1.0.13 Notifications migration: the Discord and statistics-report
+    # operations exercise the SAVED configuration through the one
+    # effective-destination owner, so no draft secret, and no draft clear
+    # intent, reaches this file at all.
+    for retired in ("clear_webhook", "_resolve_secret_candidate", "DiscordValidationRequest",
+                    "StatisticsReportDraftRequest", "_draft_discord_identity"):
+        assert retired not in validation, retired
+    assert "notifications.discord_destination(cfg)" in validation
+    assert "notifications.reporting_destination(cfg)" in validation
+    assert "_record_notification_outcome(" in validation
 
     for forbidden in ("persistNonAuth", "PUT /settings"):
         assert forbidden not in validation
@@ -137,11 +176,25 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     # anything assembled from the request.
     assert validation.count("save_settings(") == 1
     assert validation.count("apply_settings(") == 1
+    writer = validation[validation.index("def _persist_evidence(updated)"):]
+    writer = writer[:writer.index("\nasync def ")]
+    assert "save_settings(updated)" in writer and "apply_settings(updated)" in writer
+    assert "payload" not in writer and "api_key" not in writer
+
+    # Both recorders hand that one writer whatever their generic evidence owner
+    # returned -- an integration namespace's, or the notification boundary's --
+    # and never anything assembled from a request.
     recorder = validation[validation.index("async def _record_verification_outcome("):]
-    recorder = recorder[:recorder.index("\ndef ")]
-    assert "save_settings(updated)" in recorder
+    recorder = recorder[:recorder.index("\ndef _persist_evidence")]
     assert "record_verification_outcome(load_settings(), definition, fingerprint, ok)" in recorder
+    assert "_persist_evidence(updated)" in recorder
     assert "payload" not in recorder and "api_key" not in recorder
+
+    notifications = validation[validation.index("async def _record_notification_outcome("):]
+    notifications = notifications[:notifications.index("\ndef ")]
+    assert "record_notification(load_settings(), subject, fingerprint, ok)" in notifications
+    assert "_persist_evidence(updated)" in notifications
+    assert "payload" not in notifications and "webhook_url" not in notifications
 
     assert "from api.settings_validation_routes import router as settings_validation_router" in main
     assert 'app.include_router(settings_validation_router, prefix="/api")' in main

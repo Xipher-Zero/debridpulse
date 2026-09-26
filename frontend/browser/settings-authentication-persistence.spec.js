@@ -344,12 +344,15 @@ test('the generic Apply carries no Authentication value read from the page', asy
     await field(page, 'auth_username').fill('stale-apply-draft');
     await field(page, 'oidc_provider_name').fill('stale-provider-draft');
 
-    // A deferred write on a tab that still has an Apply contract.
-    await page.locator('#view-settings [data-tab="notifications"]').click();
-    await page.locator('#dp-settings-field-discord-username').fill('AuthReplayProbe');
+    // A deferred write on the one tab that still has an Apply contract. DP
+    // 1.0.13 migrated Downloads, Extraction and then Notifications, so Data &
+    // Maintenance is now the only surface the footer still writes for.
+    await page.locator('#view-settings [data-tab="maintenance"]').click();
+    const probe = 29;
+    await page.locator('#dp-settings-field-events-keep-days').fill(String(probe));
     await page.locator('#view-settings [data-action="save"]').click();
-    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).discord_username)
-      .toBe('AuthReplayProbe');
+    await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).events_keep_days)
+      .toBe(probe);
 
     expect(applied.length).toBeGreaterThan(0);
     for (const body of applied) {

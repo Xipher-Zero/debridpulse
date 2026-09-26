@@ -286,11 +286,14 @@ async def send_stats_report(
     webhook_url: Optional[str] = None,
     triggered_by: str = "manual",
 ) -> Dict[str, Any]:
+    from services.notification_service import reporting_destination
+
     cfg = _cfg()
-    url = (webhook_url or getattr(cfg, "stats_report_webhook_url", "") or "").strip()
-    # Fall back to main Discord webhook if no dedicated reporting URL configured
-    if not url:
-        url = (getattr(cfg, "discord_webhook_url", "") or "").strip()
+    # The dedicated-webhook -> primary-Discord fallback has ONE owner
+    # (services.notification_service.reporting_destination), so the destination
+    # this delivery uses is the same one the Settings status projects and the
+    # scheduler admits.
+    url = (webhook_url or "").strip() or reporting_destination(cfg)
     if not url:
         raise ValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url")
 
