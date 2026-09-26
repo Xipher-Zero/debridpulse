@@ -115,7 +115,10 @@ def test_settings_reference_matches_the_six_current_settings_sections_and_save_s
         assert f"<summary>{section}</summary>" in panel
 
     for phrase in (
-        "Apply Settings",
+        # Every setting saves on its own: generic Apply is retired, so the
+        # reference describes the boundaries that actually exist.
+        "Every setting is saved on its own.",
+        "a switch is saved the moment you flip it",
         "leaving its replacement field blank keeps the stored value",
         "Test AllDebrid",
         "Download Safety &amp; Recovery",
@@ -126,13 +129,15 @@ def test_settings_reference_matches_the_six_current_settings_sections_and_save_s
         "OpenID Connect",
         "Public DebridPulse Base URL",
         "API Access",
-        "Run Backup Now",
+        "Run Backup",
         "Allow Database Wipe",
         "processing to be paused",
     ):
         assert phrase in panel
 
     for retired in (
+        "Apply Settings",
+        "Run Backup Now",
         "<summary>General</summary>",
         "<summary>Download Client</summary>",
         "<summary>AllDebrid API</summary>",

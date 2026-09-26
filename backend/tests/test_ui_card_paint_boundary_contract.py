@@ -47,14 +47,14 @@ def test_clean_settings_uses_one_master_card_and_one_internal_scroll_boundary():
     panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
     assert "padding: 12px 12px 16px;" in panels
 
-    footer = css.split("#view-settings .dp-settings-master-footer", 1)[1].split("}", 1)[0]
-    assert "flex: 0 0 auto;" in footer
-    assert "border-top: 1px solid var(--dp-divider);" in footer
+    # The footer region carried generic Apply and nothing else; with Apply
+    # retired it is deleted, so it paints nothing and reserves no space.
+    assert "dp-settings-master-footer" not in css
 
     assert '<section class="card dp-settings-master-card"' in runtime
     assert '<div class="card-header dp-settings-master-header">' in runtime
     assert '<div class="dp-settings-master-body">' in runtime
-    assert '<div class="dp-settings-master-footer"' in runtime
+    assert "dp-settings-master-footer" not in runtime
     assert 'class="card dp-settings-card' in runtime
     assert '<section class="card dp-settings-header-card"' not in runtime
     assert '<section class="card dp-settings-footer"' not in runtime

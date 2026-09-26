@@ -203,11 +203,15 @@
 }
 
 /* The neutral action slot. It contributes placement and nothing else, so the
-   action inside keeps whatever treatment its own owner gives it. */
+   action inside keeps whatever treatment its own owner gives it. A card may
+   put more than one action in it -- Backups & Retention puts two -- so the
+   slot carries the rail's own rhythm between them; with a single action the
+   gap resolves to nothing. */
 #view-settings .dp-settings-header-action {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
+  gap: 12px;
 }
 
 /* ── The ONE canonical Settings disclosure chip ──────────────────────────
@@ -980,62 +984,6 @@
   min-width: 0;
 }
 
-#view-settings .dp-settings-result-list {
-  margin-top: 10px;
-  color: var(--dp-text-secondary);
-  font-size: 11px;
-}
-
-#view-settings .dp-settings-result-row {
-  display: flex;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 6px 0;
-  border-bottom: 1px solid var(--dp-divider);
-}
-
-#view-settings .dp-settings-result-row:last-child {
-  border-bottom: 0;
-}
-
-#view-settings .dp-settings-result-row span:last-child {
-  color: var(--dp-text-muted);
-  text-align: right;
-}
-
-/* ── Fixed-within-card footer ───────────────────────────────────────── */
-#view-settings .dp-settings-master-footer {
-  flex: 0 0 auto;
-  min-height: 60px;
-  padding: 10px 13px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  border-top: 1px solid var(--dp-divider);
-  background: transparent;
-}
-
-#view-settings .dp-settings-save-hint {
-  flex: 1 1 auto;
-  min-width: 180px;
-  color: var(--dp-text-muted);
-  font-size: 11px;
-  line-height: 1.35;
-}
-
-#view-settings .dp-settings-master-footer .btn {
-  min-height: 36px;
-  margin: 0;
-}
-
-/* A tab whose controls all commit at their own field boundary has no deferred
-   Apply contract, so the footer hides both the button and the sentence about
-   it. The button material states its own display, exactly like the context
-   actions above, so the hidden state is stated here too. */
-#view-settings .dp-settings-master-footer > [hidden] {
-  display: none !important;
-}
-
 @media (max-width: 1420px) {
   #view-settings .dp-settings-download-engine-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.3fr) minmax(250px, 1fr);
@@ -1105,11 +1053,6 @@
     width: auto;
     flex: 1 1 auto;
   }
-
-  #view-settings .dp-settings-master-footer {
-    align-items: stretch;
-    flex-direction: column;
-  }
 }
 
 @media (max-width: 700px) {
@@ -1140,8 +1083,7 @@
     text-align: left;
   }
 
-  #view-settings .dp-settings-inline-field,
-  #view-settings .dp-settings-result-row {
+  #view-settings .dp-settings-inline-field {
     align-items: stretch;
     flex-direction: column;
   }
@@ -1152,10 +1094,6 @@
     display: flex;
     align-items: stretch;
     flex-direction: column;
-  }
-
-  #view-settings .dp-settings-result-row span:last-child {
-    text-align: left;
   }
 }
 

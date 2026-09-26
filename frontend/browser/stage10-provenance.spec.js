@@ -43,17 +43,11 @@ async function setIntegrationChecked(page, identity, value) {
   if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
   await expect(input).toBeChecked({checked:value});
 }
-async function saveSettings(page) {
-  const responsePromise = page.waitForResponse(
-    response => response.url().endsWith('/api/settings') && response.request().method() === 'PUT',
-    {timeout:20000},
-  );
-  await page.locator('#view-settings [data-action="save"]').click();
-  const response = await responsePromise;
-  expect(response.ok()).toBeTruthy();
-  // Apply Settings re-renders the whole Settings view, which returns every
-  // expandable card to its collapsed default. Re-open the group this spec
-  // operates, through the same canonical disclosure.
+/* Participation is IMMEDIATE: each Enable committed itself through its own
+ * scoped mutation as it was clicked, and generic Apply no longer exists. This
+ * only makes sure the group this spec operates is still open before the next
+ * interaction, through the same canonical disclosure. */
+async function settleSettings(page) {
   await revealGeneralSources(page);
 }
 function listFixture(overrides = {}) {
@@ -103,7 +97,7 @@ test('both provider enable controls round-trip through the running backend and s
   const firstHttp = originalHttp || !firstAd;
   await setIntegrationChecked(page, 'alldebrid', firstAd);
   await setIntegrationChecked(page, 'general_http', firstHttp);
-  await saveSettings(page);
+  await settleSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([firstAd, firstHttp]);
@@ -115,14 +109,14 @@ test('both provider enable controls round-trip through the running backend and s
   const secondHttp = !originalHttp;
   await setIntegrationChecked(page, 'alldebrid', secondAd);
   await setIntegrationChecked(page, 'general_http', secondHttp);
-  await saveSettings(page);
+  await settleSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([secondAd, secondHttp]);
 
   await setIntegrationChecked(page, 'alldebrid', originalAd);
   await setIntegrationChecked(page, 'general_http', originalHttp);
-  await saveSettings(page);
+  await settleSettings(page);
   await expect.poll(async () => {
     const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
   }).toEqual([originalAd, originalHttp]);

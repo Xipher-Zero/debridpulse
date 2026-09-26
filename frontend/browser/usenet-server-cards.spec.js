@@ -140,21 +140,17 @@ async function seed(page, overrides = {}) {
   return (await response.json()).server_id;
 }
 
-/** Turn Usenet on the way an operator does: toggle, then Apply Settings. */
+/** Turn Usenet on the way an operator does: the toggle IS the commit. */
 async function enableUsenet(page) {
   const toggle = page.locator('[data-integration-enabled="usenet"]');
   if (!(await toggle.isChecked())) {
     await page.locator('label[for="dp-settings-integration-usenet-enabled"]').click();
   }
   await expect(toggle).toBeChecked();
-  const settings = await page.request.get('/api/settings').then(r => r.json());
-  if (settings.integrations.usenet.enabled !== true) {
-    await page.locator('#view-settings button[data-action="save"]:visible').first().click();
-    await expect.poll(async () => {
-      const s = await page.request.get('/api/settings').then(r => r.json());
-      return s.integrations.usenet.enabled;
-    }).toBe(true);
-  }
+  await expect.poll(async () => {
+    const s = await page.request.get('/api/settings').then(r => r.json());
+    return s.integrations.usenet.enabled;
+  }).toBe(true);
   await expandUsenet(page);
 }
 

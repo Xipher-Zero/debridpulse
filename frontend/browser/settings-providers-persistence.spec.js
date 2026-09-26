@@ -66,6 +66,31 @@ async function openAdditional(page) {
 }
 
 const settings = page => page.request.get('/api/settings').then(r => r.json());
+
+/* The ONE whole-settings write that still exists after generic Apply was
+ * retired: an ordinary Data & Maintenance field committing at its own
+ * changed-blur boundary. It is a read-modify-write against FRESHLY read
+ * canonical truth, so it is exactly the act that would expose a page snapshot
+ * if one were still being collected anywhere. Leaves Services as it found it. */
+async function writeTheWholeSettingsDocument(page) {
+  const before = (await settings(page)).events_keep_days;
+  await page.locator('#view-settings [data-tab="maintenance"]').click();
+  const disclosure = page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]');
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  const days = page.locator('#dp-settings-field-events-keep-days');
+  const probe = Number(before) === 27 ? 28 : 27;
+  await days.fill(String(probe));
+  await days.blur();
+  await expect.poll(async () => (await settings(page)).events_keep_days).toBe(probe);
+  await page.request.put('/api/settings', {data: {
+    ...(await settings(page)),
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined, clear_secrets: [],
+    events_keep_days: before,
+  }});
+  await page.locator('#view-settings [data-tab="sources"]').click();
+}
 const toasts = page => page.locator('#toasts .toast');
 const clearButton = page => page.locator('[data-action="clear-alldebrid-key"]');
 
@@ -504,9 +529,9 @@ test('an edited ordinary field is committed before Test reads the form', async (
   expect((await settings(page)).integrations.alldebrid.options.rate_limit_per_minute).toBe(next);
 });
 
-// --- 6.1 immediate + 10 the footer cannot replay -------------------------
+// --- 6.1 immediate + 10 nothing can replay a stale page value ------------
 
-test('the provider Enable toggle stays immediate and is never replayed by the footer',
+test('the provider Enable toggle stays immediate and is never replayed by a later write',
   async ({page}) => {
     const before = (await settings(page)).integrations.general_http.enabled;
     await revealNetworkSources(page);
@@ -514,16 +539,15 @@ test('the provider Enable toggle stays immediate and is never replayed by the fo
     await expect.poll(async () => (await settings(page)).integrations.general_http.enabled)
       .toBe(!before);
 
-    // Canonical state moves underneath the rendered toggle; a later footer
-    // Apply must not replay what the page still shows.
+    // Canonical state moves underneath the rendered toggle; the one remaining
+    // whole-settings write must not replay what the page still shows.
     await page.request.patch('/api/integrations/general_http/configuration',
       {data: {enabled: before}});
-    await page.locator('#view-settings button[data-action="save"]:visible').first().click();
-    await expect(toasts(page).first()).toBeVisible();
+    await writeTheWholeSettingsDocument(page);
     expect((await settings(page)).integrations.general_http.enabled).toBe(before);
   });
 
-test('the footer cannot replay a migrated policy field over newer canonical state',
+test('no later write can replay a migrated policy field over newer canonical state',
   async ({page}) => {
     await openAdditional(page);
     const committed = Number(baseline.provider_poll_interval_seconds) + 15;
@@ -536,13 +560,11 @@ test('the footer cannot replay a migrated policy field over newer canonical stat
     await page.request.patch('/api/transfer-policy',
       {data: {provider_poll_interval_seconds: newer}});
 
-    await page.locator('#view-settings button[data-action="save"]:visible').first().click();
-    await expect(toasts(page).first()).toBeVisible();
-    await page.waitForTimeout(500);
+    await writeTheWholeSettingsDocument(page);
     expect((await settings(page)).transfer_policy.provider_poll_interval_seconds).toBe(newer);
   });
 
-test('the footer cannot replay a migrated top-level field over newer canonical state',
+test('no later write can replay a migrated top-level field over newer canonical state',
   async ({page}) => {
     await openAdditional(page);
     const committed = Number(baseline.full_sync_interval_minutes) + 3;
@@ -560,34 +582,33 @@ test('the footer cannot replay a migrated top-level field over newer canonical s
     await page.request.put('/api/settings', {data: document});
     expect((await settings(page)).full_sync_interval_minutes).toBe(newer);
 
-    await page.locator('#view-settings button[data-action="save"]:visible').first().click();
-    await expect(toasts(page).first()).toBeVisible();
-    await page.waitForTimeout(500);
+    await writeTheWholeSettingsDocument(page);
     expect((await settings(page)).full_sync_interval_minutes).toBe(newer);
   });
 
-test('the footer owns no AllDebrid credential write of its own', async ({page}) => {
+test('no whole-settings write carries the AllDebrid credential', async ({page}) => {
   const seen = mutations(page);
-  await page.locator(API_KEY).fill('DP-FOOTER-DRAFT');
-  await page.locator('#view-settings button[data-action="save"]:visible').first().click();
-  await expect(toasts(page).first()).toBeVisible();
-  await page.waitForTimeout(500);
-  // Apply Settings settles pending commits, so the credential is persisted by
-  // its OWN changed-blur boundary -- through the integration mutation, never
-  // through the whole-settings document.
+  await page.locator(API_KEY).fill('DP-SCOPED-DRAFT');
+  await page.locator(API_KEY).blur();
+  // The credential is persisted by its OWN changed-blur boundary, through the
+  // integration mutation -- never through the whole-settings document, which
+  // the one remaining per-field write then proves it never picks up either.
+  await expect.poll(() => scoped(seen, '/api/integrations/alldebrid/configuration').length).toBe(1);
   const writes = scoped(seen, '/api/integrations/alldebrid/configuration');
-  expect(writes).toHaveLength(1);
-  expect(writes[0].body.options.api_key).toBe('DP-FOOTER-DRAFT');
+  expect(writes[0].body.options.api_key).toBe('DP-SCOPED-DRAFT');
+  await writeTheWholeSettingsDocument(page);
   const document = scoped(seen, '/api/settings');
+  expect(document.length).toBeGreaterThan(0);
   for (const write of document) {
-    expect(JSON.stringify(write.body)).not.toContain('DP-FOOTER-DRAFT');
+    expect(JSON.stringify(write.body)).not.toContain('DP-SCOPED-DRAFT');
     expect(write.body.clear_secrets || []).not.toContain('alldebrid_api_key');
   }
 });
 
-test('the global Apply Settings control is still present', async ({page}) => {
-  await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(1);
-  await expect(page.locator('#view-settings button[data-action="save"]')).toBeVisible();
+test('the global Apply Settings control and its footer no longer exist', async ({page}) => {
+  await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-master-footer')).toHaveCount(0);
 });
 
 // --- a credential write consumes only the draft it dispatched -------------

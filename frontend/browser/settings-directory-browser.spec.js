@@ -270,9 +270,9 @@ test('an accepted Browse commits Download Folder through the canonical field own
   const field = downloadFolderField(page);
   const browse = browseButton(page);
 
-  // Downloads carries no deferred Apply contract at all.
-  await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
-  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+  // No Settings page carries a deferred Apply contract: the control is gone.
+  await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
 
   // Cancelling performs no mutation whatsoever.
   await browse.click();
@@ -351,8 +351,20 @@ async function installBackupDirectoryFixture(page) {
   return requests;
 }
 
-test('Backup Folder shares the same modal/runtime and endpoint, with backup purpose and semantics, and Save persists the same field', async ({ page }) => {
+test('Backup Folder shares the same modal/runtime and endpoint, with backup purpose and semantics, and commits at its own field boundary', async ({ page }) => {
   const requests = await installBackupDirectoryFixture(page);
+  // A field commits only what CHANGED, so the accepted folder has to differ
+  // from the stored one for this to be a write at all. Seeded before the
+  // route, so the seed itself is not counted.
+  const stored = await page.request.get('/api/settings').then(r => r.json());
+  await page.request.put('/api/settings', {data: {
+    ...stored,
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined, clear_secrets: [],
+    backup_folder: '/backups/seeded-elsewhere',
+  }});
+
   let putCount = 0;
   let lastPut = null;
   await page.route('**/api/settings', async route => {
@@ -381,24 +393,42 @@ test('Backup Folder shares the same modal/runtime and endpoint, with backup purp
   await dialog.locator('[data-modal-accept]').click();
   await expect(dialog).toHaveCount(0);
   await expect(field).toHaveValue('/backups');
-  expect(putCount).toBe(0); // Confirm never calls Save itself.
 
-  const save = page.locator('button[data-action="save"]');
-  await save.click();
+  // The chosen folder is COMMITTED, and it waits for no Apply -- there is
+  // none. Browse is an explicit action, so it settles the pending draft before
+  // it opens; accepting the same path then has nothing left to write.
   await expect.poll(() => putCount).toBe(1);
   expect(lastPut.backup_folder).toBe('/backups');
+  await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(0);
 
-  // Cancel changes nothing.
+  // A second Browse settles the newly typed draft in exactly the same way...
   await field.fill('/manually-typed-path');
   await browse.click();
   await expect(directoryDialog(page)).toBeVisible();
+  await expect.poll(() => putCount).toBe(2);
+  expect(lastPut.backup_folder).toBe('/manually-typed-path');
+
+  // ...and cancelling the dialog itself mutates nothing at all.
   await page.locator('[data-modal-cancel]').click();
   await expect(directoryDialog(page)).toHaveCount(0);
   await expect(field).toHaveValue('/manually-typed-path');
+  expect(putCount).toBe(2);
 
   // Manual text editing still works after using the browser.
   await field.fill('/typed-again');
   await expect(field).toHaveValue('/typed-again');
+  // Put back only what this case changed, against FRESHLY read canonical
+  // truth: the suite shares one backend, so restoring a whole snapshot would
+  // overwrite whatever a concurrent spec file committed in the meantime.
+  await page.unroute('**/api/settings');
+  const now = await page.request.get('/api/settings').then(r => r.json());
+  await page.request.put('/api/settings', {data: {
+    ...now,
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined, clear_secrets: [],
+    backup_folder: stored.backup_folder,
+  }});
 
   // Vertically centered with the field, and the field yields width to the button.
   const geometry = await page.evaluate(() => {

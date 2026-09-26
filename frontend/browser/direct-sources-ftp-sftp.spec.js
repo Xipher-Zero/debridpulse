@@ -49,15 +49,11 @@ async function setIntegrationChecked(page, identity, value) {
   if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
   await expect(input).toBeChecked({checked:value});
 }
-async function saveSettings(page) {
-  const responsePromise = page.waitForResponse(
-    response => response.url().endsWith('/api/settings') && response.request().method() === 'PUT', {timeout:20000});
-  await page.locator('#view-settings [data-action="save"]').click();
-  expect((await responsePromise).ok()).toBeTruthy();
-  await expect(page.locator('#view-settings [data-action="save"]')).toBeEnabled();
-  // Apply Settings re-renders the whole Settings view, which returns every
-  // expandable card to its collapsed default. Re-open the group this spec
-  // operates, through the same canonical disclosure.
+/* Participation is IMMEDIATE: each Enable committed itself through its own
+ * scoped mutation as it was clicked, and generic Apply no longer exists. This
+ * only makes sure the group this spec operates is still open before the next
+ * interaction, through the same canonical disclosure. */
+async function settleSettings(page) {
   await revealNetworkSources(page);
 }
 
@@ -255,7 +251,7 @@ test('HTTP(S) and (S)FTP toggles persist independently and never touch aria2', a
     for (const [http, ftp] of [[true, false], [false, true], [true, true]]) {
       await setIntegrationChecked(page, 'general_http', http);
       await setIntegrationChecked(page, 'general_ftp', ftp);
-      await saveSettings(page);
+      await settleSettings(page);
       await expect.poll(read).toEqual([http, ftp, originalAria2]);
       await page.reload(); await openSettings(page);
       await expect(integrationInput(page, 'general_http')).toBeChecked({checked:http});
@@ -264,7 +260,7 @@ test('HTTP(S) and (S)FTP toggles persist independently and never touch aria2', a
   } finally {
     await setIntegrationChecked(page, 'general_http', originalHttp);
     await setIntegrationChecked(page, 'general_ftp', originalFtp);
-    await saveSettings(page);
+    await settleSettings(page);
     await expect.poll(read).toEqual([originalHttp, originalFtp, originalAria2]);
   }
 });

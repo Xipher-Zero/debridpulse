@@ -48,7 +48,7 @@ test.beforeEach(async ({page}) => {
 });
 
 for (const id of TOGGLES) {
-  test(`${id} persists canonical enabled state immediately, without Apply Settings`, async ({page}) => {
+  test(`${id} persists canonical enabled state immediately, without any page-level save`, async ({page}) => {
     const toggle = page.locator(`[data-integration-enabled="${id}"]`);
     const before = await persisted(page, id);
     await flip(page, id);
@@ -62,7 +62,7 @@ for (const id of TOGGLES) {
   });
 }
 
-test('a committed enable survives a full reload without Apply Settings', async ({page}) => {
+test('a committed enable survives a full reload without any page-level save', async ({page}) => {
   const before = await persisted(page, 'usenet');
   if (before) { await flip(page, 'usenet'); await expect.poll(() => persisted(page, 'usenet')).toBe(false); }
   await flip(page, 'usenet');
@@ -95,13 +95,26 @@ test('the visible toggle never reports ON while canonical state is OFF', async (
   }
 });
 
-test('ordinary settings fields remain deferred until Apply Settings', async ({page}) => {
-  await page.locator('#view-settings [data-tab="downloads"]').click();
-  const field = page.locator('#dp-settings-field-min-free-disk-gb');
-  await expect(field).toBeVisible();
-  const original = (await page.request.get('/api/settings').then(r => r.json())).min_free_disk_gb;
-  await field.fill(String(Number(original || 0) + 3));
-  await page.waitForTimeout(600);
-  const after = (await page.request.get('/api/settings').then(r => r.json())).min_free_disk_gb;
-  expect(after).toBe(original);
-});
+test('an ordinary settings field commits at its OWN boundary, not on every keystroke',
+  async ({page}) => {
+    /* Participation is immediate because of what it IS. An ordinary value is
+     * not: it crosses its changed-blur boundary, so typing alone writes
+     * nothing and leaving the field writes exactly once. */
+    await page.locator('#view-settings [data-tab="downloads"]').click();
+    const field = page.locator('#dp-settings-field-min-free-disk-gb');
+    await expect(field).toBeVisible();
+    const canonical = async () =>
+      (await page.request.get('/api/settings').then(r => r.json())).min_free_disk_gb;
+    const original = await canonical();
+    const target = Number(original || 0) + 3;
+    await field.fill(String(target));
+    await page.waitForTimeout(600);
+    expect(await canonical(), 'typing wrote before the boundary was crossed').toBe(original);
+
+    await field.blur();
+    await expect.poll(canonical).toBe(target);
+
+    await field.fill(String(original ?? 0));
+    await field.blur();
+    await expect.poll(canonical).toBe(original);
+  });

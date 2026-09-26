@@ -222,7 +222,7 @@ test('the Network Sources row renders, with a state, in every one of those state
 
 // --- immediate control semantics --------------------------------------------
 
-test('the master toggle persists on change, with no Apply Settings', async ({page}) => {
+test('the master toggle persists on change, with no page-level save', async ({page}) => {
   await setMaster(page, true);
   await openSources(page);
   await expect(masterTrack(page)).toHaveCount(1);
@@ -242,7 +242,7 @@ test('every Services enable control is immediate', async ({page}) => {
   expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', GROUP]));
 });
 
-test('a later Apply Settings cannot replay a stale master or child value', async ({page}) => {
+test('a later whole-settings write cannot replay a stale master or child value', async ({page}) => {
   await setChildren(page, true, true);
   await setMaster(page, true);
   await openSources(page);
@@ -251,19 +251,19 @@ test('a later Apply Settings cannot replay a stale master or child value', async
   await flipChild(page, 'general_ftp');
   await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
 
-  // An unrelated DEFERRED edit, then the page-level write. It is made on the one
-  // tab that still has an Apply contract: DP 1.0.13 made Downloads a
-  // field-boundary surface and the Settings consolidation did the same for
-  // Extraction and then Notifications, so none of them offers an Apply at all
-  // and none of them could carry one.
+  // The ONE whole-settings write that still exists: an unrelated Data &
+  // Maintenance field committing at its own boundary. Every Settings page is a
+  // field-boundary surface now, so no act collects the page at all.
   await page.locator('#view-settings [data-tab="maintenance"]').click();
-  await page.locator('#view-settings [data-setting="events_keep_days"]').fill('27');
-  await page.locator('#view-settings [data-action="save"]').click();
+  await page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]').click();
+  const days = page.locator('#view-settings [data-setting="events_keep_days"]');
+  await days.fill('27');
+  await days.blur();
   await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(27);
 
   const settings = await canonical(page);
-  expect(settings.integration_groups[GROUP].enabled, 'Apply replayed a stale master').toBe(false);
-  expect(settings.integrations.general_ftp.enabled, 'Apply replayed a stale child').toBe(false);
+  expect(settings.integration_groups[GROUP].enabled, 'a later write replayed a stale master').toBe(false);
+  expect(settings.integrations.general_ftp.enabled, 'a later write replayed a stale child').toBe(false);
 });
 
 test('a rejected master write leaves the control on canonical state', async ({page}) => {
@@ -283,7 +283,7 @@ test('an unknown group id is refused', async ({page}) => {
 });
 
 
-// --- immediate Provider Status convergence (no Apply Settings) --------------
+// --- immediate Provider Status convergence (no page-level save) -------------
 
 /* The REAL operator controls against the REAL backend.
  *
@@ -291,9 +291,9 @@ test('an unknown group id is refused', async ({page}) => {
  * proves the colour rule but not the convergence: an accepted scoped mutation
  * used to update only the Settings page's own copy, so the status renderer --
  * which reads the one global document -- kept serving pre-mutation state until
- * an unrelated Apply Settings happened to perform a fresh GET. */
+ * some unrelated act happened to perform a fresh GET. */
 test.describe.serial('immediate Network Sources status convergence', () => {
-  test('master and member toggles converge the sidebar status with no Apply Settings', async ({page}) => {
+  test('master and member toggles converge the sidebar status with no page-level save', async ({page}) => {
     await setChildren(page, true, true);
     await setMaster(page, true);
     await openSources(page);
@@ -311,8 +311,8 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await expect.poll(async () => (await canonical(page)).integration_groups[GROUP].enabled).toBe(false);
     await expect.poll(() => groupState(page), 'the closed gate did not converge').toBe('disabled');
 
-    // Nothing above went through the page-level write.
-    await expect(page.locator('#view-settings [data-action="save"]')).toBeVisible();
+    // Nothing above could have gone through a page-level write: there is none.
+    await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
   });
 
   test('the accepted mutation is published to the one settings document', async ({page}) => {

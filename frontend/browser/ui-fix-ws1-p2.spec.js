@@ -134,19 +134,22 @@ async function openSources(page) {
   await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-disclosure')).toHaveCount(1);
 }
 
-async function applySettings(page) {
-  const apply = page.locator('#view-settings [data-action="save"]');
-  await apply.click();
-  // The click handler marks the Apply control busy synchronously; the settings owner replaces it
-  // with a fresh, enabled control only after the persisted state is adopted and re-rendered. Wait
-  // for that boundary so no later staged edit races the save-completion render.
-  await expect(apply).toBeEnabled();
+/* Rebuild the Settings page from canonical state.
+ *
+ * This used to be a generic Apply, which re-rendered as a side effect. Apply
+ * is retired -- every control commits at its own boundary -- so the page is
+ * rebuilt the way it actually is rebuilt: from scratch. Disclosure state is
+ * page-lifetime presentation, so every card returns to its collapsed default,
+ * exactly as it did after an Apply render. */
+async function rerenderSettings(page) {
+  await page.reload();
+  await openSources(page);
 }
 
 /* DP 1.0.13 Services cleanup: an AllDebrid credential is an ORDINARY value.
  * Entering or replacing one commits on changed blur through the integration's
- * own scoped mutation -- there is no localized Save, and the footer still
- * writes no AllDebrid namespace at all. Anything that removes focus from the
+ * own scoped mutation -- there is no localized Save and no page-level save of
+ * any kind. Anything that removes focus from the
  * field is therefore its commit boundary, including clicking Enable. */
 async function commitAllDebridKey(page, value) {
   const key = page.locator('.dp-settings-provider-card--alldebrid #dp-settings-field-alldebrid-api-key');
@@ -341,7 +344,7 @@ test('WS1-P2 disclosure and Enable stay independent, and the credential commits 
     await expect(body).toBeHidden();
     await expect(status).toHaveText('Unverified');
 
-    await applySettings(page);
+    await rerenderSettings(page);
     card = page.locator('.dp-settings-provider-card--alldebrid');
     body = card.locator(':scope > .card-body');
     status = card.locator('.dp-settings-provider-config-status');

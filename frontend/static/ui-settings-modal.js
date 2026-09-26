@@ -12,6 +12,13 @@
  * at creation time and receives a narrow handle; nothing outside this module
  * may inspect or rewrite the shell DOM after it is created.
  *
+ * A dialog that asks nothing has nothing to accept. `dismiss: true` is that
+ * declared shape -- a read-only presentation whose footer is the single
+ * control that closes it -- and the footer is composed HERE, by the one owner,
+ * rather than by a client hiding a button it does not own. Everything else
+ * about such a dialog is identical: same shell, same trap, same Escape, same
+ * focus restoration, same settlement.
+ *
  * Focus contract (explicit lifecycle boundary: settlement of the dialog):
  *   1. The initiating control is restored when it is still focusable.
  *   2. If a refresh replaced it while the dialog was open, its equivalent
@@ -147,7 +154,7 @@
     } else if (event.key === 'Tab') {
       trapTab(event, entry);
     } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement
-      && entry.body.contains(event.target) && !entry.accept.disabled) {
+      && entry.body.contains(event.target) && entry.accept && !entry.accept.disabled) {
       // Enter in a body text field submits the dialog once its accept action is enabled.
       event.preventDefault();
       entry.settle(true);
@@ -157,6 +164,7 @@
   function open(spec = {}) {
     const role = spec.role === 'alertdialog' ? 'alertdialog' : 'dialog';
     const tone = spec.tone === 'danger' || spec.tone === 'warning' ? spec.tone : '';
+    const dismissOnly = spec.dismiss === true;
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
 
@@ -170,7 +178,7 @@
         <div class="dp-modal-body"></div>
         <footer class="dp-modal-footer">
           <button class="btn btn-ghost" type="button" data-modal-cancel></button>
-          <button class="btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}" type="button" data-modal-accept></button>
+          ${dismissOnly ? '' : `<button class="btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}" type="button" data-modal-accept></button>`}
         </footer>
       </section>`;
     const dialog = overlay.querySelector('.dp-modal-dialog');
@@ -181,9 +189,14 @@
     if (spec.className) dialog.classList.add(...String(spec.className).split(/\s+/).filter(Boolean));
     if (spec.bodyClassName) body.classList.add(...String(spec.bodyClassName).split(/\s+/).filter(Boolean));
     overlay.querySelector('.dp-modal-title').textContent = String(spec.title || '');
-    cancel.textContent = String(spec.cancelLabel || 'Cancel');
-    accept.textContent = String(spec.acceptLabel || 'Confirm');
-    accept.disabled = spec.acceptDisabled === true;
+    // The one control of a dismiss-only dialog IS the cancel slot: closing is
+    // the only outcome there is, so it needs no second name and no second
+    // settlement path.
+    cancel.textContent = String(spec.cancelLabel || (dismissOnly ? 'Close' : 'Cancel'));
+    if (accept) {
+      accept.textContent = String(spec.acceptLabel || 'Confirm');
+      accept.disabled = spec.acceptDisabled === true;
+    }
 
     let settled = false;
     let resolveClosed;
@@ -205,7 +218,7 @@
     const handle = Object.freeze({
       closed,
       get isOpen() { return !settled; },
-      setAcceptEnabled(enabled) { accept.disabled = !enabled; },
+      setAcceptEnabled(enabled) { if (accept) accept.disabled = !enabled; },
       setBusy(busy) { dialog.setAttribute('aria-busy', busy ? 'true' : 'false'); },
     });
 
@@ -216,7 +229,7 @@
     }
 
     cancel.addEventListener('click', () => settle(false));
-    accept.addEventListener('click', () => settle(true));
+    if (accept) accept.addEventListener('click', () => settle(true));
 
     if (!mounted.length) document.addEventListener('keydown', onKeydown);
     mounted.push(entry);

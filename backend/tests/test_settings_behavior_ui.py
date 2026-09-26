@@ -16,7 +16,7 @@ def block(js: str, start: str, end: str) -> str:
     return js[js.index(start):js.index(end, js.index(start))]
 
 
-def test_settings_apply_rerenders_without_losing_viewport():
+def test_an_act_that_must_rebuild_settings_never_loses_the_viewport():
     js = source(SETTINGS)
     assert "function captureSettingsViewport()" in js
     assert "function restoreSettingsViewport(snapshot)" in js
@@ -25,9 +25,13 @@ def test_settings_apply_rerenders_without_losing_viewport():
     assert "document.getElementById('content')" in js
     assert "window.requestAnimationFrame(() => restoreSettingsViewport(snapshot))" in js
 
-    non_auth = block(js, "async function persistNonAuth", "/* One authentication write")
-    assert "renderPreservingViewport();" in non_auth
-    assert "notify('Settings saved', 'success')" in non_auth
+    # DP 1.0.13 terminal migration: no act re-renders Settings merely because
+    # something was saved -- generic Apply, the one act that did, is retired.
+    # What still rebuilds the page is an act whose RESULT is different markup,
+    # and each of those preserves the viewport.
+    assert "async function persistNonAuth" not in js
+    wipe = block(js, "async function wipeDatabaseClean(button)", "/* Erasing a stored credential")
+    assert "renderPreservingViewport();" in wipe
 
     # Authentication no longer re-renders on a save, because it no longer HAS
     # one: each control commits at its own boundary while the operator is still

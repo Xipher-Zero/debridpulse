@@ -73,7 +73,7 @@
             <div class="dp-help-prose">
               <p>Open <b>Settings → Sources &amp; Providers</b>, then find <b>External Providers → AllDebrid</b>.</p>
               <p>DebridPulse connects to AllDebrid using an <b>API key</b>. An API key is a private credential that lets DebridPulse use your AllDebrid account without storing your AllDebrid username and password. You can get your key from <a href="https://alldebrid.com/apikeys" target="_blank" rel="noopener">AllDebrid's API key page</a>.</p>
-              <p>Paste the key into <b>API Key</b>, then click <b>Apply Settings</b>. Once a key is stored, leaving the field blank during a later settings change keeps the existing key unless you explicitly choose to clear it.</p>
+              <p>Paste the key into <b>API Key</b> and leave the field. The key is saved at that point. Once a key is stored, leaving the field blank during a later settings change keeps the existing key unless you explicitly choose to clear it.</p>
               <p>The <b>Additional Settings</b> area contains provider polling, synchronization, rate-limit, and retry controls. The defaults are appropriate for a normal installation, so you do not need to change them just to get started.</p>
             </div>`) }
 
@@ -355,7 +355,7 @@
         <article class="dp-help-inset">
           <h3>How saving works</h3>
           <div class="dp-help-copy dp-help-prose">
-            <p>Most form changes do not become persistent until you click <b>Apply Settings</b>. Connection-test buttons use the current draft values so you can validate a provider, aria2, or Discord configuration before saving it.</p>
+            <p>Every setting is saved on its own. A text, number or selection field is saved when you finish editing it and move on; a switch is saved the moment you flip it. Connection-test buttons use the current draft values so you can validate a provider, aria2, or Discord configuration before saving it.</p>
             <p>Stored secrets are intentionally not shown back to the browser. When a secret is already configured, leaving its replacement field blank keeps the stored value. Use the explicit clear control when you actually want the saved secret removed.</p>
             <p>Some action buttons perform an immediate operation by design, such as generating or rotating an API token, logging out the current session, running a backup, or starting a confirmed destructive maintenance action.</p>
           </div>
@@ -438,7 +438,7 @@
               <p>This section controls backups, retained historical data, and intentionally destructive database maintenance.</p>
               <ul>
                 <li><b>Backups &amp; Retention:</b> enable scheduled backups, choose the backup folder and interval, and set how long backups, statistics snapshots, and event-log entries are retained.</li>
-                <li><b>Run Backup Now:</b> creates a backup immediately. <b>List Backups</b> shows the retained backup set.</li>
+                <li><b>Run Backup:</b> creates a backup immediately. <b>List Backups</b> shows the retained backup set.</li>
                 <li><b>Allow Database Wipe:</b> is a safety gate that must be enabled before a wipe can run.</li>
                 <li><b>Backup Before Wipe:</b> makes the destructive operation depend on a successful pre-wipe backup.</li>
               </ul>
@@ -544,7 +544,7 @@
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
               <p>Database wipe is intentionally difficult to trigger accidentally. Processing must be paused, <b>Allow Database Wipe</b> must be enabled, and the confirmation flow must be completed.</p>
               <p>If <b>Backup Before Wipe</b> is enabled, a failed required backup aborts the wipe. Fix the backup folder, permissions, or storage problem instead of bypassing the protection.</p>
-              <p>Use <b>Run Backup Now</b> and <b>List Backups</b> before destructive maintenance when you want to verify that recovery material exists.</p>
+              <p>Use <b>Run Backup</b> and <b>List Backups</b> before destructive maintenance when you want to verify that recovery material exists.</p>
             </div>
           </details>
         </div>

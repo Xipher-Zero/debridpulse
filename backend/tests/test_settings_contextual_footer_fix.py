@@ -41,31 +41,37 @@ def test_the_footer_routes_no_page_specific_action_at_all():
     assert page.count("action === 'send-report'") == 1
 
 
-def test_the_generic_apply_footer_itself_is_untouched():
-    """Footer removal is a later workstream. This one only establishes that
-    nothing page-specific routes through the footer any more."""
+def test_the_generic_apply_footer_is_gone_entirely():
+    """DP 1.0.13 terminal Settings migration: with Data & Maintenance on the
+    canonical field-boundary persistence owner, generic Apply had zero semantic
+    consumers and the whole footer region was DELETED -- the button, the
+    unsaved-changes sentence, the container and the space it reserved. It is
+    not hidden, and no tab lifecycle turns it back on."""
     page = source(SETTINGS_PAGE)
+    css = source(SETTINGS_CSS)
 
-    assert 'data-action="save" data-deferred-apply' in page
-    assert "Apply Settings" in page
-    assert "Changes remain unsaved until Apply Settings is selected." in page
-    assert "dp-settings-master-footer" in page
-    assert "async function saveCurrent(button)" in page
-    assert "await persistNonAuth();" in page
-    assert "[data-deferred-apply], .dp-settings-save-hint" in page
+    for retired in (
+        'data-deferred-apply',
+        "Apply Settings",
+        "Changes remain unsaved",
+        "dp-settings-master-footer",
+        "dp-settings-save-hint",
+        "saveCurrent",
+        "persistNonAuth",
+        "nonAuthPayload",
+        "FIELD_BOUNDARY_TABS",
+        'data-action="save"',
+    ):
+        assert retired not in page, retired
+
+    for retired in ("dp-settings-master-footer", "dp-settings-save-hint"):
+        assert retired not in css, retired
 
 
-def test_every_migrated_tab_hides_the_deferred_contract_it_no_longer_has():
-    """DP 1.0.13: Downloads, Extraction, Notifications and Authentication all
-    commit at their own field boundaries, so the footer must neither offer them
-    an Apply nor claim that anything on them is unsaved. Data & Maintenance is
-    the one tab that still has a deferred contract."""
+def test_no_page_specific_action_can_reacquire_a_footer():
+    """The contextual footer region and the generic footer are both gone, so
+    there is no shared surface left for a page to route an action through."""
     page = source(SETTINGS_PAGE)
-
-    declared = page.split("FIELD_BOUNDARY_TABS = new Set(", 1)[1].split(")", 1)[0]
-    for tab in ("'downloads'", "'extraction'", "'notifications'", "'authentication'"):
-        assert tab in declared, tab
-    assert "'maintenance'" not in declared
 
     assert "Test Download Engine" not in page
     assert "testDownloadEngine" not in page

@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
  *
  * Notifications joins Services, Downloads, Extraction and Authentication: every
  * control commits at its own boundary through the canonical persistence owner,
- * so the tab has no Apply Settings responsibility of any kind and no generic
+ * so the tab has no page-level save responsibility of any kind and no generic
  * Apply can replay a stale Notifications value from the page.
  *
  * The surfaces with real risk get real proof:
@@ -94,8 +94,9 @@ test.beforeEach(async ({page}) => {
 test('Notifications carries no Apply contract at all', async ({page}) => {
   await openSettings(page, 'notifications');
 
-  await expect(page.locator('#view-settings [data-action="save"]')).toBeHidden();
-  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+  await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-master-footer')).toHaveCount(0);
 
   // The deferred clear-on-save checkboxes are gone entirely, not hidden.
   await expect(page.locator('#view-settings [data-clear-secret]')).toHaveCount(0);
@@ -149,8 +150,8 @@ test('text, number, select and toggle all persist at their own boundary', async 
 
     // A boolean's change IS its boundary. The event toggles live inside the
     // disclosure, so the operator opens it first.
-    await page.locator('#view-settings .dp-settings-subsection .dp-settings-disclosure').click();
-    await expect(page.locator('#view-settings .dp-settings-subsection-body')).toBeVisible();
+    await page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection .dp-settings-disclosure').click();
+    await expect(page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection-body')).toBeVisible();
     const toggled = page.waitForResponse(
       r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
     await page.locator('label[for="dp-settings-field-discord-notify-error"] .ttrack').click();
@@ -179,8 +180,8 @@ test('the update-check interval moved into the disclosure and persists there', a
   await openSettings(page, 'notifications');
 
   try {
-    const disclosure = page.locator('#view-settings .dp-settings-subsection .dp-settings-disclosure');
-    await expect(page.locator('#view-settings .dp-settings-subsection-title'))
+    const disclosure = page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection .dp-settings-disclosure');
+    await expect(page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection-title'))
       .toHaveText('Notification Events & Delivery Options');
     await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
 
@@ -199,7 +200,7 @@ test('the update-check interval moved into the disclosure and persists there', a
     expect(await geometry()).toBe(collapsed);
 
     // The interval is inside it, labelled exactly, with its unit in the field.
-    const cell = page.locator('#view-settings .dp-settings-subsection .dp-settings-field')
+    const cell = page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection .dp-settings-field')
       .filter({has: field(page, 'update_check_interval_hours')});
     await expect(cell.locator('.form-label')).toHaveText('Update Check Interval');
     await expect(cell.locator('.dp-settings-field-unit')).toHaveText('hours');
@@ -458,8 +459,8 @@ test('the destination row keeps its geometry in both disclosure states', async (
 
 test('every control renders the shared horizontal title/hint + control grammar', async ({page}) => {
   await openSettings(page, 'notifications');
-  await page.locator('#view-settings .dp-settings-subsection .dp-settings-disclosure').click();
-  await expect(page.locator('#view-settings .dp-settings-subsection-body')).toBeVisible();
+  await page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection .dp-settings-disclosure').click();
+  await expect(page.locator('.dp-settings-panel[data-panel="notifications"] .dp-settings-subsection-body')).toBeVisible();
 
   const measured = await page.locator('.dp-settings-panel[data-panel="notifications"]').evaluate(panel => {
     const rows = ['.dp-settings-notifications-identity-row', '.dp-settings-notifications-delivery-row',

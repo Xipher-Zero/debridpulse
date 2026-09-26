@@ -304,7 +304,9 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert light_action.count("drop-shadow") == 3
     assert "filter:" not in action_chip
     assert "content: url('/icons/lucide/flask-conical.svg?v=2');" in chrome
-    assert ">Apply Settings</button>" in runtime
+    # Test is the card's own header action; the retired generic footer control
+    # is not what it is distinguished from any more, and it no longer exists.
+    assert "Apply Settings" not in runtime
     assert ">Save Settings</button>" not in runtime
     assert PIN in raw
     assert "<path" in raw

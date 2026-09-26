@@ -200,9 +200,11 @@ def test_apply_settings_no_longer_owns_integration_enablement():
     # ends in `_enabled` (Automatic Extraction) is not participation.
     declared = re.findall(r"^\s{4}([a-z0-9_]+):\s*\{", table, re.M)
     assert "enabled" not in declared, "participation became an ordinary declared field"
-    persist = _function("persistNonAuth")
-    assert "data-integration-enabled" not in persist
-    assert "enabled: !!enabled.checked" not in persist
+    # DP 1.0.13 terminal migration: there is no deferred whole-settings write
+    # left at all, so no second enable writer can exist anywhere.
+    for retired in ("persistNonAuth", "nonAuthPayload", "saveCurrent"):
+        assert retired not in SETTINGS_JS, retired
+    assert "enabled: !!enabled.checked" not in SETTINGS_JS
 
 
 def test_every_current_toggle_of_this_class_uses_the_shared_path():
@@ -229,20 +231,20 @@ def test_every_current_toggle_of_this_class_uses_the_shared_path():
             f"{composer} emits its own toggle instead of the shared one"
 
 
-def test_ordinary_settings_fields_remain_deferred():
-    """Scope boundary: the deferred footer still owns the tabs that have not
-    been migrated.
+def test_ordinary_settings_fields_commit_at_their_own_field_boundary():
+    """Scope boundary, terminal state.
 
-    DP 1.0.13 Settings consolidation migrated Extraction, then Notifications,
-    so their values left this payload and became declared field-boundary
-    controls like every Downloads value before them. Data & Maintenance still
-    commits through the footer, and that is what this case holds.
+    DP 1.0.13 migrated Extraction, then Notifications, then Authentication, and
+    finally Data & Maintenance. Every ordinary settings field is now a declared
+    field-boundary control, so participation being immediate is no longer a
+    contrast with anything deferred -- there is nothing deferred left.
     """
-    persist = _function("persistNonAuth")
-    assert "PUT" in persist and "/settings" in persist
-    payload = _function("nonAuthPayload")
-    assert "backup_interval_hours: intOf('backup_interval_hours', 24)" in payload
-    # Nothing Extraction or Notifications owns is read from the page here.
-    for name in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent",
-                 "extraction_password", "discord_", "stats_report", "update_check_interval_hours"):
-        assert name not in payload, name
+    table = SETTINGS_JS[SETTINGS_JS.index("const COMMIT_FIELDS"):]
+    table = table[:table.index("});") + 3]
+    for ordinary in ("extract_enabled", "extract_delete_archive", "extract_max_concurrent",
+                     "extraction_password", "discord_notifications_enabled",
+                     "stats_report_interval_hours", "update_check_interval_hours",
+                     "backup_interval_hours", "db_wipe_enabled"):
+        assert f"{ordinary}: {{scope:" in table, ordinary
+    # And no page-level payload exists that could carry any of them a second time.
+    assert "nonAuthPayload" not in SETTINGS_JS

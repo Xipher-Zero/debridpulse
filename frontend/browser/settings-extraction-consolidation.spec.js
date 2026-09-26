@@ -6,7 +6,7 @@ const { test, expect } = require('@playwright/test');
  *   Extraction   one behaviour group, immediate booleans, changed-blur
  *                concurrency, archive passwords persisted at the composite
  *                control's own boundary, one explicit destructive Clear, and
- *                no remaining Apply Settings responsibility of any kind.
+ *                no remaining page-level save responsibility of any kind.
  *   AllDebrid    the credential block keeps the canonical label / control /
  *                help rhythm rather than a taller one of its own.
  *   Downloads    Download Location & Limits is a deliberate two-zone primary
@@ -203,8 +203,9 @@ test('the Archive Passwords guidance lives inside the editor and intercepts noth
 test('Extraction carries no Apply contract at all', async ({page}) => {
   await page.goto('/');
   await openSettings(page, 'extraction');
-  await expect(page.locator('#view-settings [data-action="save"]')).toBeHidden();
-  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+  await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-master-footer')).toHaveCount(0);
   // And the deferred clear-on-save mechanism is gone entirely, not hidden.
   await expect(page.locator('#view-settings [data-clear-secret="extraction_password"]'))
     .toHaveCount(0);
@@ -338,7 +339,7 @@ test('Clear Passwords is the canonical destructive action, and declining mutates
     }
   });
 
-test('an Apply on another tab cannot replay Extraction state', async ({page}) => {
+test('a whole-settings write from another tab cannot replay Extraction state', async ({page}) => {
   await page.goto('/');
   const before = await canonical(page);
   try {
@@ -348,18 +349,20 @@ test('an Apply on another tab cannot replay Extraction state', async ({page}) =>
     await concurrency(page).blur();
     await expect.poll(async () => (await canonical(page)).extract_max_concurrent).toBe(target);
 
-    // A deferred write on the one tab that still has an Apply contract: DP
-    // 1.0.13 migrated Notifications too, so Data & Maintenance is the only
-    // surface the footer still writes for.
+    // The one remaining whole-settings write: an ordinary Data & Maintenance
+    // field committing at its own boundary. It is a read-modify-write against
+    // freshly read canonical truth, so it carries nothing of this page.
     await page.locator('#view-settings [data-tab="maintenance"]').click();
-    await page.locator('#dp-settings-field-events-keep-days').fill('26');
-    await page.locator('#view-settings [data-action="save"]').click();
+    await page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]').click();
+    const days = page.locator('#dp-settings-field-events-keep-days');
+    await days.fill('26');
+    await days.blur();
     await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(26);
 
     const after = await canonical(page);
-    expect(after.extract_max_concurrent, 'Apply replayed a stale Extraction value').toBe(target);
+    expect(after.extract_max_concurrent, 'a later write replayed a stale Extraction value').toBe(target);
     expect(after.extraction_password_configured,
-      'Apply erased the stored archive passwords').toBe(before.extraction_password_configured);
+      'a later write erased the stored archive passwords').toBe(before.extraction_password_configured);
   } finally {
     await page.request.put('/api/settings', {data: {
       ...(await canonical(page)),

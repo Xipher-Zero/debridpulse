@@ -85,29 +85,21 @@ def test_notification_tests_exercise_the_saved_configuration_and_carry_no_draft(
     assert "{text: 'Configured', tone: 'warning'}" in status
 
 
-def test_apply_settings_is_the_only_deferred_whole_settings_commit_boundary() -> None:
+def test_the_single_field_write_is_the_only_whole_settings_commit_boundary() -> None:
+    """DP 1.0.13 terminal migration: there is exactly ONE writer of the
+    whole-settings surface, and it is per-field -- a read-modify-write against
+    freshly read canonical truth that overrides exactly the option that
+    changed. The deferred footer payload that was the second writer is gone."""
     runtime = read(RUNTIME)
-    # Two writers of the whole-settings surface, and only two: the deferred
-    # footer payload, and the canonical single-field settings-document commit
-    # (which reads canonical truth and overrides exactly one field).
-    assert runtime.count("request('PUT', '/settings'") == 2
+    assert runtime.count("request('PUT', '/settings'") == 1
     scope = section(runtime, "async function writeSettingsDocument", "/* Proof of what a successful Test")
     assert scope.count("request('PUT', '/settings'") == 1
+    assert "await request('GET', '/settings', null, 15000)" in scope
     document_scope = section(runtime, "persistence.defineScope('settings-document'",
                              "/* The ONE whole-settings write.")
     assert "writeSettingsDocument({[option]: committedValue(key, draft)})" in document_scope
-    assert runtime.count("persistNonAuth(") == 2  # declaration + Apply Settings path
-
-    save_current = section(runtime, "async function saveCurrent", "function connectionTestPayload")
-    assert "await persistNonAuth();" in save_current
-
-    for start, end in (
-        ("async function sendStatsReport", "async function uploadAvatar"),
-        ("async function clearWebhook", "async function runBackup"),
-        ("async function runBackup", "async function listBackups"),
-        ("async function wipeDatabaseClean", "async function clearPassword"),
-    ):
-        assert "persistNonAuth" not in section(runtime, start, end)
+    for retired in ("persistNonAuth", "nonAuthPayload", "saveCurrent"):
+        assert retired not in runtime, retired
 
 
 def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations() -> None:

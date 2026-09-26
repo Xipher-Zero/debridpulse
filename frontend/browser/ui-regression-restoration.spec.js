@@ -201,7 +201,7 @@ test('Archive Passwords persist edits across the commit boundary, rerender, navi
  await expect.poll(()=>source.inputValue()).toBe('gamma\nbeta');
 
  // No Apply exists on this tab at all; leaving the editor is the whole act.
- await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
+ await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(0);
  await leaveEditor(page);
  await expect.poll(()=>state.puts.length).toBe(1);
  expect(state.puts[0].extraction_password).toBe('gamma\nbeta');

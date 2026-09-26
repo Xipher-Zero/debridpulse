@@ -1,8 +1,14 @@
-/* DebridPulse v1.0.11 Data & Maintenance cards. */
+/* DebridPulse Data & Maintenance cards.
+
+   Geometry only. Every control on this page is a canonical Settings primitive
+   -- the inline Title-over-Hint field, the embedded field action, the compact
+   tuning cell and its group, the canonical disclosure, the shared toggle row,
+   the right-aligned card-header rail -- and this sheet states only where this
+   page puts them. */
 #view-settings .dp-settings-database-wipe-card > .card-header,
 #view-settings .dp-settings-backups-retention-card > .card-header {
   display: grid;
-  grid-template-columns: minmax(240px, 1fr) minmax(360px, 1.3fr) minmax(240px, 1fr);
+  grid-template-columns: minmax(240px, 1fr) minmax(300px, 1.1fr) minmax(300px, 1fr);
   align-items: center;
   gap: 18px;
 }
@@ -21,7 +27,12 @@
   text-align: center;
 }
 
-/* Backups & Retention */
+/* ── The Backups & Retention header rail ─────────────────────────────────
+   List Backups, Run Backup and Enable, in that order, in the ONE canonical
+   operational rail (`.dp-settings-card-header-controls`, ui-settings-page.css).
+   Both actions sit in that rail's own neutral action slot and this sheet
+   states nothing about either; only the Enable control's placement, which is
+   this card's, is declared here. */
 #view-settings .dp-settings-backups-header-toggle {
   justify-self: end;
   display: inline-flex;
@@ -44,41 +55,6 @@
   flex: 0 0 auto;
 }
 
-#view-settings .dp-settings-backups-field-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 24px 28px;
-  min-width: 0;
-}
-
-#view-settings .dp-settings-backups-field-grid > .dp-settings-field {
-  min-width: 0;
-  margin: 0;
-}
-
-#view-settings .dp-settings-backups-field-grid .form-label {
-  display: block;
-  margin-bottom: 7px;
-}
-
-#view-settings .dp-settings-backups-field-grid .form-hint {
-  display: block;
-  margin-top: 7px;
-  line-height: 1.4;
-}
-
-#view-settings .dp-settings-backups-actions {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 10px;
-  margin: 24px 0 0;
-}
-
-#view-settings .dp-settings-backups-actions .btn {
-  width: auto;
-}
-
 #view-settings .dp-settings-run-backup-success {
   background: color-mix(in srgb, var(--green) 12%, transparent);
   color: var(--green);
@@ -90,24 +66,83 @@
   border-color: color-mix(in srgb, var(--green) 40%, transparent);
 }
 
-/* Database Reset Controls */
+/* ── The Backup Folder island ────────────────────────────────────────────
+   The one setting this card is actually about, as the same bordered, centred
+   island Extraction uses for its behaviour group: a deliberate share of the
+   card body rather than a band stretched across it. Its width is declared as a
+   FRACTION of the card body, so it is the same island whether the disclosure
+   beneath it is open or closed -- that disclosure is a sibling block in the
+   flow and can neither resize nor rebalance this. */
+#view-settings .dp-settings-backup-folder-island {
+  box-sizing: border-box;
+  width: 70%;
+  max-width: 100%;
+  min-width: 0;
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
+/* Title over hint on the left, field on the right, the descriptive block
+   centred against the control -- the shared inline-field grammar. The field
+   takes the room the island has left over, and Browse is INSIDE it (the shared
+   embedded-action primitive), so path text ends where the button begins. */
+#view-settings .dp-settings-backup-folder-field {
+  margin: 0;
+  gap: 26px;
+}
+
+#view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-info {
+  flex: 0 1 auto;
+  max-width: 340px;
+}
+
+#view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Additional Backup & Retention Settings renders the five policy numbers as
+   compact tuning cells in the canonical collection, exactly as Downloads ->
+   Disk Space & Recovery renders its own. That collection and the canonical
+   disclosure own all of it, so nothing about either is stated here. */
+
+/* ── Database Reset Controls ─────────────────────────────────────────────*/
 #view-settings .dp-settings-database-wipe-card .dp-settings-caution {
   text-align: center;
 }
 
+/* A deliberate blank row between the warning and the controls it governs.
+   Layout only: it carries no content and is hidden from assistive tech. */
+#view-settings .dp-settings-database-reset-spacer {
+  height: 26px;
+}
+
+/* The two safeguards and the destructive action are ONE bounded, centred
+   island in the same visual family as the Backup Folder island above and the
+   Extraction behaviour group -- a content-driven cluster, not three controls
+   pushed to opposite edges of the card. */
 #view-settings .dp-settings-database-wipe-row {
-  display: grid;
-  grid-template-columns: minmax(360px, 1.15fr) minmax(260px, .75fr) auto;
+  box-sizing: border-box;
+  display: flex;
   align-items: center;
-  justify-items: start;
-  gap: 28px;
-  min-width: 0;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 18px 40px;
+  width: max-content;
+  max-width: min(100%, 980px);
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
 }
 
 #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
   display: flex;
   align-items: center;
   gap: 14px;
+  flex: 0 1 auto;
   width: fit-content;
   max-width: 100%;
   min-width: 0;
@@ -121,6 +156,7 @@
   align-items: flex-start;
   gap: 3px;
   min-width: 0;
+  max-width: 300px;
 }
 
 #view-settings .dp-settings-database-wipe-row .toggle-info .tl,
@@ -136,8 +172,7 @@
 #view-settings .dp-settings-database-wipe-action {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  justify-self: end;
+  flex: 0 0 auto;
   margin: 0;
 }
 
@@ -146,19 +181,59 @@
   white-space: nowrap;
 }
 
+/* ── The backup listing dialog ───────────────────────────────────────────
+   A READING, inside the ONE canonical dialog shell (ui-settings-modal.js).
+   Only the list's own material and its bound live here; the shell owns
+   everything else. */
+.dp-settings-backup-list-dialog {
+  width: min(620px, 100%);
+}
+
+.dp-settings-backup-list {
+  max-height: min(52vh, 420px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  color: var(--dp-text-secondary);
+  font-size: 11.5px;
+}
+
+.dp-settings-backup-list-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--dp-divider);
+}
+
+.dp-settings-backup-list-row:last-child {
+  border-bottom: 0;
+}
+
+.dp-settings-backup-list-name {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.dp-settings-backup-list-files {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--dp-text-muted);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
 @media (max-width: 1180px) {
   #view-settings .dp-settings-database-wipe-card > .card-header,
   #view-settings .dp-settings-backups-retention-card > .card-header {
-    grid-template-columns: minmax(200px, 1fr) minmax(300px, 1.2fr) minmax(200px, 1fr);
+    grid-template-columns: minmax(200px, 1fr) minmax(260px, 1fr) minmax(260px, 1fr);
   }
 
-  #view-settings .dp-settings-backups-field-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  #view-settings .dp-settings-backup-folder-island {
+    width: 82%;
   }
 
   #view-settings .dp-settings-database-wipe-row {
-    grid-template-columns: minmax(320px, 1fr) minmax(240px, .8fr) auto;
-    gap: 22px;
+    gap: 16px 28px;
   }
 }
 
@@ -173,22 +248,40 @@
   #view-settings .dp-settings-backups-retention-card > .card-header > .card-title,
   #view-settings .dp-settings-database-wipe-header-copy,
   #view-settings .dp-settings-backups-header-copy,
-  #view-settings .dp-settings-backups-header-toggle {
+  #view-settings .dp-settings-backups-header-toggle,
+  #view-settings .dp-settings-backups-retention-card .dp-settings-card-header-controls {
     justify-self: center;
   }
 
-  #view-settings .dp-settings-database-wipe-row {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 14px;
-  }
-
-  #view-settings .dp-settings-database-wipe-action {
-    justify-self: start;
+  #view-settings .dp-settings-backups-retention-card .dp-settings-card-header-controls {
+    justify-content: center;
   }
 }
 
 @media (max-width: 700px) {
-  #view-settings .dp-settings-backups-field-grid {
-    grid-template-columns: minmax(0, 1fr);
+  /* One control per line; each keeps its own title/hint + control. */
+  #view-settings .dp-settings-backup-folder-island {
+    width: auto;
+    padding: 14px 16px 15px;
+  }
+
+  #view-settings .dp-settings-backup-folder-field {
+    gap: 12px;
+  }
+
+  #view-settings .dp-settings-database-wipe-row {
+    width: auto;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  #view-settings .dp-settings-database-wipe-row > .dp-settings-toggle {
+    width: auto;
+    justify-content: space-between;
+  }
+
+  #view-settings .dp-settings-database-wipe-action {
+    justify-content: flex-start;
   }
 }

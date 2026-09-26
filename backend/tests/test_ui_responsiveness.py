@@ -77,9 +77,12 @@ def test_settings_put_response_is_reused_without_followup_get():
     assert "data = _public_settings(clean, application.definitions)" in routes
     assert 'data["ok"] = True' in routes
 
-    # The Settings page is the only writer of the whole-settings document, and
-    # it adopts the PUT response instead of issuing a follow-up GET.
-    assert "const result = await request('PUT', '/settings', nonAuthPayload(), 15000);\n    syncGlobalSettings(result);" in settings
+    # The Settings page is the only writer of the whole-settings document, it
+    # writes one field at a time, and it adopts the PUT response instead of
+    # issuing a follow-up GET.
+    assert ("const result = await request('PUT', '/settings',\n"
+            "      {...settingsDocument(canonical), clear_secrets: clears, ...overrides}, 15000);\n"
+            "    syncGlobalSettings(result);") in settings
     assert not re.findall(r"api\(\s*'PUT'\s*,\s*'/settings'", js)
     assert "getFormSettings" not in js
 

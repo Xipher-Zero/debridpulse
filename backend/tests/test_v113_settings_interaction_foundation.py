@@ -25,8 +25,9 @@ Each bounded item is proved at its canonical owner:
    dispatch, stale-response protection, success convergence, failure rollback
    and the ONE optional, integration-neutral record-materialization hook.
    Controls DECLARE their commit class; no page reimplements it.
-10. The global ``Apply Settings`` control remains, but can no longer replay a
-   migrated Services value over newer locally persisted state.
+10. The global ``Apply Settings`` control is RETIRED: with every Settings page
+   on the field-persistence owner it had zero semantic consumers, so the whole
+   footer -- control, hint, container and payload builder -- was removed.
 
 CREDENTIAL CONTRACT (DP 1.0.13 Services cleanup). Entry and replacement of a
 credential is an ordinary value change and commits on changed blur through the
@@ -1225,8 +1226,7 @@ def test_verification_invalidation_is_derived_and_never_a_second_check():
 
 
 def test_every_providers_page_action_settles_pending_commits_first():
-    for action in ("async function testConnection(", "async function clearAllDebridKey(",
-                   "async function saveCurrent("):
+    for action in ("async function testConnection(", "async function clearAllDebridKey("):
         body = block(SETTINGS_JS, action)
         assert "settle(" in body, action
 
@@ -1375,62 +1375,41 @@ def test_no_usenet_geometry_is_faked_at_runtime():
         assert banned not in toggle, banned
 
 
-# --- Item 10: the footer cannot replay migrated Providers-page state -------
+# --- Item 10, terminal state: there is no footer to replay anything --------
 
-def test_footer_apply_remains_present():
-    assert 'data-action="save"' in SETTINGS_JS
-    assert "Apply Settings" in SETTINGS_JS
-
-
-def test_footer_apply_no_longer_reads_migrated_providers_page_controls():
-    # There is no deferred transfer-policy or integration payload left at all.
-    for retired in ("function transferPolicyPayload(", "function aria2ConfigurationPayload(",
-                    "function usenetConfigurationPayload("):
+def test_the_generic_apply_footer_is_gone_with_its_last_consumer():
+    """DP 1.0.13 terminal Settings migration. Data & Maintenance was generic
+    Apply's last consumer; with it on the canonical field-persistence owner the
+    footer had zero semantic consumers and was deleted -- the control, the
+    sentence, the container and every function that existed only to serve it."""
+    for retired in ('data-action="save"', "Apply Settings", "data-deferred-apply",
+                    "dp-settings-master-footer", "dp-settings-save-hint",
+                    "FIELD_BOUNDARY_TABS", "function nonAuthPayload(",
+                    "async function persistNonAuth(", "async function saveCurrent("):
         assert retired not in SETTINGS_JS, retired
 
-    document = block(SETTINGS_JS, "function nonAuthPayload(")
-    assert "intOf('full_sync_interval_minutes'" not in document
-    assert "current.full_sync_interval_minutes" in document
-    # Every Downloads-owned settings-document value is carried forward from
-    # canonical truth, never re-read from the page.
-    for migrated in ("download_folder", "min_free_disk_gb",
-                     "disk_guard_resume_hysteresis_gb"):
-        assert f"valueOf('{migrated}'" not in document, migrated
-        assert f"floatOf('{migrated}'" not in document, migrated
-        assert f"{migrated}:" not in document, migrated
-    # DP 1.0.13 Settings consolidation: Extraction joined them, then
-    # Notifications, so their values are carried forward from canonical truth
-    # too -- including every stored webhook, whose clear is now its own
-    # explicit action rather than a deferred payload field.
-    for migrated in ("extract_enabled", "extract_delete_archive",
-                     "extract_max_concurrent", "extraction_password",
-                     "discord_notify_added", "discord_webhook_url", "discord_avatar_url",
-                     "stats_report_webhook_url", "stats_report_window_hours",
-                     "update_check_interval_hours"):
-        assert f"boolOf('{migrated}')" not in document, migrated
-        assert f"intOf('{migrated}'" not in document, migrated
-        assert f"valueOf('{migrated}'" not in document, migrated
-        assert f"{migrated}:" not in document, migrated
-    assert "clear_secrets" not in document
-    # Positive control: an unmigrated top-level field is still read from the form.
-    assert "boolOf('db_wipe_enabled')" in document
+
+def test_nothing_replays_a_migrated_control_because_nothing_collects_the_page():
+    """There is no payload builder at all, so no page snapshot of any namespace
+    -- transfer policy, integration, settings-document -- can exist to replay."""
+    for retired in ("function transferPolicyPayload(", "function aria2ConfigurationPayload(",
+                    "function usenetConfigurationPayload(", "allDebridConfigurationPayload"):
+        assert retired not in SETTINGS_JS, retired
+    # The one whole-settings write reads FRESHLY fetched canonical truth and
+    # overrides exactly the option that changed; it never reads a control.
+    writer = block(SETTINGS_JS, "async function writeSettingsDocument(")
+    assert "await request('GET', '/settings', null, 15000)" in writer
+    assert "settingsDocument(canonical)" in writer
+    for reader in ("valueOf(", "intOf(", "boolOf(", "floatOf(", "fieldFor("):
+        assert reader not in writer, reader
+    # The page's form readers that existed only for that payload are gone.
+    for retired in ("function intOf(", "function boolOf("):
+        assert retired not in SETTINGS_JS, retired
 
 
-def test_footer_apply_writes_no_integration_namespace_at_all():
-    persist = block(SETTINGS_JS, "async function persistNonAuth(")
-    assert "/integrations/" not in persist
-    assert "/transfer-policy" not in persist
-    assert "allDebridConfigurationPayload" not in SETTINGS_JS
-    # Positive control: the whole-settings document write is still the footer's.
-    assert "request('PUT', '/settings', nonAuthPayload()" in persist
-
-
-def test_immediate_toggles_are_still_immediate_and_never_deferred():
+def test_immediate_toggles_are_still_immediate():
     enable = block(SETTINGS_JS, "async function providerEnableChanged(")
     assert "/integrations/" in enable and "PATCH" in enable
-    persist = block(SETTINGS_JS, "async function persistNonAuth(")
-    assert "data-integration-enabled" not in persist
-    assert "enabled:" not in persist
 
 
 # --- Archive Passwords: a specialized field, persisted canonically ---------

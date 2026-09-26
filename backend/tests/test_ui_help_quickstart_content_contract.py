@@ -34,7 +34,8 @@ def test_quick_start_uses_current_ui_names_and_first_download_flow():
     required_current_ui = (
         "Settings → Sources &amp; Providers",
         "External Providers → AllDebrid",
-        "Apply Settings",
+        # Generic Apply is retired: a credential saves when the field is left.
+        "The key is saved at that point.",
         "Settings → Downloads → Download Engine",
         "Download Folder",
         "DebridPulse runs and manages aria2 for you",
@@ -48,6 +49,7 @@ def test_quick_start_uses_current_ui_names_and_first_download_flow():
         assert phrase in quick
 
     retired_legacy_copy = (
+        "Apply Settings",
         "Settings → AllDebrid",
         "Click <b>Save</b>",
         "Settings → Download</b>",

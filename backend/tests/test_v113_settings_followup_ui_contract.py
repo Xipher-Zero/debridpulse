@@ -179,14 +179,18 @@ def test_the_group_master_mutation_is_immediate_and_scoped():
 
 def test_the_broad_settings_payload_never_carries_the_group_namespace():
     # The writable whole-settings document has one owner (settingsDocument),
-    # shared by the footer payload and by the single-field settings-document
-    # commit, so the canonical namespaces are stripped in exactly one place.
+    # used by the single-field settings-document commit, so the canonical
+    # namespaces are stripped in exactly one place.
     document = body(SETTINGS, "settingsDocument")
     assert "delete document.integration_groups;" in document, \
-        "Apply Settings can replay a stale group master"
+        "a whole-settings write could replay a stale group master"
     assert "delete document.integrations;" in document
     assert "delete document.transfer_policy;" in document
-    assert "settingsDocument(state.settings)" in body(SETTINGS, "nonAuthPayload")
+    # That owner is applied to FRESHLY read canonical truth, never to the page,
+    # and there is no page-level payload left that could reach it.
+    assert "settingsDocument(canonical)" in body(SETTINGS, "writeSettingsDocument")
+    assert "settingsDocument(state.settings)" not in SETTINGS
+    assert "nonAuthPayload" not in SETTINGS
 
 
 def test_provider_status_composes_the_gate_with_the_existing_health_model():
@@ -203,15 +207,15 @@ def test_provider_status_composes_the_gate_with_the_existing_health_model():
 
 # --- F. AllDebrid Test relocation ---------------------------------------------
 
-def test_the_alldebrid_test_action_exists_exactly_once_and_not_in_the_footer():
+def test_the_alldebrid_test_action_exists_exactly_once_and_there_is_no_footer():
     # The control's MARKUP is declared once, by the shared provider-level Test
     # grammar; the panel names the action it asks that grammar for.
     assert SETTINGS.count("providerTestAction('test-alldebrid')") == 1
     assert SETTINGS.count('data-action="${html(action)}"') == 1
-    footer = SETTINGS[SETTINGS.index('class="dp-settings-master-footer"'):]
-    footer = footer[:footer.index("</section>")]
-    assert "test-alldebrid" not in footer, "the footer still owns the AllDebrid test"
-    assert "Test AllDebrid" not in footer
+    # The Settings footer it was relocated out of no longer exists at all, so
+    # nothing can be routed back into one.
+    assert "dp-settings-master-footer" not in SETTINGS
+    assert "Test AllDebrid" not in SETTINGS
     assert SETTINGS.count("testConnection('alldebrid'") == 1, \
         "a second AllDebrid connection test implementation exists"
 

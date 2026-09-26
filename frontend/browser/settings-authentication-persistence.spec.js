@@ -5,7 +5,7 @@ const { test, expect } = require('@playwright/test');
  *
  * Authentication joins Services, Downloads and Extraction: every control
  * commits at its own boundary through the canonical persistence owner, so the
- * tab has no Apply Settings responsibility of any kind, and no generic Apply
+ * tab has no page-level save responsibility of any kind, and no generic Apply
  * can replay a stale Authentication value from the page.
  *
  * The surfaces with real risk get real proof:
@@ -64,8 +64,11 @@ test('Authentication carries no Apply contract at all', async ({page}) => {
   await page.goto('/');
   await openSettings(page, 'authentication');
 
-  await expect(page.locator('#view-settings [data-action="save"]')).toBeHidden();
-  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+  // Generic Apply is retired everywhere, so there is no footer control and no
+  // unsaved-changes claim on any tab.
+  await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-master-footer')).toHaveCount(0);
 
   // The deferred clear-on-save secret mechanism is gone entirely, not hidden.
   await expect(page.locator('#dp-auth-clear-oidc-secret')).toHaveCount(0);
@@ -318,13 +321,13 @@ test('Token Ready is durable stored-token state, and the disclosure is ephemeral
     }
   });
 
-test('the generic Apply carries no Authentication value read from the page', async ({page}) => {
+test('no whole-settings write carries an Authentication value read from the page', async ({page}) => {
   /* Moving to another tab already crosses the changed-blur boundary, so an
-   * Authentication draft is committed by its OWN scope long before any Apply.
-   * To prove the footer owns none of it, this holds the auth scope open --
-   * every /auth/config write fails -- so a draft genuinely cannot be committed.
-   * If the footer had any Authentication path at all, that draft would reach
-   * the server through the whole-settings write instead. */
+   * Authentication draft is committed by its OWN scope. To prove nothing else
+   * owns it, this holds the auth scope open -- every /auth/config write fails
+   * -- so a draft genuinely cannot be committed. The whole-settings surface is
+   * still written, by an ordinary Data & Maintenance field commit; if that
+   * write collected the page at all, the stranded draft would ride along. */
   await page.goto('/');
   const before = await auth(page);
   const settings = await (await page.request.get('/api/settings')).json();
@@ -344,32 +347,34 @@ test('the generic Apply carries no Authentication value read from the page', asy
     await field(page, 'auth_username').fill('stale-apply-draft');
     await field(page, 'oidc_provider_name').fill('stale-provider-draft');
 
-    // A deferred write on the one tab that still has an Apply contract. DP
-    // 1.0.13 migrated Downloads, Extraction and then Notifications, so Data &
-    // Maintenance is now the only surface the footer still writes for.
+    // The one remaining whole-settings write: an ordinary Data & Maintenance
+    // field committing at its own changed-blur boundary.
     await page.locator('#view-settings [data-tab="maintenance"]').click();
+    await page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]').click();
     const probe = 29;
-    await page.locator('#dp-settings-field-events-keep-days').fill(String(probe));
-    await page.locator('#view-settings [data-action="save"]').click();
+    const days = page.locator('#dp-settings-field-events-keep-days');
+    await days.fill(String(probe));
+    await days.blur();
     await expect.poll(async () => (await (await page.request.get('/api/settings')).json()).events_keep_days)
       .toBe(probe);
 
     expect(applied.length).toBeGreaterThan(0);
     for (const body of applied) {
-      expect(body.auth_username, 'Apply carried an Authentication draft from the page')
+      expect(body.auth_username, 'a whole-settings write carried an Authentication draft')
         .toBe(before.username);
-      expect(body.oidc_provider_name, 'Apply carried an Authentication draft from the page')
+      expect(body.oidc_provider_name, 'a whole-settings write carried an Authentication draft')
         .toBe(before.oidc_provider_name);
-      expect(body.clear_secrets || [], 'Apply carried an Authentication secret clear')
+      expect(body.clear_secrets || [], 'a whole-settings write carried an Authentication secret clear')
         .not.toContain('auth_password');
     }
 
     const after = await auth(page);
-    expect(after.username, 'Apply mutated Authentication').toBe(before.username);
-    expect(after.oidc_provider_name, 'Apply mutated Authentication').toBe(before.oidc_provider_name);
-    expect(after.password_configured, 'Apply erased the stored password')
+    expect(after.username, 'a whole-settings write mutated Authentication').toBe(before.username);
+    expect(after.oidc_provider_name, 'a whole-settings write mutated Authentication')
+      .toBe(before.oidc_provider_name);
+    expect(after.password_configured, 'a whole-settings write erased the stored password')
       .toBe(before.password_configured);
-    expect(after.oidc_client_secret_configured, 'Apply erased the stored client secret')
+    expect(after.oidc_client_secret_configured, 'a whole-settings write erased the stored client secret')
       .toBe(before.oidc_client_secret_configured);
   } finally {
     await page.unroute('**/api/auth/config');

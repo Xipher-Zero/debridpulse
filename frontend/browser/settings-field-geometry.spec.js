@@ -100,14 +100,18 @@ test('representative pre-existing Settings fields use the same canonical datum',
     // DP 1.0.13: every Notifications control joined the inline grammar, so
     // that tab carries no stacked field for this datum to sample -- its own
     // geometry is proven by settings-notifications-persistence.spec.js. The
-    // stacked grammar now survives on two surfaces, so both contribute more
-    // than one field and the datum is still proven across them.
-    ['maintenance', 'dp-settings-field-backup-interval-hours'],
-    ['maintenance', 'dp-settings-field-events-keep-days'],
+    // terminal Data & Maintenance migration did the same: Backup Folder is an
+    // inline island field and the five retention values are compact tuning
+    // cells (a deliberately CENTRED grammar), so that tab carries no stacked
+    // field either and its geometry is proven by test_settings_database_wipe_ui.
     // DP 1.0.13: Username joined the inline grammar with the rest of the
     // Authentication card. The allowlists keep the stacked full-width field,
-    // so they are what carries the datum on this tab.
+    // so they are what carries the datum on this tab -- and the Usenet server
+    // card above carries the SAME datum on a different surface, which is what
+    // keeps it shared rather than local to one card.
     ['authentication', 'dp-settings-field-oidc-allowed-subjects'],
+    ['authentication', 'dp-settings-field-oidc-allowed-emails'],
+    ['authentication', 'dp-settings-field-oidc-allowed-groups'],
   ];
   let checked = 0;
   for (const [tab, id] of cases) {
@@ -125,7 +129,7 @@ test('representative pre-existing Settings fields use the same canonical datum',
     expect(Math.abs(delta), `${tab}/${id} delta ${delta}`).toBeLessThanOrEqual(TOLERANCE);
   }
   // The point of the case list is that the datum is SHARED, so it has to prove
-  // itself on more than one pre-existing surface.
+  // itself on more than one pre-existing field.
   expect(checked).toBeGreaterThanOrEqual(3);
 });
 

@@ -212,9 +212,9 @@ body.light #view-settings .dp-settings-provider-logo--alldebrid {
 }
 
 /* The provider-test control uses the same chip-before-copy grammar as tabs,
-   but remains a secondary action beside Apply Settings. The treatment belongs
-   to the CONTROL, so every provider-level Test renders identically and no
-   provider has styling of its own. */
+   and remains a secondary action within its card's header rail. The treatment
+   belongs to the CONTROL, so every provider-level Test renders identically and
+   no provider has styling of its own. */
 #view-settings button.dp-settings-provider-test {
   --dp-settings-action-color: #b866f5;
   position: relative;

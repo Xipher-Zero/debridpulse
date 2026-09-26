@@ -273,13 +273,23 @@ def test_settings_page_holds_no_hand_maintained_legacy_alias_list():
         assert retired not in runtime, f"{retired!r} is a retired alias-synchronization mechanism"
 
 
-def test_non_auth_serializer_never_writes_a_canonical_namespace_or_flat_alias():
+def test_no_whole_settings_serializer_exists_to_write_a_canonical_namespace():
+    """DP 1.0.13 terminal migration: the page-level payload builder is gone.
+
+    There is no act that collects the form at all, so there is nothing that
+    could re-add a canonical namespace, a flat alias or a clear intent to a
+    whole-settings write. What remains is the single-field write, which starts
+    from FRESHLY read canonical truth and overrides exactly one option.
+    """
     runtime = source(SETTINGS_PAGE_JS)
-    serializer = runtime[runtime.index("function nonAuthPayload()"):runtime.index("// Each scoped surface answers")]
-    assert "...current" in serializer
-    # The writable whole-settings document has ONE owner, shared by this
-    # serializer and by the single-field settings-document commit.
-    assert "settingsDocument(state.settings)" in serializer
+    for retired in ("function nonAuthPayload()", "async function persistNonAuth(",
+                    "async function saveCurrent("):
+        assert retired not in runtime, retired
+    assert "settingsDocument(state.settings)" not in runtime
+    writer = runtime[runtime.index("async function writeSettingsDocument("):]
+    writer = writer[:writer.index("\n  }") + 4]
+    assert "await request('GET', '/settings', null, 15000)" in writer
+    assert "settingsDocument(canonical)" in writer
     document = runtime[runtime.index("function settingsDocument("):]
     document = document[:document.index("\n  }") + 4]
     for namespace in ("integrations", "transfer_policy", "execution_runtime_limits"):
@@ -287,22 +297,17 @@ def test_non_auth_serializer_never_writes_a_canonical_namespace_or_flat_alias():
     # The read-only compatibility names are dropped using the list the server
     # supplies, never a list kept in the page.
     assert "for (const name of document.compatibility_fields || []) delete document[name];" in document
-    # DP 1.0.13 Notifications migration: no clear-on-Apply control exists
-    # anywhere on Settings any more, so this payload collects no clear intent at
-    # all. Erasing a stored secret is an explicit destructive action through its
-    # own canonical path.
-    assert "clear_secrets" not in serializer
+    # No clear-on-Apply control exists anywhere on Settings, and no act
+    # collects one: erasing a stored secret is an explicit destructive action
+    # that carries only its own removal through the canonical single-field
+    # write.
     assert "clearSecrets" not in runtime
-    # None of the canonicalized fields is re-added as an override of the
-    # whole-settings payload under either its canonical or its flat name.
-    assignment_region = serializer[serializer.index("return {"):]
-    for forbidden in (
-        "max_concurrent_downloads:", "aria2_max_active_downloads:", "aria2_split:", "transfer_policy:",
-        "aria2_max_download_limit:", "execution_runtime_limits:", "alldebrid_api_key:",
-        "alldebrid_rate_limit_per_minute:", "poll_interval_seconds:", "upload_fail_retry_count:",
-        "upload_fail_retry_delay_minutes:", "stuck_download_timeout_hours:", "integrations:",
-    ):
-        assert forbidden not in assignment_region, f"{forbidden!r} must not be re-added to the whole-settings payload"
+    # Two clear paths, each an explicit destructive action naming exactly what
+    # it erases: the whole-settings writer's parameter, and the scoped
+    # integration-credential clear. Neither is collected from the page.
+    assert runtime.count("clear_secrets") == 2
+    assert "clear_secrets: clears" in runtime
+    assert "clear_secrets: ['api_key']" in runtime
 
 
 def test_settings_page_reads_only_canonical_namespaces():
@@ -329,19 +334,18 @@ def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
     concurrency/retry/poll/stall policy are written through their own scoped
     namespace mutations, never through the whole-settings snapshot.
 
-    DP 1.0.13: every option either namespace holds is now a declared
-    field-boundary control, so the deferred footer builds no payload for them
-    at all -- there is nothing left of theirs for an Apply to replay.
+    DP 1.0.13: every option either namespace holds is a declared field-boundary
+    control, and the whole-settings write is a single-field read-modify-write,
+    so no act can replay either namespace at all.
     """
     runtime = source(SETTINGS_PAGE_JS)
     assert "function aria2ConfigurationPayload()" not in runtime
     assert "function usenetConfigurationPayload()" not in runtime
     assert "function transferPolicyPayload()" not in runtime
-    persist = runtime[runtime.index("async function persistNonAuth"):runtime.index("/* One authentication write")]
-    assert "/integrations/" not in persist
-    assert "/transfer-policy" not in persist
-    # Authentication joined the same contract: the footer writes none of it.
-    assert "/auth/config" not in persist
+    writer = runtime[runtime.index("async function writeSettingsDocument("):]
+    writer = writer[:writer.index("\n  }") + 4]
+    for namespace in ("/integrations/", "/transfer-policy", "/auth/config"):
+        assert namespace not in writer, namespace
     scopes = runtime[runtime.index("function registerCommitScopes("):]
     assert "'/transfer-policy'" in scopes
     assert "`/integrations/${identity}/configuration`" in runtime
@@ -363,21 +367,23 @@ def test_aria2_configuration_and_transfer_policy_use_scoped_patch_surfaces():
         assert canonical in table, canonical
 
 
-def test_settings_is_one_master_card_with_internal_header_body_and_footer():
+def test_settings_is_one_master_card_with_an_internal_header_and_body_only():
+    """DP 1.0.13 terminal migration: the master card is header + body. The
+    footer region existed only to carry generic Apply, which has no consumers,
+    so the region was deleted rather than emptied -- it reserves no space."""
     runtime = source(SETTINGS_PAGE_JS)
 
     assert '<section class="card dp-settings-master-card"' in runtime
     assert '<div class="card-header dp-settings-master-header">' in runtime
     assert '<div class="dp-settings-master-body">' in runtime
     assert '<div class="dp-settings-scroll">' in runtime
-    assert '<div class="dp-settings-master-footer"' in runtime
+    assert "dp-settings-master-footer" not in runtime
     assert 'class="card dp-settings-card' in runtime
     assert 'class="card dp-settings-group-card' in runtime
 
-    # The header/footer are regions of the master card, never independent cards.
+    # The header is a region of the master card, never an independent card.
     assert 'class="card dp-settings-header-card"' not in runtime
     assert 'class="card dp-settings-footer"' not in runtime
-    assert 'class="card dp-settings-master-footer"' not in runtime
     assert 'class="card dp-settings-panel"' not in runtime
     assert 'class="card dp-settings-scroll"' not in runtime
 
@@ -408,11 +414,9 @@ def test_settings_master_card_fills_shell_datum_and_body_is_the_only_scroll_regi
     panels = css.split("#view-settings .dp-settings-panels", 1)[1].split("}", 1)[0]
     assert "padding: 12px 12px 16px;" in panels
 
-    footer = css.split("#view-settings .dp-settings-master-footer", 1)[1].split("}", 1)[0]
-    assert "flex: 0 0 auto;" in footer
-    assert "border-top: 1px solid var(--dp-divider);" in footer
-    assert "position: fixed" not in footer
-    assert "position: absolute" not in footer
+    # The retired footer region reserves no space, because it no longer exists.
+    assert "dp-settings-master-footer" not in css
+    assert "dp-settings-save-hint" not in css
 
     # Settings owns geometry only. Shared card material must stay universal.
     for forbidden in (

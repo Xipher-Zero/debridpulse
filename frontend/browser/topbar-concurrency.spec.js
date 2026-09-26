@@ -158,8 +158,8 @@ test('committing a Downloads field adopts the canonical policy and never writes 
   // DP 1.0.13: Downloads is a field-boundary persistence surface. There is no
   // Apply on it at all -- each control commits itself, through its own
   // canonical namespace, carrying only the field that changed.
-  await expect(page.locator('#view-settings button[data-action="save"]')).toBeHidden();
-  await expect(page.locator('#view-settings .dp-settings-save-hint')).toBeHidden();
+  await expect(page.locator('#view-settings button[data-action="save"]')).toHaveCount(0);
+  await expect(page.locator('#view-settings .dp-settings-save-hint')).toHaveCount(0);
 
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').fill('5');
   await page.locator('#view-settings [data-setting="aria2_max_active_downloads"]').blur();

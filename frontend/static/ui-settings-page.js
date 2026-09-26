@@ -66,7 +66,7 @@
                         converge: dispatched => renderAllDebridCredential(dispatched)},
   });
 
-  /* Every ordinary Settings control this page commits at a FIELD boundary.
+  /* EVERY editable Settings control, and the field boundary each commits at.
    *
    * One declaration of which canonical namespace owns each ordinary control,
    * which option inside it the control is, and -- where it is not the ordinary
@@ -86,9 +86,9 @@
    * Destructive confirmations and participation toggles are deliberately
    * absent: erasing a credential is an explicit confirmed action and a
    * participation toggle is immediate because of what they ARE, not because of
-   * the page they appear on. A control absent from this table keeps the page's
-   * existing deferred (Apply Settings) semantics until its own page is
-   * migrated.
+   * the page they appear on. There is no other kind of absence left: with the
+   * last page migrated there is no deferred write on Settings at all, so a
+   * control missing from this table is simply a control nothing persists.
    *
    * A credential is NOT absent. Entering or replacing one is an ordinary value
    * change: it commits on changed blur, through the same scoped mutation every
@@ -198,12 +198,35 @@
     // API Access participation, written by its own canonical endpoint. Same
     // boundary, same owner, same rollback -- only the scope differs.
     api_token_enabled: {scope: 'api-token', option: 'enabled', commit: 'immediate'},
+
+    // Data & Maintenance -- ordinary settings-document values on exactly the
+    // same two boundaries every other Settings control uses. Backup
+    // participation, the pre-reset backup safeguard and the reset unlock are
+    // ordinary reversible booleans whose only draft state is the state they
+    // already show, so flipping one IS the edit.
+    //
+    // ``db_wipe_enabled`` being committed the moment it is flipped does NOT
+    // authorize anything: the destructive reset remains gated by its own typed
+    // confirmation, by the processing-paused requirement, by the pre-reset
+    // backup and by the backend's own re-check of every one of those after
+    // admission is closed. Committing it immediately only removes the state in
+    // which the visible toggle and the canonical value disagreed.
+    backup_enabled: {scope: 'settings-document', option: 'backup_enabled', commit: 'immediate'},
+    backup_folder: {scope: 'settings-document', option: 'backup_folder'},
+    backup_interval_hours: {scope: 'settings-document', option: 'backup_interval_hours'},
+    backup_keep_days: {scope: 'settings-document', option: 'backup_keep_days'},
+    stats_snapshot_interval_minutes: {scope: 'settings-document', option: 'stats_snapshot_interval_minutes'},
+    stats_snapshot_keep_days: {scope: 'settings-document', option: 'stats_snapshot_keep_days'},
+    events_keep_days: {scope: 'settings-document', option: 'events_keep_days'},
+    db_backup_before_wipe: {scope: 'settings-document', option: 'db_backup_before_wipe', commit: 'immediate'},
+    db_wipe_enabled: {scope: 'settings-document', option: 'db_wipe_enabled', commit: 'immediate'},
   });
 
   /* The commit attributes a declared control carries, or nothing at all for a
-   * control this page has not migrated. One place decides it, so every kind of
-   * control -- input, select, toggle, directory field -- declares its class the
-   * same way and none of them re-derives it. */
+   * control this page does not persist (a reading, an environment-managed
+   * value, a participation toggle with its own operational owner). One place
+   * decides it, so every kind of control -- input, select, toggle, directory
+   * field -- declares its class the same way and none of them re-derives it. */
   function commitAttributes(key) {
     const declared = COMMIT_FIELDS[key];
     if (!declared) return '';
@@ -329,9 +352,9 @@
    * ``state.settings`` and the application-wide ``settingsData`` that the
    * provider-status renderer reads -- and exactly one function that moves
    * either of them. An accepted scoped mutation that updated only the first
-   * left the status panel serving pre-mutation state until an unrelated Apply
-   * Settings happened to perform a fresh GET, which is why every acceptance
-   * helper publishes through here rather than assigning its own copy. */
+   * left the status panel serving pre-mutation state until some unrelated act
+   * happened to perform a fresh GET, which is why every acceptance helper
+   * publishes through here rather than assigning its own copy. */
   function syncGlobalSettings(data) {
     state.settings = data;
     try { settingsData = data; } catch (_) {}
@@ -442,7 +465,7 @@
           ${detail ? `<span class="td">${html(detail)}</span>` : ''}
         </span>
         <span class="toggle">
-          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${checked(value)}>
+          <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
           <span class="ttrack"></span>
         </span>
       </label>`;
@@ -2482,38 +2505,74 @@
     return a?.api_token_configured ? {text: 'Token Ready', tone: 'success'} : {text: '', tone: 'none'};
   }
 
+  /* ── Data & Maintenance ───────────────────────────────────────────────────
+   *
+   * Two cards in exactly the grammar every other migrated Settings page uses:
+   * the operational actions in the card's own right-aligned header rail, the
+   * one setting the page is actually about as a centred bordered island, and
+   * the policy numbers behind the canonical disclosure. Every editable control
+   * here is declared in COMMIT_FIELDS and committed by the canonical
+   * persistence owner -- a number or a path at its changed-blur boundary, a
+   * boolean the moment it is flipped. Nothing on this page waits for anything.
+   *
+   * List Backups, Run Backup and Reset Database are ACTIONS, not persistence:
+   * each settles the page's pending field writes first, so it acts on the
+   * values the server has accepted rather than on a draft the operator left in
+   * a field. That settle is the one shared owner's, not a Maintenance timer. */
   function maintenancePanel(s) {
     const backupEnabledId = fieldId('backup_enabled');
     const backups = card('Backups & Retention', `
-      <div class="dp-settings-backups-field-grid">
+      <div class="dp-settings-backup-folder-island">
         ${directoryField('backup_folder', 'Backup Folder', s.backup_folder || '/app/data/backups', {
           hint: 'Choose where DebridPulse stores database and configuration backups.',
           browseAction: 'browse-backup-folder',
           browseLabel: 'Browse server directories for Backup Folder',
+          inline: true, embedAction: true, className: 'dp-settings-backup-folder-field',
         })}
-        ${input('backup_interval_hours', 'Backup Interval (Hours Between Backups)', s.backup_interval_hours ?? 24, {type: 'number', min: 1, max: 168, hint: 'Set how often an automatic backup is created.'})}
-        ${input('backup_keep_days', 'Backup Retention (Days to Keep)', s.backup_keep_days ?? 7, {type: 'number', min: 1, max: 90, hint: 'Delete backup files older than the configured number of days.'})}
-        ${input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval (Minutes Between Snapshots)', s.stats_snapshot_interval_minutes ?? 60, {
-          type: 'number', min: 0, max: 1440, hint: 'Set how often DebridPulse records a statistics snapshot.'
-        })}
-        ${input('stats_snapshot_keep_days', 'Statistics Snapshot Retention (Days to Keep)', s.stats_snapshot_keep_days ?? 30, {type: 'number', min: 1, max: 365, hint: 'Delete statistics snapshots older than the configured number of days.'})}
-        ${input('events_keep_days', 'Event Log Retention (Days to Keep)', s.events_keep_days ?? 30, {type: 'number', min: 1, hint: 'Delete event log entries older than the configured number of days.'})}
       </div>
-      <div class="dp-settings-actions dp-settings-backups-actions">
-        <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup Now</button>
-        <button class="btn btn-ghost btn-sm" type="button" data-action="list-backups">List Backups</button>
-      </div>
-      <div id="dp-settings-backup-list" class="dp-settings-result-list"></div>
+      ${disclosureSection('Additional Backup & Retention Settings', 'backup-retention', tuningCells(
+        tuningGroup(
+          input('backup_interval_hours', 'Backup Interval', s.backup_interval_hours ?? 24, {
+            type: 'number', min: 1, max: 168,
+            hint: 'Set how often an automatic backup is created.',
+            embedAction: fieldUnit('hours'), controlClass: 'dp-settings-unit-field',
+          }),
+          input('backup_keep_days', 'Backup Retention', s.backup_keep_days ?? 7, {
+            type: 'number', min: 1, max: 90,
+            hint: 'Delete backup files older than the configured number of days.',
+            embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+          }),
+        ),
+        tuningGroup(
+          input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval', s.stats_snapshot_interval_minutes ?? 60, {
+            type: 'number', min: 0, max: 1440,
+            hint: 'Set how often DebridPulse records a statistics snapshot.',
+            embedAction: fieldUnit('minutes'), controlClass: 'dp-settings-unit-field',
+          }),
+          input('stats_snapshot_keep_days', 'Statistics Snapshot Retention', s.stats_snapshot_keep_days ?? 30, {
+            type: 'number', min: 1, max: 365,
+            hint: 'Delete statistics snapshots older than the configured number of days.',
+            embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+          }),
+        ),
+        input('events_keep_days', 'Event Log Retention', s.events_keep_days ?? 30, {
+          type: 'number', min: 1,
+          hint: 'Delete event log entries older than the configured number of days.',
+          embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+        }),
+      ))}
     `, {
       className: 'dp-settings-backups-retention-card',
       headerCenter: 'Configure automated backups and retention for backups, statistics snapshots, and event logs.',
       headerCenterClass: 'dp-settings-backups-header-copy',
+      headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="list-backups">List Backups</button>
+          <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
       action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
         <span class="toggle-info">
           <span class="tl">Enable</span>
         </span>
         <span class="toggle">
-          <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${checked(s.backup_enabled !== false)}>
+          <input id="${backupEnabledId}" data-setting="backup_enabled" type="checkbox" ${commitAttributes('backup_enabled')} ${checked(s.backup_enabled !== false)}>
           <span class="ttrack"></span>
         </span>
       </label>`,
@@ -2523,6 +2582,7 @@
         <b>Database Reset is Destructive</b>
         <span>Processing must be paused before the database can be reset. A backup can be created automatically before the reset begins.</span>
       </div>
+      <div class="dp-settings-database-reset-spacer" aria-hidden="true"></div>
       <div class="dp-settings-database-wipe-row">
         ${toggle('db_backup_before_wipe', 'Backup Database Before Reset', 'Create a backup before resetting the database. The reset is aborted if the backup fails.', s.db_backup_before_wipe !== false, 'dp-settings-database-wipe-toggle')}
         ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle')}
@@ -2590,11 +2650,6 @@
             </div>
           </div>
         </div>
-
-        <div class="dp-settings-master-footer" aria-label="Settings actions">
-          <span class="dp-settings-save-hint">Changes remain unsaved until Apply Settings is selected.</span>
-          <button class="btn btn-primary" type="button" data-action="save" data-deferred-apply>Apply Settings</button>
-        </div>
       </section>`;
 
     activateTab(state.activeTab);
@@ -2605,10 +2660,6 @@
     window.DPSettingsPersistence.adopt(view);
     document.dispatchEvent(new CustomEvent('debridpulse:settings-rendered', {detail:{tab: state.activeTab}}));
   }
-
-  /* Tabs that carry NO deferred Apply contract: every control on them is
-   * committed by the canonical persistence owner at its own field boundary. */
-  const FIELD_BOUNDARY_TABS = new Set(['downloads', 'extraction', 'notifications', 'authentication']);
 
   function activateTab(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
@@ -2624,14 +2675,6 @@
     root()?.querySelectorAll('[data-panel]').forEach(section => {
       section.hidden = section.dataset.panel !== name;
     });
-
-    // A tab whose every control commits at its own field boundary has no
-    // deferred Apply contract at all, so the footer must not offer one or
-    // claim that anything is unsaved. Apply infrastructure stays exactly as it
-    // is for the tabs that still need it.
-    const deferred = !FIELD_BOUNDARY_TABS.has(name);
-    root()?.querySelectorAll('[data-deferred-apply], .dp-settings-save-hint')
-      .forEach(node => { node.hidden = !deferred; });
   }
 
   // A collapsed provider card can only be re-collapsed by un-checking Enable
@@ -2703,14 +2746,15 @@
    * An integration/source Enable toggle is operational state, not a deferred
    * form field: it decides whether that integration participates at all and
    * whether its managed lifecycle component has to be running. Leaving it in
-   * the page-level Apply Settings write let the visible toggle read ON while
-   * `integrations.<id>.enabled` stayed false, which is exactly the divergence
+   * the page-level whole-settings write (since retired) let the visible toggle
+   * read ON while `integrations.<id>.enabled` stayed false -- exactly the divergence
    * that made an enabled Usenet integration report an unreachable service.
    *
    * It persists through the existing generic integration-configuration
    * mutation -- no second enable endpoint, no per-integration bypass -- and the
    * identity comes from the control itself, so every toggle of this class
-   * shares one path. Ordinary settings fields stay deferred. */
+   * shares one path. Every ordinary settings field crosses its own declared
+   * field boundary (COMMIT_FIELDS); neither waits for anything. */
   async function providerEnableChanged(input) {
     const identity = input.dataset.integrationEnabled;
     const card = input.closest('.dp-settings-provider-card');
@@ -2840,8 +2884,7 @@
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
-      if (action === 'save') saveCurrent(button);
-      else if (action === 'test-alldebrid') testConnection('alldebrid', button);
+      if (action === 'test-alldebrid') testConnection('alldebrid', button);
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
       else if (action === 'clear-archive-passwords') clearArchivePasswords(button);
@@ -2849,8 +2892,8 @@
       else if (action === 'clear-webhook') clearWebhook(button);
       else if (action === 'upload-avatar') byId('dp-settings-avatar-file')?.click();
       else if (action === 'clear-avatar') clearAvatar(button);
-      else if (action === 'browse-download-folder') window.DPSettingsDirectoryPicker?.open('download');
-      else if (action === 'browse-backup-folder') window.DPSettingsDirectoryPicker?.open('backup');
+      else if (action === 'browse-download-folder') void browseDirectory('download');
+      else if (action === 'browse-backup-folder') void browseDirectory('backup');
       else if (action === 'send-report') sendStatsReport(button);
       else if (action === 'run-backup') runBackup(button);
       else if (action === 'list-backups') listBackups(button);
@@ -2875,58 +2918,16 @@
     return field ? String(field.value ?? '').trim() : fallback;
   }
 
-  function intOf(key, fallback = 0) {
-    const raw = valueOf(key, '');
-    if (raw === '') return fallback;
-    const value = parseInt(raw, 10);
-    return Number.isNaN(value) ? fallback : value;
-  }
-
-  function boolOf(key) {
-    return !!fieldFor(key)?.checked;
-  }
-
-  // Provider, executor, transfer-policy, Extraction and runtime-limit settings
-  // are owned by their canonical namespaces and are written exclusively through
-  // the scoped field-boundary surfaces, never through the whole-settings
-  // document and never through the deferred footer, so a stale page snapshot
-  // can never undo a value an operator already committed.
-  //
-  // The footer therefore builds NO integration payload and NO transfer-policy
-  // payload at all: every option either namespace holds is a declared control
-  // of COMMIT_FIELDS, written one field at a time by the canonical persistence
-  // owner. There is nothing left for a deferred write to replay.
-
-  function nonAuthPayload() {
-    // Canonical namespaces are never part of the whole-settings write, and the
-    // read-only compatibility names the server derived from them are never
-    // echoed back (the server lists exactly which names those are).
-    const current = settingsDocument(state.settings);
-    return {
-      ...current,
-      // Locally owned field-boundary values -- the Services full-sync interval
-      // and every Downloads-, Extraction- and Notifications-owned value -- are
-      // carried forward from the canonical document this write was built on by
-      // the spread above, and are never re-read from the page. Naming one here
-      // would be exactly the stale replay this removal exists to prevent.
-      //
-      // No secret clear travels with this write either: erasing a stored
-      // credential is an explicit destructive action through its own canonical
-      // path, and there is no clear-on-Apply control left anywhere on Settings
-      // for a deferred payload to collect.
-      full_sync_interval_minutes: Number(current.full_sync_interval_minutes ?? 5),
-
-      backup_enabled: boolOf('backup_enabled'),
-      backup_folder: valueOf('backup_folder', current.backup_folder || '/app/data/backups'),
-      backup_interval_hours: intOf('backup_interval_hours', 24),
-      backup_keep_days: intOf('backup_keep_days', 7),
-      stats_snapshot_interval_minutes: intOf('stats_snapshot_interval_minutes', 60),
-      stats_snapshot_keep_days: intOf('stats_snapshot_keep_days', 30),
-      events_keep_days: intOf('events_keep_days', 30),
-      db_wipe_enabled: boolOf('db_wipe_enabled'),
-      db_backup_before_wipe: boolOf('db_backup_before_wipe'),
-    };
-  }
+  /* There is no whole-settings payload on this page at all.
+   *
+   * Every editable Settings control -- on all six tabs -- is a declared
+   * COMMIT_FIELDS control written one field at a time by the canonical
+   * persistence owner through its own canonical namespace. No act collects the
+   * form, so no act can replay a stale page snapshot over a value the operator
+   * already committed, and there is nothing left for a deferred write to carry.
+   * The single-field settings-document write (writeSettingsDocument) is a
+   * read-modify-write against freshly read canonical truth, never against the
+   * rendered page. */
 
   // Each scoped surface answers with the canonical namespace it just wrote;
   // adopt it into the cached document so every later read (and the whole-
@@ -3287,29 +3288,6 @@
     notify('Archive passwords cleared', 'success');
   }
 
-  async function persistNonAuth({renderAfter = true, quiet = false} = {}) {
-    const active = state.activeTab;
-    // Canonical truth is read immediately before the write: the footer carries
-    // forward every field it does not itself own, and a locally persisted
-    // value must never be overwritten by an older copy of itself.
-    syncGlobalSettings(await request('GET', '/settings', null, 15000));
-    // No canonical namespace is written here. Every integration option,
-    // transfer-policy value and Downloads-owned settings-document value is a
-    // field-boundary control committed by its own scope, so a footer Apply on
-    // ANOTHER tab has nothing of theirs to replay -- and cannot overwrite a
-    // value the operator committed on Downloads.
-    const result = await request('PUT', '/settings', nonAuthPayload(), 15000);
-    syncGlobalSettings(result);
-    if (renderAfter) {
-      state.activeTab = active;
-      renderPreservingViewport();
-    }
-    if (!quiet) notify('Settings saved', 'success');
-    try { if (typeof checkConnections === 'function') checkConnections(); } catch (_) {}
-    try { if (typeof loadRuntimeStatus === 'function') loadRuntimeStatus(); } catch (_) {}
-    return result;
-  }
-
   /* One authentication write, carrying ONLY what it is about.
    *
    * PUT /auth/config is a partial update: every ordinary field it does not
@@ -3323,20 +3301,6 @@
       adoptAuthentication(result);
       return result;
     });
-  }
-
-  async function saveCurrent(button) {
-    // One deterministic path: every pending changed-blur commit is finished
-    // before the footer reads the form.
-    await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Saving…');
-    try {
-      await persistNonAuth();
-    } catch (error) {
-      notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
-    }
   }
 
   function connectionTestPayload(kind) {
@@ -3559,13 +3523,29 @@
     setBusy(button, false);
   }
 
+  /* The ONE deterministic preamble every Data & Maintenance ACTION shares.
+   *
+   * Running a backup, listing backups and browsing for a folder all depend on
+   * values the operator may still be editing -- the Backup Folder above all --
+   * so each one first settles the page's pending field writes through the ONE
+   * canonical persistence owner. No Maintenance timer, queue or flush flag
+   * exists: `settle()` flushes every dirty control and waits for every
+   * outstanding scoped write, exactly as it does for Test, Verify and every
+   * other explicit action on Settings. */
+  const settlePendingWrites = () => window.DPSettingsPersistence.settle(root());
+
+  async function browseDirectory(purpose) {
+    await settlePendingWrites();
+    window.DPSettingsDirectoryPicker?.open(purpose);
+  }
+
   async function runBackup(button) {
+    await settlePendingWrites();
     setBusy(button, true, 'Running…');
     try {
       const result = await request('POST', '/admin/backup', undefined, 30000);
       if (result.skipped) notify('Backup is disabled in Settings', 'warn');
       else notify('Backup completed', 'success');
-      await listBackups(null);
     } catch (error) {
       notify(error.message, 'error');
     } finally {
@@ -3573,30 +3553,72 @@
     }
   }
 
+  /* The backup listing is a READING, so it is presented as one: a bounded,
+   * internally scrollable dialog through the ONE canonical dialog owner, with
+   * nothing to accept. It replaces the inline list that used to grow inside
+   * the Settings viewport -- that surface is gone, not hidden, and this is its
+   * only presentation owner.
+   *
+   * It adds no management: what the backend lists, in the order the backend
+   * lists it, with the files each entry actually holds. */
   async function listBackups(button) {
+    await settlePendingWrites();
     setBusy(button, true, 'Loading…');
+    let backups = null;
     try {
       const result = await request('GET', '/admin/backups', undefined, 15000);
-      const target = byId('dp-settings-backup-list');
-      if (!target) return;
-      const backups = Array.isArray(result.backups) ? result.backups : [];
-      target.innerHTML = backups.length
-        ? backups.map(item => `<div class="dp-settings-result-row"><span>${html(item.name || 'backup')}</span><span>${html((item.files || []).join(', '))}</span></div>`).join('')
-        : '<div class="form-hint">No backups found.</div>';
+      backups = Array.isArray(result.backups) ? result.backups : [];
     } catch (error) {
       notify(error.message, 'error');
     } finally {
       setBusy(button, false);
+      // Marking the control busy disabled it, which moved focus off it. The
+      // dialog restores focus to whatever opened it, so the control has to be
+      // holding focus again BEFORE the dialog opens -- otherwise Escape would
+      // leave focus nowhere.
+      if (button?.isConnected) button.focus();
     }
+    if (backups === null) return;
+    window.DPSettingsModal.open({
+      title: 'Backups',
+      dismiss: true,
+      className: 'dp-settings-backup-list-dialog',
+      bodyClassName: 'dp-settings-backup-list-body',
+      mount(body) {
+        const list = document.createElement('div');
+        list.className = 'dp-settings-backup-list';
+        if (!backups.length) {
+          list.innerHTML = '<div class="form-hint">No backups found.</div>';
+        } else {
+          list.setAttribute('role', 'list');
+          list.setAttribute('tabindex', '0');
+          list.setAttribute('aria-label', 'Backups');
+          list.innerHTML = backups.map(item => `
+            <div class="dp-settings-backup-list-row" role="listitem">
+              <span class="dp-settings-backup-list-name">${html(item.name || 'backup')}</span>
+              <span class="dp-settings-backup-list-files">${html((item.files || []).join(', '))}</span>
+            </div>`).join('');
+        }
+        body.appendChild(list);
+        return list;
+      },
+    });
   }
 
+  /* The destructive reset. Its safety is unchanged and is owned in four
+   * places, none of them this guard: the typed confirmation below, the
+   * processing-paused requirement, the pre-reset backup (which aborts the
+   * reset when it fails), and the backend's own re-check of every one of those
+   * after maintenance admission has closed.
+   *
+   * `Allow Database Reset` is committed the moment it is flipped, like every
+   * other Settings toggle, so there is no draft state for it to be in: the
+   * settle below finishes any write still in flight and the canonical value is
+   * then what this reads. The toggle still authorizes nothing by itself. */
   async function wipeDatabaseClean(button) {
+    await settlePendingWrites();
     if (!state.settings?.db_wipe_enabled) {
-      notify("Apply 'Allow Database Wipe' before running a wipe", 'warn');
-      return;
-    }
-    if (!boolOf('db_wipe_enabled')) {
-      notify('Database wipe is disabled in the current draft', 'warn');
+      notify("Turn on 'Allow Database Reset' before resetting the database", 'warn');
       return;
     }
     const confirmed = await window.DPSettingsModal.confirm({
@@ -3618,7 +3640,7 @@
         if (document.getElementById('view-torrents')?.classList.contains('active') && typeof loadTorrents === 'function') loadTorrents();
       } catch (_) {}
       renderPreservingViewport();
-      focusSurvivor('[data-action="wipe-database"]', '[data-action="save"]');
+      focusSurvivor('[data-action="wipe-database"]', '.dp-settings-tabs [data-tab="maintenance"]');
     } catch (error) {
       notify(error.message, 'error');
     } finally {
