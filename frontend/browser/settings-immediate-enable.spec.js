@@ -99,22 +99,43 @@ test('an ordinary settings field commits at its OWN boundary, not on every keyst
   async ({page}) => {
     /* Participation is immediate because of what it IS. An ordinary value is
      * not: it crosses its changed-blur boundary, so typing alone writes
-     * nothing and leaving the field writes exactly once. */
-    await page.locator('#view-settings [data-tab="downloads"]').click();
-    const field = page.locator('#dp-settings-field-min-free-disk-gb');
-    await expect(field).toBeVisible();
-    const canonical = async () =>
-      (await page.request.get('/api/settings').then(r => r.json())).min_free_disk_gb;
-    const original = await canonical();
-    const target = Number(original || 0) + 3;
-    await field.fill(String(target));
-    await page.waitForTimeout(600);
-    expect(await canonical(), 'typing wrote before the boundary was crossed').toBe(original);
+     * nothing and leaving the field writes exactly once.
+     *
+     * Observed on the WIRE. The suite shares one backend and its files run
+     * concurrently, so reading this value back out of the document would make
+     * the case depend on no other file writing it in the same instant -- which
+     * is neither what is being tested nor something this file owns. */
+    const writes = [];
+    await page.route('**/api/settings', async route => {
+      if (route.request().method() === 'PUT') writes.push(route.request().postDataJSON());
+      await route.continue();
+    });
+    try {
+      await page.locator('#view-settings [data-tab="downloads"]').click();
+      const field = page.locator('#dp-settings-field-min-free-disk-gb');
+      await expect(field).toBeVisible();
+      const original = Number(await field.inputValue()) || 0;
+      const target = original + 3;
 
-    await field.blur();
-    await expect.poll(canonical).toBe(target);
+      await field.fill(String(target));
+      await page.waitForTimeout(600);
+      expect(writes, 'typing wrote before the boundary was crossed').toHaveLength(0);
 
-    await field.fill(String(original ?? 0));
-    await field.blur();
-    await expect.poll(canonical).toBe(original);
+      await field.blur();
+      await expect.poll(() => writes.length).toBe(1);
+      expect(writes[0].min_free_disk_gb).toBe(target);
+
+      // Leaving it again without changing it crosses no boundary at all.
+      await field.click();
+      await field.blur();
+      await page.waitForTimeout(400);
+      expect(writes).toHaveLength(1);
+
+      await field.fill(String(original));
+      await field.blur();
+      await expect.poll(() => writes.length).toBe(2);
+      expect(writes[1].min_free_disk_gb).toBe(original);
+    } finally {
+      await page.unroute('**/api/settings');
+    }
   });

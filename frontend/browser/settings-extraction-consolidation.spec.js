@@ -339,6 +339,31 @@ test('Clear Passwords is the canonical destructive action, and declining mutates
     }
   });
 
+/* The suite's designated NEUTRAL whole-settings probe.
+ *
+ * Every spec file shares one backend and files run concurrently, so a case may
+ * only read back keys its own file owns. `disk_guard_resume_hysteresis_gb` is
+ * owned by no case at all: nothing asserts its value, which is exactly why it
+ * can be written from anywhere to make the ONE remaining whole-settings write
+ * happen. Each file writes its own disjoint pair of values, so the draft it
+ * types always differs from what is stored and the commit always occurs; and
+ * because nobody reads it, it is deliberately not restored.
+ *
+ * What this proves is that a whole-settings write HAPPENED while this page
+ * held a stale draft -- the assertions that follow are about this page's own
+ * canonical values, which this file owns exclusively. */
+async function writeTheWholeSettingsDocument(page) {
+  const current = await page.request.get('/api/settings').then(r => r.json());
+  const draft = Number(current.disk_guard_resume_hysteresis_gb) === 12.2 ? 12.3 : 12.2;
+  const written = page.waitForResponse(
+    r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
+  await probe.fill(String(draft));
+  await probe.blur();
+  await written;
+}
+
 test('a whole-settings write from another tab cannot replay Extraction state', async ({page}) => {
   await page.goto('/');
   const before = await canonical(page);
@@ -349,29 +374,16 @@ test('a whole-settings write from another tab cannot replay Extraction state', a
     await concurrency(page).blur();
     await expect.poll(async () => (await canonical(page)).extract_max_concurrent).toBe(target);
 
-    // The one remaining whole-settings write: an ordinary Data & Maintenance
-    // field committing at its own boundary. It is a read-modify-write against
-    // freshly read canonical truth, so it carries nothing of this page.
-    await page.locator('#view-settings [data-tab="maintenance"]').click();
-    await page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]').click();
-    const days = page.locator('#dp-settings-field-events-keep-days');
-    await days.fill('26');
-    await days.blur();
-    await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(26);
+    // The one remaining whole-settings write: an ordinary field committing at
+    // its own boundary. It is a read-modify-write against freshly read
+    // canonical truth, so it carries nothing of this page.
+    await writeTheWholeSettingsDocument(page);
 
     const after = await canonical(page);
     expect(after.extract_max_concurrent, 'a later write replayed a stale Extraction value').toBe(target);
     expect(after.extraction_password_configured,
       'a later write erased the stored archive passwords').toBe(before.extraction_password_configured);
   } finally {
-    await page.request.put('/api/settings', {data: {
-      ...(await canonical(page)),
-      integrations: undefined, integration_groups: undefined,
-      transfer_policy: undefined, execution_runtime_limits: undefined,
-      compatibility_fields: undefined,
-      clear_secrets: [],
-      events_keep_days: before.events_keep_days,
-    }});
     await restoreExtraction(page, before);
   }
 });

@@ -67,30 +67,32 @@ async function openAdditional(page) {
 
 const settings = page => page.request.get('/api/settings').then(r => r.json());
 
-/* The ONE whole-settings write that still exists after generic Apply was
- * retired: an ordinary Data & Maintenance field committing at its own
- * changed-blur boundary. It is a read-modify-write against FRESHLY read
- * canonical truth, so it is exactly the act that would expose a page snapshot
- * if one were still being collected anywhere. Leaves Services as it found it. */
+/* The suite's designated NEUTRAL whole-settings probe.
+ *
+ * Every spec file shares one backend and files run concurrently, so a case may
+ * only read back keys its own file owns. `disk_guard_resume_hysteresis_gb` is
+ * owned by no case at all: nothing asserts its value, which is exactly why it
+ * can be written from anywhere to make the ONE remaining whole-settings write
+ * happen. Each file writes its own disjoint pair of values, so the draft it
+ * types always differs from what is stored and the commit always occurs; and
+ * because nobody reads it, it is deliberately not restored.
+ *
+ * What this proves is that a whole-settings write HAPPENED while this page
+ * held a stale draft -- the assertions that follow are about this page's own
+ * canonical values, which this file owns exclusively. */
 async function writeTheWholeSettingsDocument(page) {
-  const before = (await settings(page)).events_keep_days;
-  await page.locator('#view-settings [data-tab="maintenance"]').click();
-  const disclosure = page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]');
-  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
-  const days = page.locator('#dp-settings-field-events-keep-days');
-  const probe = Number(before) === 27 ? 28 : 27;
-  await days.fill(String(probe));
-  await days.blur();
-  await expect.poll(async () => (await settings(page)).events_keep_days).toBe(probe);
-  await page.request.put('/api/settings', {data: {
-    ...(await settings(page)),
-    integrations: undefined, integration_groups: undefined,
-    transfer_policy: undefined, execution_runtime_limits: undefined,
-    compatibility_fields: undefined, clear_secrets: [],
-    events_keep_days: before,
-  }});
+  const current = await page.request.get('/api/settings').then(r => r.json());
+  const draft = Number(current.disk_guard_resume_hysteresis_gb) === 13.3 ? 13.4 : 13.3;
+  const written = page.waitForResponse(
+    r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
+  await probe.fill(String(draft));
+  await probe.blur();
+  await written;
   await page.locator('#view-settings [data-tab="sources"]').click();
 }
+
 const toasts = page => page.locator('#toasts .toast');
 const clearButton = page => page.locator('[data-action="clear-alldebrid-key"]');
 

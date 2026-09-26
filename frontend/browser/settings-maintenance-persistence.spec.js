@@ -230,6 +230,33 @@ test('the disclosure exposes its state and holds exactly the five retention sett
 
 // --- persistence -----------------------------------------------------------
 
+/* What the server ACCEPTED for one act, observed on the wire.
+ *
+ * "Persisted" is proven by the write the page sent and the document the server
+ * answered with -- not by reading the document back afterwards. The suite
+ * shares one backend and its files run concurrently, and the whole-settings
+ * surface has no partial write, so every file's restore is a read-modify-write
+ * of the WHOLE document: one that began its read a millisecond before this
+ * commit will faithfully put the older value back. That is an artefact of the
+ * shared fixture, not a persistence defect, and a later readback cannot tell
+ * the two apart. The acceptance can. */
+async function observeWrites(page, act) {
+  const writes = [];
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PUT') { await route.continue(); return; }
+    const sent = route.request().postDataJSON();
+    const response = await route.fetch();
+    writes.push({sent, accepted: await response.json()});
+    await route.fulfill({response});
+  });
+  try {
+    await act();
+  } finally {
+    await page.unroute('**/api/settings');
+  }
+  return writes;
+}
+
 const RETENTION_VALUES = [
   'backup_interval_hours', 'backup_keep_days', 'stats_snapshot_interval_minutes',
   'stats_snapshot_keep_days', 'events_keep_days',
@@ -251,18 +278,20 @@ test('every Data & Maintenance value commits at its own boundary, with no Apply'
       };
       for (const [key, value] of Object.entries(probes)) {
         const control = field(page, key);
-        await control.fill(String(value));
-        // Typing alone crosses no boundary.
-        await page.waitForTimeout(150);
-        await control.blur();
-        await expect.poll(async () => (await canonical(page))[key], {timeout: 10000}).toBe(value);
-      }
-      // ...and they survive a reload, which is what "persisted" means.
-      await page.reload();
-      await openMaintenance(page);
-      await openRetention(page);
-      for (const [key, value] of Object.entries(probes)) {
-        await expect(field(page, key)).toHaveValue(String(value));
+        const writes = await observeWrites(page, async () => {
+          await control.fill(String(value));
+          // Typing alone crosses no boundary.
+          await page.waitForTimeout(250);
+          await control.blur();
+          await page.waitForResponse(r => r.url().includes('/api/settings')
+            && r.request().method() === 'PUT', {timeout: 10000});
+        });
+        // Exactly one write, carrying exactly this field, and the server
+        // answered with it -- which is what the control then converges on.
+        expect(writes, `${key}: one boundary, one write`).toHaveLength(1);
+        expect(writes[0].sent[key], `${key} is not what the page sent`).toBe(value);
+        expect(writes[0].accepted[key], `${key} is not what the server accepted`).toBe(value);
+        await expect(control).toHaveValue(String(value));
       }
     } finally {
       await restore(page, before);
@@ -275,11 +304,20 @@ test('every Data & Maintenance toggle commits immediately', async ({page}) => {
     await openMaintenance(page);
     for (const key of ['backup_enabled', 'db_backup_before_wipe', 'db_wipe_enabled']) {
       const control = field(page, key);
+      const track = page.locator(`label[for="dp-settings-field-${key.replaceAll('_', '-')}"]`);
       const was = await control.isChecked();
-      await page.locator(`label[for="dp-settings-field-${key.replaceAll('_', '-')}"]`).click();
-      await expect.poll(async () => (await canonical(page))[key], {timeout: 10000}).toBe(!was);
-      await page.locator(`label[for="dp-settings-field-${key.replaceAll('_', '-')}"]`).click();
-      await expect.poll(async () => (await canonical(page))[key], {timeout: 10000}).toBe(was);
+      // The flip IS the boundary: one click, one write, accepted at once.
+      for (const expected of [!was, was]) {
+        const writes = await observeWrites(page, async () => {
+          await track.click();
+          await page.waitForResponse(r => r.url().includes('/api/settings')
+            && r.request().method() === 'PUT', {timeout: 10000});
+        });
+        expect(writes, `${key}: one flip, one write`).toHaveLength(1);
+        expect(writes[0].sent[key], `${key} is not what the page sent`).toBe(expected);
+        expect(writes[0].accepted[key], `${key} is not what the server accepted`).toBe(expected);
+        await expect(control).toBeChecked({checked: expected});
+      }
     }
   } finally {
     await restore(page, before);
@@ -288,24 +326,51 @@ test('every Data & Maintenance toggle commits immediately', async ({page}) => {
 
 // --- operational actions settle pending writes first -----------------------
 
+/* An action settles pending writes BEFORE it runs.
+ *
+ * The invariant is an ORDER -- the field's commit is sent and accepted, and
+ * only then does the action go out -- so that is what this observes, on the
+ * wire. Reading the shared document back instead would make the case depend
+ * on no other spec file writing it in the same instant, which is not what is
+ * being tested and is not something this file owns. */
+async function recordSettleOrder(page, actionUrl, actionBody) {
+  const timeline = [];
+  let committed = null;
+  await page.route('**/api/settings', async route => {
+    if (route.request().method() !== 'PUT') { await route.continue(); return; }
+    committed = route.request().postDataJSON();
+    timeline.push('commit');
+    await route.continue();
+  });
+  await page.route(actionUrl, async route => {
+    timeline.push('action');
+    await route.fulfill({status: 200, contentType: 'application/json',
+      body: JSON.stringify(actionBody)});
+  });
+  return {
+    timeline,
+    get committed() { return committed; },
+    async release() {
+      await page.unroute('**/api/settings');
+      await page.unroute(actionUrl);
+    },
+  };
+}
+
 test('Run Backup settles the Backup Folder before it runs', async ({page}) => {
   const before = await keep(page, 'backup_folder');
-  const runs = [];
-  await page.route('**/api/admin/backup', async route => {
-    runs.push((await canonical(page)).backup_folder);
-    await route.fulfill({status: 200, contentType: 'application/json',
-      body: JSON.stringify({ok: true, skipped: false})});
-  });
+  const observed = await recordSettleOrder(page, '**/api/admin/backup', {ok: true, skipped: false});
   try {
     await openMaintenance(page);
     const folder = `${String(before.backup_folder || '/app/data/backups')}/settle-probe`;
     // Typed, NOT blurred: the action itself is what must flush it.
     await field(page, 'backup_folder').fill(folder);
     await backupsCard(page).locator('[data-action="run-backup"]').click();
-    await expect.poll(() => runs.length, {timeout: 15000}).toBe(1);
-    expect(runs[0], 'Run Backup ran against a stale Backup Folder').toBe(folder);
+    await expect.poll(() => observed.timeline.join(','), {timeout: 15000}).toBe('commit,action');
+    expect(observed.committed.backup_folder,
+      'Run Backup dispatched before the folder it depends on was committed').toBe(folder);
   } finally {
-    await page.unroute('**/api/admin/backup');
+    await observed.release();
     await restore(page, before);
   }
 });
@@ -313,22 +378,20 @@ test('Run Backup settles the Backup Folder before it runs', async ({page}) => {
 test('List Backups settles the Backup Folder and opens a bounded shared dialog',
   async ({page}) => {
     const before = await keep(page, 'backup_folder');
-    const listed = [];
-    await page.route('**/api/admin/backups', async route => {
-      listed.push((await canonical(page)).backup_folder);
-      await route.fulfill({status: 200, contentType: 'application/json',
-        body: JSON.stringify({backups: Array.from({length: 40}, (_, index) => ({
-          name: `dp-backup-${String(index).padStart(3, '0')}`,
-          files: ['debridpulse.db', 'config.json'],
-        }))})});
+    const observed = await recordSettleOrder(page, '**/api/admin/backups', {
+      backups: Array.from({length: 40}, (_, index) => ({
+        name: `dp-backup-${String(index).padStart(3, '0')}`,
+        files: ['debridpulse.db', 'config.json'],
+      })),
     });
     try {
       await openMaintenance(page);
       const folder = `${String(before.backup_folder || '/app/data/backups')}/list-probe`;
       await field(page, 'backup_folder').fill(folder);
       await backupsCard(page).locator('[data-action="list-backups"]').click();
-      await expect.poll(() => listed.length, {timeout: 15000}).toBe(1);
-      expect(listed[0], 'List Backups listed a stale Backup Folder').toBe(folder);
+      await expect.poll(() => observed.timeline.join(','), {timeout: 15000}).toBe('commit,action');
+      expect(observed.committed.backup_folder,
+        'List Backups dispatched before the folder it depends on was committed').toBe(folder);
 
       // The SHARED dialog shell, with nothing to accept.
       const dialog = page.locator('.dp-modal-overlay .dp-modal-dialog');
@@ -363,7 +426,7 @@ test('List Backups settles the Backup Folder and opens a bounded shared dialog',
       // Nothing of it is left behind in the page.
       await expect(page.locator('#view-settings .dp-settings-backup-list')).toHaveCount(0);
     } finally {
-      await page.unroute('**/api/admin/backups');
+      await observed.release();
       await restore(page, before);
     }
   });
@@ -448,9 +511,13 @@ test('Allow Database Reset persists immediately but authorizes nothing on its ow
       await openMaintenance(page);
 
       // Flipping it writes at once -- no Apply, and no stale copy referring to one.
-      await page.locator('label[for="dp-settings-field-db-wipe-enabled"]').click();
-      await expect.poll(async () => (await canonical(page)).db_wipe_enabled, {timeout: 10000})
-        .toBe(true);
+      const writes = await observeWrites(page, async () => {
+        await page.locator('label[for="dp-settings-field-db-wipe-enabled"]').click();
+        await page.waitForResponse(r => r.url().includes('/api/settings')
+          && r.request().method() === 'PUT', {timeout: 10000});
+      });
+      expect(writes).toHaveLength(1);
+      expect(writes[0].accepted.db_wipe_enabled).toBe(true);
       await expect(page.locator('#toasts')).not.toContainText('Apply');
 
       // ...and the reset STILL asks, because the toggle is a gate, not consent.

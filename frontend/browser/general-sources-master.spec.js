@@ -242,6 +242,31 @@ test('every Services enable control is immediate', async ({page}) => {
   expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', GROUP]));
 });
 
+/* The suite's designated NEUTRAL whole-settings probe.
+ *
+ * Every spec file shares one backend and files run concurrently, so a case may
+ * only read back keys its own file owns. `disk_guard_resume_hysteresis_gb` is
+ * owned by no case at all: nothing asserts its value, which is exactly why it
+ * can be written from anywhere to make the ONE remaining whole-settings write
+ * happen. Each file writes its own disjoint pair of values, so the draft it
+ * types always differs from what is stored and the commit always occurs; and
+ * because nobody reads it, it is deliberately not restored.
+ *
+ * What this proves is that a whole-settings write HAPPENED while this page
+ * held a stale draft -- the assertions that follow are about this page's own
+ * canonical values, which this file owns exclusively. */
+async function writeTheWholeSettingsDocument(page) {
+  const current = await page.request.get('/api/settings').then(r => r.json());
+  const draft = Number(current.disk_guard_resume_hysteresis_gb) === 14.4 ? 14.5 : 14.4;
+  const written = page.waitForResponse(
+    r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  const probe = page.locator('#dp-settings-field-disk-guard-resume-hysteresis-gb');
+  await probe.fill(String(draft));
+  await probe.blur();
+  await written;
+}
+
 test('a later whole-settings write cannot replay a stale master or child value', async ({page}) => {
   await setChildren(page, true, true);
   await setMaster(page, true);
@@ -251,15 +276,11 @@ test('a later whole-settings write cannot replay a stale master or child value',
   await flipChild(page, 'general_ftp');
   await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
 
-  // The ONE whole-settings write that still exists: an unrelated Data &
-  // Maintenance field committing at its own boundary. Every Settings page is a
-  // field-boundary surface now, so no act collects the page at all.
-  await page.locator('#view-settings [data-tab="maintenance"]').click();
-  await page.locator('#view-settings [data-disclosure-persist="section:backup-retention"]').click();
-  const days = page.locator('#view-settings [data-setting="events_keep_days"]');
-  await days.fill('27');
-  await days.blur();
-  await expect.poll(async () => (await canonical(page)).events_keep_days).toBe(27);
+  // The ONE whole-settings write that still exists: an unrelated field
+  // committing at its own boundary. Every Settings page is a field-boundary
+  // surface now, so no act collects the page at all.
+  await writeTheWholeSettingsDocument(page);
+  await openSources(page);
 
   const settings = await canonical(page);
   expect(settings.integration_groups[GROUP].enabled, 'a later write replayed a stale master').toBe(false);

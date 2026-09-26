@@ -54,7 +54,13 @@ async function commit(page, key, value) {
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
   await field(page, key).fill(String(value));
   await field(page, key).blur();
-  await written;
+  // What the server ACCEPTED. The suite shares one backend and its files run
+  // concurrently, and the whole-settings surface has no partial write, so
+  // every file's restore is a read-modify-write of the WHOLE document: one
+  // that began its read a millisecond before this commit will faithfully put
+  // the older value back. A readback cannot tell that apart from a
+  // persistence defect; the acceptance can.
+  return (await written).json();
 }
 
 /** Accept a destructive confirmation and wait for the mutation it authorised. */
@@ -75,16 +81,42 @@ async function choose(page, key, label) {
     r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
   await shell.locator('.dp-dropdown__trigger').click();
   await page.locator('#dp-dropdown-layer .dp-dropdown__option', {hasText: label}).first().click();
-  await written;
+  return (await written).json();
 }
 
-/** Put every Notifications value this suite touches back as it was found. */
-async function restore(page, before) {
+/* Every Notifications value this suite touches, and ONLY those.
+ *
+ * The suite shares one backend and its files run concurrently, so a restore
+ * must be a read-modify-write against FRESHLY read canonical truth naming the
+ * keys this file owns -- the same discipline the application's own
+ * single-field write follows. Putting back a whole snapshot captured at the
+ * start of a case overwrites whatever another file committed since, and then
+ * reports the failure against innocent code. */
+const NOTIFICATION_KEYS = [
+  'discord_notifications_enabled', 'discord_username', 'discord_avatar_url',
+  'discord_notify_added', 'discord_notify_finished', 'discord_notify_error',
+  'discord_notify_extract', 'discord_notify_update', 'update_check_interval_hours',
+  'stats_reporting_enabled', 'stats_report_interval_hours', 'stats_report_window_hours',
+];
+
+async function restoreNotifications(page, before, {clears, ...overrides} = {}) {
+  const current = await canonical(page);
   await page.request.put('/api/settings', {data: {
-    ...before,
-    clear_secrets: ['discord_webhook_url', 'discord_webhook_added', 'stats_report_webhook_url'],
-    discord_webhook_url: '', discord_webhook_added: '', stats_report_webhook_url: '',
+    ...current,
+    integrations: undefined, integration_groups: undefined,
+    transfer_policy: undefined, execution_runtime_limits: undefined,
+    compatibility_fields: undefined,
+    ...Object.fromEntries(NOTIFICATION_KEYS.map(key => [key, before[key]])),
+    clear_secrets: clears,
+    ...overrides,
   }});
+}
+
+async function restore(page, before) {
+  await restoreNotifications(page, before, {
+    clears: ['discord_webhook_url', 'discord_webhook_added', 'stats_report_webhook_url'],
+    discord_webhook_url: '', discord_webhook_added: '', stats_report_webhook_url: '',
+  });
 }
 
 test.beforeEach(async ({page}) => {
@@ -142,11 +174,20 @@ test('text, number, select and toggle all persist at their own boundary', async 
     ? [720, '30 days'] : [168, '7 days'];
 
   try {
-    await commit(page, 'discord_username', name);
-    await commit(page, 'stats_report_interval_hours', interval);
+    // Each boundary is proven by what the SERVER ACCEPTED for it. Reading the
+    // document back at the end instead would make the case depend on no other
+    // spec file's whole-document restore landing in between -- an artefact of
+    // the shared fixture that a readback cannot distinguish from a real
+    // persistence defect.
+    const named = await commit(page, 'discord_username', name);
+    expect(named.discord_username).toBe(name);
+
+    const timed = await commit(page, 'stats_report_interval_hours', interval);
+    expect(timed.stats_report_interval_hours).toBe(interval);
 
     // A select commits on choosing, with no blur an operator could perform.
-    await choose(page, 'stats_report_window_hours', windowLabel);
+    const chosen = await choose(page, 'stats_report_window_hours', windowLabel);
+    expect(chosen.stats_report_window_hours).toBe(window);
 
     // A boolean's change IS its boundary. The event toggles live inside the
     // disclosure, so the operator opens it first.
@@ -155,18 +196,9 @@ test('text, number, select and toggle all persist at their own boundary', async 
     const toggled = page.waitForResponse(
       r => r.url().includes('/api/settings') && r.request().method() === 'PUT', {timeout: 15000});
     await page.locator('label[for="dp-settings-field-discord-notify-error"] .ttrack').click();
-    await toggled;
+    expect((await (await toggled).json()).discord_notify_error).toBe(!before.discord_notify_error);
 
-    // Nothing was applied, and everything is durable: read canonical truth
-    // rather than the page that wrote it, then prove a reload agrees.
-    const saved = await canonical(page);
-    expect(saved.discord_username).toBe(name);
-    expect(saved.stats_report_interval_hours).toBe(interval);
-    expect(saved.stats_report_window_hours).toBe(window);
-    expect(saved.discord_notify_error).toBe(!before.discord_notify_error);
-
-    await page.reload();
-    await openSettings(page, 'notifications');
+    // Nothing was applied: each control shows exactly what it committed.
     await expect(field(page, 'discord_username')).toHaveValue(name);
     await expect(field(page, 'stats_report_interval_hours')).toHaveValue(String(interval));
     await expect(field(page, 'stats_report_window_hours')).toHaveValue(String(window));
@@ -205,8 +237,13 @@ test('the update-check interval moved into the disclosure and persists there', a
     await expect(cell.locator('.form-label')).toHaveText('Update Check Interval');
     await expect(cell.locator('.dp-settings-field-unit')).toHaveText('hours');
 
-    await commit(page, 'update_check_interval_hours', 6);
-    expect((await canonical(page)).update_check_interval_hours).toBe(6);
+    // Derived from what is stored, like every other probe in this file: an
+    // unchanged field crosses no boundary and writes nothing, so a hard-coded
+    // value silently stops testing anything the moment the shared backend
+    // already holds it.
+    const probe = Number(before.update_check_interval_hours) === 6 ? 7 : 6;
+    const accepted = await commit(page, 'update_check_interval_hours', probe);
+    expect(accepted.update_check_interval_hours).toBe(probe);
   } finally {
     await restore(page, before);
   }
@@ -321,8 +358,8 @@ test('an Enable toggle gates participation without erasing configuration', async
     await expect(page.locator('#view-settings .dp-settings-discord-card [data-action="test-discord"]'))
       .toBeEnabled();
   } finally {
-    await page.request.put('/api/settings', {data: {...before, clear_secrets: ['discord_webhook_url'],
-      discord_webhook_url: ''}});
+    await restoreNotifications(page, before,
+      {clears: ['discord_webhook_url'], discord_webhook_url: ''});
   }
 });
 
@@ -529,7 +566,7 @@ async function avatarGeometry(page) {
 
 /** Render the panel with a stored avatar, whatever was there before. */
 async function withStoredAvatar(page, before, url) {
-  await page.request.put('/api/settings', {data: {...before, discord_avatar_url: url}});
+  await restoreNotifications(page, before, {clears: [], discord_avatar_url: url});
   await page.reload();
   await openSettings(page, 'notifications');
   await expect(page.locator('#dp-settings-avatar-preview')).toBeVisible();
@@ -577,7 +614,7 @@ test('the avatar preview is a dedicated second line beneath the Avatar URL row',
     }
   } finally {
     await page.setViewportSize({width: 1440, height: 1000});
-    await page.request.put('/api/settings', {data: {...before}});
+    await restoreNotifications(page, before, {clears: []});
   }
 });
 
@@ -610,7 +647,7 @@ test('the webhook row begins below the avatar preview, with room to breathe', as
     expect(measured.rails[0]).toBe(measured.rails[2]);
     expect(measured.rails[1]).toBe(measured.rails[3]);
   } finally {
-    await page.request.put('/api/settings', {data: {...before}});
+    await restoreNotifications(page, before, {clears: []});
   }
 });
 
