@@ -42,7 +42,12 @@ with a reason and counts), ``observations.filesystem``,
 ``observations.executors``, ``runtime_context``, ``metadata.process`` and
 ``metadata.observation_boundary``; ``metadata.build_revision`` is populated
 whenever the running build carries a revision; and path roots are replaced by
-per-export ``<redacted-path-root-N>`` tokens (sanitization version 2).
+per-export ``<redacted-path-root-N>`` tokens (sanitization version 2). 3 is a
+strict superset of 2 except that rows of the requested transfer's direct
+consolidation participants are now exported under scope ``component`` (with
+all of their transfer-scoped rows) instead of ``context``; it adds
+``metadata.closure.component`` (the bounded component, its limits and any
+truncation) and ``metadata.component_transfer_ids``.
 """
 from __future__ import annotations
 
@@ -67,7 +72,13 @@ from transfers.storage import StorageDomain, observe_capacity
 TRACE_FORMAT = "debridpulse.transfer-trace"
 # 2: adds collection_status, observations.filesystem, observations.executors,
 # runtime_context, and metadata.process; build_revision is populated.
-TRACE_FORMAT_VERSION = 2
+# 3: adds the bounded consolidation component (scope 'component',
+# metadata.closure.component, metadata.component_transfer_ids).
+TRACE_FORMAT_VERSION = 3
+# Bounds of the consolidation component (``_component``); hitting one is
+# declared in metadata.closure.component, never silent.
+COMPONENT_MAX_TRANSFERS = 32
+COMPONENT_MAX_ARTIFACTS = 64
 # 2: adds per-export path-root tokens.
 SANITIZATION_VERSION = 2
 # Upper bound for any one external observation (an executor batch, a health
@@ -283,27 +294,105 @@ def _in(values) -> tuple[str, tuple]:
     return ("(" + ",".join("?" * len(values)) + ")", values) if values else ("(NULL)", ())
 
 
-async def _collect(collector: _Collector, transfer_id: int) -> None:
-    """The requested transfer's own rows, then its depth-one relational
-    closure. Order matters only in that each step reads identities the
-    previous steps exported."""
-    select, values = collector.select, collector.values
-    own = "primary"
-    await select("torrents", "id=?", (transfer_id,), scope=own)
+async def _transfer_rows(collector: _Collector, transfer_id: int, scope: str) -> None:
+    """One transfer's own transfer-scoped rows (the requested transfer, or a
+    participant of its consolidation component)."""
+    select = collector.select
+    await select("torrents", "id=?", (transfer_id,), scope=scope)
     for table in ("transfer_requests", "provider_resources", "route_attempt_provenance", "transfer_file_manifests",
                   "transfer_file_selections", "execution_attempts", "execution_attempt_provenance",
                   "artifact_recovery_state", "transfer_outcomes", "postprocess_attempts",
                   "transfer_input_challenges", "application_events"):
-        await select(table, "transfer_id=?", (transfer_id,), scope=own)
+        await select(table, "transfer_id=?", (transfer_id,), scope=scope)
     for table in ("download_files", "transfer_pause_intents", "deferred_provider_submissions", "events"):
-        await select(table, "torrent_id=?", (transfer_id,), scope=own)
+        await select(table, "torrent_id=?", (transfer_id,), scope=scope)
+    for table, column, parent in (("resolution_attempts", "request_id", "transfer_requests"),
+                                  ("transfer_file_manifest_entries", "manifest_id", "transfer_file_manifests"),
+                                  ("transfer_file_selection_entries", "selection_id", "transfer_file_selections")):
+        if parent in collector.tables:
+            await select(table, f"{column} IN (SELECT id FROM {parent} WHERE transfer_id=?)", (transfer_id,),
+                         scope=scope)
+
+
+async def _component(collector: _Collector, transfer_id: int) -> dict:
+    """THE bounded consolidation-component closure.
+
+    The canonical artifacts the requested transfer owns or references (its own
+    group heads, the canonical owner of each of its members, and the canonical
+    artifacts its candidate provenance or cross-transfer consolidations point
+    at), and the transfers that DIRECTLY take part in them: the owner, every
+    transfer consolidated into one (``artifact_consolidations``), every
+    transfer whose candidate provenance was bound to one, and every standby
+    holder beneath one. Each participant contributes its own transfer-scoped
+    rows (scope ``component``); nothing is crawled further. Both sets are
+    bounded, in ascending identity order, and whatever a bound omits is
+    reported by identity."""
+    db = collector.db
+    heads = {int(row["mirror_group_id"] or row["id"]) for row in await db.fetchall(
+        "SELECT id,mirror_group_id FROM download_files WHERE torrent_id=?", (transfer_id,))}
+    if "artifact_consolidations" in collector.tables:
+        heads |= {int(row["canonical_artifact_id"]) for row in await db.fetchall(
+            "SELECT canonical_artifact_id FROM artifact_consolidations WHERE source_transfer_id=?", (transfer_id,))}
+    if {"canonical_candidate_origins", "canonical_candidate_bindings"} <= collector.tables:
+        heads |= {int(row["canonical_artifact_id"]) for row in await db.fetchall(
+            """SELECT b.canonical_artifact_id FROM canonical_candidate_origins o
+                JOIN canonical_candidate_bindings b ON b.id=o.binding_id WHERE o.contributing_transfer_id=?""",
+            (transfer_id,))}
+    heads = sorted(heads)
+    artifacts, omitted_artifacts = heads[:COMPONENT_MAX_ARTIFACTS], heads[COMPONENT_MAX_ARTIFACTS:]
+    clause, params = _in(artifacts)
+    participants = {int(row["torrent_id"]) for row in await db.fetchall(
+        f"SELECT torrent_id FROM download_files WHERE id IN {clause} OR mirror_group_id IN {clause}",
+        params + params)}
+    if "artifact_consolidations" in collector.tables:
+        participants |= {int(row["source_transfer_id"]) for row in await db.fetchall(
+            f"SELECT source_transfer_id FROM artifact_consolidations WHERE canonical_artifact_id IN {clause}", params)}
+    if {"canonical_candidate_origins", "canonical_candidate_bindings"} <= collector.tables:
+        participants |= {int(row["contributing_transfer_id"]) for row in await db.fetchall(
+            f"""SELECT o.contributing_transfer_id FROM canonical_candidate_origins o
+                JOIN canonical_candidate_bindings b ON b.id=o.binding_id WHERE b.canonical_artifact_id IN {clause}""",
+            params)}
+    # The requested transfer is always a member; the bound counts it.
+    others = sorted(participants - {int(transfer_id)})
+    room = max(0, COMPONENT_MAX_TRANSFERS - 1)
+    for participant in others[:room]:
+        await _transfer_rows(collector, participant, "component")
+    included, omitted = sorted([int(transfer_id), *others[:room]]), others[room:]
+    # The component's canonical artifacts with their full provenance.
+    await collector.select("download_files", f"id IN {clause}", params, scope="component")
+    await collector.select("canonical_candidate_bindings", f"canonical_artifact_id IN {clause}", params,
+                           scope="component")
+    await collector.select("artifact_consolidations", f"canonical_artifact_id IN {clause}", params, scope="component")
+    bindings, binding_params = _in(collector.values("canonical_candidate_bindings", "id"))
+    await collector.select("canonical_candidate_origins", f"binding_id IN {bindings}", binding_params,
+                           scope="component")
+    return {
+        "type": "consolidation_component",
+        "rule": "the canonical artifacts the requested transfer owns or references, and the transfers directly "
+                "taking part in them (owner, consolidated contributors, bound candidate provenance, standby "
+                "holders), each with its own transfer-scoped rows (scope 'component'); participants are never "
+                "expanded into further components",
+        "canonical_artifact_ids": artifacts,
+        "artifact_count": len(artifacts),
+        "transfer_ids": included,
+        "transfer_count": len(included),
+        "truncated": bool(omitted or omitted_artifacts),
+        "omitted_transfer_ids": omitted,
+        "omitted_artifact_ids": omitted_artifacts,
+        "limits": {"max_transfers": COMPONENT_MAX_TRANSFERS, "max_artifacts": COMPONENT_MAX_ARTIFACTS},
+    }
+
+
+async def _collect(collector: _Collector, transfer_id: int) -> dict:
+    """The requested transfer's own rows, its consolidation component, then
+    the depth-one relational closure of everything exported. Order matters
+    only in that each step reads identities the previous steps exported (and
+    a row keeps the first scope it was exported under). Returns the component
+    description."""
+    select, values = collector.select, collector.values
+    own = "primary"
+    await _transfer_rows(collector, transfer_id, own)
     await select("transfer_controls", "1=1", scope="global")
-    clause, params = _in(values("transfer_requests", "id"))
-    await select("resolution_attempts", f"request_id IN {clause}", params, scope=own)
-    clause, params = _in(values("transfer_file_manifests", "id"))
-    await select("transfer_file_manifest_entries", f"manifest_id IN {clause}", params, scope=own)
-    clause, params = _in(values("transfer_file_selections", "id"))
-    await select("transfer_file_selection_entries", f"selection_id IN {clause}", params, scope=own)
     own_artifacts = values("download_files", "id")
     clause, params = _in(own_artifacts)
     await select("canonical_candidate_bindings", f"canonical_artifact_id IN {clause}", params, scope=own)
@@ -312,6 +401,8 @@ async def _collect(collector: _Collector, transfer_id: int) -> None:
     bindings, _ = _in(values("canonical_candidate_bindings", "id"))
     await select("canonical_candidate_origins", f"contributing_transfer_id=? OR binding_id IN {bindings}",
                  (transfer_id, *values("canonical_candidate_bindings", "id")), scope=own)
+    component = await _component(collector, transfer_id)
+    exported_artifacts = values("download_files", "id")
 
     # Closure: foreign artifacts this transfer's rows point at (its canonical
     # owners, its contributors, its unverified targets), and each one's own
@@ -326,7 +417,7 @@ async def _collect(collector: _Collector, transfer_id: int) -> None:
         | values("canonical_candidate_origins", "contributing_artifact_id")
         | values("canonical_candidate_bindings", "canonical_artifact_id")
         | values("transfer_requests", "equivalence_target_artifact_id")
-    ) - own_artifacts
+    ) - exported_artifacts
     clause, params = _in(foreign)
     await select("download_files", f"id IN {clause}", params, scope=context)
     await select("canonical_candidate_bindings", f"canonical_artifact_id IN {clause}", params, scope=context)
@@ -352,6 +443,7 @@ async def _collect(collector: _Collector, transfer_id: int) -> None:
                  | values("artifact_consolidations", "source_transfer_id"))
     clause, params = _in(transfers)
     await select("torrents", f"id IN {clause}", params, scope=context)
+    return component
 
 
 async def _reference_audit(db, collector: _Collector) -> list[dict]:
@@ -668,7 +760,7 @@ async def build(transfer_id: int, application) -> dict | None:
                     "SELECT 1 AS present FROM torrents WHERE id=?", (int(transfer_id),)):
                 return None
             collector = _Collector(db, tables)
-            await _collect(collector, int(transfer_id))
+            component = await _collect(collector, int(transfer_id))
             references = await _reference_audit(db, collector)
             schema = await _schema_identity(db, tables)
         finally:
@@ -702,6 +794,8 @@ async def build(transfer_id: int, application) -> dict | None:
                           "reason": _OMITTED.get(table, "not a transfer-scoped durable table")})
     context_transfers = sorted(int(row["id"]) for scope, row in collector.rows["torrents"].values()
                                if scope == "context")
+    component_transfers = sorted(int(row["id"]) for scope, row in collector.rows["torrents"].values()
+                                 if scope == "component")
     for target in filesystem["targets"]:
         target["path"] = sanitizer.path(target["path"])
     for measured in filesystem["capacity"]:
@@ -717,6 +811,7 @@ async def build(transfer_id: int, application) -> dict | None:
             "trace_format_version": TRACE_FORMAT_VERSION,
             "requested_transfer_id": int(transfer_id),
             "primary_transfer_id": int(transfer_id),
+            "component_transfer_ids": component_transfers,
             "context_transfer_ids": context_transfers,
             "generated_at": _iso(generated_at),
             "application_version": read_version(),
@@ -727,9 +822,11 @@ async def build(transfer_id: int, application) -> dict | None:
             "schema": schema,
             "closure": {
                 "depth": 1,
-                "rule": "requested transfer rows (scope 'primary'), plus the foreign artifacts they reference and "
-                        "those artifacts' own request, transfer, candidate provenance, consolidation, execution and "
-                        "recovery rows (scope 'context'); context rows are not followed further",
+                "rule": "requested transfer rows (scope 'primary'), the rows of every transfer in its bounded "
+                        "consolidation component (scope 'component'), plus the foreign artifacts all of these "
+                        "reference and those artifacts' own request, transfer, candidate provenance, consolidation, "
+                        "execution and recovery rows (scope 'context'); context rows are not followed further",
+                "component": component,
             },
             "encoding": "every column of every exported row is present; TEXT holding JSON stays JSON text, "
                         "sanitized field by field; BLOB values are never emitted",

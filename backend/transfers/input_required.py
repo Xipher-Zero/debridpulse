@@ -507,6 +507,61 @@ class EphemeralInputBroker:
             self._in_use[(transfer_id, str(request_id), str(candidate_id))] = submitted.token
             return submitted
 
+    async def lease_for_proof(self, scope: AuthScope | None, methods,
+                              requirement: InputRequirement) -> SubmittedInput | None:
+        """Lend already-VALID material of exactly ``scope`` to ONE equivalence
+        fingerprint of a candidate the deciding request does not own, or ``None``.
+
+        Proof only, never inheritance: the lease enters no lineage, no use
+        record and no writer handoff; its consumer ends it
+        (``end_proof_lease``). Any lineage's VALID material of the exact
+        authenticated scope (family, host, port) may be lent, for a method both
+        the candidate declares (``methods``) and the sampler requested. When
+        the sampler requires a server identity, the lending context must have
+        confirmed exactly the identity observed -- no identity is probed or
+        invented -- and the lease carries it. Untested and rejected material
+        is never lent."""
+        requested = {descriptor.method for descriptor in getattr(requirement, "methods", ())}
+        descriptors = tuple(_METHOD_DESCRIPTORS[method]() for method in methods
+                            if method in _METHOD_DESCRIPTORS and method in requested)
+        if scope is None or not descriptors:
+            return None
+        identity_needed = requirement.reason == InputReason.SERVER_IDENTITY_REQUIRED
+        observed = _identity_fact(requirement.facts)
+        if identity_needed and observed is None:
+            return None
+        async with self._lock:
+            self._purge_locked()
+            for key, context in self._contexts.items():
+                if key[2] != scope or (identity_needed and context.identity != observed):
+                    continue
+                for material in reversed(context.materials):
+                    if material.state != _MaterialState.VALID:
+                        continue
+                    descriptor = _compatible(material.values, descriptors)
+                    if descriptor is None:
+                        continue
+                    facts = requirement.facts if identity_needed else () if context.identity is None else (
+                        InputFact(InputFactName.SERVER_HOST, scope.host),
+                        InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, context.identity[0]),
+                        InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, context.identity[1]),
+                    )
+                    return self._leased_locked(key, material, descriptor.method, facts)
+            return None
+
+    async def end_proof_lease(self, submitted: SubmittedInput | None, *, rejected: bool) -> tuple[str, str] | None:
+        """End a proof lease. Only a definitive credential refusal (``rejected``)
+        invalidates the lent material, through the one settlement; any other
+        outcome -- a proof, a transport failure, a fail-closed identity --
+        leaves it exactly as valid as it was."""
+        if submitted is None or submitted.token is None:
+            return None
+        if rejected:
+            return await self.settle(submitted.token, accepted=False)
+        async with self._lock:
+            self._tokens.pop(int(submitted.token), None)
+        return None
+
     # ── handoff to the admitted writer ──────────────────────────────────────
 
     @staticmethod

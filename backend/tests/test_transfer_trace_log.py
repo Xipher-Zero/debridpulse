@@ -96,7 +96,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 2
+    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 3
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])
@@ -131,18 +131,21 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
 async def test_trace_follows_consolidation_into_the_foreign_canonical_owner(traced):
     trace = await transfer_trace.build(traced.later.id, traced.application)
     data = trace["data"]
-    assert trace["metadata"]["context_transfer_ids"] == [traced.owner.id]
+    # The owner is a direct participant of the consolidation component: it is
+    # exported with its own transfer-scoped rows (scope 'component').
+    assert trace["metadata"]["component_transfer_ids"] == [traced.owner.id]
+    assert trace["metadata"]["context_transfer_ids"] == []
     consolidation = next(item["row"] for item in data["artifact_consolidations"])
     assert consolidation["source_transfer_id"] == traced.later.id
     assert consolidation["canonical_artifact_id"] == traced.canonical.id
     # The foreign canonical artifact, its request, its transfer and its
-    # candidate provenance are present -- explicitly as relational context.
+    # candidate provenance are present -- explicitly as the component.
     canonical = next(item for item in data["download_files"] if item["row"]["id"] == traced.canonical.id)
-    assert canonical["scope"] == "context" and canonical["row"]["torrent_id"] == traced.owner.id
+    assert canonical["scope"] == "component" and canonical["row"]["torrent_id"] == traced.owner.id
     standby = next(item for item in data["download_files"] if item["row"]["torrent_id"] == traced.later.id)
     assert standby["scope"] == "primary" and standby["row"]["mirror_group_id"] == traced.canonical.id
-    assert {item["scope"] for item in data["torrents"] if item["row"]["id"] == traced.owner.id} == {"context"}
-    assert any(item["scope"] == "context" and item["row"]["id"] == canonical["row"]["request_id"]
+    assert {item["scope"] for item in data["torrents"] if item["row"]["id"] == traced.owner.id} == {"component"}
+    assert any(item["scope"] == "component" and item["row"]["id"] == canonical["row"]["request_id"]
                for item in data["transfer_requests"])
     bindings = [item["row"] for item in data["canonical_candidate_bindings"]]
     assert {row["canonical_artifact_id"] for row in bindings} == {traced.canonical.id}
@@ -170,7 +173,8 @@ async def test_trace_sanitizes_credentials_and_capabilities_but_keeps_structure(
     assert len(addresses) == 1 and re.fullmatch(r"https://cdn\.example\.org/<redacted-resource-\d+>", addresses.pop())
     assert len(headers) == 1 and re.fullmatch(r"<redacted-secret-\d+>", headers.pop())
     assert text.count(json.dumps(CAPABILITY)[1:-1]) == 0
-    request = next(item["row"] for item in trace["data"]["transfer_requests"] if item["scope"] == "context")
+    request = next(item["row"] for item in trace["data"]["transfer_requests"]
+                   if item["row"]["transfer_id"] == traced.owner.id)
     owner_payload = json.loads(request["payload"])["payload"]
     # The submitted userinfo never reached durable state at all: admission split
     # it out as USER_SUPPLIED material, so only the capability path is redacted.

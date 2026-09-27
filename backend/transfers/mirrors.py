@@ -184,9 +184,16 @@ class EvidenceContext:
     lifecycle, and which proofs were made with input (``supplied``) so the
     materialization owner hands that input, once, to the writer it admits.
     Input placed here is owned by the decision from then on: the
-    materialization owner hands it off or discards it."""
+    materialization owner hands it off or discards it.
 
-    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven", "_supplied", "_auth")
+    A PEER candidate (one the deciding request does not own) that requires
+    input and carries no retained neutral evidence may be sampled once with a
+    proof-only lease from the authentication-input owner. The lease is ended
+    at once and never supplied, so it can reach no writer; only the neutral
+    fingerprint it acquired is kept (``borrowed``), for the canonical evidence
+    owner to retain."""
+
+    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven", "_supplied", "_borrowed", "_auth")
 
     # Bounded: each rejected material is excluded from the next match.
     _MATCH_ATTEMPTS = 3
@@ -197,6 +204,7 @@ class EvidenceContext:
         self._requirements = {}
         self._proven = {}
         self._supplied = {}
+        self._borrowed = {}
         self._auth = None
 
     def bind(self, auth) -> None:
@@ -216,8 +224,11 @@ class EvidenceContext:
                         submitted.discard()
                     sample = await executor.fingerprint(subject)
                     if (isinstance(sample, InputRequirement) and executor.capabilities.transient_input
-                            and self._auth is not None and self._auth.owns(candidate)):
-                        sample = await self._matched(executor, subject, candidate, sample, self._MATCH_ATTEMPTS)
+                            and self._auth is not None):
+                        if self._auth.owns(candidate):
+                            sample = await self._matched(executor, subject, candidate, sample, self._MATCH_ATTEMPTS)
+                        elif candidate.content_evidence is None:
+                            sample = await self._proof_leased(executor, subject, candidate, sample)
                     sample = _retained(candidate, sample)
                 self._fingerprints[key] = (sample, None)
             except Exception as exc:
@@ -250,6 +261,13 @@ class EvidenceContext:
         ``candidate_id``, or ``None``."""
         return self._proven.get(str(candidate_id))
 
+    def take_borrowed(self):
+        """Every ``(candidate id, evidence)`` a proof lease acquired in this
+        decision -- neutral evidence only, never input -- exactly once."""
+        borrowed = list(self._borrowed.items())
+        self._borrowed.clear()
+        return borrowed
+
     def take_supplied(self):
         """Every ``(candidate id, executor id, input)`` that proved evidence in
         this decision, handed to the materialization owner exactly once; any
@@ -280,6 +298,24 @@ class EvidenceContext:
                 return await self._matched(executor, subject, candidate, sample, attempts - 1)
             return sample
         submitted.discard()
+        return sample
+
+    async def _proof_leased(self, executor, subject, candidate, requirement):
+        """Sample a peer's candidate once with a proof-only lease; the lease
+        is ended whatever happens, and only a definitive refusal (the sampler
+        answering with a requirement again) invalidates the lent material."""
+        lease = await self._auth.proof_lease(candidate, requirement)
+        if lease is None:
+            return requirement
+        rejected = False
+        try:
+            sample = await executor.fingerprint_with_input(subject, lease)
+            rejected = isinstance(sample, InputRequirement)
+        finally:
+            await self._auth.end_proof_lease(lease, rejected=rejected)
+            lease.discard()
+        if sample is not None and not rejected and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
+            self._borrowed[str(candidate.id)] = sample
         return sample
 
     async def _matched(self, executor, subject, candidate, requirement, attempts):

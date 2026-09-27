@@ -226,6 +226,21 @@ class _EvidenceAuth:
     async def settle(self, submitted, *, accepted: bool):
         return await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted)
 
+    async def proof_lease(self, candidate, requirement):
+        """A proof-only lease for sampling a peer's candidate (never this
+        lineage's material, never a handoff)."""
+        scope = self.engine._input_scope(candidate)
+        lease = await self.engine.inputs.lease_for_proof(scope, candidate.accepted_input_methods, requirement)
+        if lease is not None:
+            await self.engine.challenges.record(self.transfer_id, "proof_lease_used", scope.family)
+        return lease
+
+    async def end_proof_lease(self, submitted, *, rejected: bool):
+        transition = await self.engine.inputs.end_proof_lease(submitted, rejected=rejected)
+        if transition is not None:
+            await self.engine.challenges.record(self.transfer_id, "proof_lease_rejected", transition[1])
+        return transition
+
 
 class TransferEngine:
     def __init__(self, repository: TransferRepository, registry: IntegrationRegistry, *,
@@ -1459,6 +1474,10 @@ class TransferEngine:
         evidence (never the input) is retained with the canonical member, so a
         later mirror can compare against it after the input is gone, including
         across restarts. Everything else is discarded here."""
+        # Neutral evidence a proof-only lease acquired for a peer's canonical
+        # member is retained with that member; the lease itself is long gone.
+        for candidate_id, proven in evidence.take_borrowed():
+            await self.canonical.retain_evidence(candidate_id, proven)
         supplied = evidence.take_supplied()
         if not supplied:
             return
