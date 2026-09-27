@@ -29,6 +29,7 @@ from transfers import file_selection as fs
 from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
+from transfers.input_required import public_challenge
 from transfers.presentation_repository import (
     ARTIFACT_PRESENTATION_SNAPSHOT_KEYS,
     _CAPACITY_WAIT_PRESENTATION,
@@ -781,8 +782,18 @@ async def list_operational_torrents(
               ON ars.artifact_id = pa.artifact_id
             GROUP BY pa.transfer_id
         ),
+        -- The transfer's one current challenge row (unique per transfer), for
+        -- page transfers only; ``transfers.input_required.public_challenge``
+        -- projects it exactly as the single-transfer API does.
         input_challenge AS (
-            SELECT DISTINCT c.transfer_id
+            SELECT c.transfer_id,
+                   json_object(
+                       'challenge_id', c.challenge_id, 'transfer_id', c.transfer_id,
+                       'generation', c.generation, 'reason', c.reason, 'origin', c.origin,
+                       'integration_id', c.integration_id, 'operation_id', c.operation_id,
+                       'request_id', c.request_id, 'artifact_id', c.artifact_id,
+                       'methods', c.methods, 'facts', c.facts
+                   ) AS challenge
             FROM transfer_input_challenges c JOIN page ON page.id = c.transfer_id
         ),
         -- DP 1.0.12 Workstream B: bounded file-selection affordance hint.
@@ -1133,7 +1144,7 @@ async def list_operational_torrents(
             END AS provider_provenance_status,
             current_root_resource.resource_state AS _current_root_resource_state,
             artifact_presentation_facts.artifacts AS _artifact_presentation_facts,
-            CASE WHEN input_challenge.transfer_id IS NOT NULL THEN 1 ELSE 0 END AS _has_input_challenge,
+            input_challenge.challenge AS _input_challenge,
             COALESCE(pause_intent.paused, 0) AS _paused_intent,
             root_request.payload AS _source_request_payload,
             root_request_kinds.kinds AS _root_request_kinds,
@@ -1214,7 +1225,11 @@ async def list_operational_torrents(
         projected = dict(row)
         current_root_resource_state = projected.pop("_current_root_resource_state", None)
         paused = bool(int(projected.pop("_paused_intent", 0) or 0))
-        input_required = bool(int(projected.pop("_has_input_challenge", 0) or 0))
+        challenge_row = _decode_projection_value(projected.pop("_input_challenge", None), None)
+        input_required = isinstance(challenge_row, dict)
+        # The modal acts on this: the same canonical public projection the
+        # single-transfer API returns -- descriptors and facts, never input.
+        projected["input_required"] = public_challenge(challenge_row) if input_required else None
         file_presentations = _bounded_child_presentations(
             projected.pop("_artifact_presentation_facts", None),
             paused=paused, input_required=input_required,

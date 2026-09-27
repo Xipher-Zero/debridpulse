@@ -37,6 +37,9 @@ jobs:
       IMAGE: debridpulse-browser:${{ github.sha }}
       DP_BASE_URL: http://127.0.0.1:8080
       DP_AUTH_BASE_URL: http://127.0.0.1:8081
+      # The candidate image serving the real application with the test-only
+      # composition backend/tests/browser_contract_app.py (INPUT_REQUIRED contract).
+      DP_CONTRACT_BASE_URL: http://127.0.0.1:8084
 
     steps:
       - name: Checkout
@@ -144,6 +147,16 @@ jobs:
           RUNTIME
           . "$RUNNER_TEMP/qualification/runtime.sh"
           start_runtime "$IMAGE" dp-browser-open dp-browser-auth 8080 8081 "$RUNNER_TEMP/dp-browser-auth-config"
+          # The same candidate image, serving the real application through the
+          # test-only composition that can raise a real INPUT_REQUIRED challenge.
+          docker run -d --name dp-browser-contract -p "127.0.0.1:8084:8080" "$IMAGE" \
+            uvicorn browser_contract_app:app --app-dir /app/tests --host 0.0.0.0 --port 8080 --workers 1
+          ready=0
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:8084/api/health" >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then docker logs dp-browser-contract || true; exit 1; fi
 
       - name: Install and audit locked Playwright Chromium
         working-directory: frontend/browser
@@ -361,8 +374,9 @@ jobs:
         run: |
           docker logs dp-browser-open || true
           docker logs dp-browser-auth || true
+          docker logs dp-browser-contract || true
 
       - name: Stop candidate and anchor containers
         if: always()
         run: |
-          docker rm -f dp-browser-open dp-browser-auth dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true
+          docker rm -f dp-browser-open dp-browser-auth dp-browser-contract dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true
