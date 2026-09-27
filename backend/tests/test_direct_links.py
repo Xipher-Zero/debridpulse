@@ -51,7 +51,7 @@ class DirectLinkInputTests(unittest.TestCase):
         )
 
     def test_rejects_non_http_input(self):
-        with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL"):
+        with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL"):
             normalize_direct_links(["magnet:?xt=urn:btih:abc"])
 
     def test_accepts_a_mixed_four_transport_batch(self):
@@ -59,9 +59,9 @@ class DirectLinkInputTests(unittest.TestCase):
         self.assertEqual(normalize_direct_links(links), links[:4])
 
     def test_rejects_other_schemes_and_authorityless_urls(self):
-        for link in ("ftps://a.invalid/f", "scp://a.invalid/f", "file:///etc/passwd", "webdav://a.invalid/f", "ftp:///f", "sftp://"):
+        for link in ("ftps://a.invalid/f", "rsync://a.invalid/f", "file:///etc/passwd", "webdav://a.invalid/f", "ftp:///f", "sftp://"):
             with self.subTest(link=link):
-                with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL"):
+                with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL"):
                     normalize_direct_links([link])
 
     def test_rejects_embedded_userinfo_for_every_transport(self):
@@ -71,7 +71,7 @@ class DirectLinkInputTests(unittest.TestCase):
                     normalize_direct_links([link])
 
     def test_empty_submission_names_every_accepted_transport(self):
-        with self.assertRaisesRegex(ValueError, "At least one HTTP, HTTPS, FTP or SFTP link is required"):
+        with self.assertRaisesRegex(ValueError, "At least one HTTP, HTTPS, FTP, SFTP, SCP or SSH link is required"):
             normalize_direct_links(["", "  "])
 
     def test_ftp_and_sftp_links_derive_safe_filenames_through_the_same_owner(self):

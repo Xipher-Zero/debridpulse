@@ -1200,7 +1200,7 @@ function classifyDashboardEntries(raw) {
     seen.add(value);
     const entry = {value, line: index + 1};
     // Direct-source transports; the backend admission owner remains the authority.
-    if (/^(?:https?|s?ftp):\/\/\S+$/i.test(value)) direct.push(entry);
+    if (/^(?:https?|s?ftp|scp|ssh):\/\/\S+$/i.test(value)) direct.push(entry);
     else if (/^magnet:\?/i.test(value)) magnets.push(entry);
     else invalid.push(entry);
   });
@@ -1240,12 +1240,12 @@ async function addDashboardEntries() {
   const {direct, magnets, invalid} = classifyDashboardEntries(raw);
   if (invalid.length) {
     const first = invalid[0];
-    toast(`Line ${first.line}: enter an HTTP(S), FTP or SFTP link or a magnet URI`, 'error');
+    toast(`Line ${first.line}: enter an HTTP(S), FTP, SFTP, SCP or SSH link or a magnet URI`, 'error');
     input?.focus();
     return;
   }
   if (!direct.length && !magnets.length) {
-    toast('Enter at least one HTTP(S), FTP or SFTP link or a magnet URI', 'warn');
+    toast('Enter at least one HTTP(S), FTP, SFTP, SCP or SSH link or a magnet URI', 'warn');
     input?.focus();
     return;
   }

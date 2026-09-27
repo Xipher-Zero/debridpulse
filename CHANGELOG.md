@@ -12,6 +12,14 @@
   it never changes aria2's transport claim.
 - **Direct-link submission accepts HTTP, HTTPS, FTP and SFTP** through the one existing admission path.
   Mixed batches are valid and URLs with embedded credentials are still rejected.
+- **SCP Network Source** (`general_scp`). `scp://` and `ssh://` links to one exact remote file are
+  claimed by the SCP provider and downloaded by aria2 over SFTP, through the existing SFTP server-identity
+  and credential dialog, evidence acquisition and equivalence. Port 22 is the default, an explicit port is
+  kept, bracketed IPv6 and the SCP-style `host:/path` form are accepted, and `ssh://` never means anything
+  but retrieving that one file. Transfers stay labelled SCP (Lucide FileDown, lavender) and Details keeps the
+  submitted `scp://`/`ssh://` link, while Route History names the SFTP endpoint that was executed. Directories,
+  wildcards, home-relative paths and credentials embedded in the link are refused, and the provider has its
+  own Enable control under Network Sources.
 - **FTP and SFTP authentication through the existing INPUT_REQUIRED lifecycle.** aria2 reports a login
   request only from the exact characterized native evidence (FTP `530`, SFTP password rejection). A
   bare native code, a missing path or a permission failure is never treated as a login request.

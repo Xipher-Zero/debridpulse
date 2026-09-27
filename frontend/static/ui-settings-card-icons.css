@@ -91,6 +91,9 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-protocol='general_ftp'] {
   --dp-protocol-color: #2DD4BF;
 }
+#view-settings .dp-settings-protocol-chip[data-protocol='general_scp'] {
+  --dp-protocol-color: #A78BFA;
+}
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: #CBD5E1;
 }

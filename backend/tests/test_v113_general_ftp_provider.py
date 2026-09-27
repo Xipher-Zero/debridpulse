@@ -63,7 +63,7 @@ def test_integration_definition_is_an_independent_direct_sources_provider() -> N
 
 
 def test_catalog_registers_general_ftp_alongside_the_existing_integrations() -> None:
-    assert [item.id for item in definitions] == ["alldebrid", "usenet", "general_http", "general_ftp", "aria2"]
+    assert [item.id for item in definitions] == ["alldebrid", "usenet", "general_http", "general_ftp", "general_scp", "aria2"]
 
 
 # ── 2. Resolution ─────────────────────────────────────────────────────────────

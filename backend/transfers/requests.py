@@ -53,7 +53,7 @@ def extract_hash(magnet: str) -> Optional[str]:
 
 # The direct-source transports one link submission may carry. The request kind
 # is the URL scheme; provider applicability decides who resolves it.
-DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp"})
+DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh"})
 
 
 def normalize_direct_links(values: List[str]) -> List[str]:
@@ -70,16 +70,19 @@ def normalize_direct_links(values: List[str]) -> List[str]:
         except ValueError:
             malformed_port = True
         if malformed_port:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL")
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
         if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES or not parsed.hostname:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP or SFTP URL")
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
         if parsed.username is not None or parsed.password is not None:
-            raise ValueError("Credentials embedded in URLs are not supported")
+            raise ValueError(
+                "Credentials embedded in URLs are not supported; "
+                "DebridPulse asks for them when the server requires a login"
+            )
         if value not in seen:
             normalized.append(value)
             seen.add(value)
     if not normalized:
-        raise ValueError("At least one HTTP, HTTPS, FTP or SFTP link is required")
+        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP or SSH link is required")
     if len(normalized) > MAX_DIRECT_LINKS_PER_BATCH:
         raise ValueError(
             f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"

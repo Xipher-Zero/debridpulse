@@ -60,6 +60,7 @@ function fixture(base, {adEnabled = true, adConfigured = false, adVerified = fal
   // and explicit extras); later live providers such as FTP & SFTP and Usenet
   // are not inherited.
   delete result.integrations.general_ftp;
+  delete result.integrations.general_scp;
   delete result.integrations.usenet;
   Object.assign(result.integrations, clone(extraProviders));
   result.full_sync_interval_minutes ??= 5;

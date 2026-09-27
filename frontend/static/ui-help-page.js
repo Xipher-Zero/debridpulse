@@ -61,6 +61,7 @@
               <li><b>AllDebrid account:</b> AllDebrid is the current specialized debrid provider. It prepares supported sources remotely; DebridPulse does not route every ordinary HTTP/HTTPS URL through it.</li>
               <li><b>HTTP &amp; HTTPS source:</b> The generic direct provider can hand ordinary HTTP/HTTPS resources to aria2 without an AllDebrid unlock when no enabled specialized provider claims that resource.</li>
               <li><b>FTP &amp; SFTP source:</b> The generic direct provider hands FTP and SFTP resources to aria2. Each Direct Source has its own Enable control under <b>Sources &amp; Providers</b>.</li>
+              <li><b>SCP source:</b> The SCP provider accepts <code>scp://</code> and <code>ssh://</code> links to one remote file and downloads it through aria2 over SFTP. It has its own Enable control under <b>Sources &amp; Providers</b>.</li>
               <li><b>Download storage:</b> This can be a folder on the computer running DebridPulse, a mounted NAS share, or another location made available to the application.</li>
               <li><b>Login protection:</b> If DebridPulse can be reached by people or devices you do not fully trust, configure <b>Settings → Authentication</b> before exposing it. Username &amp; Password is the simplest protection for most users.</li>
             </ul>
@@ -92,6 +93,7 @@
               <ul>
                 <li><b>HTTP or HTTPS link:</b> DebridPulse evaluates current provider applicability. An enabled AllDebrid-supported host is routed to AllDebrid; otherwise an eligible ordinary web resource can use the generic HTTP &amp; HTTPS provider directly.</li>
                 <li><b>FTP or SFTP link:</b> The FTP &amp; SFTP provider hands the link to aria2 directly. If the server asks for a login, DebridPulse prompts for a username and password. For SFTP, DebridPulse asks you to confirm the server's identity fingerprint before using the supplied credentials. DebridPulse does not persist submitted credentials in its database.</li>
+                <li><b>SCP or SSH link:</b> The SCP provider accepts one exact remote file, such as <code>scp://host/path/file</code> or <code>ssh://host:2222/path/file</code>, and downloads it over SFTP, so the server must offer SFTP. It asks for the server identity and credentials exactly like an SFTP link. Directories, wildcards, home-relative paths and credentials written into the link are not accepted.</li>
                 <li><b>Magnet link:</b> A special link that usually begins with <code>magnet:?</code> and describes torrent content without requiring a separate torrent file.</li>
                 <li><b>.torrent file:</b> A small metadata file that describes torrent content. To choose one, leave the Add text field empty and use the same Add control to select the file.</li>
               </ul>

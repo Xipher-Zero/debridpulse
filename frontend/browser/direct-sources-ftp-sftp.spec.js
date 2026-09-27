@@ -57,18 +57,20 @@ async function settleSettings(page) {
   await revealNetworkSources(page);
 }
 
-/* The two real registered members, with the labels their own integrations
+/* The real registered members, with the labels their own integrations
  * publish and the two lines each box presents. */
 const CARDS = [
   ['general_http', '.dp-settings-provider-card--general-http', 'HTTP(S)',
    ['Direct downloads from', 'HTTP and HTTPS URLs.']],
   ['general_ftp', '.dp-settings-provider-card--general-ftp', '(S)FTP',
    ['Direct downloads from', 'FTP and SFTP URLs.']],
+  ['general_scp', '.dp-settings-provider-card--general-scp', 'SCP',
+   ['Direct downloads from', 'SCP and SSH file URLs.']],
 ];
 
 /* Protocols that do not exist yet. They appear when a real provider is
  * registered through the canonical machinery, and never before. */
-const UNREGISTERED = ['WebDAV', 'SCP', 'rsync', 'Multilink'];
+const UNREGISTERED = ['WebDAV', 'rsync', 'Multilink'];
 
 const grid = page => page.locator('.dp-settings-general-sources .dp-settings-source-box-grid');
 

@@ -813,7 +813,7 @@
    * of thing, and the only difference is what the mutation is scoped to. */
   /* The ONE Settings protocol identity chip.
    *
-   * Six appearances (Network Sources, HTTP(S), (S)FTP and Usenet on
+   * Seven appearances (Network Sources, HTTP(S), (S)FTP, SCP and Usenet on
    * Services; Network Sources and Usenet on Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
    * and a protocol contributes nothing but its canonical colour. */
@@ -821,6 +821,7 @@
     direct_sources: 'globe',
     general_http: 'globe',
     general_ftp: 'arrow-up-down',
+    general_scp: 'file-down',
     usenet: 'newspaper',
   });
 
@@ -839,6 +840,7 @@
   const SOURCE_BOX_COPY = Object.freeze({
     general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
     general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
+    general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {

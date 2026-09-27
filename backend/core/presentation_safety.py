@@ -43,8 +43,8 @@ def safe_public_host(value: object) -> str | None:
     return host
 
 
-_ROUTE_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp"})
-_ROUTE_DEFAULT_PORTS = {"http": 80, "https": 443, "ftp": 21, "sftp": 22, "scp": 22}
+_ROUTE_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh"})
+_ROUTE_DEFAULT_PORTS = {"http": 80, "https": 443, "ftp": 21, "sftp": 22, "scp": 22, "ssh": 22}
 
 
 def safe_route_endpoint(value: object, *, max_length: int = 180) -> tuple[str | None, str | None]:
