@@ -130,7 +130,8 @@ from transfers.models import (
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
-from transfers.mirrors import EvidenceContext, shared_size
+from transfers.cohorts import _HELD_DISPOSITIONS, _disposition
+from transfers.mirrors import EvidenceContext, shared_evidence, shared_size
 from transfers.policy import TERMINAL_TRANSFER_STATES, TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
@@ -1545,6 +1546,17 @@ class TransferEngine:
                         return size
             return None
 
+        async def plausibly_equivalent(other_candidates):
+            """A pair nothing has proven either way yet, although proof was
+            attempted and could still succeed -- never a proven distinction, a
+            cheap pairing rejection or a structural absence of any proof."""
+            for left in other_candidates:
+                for right in candidates:
+                    found = await shared_evidence(left, right, self.registry, evidence)
+                    if found.unresolved_pairing and not found.proof_structurally_unavailable:
+                        return True
+            return False
+
         def canonical_key(item):
             return item.id, tuple(str(candidate.id) for candidate in item.candidates)
 
@@ -1559,9 +1571,17 @@ class TransferEngine:
 
             canonicals = await self.canonical.equivalence_targets(record)
             canonical_keys = {canonical_key(item) for item in canonicals}
+            # The cohort owner judged this request against no target at all
+            # (it records a disposition whenever it decides against one).
+            undecided = not await _disposition(record.id)
             for primary in canonicals:
                 size = await equivalent_size(primary.candidates)
                 if size is None:
+                    # A canonical artifact that appeared after the cohort
+                    # decision and may be this very object: re-decide against
+                    # it through the ordinary cohort semantics, never beside it.
+                    if undecided and await plausibly_equivalent(primary.candidates):
+                        return
                     continue
                 if await self.canonical.attach(primary, record, candidates, size):
                     return
@@ -1577,6 +1597,16 @@ class TransferEngine:
             for contender, contender_candidates, _order in contenders:
                 size = await equivalent_size(contender_candidates)
                 if size is None:
+                    # A lower contender still deciding may be this very
+                    # object, and nothing can prove it either way yet (e.g.
+                    # neither lineage holds validated input): no second writer
+                    # beside it. This request stays materializing; its next
+                    # decision meets the contender's canonical artifact through
+                    # the ordinary cohort semantics. A contender already held
+                    # (no writer will ever come of it) is never waited for.
+                    if (await _disposition(contender.id) not in _HELD_DISPOSITIONS
+                            and await plausibly_equivalent(contender_candidates)):
+                        return
                     continue
                 for _ in range(8):
                     await asyncio.sleep(0)

@@ -223,12 +223,15 @@ test('Route History shows the canonical object source story: original, consolida
   const rows = page.locator('.dp-detail-route-row');
   await expect(rows).toHaveCount(10);  // every backend row exactly once: nothing duplicated, nothing synthesized.
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-order')).toHaveText(['1','2','3','4','5','6','7','8','9','10']);
+  // One provenance wording for every route another transfer contributed,
+  // verified or not; the status column alone says what happened to it.
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-relation')).toHaveText([
     '(Original)', '(Original)', '(Original)',
-    '(Consolidated from #299)', '(Consolidated from #299)', '(Consolidated from #299)',
-    '(Consolidated from #300)', '(Consolidated from #300)',
+    '(From #299)', '(From #299)', '(From #299)',
+    '(From #300)', '(From #300)',
     '(From #300)', '(From #300)',
   ]);
+  await expect(page.locator('.dp-detail-route-list')).not.toContainText('Consolidated from');
   await expect(page.locator('.dp-detail-route-row .dp-detail-route-outcome')).toHaveText([
     ...Array(8).fill('Resolved'), 'Unverified', 'Unverified',
   ]);

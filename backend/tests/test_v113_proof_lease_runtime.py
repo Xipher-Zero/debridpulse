@@ -117,3 +117,53 @@ async def test_six_authenticated_routes_become_verified_members_of_one_canonical
         assert PASSWORD not in text and USER not in text
     finally:
         await runtime.close()
+
+
+async def test_six_routes_admitted_at_once_still_have_one_writer(tmp_path, monkeypatch):
+    """All six routes submitted in the same moment: the exact SSH and SCP
+    routes resolve before any lineage holds validated input, so nothing can be
+    proven yet -- the later one never seeds a second writer beside the still
+    deciding first one; every route ends associated with one canonical file."""
+    origin = await SftpOrigin(_root(tmp_path), credentials=(USER, PASSWORD)).start()
+    runtime = await _runtime(tmp_path, monkeypatch, origins=(origin,), limit="24K")
+    runtime.registry.register_provider(ScpProvider())
+    try:
+        base = f"mikrobob.test:{origin.port}/myth/ISOs/"
+        urls = [f"{scheme}://{base}{leaf}" for scheme in ("sftp", "ssh", "scp") for leaf in ("debian.qcow2", "")]
+        ids = [(await runtime.engine.submit((TransferRequest(
+            url.split(":", 1)[0], url, selection_mode="interactive" if url.endswith("/") else "all"),),
+            deduplicate=False)).id for url in urls]
+        answered = set()
+
+        async def step():
+            for transfer_id in ids:
+                current = await runtime.engine.challenges.current(transfer_id)
+                if current is not None and current.id not in answered:
+                    answered.add(current.id)
+                    await runtime.engine.submit_input(transfer_id, current.id, "username_password",
+                                                      {"username": USER, "password": PASSWORD})
+                view = await runtime.repository.file_selection_presentation(transfer_id, now=time.time())
+                if view and view.get("decision") == "pending":
+                    chosen = [entry["entry_id"] for entry in view["entries"] if entry["name"] == "debian.qcow2"]
+                    await runtime.repository.confirm_file_selection(transfer_id, view["manifest_id"], chosen,
+                                                                    now=time.time())
+            states = [(await runtime.repository.get(transfer_id)).state for transfer_id in ids]
+            return all(state in {TransferState.COMPLETED, TransferState.CONSOLIDATED} for state in states)
+
+        await runtime.until(step, label="six simultaneous routes complete")
+        async with database.get_db() as db:
+            marks = ",".join("?" for _ in ids)
+            material = await db.fetchall(
+                f"SELECT * FROM download_files WHERE torrent_id IN ({marks}) "  # nosec B608
+                "AND COALESCE(mirror_state,'')!='standby'", tuple(ids))
+            leaves = [row for row in await db.fetchall(
+                f"SELECT * FROM transfer_requests WHERE transfer_id IN ({marks})", tuple(ids))  # nosec B608
+                if json.loads(row["payload"])["payload"].endswith("/debian.qcow2")]
+        [canonical] = material
+        assert len(await _aria2_jobs(runtime)) == 1  # one physical writer
+        assert open(canonical["local_path"], "rb").read() == PAYLOAD
+        contributors = [row for row in leaves if row["transfer_id"] != canonical["torrent_id"]]
+        assert len(contributors) == 5
+        assert {row["equivalence_disposition"] for row in contributors} <= {"recovered", "unverified"}
+    finally:
+        await runtime.close()

@@ -276,7 +276,9 @@ function renderRouteHistory(t) {
     const state = String(attempt.relation || '').trim().toLowerCase();
     const contributor = Number(attempt.contributing_transfer_id);
     const contributed = Number.isInteger(contributor) && contributor > 0 && contributor !== Number(t?.id);
-    if (state === 'consolidated' && contributed) return {state, label: `Consolidated from #${contributor}`};
+    // One provenance wording for any route another transfer contributed; the
+    // status column alone says whether it was verified.
+    if (state === 'consolidated' && contributed) return {state, label: `From #${contributor}`};
     if (state === 'unverified') return {state, label: contributed ? `From #${contributor}` : 'Original'};
     if (state === 'original') return {state, label: 'Original'};
     return {state: '', label: ''};

@@ -389,3 +389,27 @@ async def test_six_routes_to_one_authenticated_file_are_verified_members_of_one_
     # Both provider routes (general_ftp, general_scp) are retained on the canonical artifact for failover.
     assert {binding["provider_id"] for binding in await engine.canonical.bindings(canonical["id"])} == {
         "general_ftp", "general_scp"}
+
+
+async def test_simultaneously_admitted_authenticated_routes_never_seed_two_writers(lab):
+    """Two separately admitted exact routes to one authenticated file resolve in
+    the same cycle, before either lineage holds validated input, so neither
+    can yet be proven against the other. The later one must not seed a second
+    writer beside a still-deciding lower contender; it re-decides against the
+    contender's canonical artifact through the ordinary cohort semantics."""
+    repository, engine, executor, now = _setup(lab)
+    first = await engine.submit((TransferRequest("ssh", "ssh://locked.example/solo.bin"),), deduplicate=False)
+    second = await engine.submit((TransferRequest("scp", "scp://locked.example/solo.bin"),), deduplicate=False)
+    await _drive(engine, repository, [first.id, second.id], executor, now, count=20)
+    [canonical] = await _material([first.id, second.id])
+    assert canonical["torrent_id"] == first.id
+    assert len([call for call in executor.calls if call[0] == "start"]) == 1  # one physical writer
+    [later] = await _requests([second.id])
+    # Associated with the one canonical artifact: verified when the owner's
+    # validated login could lend its proof in time, otherwise held unverified
+    # beside it -- never an independent second writer.
+    assert later["equivalence_disposition"] in {"recovered", "unverified"}
+    if later["equivalence_disposition"] == "unverified":
+        assert later["equivalence_target_artifact_id"] == canonical["id"]
+    else:
+        assert later["id"] in await _origin_requests(engine, canonical["id"])
