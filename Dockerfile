@@ -160,6 +160,10 @@ RUN chmod +x /entrypoint.sh
 RUN mkdir -p /app/data /app/data/usenet /app/config /download && \
     chown -R 99:100 /app /download
 
+# The exact source revision this image was built from, read by the running
+# application's build identity (core.version.read_build_revision).
+ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}
+
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s \

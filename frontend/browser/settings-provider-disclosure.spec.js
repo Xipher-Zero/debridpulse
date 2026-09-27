@@ -65,9 +65,22 @@ test.beforeAll(async ({request}) => {
   const settings = await request.get('/api/settings').then(r => r.json());
   original = {
     alldebrid: settings.integrations.alldebrid?.enabled !== false,
-    usenet: settings.integrations.usenet?.enabled === true,
   };
 });
+
+/* `integrations.usenet.enabled` belongs to usenet-server-cards.spec.js alone
+ * (spec files share one backend and run concurrently). This spec only needs
+ * Usenet SHOWN enabled, so the page is served the live settings document with
+ * that one fact prepared -- nothing is written to the shared key. */
+async function serveUsenetEnabled(page) {
+  await page.route(url => url.pathname === '/api/settings', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const live = await response.json();
+    const usenet = {...live.integrations.usenet, enabled: true};
+    await route.fulfill({response, json: {...live, integrations: {...live.integrations, usenet}}});
+  });
+}
 
 test.afterAll(async ({request}) => {
   if (!original) return;
@@ -83,15 +96,16 @@ test.beforeEach(async ({page}) => {
 test('every expandable Services card is collapsed on navigation', async ({page}) => {
   // Drive the providers ENABLED first: the whole point is that an enabled
   // provider is not thereby an expanded one.
-  for (const id of ['alldebrid', 'usenet']) {
-    await page.request.patch(`/api/integrations/${id}/configuration`, {data: {enabled: true}});
-  }
+  await page.request.patch('/api/integrations/alldebrid/configuration', {data: {enabled: true}});
   const settings = await canonical(page);
   expect(settings.integrations.alldebrid.enabled).toBe(true);
-  expect(settings.integrations.usenet.enabled).toBe(true);
+  await serveUsenetEnabled(page);
 
   await page.goto('/');
   await openSources(page);
+  for (const provider of ['alldebrid', 'usenet']) {
+    await expect(page.locator(`[data-integration-enabled="${provider}"]`)).toBeChecked();
+  }
 
   for (const [selector, label] of EXPANDABLE) {
     const state = await disclosureState(page, selector);

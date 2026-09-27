@@ -676,6 +676,34 @@ _registered_health: DiskCapacity | None = None
 _registered_lock = threading.Lock()
 
 
+def observe_capacity(path) -> dict:
+    """Read-only capacity of the filesystem holding ``path``, observed NOW.
+
+    ``path`` itself may be gone, so its nearest existing ancestor is measured.
+    One ``statvfs``; no probe file, no state transition, no threshold -- the
+    storage-health state machine above stays the only owner of admission.
+    ``free_bytes`` counts every free block, ``available_bytes`` only those an
+    unprivileged writer may use."""
+    probe = Path(path)
+    try:
+        while not os.path.lexists(probe) and probe != probe.parent:
+            probe = probe.parent
+        usage = os.statvfs(probe)
+        return {
+            "status": "observed",
+            "probe_path": str(probe),
+            "filesystem_id": DiskCapacity._filesystem_identity(probe),
+            "total_bytes": usage.f_blocks * usage.f_frsize,
+            "free_bytes": usage.f_bfree * usage.f_frsize,
+            "available_bytes": usage.f_bavail * usage.f_frsize,
+        }
+    except AttributeError:
+        return {"status": "unsupported", "reason": "statvfs_unavailable"}
+    except (OSError, ValueError) as exc:
+        return {"status": "unavailable",
+                "reason": errno.errorcode.get(getattr(exc, "errno", None) or 0, type(exc).__name__)}
+
+
 def register_storage_health(health: DiskCapacity | None) -> None:
     global _registered_health
     with _registered_lock:

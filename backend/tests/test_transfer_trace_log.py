@@ -18,6 +18,7 @@ from fastapi import FastAPI
 
 import db.database as database
 from api.routes import router
+from application.service import ApplicationService
 from fake_integrations import MemoryExecutor, ParcelProvider
 from services import transfer_trace
 from transfers.engine import TransferEngine
@@ -70,7 +71,8 @@ async def traced(tmp_path, monkeypatch):
                          (later.id, "diagnostic", json.dumps({"api_key": "APIKEY-SECRET-9", "note": "kept"})))
         await db.commit()
     canonical = (await repository.artifacts(owner.id))[0]
-    return SimpleNamespace(owner=owner, later=later, canonical=canonical)
+    return SimpleNamespace(owner=owner, later=later, canonical=canonical, engine=engine,
+                           application=ApplicationService(engine), root=tmp_path / "payloads")
 
 
 async def _table_columns(table):
@@ -91,10 +93,10 @@ async def _database_digest():
 
 @pytest.mark.asyncio
 async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inventory(traced):
-    trace = await transfer_trace.build(traced.later.id)
+    trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 1
+    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 2
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])
@@ -121,13 +123,13 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     async with database.get_db() as db:
         await db.execute("DROP TABLE postprocess_attempts")
         await db.commit()
-    inventory = {item["table"]: item for item in (await transfer_trace.build(traced.later.id))["inventory"]}
+    inventory = {item["table"]: item for item in (await transfer_trace.build(traced.later.id, traced.application))["inventory"]}
     assert inventory["postprocess_attempts"]["status"] == "unsupported"
 
 
 @pytest.mark.asyncio
 async def test_trace_follows_consolidation_into_the_foreign_canonical_owner(traced):
-    trace = await transfer_trace.build(traced.later.id)
+    trace = await transfer_trace.build(traced.later.id, traced.application)
     data = trace["data"]
     assert trace["metadata"]["context_transfer_ids"] == [traced.owner.id]
     consolidation = next(item["row"] for item in data["artifact_consolidations"])
@@ -152,7 +154,7 @@ async def test_trace_follows_consolidation_into_the_foreign_canonical_owner(trac
 
 @pytest.mark.asyncio
 async def test_trace_sanitizes_credentials_and_capabilities_but_keeps_structure(traced):
-    trace = await transfer_trace.build(traced.later.id)
+    trace = await transfer_trace.build(traced.later.id, traced.application)
     text = json.dumps(trace)
     for secret in SECRETS:
         assert secret not in text, secret
@@ -185,8 +187,8 @@ async def test_trace_sanitizes_credentials_and_capabilities_but_keeps_structure(
 @pytest.mark.asyncio
 async def test_trace_generation_never_mutates_durable_state(traced):
     before = await _database_digest()
-    await transfer_trace.export(traced.later.id)
-    await transfer_trace.export(traced.owner.id)
+    await transfer_trace.export(traced.later.id, traced.application)
+    await transfer_trace.export(traced.owner.id, traced.application)
     assert await _database_digest() == before
 
 
@@ -194,6 +196,7 @@ async def test_trace_generation_never_mutates_durable_state(traced):
 async def test_trace_endpoint_returns_a_downloadable_json_file(traced):
     app = FastAPI()
     app.include_router(router, prefix="/api")
+    app.state.application = traced.application
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:
         response = await client.get(f"/api/torrents/{traced.later.id}/trace")
         missing = await client.get("/api/torrents/999999/trace")

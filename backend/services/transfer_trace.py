@@ -1,11 +1,24 @@
 """Transfer Trace Log: the one read-only, sanitized export of one transfer's
-durable state plus the relational context needed to explain it.
+durable state plus the relational context needed to explain it, and bounded
+observations of what is actually true outside the database right now.
 
 This module is the single trace-export owner. It observes; it never becomes a
 lifecycle, persistence, recovery, routing, canonicalization or execution
-owner. Every read happens inside one read transaction on a connection that
-SQLite itself holds ``query_only``, so a trace is a consistent snapshot and
-cannot write, migrate or reconcile anything.
+owner. Every durable read happens inside one read transaction on a connection
+that SQLite itself holds ``query_only``, so a trace is a consistent snapshot
+and cannot write, migrate or reconcile anything.
+
+Four evidence domains, each collected independently and never normalized to
+agree with another: durable state (the snapshot), material on disk
+(``transfers.filesystem.observe_material`` / ``transfers.storage.observe_capacity``),
+the referenced executors' own view of their executions
+(``TransferEngine.observe_existing``, the engine's one read-only batch
+observation, through the canonical ``authorize_execution`` fence), and the
+current runtime/integration context (registry descriptors, the neutral
+``health()`` contracts, ``integrations.configuration.public_integrations``,
+the engine's effective policy). A contradiction between domains is evidence
+and is exported as found. Every domain reports its own collection status, so
+missing evidence is never silent and never reads as absence.
 
 Scope is comprehensive, not curated: complete rows (``SELECT *``) of every
 transfer-scoped durable table, for the requested transfer (scope
@@ -20,21 +33,47 @@ Sanitization is field-aware and applied here, server-side, after the
 relationship set is decided: rows are never dropped; only values that may
 carry a credential or capability are replaced, with per-export opaque tokens
 that keep repeated references correlatable within this one trace.
+
+Format versions. 1: durable state only (``metadata``, ``inventory``,
+``references``, ``data``). 2 is a strict superset: every version-1 key keeps
+its meaning; it adds ``collection_status`` (one entry per evidence domain:
+``complete``/``partial``/``unavailable``/``unsupported``/``not_applicable``,
+with a reason and counts), ``observations.filesystem``,
+``observations.executors``, ``runtime_context``, ``metadata.process`` and
+``metadata.observation_boundary``; ``metadata.build_revision`` is populated
+whenever the running build carries a revision; and path roots are replaced by
+per-export ``<redacted-path-root-N>`` tokens (sanitization version 2).
 """
 from __future__ import annotations
 
+import asyncio
+from dataclasses import fields
 from datetime import datetime, timezone
 import hashlib
 import json
+import posixpath
 import re
 from urllib.parse import urlsplit
 
-from core.version import read_version
+from core.config import get_settings
+from core.version import process_timing, read_build_revision, read_version
 from db.database import get_db
+from transfers import codec
+from transfers.contracts import Health
+from transfers.filesystem import observe_material
+from transfers.models import ExecutionState, MaterializationKind
+from transfers.storage import StorageDomain, observe_capacity
 
 TRACE_FORMAT = "debridpulse.transfer-trace"
-TRACE_FORMAT_VERSION = 1
-SANITIZATION_VERSION = 1
+# 2: adds collection_status, observations.filesystem, observations.executors,
+# runtime_context, and metadata.process; build_revision is populated.
+TRACE_FORMAT_VERSION = 2
+# 2: adds per-export path-root tokens.
+SANITIZATION_VERSION = 2
+# Upper bound for any one external observation (an executor batch, a health
+# probe). An observation that does not answer in time is reported
+# ``unavailable``; it never delays or fails the trace beyond this.
+OBSERVATION_TIMEOUT_SECONDS = 5.0
 
 # Every transfer-scoped durable table, in export order. A table named here but
 # absent from this database is reported ``unsupported``; a database table not
@@ -103,10 +142,16 @@ class _Sanitizer:
     and carry nothing derived from the value, so they correlate repeated
     references inside one trace and nothing across traces."""
 
-    def __init__(self):
+    def __init__(self, path_roots=()):
         self._tokens = {}
         self._counts = {}
         self.replaced = 0
+        # Private host roots (the download root) are replaced wherever they
+        # begin a path, keeping everything beneath them: the relative layout is
+        # what diagnoses collisions, suffixes and placement.
+        roots = sorted({str(root).rstrip("/") for root in path_roots if str(root).strip("/")}, key=len, reverse=True)
+        self._roots = re.compile(r"(?<![\w.~-])(" + "|".join(map(re.escape, roots)) + r")(?=/|$|[\s\"'<>,;)\]}])"
+                                 ) if roots else None
 
     def _token(self, kind: str, value) -> str:
         key = (kind, value)
@@ -152,10 +197,26 @@ class _Sanitizer:
             return prefix
         return f"{prefix}/{self._token('resource', stripped)}"
 
+    def path(self, value) -> str | None:
+        """A filesystem path: a known root becomes its path-root token; any
+        other absolute path keeps its final component and replaces its
+        directory with one, so the filename always survives."""
+        if not value:
+            return value
+        value = str(value)
+        replaced = self.text(value)
+        if replaced != value or not value.startswith("/"):
+            return replaced
+        directory, name = posixpath.split(value.rstrip("/") or "/")
+        return f"{self._token('path-root', directory)}/{name}" if directory.strip("/") else value
+
     def text(self, value: str) -> str:
         value = _URL_RE.sub(lambda match: self.resource(match.group(0)), value)
-        return _AUTH_RE.sub(lambda match: match.group(1) + match.group(2) + self._token("secret", match.group(3)),
-                            value)
+        value = _AUTH_RE.sub(lambda match: match.group(1) + match.group(2) + self._token("secret", match.group(3)),
+                             value)
+        if self._roots is not None:
+            value = self._roots.sub(lambda match: self._token("path-root", match.group(1)), value)
+        return value
 
     def value(self, name: str, value):
         lowered = str(name or "").casefold()
@@ -321,13 +382,281 @@ async def _schema_identity(db, tables: set[str]) -> dict:
     return {"migrations": migrations, "columns_sha256": digest}
 
 
+def _iso(moment: datetime) -> str:
+    return moment.isoformat().replace("+00:00", "Z")
+
+
+def _epoch_iso(value) -> str | None:
+    return _iso(datetime.fromtimestamp(float(value), timezone.utc)) if value is not None else None
+
+
+def _status(counts: dict, *, empty_reason: str) -> dict:
+    """One domain's collection status from its per-item outcomes."""
+    observed, unavailable = counts.get("observed", 0), counts.get("unavailable", 0)
+    if not observed and not unavailable:
+        return {"status": "not_applicable", "reason": empty_reason, "counts": counts}
+    if not unavailable:
+        return {"status": "complete", "counts": counts}
+    if not observed:
+        return {"status": "unavailable", "reason": "no item in this domain could be observed", "counts": counts}
+    return {"status": "partial", "reason": f"{unavailable} of {observed + unavailable} items could not be observed",
+            "counts": counts}
+
+
+async def _bounded(awaitable):
+    """``(True, result)`` or ``(False, reason)`` -- an external observation
+    never raises into, or holds up, the trace for longer than the bound."""
+    try:
+        return True, await asyncio.wait_for(awaitable, OBSERVATION_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        return False, "timeout"
+    except Exception as exc:  # the trace reports failure; it is never the failure
+        return False, f"error:{type(exc).__name__}"
+
+
+def _error(error) -> dict | None:
+    return error.as_dict(diagnostics=True) if error is not None else None
+
+
+async def _observe_filesystem(collector: _Collector, roots) -> tuple[dict, dict]:
+    """Every durable material target of every exported artifact, whatever
+    its lifecycle state, as it is on disk now."""
+    attempts = {}
+    for _, row in collector.rows["execution_attempts"].values():
+        attempts.setdefault(row["artifact_id"], []).append(row)
+    targets, directories = [], {}
+    counts = {"observed": 0, "unavailable": 0, "no_recorded_target": 0}
+    for scope, row in collector.rows["download_files"].values():
+        path = row.get("local_path")
+        if not path:
+            counts["no_recorded_target"] += 1
+            continue
+        # The member paths already durably recorded for this artifact: its
+        # current attempt's verified materialization, else its latest one.
+        own = attempts.get(row["id"], [])
+        recorded = next((item for item in own if item["id"] == row.get("execution_attempt_id")
+                         and item.get("materialization")), None) or next(
+            (item for item in reversed(own) if item.get("materialization")), None)
+        members = ()
+        if recorded is not None:
+            result = codec.materialization(recorded["materialization"])
+            if result is not None and result.kind == MaterializationKind.COLLECTION:
+                members = tuple(entry.relative_path for entry in result.entries)
+        # A stat on a hung mount must not hold the trace either.
+        answered, observed = await _bounded(asyncio.to_thread(observe_material, str(path), members))
+        if not answered:
+            observed = {"target": {"exists": None, "type": "unavailable", "error": observed}, "members": []}
+        target = observed["target"]
+        expected = row.get("size_bytes")
+        comparable = target["type"] == "file" and isinstance(expected, int) and expected > 0
+        outcome = "unavailable" if target["type"] == "unavailable" else "observed"
+        counts[outcome] += 1
+        directories.setdefault(posixpath.dirname(str(path)) or str(path), None)
+        targets.append({
+            "artifact_id": row["id"], "transfer_id": row.get("torrent_id"), "scope": scope,
+            "durable_status": row.get("status"), "execution_attempt_id": row.get("execution_attempt_id"),
+            "material_owner_attempt_id": next((item.get("material_owner_attempt_id") for item in own
+                                               if item["id"] == row.get("execution_attempt_id")), None),
+            "materialization_record_attempt_id": recorded["id"] if recorded is not None else None,
+            "path": str(path), "observation": "observed" if outcome == "observed" else "unavailable",
+            **target,
+            "durable_size_bytes": expected,
+            "size_matches_durable": (target["bytes"] == expected) if comparable else None,
+            "members": observed["members"],
+        })
+    capacity, seen = [], set()
+    for directory in (*roots, *directories):
+        answered, measured = await _bounded(asyncio.to_thread(observe_capacity, directory))
+        if not answered:
+            measured = {"status": "unavailable", "reason": measured}
+        identity = measured.get("filesystem_id")
+        if identity is not None and identity in seen:
+            continue
+        seen.add(identity)
+        capacity.append(measured)
+    status = _status({key: value for key, value in counts.items() if key != "no_recorded_target"},
+                     empty_reason="no exported artifact records a material target")
+    status["counts"] = counts
+    return {"targets": targets, "capacity": capacity}, status
+
+
+async def _observe_executors(application, collector: _Collector) -> tuple[dict, dict]:
+    """What each referenced executor reports NOW about exactly the execution
+    attempts this trace exports -- never any other native work."""
+    rows = [row for _, row in collector.rows["execution_attempts"].values()]
+    if not rows:
+        return {"attempts": []}, _status({}, empty_reason="no exported execution attempt")
+    engine = getattr(application, "engine", None)
+    repository = getattr(application, "repository", None)
+    observed_at = _iso(datetime.now(timezone.utc))
+    entries, batches = {}, {}
+    for row in rows:
+        entry = {"execution_attempt_id": row["id"], "artifact_id": row["artifact_id"],
+                 "transfer_id": row["transfer_id"], "executor_id": row["executor_id"],
+                 "durable_state": row.get("state"), "handle": None, "dp_owned": None,
+                 "observed_at": observed_at}
+        entries[row["id"]] = entry
+        try:
+            handle = codec.handle(codec.load(row["handle"]))
+        except (TypeError, ValueError, KeyError):
+            handle = None
+        if handle is None:
+            entry.update(observation="unsupported", reason="handle_not_decodable")
+            continue
+        entry["handle"] = {"correlation": dict(handle.correlation), "native": dict(handle.native or {}) or None}
+        if engine is None or repository is None:
+            entry.update(observation="unavailable", reason="no_application_runtime")
+            continue
+        # The canonical fence decides what DebridPulse may observe: only work
+        # it still owns. Anything else is outside its observation rights.
+        entry["dp_owned"] = bool(await repository.authorize_execution(handle, "observe"))
+        if not entry["dp_owned"]:
+            entry.update(observation="not_applicable", reason="attempt_not_dp_owned")
+            continue
+        executor = engine.registry.executor_for_handle(handle)
+        if executor is None:
+            entry.update(observation="unavailable", reason="executor_not_registered")
+            continue
+        batches.setdefault(executor.descriptor.id, (executor, []))[1].append(handle)
+
+    async def observe(executor, handles):
+        return executor, handles, await _bounded(engine.observe_existing(executor, tuple(handles)))
+
+    for executor, handles, (answered, result) in await asyncio.gather(
+            *(observe(executor, handles) for executor, handles in batches.values())):
+        aggregate_only = bool(getattr(executor.capabilities, "aggregate_throughput", False))
+        for index, handle in enumerate(handles):
+            entry = entries[handle.attempt_id]
+            if not answered:
+                entry.update(observation="unavailable", reason=f"executor_{result}")
+                continue
+            item = result.observations[index]
+            progress = item.progress
+            if item.state == ExecutionState.UNKNOWN:
+                entry.update(observation="unavailable", reason="executor_state_unknown")
+            else:
+                entry["observation"] = "observed"
+            entry["executor"] = {
+                "state": str(item.state),
+                # ABSENT is the executor's positive answer that the native job
+                # does not exist; UNKNOWN is no answer at all.
+                "native_exists": None if item.state == ExecutionState.UNKNOWN else item.state != ExecutionState.ABSENT,
+                "completed_bytes": progress.completed_bytes, "total_bytes": progress.total_bytes,
+                "bytes_per_second": None if aggregate_only else progress.bytes_per_second,
+                "speed_measured_per_execution": not aggregate_only,
+                "error": _error(item.error),
+            }
+    counts = {}
+    for entry in entries.values():
+        counts[entry["observation"]] = counts.get(entry["observation"], 0) + 1
+    status = _status(counts, empty_reason="no exported execution attempt is observable by DebridPulse")
+    return {"attempts": list(entries.values())}, status
+
+
+def _referenced_identities(collector: _Collector) -> tuple[set, set]:
+    providers, executors = set(), set()
+    for rows in collector.rows.values():
+        for _, row in rows.values():
+            if row.get("provider_id"):
+                providers.add(str(row["provider_id"]))
+            if row.get("executor_id"):
+                executors.add(str(row["executor_id"]))
+    return providers, executors
+
+
+async def _runtime_context(application, collector: _Collector) -> tuple[dict, dict]:
+    """The current context of exactly the providers/executors this trace
+    references, plus the few global values that decide execution."""
+    engine = getattr(application, "engine", None)
+    if engine is None:
+        return {}, {"status": "unavailable", "reason": "no_application_runtime"}
+    providers, executors = _referenced_identities(collector)
+    settings = get_settings()
+    definitions = tuple(getattr(application, "definitions", ()) or ())
+    try:
+        from integrations.configuration import public_integrations
+        public = public_integrations(settings, definitions)
+    except Exception:
+        public = {}
+
+    async def describe(identity: str, role: str) -> dict:
+        registered = (engine.registry.providers if role == "provider" else engine.registry.executors).get(identity)
+        namespace = next((item.id for item in definitions if identity in item.owned_identities), None)
+        configuration = public.get(namespace) if namespace else None
+        entry = {
+            "identity": identity, "role": role, "registered": registered is not None,
+            "descriptor": ({"enabled": registered.descriptor.enabled, "priority": registered.descriptor.priority}
+                           if registered is not None else None),
+            "configuration_namespace": namespace,
+            "configuration": ({key: configuration.get(key) for key in (
+                "enabled", "effective_enabled", "configured", "verified", "verification_applicable")}
+                if configuration else None),
+        }
+        if registered is None:
+            entry["readiness"] = {"observation": "unavailable", "reason": "not_registered"}
+        elif role == "provider" and not isinstance(registered, Health):
+            entry["readiness"] = {"observation": "unsupported", "reason": "provider_declares_no_health_contract"}
+        elif role == "provider" and not registered.descriptor.enabled:
+            entry["readiness"] = {"observation": "not_applicable", "reason": "provider_disabled"}
+        else:
+            answered, health = await _bounded(registered.health())
+            if not answered:
+                entry["readiness"] = {"observation": "unavailable", "reason": f"health_{health}"}
+            elif role == "provider":
+                entry["readiness"] = {"observation": "observed", "healthy": bool(health.healthy),
+                                      "error": _error(health.error)}
+            else:
+                entry["readiness"] = {"observation": "observed", "reachable": bool(health.reachable),
+                                      "ready": bool(health.ready), "error": _error(health.error),
+                                      "available_runtime_capabilities": sorted(
+                                          str(item) for item in health.available_runtime_capabilities)}
+        return entry
+
+    integrations = await asyncio.gather(*(describe(identity, "provider") for identity in sorted(providers)),
+                                        *(describe(identity, "executor") for identity in sorted(executors)))
+    policy = engine.policy
+    capacity = getattr(application, "capacity", None)
+    try:
+        storage = capacity.snapshot(StorageDomain.DOWNLOAD).as_dict() if capacity is not None else None
+    except Exception:
+        storage = None
+    context = {
+        "temporal_scope": "export_time",
+        "integrations": integrations,
+        "transfer_execution": {
+            "download_root": engine.root,
+            "policy": {item.name: getattr(policy, item.name) for item in fields(policy)
+                       if not callable(getattr(policy, item.name))},
+            "max_download_bytes_per_second": getattr(getattr(engine, "runtime", None), "configured", None),
+            "globally_paused": bool(await application.repository.globally_paused()),
+            "dispatch_permitted": bool(getattr(engine, "dispatch_permitted", True)),
+            # The storage-health owner's current download snapshot (as of its
+            # own ``probed_at``): the state that gates new execution.
+            "download_storage": storage,
+        },
+    }
+    # The context itself is always collected; only a readiness probe can
+    # fail to answer, which makes the domain partial, never absent.
+    counts = {}
+    for entry in integrations:
+        outcome = entry["readiness"]["observation"]
+        counts[outcome] = counts.get(outcome, 0) + 1
+    unavailable = counts.get("unavailable", 0)
+    status = ({"status": "partial", "reason": f"{unavailable} referenced integration readiness observations "
+                                              "could not be made", "counts": counts}
+              if unavailable else {"status": "complete", "counts": counts})
+    return context, status
+
+
 def filename(transfer_id: int, generated_at: datetime) -> str:
     return f"debridpulse-transfer-{int(transfer_id)}-trace-{generated_at.strftime('%Y%m%dT%H%M%SZ')}.json"
 
 
-async def build(transfer_id: int) -> dict | None:
+async def build(transfer_id: int, application) -> dict | None:
     """The complete sanitized trace document, or ``None`` when no transfer
-    with this identity exists."""
+    with this identity exists. ``application`` supplies the runtime the
+    non-durable observations are made through; without it those domains are
+    reported ``unavailable``, never omitted."""
     generated_at = datetime.now(timezone.utc)
     async with get_db() as db:
         await db.execute("PRAGMA query_only=ON")
@@ -345,7 +674,14 @@ async def build(transfer_id: int) -> dict | None:
         finally:
             await db.rollback()
 
-    sanitizer = _Sanitizer()
+    # The observation set is complete before anything is sanitized.
+    engine = getattr(application, "engine", None)
+    roots = (engine.root,) if engine is not None else ()
+    filesystem, filesystem_status = await _observe_filesystem(collector, roots)
+    executors, executor_status = await _observe_executors(application, collector)
+    runtime, runtime_status = await _runtime_context(application, collector)
+
+    sanitizer = _Sanitizer(path_roots=roots)
     data, inventory = {}, []
     for table in _TABLES:
         if table not in tables:
@@ -366,6 +702,15 @@ async def build(transfer_id: int) -> dict | None:
                           "reason": _OMITTED.get(table, "not a transfer-scoped durable table")})
     context_transfers = sorted(int(row["id"]) for scope, row in collector.rows["torrents"].values()
                                if scope == "context")
+    for target in filesystem["targets"]:
+        target["path"] = sanitizer.path(target["path"])
+    for measured in filesystem["capacity"]:
+        if measured.get("probe_path"):
+            measured["probe_path"] = sanitizer.path(measured["probe_path"])
+    observations = {"filesystem": sanitizer.value("filesystem", filesystem),
+                    "executors": sanitizer.value("executors", executors)}
+    runtime = sanitizer.value("runtime_context", runtime)
+    timing = process_timing()
     return {
         "metadata": {
             "trace_format": TRACE_FORMAT,
@@ -373,11 +718,12 @@ async def build(transfer_id: int) -> dict | None:
             "requested_transfer_id": int(transfer_id),
             "primary_transfer_id": int(transfer_id),
             "context_transfer_ids": context_transfers,
-            "generated_at": generated_at.isoformat().replace("+00:00", "Z"),
+            "generated_at": _iso(generated_at),
             "application_version": read_version(),
-            # The build revision is recorded only as an image label; the
-            # running application has no durable source for it.
-            "build_revision": None,
+            # ``None`` only when the running build carries no revision.
+            "build_revision": read_build_revision(),
+            "process": {"started_at": _epoch_iso(timing["started_at"]),
+                        "uptime_seconds": round(timing["uptime_seconds"], 3)},
             "schema": schema,
             "closure": {
                 "depth": 1,
@@ -401,18 +747,40 @@ async def build(transfer_id: int) -> dict | None:
                     "<redacted-resource-N> for the whole original value; magnets keep only the scheme",
                     "non-URL resource payloads and BLOBs become an opaque marker with type and length",
                     "free text keeps its words; embedded URLs and authorization values are replaced as above",
+                    "the download root becomes <redacted-path-root-N> wherever a path begins with it, keeping "
+                    "every path component beneath it; another absolute observed path keeps its final component "
+                    "and replaces its directory with a path-root token",
+                    "normalized errors keep their semantic fields (domain, category, stage, origin, retryability, "
+                    "permanence, operator action, native code, bounded context); only credential/capability values "
+                    "inside them are replaced",
                 ],
             },
+            "observation_boundary": (
+                "durable_state is the retained database as of generated_at. observations and runtime_context are "
+                "what could be observed at generation time only: they do not describe any earlier moment, and "
+                "DebridPulse does not version settings. Filesystem or executor state that changed or disappeared "
+                "before generation, remote provider state DebridPulse never recorded, transient network conditions "
+                "and the values of secrets are outside what a trace can contain. Executors are observed only for "
+                "attempts DebridPulse still owns; directories are never walked beyond the durably recorded member "
+                "paths. Contradictions between domains are exported as found."),
+        },
+        "collection_status": {
+            "durable_state": {"status": "complete"},
+            "filesystem": filesystem_status,
+            "executor": executor_status,
+            "runtime_context": runtime_status,
         },
         "inventory": inventory,
         "references": references,
         "data": data,
+        "observations": observations,
+        "runtime_context": runtime,
     }
 
 
-async def export(transfer_id: int) -> tuple[str, bytes] | None:
+async def export(transfer_id: int, application) -> tuple[str, bytes] | None:
     """(download filename, UTF-8 JSON body), or ``None`` for an unknown transfer."""
-    trace = await build(transfer_id)
+    trace = await build(transfer_id, application)
     if trace is None:
         return None
     generated_at = datetime.fromisoformat(trace["metadata"]["generated_at"].replace("Z", "+00:00"))

@@ -3,12 +3,15 @@
 This module is the ONE materialization verification and cleanup owner. A FILE
 plan is verified by the hardened single-file path below; a COLLECTION plan by
 the collection branch of the same owner. Nothing here knows which executor
-produced the material.
+produced the material. It also owns the read-only observation of material
+(``observe_path``/``observe_material``), which reports what is on disk without
+touching it.
 """
 from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
+import errno
 import hashlib
 import os
 from pathlib import Path, PurePosixPath
@@ -270,6 +273,41 @@ def _regular_beneath(root: Path, relative: PurePosixPath) -> os.stat_result | No
         return info if stat.S_ISREG(info.st_mode) else None
     except OSError:
         return None
+
+
+def observe_path(path: str) -> dict:
+    """What is at ``path`` NOW, observed without following, opening, creating
+    or repairing anything: one ``lstat``. ``type`` is ``file``, ``directory``,
+    ``symlink``, ``other``, ``missing`` or ``unavailable`` (the observation
+    itself failed, so presence is unknown -- never reported as missing)."""
+    try:
+        info = os.lstat(path)
+    except (FileNotFoundError, NotADirectoryError):
+        return {"exists": False, "type": "missing"}
+    except (OSError, ValueError) as exc:
+        return {"exists": None, "type": "unavailable",
+                "error": errno.errorcode.get(getattr(exc, "errno", None) or 0, type(exc).__name__)}
+    mode = info.st_mode
+    kind = ("file" if stat.S_ISREG(mode) else "directory" if stat.S_ISDIR(mode)
+            else "symlink" if stat.S_ISLNK(mode) else "other")
+    return {"exists": True, "type": kind, "bytes": info.st_size if kind == "file" else None,
+            "modified_at": info.st_mtime, "filesystem_id": str(info.st_dev)}
+
+
+def observe_material(target: str, member_paths=()) -> dict:
+    """Read-only observation of one materialization target and the member
+    paths already durably recorded beneath it. Never walks a directory: only
+    the target and the named members are observed, each by ``observe_path``."""
+    members = []
+    for value in member_paths:
+        relative = _relative(value)
+        if relative is None:
+            members.append({"relative_path": value, "exists": None, "type": "unavailable",
+                            "error": "invalid_relative_path"})
+            continue
+        members.append({"relative_path": relative.as_posix(),
+                        **observe_path(str(Path(target).joinpath(*relative.parts)))})
+    return {"target": observe_path(target), "members": members}
 
 
 def _collection_census(base: Path, footprint: ExecutionFootprint):

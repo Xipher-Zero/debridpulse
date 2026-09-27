@@ -2,11 +2,16 @@ const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.13 -- the Usenet news-server collection against the REAL backend.
  *
- * This file is the ONE owner of that shared collection. Playwright runs spec
- * FILES in parallel against a single backend, so a second file creating,
- * resetting or counting servers would be reading and destroying this one's
- * records; the collection therefore has exactly one spec, the same way it has
- * exactly one runtime owner.
+ * This file is the ONE owner of that shared collection, and of the shared
+ * settings key `integrations.usenet.enabled` the collection needs ON.
+ * Playwright runs spec FILES in parallel against a single backend, so a second
+ * file creating, resetting or counting servers -- or flipping or asserting
+ * Usenet's enabled state -- would be reading and destroying this one's state;
+ * both therefore have exactly one spec, the same way they have exactly one
+ * runtime owner. Every case that needs real Usenet servers or the live Usenet
+ * toggle lives here, where cases run serially. Another spec that only needs
+ * Usenet shown as enabled renders an injected settings document instead
+ * (backend/tests/test_browser_settings_key_ownership.py enforces this).
  *
  * Each card is one canonical server addressed by a stable id, so a write to
  * one record never touches another and removing a card never disturbs a
@@ -163,6 +168,37 @@ async function expandUsenet(page) {
   const disclosure = card.locator('.dp-settings-disclosure');
   if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
   await expect(card).not.toHaveClass(/dp-settings-provider-card--collapsed/);
+}
+
+/* The collection's CAPACITY and how it is populated, measured against the
+ * collection's own content box -- the available Usenet card viewport. */
+async function capacity(page) {
+  return page.evaluate(() => {
+    const host = document.querySelector('[data-usenet-collection]');
+    const style = getComputedStyle(host);
+    const box = host.getBoundingClientRect();
+    const left = box.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const right = box.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+    const tracks = style.gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat);
+    const grouped = new Map();
+    for (const child of host.children) {
+      const rect = child.getBoundingClientRect();
+      const key = Math.round(rect.top);
+      if (!grouped.has(key)) grouped.set(key, []);
+      grouped.get(key).push(rect);
+    }
+    return {
+      capacity: tracks.length,
+      // Equal lanes: every structural track is the same width.
+      trackSpread: Math.max(...tracks) - Math.min(...tracks),
+      width: right - left,
+      rows: [...grouped.entries()].sort((a, b) => a[0] - b[0]).map(([, rects]) => ({
+        count: rects.length,
+        leading: Math.min(...rects.map(r => r.left)) - left,
+        trailing: right - Math.max(...rects.map(r => r.right)),
+      })),
+    };
+  });
 }
 
 async function clearToasts(page) {
@@ -1476,3 +1512,222 @@ test('an SSL action that moves the port supersedes a port boundary crossed befor
     await expect(field(card, 'port')).toHaveValue('563');
     await expect.poll(() => committedBaseline(page, id, 'port')).toBe('563');
   });
+
+// --- the Usenet Enable toggle: this file owns integrations.usenet.enabled ---
+
+const persistedEnabled = async page =>
+  (await page.request.get('/api/settings').then(r => r.json())).integrations.usenet.enabled;
+const usenetToggle = page => page.locator('[data-integration-enabled="usenet"]');
+/** Click the toggle the way an operator does: on its label. */
+const flipUsenet = page => page.locator('label[for="dp-settings-integration-usenet-enabled"]').click();
+
+test('usenet persists canonical enabled state immediately, without any page-level save', async ({page}) => {
+  const before = await persistedEnabled(page);
+  await flipUsenet(page);
+  await expect.poll(() => persistedEnabled(page)).toBe(!before);
+  await expect(usenetToggle(page)).toBeChecked({checked: !before});
+
+  // And back again, still with no page-level save.
+  await flipUsenet(page);
+  await expect.poll(() => persistedEnabled(page)).toBe(!!before);
+  await expect(usenetToggle(page)).toBeChecked({checked: !!before});
+});
+
+test('a committed Usenet enable survives a full reload, and the toggle never reports ON while OFF',
+  async ({page}) => {
+    await flipUsenet(page);
+    await expect.poll(() => persistedEnabled(page)).toBe(false);
+    await page.reload();
+    await openSources(page, {expand: false});
+    await expect(usenetToggle(page)).not.toBeChecked();
+
+    await flipUsenet(page);
+    await expect.poll(() => persistedEnabled(page)).toBe(true);
+    await page.reload();
+    await openSources(page, {expand: false});
+    await expect(usenetToggle(page)).toBeChecked();
+  });
+
+// --- collection geometry, measured against real records ------------------
+
+/* DP 1.0.13 Settings consolidation: the collection is a viewport-CAPACITY grid.
+ *
+ * Population-centred sizing is retired. The available width alone decides how
+ * many equal structural tracks exist; servers and the Add tile populate them
+ * left to right; the tracks a sparse population does not reach simply stay
+ * empty; and the capacity drops on its own as the viewport narrows. */
+test.describe('Usenet server cards populate a viewport-capacity grid', () => {
+  test('the Add Server tile alone occupies the first track, leaving the rest empty',
+    async ({page}) => {
+      await expect(serverCards(page)).toHaveCount(0);
+      const measured = await capacity(page);
+      // Capacity is a property of the viewport, not of the population.
+      expect(measured.capacity).toBeGreaterThan(1);
+      expect(measured.trackSpread, 'the structural tracks are not equal').toBeLessThanOrEqual(1);
+      expect(measured.rows.length).toBe(1);
+      expect(measured.rows[0].count).toBe(1);
+      // Left-filled, with the unreached capacity preserved to its right.
+      expect(Math.abs(measured.rows[0].leading)).toBeLessThanOrEqual(1);
+      expect(measured.rows[0].trailing).toBeGreaterThan(measured.width / measured.capacity);
+    });
+
+  test('a sparse population does not expand or recentre itself', async ({page}) => {
+    const empty = await capacity(page);
+    await addServer(page, {host: 'news.one.example.com'});
+    const one = await capacity(page);
+    await addServer(page, {host: 'news.two.example.com'});
+    const two = await capacity(page);
+
+    // The same capacity and the same track width throughout: adding a server
+    // consumes a track, it does not resize the collection.
+    expect(one.capacity).toBe(empty.capacity);
+    expect(two.capacity).toBe(empty.capacity);
+    for (const measured of [empty, one, two]) {
+      expect(measured.trackSpread).toBeLessThanOrEqual(1);
+      expect(Math.abs(measured.rows[0].leading), 'the population recentred itself')
+        .toBeLessThanOrEqual(1);
+    }
+    // The first row holds as many occupants as the capacity allows; the rest
+    // wrap. What must not happen is the collection resizing itself to the
+    // population, which the equal tracks and the zero leading above prove.
+    expect(one.rows[0].count).toBe(Math.min(2, empty.capacity));
+    expect(two.rows[0].count).toBe(Math.min(3, empty.capacity));
+    expect(one.rows.reduce((n, r) => n + r.count, 0)).toBe(2);
+    expect(two.rows.reduce((n, r) => n + r.count, 0)).toBe(3);
+  });
+
+  test('capacity drops on its own as the viewport narrows, and never below one',
+    async ({page}) => {
+      await addServer(page, {host: 'news.one.example.com'});
+      const seen = [];
+      for (const width of [1440, 1280, 1100, 900]) {
+        await page.setViewportSize({width, height: 1000});
+        const measured = await capacity(page);
+        expect(measured.trackSpread, `tracks unequal at ${width}px`).toBeLessThanOrEqual(1);
+        expect(measured.capacity, `capacity vanished at ${width}px`).toBeGreaterThanOrEqual(1);
+        seen.push(measured.capacity);
+      }
+      // Monotonically non-increasing, and it demonstrably drops at least once.
+      for (let i = 1; i < seen.length; i += 1) expect(seen[i]).toBeLessThanOrEqual(seen[i - 1]);
+      expect(seen[seen.length - 1], `capacity never dropped: ${seen}`).toBeLessThan(seen[0]);
+      await page.setViewportSize({width: 1440, height: 1000});
+    });
+
+  test('every rendered row left-fills the same lanes when the collection wraps',
+    async ({page}) => {
+    for (const host of ['news.one.example.com', 'news.two.example.com',
+                        'news.three.example.com', 'news.four.example.com']) {
+      await addServer(page, {host});
+    }
+    await page.setViewportSize({width: 900, height: 1000});
+    const measured = (await capacity(page)).rows;
+    expect(measured.length).toBeGreaterThan(1);
+    for (const row of measured) {
+      expect(Math.abs(row.leading),
+        `row of ${row.count} does not start at the first lane`).toBeLessThanOrEqual(1);
+    }
+    await page.setViewportSize({width: 1440, height: 1000});
+  });
+});
+
+/* DP 1.0.13 items 17-19 -- the Usenet server card's own geometry.
+ *
+ * Every invariant is measured against the RENDERED layout, never a guessed
+ * constant, and the card owns exactly one Test and one Remove in both
+ * disclosure states. */
+test.describe('one Usenet server card lays its actions out structurally', () => {
+  test.beforeEach(async ({page}) => {
+    await addServer(page, {host: 'news.geometry.example.com'});
+  });
+
+  const box = locator => locator.evaluate(el => {
+    const r = el.getBoundingClientRect();
+    return {top: r.top, bottom: r.bottom, left: r.left, right: r.right,
+            centerX: (r.left + r.right) / 2, centerY: (r.top + r.bottom) / 2};
+  });
+
+  /* The card's own content box -- what "centred to the whole card" means. */
+  const contentBox = locator => locator.evaluate(el => {
+    const style = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    const left = r.left + parseFloat(style.borderLeftWidth) + parseFloat(style.paddingLeft);
+    const right = r.right - parseFloat(style.borderRightWidth) - parseFloat(style.paddingRight);
+    return {left, right, centerX: (left + right) / 2};
+  });
+
+  const only = page => serverCards(page).first();
+
+  test('exactly one Test and one Remove exist in either disclosure state', async ({page}) => {
+    const card = only(page);
+    await expect(card.locator('[data-usenet-action="test"]')).toHaveCount(1);
+    await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
+    await expect(card.locator('[data-usenet-action="save"]')).toHaveCount(0);
+    await card.locator('[data-usenet-advanced-toggle]').click();
+    await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
+    await expect(card.locator('[data-usenet-action="test"]')).toHaveCount(1);
+    await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
+  });
+
+  test('collapsed: Advanced stays left and the pair shares its row, centred on the card',
+    async ({page}) => {
+      const card = only(page);
+      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      const actions = await box(card.locator('.dp-usenet-actions'));
+      const content = await contentBox(card);
+      // One row.
+      expect(Math.abs(toggle.centerY - actions.centerY)).toBeLessThanOrEqual(2);
+      // Advanced is on the card's left datum.
+      expect(toggle.left - content.left).toBeLessThanOrEqual(2);
+      // The pair is centred on the WHOLE card, not on the leftover space to
+      // the right of the disclosure.
+      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+      // And they do not overlap.
+      expect(actions.left).toBeGreaterThan(toggle.right);
+      // No dedicated action band beneath the row.
+      const advanced = await box(card.locator('[data-usenet-advanced]'));
+      expect(advanced.bottom - Math.max(toggle.bottom, actions.bottom)).toBeLessThanOrEqual(3);
+    });
+
+  test('expanded: the pair owns the final row beneath every advanced field, still centred',
+    async ({page}) => {
+      const card = only(page);
+      await card.locator('[data-usenet-advanced-toggle]').click();
+      await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
+      const body = await box(card.locator('.dp-usenet-advanced-body'));
+      const actions = await box(card.locator('.dp-usenet-actions'));
+      const toggle = await box(card.locator('[data-usenet-advanced-toggle]'));
+      const content = await contentBox(card);
+      expect(toggle.bottom).toBeLessThanOrEqual(body.top + 2);
+      expect(actions.top).toBeGreaterThanOrEqual(body.bottom - 2);
+      expect(Math.abs(actions.centerX - content.centerX)).toBeLessThanOrEqual(2);
+    });
+
+  test('the Priority hint sits directly beneath the Priority input, in its column',
+    async ({page}) => {
+      const card = only(page);
+      await card.locator('[data-usenet-advanced-toggle]').click();
+      await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
+      const priority = await box(card.locator('[data-usenet-field="priority"]'));
+      const hint = await box(card.locator('.dp-usenet-priority-hint'));
+      const connections = await box(card.locator('[data-usenet-field="connections"]'));
+      // Directly beneath, with a small gap -- not a distant centred paragraph.
+      expect(hint.top).toBeGreaterThanOrEqual(priority.bottom - 1);
+      expect(hint.top - priority.bottom).toBeLessThanOrEqual(10);
+      // Aligned to the Priority column, not centred across the card.
+      expect(Math.abs(hint.left - priority.left)).toBeLessThanOrEqual(2);
+      // The two tuning inputs still share one band.
+      expect(Math.abs(connections.centerY - priority.centerY)).toBeLessThanOrEqual(2);
+    });
+
+  test('SSL is centred against the Host and Port input boxes themselves', async ({page}) => {
+    const card = only(page);
+    const host = await box(card.locator('[data-usenet-field="host"]'));
+    const port = await box(card.locator('[data-usenet-field="port"]'));
+    const ssl = await box(card.locator('.dp-usenet-ssl'));
+    expect(Math.abs(host.centerY - port.centerY)).toBeLessThanOrEqual(1);
+    expect(Math.abs(ssl.centerY - host.centerY)).toBeLessThanOrEqual(2);
+    // And not centred against the label+input wrapper, whose centre sits higher.
+    const wrapper = await box(card.locator('.dp-usenet-field--host'));
+    expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
+  });
+});

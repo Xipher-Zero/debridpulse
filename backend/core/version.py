@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+import os
 from pathlib import Path
 import re
+import time
 
 
 _VERSION_RE = re.compile(
@@ -101,3 +103,32 @@ def read_version() -> str:
         if value:
             return value
     return "unknown"
+
+
+# --- running build identity --------------------------------------------------
+
+# Packaging records the exact source revision an image was built from here
+# (``Dockerfile``: ``ENV DEBRIDPULSE_BUILD_REVISION=${VCS_REF}``). A source or
+# development run has none, and neither does an image built without VCS_REF.
+BUILD_REVISION_ENV = "DEBRIDPULSE_BUILD_REVISION"
+_BUILD_REVISION_RE = re.compile(r"[0-9a-f]{7,64}")
+
+# This module is imported while the process starts (``main`` imports it before
+# the application exists), so this is the process start as the application
+# itself can know it -- wall clock for correlation, monotonic for uptime.
+_PROCESS_STARTED = (time.time(), time.monotonic())
+
+
+@lru_cache(maxsize=1)
+def read_build_revision() -> str | None:
+    """The exact source revision of the running build, or ``None`` when the
+    build carries no revision. Never discovered at runtime: nothing here asks
+    Git or the container runtime."""
+    value = os.environ.get(BUILD_REVISION_ENV, "").strip().lower()
+    return value if _BUILD_REVISION_RE.fullmatch(value) else None
+
+
+def process_timing() -> dict:
+    """When this process started (UTC epoch seconds) and how long it has run."""
+    started, monotonic_start = _PROCESS_STARTED
+    return {"started_at": started, "uptime_seconds": max(0.0, time.monotonic() - monotonic_start)}

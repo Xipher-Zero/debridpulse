@@ -826,10 +826,10 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
 
 
 @router.get("/torrents/{torrent_id}/trace")
-async def export_transfer_trace(torrent_id: int):
-    """Transfer Trace Log download: the sanitized, read-only durable-state trace
-    built by ``services.transfer_trace`` (its one owner)."""
-    exported = await transfer_trace.export(torrent_id)
+async def export_transfer_trace(torrent_id: int, application: ApplicationService = Depends(get_application)):
+    """Transfer Trace Log download: the sanitized, read-only trace built by
+    ``services.transfer_trace`` (its one owner)."""
+    exported = await transfer_trace.export(torrent_id, application)
     if exported is None:
         raise HTTPException(404, "Transfer not found")
     filename, body = exported

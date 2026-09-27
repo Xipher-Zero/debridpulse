@@ -2,9 +2,14 @@ const { test, expect } = require('@playwright/test');
 
 /* DP 1.0.13 work item A -- every Services Enable toggle is an
  * IMMEDIATE canonical operational control against the REAL backend. The
- * visible toggle can never report ON while canonical state is OFF. */
+ * visible toggle can never report ON while canonical state is OFF.
+ *
+ * Usenet's toggle is proven the same way in usenet-server-cards.spec.js, the
+ * ONE spec file that owns `integrations.usenet.enabled`: spec files share one
+ * backend and run concurrently, so a second file flipping or asserting that key
+ * races the file whose server collection needs Usenet ON. */
 
-const TOGGLES = ['usenet', 'alldebrid', 'general_http', 'general_ftp'];
+const TOGGLES = ['alldebrid', 'general_http', 'general_ftp'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -61,19 +66,6 @@ for (const id of TOGGLES) {
     await expect(toggle).toBeChecked({checked: !!before});
   });
 }
-
-test('a committed enable survives a full reload without any page-level save', async ({page}) => {
-  const before = await persisted(page, 'usenet');
-  if (before) { await flip(page, 'usenet'); await expect.poll(() => persisted(page, 'usenet')).toBe(false); }
-  await flip(page, 'usenet');
-  await expect.poll(() => persisted(page, 'usenet')).toBe(true);
-  await page.reload();
-  await openSources(page);
-  await expect(page.locator('[data-integration-enabled="usenet"]')).toBeChecked();
-  // Restore.
-  await flip(page, 'usenet');
-  await expect.poll(() => persisted(page, 'usenet')).toBe(false);
-});
 
 test('a failed enable mutation restores the committed state and reports it', async ({page}) => {
   const before = await persisted(page, 'general_http');
