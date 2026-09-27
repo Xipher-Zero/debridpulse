@@ -135,3 +135,30 @@ async def test_an_sftp_directory_confirms_identity_then_closing_the_selector_kee
         assert PASSWORD not in await _durable_text()
     finally:
         await runtime.close()
+
+
+async def test_a_directory_member_and_the_same_file_submitted_exactly_share_one_real_writer(tmp_path, monkeypatch):
+    from test_v113_ftp_sftp_convergence_runtime import _aria2_jobs
+    from transfers.models import TransferState
+    origin = await FtpOrigin(dict(FTP_FILES)).start()
+    runtime = await _runtime(tmp_path, monkeypatch, origins=(origin,))
+    try:
+        base = f"ftp://open-ftp.test:{origin.port}/pub/iso"
+        transfer = await runtime.engine.submit((TransferRequest("ftp", base + "/"),
+                                                TransferRequest("ftp", base + "/one.iso")), deduplicate=False)
+        async def completed():
+            return (await runtime.repository.get(transfer.id)).state == TransferState.COMPLETED
+
+        await runtime.until(completed, label="transfer completes")
+        assert await _completed(runtime, transfer.id, len(MEMBERS)) == MEMBERS
+        # Whichever route resolved first owns one.iso; the other route to the
+        # same remote object is attached to it -- live or already completed.
+        jobs = await _aria2_jobs(runtime)
+        assert sorted(sorted(job) for job in jobs) == sorted([f"{base}/{name}"] for name in MEMBERS)
+        one = next(item for item in await runtime.repository.artifacts(transfer.id) if item.name == "one.iso")
+        origins = {str(item["request_id"]) for binding in await runtime.engine.canonical.bindings(one.id)
+                   for item in binding["origins"]}
+        requests = await runtime.repository.requests(transfer.id)
+        assert {record.id for record in requests if record.request.payload.endswith("/one.iso")} <= origins
+    finally:
+        await runtime.close()

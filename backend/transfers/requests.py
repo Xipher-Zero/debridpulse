@@ -4,7 +4,7 @@ import base64
 from dataclasses import dataclass
 import re
 from pathlib import PurePosixPath
-from urllib.parse import urlparse, urlsplit, unquote
+from urllib.parse import quote, urlparse, urlsplit, unquote
 from typing import Optional, List, Set
 from transfers.filesystem import safe_name
 
@@ -89,6 +89,37 @@ def auth_scope(address) -> AuthScope | None:
         return None
     family, default = _AUTH_SCOPE_FAMILIES.get(scheme, (scheme, None))
     return AuthScope(family, host, port if port is not None else default)
+
+
+# The remote-file transports whose resources a provider can address by one
+# canonical coordinate within a server scope (``remote_object_coordinate``).
+_REMOTE_OBJECT_FAMILIES = frozenset({"ftp", "ssh"})
+
+
+def remote_object_coordinate(address) -> str:
+    """The canonical remote coordinate of the file ``address`` reaches on its
+    server, or ``""`` when the address does not determine one. An address, not
+    immutable identity: the server may replace the contents at one path.
+
+    Server scope is the authentication scope (transport family, host, port, so
+    ``scp``/``ssh``/``sftp`` share one), and the object is its absolute path as
+    the transports decode it. Anything that would need guessing yields no
+    coordinate: a home-relative path (the server resolves it), dot or empty
+    segments, an encoded separator, a directory, a query or fragment. A
+    provider states this at candidate construction; nothing reconstructs it
+    later, and it never names an object across two server scopes."""
+    scope = auth_scope(address)
+    if scope is None or scope.family not in _REMOTE_OBJECT_FAMILIES or scope.port is None:
+        return ""
+    parts = urlsplit(str(address))
+    raw = parts.path
+    if parts.query or parts.fragment or not raw.startswith("/") or raw.endswith("/") or "%2f" in raw.casefold():
+        return ""
+    segments = unquote(raw).split("/")[1:]
+    if not segments or segments[0].startswith("~") or any(item in {"", ".", ".."} for item in segments):
+        return ""
+    host = f"[{scope.host}]" if ":" in scope.host else scope.host
+    return f"{scope.family}://{host}:{scope.port}/" + "/".join(quote(item, safe="") for item in segments)
 
 
 def normalize_direct_links(values: List[str]) -> List[str]:

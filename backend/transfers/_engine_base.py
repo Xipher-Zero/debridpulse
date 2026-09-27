@@ -1538,10 +1538,7 @@ class TransferEngine:
             if existing:
                 return
 
-            canonicals = tuple(
-                item for item in await self.canonical.canonical_artifacts()
-                if item.request_id != record.id and item.candidates
-            )
+            canonicals = await self.canonical.equivalence_targets(record)
             canonical_keys = {canonical_key(item) for item in canonicals}
             for primary in canonicals:
                 size = await equivalent_size(primary.candidates)
@@ -1586,10 +1583,7 @@ class TransferEngine:
 
             retry_snapshot = False
             async with self._paths_lock:
-                fresh_canonicals = tuple(
-                    item for item in await self.canonical.canonical_artifacts()
-                    if item.request_id != record.id and item.candidates
-                )
+                fresh_canonicals = await self.canonical.equivalence_targets(record)
                 fresh_contenders = await self.canonical.lower_materializing(record)
                 fresh_canonical_keys = {canonical_key(item) for item in fresh_canonicals}
                 fresh_contender_keys = {contender_key(item) for item in fresh_contenders}

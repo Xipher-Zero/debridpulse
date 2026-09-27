@@ -25,6 +25,15 @@ from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 _SETTLED_TRANSFER_STATES = "(" + ",".join(
     f"'{state.value}'" for state in sorted(SIDE_STATE_RETIRING_TRANSFER_STATES, key=lambda state: state.value)) + ")"
 
+# One material owner row: the head of its mirror group, never a standby.
+_MATERIAL_OWNER = """f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0
+    AND COALESCE(f.mirror_state,'')!='standby' AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)"""
+# A live owner: its writer may still run, so an equivalent source joins it.
+_LIVE_OWNER = """f.status NOT IN ('completed','cancelled','error','duplicate')
+    AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')"""
+# A completed owner whose material ownership is frozen but still valid.
+_FROZEN_OWNER = "f.status='completed' AND t.status NOT IN ('deleted','cancelled')"
+
 
 @dataclass(frozen=True)
 class CollectionInversion:
@@ -342,20 +351,44 @@ class CanonicalOwnership:
             self._initialized = True
 
     async def canonical_artifacts(self) -> tuple[Artifact, ...]:
+        """Every live canonical material owner."""
         await self.initialize()
         async with get_db() as db:
             rows = await db.fetchall(
-                """SELECT f.*,e.handle FROM download_files f
+                f"""SELECT f.*,e.handle FROM download_files f
                     JOIN torrents t ON t.id=f.torrent_id
                     LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                    WHERE f.request_id IS NOT NULL AND COALESCE(f.blocked,0)=0
-                    AND COALESCE(f.mirror_state,'')!='standby'
-                    AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)
-                    AND f.status NOT IN ('completed','cancelled','error','duplicate')
-                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')
+                    WHERE {_MATERIAL_OWNER} AND {_LIVE_OWNER}
                     ORDER BY f.torrent_id,f.id"""
             )
         return tuple(self._artifact(row) for row in rows)
+
+    async def equivalence_targets(self, record: RequestRecord) -> tuple[Artifact, ...]:
+        """THE canonical material owners ``record`` may be proven equivalent to.
+
+        Lifecycle decides what a match means (``attach``), never whether an
+        owner is visible to identity proof: every live owner, plus every
+        COMPLETED owner whose frozen material still owns what an equivalent
+        member of ``record``'s transfer would need -- one in the same transfer,
+        or in a transfer that is one recognized collection with it
+        (``_collection_related``). Never ``record``'s own artifact."""
+        await self.initialize()
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT f.*,e.handle FROM download_files f
+                    JOIN torrents t ON t.id=f.torrent_id
+                    LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                    WHERE {_MATERIAL_OWNER} AND f.request_id!=? AND (({_LIVE_OWNER}) OR ({_FROZEN_OWNER} AND (
+                        f.torrent_id=? OR f.torrent_id IN (
+                            SELECT c.torrent_id FROM artifact_consolidations a
+                                JOIN download_files c ON c.id=a.canonical_artifact_id WHERE a.source_transfer_id=?
+                            UNION
+                            SELECT a.source_transfer_id FROM artifact_consolidations a
+                                JOIN download_files c ON c.id=a.canonical_artifact_id WHERE c.torrent_id=?))))
+                    ORDER BY f.torrent_id,f.id""",
+                (str(record.id), int(record.transfer_id), int(record.transfer_id), int(record.transfer_id)),
+            )
+        return tuple(artifact for artifact in (self._artifact(row) for row in rows) if artifact.candidates)
 
     async def retain_evidence(self, candidate_id: str, evidence: ArtifactFingerprint) -> int:
         """Durably keep the neutral content evidence that proved one canonical
@@ -434,30 +467,6 @@ class CanonicalOwnership:
             (int(left), int(right), int(right), int(left)),
         )
         return row is not None
-
-    async def completed_collection_equivalents(self, transfer_id: int) -> tuple[Artifact, ...]:
-        """Completed canonical artifacts of other transfers that are one
-        recognized collection with ``transfer_id``: the only material a member
-        of ``transfer_id`` may be satisfied by without becoming a writer once
-        ownership is frozen."""
-        await self.initialize()
-        async with get_db() as db:
-            rows = await db.fetchall(
-                """SELECT f.*,e.handle FROM download_files f JOIN torrents t ON t.id=f.torrent_id
-                    LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                    WHERE f.torrent_id IN (
-                        SELECT c.torrent_id FROM artifact_consolidations a
-                            JOIN download_files c ON c.id=a.canonical_artifact_id WHERE a.source_transfer_id=?
-                        UNION
-                        SELECT a.source_transfer_id FROM artifact_consolidations a
-                            JOIN download_files c ON c.id=a.canonical_artifact_id WHERE c.torrent_id=?)
-                    AND f.torrent_id!=? AND f.status='completed' AND f.request_id IS NOT NULL
-                    AND COALESCE(f.blocked,0)=0 AND COALESCE(f.mirror_state,'')!='standby'
-                    AND (f.mirror_group_id IS NULL OR f.mirror_group_id=f.id)
-                    AND t.status NOT IN ('deleted','cancelled') ORDER BY f.torrent_id,f.id""",
-                (int(transfer_id), int(transfer_id), int(transfer_id)),
-            )
-        return tuple(self._artifact(row) for row in rows)
 
     async def collection_owner(self, transfer_id: int) -> int | None:
         await self.initialize()
@@ -682,13 +691,15 @@ class CanonicalOwnership:
         """Atomically revalidate an established owner and attach one source.
 
         The owner is ordinarily a live canonical artifact. The one bounded
-        exception is the terminal collection case (DP 1.0.13): a COMPLETED
-        canonical artifact of a transfer that is one recognized collection
-        with ``record``'s (``_collection_related``). Completed material is
+        exception is a COMPLETED canonical artifact that is still a valid
+        equivalence target for ``record`` (``equivalence_targets``): one of the
+        same transfer, or of a transfer that is one recognized collection with
+        ``record``'s (``_collection_related``). Completed material is
         ownership-frozen -- its row, candidates, status and transfer are not
         touched -- and the incoming source only becomes its contributing
-        standby with provenance (binding, origin, consolidation), so the
-        incoming transfer's member is satisfied without a second writer."""
+        standby with provenance (binding, origin, and consolidation across
+        transfers), so the incoming member is satisfied without a second
+        writer."""
         await self.initialize()
         alternatives = tuple(replace(item, expected_bytes=size) for item in candidates)
         if not alternatives:
@@ -707,7 +718,8 @@ class CanonicalOwnership:
                 (current["status"] not in {"completed", "cancelled", "error", "duplicate"}
                  and current["transfer_status"] not in {"completed", "consolidated", "deleted", "cancelled", "error"})
                 or (frozen and current["transfer_status"] not in {"deleted", "cancelled"}
-                    and await self._collection_related(db, int(current["torrent_id"]), int(record.transfer_id)))):
+                    and (int(current["torrent_id"]) == int(record.transfer_id)
+                         or await self._collection_related(db, int(current["torrent_id"]), int(record.transfer_id))))):
                 current = None
             incoming = await db.fetchone(
                 """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id

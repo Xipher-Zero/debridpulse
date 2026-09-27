@@ -372,11 +372,24 @@ def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
     return True
 
 
+def _object_coordinate(candidate) -> str:
+    evidence = candidate.resolver_identity_evidence
+    return str(getattr(evidence, "object_coordinate", "") or "") if evidence is not None else ""
+
+
 def pairing_failure(left, right) -> str:
-    """Return the exact cheap pairing rejection reason; empty means pairable."""
+    """Return the exact cheap pairing rejection reason; empty means pairable.
+
+    Two candidates of one source are never independent corroboration of each
+    other. Only when their providers stated the SAME canonical remote coordinate
+    (``ResolverArtifactIdentityEvidence.object_coordinate``) may they still be
+    compared -- and then only by the ordinary material evidence below: an
+    address is not identity, since a server may replace the contents at one
+    path. Different or missing coordinates stay ``non_independent_source``."""
     if str(left.id) == str(right.id):
         return "same_candidate"
-    if _source_key(left) == _source_key(right):
+    if _source_key(left) == _source_key(right) and (
+            not _object_coordinate(left) or _object_coordinate(left) != _object_coordinate(right)):
         return "non_independent_source"
     if not logical_key(left) or logical_key(left) != logical_key(right):
         return "logical_pairing_mismatch"
@@ -412,9 +425,8 @@ def _resolver_attested_evidence(left, right) -> EquivalenceEvidence | None:
     itself asserted (``transfers.models.TransferCandidate
     .resolver_identity_evidence``) -- may satisfy this; ordinary reported
     ``expected_bytes``/``name`` (the generic-HTTP case) never does, because
-    this function never reads them. Independence of the two source identities
-    is already guaranteed by the caller (``pairing_failure`` rejects
-    ``non_independent_source`` before this runs). Returns ``None`` -- not
+    this function never reads them. The caller consults it only for two
+    independent source identities (``shared_evidence``). Returns ``None`` -- not
     ``UNAVAILABLE`` -- when no resolver-attested proof applies, so the caller
     falls through to the ordinary sampling-evidence path unmodified.
     """
@@ -483,7 +495,11 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
     if left_by_algorithm & right_by_algorithm:
         return _diagnose(left, right, _unavailable("integrity_mismatch"))
 
-    resolver_evidence = _resolver_attested_evidence(left, right)
+    # Resolver attestation is corroboration by two independent resolvers; two
+    # routes of one source (pairable only through one stated coordinate) must
+    # prove themselves from material evidence instead.
+    resolver_evidence = (_resolver_attested_evidence(left, right)
+                         if _source_key(left) != _source_key(right) else None)
     if resolver_evidence is not None:
         return _diagnose(left, right, resolver_evidence)
 

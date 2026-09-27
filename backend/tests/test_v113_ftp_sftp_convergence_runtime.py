@@ -180,6 +180,14 @@ async def _aria2_uris(runtime):
     return [uri["uri"] for job in jobs for item in job["files"] for uri in item.get("uris", [])]
 
 
+async def _aria2_jobs(runtime):
+    """Every aria2 download job (one per writer); a job lists a URI once per use."""
+    jobs = await runtime.service._call("aria2.tellStopped", [0, 100, ["gid", "files"]])
+    jobs += await runtime.service._call("aria2.tellActive", [["gid", "files"]])
+    jobs += await runtime.service._call("aria2.tellWaiting", [0, 100, ["gid", "files"]])
+    return [{uri["uri"] for item in job["files"] for uri in item.get("uris", [])} for job in jobs]
+
+
 async def _completed_bytes(runtime, transfer_id):
     artifacts = await runtime.repository.artifacts(transfer_id)
     if len(artifacts) == 1 and artifacts[0].state == "completed":

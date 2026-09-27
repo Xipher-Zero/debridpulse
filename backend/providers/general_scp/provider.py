@@ -33,10 +33,10 @@ from transfers.errors import Category, Confidence, Domain, EvidenceBasis, Normal
 from transfers.filesystem import safe_name
 from transfers.models import (
     Capability, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod, IntegrationDescriptor,
-    Ownership, ProviderObservation, ProviderResource, ResolutionResult, ResourceState, SourceEntry, SourceIdentity,
-    TransferCandidate, TransferRequest,
+    Ownership, ProviderObservation, ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceState,
+    SourceEntry, SourceIdentity, TransferCandidate, TransferRequest,
 )
-from transfers.requests import direct_link_filename
+from transfers.requests import direct_link_filename, remote_object_coordinate
 
 # The one executable transport an SCP/SSH source is expressed in.
 _EXECUTION_SCHEME = "sftp"
@@ -75,6 +75,14 @@ def _pattern(raw: str):
         else:
             parts.append(re.escape(unquote(token)))
     return re.compile("".join(parts), re.S)
+
+
+def _remote_coordinate(address: str, size: int) -> ResolverArtifactIdentityEvidence:
+    """The canonical remote coordinate of an exact executable address (a
+    concrete absolute path: parsed here, or resolved by the server for a
+    home-relative source) -- an address, never identity. No resolver-asserted
+    name is claimed."""
+    return ResolverArtifactIdentityEvidence("", size, object_coordinate=remote_object_coordinate(address))
 
 
 class ScpProvider:
@@ -164,6 +172,7 @@ class ScpProvider:
             endpoints=(Endpoint(_EXECUTION_SCHEME, source.address()),),
             provider_id=self.descriptor.id,
             source_identity=SourceIdentity("host", source.host),
+            resolver_identity_evidence=_remote_coordinate(source.address(), 0),
             accepted_input_methods=_ACCEPTED_INPUT,
         )
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
@@ -186,12 +195,15 @@ class ScpProvider:
                     integration_id=self.descriptor.id, confidence=Confidence.HIGH,
                     evidence_basis=EvidenceBasis.STRUCTURED))
             name = safe_name(request.name or unquote(source.exact)) or unquote(source.exact)
+            address = source.address(path=directory + source.exact)
+            size = max(0, int(size or 0))
             return ResolutionResult(ResourceState.AVAILABLE, (TransferCandidate(
                 name=name,
-                endpoints=(Endpoint(_EXECUTION_SCHEME, source.address(path=directory + source.exact)),),
-                expected_bytes=max(0, int(size or 0)),
+                endpoints=(Endpoint(_EXECUTION_SCHEME, address),),
+                expected_bytes=size,
                 provider_id=self.descriptor.id,
                 source_identity=SourceIdentity("host", source.host),
+                resolver_identity_evidence=_remote_coordinate(address, size),
                 accepted_input_methods=_ACCEPTED_INPUT,
             ),))
         matcher = _pattern(source.pattern) if source.pattern is not None else None

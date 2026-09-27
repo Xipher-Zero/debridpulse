@@ -338,7 +338,12 @@ async def test_scp_ssh_and_sftp_spellings_of_one_object_reach_the_identical_sftp
         assert Aria2Executor._endpoint(candidate) == Aria2Executor._endpoint(sftp)
         assert candidate.accepted_input_methods == sftp.accepted_input_methods
         assert candidate.source_identity == sftp.source_identity
-        assert candidate.content_evidence is None and candidate.resolver_identity_evidence is None
+        assert candidate.content_evidence is None
+        # Each spelling states the SAME canonical remote coordinate (and no
+        # resolver-asserted name): pairable, and proven only by material evidence.
+        assert candidate.resolver_identity_evidence.object_coordinate == (
+            sftp.resolver_identity_evidence.object_coordinate) == "ssh://files.example.org:22/pub/big.iso"
+        assert candidate.resolver_identity_evidence.resolved_name == ""
 
 
 # ── 5. Admission ─────────────────────────────────────────────────────────────

@@ -21,10 +21,10 @@ from transfers.errors import Category, Confidence, Domain, EvidenceBasis, Normal
 from transfers.filesystem import safe_name
 from transfers.models import (
     Capability, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod, IntegrationDescriptor,
-    Ownership, ProviderObservation, ProviderResource, RemoteObjectKind, ResolutionResult, ResourceState, SourceEntry,
-    SourceIdentity, TransferCandidate, TransferRequest,
+    Ownership, ProviderObservation, ProviderResource, RemoteObjectKind, ResolutionResult, ResolverArtifactIdentityEvidence,
+    ResourceState, SourceEntry, SourceIdentity, TransferCandidate, TransferRequest,
 )
-from transfers.requests import direct_link_filename
+from transfers.requests import direct_link_filename, remote_object_coordinate
 
 _ACCEPTED_INPUT = (InputMethod.USERNAME_PASSWORD,)
 
@@ -83,12 +83,17 @@ class GeneralFtpProvider:
         address, scheme, host = self._checked(request)
         if discovered.kind == RemoteObjectKind.FILE:
             name = safe_name(request.name or direct_link_filename(address)) or direct_link_filename(address)
+            size = max(0, int(discovered.expected_bytes or 0))
             return ResolutionResult(ResourceState.AVAILABLE, (TransferCandidate(
                 name=name,
                 endpoints=(Endpoint(scheme, address),),
-                expected_bytes=max(0, int(discovered.expected_bytes or 0)),
+                expected_bytes=size,
                 provider_id=self.descriptor.id,
                 source_identity=SourceIdentity("host", host),
+                # The server just proved this exact path a regular file: its
+                # canonical remote coordinate (an address, never identity).
+                resolver_identity_evidence=ResolverArtifactIdentityEvidence(
+                    "", size, object_coordinate=remote_object_coordinate(address)),
                 accepted_input_methods=_ACCEPTED_INPUT,
             ),))
         members = sorted((entry.name, max(0, int(entry.expected_bytes or 0))) for entry in discovered.entries)

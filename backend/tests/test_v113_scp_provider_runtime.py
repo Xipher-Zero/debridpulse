@@ -10,13 +10,14 @@ everything else, and the submitted request stays the operator's own SCP/SSH URL.
 """
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 import db.database as database
 from providers.general_scp.provider import ScpProvider
-from test_v113_ftp_sftp_convergence_runtime import PASSWORD, PAYLOAD, USER, _aria2_uris, _completed_bytes, _runtime
+from test_v113_ftp_sftp_convergence_runtime import (
+    PASSWORD, PAYLOAD, USER, _aria2_jobs, _aria2_uris, _completed_bytes, _runtime,
+)
+from transfers.models import TransferState
 from test_v113_transport_evidence_sampling import SftpOrigin
 from transfers.models import TransferRequest
 
@@ -96,45 +97,13 @@ async def test_exact_scp_or_ssh_file_downloads_through_the_existing_sftp_identit
         await runtime.close()
 
 
-class WriterGatedOrigin(SftpOrigin):
-    """An SFTP origin that serves content reads from the in-process evidence
-    sampler (an AsyncSSH client) at once, but holds a real aria2 writer's reads
-    (libssh2) until the test opens ``writers``. The writer's lifetime is then
-    the test's to decide, never a race against download speed."""
-
-    def __init__(self, root, credentials=(USER, PASSWORD)):
-        super().__init__(root, credentials)
-        self.writers = asyncio.Event()
-
-    async def start(self, algorithms=("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256")):
-        import asyncssh
-        from test_v113_transport_evidence_sampling import _SshServer
-        origin = self
-
-        class Files(asyncssh.SFTPServer):
-            def __init__(self, chan):
-                super().__init__(chan, chroot=str(origin.root))
-
-            async def read(self, file_obj, offset, size):
-                if "libssh2" in str(self.connection.get_extra_info("client_version", "")):
-                    await origin.writers.wait()
-                origin.read_bytes.append(size)
-                return super().read(file_obj, offset, size)
-
-        self.server = await asyncssh.listen(
-            "127.0.0.1", 0, server_host_keys=[self.keys[alg] for alg in algorithms],
-            server_factory=lambda: _SshServer(origin), sftp_factory=Files, allow_scp=False)
-        self.port = self.server.sockets[0].getsockname()[1]
-        return self
-
-
 async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_equivalence(tmp_path, monkeypatch):
-    # The SCP writer is held live until the SFTP mirror (classified by core-run
-    # discovery, so it resolves only after its own first-contact question) has
-    # been proven equivalent to it. A mirror that resolves only after its
-    # sibling's writer COMPLETED is the separately deferred same-transfer
-    # completed-equivalence finding, not what this proves.
-    scp_origin = await WriterGatedOrigin(_origin_root(tmp_path, "scp"), credentials=(USER, PASSWORD)).start()
+    # The SFTP mirror is classified by core-run discovery, so it resolves only
+    # after its own first-contact question -- which is answered only once the
+    # SCP writer has COMPLETED. The late equivalent is then satisfied by that
+    # completed canonical artifact: completion freezes ownership, it does not
+    # hide it, and no second writer starts.
+    scp_origin = await SftpOrigin(_origin_root(tmp_path, "scp"), credentials=(USER, PASSWORD)).start()
     sftp_origin = await SftpOrigin(_origin_root(tmp_path, "sftp"), credentials=(USER, PASSWORD)).start()
     runtime = await _scp_runtime(tmp_path, monkeypatch, (scp_origin, sftp_origin))
     try:
@@ -142,28 +111,74 @@ async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_eq
             TransferRequest("scp", f"scp://scp-mirror.test:{scp_origin.port}/pub/big.iso"),
             TransferRequest("sftp", sftp_origin.url("/pub/big.iso", host="sftp-mirror.test")),
         ), name="big.iso", deduplicate=False)
+        reasons, answered, first_completed = [], set(), []
+
+        async def step():
+            current = await runtime.engine.challenges.current(transfer.id)
+            if current is not None and current.id not in answered:
+                if current.origin.value == "provider":
+                    # The late mirror's question waits for the first writer to complete.
+                    if not await _completed_bytes(runtime, transfer.id):
+                        return None
+                    first_completed.append(True)
+                answered.add(current.id)
+                reasons.append((current.origin.value, current.reason.value))
+                await runtime.engine.submit_input(transfer.id, current.id, "username_password",
+                                                  {"username": USER, "password": PASSWORD})
+            return await converged()
 
         async def converged():
             artifacts = await runtime.repository.artifacts(transfer.id)
-            if len(artifacts) != 1:
+            if len(artifacts) != 1 or artifacts[0].state != "completed":
                 return None
             return artifacts[0] if len(await runtime.engine.canonical.bindings(artifacts[0].id)) == 2 else None
 
-        reasons = []
-        await _answer_until(runtime, transfer.id, converged, label="SCP/SFTP convergence", reasons=reasons)
+        await runtime.until(step, label="SCP/SFTP late-completed convergence")
+        assert first_completed == [True]  # the SFTP mirror resolved only after the SCP writer completed
         # One first-contact identity question per mirror: the SCP file's from pre-writer
         # evidence, the SFTP path's from the core-run discovery that classifies it.
         assert sorted(reasons) == [("evidence", "server_identity_required"), ("provider", "server_identity_required")]
-        scp_origin.writers.set()
-        body = await _answer_until(runtime, transfer.id, lambda: _completed_bytes(runtime, transfer.id),
-                                   label="completion", reasons=reasons)
-        assert body == PAYLOAD
+        assert await runtime.until(lambda: _completed_bytes(runtime, transfer.id), label="completion") == PAYLOAD
+        assert await _aria2_jobs(runtime) == [{f"sftp://scp-mirror.test:{scp_origin.port}/pub/big.iso"}]  # one writer
         providers = {await runtime.repository.bound_route_provider(item.id)
                      for item in await runtime.repository.requests(transfer.id)}
         assert providers == {"general_scp", "general_ftp"}
         assert PASSWORD not in await _durable_text()
     finally:
-        scp_origin.writers.set()
+        await runtime.close()
+
+
+async def test_sftp_scp_and_ssh_aliases_of_one_server_file_share_one_real_writer(tmp_path, monkeypatch):
+    origin = await SftpOrigin(_origin_root(tmp_path, "same"), credentials=(USER, PASSWORD)).start()
+    runtime = await _scp_runtime(tmp_path, monkeypatch, (origin,))
+    try:
+        aliases = [f"{scheme}://same-server.test:{origin.port}/pub/big.iso" for scheme in ("sftp", "scp", "ssh")]
+        transfer = await runtime.engine.submit(tuple(TransferRequest(url.split(":", 1)[0], url) for url in aliases),
+                                               name="big.iso", deduplicate=False)
+        async def completed():
+            return (await runtime.repository.get(transfer.id)).state == TransferState.COMPLETED
+
+        reasons = []
+        await _answer_until(runtime, transfer.id, completed, label="aliases complete", reasons=reasons)
+        assert await _completed_bytes(runtime, transfer.id) == PAYLOAD
+        assert len(await _aria2_jobs(runtime)) == 1  # one physical writer for one remote object
+        [artifact] = await runtime.repository.artifacts(transfer.id)
+        origins = {str(item["request_id"]) for binding in await runtime.engine.canonical.bindings(artifact.id)
+                   for item in binding["origins"]}
+        assert origins == {record.id for record in await runtime.repository.requests(transfer.id)}
+        # Every attached alias was proven from actual material, never from its address.
+        async with database.get_db() as db:
+            reasons = {row["equivalence_reason"] for row in await db.fetchall(
+                "SELECT equivalence_reason FROM transfer_requests WHERE transfer_id=? AND equivalence_disposition='recovered'",
+                (transfer.id,))}
+        assert reasons == {"full_content_sample"}
+        # Provenance stays the operator's own: SCP remains SCP, SFTP remains (S)FTP.
+        requests = await runtime.repository.requests(transfer.id)
+        assert sorted(record.request.payload for record in requests) == sorted(aliases)
+        assert {await runtime.repository.bound_route_provider(record.id) for record in requests} == {
+            "general_ftp", "general_scp"}
+        assert PASSWORD not in await _durable_text()
+    finally:
         await runtime.close()
 
 

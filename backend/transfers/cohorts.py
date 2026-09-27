@@ -843,30 +843,6 @@ async def _hold_for_collection_owner(engine, record, incoming) -> bool:
     return True
 
 
-async def _satisfied_by_completed_equivalent(engine, record, incoming, context) -> bool:
-    """DP 1.0.13 terminal collection boundary: completed material is
-    ownership-frozen. When no live canonical artifact pairs with ``record``,
-    a COMPLETED artifact of another transfer in the same recognized collection
-    (``CanonicalOwnership.completed_collection_equivalents``) that the one
-    mapping proves equivalent satisfies it: ``record`` attaches as that
-    artifact's contributing standby (``CanonicalOwnership.attach``'s bounded
-    completed branch) instead of becoming a second writer. The completed
-    artifact is never moved, re-parented or re-opened."""
-    completed = await engine.canonical.completed_collection_equivalents(record.transfer_id)
-    if not completed:
-        return False
-    mapping = await _mapping(completed, incoming, engine.registry, context)
-    if not mapping.matched:
-        return False
-    size = mapping.primary.expected_bytes or mapping.evidence.total_bytes
-    if not await engine.canonical.attach(mapping.primary, record, incoming, size):
-        return False
-    await _proof_disposition(record.id, "recovered", mapping.evidence.kind, clear_retry=True, preserve_reason=True)
-    _decision(record, incoming, "satisfied_by_completed", mapping.evidence.kind,
-              evidence=mapping.evidence, mapping_cardinality=1)
-    return True
-
-
 async def converge_collection_ownership(engine, transfer_id: int) -> int:
     """Converge every inverted member ``transfer_id`` takes part in on its
     collection owner; returns how many converged.
@@ -954,13 +930,11 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
     # self-proof below all reuse what this call has already acquired. It goes
     # out of scope with the decision, so the next scheduler decision re-acquires.
     context = context if context is not None else EvidenceContext()
-    canonicals = tuple(
-        item for item in await engine.canonical.canonical_artifacts()
-        if item.request_id != record.id and item.candidates
-    )
+    # Every canonical material owner this request may be proven equivalent to,
+    # live or completed (``CanonicalOwnership.equivalence_targets``): lifecycle
+    # decides what a match means (``attach``), never whether it is visible.
+    canonicals = await engine.canonical.equivalence_targets(record)
     if not canonicals:
-        if await _satisfied_by_completed_equivalent(engine, record, incoming, context):
-            return True
         if await _hold_for_collection_owner(engine, record, incoming):
             return True
         return await _bootstrap_admission(engine, record, incoming, disposition, context)
@@ -989,9 +963,8 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
             _decision(record, incoming, "hold_unresolved", evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=current_mapping.cardinality)
             return True
-        if current_mapping.outcome == MappingOutcome.NONPAIRING and (
-                await _satisfied_by_completed_equivalent(engine, record, incoming, context)
-                or await _hold_for_collection_owner(engine, record, incoming)):
+        if current_mapping.outcome == MappingOutcome.NONPAIRING and await _hold_for_collection_owner(
+                engine, record, incoming):
             return True
         # Affirmatively contradictory (proven distinct), structurally
         # non-pairing (a cheap pairing rejection), or structurally unprovable

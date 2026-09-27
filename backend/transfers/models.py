@@ -876,10 +876,19 @@ class ResolverArtifactIdentityEvidence:
     States only what a resolver reported -- never a duplicate/equivalence
     decision (``transfers.mirrors`` owns that). ``resolved_name`` must be the
     name the provider's resolution response itself asserted, never a
-    submitted-URL basename or other non-resolver fallback.
+    submitted-URL basename or other non-resolver fallback; ``""`` when the
+    provider asserts none.
+
+    ``object_coordinate`` is the authoritative remote coordinate of the
+    candidate within its server scope (``transfers.requests
+    .remote_object_coordinate``), stated by the provider from the facts its
+    classification established. It is an address, not immutable identity (a
+    server may replace the contents at one path): equal coordinates only make
+    two SAME-source candidates pairable for ordinary material proof.
     """
     resolved_name: str
     exact_bytes: int
+    object_coordinate: str = ""
 
 
 @dataclass(frozen=True)
