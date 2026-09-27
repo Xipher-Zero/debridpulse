@@ -63,7 +63,7 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
   await isolateExternalFonts(page); await page.goto('/'); await openSettings(page);
   await expect(page.locator('.dp-settings-debrid-services')).toContainText('Premium Services');
   await expect(page.locator('.dp-settings-provider-card--alldebrid')).toContainText('AllDebrid');
-  await expect(integrationControl(page, 'alldebrid')).toBeVisible();
+  await expect(page.locator('.dp-settings-provider-card--alldebrid .dp-settings-provider-header-enable')).toBeVisible();
   await expect(page.locator('.dp-settings-general-sources')).toContainText('Network Sources');
   const httpCard = page.locator('.dp-settings-provider-card--general-http');
   await expect(httpCard).toContainText('HTTP(S)');
@@ -86,40 +86,25 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
   await page.screenshot({path:'test-results/checkpoint-settings-light-desktop.png', fullPage:true});
 });
 
-test('both provider enable controls round-trip through the running backend and survive reload', async ({ page }) => {
+// AllDebrid's Enable round-trip is proven by settings-providers-persistence.spec.js,
+// the ONE owner of `integrations.alldebrid.enabled` (spec files share one backend).
+test('the HTTP(S) enable control round-trips through the running backend and survives reload', async ({ page }) => {
   await isolateExternalFonts(page); await page.goto('/');
   const original = await page.request.get('/api/settings').then(response => response.json());
-  const originalAd = original.integrations.alldebrid.enabled;
   const originalHttp = original.integrations.general_http.enabled;
   await openSettings(page);
+  const httpEnabled = async () =>
+    (await page.request.get('/api/settings').then(r => r.json())).integrations.general_http.enabled;
 
-  const firstAd = !originalAd;
-  const firstHttp = originalHttp || !firstAd;
-  await setIntegrationChecked(page, 'alldebrid', firstAd);
-  await setIntegrationChecked(page, 'general_http', firstHttp);
+  await setIntegrationChecked(page, 'general_http', !originalHttp);
   await settleSettings(page);
-  await expect.poll(async () => {
-    const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
-  }).toEqual([firstAd, firstHttp]);
+  await expect.poll(httpEnabled).toBe(!originalHttp);
   await page.reload(); await openSettings(page);
-  await expect(integrationInput(page, 'alldebrid')).toBeChecked({checked:firstAd});
-  await expect(integrationInput(page, 'general_http')).toBeChecked({checked:firstHttp});
+  await expect(integrationInput(page, 'general_http')).toBeChecked({checked:!originalHttp});
 
-  const secondAd = true;
-  const secondHttp = !originalHttp;
-  await setIntegrationChecked(page, 'alldebrid', secondAd);
-  await setIntegrationChecked(page, 'general_http', secondHttp);
-  await settleSettings(page);
-  await expect.poll(async () => {
-    const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
-  }).toEqual([secondAd, secondHttp]);
-
-  await setIntegrationChecked(page, 'alldebrid', originalAd);
   await setIntegrationChecked(page, 'general_http', originalHttp);
   await settleSettings(page);
-  await expect.poll(async () => {
-    const s = await page.request.get('/api/settings').then(r => r.json()); return [s.integrations.alldebrid.enabled, s.integrations.general_http.enabled];
-  }).toEqual([originalAd, originalHttp]);
+  await expect.poll(httpEnabled).toBe(originalHttp);
 });
 
 test('Recent Activity shows final provider and neutral legacy unknown without URL inference', async ({ page }) => {

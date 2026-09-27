@@ -86,6 +86,43 @@ def safe_route_endpoint(value: object, *, max_length: int = 180) -> tuple[str | 
     return _middle_ellipsis(origin, max_length), _middle_ellipsis(location, max_length)
 
 
+# Remote-file transports whose submitted resource is presented by the one
+# helper below; SCP/SSH paths carry no query, FTP/SFTP URLs can.
+_REMOTE_FILE_QUERYLESS = frozenset({"scp", "ssh"})
+_REMOTE_FILE_WITH_QUERY = frozenset({"ftp", "sftp"})
+
+
+def safe_original_remote_file_resource(value: object, *, max_length: int = 180) -> str | None:
+    """Return a remote-file source label: ``scheme://host[:port]/path``, never
+    any userinfo. For SCP/SSH the path is exactly as submitted (a raw ``?`` or
+    ``*`` there is a file pattern -- these transports have no query); for
+    FTP/SFTP a query's presence is kept only as ``?…``, like HTTP. Anything
+    unparseable fails closed to ``None``."""
+    raw = str(value or "").strip()
+    if not raw or any(ord(char) <= 32 or ord(char) == 127 for char in raw):
+        return None
+    scheme, separator, rest = raw.partition("://")
+    scheme = scheme.casefold()
+    authority, slash, path = rest.partition("/")
+    authority = authority.rpartition("@")[2]
+    if not separator or not authority or "#" in authority or "?" in authority:
+        return None
+    if scheme in _REMOTE_FILE_QUERYLESS:
+        if "#" in rest:
+            return None
+        suffix = slash + path if slash else ""
+    elif scheme in _REMOTE_FILE_WITH_QUERY:
+        path, _fragment_mark, _fragment = path.partition("#")
+        path, query_mark, _query = path.partition("?")
+        suffix = (slash + path if slash else "") + ("?…" if query_mark else "")
+    else:
+        return None
+    origin, _location = safe_route_endpoint(f"{scheme}://{authority}", max_length=max_length)
+    if origin is None:
+        return None
+    return _middle_ellipsis(origin + suffix, max_length)
+
+
 def safe_original_http_resource(value: object, *, max_length: int = 180) -> str | None:
     """Return a useful HTTP(S) source label without userinfo, query values, or fragments.
 

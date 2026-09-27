@@ -36,7 +36,7 @@ from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
-from core.presentation_safety import safe_original_http_resource, safe_route_endpoint
+from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource
 from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.models import AuthMechanism
 from auth.oidc_version import oidc_configuration_version
@@ -227,10 +227,10 @@ def _safe_original_resource(request_payload) -> str | None:
     if kind in {"http", "https"}:
         return safe_original_http_resource(raw, max_length=180) or request.name or "HTTP/HTTPS resource"
 
-    if kind in {"scp", "ssh"}:
-        # The operator's own SCP/SSH request, never the SFTP address it executes
-        # as; the route sanitizer keeps only scheme, host, non-default port and path.
-        return safe_route_endpoint(raw, max_length=180)[1] or request.name or f"{kind.upper()} resource"
+    if kind in {"ftp", "sftp", "scp", "ssh"}:
+        # The operator's own remote-file request (never, for SCP/SSH, the SFTP
+        # address it executes as): scheme, host, non-default port and path only.
+        return safe_original_remote_file_resource(raw, max_length=180) or request.name or f"{kind.upper()} resource"
 
     if kind == "magnet" or raw.lower().startswith("magnet:?"):
         return sanitize_log_value(raw, max_length=180)

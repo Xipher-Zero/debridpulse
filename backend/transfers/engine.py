@@ -13,7 +13,11 @@ failures (via ``policy.compatibility``) before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 from transfers import _engine_base, file_selection as fs
+from transfers._repository_base import manifest_child_identity
+from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.contracts import Manifest, ResourceLookup
@@ -57,6 +61,17 @@ class TransferEngine(_RecoveryTransferEngine):
             ):
                 return None
             raise
+
+    @staticmethod
+    def _split_member_credentials(entries):
+        sanitized, supplied = [], []
+        for entry in entries:
+            payload, values = split_user_supplied(entry.request.payload)
+            if values:
+                entry = replace(entry, request=replace(entry.request, payload=payload))
+                supplied.append((entry.relative_path, payload, values))
+            sanitized.append(entry)
+        return tuple(sanitized), supplied
 
     async def _resolve(self, record):
         attempt = None
@@ -243,6 +258,9 @@ class TransferEngine(_RecoveryTransferEngine):
                 # ``context``, and a provider whose ``observe()`` returns the
                 # resource unchanged sees no difference at all.
                 entries = await provider.manifest(observation.resource)
+                # Decomposition is an admission boundary: a member resource
+                # that carries credentials is split exactly like a submission.
+                entries, supplied = self._split_member_credentials(entries)
                 entries = tuple({
                     _engine_base.codec.dump(entry): entry for entry in entries
                 }.values())
@@ -277,6 +295,11 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.manifest(
                     record, authorized, selection_id=getattr(authorized, "selection_id", None),
                 )
+                members = {entry.relative_path for entry in authorized}
+                for relative_path, address, values in supplied:
+                    if relative_path in members:
+                        await self._admit_supplied(record.transfer_id,
+                                                   manifest_child_identity(record.id, relative_path), address, values)
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(
                     Category.RESOURCE_EXPIRED

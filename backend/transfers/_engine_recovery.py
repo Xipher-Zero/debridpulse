@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import asyncio
 
-from transfers._engine_base import TransferEngine as _QualifiedTransferEngine
+from transfers._engine_base import TransferEngine as _QualifiedTransferEngine, _EvidenceAuth
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.cohorts import converge_collection_ownership, coordinate_collection
 from transfers.mirrors import EvidenceContext
@@ -110,13 +110,20 @@ class TransferEngine(_QualifiedTransferEngine):
             # read the same acquisitions (and the same transient input, when
             # this decision continues an answered evidence challenge).
             evidence = evidence if evidence is not None else EvidenceContext()
-            if not await coordinate_collection(self, record, candidates, evidence):
-                await super()._materialize(record, candidates, evidence=evidence)
-                artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
-                                 if item.request_id == record.id), None)
-                if artifact is not None and len(artifact.candidates) >= 2:
-                    for candidate in artifact.candidates:
-                        await self.canonical.origin_for(artifact, candidate)
+            # A requirement of this request's own candidates is matched by the
+            # one authentication-input owner before anyone is asked.
+            evidence.bind(_EvidenceAuth(self, record.transfer_id,
+                                        await self._lineage(record.transfer_id, record.id), candidates))
+            try:
+                if not await coordinate_collection(self, record, candidates, evidence):
+                    await super()._materialize(record, candidates, evidence=evidence)
+                    artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
+                                     if item.request_id == record.id), None)
+                    if artifact is not None and len(artifact.candidates) >= 2:
+                        for candidate in artifact.candidates:
+                            await self.canonical.origin_for(artifact, candidate)
+            finally:
+                await self._hand_off_proven(record, evidence)
             # Whatever this decision attached or allocated may have completed
             # the evidence that this transfer and another are one collection.
             await converge_collection_ownership(self, record.transfer_id)

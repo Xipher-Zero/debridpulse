@@ -1,6 +1,6 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 SCP Network Source (exact remote files).
+/* DP 1.0.13 SCP Network Source.
  *
  * The SCP member is one more box rendered by the existing Network Sources
  * composer from its own published metadata, with the existing protocol chip
@@ -114,4 +114,51 @@ test('Recent Items, Downloads and Details present an SCP-claimed transfer as SCP
   await expect(route.locator('.dp-detail-route-provider')).toHaveText('SCP');
   // The execution endpoint is shown as what it is; the provider stays SCP.
   await expect(route.locator('.dp-detail-route-identity')).toContainText(EXECUTED);
+});
+
+/* The one INPUT_REQUIRED modal owner presents an identity-only answer when the
+ * backend already holds credentials for the transfer: identity is shown, no
+ * credential field exists, and nothing secret is submitted. */
+test('an identity-only challenge asks for the fingerprint and sends no credentials', async ({page}) => {
+  await isolateExternalFonts(page);
+  const fingerprint = '208c2653f8ed2c0d7b62d69b304e8016e4151f60';
+  const item = scpItem({
+    id: 992, status: 'input_required', presentation_status: 'input_required',
+    input_required: {
+      id: 'challenge-992', generation: 1, reason: 'server_identity_required', origin: 'provider',
+      methods: [{method: 'server_identity', fields: []}],
+      facts: [{name: 'server_host', value: 'files.example.org'},
+              {name: 'server_identity_algorithm', value: 'sha-1'},
+              {name: 'server_identity_fingerprint', value: fingerprint}],
+    },
+  });
+  const submissions = [];
+  await page.route('**/api/torrents**', async route => {
+    const request = route.request();
+    const url = new URL(request.url());
+    if (url.pathname === '/api/torrents' && request.method() === 'GET') {
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({items: [item], total: 1})});
+    }
+    if (url.pathname === `/api/torrents/${item.id}/input` && request.method() === 'POST') {
+      submissions.push(request.postDataJSON());
+      item.status = 'downloading';
+      item.input_required = null;
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({ok: true, id: item.id})});
+    }
+    if (url.pathname === `/api/torrents/${item.id}` && request.method() === 'GET') {
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(item)});
+    }
+    return route.continue();
+  });
+  await page.goto('/');
+  const modal = page.locator('[data-dp-input-required-modal]');
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('#dp-auth-required-title')).toHaveText('Verify Server Identity');
+  await expect(modal.locator('[data-dp-identity-fingerprint]')).toHaveText(fingerprint);
+  await expect(modal.locator('[data-dp-auth-credentials-held]')).toBeVisible();
+  await expect(modal.locator('[data-dp-auth-username]')).toHaveCount(0);
+  await expect(modal.locator('[data-dp-auth-secret]')).toHaveCount(0);
+  await modal.locator('[data-dp-auth-continue]').click();
+  await expect(modal).toHaveCount(0);
+  expect(submissions).toEqual([{challenge_id: 'challenge-992', method: 'server_identity'}]);
 });

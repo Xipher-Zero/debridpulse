@@ -1,9 +1,10 @@
 """Provider-neutral request identity parsing."""
 import hashlib
 import base64
+from dataclasses import dataclass
 import re
 from pathlib import PurePosixPath
-from urllib.parse import urlparse, unquote
+from urllib.parse import urlparse, urlsplit, unquote
 from typing import Optional, List, Set
 from transfers.filesystem import safe_name
 
@@ -56,8 +57,46 @@ def extract_hash(magnet: str) -> Optional[str]:
 DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh"})
 
 
+# The authentication target scope of a URL-shaped resource. Scheme knowledge
+# belongs here, with the request kinds themselves: the authentication-input
+# owner only ever compares opaque scopes. SCP, SSH and SFTP are one family --
+# the same server authenticates all three.
+_AUTH_SCOPE_FAMILIES = {
+    "http": ("http", 80), "https": ("https", 443), "ftp": ("ftp", 21),
+    "sftp": ("ssh", 22), "scp": ("ssh", 22), "ssh": ("ssh", 22),
+}
+
+
+@dataclass(frozen=True)
+class AuthScope:
+    """The target an authentication answer is valid for. Never a cache key on
+    its own: material is reused only inside one request lineage AND scope."""
+    family: str
+    host: str
+    port: int | None
+
+
+def auth_scope(address) -> AuthScope | None:
+    """The authentication target scope of a URL-shaped address, or ``None``."""
+    try:
+        parts = urlsplit(str(address or ""))
+        port = parts.port
+    except ValueError:
+        return None
+    scheme = parts.scheme.casefold()
+    host = str(parts.hostname or "").rstrip(".").casefold()
+    if not scheme or not host:
+        return None
+    family, default = _AUTH_SCOPE_FAMILIES.get(scheme, (scheme, None))
+    return AuthScope(family, host, port if port is not None else default)
+
+
 def normalize_direct_links(values: List[str]) -> List[str]:
-    """Validate and de-duplicate direct-source links without fetching them."""
+    """Validate and de-duplicate direct-source links without fetching them.
+
+    Credentials a link carries are not refused here: the core admission
+    boundary (``TransferEngine.submit``) splits them out as USER_SUPPLIED
+    authentication before anything is persisted."""
     normalized: List[str] = []
     seen: Set[str] = set()
     for raw in values or []:
@@ -73,11 +112,6 @@ def normalize_direct_links(values: List[str]) -> List[str]:
             raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
         if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES or not parsed.hostname:
             raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
-        if parsed.username is not None or parsed.password is not None:
-            raise ValueError(
-                "Credentials embedded in URLs are not supported; "
-                "DebridPulse asks for them when the server requires a login"
-            )
         if value not in seen:
             normalized.append(value)
             seen.add(value)

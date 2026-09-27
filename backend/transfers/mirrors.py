@@ -7,7 +7,7 @@ import logging
 import socket
 
 from transfers.models import ExecutionSubject
-from transfers.models import FingerprintKind, InputRequirement
+from transfers.models import ArtifactFingerprint, FingerprintKind, InputMethod, InputRequirement
 from transfers import size_evidence
 
 
@@ -174,41 +174,61 @@ class EvidenceContext:
     The same acquisition may need transient operator input. A decision that
     continues an answered evidence challenge is given that input for exactly
     the challenged candidate identity, so the SAME acquisition continues
-    (``CandidateSamplingContinuation``) inside the ordinary decision. The
-    context also records which candidates answered with an
-    ``InputRequirement`` so the cohort owner can route a request's own
-    requirement to the one INPUT_REQUIRED lifecycle. The input is borrowed:
-    the context never retains, copies or discards it."""
+    (``CandidateSamplingContinuation``) inside the ordinary decision. When the
+    materialization owner binds the decision to the authentication-input owner
+    (``bind``), a requirement from one of the deciding request's OWN candidates
+    is first matched there, so USER_SUPPLIED material the lineage already holds
+    continues the acquisition without asking anyone. The context also records
+    which candidates still answered with an ``InputRequirement`` so the cohort
+    owner can route a request's own requirement to the one INPUT_REQUIRED
+    lifecycle, and which proofs were made with input (``supplied``) so the
+    materialization owner hands that input, once, to the writer it admits.
+    Input placed here is owned by the decision from then on: the
+    materialization owner hands it off or discards it."""
 
-    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven")
+    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven", "_supplied", "_auth")
+
+    # Bounded: each rejected material is excluded from the next match.
+    _MATCH_ATTEMPTS = 3
 
     def __init__(self, inputs=None):
         self._fingerprints = {}
         self._inputs = dict(inputs or {})
         self._requirements = {}
         self._proven = {}
+        self._supplied = {}
+        self._auth = None
+
+    def bind(self, auth) -> None:
+        """Bind the deciding request's authentication-input matcher."""
+        self._auth = auth
 
     async def fingerprint(self, executor, candidate):
         key = (str(candidate.id), max(0, int(candidate.expected_bytes or 0)))
         if key not in self._fingerprints:
-            submitted = self._inputs.get(key[0])
+            submitted = self._inputs.pop(key[0], None)
             subject = ExecutionSubject.of(candidate)
             try:
                 if submitted is not None and executor.capabilities.transient_input:
-                    sample = await executor.fingerprint_with_input(subject, submitted)
-                    if sample is not None and not isinstance(sample, InputRequirement) \
-                            and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
-                        self._proven[key[0]] = sample
+                    sample = await self._with_input(executor, subject, candidate, submitted, self._MATCH_ATTEMPTS)
                 else:
-                    sample = _retained(candidate, await executor.fingerprint(subject))
+                    if submitted is not None:
+                        submitted.discard()
+                    sample = await executor.fingerprint(subject)
+                    if (isinstance(sample, InputRequirement) and executor.capabilities.transient_input
+                            and self._auth is not None and self._auth.owns(candidate)):
+                        sample = await self._matched(executor, subject, candidate, sample, self._MATCH_ATTEMPTS)
+                    sample = _retained(candidate, sample)
                 self._fingerprints[key] = (sample, None)
             except Exception as exc:
                 self._fingerprints[key] = (None, exc)
             sample = self._fingerprints[key][0]
             # Only a candidate that advertises every requested input method may
             # ever ask its operator; anything else stays an unresolved proof.
-            if isinstance(sample, InputRequirement) and {item.method for item in sample.methods} <= set(
-                    candidate.accepted_input_methods):
+            # Confirming an identity alone is an answer, not a transport method.
+            if isinstance(sample, InputRequirement) and {
+                    item.method for item in sample.methods if item.method != InputMethod.SERVER_IDENTITY
+            } <= set(candidate.accepted_input_methods):
                 self._requirements[key[0]] = (executor.descriptor.id, sample)
         sample, error = self._fingerprints[key]
         if error is not None:
@@ -229,6 +249,54 @@ class EvidenceContext:
         """The usable evidence this decision's transient input produced for
         ``candidate_id``, or ``None``."""
         return self._proven.get(str(candidate_id))
+
+    def take_supplied(self):
+        """Every ``(candidate id, executor id, input)`` that proved evidence in
+        this decision, handed to the materialization owner exactly once; any
+        input still borrowed but never used is discarded here."""
+        for submitted in self._inputs.values():
+            submitted.discard()
+        self._inputs.clear()
+        supplied = [(candidate_id, executor_id, submitted)
+                    for candidate_id, (executor_id, submitted) in self._supplied.items()]
+        self._supplied.clear()
+        return supplied
+
+    async def _with_input(self, executor, subject, candidate, submitted, attempts):
+        sample = await executor.fingerprint_with_input(subject, submitted)
+        if sample is not None and not isinstance(sample, InputRequirement) \
+                and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
+            self._proven[str(candidate.id)] = sample
+            self._supplied[str(candidate.id)] = (executor.descriptor.id, submitted)
+            if self._auth is not None:
+                await self._auth.settle(submitted, accepted=True)
+            return sample
+        if isinstance(sample, InputRequirement) and self._auth is not None:
+            # The transport definitively refused this material: it is rejected
+            # for this lineage and scope and never offered again.
+            await self._auth.settle(submitted, accepted=False)
+            submitted.discard()
+            if self._auth.owns(candidate):
+                return await self._matched(executor, subject, candidate, sample, attempts - 1)
+            return sample
+        submitted.discard()
+        return sample
+
+    async def _matched(self, executor, subject, candidate, requirement, attempts):
+        """Match a requirement of the deciding request's own candidate against
+        the authentication-input owner and continue the SAME acquisition."""
+        if attempts <= 0:
+            return requirement
+        resolution = await self._auth.resolve(candidate, requirement)
+        if resolution.outcome == "satisfied":
+            return await self._with_input(executor, subject, candidate, resolution.submitted, attempts)
+        if resolution.outcome == "challenge":
+            return resolution.requirement
+        if resolution.outcome == "identity_changed":
+            return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+        # Another consumer is validating the same material: an unresolved
+        # fact for this decision, never a second prompt.
+        return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "input_pending")
 
 
 def _retained(candidate, sample):

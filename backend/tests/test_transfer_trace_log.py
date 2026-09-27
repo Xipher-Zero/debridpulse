@@ -172,7 +172,9 @@ async def test_trace_sanitizes_credentials_and_capabilities_but_keeps_structure(
     assert text.count(json.dumps(CAPABILITY)[1:-1]) == 0
     request = next(item["row"] for item in trace["data"]["transfer_requests"] if item["scope"] == "context")
     owner_payload = json.loads(request["payload"])["payload"]
-    assert re.fullmatch(r"https://<redacted-secret-\d+>@files\.example\.com/<redacted-resource-\d+>", owner_payload)
+    # The submitted userinfo never reached durable state at all: admission split
+    # it out as USER_SUPPLIED material, so only the capability path is redacted.
+    assert re.fullmatch(r"https://files\.example\.com/<redacted-resource-\d+>", owner_payload)
     # Rows are kept; only the unsafe value is replaced.
     blob = trace["data"]["deferred_provider_submissions"][0]["row"]
     assert blob["filename"] == "part.torrent" and blob["payload"]["$redacted"] == "opaque"

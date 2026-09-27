@@ -11,15 +11,32 @@
   executor selection. The provider has its own Enable control, independent of HTTP & HTTPS; disabling
   it never changes aria2's transport claim.
 - **Direct-link submission accepts HTTP, HTTPS, FTP and SFTP** through the one existing admission path.
-  Mixed batches are valid and URLs with embedded credentials are still rejected.
-- **SCP Network Source** (`general_scp`). `scp://` and `ssh://` links to one exact remote file are
-  claimed by the SCP provider and downloaded by aria2 over SFTP, through the existing SFTP server-identity
-  and credential dialog, evidence acquisition and equivalence. Port 22 is the default, an explicit port is
-  kept, bracketed IPv6 and the SCP-style `host:/path` form are accepted, and `ssh://` never means anything
-  but retrieving that one file. Transfers stay labelled SCP (Lucide FileDown, lavender) and Details keeps the
-  submitted `scp://`/`ssh://` link, while Route History names the SFTP endpoint that was executed. Directories,
-  wildcards, home-relative paths and credentials embedded in the link are refused, and the provider has its
-  own Enable control under Network Sources.
+  Mixed batches are valid; credentials written into a link are split out at admission (see below).
+- **SCP Network Source** (`general_scp`). `scp://` and `ssh://` links are claimed by the SCP provider and
+  downloaded by aria2 over SFTP. An exact file is one download; a folder (trailing `/`) offers the regular
+  files directly inside it, and a pattern in the last path component (`*`, `?`) offers the matching ones --
+  through the existing file selection, with the member set frozen at discovery so retries never re-list.
+  Sub-folders are never entered and symbolic links never followed. Port 22 is the default, an explicit port
+  is kept, bracketed IPv6 and the SCP-style `host:/path` form are accepted, and `ssh://` never means
+  anything but retrieving files. Transfers stay labelled SCP (Lucide FileDown, lavender); Details keeps the
+  submitted link, while Route History names the SFTP endpoint executed. A path under `~/` (the SSH URI
+  form for the login folder) is resolved by the server through SFTP before anything downloads, so aria2
+  only ever receives the concrete path; another user's `~name`, fragments, bracket classes and patterns in
+  folder names are refused. The provider has its own Enable control.
+- **Details shows the submitted FTP and SFTP link** as Original Resource (scheme, host, non-default port
+  and path; a query only as `?…`, never credentials) instead of only the file name, through the same
+  remote-file presentation owner SCP and SSH use.
+- **One transfer-authentication owner for every Network Source.** Credentials a submitted link carries
+  (`https://user:password@host/...`, `scp://user:password@host/...`) are split out at admission, before
+  anything is stored, and used as the answer the transfer would otherwise ask for; an answer given in the
+  authentication dialog is used the same way. Either is reused only within that submission and only for the
+  same server and port -- every file of a folder, never an unrelated transfer -- and is validated once even
+  when many files need it at the same moment. A rejected answer is never retried automatically: the dialog
+  asks once. Server identity stays a separate confirmation: supplied credentials never skip it, and when
+  they are already held the dialog asks only for the identity. Everything is held in memory only and
+  destroyed when the transfer finishes, is cancelled or deleted, or DebridPulse restarts; semantic events
+  (supplied, accepted, rejected, identity confirmed, discovery) are recorded for the Transfer Trace without
+  any value. The packaged aria2 authenticates SFTP by password only, so private-key sign-in is not offered.
 - **FTP and SFTP authentication through the existing INPUT_REQUIRED lifecycle.** aria2 reports a login
   request only from the exact characterized native evidence (FTP `530`, SFTP password rejection). A
   bare native code, a missing path or a permission failure is never treated as a login request.

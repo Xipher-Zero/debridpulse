@@ -64,9 +64,12 @@ async def test_provider_defensively_rejects_userinfo_and_invalid_scheme():
     assert invalid.value.error.category == Category.INVALID_REQUEST
 
 
-def test_direct_link_admission_rejects_userinfo_before_request_persistence():
-    with pytest.raises(ValueError, match="Credentials embedded"):
-        normalize_direct_links(["https://user:password@example.com/file"])
+def test_direct_link_intake_leaves_userinfo_for_the_core_admission_boundary_to_split():
+    # Credentials are split out as USER_SUPPLIED material by
+    # ``TransferEngine.submit`` before the request is persisted; intake only
+    # validates the link (see test_v113_transfer_auth_context.py).
+    assert normalize_direct_links(["https://user:password@example.com/file"]) == [
+        "https://user:password@example.com/file"]
 
 
 def test_definition_uses_existing_backend_enablement_and_priority_model():

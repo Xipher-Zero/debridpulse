@@ -41,7 +41,6 @@ async function openSources(page) {
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
-const canonical = page => page.request.get('/api/settings').then(r => r.json());
 
 /** The real disclosure and the real body it controls, never a source string. */
 async function disclosureState(page, selector) {
@@ -59,47 +58,30 @@ async function disclosureState(page, selector) {
   }, selector);
 }
 
-let original = null;
-
-test.beforeAll(async ({request}) => {
-  const settings = await request.get('/api/settings').then(r => r.json());
-  original = {
-    alldebrid: settings.integrations.alldebrid?.enabled !== false,
-  };
-});
-
 /* `integrations.usenet.enabled` belongs to usenet-server-cards.spec.js alone
- * (spec files share one backend and run concurrently). This spec only needs
- * Usenet SHOWN enabled, so the page is served the live settings document with
- * that one fact prepared -- nothing is written to the shared key. */
-async function serveUsenetEnabled(page) {
+ * and `integrations.alldebrid.enabled` to settings-providers-persistence.spec.js
+ * alone (spec files share one backend and run concurrently). This spec only
+ * needs both providers SHOWN enabled, so the page is served the live settings
+ * document with those facts prepared -- nothing is written to a shared key. */
+async function serveProvidersEnabled(page) {
   await page.route(url => url.pathname === '/api/settings', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
     const live = await response.json();
     const usenet = {...live.integrations.usenet, enabled: true};
-    await route.fulfill({response, json: {...live, integrations: {...live.integrations, usenet}}});
+    const alldebrid = {...live.integrations.alldebrid, enabled: true};
+    await route.fulfill({response, json: {...live, integrations: {...live.integrations, usenet, alldebrid}}});
   });
 }
-
-test.afterAll(async ({request}) => {
-  if (!original) return;
-  for (const [id, enabled] of Object.entries(original)) {
-    await request.patch(`/api/integrations/${id}/configuration`, {data: {enabled}});
-  }
-});
 
 test.beforeEach(async ({page}) => {
   await isolateExternalFonts(page);
 });
 
 test('every expandable Services card is collapsed on navigation', async ({page}) => {
-  // Drive the providers ENABLED first: the whole point is that an enabled
+  // Show the providers ENABLED first: the whole point is that an enabled
   // provider is not thereby an expanded one.
-  await page.request.patch('/api/integrations/alldebrid/configuration', {data: {enabled: true}});
-  const settings = await canonical(page);
-  expect(settings.integrations.alldebrid.enabled).toBe(true);
-  await serveUsenetEnabled(page);
+  await serveProvidersEnabled(page);
 
   await page.goto('/');
   await openSources(page);

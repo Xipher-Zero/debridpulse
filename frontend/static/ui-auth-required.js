@@ -18,6 +18,9 @@
   const FACT_FINGERPRINT = 'server_identity_fingerprint';
   const METHOD_PASSWORD = 'username_password';
   const METHOD_PRIVATE_KEY = 'username_private_key';
+  // Confirm the observed identity only: the backend already holds usable
+  // credentials for this transfer, so none are asked for (or sent) again.
+  const METHOD_IDENTITY = 'server_identity';
   const SCAN_INTERVAL_MS = 3000;
   const OUTCOME_POLL_MS = 300;
   const MAX_KEY_BYTES = 256 * 1024;
@@ -153,11 +156,13 @@
     return {
       password: methodAdvertised(challenge, METHOD_PASSWORD),
       key: methodAdvertised(challenge, METHOD_PRIVATE_KEY),
+      identity: methodAdvertised(challenge, METHOD_IDENTITY),
     };
   }
 
   function chooseMode(active) {
     const allowed = allowedModes(active.challenge);
+    if (allowed.identity && !allowed.password && !allowed.key) return 'identity';
     if (active.keySelected && allowed.key) return 'key';
     if (allowed.password) return 'password';
     return 'key';
@@ -212,6 +217,8 @@
               <code class="dp-auth-required-fingerprint" data-dp-identity-fingerprint></code>
               <p class="dp-auth-required-identity-note" id="dp-auth-required-identity-note">Compare this fingerprint with the server's expected identity before continuing.</p>
             </div>` : ''}
+          ${active.mode === 'identity' ? `
+            <p class="dp-auth-required-identity-note" data-dp-auth-credentials-held>Credentials for this server were already supplied.</p>` : `
           <label class="dp-auth-required-field">
             <span class="form-label">Username</span>
             <input class="input" type="text" autocomplete="off" spellcheck="false"
@@ -222,7 +229,7 @@
             <input class="input" type="password" autocomplete="off"
                    ${secretRequired ? 'required' : ''}
                    data-dp-auth-secret>
-          </label>
+          </label>`}
           <div class="dp-auth-required-error" id="dp-auth-required-error"
                data-dp-auth-error role="status" aria-live="polite" hidden></div>
         </div>
@@ -385,6 +392,9 @@
 
   function validationError(active) {
     snapshotFields();
+    if (active.mode === 'identity') {
+      return methodAdvertised(active.challenge, METHOD_IDENTITY) ? '' : 'Identity confirmation is no longer available.';
+    }
     const username = text(active.username).trim();
     if (fieldRequired(active.challenge, active.mode === 'key' ? METHOD_PRIVATE_KEY : METHOD_PASSWORD, 'username') && !username) {
       return 'Username is required.';
@@ -411,13 +421,13 @@
     const challenge = active.challenge;
     const identity = currentIdentity(challenge);
     const session = state.session;
-    const method = active.mode === 'key' ? METHOD_PRIVATE_KEY : METHOD_PASSWORD;
-    const payload = {
-      challenge_id: text(challenge.id),
-      method,
-      username: active.username,
-    };
-    if (method === METHOD_PRIVATE_KEY) {
+    const method = active.mode === 'identity' ? METHOD_IDENTITY
+      : active.mode === 'key' ? METHOD_PRIVATE_KEY : METHOD_PASSWORD;
+    const payload = {challenge_id: text(challenge.id), method};
+    if (method !== METHOD_IDENTITY) payload.username = active.username;
+    if (method === METHOD_IDENTITY) {
+      // Nothing secret is sent: the identity decision is the whole answer.
+    } else if (method === METHOD_PRIVATE_KEY) {
       payload.private_key = active.keyMaterial;
       if (active.passphrase) payload.passphrase = active.passphrase;
     } else {

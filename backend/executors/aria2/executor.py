@@ -21,15 +21,15 @@ from urllib.parse import urlsplit
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
-    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, ftp_fingerprint, sampled_public_artifact_fingerprint,
-    sftp_fingerprint,
+    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, Listing, ListingRefused, ftp_fingerprint,
+    sampled_public_artifact_fingerprint, sftp_fingerprint, sftp_listing,
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.models import (
-    ArtifactFingerprint, ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ArtifactFingerprint, DiscoveredEntry, DiscoveryResult, ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
@@ -104,7 +104,7 @@ class Aria2Executor:
     # intent keeps paused, so per-execution controls converge global pause.
     capabilities = ExecutorCapabilities(
         candidate_sampling=True, per_execution_pause=True, aggregate_bandwidth_ceiling=True,
-        transient_input=True, materialization_kinds=frozenset({MaterializationKind.FILE}),
+        transient_input=True, remote_discovery=True, materialization_kinds=frozenset({MaterializationKind.FILE}),
     )
 
     def __init__(self, client: Aria2Service, configuration: Aria2Configuration,
@@ -332,25 +332,99 @@ class Aria2Executor:
             # a credential. Without advertised input there is no sample.
             if not accepts_input:
                 return None
-            host = str(urlsplit(endpoint.address).hostname or "").rstrip(".").casefold()
-            identity = None
-            if submitted is not None:
-                identity = self._confirmed_evidence_identity(host, submitted)
-                if identity is None:
-                    return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+            access = self._sftp_access(endpoint.address, submitted)
+            if access is None:
+                return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
+            host, identity, username, password = access
             result = await sftp_fingerprint(
                 endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
                 host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
-                username=credentials[0] if credentials else "", password=credentials[1] if credentials else "",
+                username=username, password=password,
             )
             if isinstance(result, AccessRequired):
-                if not host or not _SHA1_IDENTITY.fullmatch(result.server_identity) \
-                        or result.server_identity == _HOST_KEY_SENTINEL:
+                requirement = self._sftp_requirement(host, result.server_identity)
+                if requirement is None:
                     return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
-                return server_identity_required(username_password(), host=host, algorithm="sha-1",
-                                                fingerprint=result.server_identity)
+                return requirement
             return ArtifactFingerprint(*result)
         return None
+
+    def _sftp_access(self, address: str, submitted: SubmittedInput | None):
+        """THE one SFTP trust and credential decision, for evidence and discovery.
+
+        ``(host, confirmed identity, username, password)``: without input the
+        server identity is only observed (no credential is sent); with input,
+        only the exact SHA-1 identity the operator confirmed for this host is
+        trusted and only username/password material is offered. ``None`` means
+        the input cannot be used here and nothing may be attempted."""
+        host = str(urlsplit(address).hostname or "").rstrip(".").casefold()
+        if submitted is None:
+            return host, None, "", ""
+        username, password = submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)
+        if submitted.method != InputMethod.USERNAME_PASSWORD or not username or not password:
+            return None
+        identity = self._confirmed_evidence_identity(host, submitted)
+        if identity is None:
+            return None
+        return host, identity, username, password
+
+    @staticmethod
+    def _sftp_requirement(host: str, observed: str) -> InputRequirement | None:
+        if not host or not _SHA1_IDENTITY.fullmatch(observed) or observed == _HOST_KEY_SENTINEL:
+            return None
+        return server_identity_required(username_password(), host=host, algorithm="sha-1", fingerprint=observed)
+
+    # Definitive listing refusals and unavailable facts, as normalized failures.
+    _LISTING_FAILURES = {
+        "not_found": (Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Retryability.NEVER),
+        "permission_denied": (Domain.RESOLUTION, Category.AUTHORIZATION_FAILED, Retryability.NEVER),
+        "not_a_directory": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER),
+        "too_many_entries": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
+        "auth_method_unsupported": (Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Retryability.NEVER),
+        "sftp_unavailable": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
+        "destination_rejected": (Domain.SECURITY, Category.DESTINATION_BLOCKED, Retryability.NEVER),
+        "timeout": (Domain.NETWORK, Category.CONNECTION_TIMEOUT, Retryability.BACKOFF),
+    }
+
+    async def discover(self, subject, submitted: SubmittedInput | None = None):
+        """Read-only listing of one SFTP directory before any candidate exists.
+
+        The same identity/credential decision (``_sftp_access``), egress route,
+        host-key order and session primitive as evidence: the identity the
+        operator confirms here is the identity aria2 later verifies."""
+        candidate = subject.candidate
+        endpoint = self._endpoint(candidate)
+        if (endpoint is None or endpoint.scheme != "sftp"
+                or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods):
+            raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
+        try:
+            await validate_resolved_public_destination(endpoint.address)
+        except DestinationLookupError as exc:
+            raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.RESOLUTION,
+                retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
+        except ValueError as exc:
+            raise self._failure(Category.DESTINATION_BLOCKED, Stage.RESOLUTION, domain=Domain.SECURITY) from exc
+        access = self._sftp_access(endpoint.address, submitted)
+        if access is None:
+            raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+        host, identity, username, password = access
+        result = await sftp_listing(
+            endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
+            host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity, username=username, password=password,
+        )
+        if isinstance(result, AccessRequired):
+            requirement = self._sftp_requirement(host, result.server_identity)
+            if requirement is None:
+                raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+            return requirement
+        if isinstance(result, Listing):
+            return DiscoveryResult(tuple(DiscoveredEntry(name, size) for name, size in result.entries),
+                                   result.directory)
+        reason = result.reason if isinstance(result, ListingRefused) else result[3]
+        domain, category, retryability = self._LISTING_FAILURES.get(
+            reason, (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF))
+        raise TransferError(NormalizedError(domain, category, Stage.RESOLUTION, retryability=retryability,
+                                            integration_id=self.descriptor.id, diagnostic=reason))
 
     @staticmethod
     def _confirmed_evidence_identity(host: str, submitted: SubmittedInput) -> str | None:

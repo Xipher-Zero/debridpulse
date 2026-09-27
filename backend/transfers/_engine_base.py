@@ -107,7 +107,7 @@ import time
 from weakref import WeakValueDictionary
 
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import Cleanup, Inventory, ProviderInputContinuation
+from transfers.contracts import Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
@@ -117,18 +117,21 @@ from transfers.filesystem import (
     adoptable_material, destination, material_initially_absent, materialization_plan, retire_materialization,
     safe_name, validate_plan, verified_material_paths, verify_materialization,
 )
-from transfers.input_required import EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected
+from transfers.input_required import (
+    AuthOutcome, EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected, split_user_supplied,
+)
+from transfers.requests import auth_scope
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, InputChallenge,
-    InputOrigin, InputRequirement, MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation,
+    InputOrigin, InputReason, InputRequirement, MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation,
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.mirrors import EvidenceContext, shared_size
-from transfers.policy import TransferPolicy
+from transfers.policy import TERMINAL_TRANSFER_STATES, TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
@@ -198,6 +201,30 @@ class _ResolutionCycle:
 
     def in_flight(self, transfer_id: int) -> int:
         return sum(owner == transfer_id for owner in self.units.values())
+
+
+class _EvidenceAuth:
+    """Binds one materialization decision to the authentication-input owner
+    for the deciding request's OWN candidates (a peer's candidate never uses
+    this lineage's material)."""
+
+    __slots__ = ("engine", "transfer_id", "chain", "own")
+
+    def __init__(self, engine, transfer_id: int, chain: tuple[str, ...], candidates):
+        self.engine = engine
+        self.transfer_id = transfer_id
+        self.chain = chain
+        self.own = {str(candidate.id) for candidate in candidates}
+
+    def owns(self, candidate) -> bool:
+        return str(candidate.id) in self.own
+
+    async def resolve(self, candidate, requirement):
+        return await self.engine.inputs.resolve(self.transfer_id, self.chain,
+                                                self.engine._input_scope(candidate), requirement)
+
+    async def settle(self, submitted, *, accepted: bool):
+        return await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted)
 
 
 class TransferEngine:
@@ -327,7 +354,20 @@ class TransferEngine:
     async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, reacquire=True, deduplicate=True):
         if not requests or len(requests) > 100 or any(not isinstance(item, TransferRequest) or not item.kind or not item.payload for item in requests):
             raise TransferError(self._error(Category.INVALID_REQUEST, Stage.SUBMISSION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
+        # The admission boundary: credentials a resource carries are split out
+        # as USER_SUPPLIED material before anything is persisted, so only the
+        # sanitized resource is ever durable.
+        split = [split_user_supplied(item.payload) for item in requests]
+        requests = tuple(replace(item, payload=payload) if values else item
+                         for item, (payload, values) in zip(requests, split))
         transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate)
+        if created and any(values for _payload, values in split):
+            # An independent submission never joins another lineage's material,
+            # so material is admitted only with the transfer it created.
+            roots = [record for record in await self.repository.requests(transfer.id) if record.parent_id is None]
+            for record, (_payload, values) in zip(roots, split):
+                if values:
+                    await self._admit_supplied(transfer.id, record.id, record.request.payload, values)
         if not created and reacquire and transfer.state in {TransferState.COMPLETED, TransferState.DELETED}:
             if not await self.retry(transfer.id, reacquire=True):
                 raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION))
@@ -1061,6 +1101,12 @@ class TransferEngine:
                     await self._dispatch(artifact)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
                     await self._refresh(artifact)
+                elif (dispatch_allowed and artifact.state == "input_required"
+                      and await self.challenges.current(transfer_id) is None
+                      and await self._live(transfer_id, admission=True)):
+                    # A sibling held for a question no longer outstanding asks
+                    # (or matches) for itself again.
+                    await self.repository.artifact_state(artifact.id, "queued", release=True)
             except Exception as exc:
                 error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
                     integration_id=artifact.execution.executor_id if artifact.execution else "",
@@ -1080,19 +1126,37 @@ class TransferEngine:
         raise NotImplementedError("_resolve is implemented by transfers.engine.TransferEngine")
 
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
-                                *, challenge: InputChallenge | None = None):
+                                *, challenge: InputChallenge | None = None, submitted=None):
         result = self._authoritative_provider_result(provider.descriptor.id, result, request_kind=record.request.kind)
+        if result.discovery is not None:
+            if result.error or result.candidates or result.observation or result.input_required:
+                raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+            discovered = await self._discover(record, provider, result, submitted)
+            if isinstance(discovered, InputRequirement):
+                await self._provider_input_required(record, attempt, provider, discovered, challenge)
+                return
+            result = self._authoritative_provider_result(provider.descriptor.id, discovered,
+                                                         request_kind=record.request.kind)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
             if not isinstance(provider, ProviderInputContinuation):
                 raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
                                                 retryability=Retryability.NEVER))
-            if challenge:
-                await self.challenges.replace(challenge, result.input_required)
-            else:
-                await self.challenges.wait_provider(attempt, result.input_required, provider.descriptor.id)
-            return
+            resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.request.payload),
+                                                 result.input_required)
+            if resolution.outcome == AuthOutcome.SATISFIED:
+                matched = resolution.submitted
+                try:
+                    result = self._authoritative_provider_result(
+                        provider.descriptor.id, await provider.resolve_with_input(record.request, matched),
+                        request_kind=record.request.kind)
+                finally:
+                    matched.discard()
+                await self._settle_input(record.transfer_id, matched.token, accepted=not result.input_required)
+            if result.input_required:
+                await self._provider_input_required(record, attempt, provider, result.input_required, challenge)
+                return
         live = await self.repository.resolution(attempt, result)
         if challenge:
             await self.challenges.clear(challenge)
@@ -1112,6 +1176,68 @@ class TransferEngine:
                 return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
+
+    async def _provider_input_required(self, record: RequestRecord, attempt: ResolutionAttempt, provider,
+                                       requirement: InputRequirement, challenge: InputChallenge | None) -> None:
+        """Ask once, through the one lifecycle, for input resolution needs --
+        after the authentication-input owner had its chance to answer."""
+        resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.request.payload),
+                                             requirement)
+        requirement = resolution.requirement or requirement
+        if challenge:
+            await self.challenges.replace(challenge, requirement)
+        else:
+            await self.challenges.wait_provider(attempt, requirement, provider.descriptor.id)
+
+    async def _discover(self, record: RequestRecord, provider, requested: ResolutionResult, submitted=None):
+        """THE core-run authenticated remote discovery a provider asked for.
+
+        One read-only listing of one directory, before any candidate exists,
+        through the executor the claim router selects for that subject -- so
+        the server identity it trusts and the credential it offers are decided
+        exactly as for execution. The authentication-input owner answers any
+        requirement it can (its material is settled by the listing's outcome);
+        otherwise the requirement is returned for the one INPUT_REQUIRED
+        lifecycle. The provider only receives the neutral result."""
+        request = requested.discovery
+        if not isinstance(provider, DiscoveryResolution):
+            raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
+                                            retryability=Retryability.NEVER))
+        candidate = TransferCandidate(record.request.name or "", (request.endpoint,), provider_id=provider.descriptor.id,
+                                      accepted_input_methods=request.accepted_input_methods,
+                                      request_kind=record.request.kind)
+        subject = ExecutionSubject.of(candidate)
+        executor = self.registry.executor_for_subject(subject)
+        if not executor.capabilities.remote_discovery:
+            raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.EXECUTOR,
+                                            retryability=Retryability.NEVER))
+        scope = self._input_scope(candidate)
+        family = scope.family if scope is not None else ""
+        try:
+            for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
+                try:
+                    outcome = await executor.discover(subject, submitted)
+                finally:
+                    if submitted is not None:
+                        submitted.discard()
+                if not isinstance(outcome, InputRequirement):
+                    if submitted is not None:
+                        await self._settle_input(record.transfer_id, submitted.token, accepted=True)
+                    await self.challenges.record(record.transfer_id, "discovery_completed", family)
+                    return await provider.resolve_discovered(record.request, outcome)
+                if submitted is not None:
+                    await self._settle_input(record.transfer_id, submitted.token, accepted=False)
+                resolution = await self._match_input(record.transfer_id, record.id, scope, outcome)
+                if resolution.outcome == AuthOutcome.IDENTITY_CHANGED:
+                    raise TransferError(self._error(Category.HOST_KEY_FAILURE, Stage.RESOLUTION, domain=Domain.SECURITY,
+                                                    retryability=Retryability.NEVER))
+                if resolution.outcome != AuthOutcome.SATISFIED:
+                    return resolution.requirement or outcome
+                submitted = resolution.submitted
+            return outcome
+        except TransferError:
+            await self.challenges.record(record.transfer_id, "discovery_failed", family)
+            raise
 
     @staticmethod
     def _file_manifest_root(record: RequestRecord, provider) -> bool:
@@ -1183,6 +1309,7 @@ class TransferEngine:
             await self.inputs.clear(challenge.id)
             return
         submitted = None
+        secrets = ()
         bound_provider_id = await self.repository.bound_route_provider(record.id)
         try:
             if not bound_provider_id or bound_provider_id != challenge.integration_id:
@@ -1191,22 +1318,27 @@ class TransferEngine:
                     retryability=Retryability.NEVER,
                 ))
             provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.request)
-            if not isinstance(provider, ProviderInputContinuation):
-                raise TransferError(self._error(
-                    Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
-                    retryability=Retryability.NEVER,
-                ))
             async with self._resolution_slot():
                 if not await self._live(challenge.transfer_id, admission=True):
                     return
-                submitted = await self.inputs.take(challenge)
+                submitted = await self._take_input(challenge, record.id, auth_scope(record.request.payload))
                 if submitted is None:
                     return
-                result = await provider.resolve_with_input(record.request, submitted)
+                secrets = submitted.secret_values()
+                if isinstance(provider, ProviderInputContinuation):
+                    result = await provider.resolve_with_input(record.request, submitted)
+                    discovery_input = None
+                else:
+                    # A provider that asked core for discovery states its
+                    # request again; the answer continues that discovery.
+                    result = await provider.resolve(record.request)
+                    discovery_input = submitted
             attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id, "input_required")
-            return await self._apply_resolution(record, attempt, provider, result, challenge=challenge)
+            if discovery_input is None:
+                await self._settle_input(record.transfer_id, submitted.token, accepted=not result.input_required)
+            return await self._apply_resolution(record, attempt, provider, result, challenge=challenge,
+                                                submitted=discovery_input)
         except Exception as exc:
-            secrets = submitted.secret_values() if submitted else ()
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=bound_provider_id or challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
             attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id or challenge.integration_id, "input_required")
@@ -1286,36 +1418,52 @@ class TransferEngine:
         record, candidates, candidate, executor = target
         # Evidence acquisition is not provider-resolution I/O.
         self._resolution_slot_released()
-        submitted = await self.inputs.take(challenge)
+        submitted = await self._take_input(challenge, record.id, self._input_scope(candidate))
         if submitted is None:
             return
+        secrets = submitted.secret_values()
         try:
+            # The answer now belongs to this one ordinary decision: the
+            # materialization owner hands it, once, to the writer admitted for
+            # exactly this candidate (``_hand_off_proven``) or discards it.
             context = EvidenceContext(inputs={str(candidate.id): submitted})
+            submitted = None
             await self._materialize(record, candidates, evidence=context)
             current = await self.challenges.current(challenge.transfer_id)
             if current is not None and current.id == challenge.id:
                 await self.challenges.clear(challenge)
-            proven = context.proven_evidence(candidate.id)
-            if proven is not None:
-                # The evidence (never the input) outlives this decision, so a
-                # later mirror can compare against this canonical member after
-                # the transient input is gone -- including across restarts.
-                await self.canonical.retain_evidence(str(candidate.id), proven)
-                artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
-                                 if item.request_id == record.id), None)
-                if (artifact is not None and artifact.execution is None and artifact.candidates
-                        and str(artifact.candidates[artifact.selected].id) == str(candidate.id)):
-                    await self.inputs.hand_off(record.transfer_id, record.id, str(candidate.id),
-                                               executor.descriptor.id, submitted)
-                    submitted = None
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=challenge.integration_id, domain=Domain.EXECUTOR, stage=Stage.CANDIDATE_PREPARATION,
-                secrets=submitted.secret_values() if submitted else ())
+                secrets=secrets)
             await self.challenges.clear(challenge)
             await self._request_failure(record, error)
         finally:
             if submitted:
+                submitted.discard()
+
+    async def _hand_off_proven(self, record: RequestRecord, evidence: EvidenceContext) -> None:
+        """THE disposal of transient input one materialization decision used.
+
+        Input that proved one of ``record``'s candidates -- answered through a
+        challenge or matched from the lineage's USER_SUPPLIED material -- is
+        handed, once, to the writer admitted for exactly that candidate; the
+        evidence (never the input) is retained with the canonical member, so a
+        later mirror can compare against it after the input is gone, including
+        across restarts. Everything else is discarded here."""
+        supplied = evidence.take_supplied()
+        if not supplied:
+            return
+        artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
+                         if item.request_id == record.id), None)
+        for candidate_id, executor_id, submitted in supplied:
+            proven = evidence.proven_evidence(candidate_id)
+            if proven is not None:
+                await self.canonical.retain_evidence(candidate_id, proven)
+            if (artifact is not None and artifact.execution is None and artifact.candidates
+                    and str(artifact.candidates[artifact.selected].id) == candidate_id):
+                await self.inputs.hand_off(record.transfer_id, record.id, candidate_id, executor_id, submitted)
+            else:
                 submitted.discard()
 
     async def _observe_resource(self, record: RequestRecord):
@@ -1687,9 +1835,11 @@ class TransferEngine:
                     )
                     if occupied >= max(1, self.policy.max_active_executions) or not await self.runtime.admit(executor):
                         return
-                    submitted = await self.inputs.take(challenge)
+                    submitted = await self._take_input(challenge, artifact.request_id, self._input_scope(candidate))
                     if submitted is None:
                         return
+                    await self.inputs.mark_use(artifact.transfer_id, artifact.request_id, str(candidate.id),
+                                               submitted.token)
                     observed = await executor.start_with_input(request, artifact.execution, submitted)
                     current = next(item for item in await self.repository.artifacts(challenge.transfer_id) if item.id == artifact.id)
                     await self._execution_result(current, executor, observed)
@@ -1722,9 +1872,11 @@ class TransferEngine:
                 )
                 if occupied >= max(1, self.policy.max_active_executions) or not await self.runtime.admit(executor):
                     return
-                submitted = await self.inputs.take(challenge)
+                submitted = await self._take_input(challenge, artifact.request_id, self._input_scope(candidate))
                 if submitted is None:
                     return
+                await self.inputs.mark_use(artifact.transfer_id, artifact.request_id, str(candidate.id),
+                                           submitted.token)
                 prepared = executor.prepare_with_input(request, submitted)
                 if isinstance(prepared, InputRequirement):
                     await self.challenges.replace(challenge, prepared)
@@ -1755,6 +1907,41 @@ class TransferEngine:
             if submitted:
                 submitted.discard()
 
+    async def _executor_input_required(self, artifact: Artifact, executor, candidate: TransferCandidate,
+                                       observed: ExecutionObservation, requirement: InputRequirement) -> None:
+        """An execution's ordinary requirement, matched by the one
+        authentication-input owner before anyone is asked.
+
+        Material the attempt was started with is rejected first (never offered
+        again). Material the lineage holds for this target scope starts the
+        next attempt of this same candidate through the existing handoff. A
+        transfer asks one question at a time: a sibling needing the same
+        answer is held unasked and released when it settles. A server identity
+        that differs from the one confirmed in this lineage fails closed and is
+        never re-presented."""
+        used = await self.inputs.release_use(artifact.transfer_id, artifact.request_id, str(candidate.id))
+        if used is not None:
+            await self._settle_input(artifact.transfer_id, used, accepted=False)
+        resolution = await self._match_input(artifact.transfer_id, artifact.request_id, self._input_scope(candidate),
+                                             requirement)
+        if resolution.outcome == AuthOutcome.SATISFIED:
+            await self.inputs.hand_off(artifact.transfer_id, artifact.request_id, str(candidate.id),
+                                       executor.descriptor.id, resolution.submitted)
+            await self.repository.artifact_state(artifact.id, "queued", release=True)
+            return
+        if resolution.outcome == AuthOutcome.IDENTITY_CHANGED:
+            error = self._error(Category.HOST_KEY_FAILURE, Stage.EXECUTION, domain=Domain.SECURITY,
+                                retryability=Retryability.NEVER)
+            await self.repository.artifact_state(artifact.id, "error", error=error)
+            await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+            return
+        current = await self.challenges.current(artifact.transfer_id)
+        if resolution.outcome == AuthOutcome.PENDING or (current is not None and current.artifact_id != artifact.id):
+            await self.repository.artifact_state(artifact.id, "input_required")
+            return
+        await self.challenges.wait_executor(artifact, executor.descriptor.id, observed.handle.attempt_id,
+                                            resolution.requirement)
+
     async def _retire_executor_challenge(self, challenge: InputChallenge, artifact: Artifact) -> None:
         """Retire an executor-origin challenge whose executor stopped being the
         selected claimant, and return the artifact to ordinary routing without
@@ -1778,12 +1965,18 @@ class TransferEngine:
         idle_seconds = await self.repository.execution_idle_seconds(observed, self.clock())
         await self.repository.execution(observed)
         if artifact.candidates and executor.capabilities.transient_input:
-            requirement = executor.input_requirement(artifact.candidates[artifact.selected], observed)
+            candidate = artifact.candidates[artifact.selected]
+            requirement = executor.input_requirement(candidate, observed)
             if requirement is not None:
                 if not isinstance(requirement, InputRequirement):
                     raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RECONCILIATION))
-                await self.challenges.wait_executor(artifact, executor.descriptor.id, observed.handle.attempt_id, requirement)
+                await self._executor_input_required(artifact, executor, candidate, observed, requirement)
                 return
+            if observed.state == ExecutionState.SUCCEEDED or observed.progress.completed_bytes > 0:
+                # Bytes arrived: the material this attempt was started with is proven.
+                token = await self.inputs.release_use(artifact.transfer_id, artifact.request_id, str(candidate.id))
+                if token is not None:
+                    await self._settle_input(artifact.transfer_id, token, accepted=True)
         if not await self._live(artifact.transfer_id):
             await self.repository.execution(await self._cancel_execution(executor, observed.handle))
             return
@@ -1929,6 +2122,10 @@ class TransferEngine:
         using the EXACT artifact snapshot the decision was made from."""
         challenge = await self.challenges.current(transfer_id)
         outcome = await self.repository.aggregate_lifecycle(transfer_id, input_required=bool(challenge))
+        transfer = await self.repository.get(transfer_id)
+        if transfer is not None and transfer.state in TERMINAL_TRANSFER_STATES:
+            # A terminal lineage has no legitimate consumer left.
+            await self.inputs.discard_transfer(transfer_id)
         if outcome is None:
             return
         if outcome.should_complete:
@@ -2068,6 +2265,52 @@ class TransferEngine:
             raise InputSubmissionRejected("Input challenge is stale")
         await self.inputs.submit(challenge, method, values)
         return challenge
+
+    # ── Authentication Input Context: the engine is the owner's one consumer ──
+
+    async def _lineage(self, transfer_id: int, request_id) -> tuple[str, ...]:
+        """``request_id`` first, then each ancestor; the lineage root last."""
+        records = {item.id: item for item in await self.repository.requests(transfer_id)}
+        chain, current = [], records.get(str(request_id))
+        while current is not None and current.id not in chain:
+            chain.append(current.id)
+            current = records.get(current.parent_id) if current.parent_id else None
+        return tuple(chain) or (str(request_id),)
+
+    @staticmethod
+    def _input_scope(candidate):
+        return auth_scope(candidate.endpoints[0].address) if candidate is not None and candidate.endpoints else None
+
+    async def _admit_supplied(self, transfer_id: int, request_id: str, address, values) -> None:
+        scope = auth_scope(address)
+        if await self.inputs.supply(transfer_id, request_id, scope, values, origin="admission"):
+            await self.challenges.record(transfer_id, "auth_supplied", scope.family)
+
+    async def _match_input(self, transfer_id: int, request_id, scope, requirement):
+        return await self.inputs.resolve(transfer_id, await self._lineage(transfer_id, request_id), scope, requirement)
+
+    async def _settle_input(self, transfer_id: int, token, *, accepted: bool):
+        transition = await self.inputs.settle(token, accepted=accepted)
+        if transition is not None:
+            await self.challenges.record(transfer_id, transition[0], transition[1])
+            if accepted:
+                await self._release_input_holds(transfer_id)
+        return transition
+
+    async def _take_input(self, challenge: InputChallenge, request_id, scope):
+        submitted = await self.inputs.take(challenge, chain=await self._lineage(challenge.transfer_id, request_id),
+                                           scope=scope)
+        if submitted is not None and scope is not None and challenge.reason == InputReason.SERVER_IDENTITY_REQUIRED:
+            await self.challenges.record(challenge.transfer_id, "server_identity_confirmed", scope.family)
+        return submitted
+
+    async def _release_input_holds(self, transfer_id: int) -> None:
+        """Siblings held unasked while one lineage answer was being settled
+        return to ordinary dispatch; each then matches that answer itself."""
+        current = await self.challenges.current(transfer_id)
+        for artifact in await self.repository.artifacts(transfer_id):
+            if artifact.state == "input_required" and (current is None or current.artifact_id != artifact.id):
+                await self.repository.artifact_state(artifact.id, "queued", release=True)
 
     async def cancel(self, transfer_id: int):
         lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())

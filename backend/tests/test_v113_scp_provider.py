@@ -1,12 +1,15 @@
-"""1.0.13: the SCP Network Sources provider (exact remote files only).
+"""1.0.13: the SCP Network Sources provider.
 
 ``scp://`` and remote-file ``ssh://`` requests are interpreted once, by one
-provider, into one ordinary neutral candidate whose executable endpoint is the
-equivalent ``sftp://`` address. The existing aria2 SFTP claim, evidence
-acquisition, server-identity challenge and INPUT_REQUIRED lifecycle own
-everything after that; nothing here teaches the core about SCP. Directory,
-wildcard and home-relative sources, and credentials embedded in the URL, are
-refused clearly rather than guessed at.
+provider. An exact file is one ordinary neutral candidate whose executable
+endpoint is the equivalent ``sftp://`` address; a directory or a final-component
+pattern asks core for one read-only discovery of the containing directory and
+turns the neutral result into the existing file manifest. The existing aria2
+SFTP claim, evidence acquisition, server-identity challenge, authentication-
+input owner and INPUT_REQUIRED lifecycle own everything after that; nothing
+here teaches the core about SCP. Home-relative paths, fragments, bracket
+classes and patterns in directory components are refused rather than guessed
+at, and credentials never reach the provider (core splits them at admission).
 """
 from __future__ import annotations
 
@@ -60,7 +63,7 @@ def test_one_provider_claims_exactly_scp_and_ssh() -> None:
     assert provider.descriptor.name == "SCP"
     assert provider.descriptor.request_types == frozenset({"scp", "ssh"})
     assert provider.applicability.generic_schemes == frozenset({"scp", "ssh"})
-    assert {item.value for item in provider.descriptor.capabilities} == {"resolve"}
+    assert {item.value for item in provider.descriptor.capabilities} == {"resolve", "resource_lookup", "file_manifest"}
 
 
 def test_the_definition_is_a_network_sources_member_named_scp() -> None:
@@ -136,7 +139,7 @@ async def test_an_explicit_request_name_is_kept() -> None:
     assert (await _candidate("scp://files.example.org/x.bin", name="Chosen.bin")).name == "Chosen.bin"
 
 
-# ── 3. Refused shapes (exact files only) ──────────────────────────────────────
+# ── 3. Refused shapes ────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("url", [
@@ -169,17 +172,77 @@ async def test_malformed_requests_are_invalid(url, kind) -> None:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("url", [
-    "scp://files.example.org/home/xipher/releases/",      # directory source
-    "scp://files.example.org/home/xipher/releases/*.rar",  # wildcard source
-    "scp://files.example.org/home/*/release.rar",          # wildcard directory component
-    "scp://files.example.org/home/xipher/file?.bin",       # '?' wildcard / query
-    "scp://files.example.org/home/[ab].bin",
-    "scp://files.example.org/~/file.bin",                  # home-relative: no shell, no guessing
-    "ssh://files.example.org/~xipher/file.bin",
+    "scp://files.example.org/home/*/release.rar",          # pattern in a directory component
+    "scp://files.example.org/*/r/release.rar",
+    "scp://files.example.org/home/[ab].bin",               # no bracket classes
+    "ssh://files.example.org/~xipher/file.bin",            # another user's home: never guessed
     "scp://files.example.org/f.bin#part",
 ])
 async def test_unsupported_source_shapes_fail_closed_and_never_reach_an_executor(url) -> None:
     assert await _failure(url) == Category.UNSUPPORTED_REQUEST
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,directory", [
+    ("scp://files.example.org/home/xipher/releases/", "sftp://files.example.org/home/xipher/releases/"),
+    ("ssh://files.example.org:2222/home/xipher/releases/*.rar", "sftp://files.example.org:2222/home/xipher/releases/"),
+    ("scp://files.example.org/home/xipher/file-?.bin", "sftp://files.example.org/home/xipher/"),
+    ("scp://[2001:db8::1]:/data/", "sftp://[2001:db8::1]/data/"),
+])
+async def test_directory_and_final_component_pattern_ask_core_for_one_discovery(url, directory) -> None:
+    result = await _provider().resolve(_request(url))
+    assert result.candidates == () and result.observation is None
+    assert result.discovery.endpoint.scheme == "sftp"
+    assert result.discovery.endpoint.address == directory
+    assert result.discovery.accepted_input_methods == (InputMethod.USERNAME_PASSWORD,)
+
+
+def _discovered(*names):
+    from transfers.models import DiscoveredEntry, DiscoveryResult
+    return DiscoveryResult(tuple(DiscoveredEntry(name, 7) for name in names))
+
+
+@pytest.mark.asyncio
+async def test_discovered_members_freeze_into_the_existing_manifest_and_are_never_relisted() -> None:
+    provider = _provider()
+    request = _request("ssh://files.example.org:2222/home/x/r/*.rar")
+    result = await provider.resolve_discovered(request, _discovered("b.rar", "a.rar", "notes.txt", "c*.rar"))
+    observation = result.observation
+    assert observation.state == ResourceState.AVAILABLE
+    assert [entry.relative_path for entry in observation.file_manifest.entries] == ["a.rar", "b.rar", "c*.rar"]
+    assert "@" not in str(dict(observation.resource.context))
+    again = await provider.observe(observation.resource)  # observation never re-lists
+    assert again.file_manifest == observation.file_manifest
+    members = await provider.manifest(observation.resource)
+    assert [(entry.relative_path, entry.request.kind, entry.request.payload) for entry in members] == [
+        ("a.rar", "ssh", "ssh://files.example.org:2222/home/x/r/a.rar"),
+        ("b.rar", "ssh", "ssh://files.example.org:2222/home/x/r/b.rar"),
+        # A listed name's own pattern characters are literal in its member URL.
+        ("c*.rar", "ssh", "ssh://files.example.org:2222/home/x/r/c%2A.rar"),
+    ]
+    member = (await provider.resolve(members[2].request)).candidates[0]
+    assert member.endpoints[0].address == "sftp://files.example.org:2222/home/x/r/c%2A.rar"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,names", [
+    ("scp://files.example.org/r/*.iso", ("a.rar", "b.txt")),
+    ("scp://files.example.org/r/", ()),
+])
+async def test_a_pattern_or_directory_without_members_is_a_missing_source(url, names) -> None:
+    with pytest.raises(TransferError) as raised:
+        await _provider().resolve_discovered(_request(url), _discovered(*names))
+    assert raised.value.error.category == Category.SOURCE_NOT_FOUND
+
+
+@pytest.mark.parametrize("pattern,name,matches", [
+    ("*.iso", "a.iso", True), ("*.iso", "a.iso.part", False), ("file-?.bin", "file-1.bin", True),
+    ("file-?.bin", "file-10.bin", False), ("%2A.bin", "*.bin", True), ("%2A.bin", "a.bin", False),
+    ("a.b", "axb", False),  # regular-expression characters are literal
+])
+def test_pattern_matching_is_literal_apart_from_star_and_question_mark(pattern, name, matches) -> None:
+    from providers.general_scp.provider import _pattern
+    assert bool(_pattern(pattern).fullmatch(name)) is matches
 
 
 @pytest.mark.asyncio
@@ -193,7 +256,7 @@ def test_the_provider_does_no_io_no_shell_and_owns_no_trust_or_credentials() -> 
     for forbidden in ("aiohttp", "httpx", "urlopen", "socket", "asyncssh", "paramiko", "subprocess",
                       "os.system", "shlex", "glob", "fnmatch", "expanduser", "expandvars", "executors.",
                       "ssh-host-key", "known_hosts", "ftp-user", "ftp-passwd", "username_private_key",
-                      "input_required", "server_identity", "context="):
+                      "input_required", "server_identity", "readdir", "listdir", "fnmatch"):
         assert forbidden not in source, forbidden
 
 
@@ -283,14 +346,9 @@ def test_direct_link_admission_accepts_scp_and_ssh() -> None:
     assert normalize_direct_links(links) == links
 
 
-@pytest.mark.parametrize("link", ["scp://user:hunter2@a.invalid/f", "ssh://user@a.invalid/f"])
-def test_embedded_credentials_are_refused_clearly_at_admission_without_echoing_them(link) -> None:
-    with pytest.raises(ValueError) as raised:
-        normalize_direct_links([link])
-    message = str(raised.value)
-    assert message.startswith("Credentials embedded in URLs are not supported")
-    assert "asks" in message  # the operator is told where credentials go instead
-    assert "hunter2" not in message and "user" not in message
+@pytest.mark.parametrize("link", ["scp://user:hunter2@a.invalid/f", "ssh://user@a.invalid/d/"])
+def test_intake_accepts_credentials_for_the_core_admission_boundary_to_split(link) -> None:
+    assert normalize_direct_links([link]) == [link]
 
 
 def test_admission_wording_names_every_accepted_transport() -> None:
@@ -356,3 +414,64 @@ def test_quick_add_accepts_scp_and_ssh_links() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     assert "/^(?:https?|s?ftp|scp|ssh):\\/\\/\\S+$/i" in app
     assert "enter an HTTP(S), FTP, SFTP, SCP or SSH link or a magnet URI" in app
+
+
+# ── Home-relative paths: resolved by the one discovery owner, never a shell ──
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url,directory", [
+    ("scp://files.example.org/~/data/file.bin", "sftp://files.example.org/~/data/"),   # exact file
+    ("ssh://files.example.org:2222/~/data/", "sftp://files.example.org:2222/~/data/"),  # directory
+    ("scp://files.example.org/~/data/*.iso", "sftp://files.example.org/~/data/"),       # pattern
+    ("scp://files.example.org/~/file.bin", "sftp://files.example.org/~/"),
+])
+async def test_home_relative_sources_ask_discovery_to_resolve_the_real_directory(url, directory) -> None:
+    result = await _provider().resolve(_request(url))
+    assert result.candidates == ()
+    assert result.discovery.endpoint.address == directory
+
+
+@pytest.mark.asyncio
+async def test_a_home_relative_exact_file_becomes_one_candidate_at_its_resolved_path() -> None:
+    from transfers.models import DiscoveredEntry, DiscoveryResult
+    discovered = DiscoveryResult((DiscoveredEntry("file.bin", 9), DiscoveredEntry("other.bin", 1)),
+                                 directory="/home/alice/data")
+    result = await _provider().resolve_discovered(_request("scp://files.example.org/~/data/file.bin"), discovered)
+    candidate = result.candidates[0]
+    assert candidate.endpoints[0].address == "sftp://files.example.org/home/alice/data/file.bin"
+    assert candidate.expected_bytes == 9 and candidate.provider_id == SCP
+
+
+@pytest.mark.asyncio
+async def test_a_home_relative_directory_freezes_members_at_their_resolved_paths() -> None:
+    from transfers.models import DiscoveredEntry, DiscoveryResult
+    provider = _provider()
+    result = await provider.resolve_discovered(
+        _request("ssh://files.example.org/~/data/"),
+        DiscoveryResult((DiscoveredEntry("a b.bin", 3),), directory="/home/alice/data"))
+    members = await provider.manifest(result.observation.resource)
+    assert [entry.request.payload for entry in members] == ["ssh://files.example.org/home/alice/data/a%20b.bin"]
+
+
+@pytest.mark.asyncio
+async def test_a_missing_home_relative_file_is_a_missing_source() -> None:
+    from transfers.models import DiscoveredEntry, DiscoveryResult
+    with pytest.raises(TransferError) as raised:
+        await _provider().resolve_discovered(_request("scp://files.example.org/~/data/file.bin"),
+                                             DiscoveryResult((DiscoveredEntry("x", 1),), directory="/home/a/data"))
+    assert raised.value.error.category == Category.SOURCE_NOT_FOUND
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["ssh://files.example.org/~alice/file.bin", "scp://files.example.org/data/~/f.bin"])
+async def test_another_users_home_or_a_mid_path_tilde_stays_refused(url) -> None:
+    result_or_failure = None
+    try:
+        result_or_failure = await _provider().resolve(_request(url))
+    except TransferError as exc:
+        result_or_failure = exc.error.category
+    if url.endswith("/data/~/f.bin"):
+        # A '~' segment in the middle of an absolute path is an ordinary name.
+        assert result_or_failure.candidates[0].endpoints[0].address == "sftp://files.example.org/data/~/f.bin"
+    else:
+        assert result_or_failure == Category.UNSUPPORTED_REQUEST

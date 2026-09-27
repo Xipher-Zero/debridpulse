@@ -5,11 +5,13 @@ const { test, expect } = require('@playwright/test');
  * visible toggle can never report ON while canonical state is OFF.
  *
  * Usenet's toggle is proven the same way in usenet-server-cards.spec.js, the
- * ONE spec file that owns `integrations.usenet.enabled`: spec files share one
- * backend and run concurrently, so a second file flipping or asserting that key
- * races the file whose server collection needs Usenet ON. */
+ * ONE spec file that owns `integrations.usenet.enabled`, and AllDebrid's in
+ * settings-providers-persistence.spec.js, the ONE owner of
+ * `integrations.alldebrid.enabled`: spec files share one backend and run
+ * concurrently, so a second file flipping or asserting either key races the
+ * file whose cards need that provider ON. */
 
-const TOGGLES = ['alldebrid', 'general_http', 'general_ftp'];
+const TOGGLES = ['general_http', 'general_ftp'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>

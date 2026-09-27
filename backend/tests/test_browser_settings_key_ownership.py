@@ -31,7 +31,17 @@ SPEC_DIR = Path(__file__).resolve().parents[2] / "frontend" / "browser"
 # is guarded per integration id.
 OWNERS = {
     "usenet": "usenet-server-cards.spec.js",
+    # The file whose credential and card tests depend on AllDebrid's live
+    # state; its own cases run serially, so its Enable round-trip cannot race
+    # them. Three files used to flip this key concurrently.
+    "alldebrid": "settings-providers-persistence.spec.js",
 }
+
+# Spec files that serve EVERY settings document they render themselves: their
+# reads of ``integrations.<id>.enabled`` read their own fixture, never the shared
+# backend. Enforced by ``test_an_injected_document_spec_never_reaches_the_shared_settings``;
+# their writes (if any) still count.
+INJECTED_DOCUMENT_SPECS = {"ui-fix-ws1-p2.spec.js"}
 
 _ID = r"[a-z0-9_]+"
 _VAR = r"[A-Za-z_$][\w$]*"
@@ -217,6 +227,8 @@ def _dependents() -> dict[str, dict[str, set[str]]]:
     found: dict[str, dict[str, set[str]]] = {}
     for path in sorted(SPEC_DIR.glob("*.spec.js")):
         writes, reads = _Spec(path.read_text(encoding="utf-8")).enabled_sites()
+        if path.name in INJECTED_DOCUMENT_SPECS:
+            reads = set()
         for identity in writes | reads:
             kinds = found.setdefault(identity, {}).setdefault(path.name, set())
             kinds |= {"writes"} if identity in writes else set()
@@ -234,6 +246,20 @@ def test_a_guarded_integration_enabled_key_has_exactly_one_owning_spec_file(iden
         f"integrations.{identity}.enabled is mutated or asserted live by more than one spec file: "
         f"{ {name: sorted(kinds) for name, kinds in sorted(dependents.items())} }. Spec files share one "
         f"backend and run concurrently; only {owner} may touch it, others render an injected settings document")
+
+
+@pytest.mark.parametrize("name", sorted(INJECTED_DOCUMENT_SPECS))
+def test_an_injected_document_spec_never_reaches_the_shared_settings(name):
+    code = _strip_comments((SPEC_DIR / name).read_text(encoding="utf-8"))
+    # It fulfils the settings document from its own state...
+    route = re.search(r"page\.route\(\s*'\*\*/api/settings'\s*,", code)
+    assert route, f"{name} does not serve its own settings document"
+    handler = _balanced(code, code.index("(", route.start()))
+    assert "route.fulfill(" in handler and "route.fetch(" not in handler and "route.continue(" not in handler
+    # ...answers every integration configuration write itself...
+    assert re.search(r"page\.route\(/\\/api\\/integrations\\/", code), f"{name} lets integration writes through"
+    # ...and never talks to the shared backend's settings directly.
+    assert not re.search(r"\brequest\.(?:get|patch|put|post)\(", code), f"{name} reads or writes live settings"
 
 
 @pytest.mark.parametrize("source, writes, reads", [

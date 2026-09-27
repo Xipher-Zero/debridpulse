@@ -59,3 +59,21 @@ def test_provider_capability_cannot_replace_durable_original_resource():
     assert "CAPABILITY_SECRET" not in str(result)
     assert "SIGNED" not in str(result)
     assert "unlocked" not in result["original_resource"]
+
+
+# ── One sanitized-resource owner for every remote-file transport ─────────────
+
+import pytest  # noqa: E402
+
+
+@pytest.mark.parametrize("kind,payload,expected", [
+    ("ftp", "ftp://files.example.org:2121/pub/My%20File.iso", "ftp://files.example.org:2121/pub/My%20File.iso"),
+    ("ftp", "ftp://files.example.org/pub/archive.zip?type=i", "ftp://files.example.org/pub/archive.zip?…"),
+    ("sftp", "sftp://mirror.example.net:22/data/set/a.bin", "sftp://mirror.example.net/data/set/a.bin"),
+    ("sftp", "sftp://u:secret@mirror.example.net/data/a.bin", "sftp://mirror.example.net/data/a.bin"),
+    ("scp", "scp://files.example.org/r/file-?.bin", "scp://files.example.org/r/file-?.bin"),
+])
+def test_ftp_and_sftp_present_the_safe_submitted_resource_not_a_filename(kind, payload, expected):
+    value = _safe_original_resource(_request(kind, payload, "a-filename-only"))
+    assert value == expected
+    assert "secret" not in value

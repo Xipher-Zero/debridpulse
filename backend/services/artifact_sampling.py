@@ -19,6 +19,7 @@ to be hashed.
 from __future__ import annotations
 
 import asyncio
+from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
 import logging
@@ -485,6 +486,8 @@ def _ssh_options(host_key_algorithms, timeout: float) -> dict:
     # Nothing from the local account participates: no config files, no
     # known_hosts file (never read, never written), no agent, no client keys,
     # no GSS, no X.509 trust store -- only the explicit identity decision above.
+    # Only password authentication is offered: keyboard-interactive or any
+    # other mechanism is never answered with material supplied for a password.
     return dict(
         known_hosts=lambda _host, _addr, _port: ([], [], []), config=None, client_keys=None,
         agent_path=None, gss_host=None, x509_trusted_certs=None, preferred_auth=["password"],
@@ -492,36 +495,70 @@ def _ssh_options(host_key_algorithms, timeout: float) -> dict:
     )
 
 
+class _SessionRefused(Exception):
+    """The SSH/SFTP session ended in a typed fact rather than a session."""
+
+    def __init__(self, outcome):
+        super().__init__("SFTP session refused")
+        self.outcome = outcome
+
+
+@asynccontextmanager
+async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None,
+                        username: str, password: str, timeout: float):
+    """THE one SSH/SFTP session primitive: identity, then authentication, then SFTP.
+
+    Without ``host_identity`` the server's host key is only observed and
+    refused as ``AccessRequired(observed)``; no credential is sent. With it, a
+    presented key that differs fails closed during key exchange -- before
+    authentication -- and only then is the password offered. A server that
+    never offers password authentication is an unsupported method, never an
+    access requirement: the supplied material cannot answer it. Evidence and
+    discovery both run on this one session, so they cannot trust differently."""
+    host = str(urlsplit(address).hostname or "")
+    client = _IdentityCheck(host_identity)
+    offered = []
+
+    def supply_password():
+        offered.append(True)
+        return password or None
+
+    sock = await connect(None)
+    try:
+        connection, _ = await asyncssh.create_connection(
+            lambda: client, host, sock=sock, username=username or "evidence", password=supply_password,
+            **_ssh_options(host_key_algorithms, timeout))
+    except asyncssh.HostKeyNotVerifiable:
+        if not host_identity and client.observed:
+            raise _SessionRefused(AccessRequired(client.observed)) from None
+        raise _SessionRefused(unavailable("destination_rejected")) from None
+    except asyncssh.PermissionDenied:
+        if not offered:
+            raise _SessionRefused(unavailable("auth_method_unsupported")) from None
+        raise _SessionRefused(AccessRequired(host_identity or client.observed)) from None
+    async with connection:
+        try:
+            sftp = await connection.start_sftp_client()
+        except (asyncssh.ChannelOpenError, asyncssh.SFTPError):
+            raise _SessionRefused(unavailable("sftp_unavailable")) from None
+        async with sftp:
+            yield sftp
+
+
 async def sftp_fingerprint(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
                            username: str = "", password: str = "", sample_bytes: int = SAMPLE_BYTES,
                            timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Sample | AccessRequired:
-    """Bounded SFTP evidence behind a confirmed server identity.
-
-    Without ``host_identity`` the server's host key is only observed and
-    returned for confirmation; no credential is sent. With it, a presented key
-    that differs fails closed during key exchange -- before authentication --
-    and only then are the credentials offered, the file STATed and two bounded
-    offset windows read. ``host_key_algorithms`` is the caller's executor
+    """Bounded SFTP evidence behind a confirmed server identity: STAT, then two
+    bounded offset windows. ``host_key_algorithms`` is the caller's executor
     preference order, so the key observed here is the key execution verifies."""
     size = sample_size(sample_bytes)
     timeout = max(5.0, float(timeout_seconds))
     path = unquote(urlsplit(address).path)
-    host = str(urlsplit(address).hostname or "")
-    client = _IdentityCheck(host_identity)
     try:
         async with asyncio.timeout(timeout):
-            sock = await connect(None)
-            try:
-                connection, _ = await asyncssh.create_connection(
-                    lambda: client, host, sock=sock, username=username or "evidence", password=password or None,
-                    **_ssh_options(host_key_algorithms, timeout))
-            except asyncssh.HostKeyNotVerifiable:
-                if not host_identity and client.observed:
-                    return AccessRequired(client.observed)
-                return unavailable("destination_rejected")
-            except asyncssh.PermissionDenied:
-                return AccessRequired(host_identity or client.observed)
-            async with connection, connection.start_sftp_client() as sftp:
+            async with _sftp_session(address, connect=connect, host_key_algorithms=host_key_algorithms,
+                                     host_identity=host_identity, username=username, password=password,
+                                     timeout=timeout) as sftp:
                 try:
                     attributes = await sftp.stat(path)
                 except asyncssh.SFTPError:
@@ -532,6 +569,88 @@ async def sftp_fingerprint(address: str, *, connect: Connect, host_key_algorithm
                     async def window(offset: int, count: int) -> bytes:
                         return await handle.read(count, offset)
                     return await _offset_windows(int(attributes.size), window, size)
+    except _SessionRefused as refused:
+        return refused.outcome
+    except TimeoutError:
+        return unavailable("timeout")
+    except PermissionError:
+        return unavailable("destination_rejected")
+    except (asyncssh.Error, ConnectionError, OSError, ValueError):
+        return unavailable("sampler_unavailable")
+
+
+@dataclass(frozen=True)
+class Listing:
+    """The immediate regular files of one directory: ``(name, size)`` pairs,
+    listed in ``directory``, the server's concrete absolute path for it."""
+    entries: tuple[tuple[str, int], ...]
+    directory: str = ""
+
+
+def _listed_path(address: str) -> tuple[str, bool]:
+    """``(path, home_relative)`` for one SFTP directory address.
+
+    ``/~/`` is the SSH URI form for the login (home) directory. It is sent to
+    the server as a RELATIVE path, which SFTP resolves against that directory
+    by protocol definition (``realpath``) -- never expanded here, never by a
+    shell, and never for another user's home."""
+    path = unquote(urlsplit(address).path) or "/"
+    if path == "/~" or path.startswith("/~/"):
+        return path[3:] or ".", True
+    return path, False
+
+
+@dataclass(frozen=True)
+class ListingRefused:
+    """A definitive refusal of the directory itself, by SFTP status."""
+    reason: str
+
+
+# SFTP status codes that name a definitive refusal of the listed path.
+_LISTING_STATUS = {
+    asyncssh.FX_NO_SUCH_FILE: "not_found", asyncssh.FX_NO_SUCH_PATH: "not_found",
+    asyncssh.FX_PERMISSION_DENIED: "permission_denied", asyncssh.FX_NOT_A_DIRECTORY: "not_a_directory",
+}
+MAX_LISTED_ENTRIES = 10_000
+
+
+async def sftp_listing(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
+                       username: str = "", password: str = "",
+                       timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Listing | ListingRefused | AccessRequired | Sample:
+    """Read-only listing of exactly one directory, on the one session primitive.
+
+    Only the directory's immediate entries are read; only regular files are
+    returned -- a subdirectory is never entered and a symbolic link (to a file
+    or a directory) is never followed. Returns ``AccessRequired`` exactly as
+    evidence does, a typed ``ListingRefused`` for a definitive refusal of the
+    path, or an unavailable ``Sample`` fact for anything transient."""
+    timeout = max(5.0, float(timeout_seconds))
+    path, home_relative = _listed_path(address)
+    try:
+        async with asyncio.timeout(timeout):
+            async with _sftp_session(address, connect=connect, host_key_algorithms=host_key_algorithms,
+                                     host_identity=host_identity, username=username, password=password,
+                                     timeout=timeout) as sftp:
+                try:
+                    if home_relative:
+                        path = await sftp.realpath(path)
+                    names = await sftp.readdir(path)
+                except asyncssh.SFTPError as exc:
+                    reason = _LISTING_STATUS.get(exc.code)
+                    return ListingRefused(reason) if reason else unavailable("sampler_unavailable")
+                if len(names) > MAX_LISTED_ENTRIES:
+                    return ListingRefused("too_many_entries")
+                entries = []
+                for item in names:
+                    name = item.filename if isinstance(item.filename, str) else item.filename.decode("utf-8", "replace")
+                    # READDIR attributes describe the entry itself (lstat), so a
+                    # symbolic link is reported as a link and never as its target.
+                    if name in {".", ".."} or "/" in name or item.attrs.type != asyncssh.FILEXFER_TYPE_REGULAR:
+                        continue
+                    entries.append((name, int(item.attrs.size or 0)))
+                return Listing(tuple(sorted(entries)), path if isinstance(path, str) else path.decode())
+    except _SessionRefused as refused:
+        return refused.outcome
     except TimeoutError:
         return unavailable("timeout")
     except PermissionError:

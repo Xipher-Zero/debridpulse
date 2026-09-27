@@ -14,6 +14,11 @@ const { test, expect } = require('@playwright/test');
  * ordinary value change and commits on blur through the integration's existing
  * scoped mutation; ERASING one is an explicit, confirmed Clear; Test tests and
  * never saves. The browser never retains a secret as an accepted baseline.
+ *
+ * This file is the ONE spec file that mutates or asserts the live
+ * `integrations.alldebrid.enabled` (spec files share one backend and run
+ * concurrently): every case here needs the AllDebrid card body shown, which it
+ * is only while AllDebrid is enabled, and this file's own cases run serially.
  */
 
 const RATE_LIMIT = '#dp-settings-field-alldebrid-rate-limit-per-minute';
@@ -180,6 +185,27 @@ test.afterEach(async ({page}) => {
   await page.request.patch('/api/transfer-policy',
     {data: {provider_poll_interval_seconds: baseline.provider_poll_interval_seconds}});
 });
+
+// --- immediate: the AllDebrid Enable -------------------------------------
+
+test('the AllDebrid Enable persists canonical state immediately, with no page-level save',
+  async ({page}) => {
+    const toggle = page.locator('[data-integration-enabled="alldebrid"]');
+    const enabled = async () => (await settings(page)).integrations.alldebrid.enabled;
+    const before = await enabled();
+    // The visible toggle never reports ON while canonical state is OFF.
+    await expect(toggle).toBeChecked({checked: before !== false});
+    const label = page.locator('label[for="dp-settings-integration-alldebrid-enabled"]');
+
+    await label.click();
+    await expect.poll(enabled).toBe(!before);
+    await expect(toggle).toBeChecked({checked: !before});
+
+    // And back again, still with no page-level save.
+    await label.click();
+    await expect.poll(enabled).toBe(!!before);
+    await expect(toggle).toBeChecked({checked: !!before});
+  });
 
 // --- 6.2 changed-blur -----------------------------------------------------
 

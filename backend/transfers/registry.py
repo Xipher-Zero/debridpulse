@@ -10,7 +10,7 @@ from transfers.applicability import (
 from transfers.contracts import (
     ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
-    ExecutorInputRecovery,
+    ExecutorInputRecovery, RemoteDiscovery,
     ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, ResourceLookup,
     Manifest,
 )
@@ -39,6 +39,7 @@ _EXECUTOR_CAPABILITIES = {
     "aggregate_throughput": (ExecutorAggregateThroughput,),
     "native_assisted_retry": (ExecutorNativeRetry,),
     "transient_input": (ExecutorInputContinuation, ExecutorInputRecovery),
+    "remote_discovery": (RemoteDiscovery,),
 }
 
 # The runtime availability fact that may narrow each static capability.

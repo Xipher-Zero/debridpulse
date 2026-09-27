@@ -48,6 +48,10 @@ class InputOrigin(StrEnum):
 class InputMethod(StrEnum):
     USERNAME_PASSWORD = "username_password"
     USERNAME_PRIVATE_KEY = "username_private_key"
+    # Confirm an observed server identity and supply nothing else: offered
+    # only when the authentication-input owner already holds usable
+    # credentials for that scope. Identity and credentials stay separate facts.
+    SERVER_IDENTITY = "server_identity"
 
 
 class InputField(StrEnum):
@@ -76,6 +80,8 @@ class InputMethodDescriptor:
             expected = {InputField.USERNAME: True, InputField.PASSWORD: True}
         elif self.method == InputMethod.USERNAME_PRIVATE_KEY:
             expected = {InputField.USERNAME: True, InputField.PRIVATE_KEY: True, InputField.PASSPHRASE: False}
+        elif self.method == InputMethod.SERVER_IDENTITY:
+            expected = {}
         else:
             raise ValueError("Unsupported authentication method")
         if actual != expected:
@@ -434,6 +440,36 @@ class ProviderObservation:
 
 
 @dataclass(frozen=True)
+class DiscoveryRequest:
+    """A provider's request that core list ONE remote directory for it.
+
+    ``endpoint`` names the directory in the transport that would execute its
+    members; core runs the listing read-only through the executor that claims
+    it, under the one authentication-input and server-identity owner, and
+    hands the neutral result back to the provider. A provider never opens the
+    connection itself."""
+    endpoint: Endpoint
+    accepted_input_methods: tuple[InputMethod, ...] = ()
+
+
+@dataclass(frozen=True)
+class DiscoveredEntry:
+    """One regular file found directly inside a discovered directory."""
+    name: str
+    expected_bytes: int = 0
+
+
+@dataclass(frozen=True)
+class DiscoveryResult:
+    """The immediate regular-file members of one directory; nothing recursive,
+    no directories, no symbolic links, no remote-browser state. ``directory``
+    is the concrete absolute path they were listed in, as the server resolved
+    it -- so a home-relative request reaches execution as a canonical path."""
+    entries: tuple[DiscoveredEntry, ...]
+    directory: str = ""
+
+
+@dataclass(frozen=True)
 class ResolutionResult:
     """Candidates are alternatives for one request; manifests describe members."""
     state: ResourceState
@@ -441,6 +477,9 @@ class ResolutionResult:
     observation: ProviderObservation | None = None
     error: NormalizedError | None = None
     input_required: InputRequirement | None = None
+    # Core-run remote discovery the provider needs before it can describe the
+    # resource (``DiscoveryResolution.resolve_discovered`` receives the result).
+    discovery: DiscoveryRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -535,6 +574,10 @@ class ExecutorCapabilities:
     aggregate_throughput: bool = False
     native_assisted_retry: bool = False
     transient_input: bool = False
+    # Read-only listing of one remote directory before any candidate exists,
+    # behind the same trust and authentication the executor applies to
+    # execution (``transfers.contracts.RemoteDiscovery``).
+    remote_discovery: bool = False
     materialization_kinds: frozenset[MaterializationKind] = frozenset({MaterializationKind.FILE})
 
     def __post_init__(self):

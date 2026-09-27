@@ -60,6 +60,11 @@ async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
     await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
 
 
+def manifest_child_identity(parent_id: str, relative_path: str) -> str:
+    """The durable identity of one manifest member request under ``parent_id``."""
+    return uuid5(NAMESPACE_URL, f"request:{parent_id}:{relative_path}").hex
+
+
 @dataclass(frozen=True)
 class AggregateLifecycleOutcome:
     """Result of one atomic ``TransferRepository.aggregate_lifecycle`` call.
@@ -1944,8 +1949,7 @@ class TransferRepository:
             if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return
             missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
-            identities = [uuid5(NAMESPACE_URL, f"request:{record.id}:{entry.relative_path}").hex
-                          for entry in entries]
+            identities = [manifest_child_identity(record.id, entry.relative_path) for entry in entries]
             await self._retire_superseded_children(db, record, identities, missing_error)
             for ordinal, entry in enumerate(entries):
                 identity = identities[ordinal]

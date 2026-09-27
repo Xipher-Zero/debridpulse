@@ -17,8 +17,13 @@ def test_authentication_methods_are_exact_and_passphrase_is_not_a_method() -> No
     assert set(InputMethod) == {
         InputMethod.USERNAME_PASSWORD,
         InputMethod.USERNAME_PRIVATE_KEY,
+        # Confirming an observed server identity when credentials are already
+        # held: an answer with no fields, never an authentication mechanism.
+        InputMethod.SERVER_IDENTITY,
     }
     assert all(method.value != "passphrase" for method in InputMethod)
+    from transfers.input_required import server_identity_confirmation
+    assert server_identity_confirmation().fields == ()
 
 
 def test_username_password_descriptor_requires_only_username_and_password() -> None:

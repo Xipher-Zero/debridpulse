@@ -64,11 +64,12 @@ class DirectLinkInputTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL"):
                     normalize_direct_links([link])
 
-    def test_rejects_embedded_userinfo_for_every_transport(self):
+    def test_leaves_embedded_userinfo_for_the_core_admission_boundary(self):
+        # ``TransferEngine.submit`` splits it out as USER_SUPPLIED material
+        # before anything is persisted; intake only validates the link.
         for link in ("ftp://u:p@a.invalid/f", "sftp://u@a.invalid/f", "https://u:p@a.invalid/f", "http://:p@a.invalid/f"):
             with self.subTest(link=link):
-                with self.assertRaisesRegex(ValueError, "Credentials embedded in URLs are not supported"):
-                    normalize_direct_links([link])
+                self.assertEqual(normalize_direct_links([link]), [link])
 
     def test_empty_submission_names_every_accepted_transport(self):
         with self.assertRaisesRegex(ValueError, "At least one HTTP, HTTPS, FTP, SFTP, SCP or SSH link is required"):

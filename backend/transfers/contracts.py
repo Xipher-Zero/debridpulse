@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 from transfers.applicability import ProviderApplicability
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CleanupDirective, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    CleanupDirective, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -45,6 +45,15 @@ class RequestApplicabilitySource(Protocol):
 @runtime_checkable
 class ProviderInputContinuation(Protocol):
     async def resolve_with_input(self, request: TransferRequest, submitted: SubmittedInput) -> ResolutionResult: ...
+
+
+@runtime_checkable
+class DiscoveryResolution(Protocol):
+    """A provider that asked core for remote discovery (``ResolutionResult.discovery``)
+    turns the neutral result into its ordinary resolution. It never lists,
+    connects or authenticates itself."""
+
+    async def resolve_discovered(self, request: TransferRequest, discovered: DiscoveryResult) -> ResolutionResult: ...
 
 
 @runtime_checkable
@@ -209,6 +218,22 @@ class CandidateSamplingContinuation(Protocol):
 
     async def fingerprint_with_input(self, subject: ExecutionSubject,
                                      submitted: SubmittedInput) -> ArtifactFingerprint | InputRequirement | None: ...
+
+
+@runtime_checkable
+class RemoteDiscovery(Protocol):
+    """``capabilities.remote_discovery``: read-only listing of one directory
+    subject, before any candidate exists, behind exactly the server-identity
+    and authentication decisions execution applies.
+
+    Answers the neutral ``InputRequirement`` when access input is definitively
+    needed (the one INPUT_REQUIRED lifecycle and the authentication-input owner
+    carry it; ``submitted`` is that owner's answer), a ``DiscoveryResult`` of the
+    directory's immediate regular files, or raises a normalized
+    ``TransferError`` for a definitive failure."""
+
+    async def discover(self, subject: ExecutionSubject,
+                       submitted: SubmittedInput | None = None) -> DiscoveryResult | InputRequirement: ...
 
 
 @runtime_checkable
