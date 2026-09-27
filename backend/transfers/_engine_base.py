@@ -780,6 +780,9 @@ class TransferEngine:
                 challenge = challenges[transfer.id]
                 await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations,
                                                dispatch_allowed=challenge is None)
+                if challenge is None and await self.challenges.release_provider_holds(transfer.id):
+                    # A resolution held unasked re-enters ordinary resolution.
+                    self._resolution_opportunity(transfer.id)
                 if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
             await self._release_runtime_reservations()
@@ -1186,6 +1189,11 @@ class TransferEngine:
         requirement = resolution.requirement or requirement
         if challenge:
             await self.challenges.replace(challenge, requirement)
+            return
+        current = await self.challenges.current(record.transfer_id)
+        if current is not None and current.request_id != record.id:
+            # One question at a time: held unasked, released when it settles.
+            await self.challenges.hold_provider(attempt, provider.descriptor.id)
         else:
             await self.challenges.wait_provider(attempt, requirement, provider.descriptor.id)
 

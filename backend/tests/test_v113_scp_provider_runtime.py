@@ -10,6 +10,8 @@ everything else, and the submitted request stays the operator's own SCP/SSH URL.
 """
 from __future__ import annotations
 
+import asyncio
+
 import pytest
 
 import db.database as database
@@ -94,8 +96,45 @@ async def test_exact_scp_or_ssh_file_downloads_through_the_existing_sftp_identit
         await runtime.close()
 
 
+class WriterGatedOrigin(SftpOrigin):
+    """An SFTP origin that serves content reads from the in-process evidence
+    sampler (an AsyncSSH client) at once, but holds a real aria2 writer's reads
+    (libssh2) until the test opens ``writers``. The writer's lifetime is then
+    the test's to decide, never a race against download speed."""
+
+    def __init__(self, root, credentials=(USER, PASSWORD)):
+        super().__init__(root, credentials)
+        self.writers = asyncio.Event()
+
+    async def start(self, algorithms=("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256")):
+        import asyncssh
+        from test_v113_transport_evidence_sampling import _SshServer
+        origin = self
+
+        class Files(asyncssh.SFTPServer):
+            def __init__(self, chan):
+                super().__init__(chan, chroot=str(origin.root))
+
+            async def read(self, file_obj, offset, size):
+                if "libssh2" in str(self.connection.get_extra_info("client_version", "")):
+                    await origin.writers.wait()
+                origin.read_bytes.append(size)
+                return super().read(file_obj, offset, size)
+
+        self.server = await asyncssh.listen(
+            "127.0.0.1", 0, server_host_keys=[self.keys[alg] for alg in algorithms],
+            server_factory=lambda: _SshServer(origin), sftp_factory=Files, allow_scp=False)
+        self.port = self.server.sockets[0].getsockname()[1]
+        return self
+
+
 async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_equivalence(tmp_path, monkeypatch):
-    scp_origin = await SftpOrigin(_origin_root(tmp_path, "scp"), credentials=(USER, PASSWORD)).start()
+    # The SCP writer is held live until the SFTP mirror (classified by core-run
+    # discovery, so it resolves only after its own first-contact question) has
+    # been proven equivalent to it. A mirror that resolves only after its
+    # sibling's writer COMPLETED is the separately deferred same-transfer
+    # completed-equivalence finding, not what this proves.
+    scp_origin = await WriterGatedOrigin(_origin_root(tmp_path, "scp"), credentials=(USER, PASSWORD)).start()
     sftp_origin = await SftpOrigin(_origin_root(tmp_path, "sftp"), credentials=(USER, PASSWORD)).start()
     runtime = await _scp_runtime(tmp_path, monkeypatch, (scp_origin, sftp_origin))
     try:
@@ -112,8 +151,10 @@ async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_eq
 
         reasons = []
         await _answer_until(runtime, transfer.id, converged, label="SCP/SFTP convergence", reasons=reasons)
-        # Both mirrors were proven by the existing pre-writer evidence owner.
-        assert reasons and all(item == ("evidence", "server_identity_required") for item in reasons)
+        # One first-contact identity question per mirror: the SCP file's from pre-writer
+        # evidence, the SFTP path's from the core-run discovery that classifies it.
+        assert sorted(reasons) == [("evidence", "server_identity_required"), ("provider", "server_identity_required")]
+        scp_origin.writers.set()
         body = await _answer_until(runtime, transfer.id, lambda: _completed_bytes(runtime, transfer.id),
                                    label="completion", reasons=reasons)
         assert body == PAYLOAD
@@ -122,6 +163,7 @@ async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_eq
         assert providers == {"general_scp", "general_ftp"}
         assert PASSWORD not in await _durable_text()
     finally:
+        scp_origin.writers.set()
         await runtime.close()
 
 

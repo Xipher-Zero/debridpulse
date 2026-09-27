@@ -3,9 +3,11 @@ const { test, expect } = require('@playwright/test');
 // Torrent/Magnet File-Selection Lifecycle Correction §6 / §24 — the built-in
 // browser is an interactive client and MUST explicitly opt every torrent/magnet
 // submission into the interactive file-selection lifecycle
-// (selection_mode=interactive). Direct-link submission is unchanged and carries
-// no selection_mode. The server never infers interactive intent from an SSE
-// connection, a session, a user agent, or the source string.
+// (selection_mode=interactive). Direct-link submission declares the same
+// interactive intent (DP 1.0.13): intent never forces a picker -- the server
+// offers one only for an actionable multi-file manifest. The server never
+// infers interactive intent from an SSE connection, a session, a user agent,
+// or the source string.
 
 async function stubShell(page, capture) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -82,7 +84,7 @@ test('torrent file upload appends selection_mode=interactive to the multipart fo
   expect(capture.addFile[0]).toContain('interactive');
 });
 
-test('direct-link submission carries no selection_mode', async ({page}) => {
+test('direct-link submission sends selection_mode=interactive', async ({page}) => {
   const capture = newCapture();
   await stubShell(page, capture);
   await page.goto('/');
@@ -92,6 +94,6 @@ test('direct-link submission carries no selection_mode', async ({page}) => {
   await page.click('#btn-add-transfer');
 
   await expect.poll(() => capture.linksAdd.length).toBe(1);
-  expect(capture.linksAdd[0]).not.toHaveProperty('selection_mode');
+  expect(capture.linksAdd[0].selection_mode).toBe('interactive');
   expect(capture.addMagnet).toEqual([]);
 });

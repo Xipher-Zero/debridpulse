@@ -329,7 +329,9 @@ async def test_scp_ssh_and_sftp_spellings_of_one_object_reach_the_identical_sftp
     the identical bytes produce the identical neutral fingerprint."""
     from providers.general_ftp.provider import GeneralFtpProvider
     from executors.aria2.executor import Aria2Executor
-    sftp = (await GeneralFtpProvider().resolve(_request("sftp://files.example.org/pub/big.iso"))).candidates[0]
+    from transfers.models import DiscoveryResult, RemoteObjectKind
+    sftp = (await GeneralFtpProvider().resolve_discovered(          # an sftp:// path proven to be a file
+        _request("sftp://files.example.org/pub/big.iso"), DiscoveryResult(kind=RemoteObjectKind.FILE))).candidates[0]
     for url in ("scp://files.example.org/pub/big.iso", "ssh://files.example.org/pub/big.iso",
                 "scp://files.example.org:/pub/big.iso"):
         candidate = await _candidate(url)

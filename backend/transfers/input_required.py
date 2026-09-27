@@ -676,6 +676,39 @@ class InputChallengeStore:
             await db.commit()
             return challenge
 
+    async def hold_provider(self, attempt: ResolutionAttempt, integration_id: str) -> bool:
+        """Hold one resolution unasked while another question of its transfer
+        is outstanding: a transfer asks one question at a time. The request
+        keeps no challenge of its own; ``release_provider_holds`` returns it
+        to ordinary resolution once nothing is being asked."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("""SELECT t.status,a.provider_id FROM transfer_requests r
+                JOIN torrents t ON t.id=r.transfer_id JOIN resolution_attempts a ON a.id=? AND a.request_id=r.id
+                WHERE r.id=?""", (attempt.id, attempt.request_id))
+            if not row or row["status"] in SIDE_STATE_RETIRING_TRANSFER_STATES or row["provider_id"] != integration_id:
+                await db.rollback()
+                return False
+            await db.execute("UPDATE resolution_attempts SET state='input_required',error=NULL,result=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (attempt.id,))
+            await db.execute("UPDATE transfer_requests SET state='input_required',retry_at=0,error=NULL,attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
+            await db.commit()
+            return True
+
+    async def release_provider_holds(self, transfer_id: int) -> bool:
+        """Resolutions held unasked (or whose question another one replaced)
+        return to ordinary resolution when the transfer asks nothing; each
+        then matches the settled lineage answer itself or asks its own."""
+        async with get_db() as db:
+            if not await db.fetchone("SELECT 1 FROM transfer_requests WHERE transfer_id=? AND state='input_required'",
+                                     (transfer_id,)):
+                return False  # the common case: a read, never a write, per cycle
+            cursor = await db.execute("""UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL
+                WHERE transfer_id=? AND state='input_required'
+                AND NOT EXISTS (SELECT 1 FROM transfer_input_challenges WHERE transfer_id=?)""",
+                (transfer_id, transfer_id))
+            await db.commit()
+            return bool(cursor.rowcount)
+
     async def wait_evidence(self, transfer_id: int, request_id: str, candidate_id: str, integration_id: str,
                             requirement: InputRequirement) -> InputChallenge:
         """Durably challenge pre-writer evidence acquisition for one resolved candidate.

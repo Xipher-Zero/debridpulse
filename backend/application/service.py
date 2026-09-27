@@ -351,7 +351,7 @@ class ApplicationService:
         referenced = await self.repository.referenced_staged_inputs()
         return self.staged_input.sweep(referenced)
 
-    async def submit_links(self, links):
+    async def submit_links(self, links, *, selection_mode="all"):
         # DP 1.0.12 corrective: one Quick Add batch is one user submission
         # and admits as ONE durable transfer owning N independent root
         # requests -- submission scope is not the same thing as equivalence
@@ -366,8 +366,10 @@ class ApplicationService:
         # siblings and cross-transfer contributors uniformly. A later,
         # genuinely separately admitted transfer proven equivalent still
         # converges through the same cross-transfer path, unaffected by this.
+        selection_mode = file_selection.normalize_selection_mode(selection_mode)
         urls = normalize_direct_links(links)
-        requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index)) for index, url in enumerate(urls, 1))
+        requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index),
+                                         selection_mode=selection_mode) for index, url in enumerate(urls, 1))
         item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 

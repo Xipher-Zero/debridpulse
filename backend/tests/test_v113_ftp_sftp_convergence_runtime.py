@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import shutil
 import socket
 import time
@@ -167,7 +168,7 @@ async def _runtime(tmp_path, monkeypatch, *, mapping=None, origins=(), limit=Non
 async def _request_rows(transfer_id):
     async with database.get_db() as db:
         rows = await db.fetchall(
-            "SELECT id,payload,state,equivalence_disposition,equivalence_reason FROM transfer_requests "
+            "SELECT id,payload,state,error,equivalence_disposition,equivalence_reason FROM transfer_requests "
             "WHERE transfer_id=? ORDER BY ordinal", (transfer_id,))
     return [dict(row) for row in rows]
 
@@ -229,11 +230,20 @@ async def test_transfer_312_shape_equivalent_ftp_mirrors_converge_to_one_canonic
         origin_requests = {str(origin["request_id"]) for binding in bindings for origin in binding["origins"]}
         assert {rows[0]["id"], rows[1]["id"]} <= origin_requests  # both sources durably provenanced
 
+        # C-F never yield a writer. Every (S)FTP path is classified from the
+        # server's own answers before it can become a candidate, so a source
+        # that cannot be reached, is refused by the guard or does not exist
+        # fails that classification with its normalized category.
         async def failed_sources_settled():
             current = await _request_rows(transfer.id)
-            return all(row["equivalence_disposition"] in {"unverified", "exhausted"} for row in current[2:])
+            return all(row["error"] for row in current[2:])
 
         await runtime.until(failed_sources_settled, label="failed FTP sources settled without writers")
+        categories = [json.loads(row["error"])["category"] for row in (await _request_rows(transfer.id))[2:]]
+        # The egress guard reports every refused CONNECT -- an unreachable
+        # origin (C, D) as much as a policy refusal (E) -- as one refusal, so
+        # all three normalize as destination_blocked; F is a proven missing path.
+        assert categories == ["destination_blocked"] * 3 + ["source_not_found"], categories
         assert len(await runtime.repository.artifacts(transfer.id)) == 1  # no writer for C-F
 
         # Candidate switch within the one canonical artifact, then pause/resume on it.
@@ -343,7 +353,8 @@ async def test_authenticated_ftp_mirror_converges_with_an_anonymous_mirror(tmp_p
             TransferRequest("ftp", f"ftp://locked-ftp.test:{locked.port}/pub/big.iso"),
         ), name="big.iso", deduplicate=False)
         challenge = await runtime.until(lambda: runtime.engine.challenges.current(transfer.id), label="challenge")
-        assert challenge.origin.value == "evidence" and challenge.reason.value == "auth_required"
+        # Core-run discovery classifies the locked path first: its login is asked there.
+        assert challenge.origin.value == "provider" and challenge.reason.value == "auth_required"
         await runtime.engine.submit_input(transfer.id, challenge.id, "username_password",
                                           {"username": USER, "password": PASSWORD})
         final = await runtime.until(lambda: _completed_bytes(runtime, transfer.id), label="completion")
@@ -367,7 +378,8 @@ async def test_http_and_sftp_mirrors_of_the_same_bytes_converge(tmp_path, monkey
             TransferRequest("sftp", sftp.url("/pub/big.iso", host="sftp-mirror.test")),
         ), name="big.iso", deduplicate=False)
         challenge = await runtime.until(lambda: runtime.engine.challenges.current(transfer.id), label="challenge")
-        assert challenge.origin.value == "evidence" and challenge.reason.value == "server_identity_required"
+        # Core-run discovery is first contact: the identity is asked there, before any credential.
+        assert challenge.origin.value == "provider" and challenge.reason.value == "server_identity_required"
         assert sftp.auth_attempts == []  # identity is confirmed strictly before authentication
         await runtime.engine.submit_input(transfer.id, challenge.id, "username_password",
                                           {"username": USER, "password": PASSWORD})
@@ -396,7 +408,8 @@ async def _sftp_writer_through_evidence(tmp_path, monkeypatch):
         TransferRequest("sftp", sftp.url("/pub/big.iso", host="sftp-mirror.test")),
     ), name="big.iso", deduplicate=False)
     challenge = await runtime.until(lambda: runtime.engine.challenges.current(transfer.id), label="challenge")
-    assert challenge.origin.value == "evidence" and challenge.reason.value == "server_identity_required"
+    # First contact is core-run discovery; evidence then reuses the confirmed identity and lineage login.
+    assert challenge.origin.value == "provider" and challenge.reason.value == "server_identity_required"
     assert sftp.auth_attempts == []
     await runtime.engine.submit_input(transfer.id, challenge.id, "username_password",
                                       {"username": USER, "password": PASSWORD})
@@ -418,7 +431,8 @@ async def test_sftp_identity_confirmed_by_evidence_is_enforced_by_real_aria2(tmp
         artifacts = await runtime.until(both_complete, label="SFTP writer completes with the confirmed identity")
         assert sorted(open(item.target, "rb").read() for item in artifacts) == sorted([PAYLOAD, DIFFERENT])
         assert "executor" not in seen
-        assert sftp.auth_attempts.count(USER) == 2  # evidence once, execution once -- never re-prompted
+        # Discovery once, evidence once, execution once -- one answer, never re-prompted.
+        assert sftp.auth_attempts.count(USER) == 3
     finally:
         await runtime.close()
 

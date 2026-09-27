@@ -1,7 +1,9 @@
 """1.0.13: the (S)FTP Network Sources provider consumes existing machinery.
 
-The provider resolves ``ftp://``/``sftp://`` requests into one ordinary neutral
-candidate with a typed accepted-input capability. Routing, executor selection,
+The provider has every ``ftp://``/``sftp://`` request classified by core-run
+discovery; a path proven to be a regular file resolves into one ordinary neutral
+candidate with a typed accepted-input capability (directories are covered by
+test_v113_ftp_sftp_remote_discovery.py). Routing, executor selection,
 enablement and direct-link admission are the existing generic owners; nothing
 here teaches the core about FTP or SFTP.
 """
@@ -38,6 +40,13 @@ def _request(url: str, kind: str | None = None, name: str = "") -> TransferReque
     return TransferRequest(kind or url.split(":", 1)[0], url, name=name)
 
 
+async def _proven_file(provider, request):
+    """What resolution yields once discovery has proven the path a regular file."""
+    from transfers.models import DiscoveryResult, RemoteObjectKind
+    assert (await provider.resolve(request)).discovery is not None
+    return await provider.resolve_discovered(request, DiscoveryResult(kind=RemoteObjectKind.FILE))
+
+
 # ── 1. Descriptor / applicability ─────────────────────────────────────────────
 
 def test_descriptor_is_a_resolution_only_direct_source_for_exactly_ftp_and_sftp() -> None:
@@ -46,7 +55,7 @@ def test_descriptor_is_a_resolution_only_direct_source_for_exactly_ftp_and_sftp(
     assert provider.descriptor.name == "(S)FTP"
     assert provider.descriptor.request_types == frozenset({"ftp", "sftp"})
     assert provider.applicability.generic_schemes == frozenset({"ftp", "sftp"})
-    assert {item.value for item in provider.descriptor.capabilities} == {"resolve"}
+    assert {item.value for item in provider.descriptor.capabilities} == {"resolve", "resource_lookup", "file_manifest"}
 
 
 def test_integration_definition_is_an_independent_direct_sources_provider() -> None:
@@ -76,7 +85,7 @@ def test_catalog_registers_general_ftp_alongside_the_existing_integrations() -> 
 ])
 async def test_resolution_emits_one_ordinary_candidate(url, host, name) -> None:
     provider = GeneralFtpProvider()
-    result = await provider.resolve(_request(url))
+    result = await _proven_file(provider, _request(url))
     assert result.state == ResourceState.AVAILABLE
     assert len(result.candidates) == 1
     candidate = result.candidates[0]
@@ -94,9 +103,9 @@ async def test_resolution_emits_one_ordinary_candidate(url, host, name) -> None:
 @pytest.mark.asyncio
 async def test_resolution_preserves_an_explicit_request_name_and_falls_back_safely() -> None:
     provider = GeneralFtpProvider()
-    named = await provider.resolve(_request("ftp://files.example.org/pub/x.bin", name="Chosen.bin"))
+    named = await _proven_file(provider, _request("ftp://files.example.org/pub/x.bin", name="Chosen.bin"))
     assert named.candidates[0].name == "Chosen.bin"
-    bare = await provider.resolve(_request("ftp://files.example.org/"))
+    bare = await _proven_file(provider, _request("ftp://files.example.org/"))
     assert bare.candidates[0].name == "files.example.org"
 
 
@@ -224,7 +233,7 @@ async def test_enabled_provider_resolves_and_the_candidate_routes_to_aria2(tmp_p
     registry = _registry(tmp_path, _settings())
     provider = registry.provider_for(_request(url))
     assert provider.descriptor.id == "general_ftp"
-    candidate = (await provider.resolve(_request(url))).candidates[0]
+    candidate = (await _proven_file(provider, _request(url))).candidates[0]
     assert registry.executor_for_subject(ExecutionSubject.of(candidate)).descriptor.id == "aria2"
 
 

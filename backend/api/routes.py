@@ -748,7 +748,9 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
     else:
         raise HTTPException(400, "links must be a list or newline-separated string")
     try:
-        return public_payload(await application.submit_links(links))
+        # Explicit per-submission intent: the browser opts in; an omitted field
+        # keeps the ALL default. Never inferred from the source or client.
+        return public_payload(await application.submit_links(links, selection_mode=body.get("selection_mode")))
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:

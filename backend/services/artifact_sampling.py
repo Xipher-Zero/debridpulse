@@ -332,6 +332,40 @@ async def sampled_public_artifact_fingerprint(
         return unavailable("sampler_unavailable")
 
 
+# ── Remote discovery facts (shared by every transport) ─────────────────────
+
+class _SessionRefused(Exception):
+    """A session ended in a typed fact rather than a usable session."""
+
+    def __init__(self, outcome):
+        super().__init__("session refused")
+        self.outcome = outcome
+
+
+@dataclass(frozen=True)
+class Listing:
+    """The immediate regular files of one directory: ``(name, size)`` pairs,
+    listed in ``directory``, the server's concrete absolute path for it."""
+    entries: tuple[tuple[str, int], ...]
+    directory: str = ""
+
+
+@dataclass(frozen=True)
+class RemoteFile:
+    """The discovered path is one regular file of ``size`` bytes."""
+    size: int
+    path: str = ""
+
+
+@dataclass(frozen=True)
+class ListingRefused:
+    """A definitive refusal of the discovered path itself."""
+    reason: str
+
+
+MAX_LISTED_ENTRIES = 10_000
+
+
 # ── FTP ────────────────────────────────────────────────────────────────────
 
 class _FtpControl:
@@ -362,9 +396,13 @@ class _FtpControl:
         return await self.reply()
 
 
+def _ftp_segments(address: str) -> list[str]:
+    return [unquote(part) for part in urlsplit(address).path.split("/") if part]
+
+
 def _ftp_path(address: str) -> tuple[list[str], str]:
     """aria2's own FTP path semantics: login directory, then each decoded directory segment, then the file."""
-    segments = [unquote(part) for part in urlsplit(address).path.split("/") if part]
+    segments = _ftp_segments(address)
     if not segments:
         raise ValueError("FTP evidence needs a file path")
     return segments[:-1], segments[-1]
@@ -380,6 +418,50 @@ def _passive_port(code: int, text: str) -> int | None:
     return None
 
 
+@asynccontextmanager
+async def _ftp_session(connect: Connect, username: str, password: str):
+    """THE one FTP login: control connection through the egress guard, then
+    USER/PASS, binary type and the login directory -- exactly aria2's own
+    sequence. Only a 530 answer to the login itself is access evidence;
+    anything else is an ordinary unavailable fact."""
+    writer = None
+    try:
+        reader, writer = await asyncio.open_connection(sock=await connect(None))
+        control = _FtpControl(reader, writer)
+        if (await control.reply())[0] != 220:
+            raise _SessionRefused(unavailable("sampler_unavailable"))
+        code, _ = await control.command("USER", username)
+        if code == 331:
+            code, _ = await control.command("PASS", password)
+        if code == 530:
+            raise _SessionRefused(AccessRequired())
+        if code != 230:
+            raise _SessionRefused(unavailable("range_unsupported"))
+        if (await control.command("TYPE", "I"))[0] != 200:
+            raise _SessionRefused(unavailable("range_unsupported"))
+        code, text = await control.command("PWD")
+        home = re.match(r'257 "((?:[^"]|"")*)"', text) if code == 257 else None
+        if home is not None and (await control.command("CWD", home.group(1).replace('""', '"')))[0] != 250:
+            raise _SessionRefused(unavailable("range_unsupported"))
+        yield control
+    finally:
+        if writer is not None:
+            writer.close()
+
+
+async def _ftp_data(control: _FtpControl, connect: Connect) -> tuple[object, object]:
+    """One passive data connection on the same authorized host: the server's
+    advertised data address is ignored and only its port is used."""
+    code, text = await control.command("PASV")
+    port = _passive_port(code, text)
+    if port is None:
+        code, text = await control.command("EPSV")
+        port = _passive_port(code, text)
+    if port is None:
+        raise _WindowUnavailable("range_unsupported")
+    return await asyncio.open_connection(sock=await connect(port))
+
+
 async def ftp_fingerprint(address: str, *, connect: Connect, username: str, password: str,
                           sample_bytes: int = SAMPLE_BYTES,
                           timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Sample | AccessRequired:
@@ -391,77 +473,150 @@ async def ftp_fingerprint(address: str, *, connect: Connect, username: str, pass
     ``connect`` (the egress guard); the server's advertised data address is
     ignored and only its port is used, on the same authorized host."""
     size = sample_size(sample_bytes)
-    writer = None
     try:
         directories, filename = _ftp_path(address)
         async with asyncio.timeout(max(5.0, float(timeout_seconds))):
-            reader, writer = await asyncio.open_connection(sock=await connect(None))
-            control = _FtpControl(reader, writer)
-            if (await control.reply())[0] != 220:
-                return unavailable("sampler_unavailable")
-            code, _ = await control.command("USER", username)
-            if code == 331:
-                code, _ = await control.command("PASS", password)
-            if code == 530:
-                return AccessRequired()
-            if code != 230:
-                return unavailable("range_unsupported")
-            if (await control.command("TYPE", "I"))[0] != 200:
-                return unavailable("range_unsupported")
-            code, text = await control.command("PWD")
-            home = re.match(r'257 "((?:[^"]|"")*)"', text) if code == 257 else None
-            if home is not None and (await control.command("CWD", home.group(1).replace('""', '"')))[0] != 250:
-                return unavailable("range_unsupported")
-            for directory in directories:
-                if (await control.command("CWD", directory))[0] != 250:
+            async with _ftp_session(connect, username, password) as control:
+                for directory in directories:
+                    if (await control.command("CWD", directory))[0] != 250:
+                        return unavailable("range_unsupported")
+                code, text = await control.command("SIZE", filename)
+                if code != 213:
                     return unavailable("range_unsupported")
-            code, text = await control.command("SIZE", filename)
-            if code != 213:
-                return unavailable("range_unsupported")
-            try:
-                total = int(text[4:].strip())
-            except ValueError:
-                return unavailable("range_unsupported")
-
-            async def window(offset: int, count: int) -> bytes | None:
-                code, text = await control.command("PASV")
-                port = _passive_port(code, text)
-                if port is None:
-                    code, text = await control.command("EPSV")
-                    port = _passive_port(code, text)
-                if port is None:
-                    raise _WindowUnavailable("range_unsupported")
-                data_reader, data_writer = await asyncio.open_connection(sock=await connect(port))
                 try:
-                    if offset and (await control.command("REST", str(offset)))[0] != 350:
-                        raise _WindowUnavailable("range_unsupported")
-                    code, _ = await control.command("RETR", filename)
-                    if code not in {125, 150}:
-                        raise _WindowUnavailable("range_unsupported")
-                    try:
-                        body = await data_reader.readexactly(count)
-                    except asyncio.IncompleteReadError:
-                        return None
-                finally:
-                    data_writer.close()
-                # A window closed before end of file is answered 426/451 by the
-                # server; either final reply leaves the session usable.
-                await control.reply()
-                return body
+                    total = int(text[4:].strip())
+                except ValueError:
+                    return unavailable("range_unsupported")
 
-            try:
-                return await _offset_windows(total, window, size)
-            except _WindowUnavailable as exc:
-                return unavailable(exc.reason)
+                async def window(offset: int, count: int) -> bytes | None:
+                    data_reader, data_writer = await _ftp_data(control, connect)
+                    try:
+                        if offset and (await control.command("REST", str(offset)))[0] != 350:
+                            raise _WindowUnavailable("range_unsupported")
+                        code, _ = await control.command("RETR", filename)
+                        if code not in {125, 150}:
+                            raise _WindowUnavailable("range_unsupported")
+                        try:
+                            body = await data_reader.readexactly(count)
+                        except asyncio.IncompleteReadError:
+                            return None
+                    finally:
+                        data_writer.close()
+                    # A window closed before end of file is answered 426/451 by the
+                    # server; either final reply leaves the session usable.
+                    await control.reply()
+                    return body
+
+                try:
+                    return await _offset_windows(total, window, size)
+                except _WindowUnavailable as exc:
+                    return unavailable(exc.reason)
+    except _SessionRefused as refused:
+        return refused.outcome
     except TimeoutError:
         return unavailable("timeout")
     except PermissionError:
         return unavailable("destination_rejected")
     except (ConnectionError, OSError, ValueError, asyncio.IncompleteReadError):
         return unavailable("sampler_unavailable")
+
+
+_MAX_LISTING_BYTES = 4 * 1024 * 1024
+
+
+async def _ftp_listing_lines(control: _FtpControl, connect: Connect, verb: str) -> list[str] | None:
+    """One bounded listing transfer of the current directory, or ``None``
+    when the server does not implement ``verb``."""
+    data_reader, data_writer = await _ftp_data(control, connect)
+    try:
+        code, _ = await control.command(verb)
+        if code in {500, 501, 502, 504}:
+            return None
+        if code not in {125, 150}:
+            raise _SessionRefused(ListingRefused("not_a_directory" if code == 550 else "unsupported_listing"))
+        body = await data_reader.read(_MAX_LISTING_BYTES + 1)
+        chunk = body
+        while chunk and len(body) <= _MAX_LISTING_BYTES:
+            chunk = await data_reader.read(_MAX_LISTING_BYTES + 1 - len(body))
+            body += chunk
     finally:
-        if writer is not None:
-            writer.close()
+        data_writer.close()
+    await control.reply()
+    if len(body) > _MAX_LISTING_BYTES:
+        raise _SessionRefused(ListingRefused("too_many_entries"))
+    return [line for line in body.decode("utf-8", "replace").splitlines() if line.strip()]
+
+
+async def ftp_discovery(address: str, *, connect: Connect, username: str, password: str,
+                        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+                        ) -> Listing | RemoteFile | ListingRefused | AccessRequired | Sample:
+    """Classify one FTP path from the server's own answers, read-only.
+
+    A trailing ``/`` (or the login directory itself) is directory intent. Any
+    other path is changed into (CWD) -- a server changes only into a
+    directory -- and otherwise sized (SIZE): a regular file. A directory's
+    immediate regular files come from MLSD, or, where the server has no MLSD,
+    from NLST with each name sized (SIZE answers only for regular files).
+    Nothing is recursive and nothing is retrieved."""
+    segments = _ftp_segments(address)
+    directory_intent = urlsplit(address).path.endswith("/") or not segments
+    parents = segments if directory_intent else segments[:-1]
+    try:
+        async with asyncio.timeout(max(5.0, float(timeout_seconds))):
+            async with _ftp_session(connect, username, password) as control:
+                for directory in parents:
+                    if (await control.command("CWD", directory))[0] != 250:
+                        return ListingRefused("not_found")
+                if not directory_intent:
+                    final = segments[-1]
+                    if (await control.command("CWD", final))[0] != 250:
+                        code, text = await control.command("SIZE", final)
+                        if code != 213:
+                            return ListingRefused("not_found")
+                        try:
+                            return RemoteFile(int(text[4:].strip()), "/".join(segments))
+                        except ValueError:
+                            return ListingRefused("unsupported_listing")
+                code, text = await control.command("PWD")
+                listed = re.match(r'257 "((?:[^"]|"")*)"', text) if code == 257 else None
+                directory = listed.group(1).replace('""', '"') if listed else ""
+                entries = []
+                lines = await _ftp_listing_lines(control, connect, "MLSD")
+                if lines is not None:
+                    for line in lines:
+                        facts, _, name = line.partition(" ")
+                        named = dict(item.split("=", 1) for item in facts.lower().split(";") if "=" in item)
+                        if named.get("type") == "file" and name and "/" not in name:
+                            entries.append((name, int(named.get("size") or 0)))
+                else:
+                    lines = await _ftp_listing_lines(control, connect, "NLST")
+                    if lines is None:
+                        return ListingRefused("unsupported_listing")
+                    names = [line.rsplit("/", 1)[-1] for line in lines]
+                    if len(names) > MAX_LISTED_ENTRIES:
+                        return ListingRefused("too_many_entries")
+                    for name in names:
+                        if name in {".", ".."} or not name:
+                            continue
+                        code, text = await control.command("SIZE", name)
+                        if code == 213:
+                            try:
+                                entries.append((name, int(text[4:].strip())))
+                            except ValueError:
+                                continue
+                if len(entries) > MAX_LISTED_ENTRIES:
+                    return ListingRefused("too_many_entries")
+                return Listing(tuple(sorted(entries)), directory)
+    except _SessionRefused as refused:
+        return refused.outcome
+    except _WindowUnavailable:
+        return ListingRefused("unsupported_listing")
+    except TimeoutError:
+        return unavailable("timeout")
+    except PermissionError:
+        return unavailable("destination_rejected")
+    except (ConnectionError, OSError, ValueError, asyncio.IncompleteReadError):
+        return unavailable("sampler_unavailable")
 
 
 # ── SFTP ───────────────────────────────────────────────────────────────────
@@ -493,14 +648,6 @@ def _ssh_options(host_key_algorithms, timeout: float) -> dict:
         agent_path=None, gss_host=None, x509_trusted_certs=None, preferred_auth=["password"],
         server_host_key_algs=list(host_key_algorithms), connect_timeout=timeout, login_timeout=timeout,
     )
-
-
-class _SessionRefused(Exception):
-    """The SSH/SFTP session ended in a typed fact rather than a session."""
-
-    def __init__(self, outcome):
-        super().__init__("SFTP session refused")
-        self.outcome = outcome
 
 
 @asynccontextmanager
@@ -579,14 +726,6 @@ async def sftp_fingerprint(address: str, *, connect: Connect, host_key_algorithm
         return unavailable("sampler_unavailable")
 
 
-@dataclass(frozen=True)
-class Listing:
-    """The immediate regular files of one directory: ``(name, size)`` pairs,
-    listed in ``directory``, the server's concrete absolute path for it."""
-    entries: tuple[tuple[str, int], ...]
-    directory: str = ""
-
-
 def _listed_path(address: str) -> tuple[str, bool]:
     """``(path, home_relative)`` for one SFTP directory address.
 
@@ -600,30 +739,26 @@ def _listed_path(address: str) -> tuple[str, bool]:
     return path, False
 
 
-@dataclass(frozen=True)
-class ListingRefused:
-    """A definitive refusal of the directory itself, by SFTP status."""
-    reason: str
-
-
-# SFTP status codes that name a definitive refusal of the listed path.
+# SFTP status codes that name a definitive refusal of the discovered path.
 _LISTING_STATUS = {
     asyncssh.FX_NO_SUCH_FILE: "not_found", asyncssh.FX_NO_SUCH_PATH: "not_found",
     asyncssh.FX_PERMISSION_DENIED: "permission_denied", asyncssh.FX_NOT_A_DIRECTORY: "not_a_directory",
 }
-MAX_LISTED_ENTRIES = 10_000
 
 
-async def sftp_listing(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
-                       username: str = "", password: str = "",
-                       timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Listing | ListingRefused | AccessRequired | Sample:
-    """Read-only listing of exactly one directory, on the one session primitive.
+async def sftp_discovery(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
+                         username: str = "", password: str = "",
+                         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+                         ) -> Listing | RemoteFile | ListingRefused | AccessRequired | Sample:
+    """Classify one SFTP path, on the one session primitive, read-only.
 
-    Only the directory's immediate entries are read; only regular files are
-    returned -- a subdirectory is never entered and a symbolic link (to a file
-    or a directory) is never followed. Returns ``AccessRequired`` exactly as
-    evidence does, a typed ``ListingRefused`` for a definitive refusal of the
-    path, or an unavailable ``Sample`` fact for anything transient."""
+    The server's own STAT answers what the path is: a regular file is
+    reported with its size; a directory's immediate entries are read and only
+    regular files returned -- a subdirectory is never entered and a symbolic
+    link (to a file or a directory) is never followed. Returns
+    ``AccessRequired`` exactly as evidence does, a typed ``ListingRefused``
+    for a definitive refusal of the path, or an unavailable ``Sample`` fact
+    for anything transient."""
     timeout = max(5.0, float(timeout_seconds))
     path, home_relative = _listed_path(address)
     try:
@@ -634,6 +769,11 @@ async def sftp_listing(address: str, *, connect: Connect, host_key_algorithms, h
                 try:
                     if home_relative:
                         path = await sftp.realpath(path)
+                    attributes = await sftp.stat(path)
+                    if attributes.type == asyncssh.FILEXFER_TYPE_REGULAR:
+                        return RemoteFile(int(attributes.size or 0), path if isinstance(path, str) else path.decode())
+                    if attributes.type != asyncssh.FILEXFER_TYPE_DIRECTORY:
+                        return ListingRefused("unsupported_type")
                     names = await sftp.readdir(path)
                 except asyncssh.SFTPError as exc:
                     reason = _LISTING_STATUS.get(exc.code)

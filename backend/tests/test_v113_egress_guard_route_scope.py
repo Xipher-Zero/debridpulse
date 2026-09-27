@@ -44,15 +44,19 @@ PROBE_RESPONSE_TIMEOUT_SECONDS = 60.0
 # ── A minimal in-process passive FTP origin (no third-party server needed) ────
 
 class FtpOrigin:
-    """RFC 959 subset aria2 uses: USER PASS TYPE PWD CWD SIZE MDTM EPSV PASV REST RETR QUIT.
+    """RFC 959 subset aria2 uses: USER PASS TYPE PWD CWD SIZE MDTM EPSV PASV REST RETR QUIT,
+    plus the listing commands NLST and (RFC 3659) MLSD.
 
     Like a real server it converts LF to CRLF on an ASCII-type (TYPE A)
-    retrieval, and it refuses active mode (PORT/EPRT); both are recorded.
+    retrieval, refuses active mode (PORT/EPRT) -- both are recorded -- and
+    changes only into a directory that exists (a file is not a directory).
+    ``mlsd=False`` models a server without MLSD (vsftpd).
     """
 
     def __init__(self, files: dict[str, bytes], *, users: dict[str, str] | None = None, anonymous: bool = True,
-                 host: str = "127.0.0.1", rest: bool = True, pace: float = 0.0):
+                 host: str = "127.0.0.1", rest: bool = True, pace: float = 0.0, mlsd: bool = True):
         self.files = files
+        self.mlsd = mlsd
         self.users = dict(users or {})
         self.anonymous = anonymous
         self.host = host
@@ -74,6 +78,25 @@ class FtpOrigin:
         self.server = await asyncio.start_server(self._control, self.host, 0)
         self.port = int(self.server.sockets[0].getsockname()[1])
         return self
+
+    def _directories(self) -> set[str]:
+        found = {"/"}
+        for path in self.files:
+            parts = path.strip("/").split("/")[:-1]
+            for index in range(1, len(parts) + 1):
+                found.add("/" + "/".join(parts[:index]))
+        return found
+
+    def _children(self, directory: str) -> list[tuple[str, str, int]]:
+        """``(kind, name, size)`` of the immediate entries of ``directory``."""
+        prefix = directory.rstrip("/") + "/"
+        seen = {}
+        for path, body in self.files.items():
+            if not path.startswith(prefix):
+                continue
+            head, _, rest = path[len(prefix):].partition("/")
+            seen[head] = ("dir", head, 0) if rest else ("file", head, len(body))
+        return sorted(seen.values(), key=lambda item: item[1])
 
     async def close(self):
         if self.server is not None:
@@ -125,8 +148,29 @@ class FtpOrigin:
                 elif command == "PWD":
                     send('257 "/" is current directory')
                 elif command == "CWD":
-                    cwd = argument if argument.startswith("/") else cwd.rstrip("/") + "/" + argument
-                    send("250 ok")
+                    target = argument if argument.startswith("/") else cwd.rstrip("/") + "/" + argument
+                    target = "/" + target.strip("/") if target.strip("/") else "/"
+                    if target in self._directories():
+                        cwd = target
+                        send("250 ok")
+                    else:
+                        send("550 not a directory")
+                elif command in {"NLST", "MLSD"}:
+                    listed = argument if argument.startswith("/") else (cwd.rstrip("/") + "/" + argument if argument else cwd)
+                    if command == "MLSD" and not self.mlsd:
+                        send("500 MLSD not understood")
+                    elif listed not in self._directories():
+                        send("550 not a directory")
+                    else:
+                        send("150 here comes the listing")
+                        await writer.drain()
+                        data_reader, data_writer = await asyncio.wait_for(data_ready, timeout=DATA_CHANNEL_TIMEOUT_SECONDS)
+                        lines = [f"type={kind};size={size}; {name}" if command == "MLSD" else name
+                                 for kind, name, size in self._children(listed)]
+                        data_writer.write("".join(line + "\r\n" for line in lines).encode())
+                        await data_writer.drain()
+                        data_writer.close()
+                        send("226 listing sent")
                 elif command in {"SIZE", "MDTM", "RETR"}:
                     path = argument if argument.startswith("/") else cwd.rstrip("/") + "/" + argument
                     if path not in self.files:

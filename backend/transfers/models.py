@@ -459,14 +459,26 @@ class DiscoveredEntry:
     expected_bytes: int = 0
 
 
+class RemoteObjectKind(StrEnum):
+    """What authoritative remote evidence proved a discovered path to be."""
+    FILE = "file"
+    DIRECTORY = "directory"
+
+
 @dataclass(frozen=True)
 class DiscoveryResult:
-    """The immediate regular-file members of one directory; nothing recursive,
+    """Authoritative remote facts about one discovered path.
+
+    A DIRECTORY carries its immediate regular-file members; nothing recursive,
     no directories, no symbolic links, no remote-browser state. ``directory``
     is the concrete absolute path they were listed in, as the server resolved
-    it -- so a home-relative request reaches execution as a canonical path."""
-    entries: tuple[DiscoveredEntry, ...]
+    it -- so a home-relative request reaches execution as a canonical path. A
+    regular FILE carries no members, only its size when the server reports it
+    (``expected_bytes``)."""
+    entries: tuple[DiscoveredEntry, ...] = ()
     directory: str = ""
+    kind: RemoteObjectKind = RemoteObjectKind.DIRECTORY
+    expected_bytes: int = 0
 
 
 @dataclass(frozen=True)

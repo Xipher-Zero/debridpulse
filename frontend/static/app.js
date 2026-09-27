@@ -1257,7 +1257,10 @@ async function addDashboardEntries() {
   try {
     if (direct.length) {
       try {
-        const result = await api('POST', '/links/add', {links: direct.map(entry => entry.value)}, 30000);
+        // The built-in browser is an interactive client: a source that proves
+        // to be a multi-file collection offers the file selector; a single
+        // file is unaffected. Headless callers that omit this keep ALL.
+        const result = await api('POST', '/links/add', {links: direct.map(entry => entry.value), selection_mode: 'interactive'}, 30000);
         handled += direct.length;
         if (result && result._deferred) deferred += direct.length;
       } catch (error) {

@@ -22,10 +22,10 @@ from fake_integrations import VaultExecutor, neutral_facts
 from transfers.applicability import ProviderApplicability
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
-from transfers.input_required import server_identity_required, username_password
+from transfers.input_required import auth_required, server_identity_required, username_password
 from transfers.models import (
-    Capability, Endpoint, ExecutionObservation, ExecutionState, ExecutorCapabilities, TransferProgress, FileManifest, FileManifestEntry, InputFactName, InputMethod,
-    IntegrationDescriptor, Ownership, ProviderObservation, ProviderResource, ResolutionResult, ResourceState,
+    Capability, DiscoveryResult, Endpoint, ExecutionObservation, ExecutionState, ExecutorCapabilities, TransferProgress, FileManifest, FileManifestEntry, InputFactName, InputMethod,
+    IntegrationDescriptor, Ownership, RemoteObjectKind, ProviderObservation, ProviderResource, ResolutionResult, ResourceState,
     SourceEntry, SourceIdentity, TransferCandidate, TransferRequest, TransferState,
 )
 from transfers.policy import TransferPolicy
@@ -430,15 +430,33 @@ async def test_restart_forgets_supplied_material_and_asks_normally(lab, tmp_path
 # ── RED 13 / 43.14: every transfer-auth consumer uses the one owner ───────────
 
 class UrlVault(CountingVault):
-    """The counting vault reached over the real Network Sources transports."""
+    """The counting vault reached over the real Network Sources transports.
+
+    Remote discovery (how core classifies an FTP/SFTP path) needs a locked
+    host's login exactly as execution does."""
 
     descriptor = IntegrationDescriptor("url-vault", "URL vault", frozenset())
+    capabilities = ExecutorCapabilities(candidate_sampling=True, per_execution_pause=True, transient_input=True,
+                                        remote_discovery=True)
     claim_schemes = frozenset({"http", "https", "ftp", "sftp"})
+
+    def __init__(self, authorize, **kwargs):
+        super().__init__(authorize, **kwargs)
+        self.discovered_with = []
 
     @staticmethod
     def _object(candidate):
         parts = urlsplit(candidate.endpoints[0].address)
         return f"{parts.hostname}{parts.path}"
+
+    async def discover(self, subject, submitted=None):
+        from transfers.models import InputField
+        host = urlsplit(subject.candidate.endpoints[0].address).hostname
+        login = (submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)) if submitted else None
+        if host in self.locks and login != self.locks[host]:
+            return auth_required(username_password())
+        self.discovered_with.append(login[0] if login else None)
+        return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=len(self.objects[self._object(subject.candidate)]))
 
 
 @pytest.mark.parametrize("link", [
@@ -463,7 +481,86 @@ async def test_every_network_source_consumes_supplied_material_through_the_one_o
     assert challenges == []
     assert (await repository.get(transfer.id)).state == TransferState.COMPLETED
     assert [user for _candidate, user in executor.input_starts] == [USER]
+    # An FTP/SFTP path is classified first, with the same supplied material.
+    assert executor.discovered_with == ([USER] if kind in {"ftp", "sftp"} else [])
     assert PASSWORD not in await _db_text()
+
+
+async def test_two_simultaneous_provider_questions_are_serialized_through_ordinary_resolution(lab):
+    """Two sources of one transfer whose core-run discovery both need input at
+    once, with non-equivalent content (nothing for equivalence to decide):
+    the first question stays current, the second request is held without
+    overwriting it, and settling the first returns the second to ordinary
+    resolution, which presents its own question normally. Nothing stalls,
+    no question is lost, and no writer is suppressed to make this hold."""
+    from providers.general_ftp.provider import GeneralFtpProvider
+    repository, registry, engine, _provider, _objects, locks, now = lab
+    registry.register_provider(GeneralFtpProvider())
+    executor = _executor(lab, UrlVault)
+    executor.objects["alt.example/other.bin"] = b"diff"  # not CONTENT: nothing is equivalent
+    transfer = await engine.submit((TransferRequest("ftp", "ftp://locked.example/solo.bin"),
+                                    TransferRequest("ftp", "ftp://alt.example/other.bin")),
+                                   name="solo.bin", deduplicate=False)
+    records = {record.id: record for record in await repository.requests(transfer.id)}
+
+    async def states():
+        return {record.id: record.state for record in await repository.requests(transfer.id)}
+
+    async def tick():
+        now[0] += 5
+        await engine.tick()
+
+    first = None
+    for _ in range(10):
+        await tick()
+        first = await _current(engine, transfer.id)
+        if first is not None:
+            break
+    assert first is not None and (first.origin.value, first.reason.value) == ("provider", "auth_required")
+    second_id = next(request_id for request_id in records if request_id != first.request_id)
+
+    # 1 + 2: the first question stays current; the second request is held unasked.
+    for _ in range(3):
+        await tick()
+        assert (await _current(engine, transfer.id)).id == first.id
+        assert (await states())[second_id] == "input_required"
+
+    async def attempts(request_id):
+        async with database.get_db() as db:
+            return [row["id"] for row in await db.fetchall(
+                "SELECT id FROM resolution_attempts WHERE request_id=? ORDER BY rowid", (request_id,))]
+
+    held_attempts = await attempts(second_id)
+
+    # 3: settling the first returns the second to ordinary resolution.
+    user, password = locks[urlsplit(records[first.request_id].request.payload).hostname]
+    await engine.submit_input(transfer.id, first.id, "username_password", {"username": user, "password": password})
+    second, seen_second_states = None, []
+    for _ in range(20):
+        await tick()
+        seen_second_states.append((await states())[second_id])
+        current = await _current(engine, transfer.id)
+        if current is not None and current.id != first.id:
+            second = current
+            break
+    # 4: its own question is then presented normally.
+    assert second is not None, seen_second_states
+    assert (second.origin.value, second.reason.value, second.request_id) == ("provider", "auth_required", second_id)
+    # ... asked by a NEW ordinary resolution attempt, not by re-presenting the held one.
+    assert second.operation_id not in held_attempts and second.operation_id in await attempts(second_id)
+
+    user, password = locks[urlsplit(records[second_id].request.payload).hostname]
+    await engine.submit_input(transfer.id, second.id, "username_password", {"username": user, "password": password})
+    for _ in range(40):
+        await tick()
+        if (await repository.get(transfer.id)).state == TransferState.COMPLETED:
+            break
+    # 5: nothing stalled or lost its question; both non-equivalent sources were written.
+    assert (await repository.get(transfer.id)).state == TransferState.COMPLETED
+    artifacts = await repository.artifacts(transfer.id)
+    assert sorted(item.name for item in artifacts) == ["other.bin", "solo.bin"]
+    assert all(item.state == "completed" for item in artifacts)
+    assert await _current(engine, transfer.id) is None
 
 
 async def test_an_interactive_https_answer_is_matched_like_any_other(lab):

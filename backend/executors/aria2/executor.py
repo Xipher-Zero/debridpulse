@@ -21,15 +21,15 @@ from urllib.parse import urlsplit
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
-    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, Listing, ListingRefused, ftp_fingerprint,
-    sampled_public_artifact_fingerprint, sftp_fingerprint, sftp_listing,
+    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, Listing, ListingRefused, RemoteFile, ftp_discovery, ftp_fingerprint,
+    sampled_public_artifact_fingerprint, sftp_discovery, sftp_fingerprint,
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.models import (
-    ArtifactFingerprint, DiscoveredEntry, DiscoveryResult, ExecutionActivity, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ArtifactFingerprint, DiscoveredEntry, DiscoveryResult, ExecutionActivity, RemoteObjectKind, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
@@ -318,7 +318,7 @@ class Aria2Executor:
         except ValueError:
             return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
         if endpoint.scheme == "ftp":
-            username, password = credentials or (_ANONYMOUS_LOGIN["ftp-user"], _ANONYMOUS_LOGIN["ftp-passwd"])
+            username, password = self._ftp_login(submitted)
             result = await ftp_fingerprint(
                 endpoint.address, username=username, password=password,
                 connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
@@ -374,12 +374,14 @@ class Aria2Executor:
             return None
         return server_identity_required(username_password(), host=host, algorithm="sha-1", fingerprint=observed)
 
-    # Definitive listing refusals and unavailable facts, as normalized failures.
+    # Definitive discovery refusals and unavailable facts, as normalized failures.
     _LISTING_FAILURES = {
         "not_found": (Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Retryability.NEVER),
         "permission_denied": (Domain.RESOLUTION, Category.AUTHORIZATION_FAILED, Retryability.NEVER),
         "not_a_directory": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER),
+        "unsupported_type": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
         "too_many_entries": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
+        "unsupported_listing": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
         "auth_method_unsupported": (Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Retryability.NEVER),
         "sftp_unavailable": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
         "destination_rejected": (Domain.SECURITY, Category.DESTINATION_BLOCKED, Retryability.NEVER),
@@ -387,14 +389,18 @@ class Aria2Executor:
     }
 
     async def discover(self, subject, submitted: SubmittedInput | None = None):
-        """Read-only listing of one SFTP directory before any candidate exists.
+        """Read-only classification of one FTP or SFTP path before any candidate exists.
 
-        The same identity/credential decision (``_sftp_access``), egress route,
-        host-key order and session primitive as evidence: the identity the
-        operator confirms here is the identity aria2 later verifies."""
+        The same destination validation, egress route and access decisions
+        execution applies: SFTP through ``_sftp_access`` (the identity the
+        operator confirms here is the identity aria2 later verifies, and the
+        same host-key order and session primitive as evidence); FTP through the
+        same-host passive route, anonymously unless a login was supplied. A
+        regular file is reported as one file; a directory as its immediate
+        regular files."""
         candidate = subject.candidate
         endpoint = self._endpoint(candidate)
-        if (endpoint is None or endpoint.scheme != "sftp"
+        if (endpoint is None or endpoint.scheme not in {"ftp", "sftp"}
                 or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods):
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         try:
@@ -404,27 +410,53 @@ class Aria2Executor:
                 retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
         except ValueError as exc:
             raise self._failure(Category.DESTINATION_BLOCKED, Stage.RESOLUTION, domain=Domain.SECURITY) from exc
-        access = self._sftp_access(endpoint.address, submitted)
-        if access is None:
-            raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
-        host, identity, username, password = access
-        result = await sftp_listing(
-            endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
-            host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity, username=username, password=password,
-        )
-        if isinstance(result, AccessRequired):
-            requirement = self._sftp_requirement(host, result.server_identity)
-            if requirement is None:
+        if endpoint.scheme == "sftp":
+            access = self._sftp_access(endpoint.address, submitted)
+            if access is None:
                 raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
-            return requirement
+            host, identity, username, password = access
+            result = await sftp_discovery(
+                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
+                host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
+                username=username, password=password,
+            )
+            if isinstance(result, AccessRequired):
+                requirement = self._sftp_requirement(host, result.server_identity)
+                if requirement is None:
+                    raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+                return requirement
+        else:
+            login = self._ftp_login(submitted)
+            if login is None:
+                raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+            result = await ftp_discovery(
+                endpoint.address, username=login[0], password=login[1],
+                connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
+                                                                  port=port),
+            )
+            if isinstance(result, AccessRequired):
+                return auth_required(username_password())
         if isinstance(result, Listing):
             return DiscoveryResult(tuple(DiscoveredEntry(name, size) for name, size in result.entries),
                                    result.directory)
+        if isinstance(result, RemoteFile):
+            return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=max(0, result.size))
         reason = result.reason if isinstance(result, ListingRefused) else result[3]
         domain, category, retryability = self._LISTING_FAILURES.get(
             reason, (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF))
         raise TransferError(NormalizedError(domain, category, Stage.RESOLUTION, retryability=retryability,
                                             integration_id=self.descriptor.id, diagnostic=reason))
+
+    @staticmethod
+    def _ftp_login(submitted: SubmittedInput | None):
+        """The FTP login for one attempt: aria2's own anonymous default, or the
+        supplied username/password; ``None`` for input that cannot log in."""
+        if submitted is None:
+            return _ANONYMOUS_LOGIN["ftp-user"], _ANONYMOUS_LOGIN["ftp-passwd"]
+        username, password = submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)
+        if submitted.method != InputMethod.USERNAME_PASSWORD or not username or not password:
+            return None
+        return username, password
 
     @staticmethod
     def _confirmed_evidence_identity(host: str, submitted: SubmittedInput) -> str | None:
