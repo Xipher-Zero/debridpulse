@@ -1735,6 +1735,16 @@ class TransferEngine:
                 if submitted is not None and not executor.capabilities.transient_input:
                     submitted.discard()
                     submitted = None
+                if submitted is None and executor.capabilities.transient_input and not native_retry:
+                    # Otherwise input this lineage already validated for the
+                    # candidate's scope (e.g. by the core-run discovery that
+                    # classified it) starts the writer, instead of a start
+                    # without it that could only fail and be recovered.
+                    submitted = await self.inputs.writer_input(
+                        artifact.transfer_id, artifact.request_id, str(candidate.id),
+                        await self._lineage(artifact.transfer_id, artifact.request_id),
+                        self._input_scope(candidate), candidate.accepted_input_methods,
+                    )
                 if submitted is not None:
                     try:
                         observed = await executor.start_with_input(request, handle, submitted)

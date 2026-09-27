@@ -54,6 +54,14 @@ def username_private_key() -> InputMethodDescriptor:
     ))
 
 
+# The transport input methods a candidate may declare, as the descriptors
+# material is matched against.
+_METHOD_DESCRIPTORS = {
+    InputMethod.USERNAME_PASSWORD: username_password,
+    InputMethod.USERNAME_PRIVATE_KEY: username_private_key,
+}
+
+
 def server_identity_confirmation() -> InputMethodDescriptor:
     """Confirm the observed identity only; credentials are already held."""
     return InputMethodDescriptor(InputMethod.SERVER_IDENTITY, ())
@@ -466,6 +474,39 @@ class EphemeralInputBroker:
                        for context in self._chain_locked(int(transfer_id), chain, scope)
                        for material in context.materials)
 
+    async def writer_input(self, transfer_id: int, request_id: str, candidate_id: str, chain: tuple[str, ...],
+                           scope: AuthScope | None, methods) -> SubmittedInput | None:
+        """Already-VALID material of this lineage and scope for a writer
+        admitted without an exact candidate handoff, or ``None``.
+
+        Only material a consumer already accepted (e.g. the core-run discovery
+        that classified this source) is eligible -- never untested or rejected
+        material -- and only for a method the candidate declares (``methods``).
+        The server identity this lineage confirmed for the scope travels as the
+        canonical facts; none is invented when there is none. The lease is
+        held in use by ``candidate_id``, so its execution settles it exactly
+        like a handed-off input."""
+        descriptors = tuple(_METHOD_DESCRIPTORS[method]() for method in methods if method in _METHOD_DESCRIPTORS)
+        async with self._lock:
+            self._purge_locked()
+            if scope is None or not chain or not descriptors:
+                return None
+            transfer_id = int(transfer_id)
+            chosen = self._material_locked(transfer_id, chain, scope, descriptors, usable=(_MaterialState.VALID,))
+            if chosen is None:
+                return None
+            key, material, descriptor = chosen
+            identity = next((context.identity for context in self._chain_locked(transfer_id, chain, scope)
+                             if context.identity is not None), None)
+            facts = () if identity is None else (
+                InputFact(InputFactName.SERVER_HOST, scope.host),
+                InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, identity[0]),
+                InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, identity[1]),
+            )
+            submitted = self._leased_locked(key, material, descriptor.method, facts)
+            self._in_use[(transfer_id, str(request_id), str(candidate_id))] = submitted.token
+            return submitted
+
     # ── handoff to the admitted writer ──────────────────────────────────────
 
     @staticmethod
@@ -554,7 +595,8 @@ class EphemeralInputBroker:
             if context is not None:
                 yield context
 
-    def _material_locked(self, transfer_id: int, chain, scope, methods):
+    def _material_locked(self, transfer_id: int, chain, scope, methods,
+                         usable=(_MaterialState.UNTESTED, _MaterialState.VALID)):
         """Nearest-in-lineage, newest-first usable material for ``methods``."""
         for request_id in chain:
             key = (transfer_id, str(request_id), scope)
@@ -562,7 +604,7 @@ class EphemeralInputBroker:
             if context is None:
                 continue
             for material in reversed(context.materials):
-                if material.state == _MaterialState.REJECTED:
+                if material.state not in usable:
                     continue
                 descriptor = _compatible(material.values, methods)
                 if descriptor is not None:
