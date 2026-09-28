@@ -1554,12 +1554,17 @@
           type: 'number', min: 1, max: 60,
           hint: 'How long DebridPulse allows an active download engine to finish and preserve current work before forcing it to stop.',
         }),
-      tuningToggle('private_lan_connections', 'Local Network Connections',
-        'Allow explicitly entered downloads to connect to private LAN addresses.',
-        !!policy.private_lan_connections),
-      tuningToggle('skip_private_lan_confirmation', 'Skip Local Connection Confirmation',
-        'Allow new private-LAN transfers without asking for confirmation each time.',
-        !!policy.skip_private_lan_confirmation, {disabled: !policy.private_lan_connections}),
+      // The two local-network cells are one relationship (the second depends
+      // on the first): the shared tuning relation, drawn only while the set
+      // holds all its lanes.
+      tuningGroup(
+        tuningToggle('private_lan_connections', 'Local Network Connections',
+          'Allow explicitly entered downloads to connect to private LAN addresses.',
+          !!policy.private_lan_connections),
+        tuningToggle('skip_private_lan_confirmation', 'Skip Local Connection Confirmation',
+          'Allow new private-LAN transfers without asking for confirmation each time.',
+          !!policy.skip_private_lan_confirmation, {disabled: !policy.private_lan_connections}),
+      ),
     ));
   }
 

@@ -61,7 +61,19 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     await expect(chevron).toHaveAttribute('aria-expanded', 'true');
     const grid = section(page).locator('.dp-settings-tuning-grid');
     await expect(grid).toHaveAttribute('data-tuning-lanes', '4');
-    const cells = await grid.evaluate(el => Array.from(el.children).map(child => {
+    // The two local-network cells are one shared tuning relation: outlined
+    // while all four lanes hold, withdrawn (no box, no outline) once the grid wraps.
+    const group = grid.locator(':scope > .dp-settings-tuning-group');
+    await expect(group).toHaveCount(1);
+    await expect(group).toHaveAttribute('data-tuning-span', '2');
+    await expect(group.locator('[data-setting="private_lan_connections"]')).toHaveCount(1);
+    await expect(group.locator('[data-setting="skip_private_lan_confirmation"]')).toHaveCount(1);
+    await expect(group.locator('[data-setting="material_checkpoint_interval_seconds"]')).toHaveCount(0);
+    const wide = await group.evaluate(el => ({display: getComputedStyle(el).display,
+                                             outline: getComputedStyle(el).outlineStyle}));
+    expect(wide.display).toBe('grid');
+    expect(wide.outline).not.toBe('none');
+    const cells = await grid.evaluate(el => Array.from(el.querySelectorAll('.dp-settings-field')).map(child => {
       const box = child.getBoundingClientRect();
       return {top: Math.round(box.top), left: box.left, width: box.width, text: child.textContent};
     }));
@@ -77,6 +89,11 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     expect(firstRow[1].left).toBeGreaterThan(firstRow[0].left);
     const gridWidth = await grid.evaluate(el => el.getBoundingClientRect().width);
     for (const cell of cells) expect(cell.width).toBeLessThan(gridWidth * 0.9);
+
+    // Narrow: the grid wraps and the relation is simply not drawn.
+    await page.setViewportSize({width: 700, height: 1000});
+    await expect.poll(() => group.evaluate(el => getComputedStyle(el).display)).toBe('contents');
+    expect(await group.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('none');
   });
 
 test('Local Network Connections persists immediately and gates Skip Confirmation without erasing it',

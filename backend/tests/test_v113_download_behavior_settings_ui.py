@@ -44,7 +44,13 @@ def test_four_separate_cells_in_the_one_tuning_grammar():
     advanced = _function("downloadBehaviorAdvanced")
     assert [re.search(rf"(input|tuningToggle)\('{key}'", advanced).group(1) for key in KEYS] == [
         "input", "input", "tuningToggle", "tuningToggle"]
-    assert "tuningGroup(" not in advanced  # four independent cards, not one combined LAN card
+    # Four separate cards; only the two local-network cells share the one
+    # canonical relationship, the two numbers stay ungrouped.
+    assert advanced.count("tuningGroup(") == 1
+    group = advanced[advanced.index("tuningGroup("):]
+    assert group.index("'private_lan_connections'") < group.index("'skip_private_lan_confirmation'")
+    before = advanced[:advanced.index("tuningGroup(")]
+    assert "'material_checkpoint_interval_seconds'" in before and "'graceful_stop_timeout_seconds'" in before
     for label in ("Material Checkpoint Interval", "Graceful Stop Timeout", "Local Network Connections",
                   "Skip Local Connection Confirmation"):
         assert label in advanced
