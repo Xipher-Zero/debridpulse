@@ -470,6 +470,113 @@ async def test_operator_switch_that_discards_valid_progress_requires_confirmatio
 
 
 @pytest.mark.asyncio
+async def test_switch_preview_is_the_refusals_consequence_and_mutates_nothing(tmp_path, monkeypatch):
+    from transfers.manual_failover import DiscardConfirmationRequired, manual_candidate_failover, preview_candidate_switch
+    restart_only = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.EXPORT_MATERIAL_RANGES})
+    ctx = await build(tmp_path, monkeypatch, executors=TWO, continuations={"spool-b": restart_only})
+    transfer, artifact = await admit(ctx)
+    current = await attach_alternate(ctx, transfer)
+    ctx.spools["spool-a"].step(artifact.execution.attempt_id, 3 * MIB)
+    await checkpoint(ctx)
+    target = str(current.candidates[1].id)
+    before = await ctx.repository.material_state(artifact.id)
+
+    preview = await preview_candidate_switch(ctx.engine, transfer.id, artifact.id, target)
+    assert preview["candidate_id"] == target and preview["artifact_id"] == artifact.id
+    assert preview["discarded_bytes"] == 3 * MIB and preview["retained_bytes"] == 0
+    assert preview["material_generation"] == before.material_generation
+    unchanged = (await ctx.repository.artifacts(transfer.id))[0]
+    assert unchanged.selected == 0 and unchanged.execution == artifact.execution
+    assert await ctx.repository.material_state(artifact.id) == before
+
+    with pytest.raises(DiscardConfirmationRequired) as refused:
+        await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, target)
+    assert (refused.value.discarded_bytes, refused.value.retained_bytes, refused.value.material_generation) == (
+        preview["discarded_bytes"], preview["retained_bytes"], preview["material_generation"])
+    assert refused.value.changed is False
+
+
+@pytest.mark.asyncio
+async def test_a_confirmation_applies_only_to_the_consequence_it_confirmed(tmp_path, monkeypatch):
+    from transfers.manual_failover import DiscardConfirmationRequired, manual_candidate_failover, preview_candidate_switch
+    restart_only = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.EXPORT_MATERIAL_RANGES})
+    ctx = await build(tmp_path, monkeypatch, executors=TWO, continuations={"spool-b": restart_only})
+    transfer, artifact = await admit(ctx)
+    current = await attach_alternate(ctx, transfer)
+    ctx.spools["spool-a"].step(artifact.execution.attempt_id, 3 * MIB)
+    await checkpoint(ctx)
+    target = str(current.candidates[1].id)
+    preview = await preview_candidate_switch(ctx.engine, transfer.id, artifact.id, target)
+
+    # Another material generation, or a switch that would now keep less than
+    # confirmed: refused as changed, and nothing moves.
+    for stale in ({"material_generation": preview["material_generation"] + 1, "retained_bytes": 0},
+                  {"material_generation": preview["material_generation"], "retained_bytes": MIB}):
+        with pytest.raises(DiscardConfirmationRequired) as refused:
+            await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, target,
+                                            discard_confirmed=True, discard_confirmation=stale)
+        assert refused.value.changed is True and refused.value.discarded_bytes == 3 * MIB
+        unchanged = (await ctx.repository.artifacts(transfer.id))[0]
+        assert unchanged.selected == 0 and unchanged.execution == artifact.execution
+
+    # Material written after the confirmation (same generation, the kept part
+    # not smaller) is still the confirmed consequence.
+    ctx.spools["spool-a"].step(artifact.execution.attempt_id, MIB)
+    await checkpoint(ctx)
+    result = await manual_candidate_failover(
+        ctx.engine, transfer.id, artifact.id, target, discard_confirmed=True,
+        discard_confirmation={"material_generation": preview["material_generation"],
+                              "retained_bytes": preview["retained_bytes"]})
+    assert result["ok"]
+    assert (await ctx.repository.artifacts(transfer.id))[0].selected == 1
+
+
+@pytest.mark.asyncio
+async def test_candidate_switch_http_contract_refuses_previews_and_reports_changed(tmp_path, monkeypatch):
+    from fastapi import HTTPException
+
+    import api.operational_downloads as downloads
+    from transfers.manual_failover import preview_candidate_switch
+    restart_only = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.EXPORT_MATERIAL_RANGES})
+    ctx = await build(tmp_path, monkeypatch, executors=TWO, continuations={"spool-b": restart_only})
+    transfer, artifact = await admit(ctx)
+    current = await attach_alternate(ctx, transfer)
+    ctx.spools["spool-a"].step(artifact.execution.attempt_id, 3 * MIB)
+    await checkpoint(ctx)
+    target = str(current.candidates[1].id)
+
+    class Application:
+        engine = ctx.engine
+
+        async def require(self, transfer_id):
+            return None
+
+    async def preview_switch(application, transfer_id, artifact_id, candidate_id):
+        return await preview_candidate_switch(ctx.engine, transfer_id, artifact_id, candidate_id)
+
+    monkeypatch.setattr(downloads, "preview_switch", preview_switch)
+    preview = await downloads.preview_artifact_candidate(transfer.id, artifact.id, target, Application())
+    assert preview["discarded_bytes"] == 3 * MIB
+
+    stale = downloads.DiscardConfirmationBody(material_generation=preview["material_generation"] + 1, retained_bytes=0)
+
+    async def switch_candidate(application, transfer_id, artifact_id, candidate_id, **kwargs):
+        from transfers.manual_failover import manual_candidate_failover
+        return await manual_candidate_failover(ctx.engine, transfer_id, artifact_id, candidate_id, **kwargs)
+
+    monkeypatch.setattr(downloads, "switch_candidate", switch_candidate)
+    with pytest.raises(HTTPException) as first:
+        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, False, None, Application())
+    assert first.value.status_code == 409
+    assert first.value.detail["confirmation"] == "discard_material" and first.value.detail["changed"] is False
+    assert first.value.detail["material_generation"] == preview["material_generation"]
+    with pytest.raises(HTTPException) as changed:
+        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, True, stale, Application())
+    assert changed.value.status_code == 409 and changed.value.detail["changed"] is True
+    assert (await ctx.repository.artifacts(transfer.id))[0].selected == 0
+
+
+@pytest.mark.asyncio
 async def test_external_truncation_is_reconciled_before_the_continuation_plan(tmp_path, monkeypatch):
     ctx = await build(tmp_path, monkeypatch)
     transfer, artifact = await admit(ctx)

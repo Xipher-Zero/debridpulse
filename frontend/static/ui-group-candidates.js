@@ -924,7 +924,14 @@
     if (menuSession === session) renderProgress(label, 0, 1, 'Candidate sources');
 
     try {
-      const result = await switchOne(transferId, artifactId, candidateId);
+      const result = await switchArtifact(transferId, artifactId, candidateId, file.filename, label);
+      if (result === null) {
+        // Kept the current source: nothing was switched.
+        menuBusy = false;
+        await refreshSurfaces();
+        if (menuSession === session && menuVisible) renderArtifactMenu(file);
+        return;
+      }
       // The POST succeeding means the backend coherently committed the
       // exact candidate switch -- it does not mean the replacement source
       // has already transferred bytes, so this progress step still only
@@ -955,27 +962,114 @@
     }
   }
 
-  // ── Group switch orchestration ─────────────────────────────────────────
+  // ── The one operator candidate-switch protocol ───────────────────────
+  // Every surface that lets an operator force a source switch -- the Details
+  // per-file disclosure (ui-detail-candidates.js), and this module's artifact
+  // and group choosers launched from Details, Dashboard Recent Activity and
+  // Downloads -- goes through these primitives. When the requested source
+  // cannot continue from the artifact's DebridPulse-valid material the
+  // backend refuses first (409, confirmation "discard_material") with the
+  // exact amounts; nothing has changed. The discard is never estimated here.
 
-  async function switchOne(transferId, artifactId, candidateId) {
+  function switchFailure(response, payload) {
+    const detail = payload && payload.detail;
+    const message = (detail && typeof detail === 'object')
+      ? (detail.message || String(detail.category || '').replace(/_/g, ' ').toLowerCase())
+      : detail;
+    const error = new Error(String(message || response.statusText || 'switch failed'));
+    error.detail = detail;
+    return error;
+  }
+
+  // ``confirmation`` is the consequence the operator confirmed (from the
+  // refusal or a preview): the backend honors it only while it is current.
+  async function switchOne(transferId, artifactId, candidateId, confirmation) {
+    const body = {candidate_id: candidateId};
+    if (confirmation) {
+      body.discard_confirmed = true;
+      body.discard_confirmation = {
+        material_generation: confirmation.material_generation,
+        retained_bytes: confirmation.retained_bytes,
+      };
+    }
     const response = await window.debridPulseAuth.fetch(
       '/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate',
       {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({candidate_id: candidateId}),
+        body: JSON.stringify(body),
       },
     );
     const payload = await response.json().catch(function () { return {}; });
-    if (!response.ok) {
-      const detail = payload && payload.detail;
-      const message = (detail && (detail.message || detail.category)) ||
-        response.statusText || 'switch failed';
-      const error = new Error(String(message).replace(/_/g, ' '));
-      error.detail = detail;
-      throw error;
-    }
+    if (!response.ok) throw switchFailure(response, payload);
     return payload;
+  }
+
+  // Read-only: what the same continuation planner would keep and discard.
+  async function previewOne(transferId, artifactId, candidateId) {
+    const response = await window.debridPulseAuth.fetch(
+      '/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate/preview?candidate_id=' +
+        encodeURIComponent(candidateId));
+    const payload = await response.json().catch(function () { return {}; });
+    if (!response.ok) throw switchFailure(response, payload);
+    return payload;
+  }
+
+  // A first refusal asks for confirmation; a refusal of an already-confirmed
+  // request (``changed``) is an ordinary failure -- never a second prompt.
+  function needsDiscardConfirmation(error) {
+    const detail = error && error.detail;
+    return Boolean(detail && typeof detail === 'object' && detail.confirmation === 'discard_material' && !detail.changed);
+  }
+
+  function bytes(value) {
+    return typeof window.fmtSize === 'function' ? window.fmtSize(value) : String(value || 0) + ' B';
+  }
+
+  // One confirmation for one requested operation, however many files it
+  // moves: ``consequences`` are the destructive moves ({filename,
+  // discarded_bytes, retained_bytes}). Resolves true only on explicit accept.
+  function confirmDiscard(consequences, target) {
+    if (!window.DPSettingsModal) return Promise.resolve(false);
+    const total = consequences.reduce(function (sum, item) { return sum + Number(item.discarded_bytes || 0); }, 0);
+    let message;
+    if (consequences.length === 1) {
+      const only = consequences[0];
+      message = 'This source cannot continue the existing download of ' + String(only.filename || 'this file') +
+        '. Switching discards ' + bytes(only.discarded_bytes) + ' of downloaded progress' +
+        (Number(only.retained_bytes) > 0 ? ' and keeps the first ' + bytes(only.retained_bytes) : '') +
+        '; the rest is downloaded again from ' + target + '.';
+    } else {
+      const listed = consequences.slice(0, 5).map(function (item) {
+        return String(item.filename || 'file') + ' (' + bytes(item.discarded_bytes) + ')';
+      });
+      if (consequences.length > listed.length) listed.push('and ' + (consequences.length - listed.length) + ' more');
+      message = 'Switching to ' + target + ' discards ' + bytes(total) + ' of downloaded progress across ' +
+        consequences.length + ' files: ' + listed.join(', ') + '. That progress is downloaded again from ' + target + '.';
+    }
+    return window.DPSettingsModal.confirm({
+      title: 'Discard downloaded progress?',
+      message: message + ' Cancel switches nothing; confirming applies only to this switch.',
+      confirmLabel: consequences.length === 1 ? 'Switch Source' : 'Switch Sources',
+      cancelLabel: consequences.length === 1 ? 'Keep Current Source' : 'Keep Current Sources',
+    });
+  }
+
+  // The single-artifact switch every single-artifact surface uses. Resolves
+  // the switch result, or null when the operator kept the current source
+  // (nothing was changed). Throws every other failure unchanged.
+  async function switchArtifact(transferId, artifactId, candidateId, filename, target) {
+    try {
+      return await switchOne(transferId, artifactId, candidateId, null);
+    } catch (error) {
+      if (!needsDiscardConfirmation(error)) throw error;
+      const detail = error.detail;
+      const confirmed = await confirmDiscard([{
+        filename: filename, discarded_bytes: detail.discarded_bytes, retained_bytes: detail.retained_bytes,
+      }], target || 'this source');
+      if (!confirmed) return null;
+      return switchOne(transferId, artifactId, candidateId, detail);
+    }
   }
 
   async function refreshSurfaces() {
@@ -1039,12 +1133,43 @@
       moves.push({artifactId: file.id, candidateId: candidateId});
     });
 
+    // Discard preflight: every required move's consequence, from the same
+    // planner, BEFORE any move is made. One confirmation covers the whole
+    // operation; a cancelled or failed preflight switches nothing.
+    const previews = new Map();
+    for (const move of moves) {
+      try {
+        previews.set(move, await previewOne(transferId, move.artifactId, move.candidateId));
+      } catch (_) {
+        menuBusy = false;
+        if (menuSession === session && menuGroup) renderMenu(menuGroup);
+        await refreshSurfaces();
+        toast('Could not check what switching to ' + host + ' keeps. Nothing was changed.', 'error');
+        return;
+      }
+    }
+    const destructive = moves.filter(function (move) { return Number(previews.get(move).discarded_bytes) > 0; });
+    if (destructive.length) {
+      const confirmed = await confirmDiscard(destructive.map(function (move) { return previews.get(move); }), host);
+      if (!confirmed) {
+        menuBusy = false;
+        if (menuSession === session && menuGroup) renderMenu(menuGroup);
+        await refreshSurfaces();
+        return;
+      }
+    }
+
     let switched = 0;
     let failure = null;
     if (menuSession === session) renderProgress(host, 0, moves.length);
     for (const move of moves) {
       try {
-        await switchOne(transferId, move.artifactId, move.candidateId);
+        // Only a move confirmed as destructive carries its confirmation; a
+        // move that turned destructive (or more so) since is refused by the
+        // backend and ends the operation like any other failure.
+        const preview = previews.get(move);
+        await switchOne(transferId, move.artifactId, move.candidateId,
+          Number(preview.discarded_bytes) > 0 ? preview : null);
         switched += 1;
         if (menuSession === session) renderProgress(host, switched, moves.length);
       } catch (error) {
@@ -1131,7 +1256,8 @@
     window.addEventListener('scroll', onViewportChange, {passive: true, capture: true});
   }
 
-  window.DPGroupCandidates = Object.freeze({computeGroup: computeGroup, launcherMarkup: launcherMarkup, open: open});
+  window.DPGroupCandidates = Object.freeze({computeGroup: computeGroup, launcherMarkup: launcherMarkup, open: open,
+    switchArtifact: switchArtifact});
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', install, {once: true});

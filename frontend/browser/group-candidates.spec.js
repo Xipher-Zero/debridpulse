@@ -4,6 +4,13 @@ const { test, expect } = require('@playwright/test');
 const MARKERS = ['DPGroupCandidates', 'DPDownloads'];
 async function ready(page) {
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({ status: 200, contentType: 'text/css', body: '' }));
+  // A group switch previews every move first; these scenarios are the
+  // ordinary case where no move discards downloaded progress (the discard
+  // protocol has its own spec, candidate-switch-discard-confirmation).
+  await page.route(url => /\/candidate\/preview$/.test(url.pathname), route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ discarded_bytes: 0, retained_bytes: 0, material_generation: 1 }),
+  }));
   await page.goto('/');
   await page.waitForFunction(markers => markers.every(marker => Boolean(window[marker])), MARKERS);
 }

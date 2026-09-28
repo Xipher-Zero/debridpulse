@@ -16,12 +16,13 @@ import json
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from pydantic import BaseModel, Field
 
 from api.routes import _public_transfer_presentation
 from api.serializers import public_payload
 from application import dispatch_admission as live_admission
 from application.dependencies import get_application
-from application.manual_candidate_failover import switch_candidate
+from application.manual_candidate_failover import preview_switch, switch_candidate
 from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
@@ -284,36 +285,66 @@ def _bounded_child_presentations(raw_facts, *, paused, input_required, capacity_
 # provider name, filename shape, UI glyph, or an open connection.
 
 
+class DiscardConfirmationBody(BaseModel):
+    """The exact consequence the operator confirmed (from the refusal or the
+    preview): honored only while it is still current."""
+    material_generation: int = Field(ge=0)
+    retained_bytes: int = Field(ge=0)
+
+
+def _switch_http_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, DiscardConfirmationRequired):
+        return HTTPException(status_code=409, detail={
+            "confirmation": "discard_material", "discarded_bytes": exc.discarded_bytes,
+            "retained_bytes": exc.retained_bytes, "material_generation": exc.material_generation,
+            "changed": exc.changed,
+            "message": ("Downloaded progress changed after the switch was confirmed; nothing was switched."
+                        if exc.changed else "Switching to this source discards downloaded progress."),
+        })
+    if isinstance(exc, KeyError):
+        return HTTPException(status_code=404, detail="Transfer not found")
+    missing = exc.error.category in {Category.RESOURCE_NOT_FOUND, Category.SOURCE_NOT_FOUND}
+    return HTTPException(status_code=404 if missing else 409, detail=exc.error.as_dict())
+
+
 @router.post("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate")
 async def activate_artifact_candidate(
     transfer_id: int,
     artifact_id: int,
     candidate_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
     discard_confirmed: Annotated[bool, Body(embed=True)] = False,
+    discard_confirmation: Annotated[Optional[DiscardConfirmationBody], Body(embed=True)] = None,
     application: ApplicationService = Depends(get_application),
 ):
     """Request activation of one exact existing canonical acquisition candidate.
 
     When the requested source cannot continue from the artifact's existing
     valid material, nothing changes until the operator confirms the discard
-    (``discard_confirmed``); the refusal reports exactly how much is lost."""
+    (``discard_confirmed``); the refusal reports exactly how much is lost. A
+    confirmation carrying the consequence it confirmed is refused
+    (``changed``) once that consequence is no longer current."""
     try:
-        return await switch_candidate(application, transfer_id, artifact_id, candidate_id,
-                                      discard_confirmed=discard_confirmed)
-    except DiscardConfirmationRequired as exc:
-        raise HTTPException(status_code=409, detail={
-            "confirmation": "discard_material", "discarded_bytes": exc.discarded_bytes,
-            "retained_bytes": exc.retained_bytes,
-            "message": "Switching to this source discards downloaded progress.",
-        }) from None
-    except KeyError:
-        raise HTTPException(status_code=404, detail="Transfer not found") from None
-    except TransferError as exc:
-        missing = exc.error.category in {Category.RESOURCE_NOT_FOUND, Category.SOURCE_NOT_FOUND}
-        raise HTTPException(
-            status_code=404 if missing else 409,
-            detail=exc.error.as_dict(),
-        ) from None
+        return await switch_candidate(
+            application, transfer_id, artifact_id, candidate_id, discard_confirmed=discard_confirmed,
+            discard_confirmation=discard_confirmation.model_dump() if discard_confirmation else None)
+    except (DiscardConfirmationRequired, KeyError, TransferError) as exc:
+        raise _switch_http_error(exc) from None
+
+
+@router.get("/torrents/{transfer_id}/artifacts/{artifact_id}/candidate/preview")
+async def preview_artifact_candidate(
+    transfer_id: int,
+    artifact_id: int,
+    candidate_id: Annotated[str, Query(min_length=1, max_length=128)],
+    application: ApplicationService = Depends(get_application),
+):
+    """Read-only: what switching to this exact candidate would keep and
+    discard now, from the same continuation planner the switch uses. Nothing
+    is changed, reserved or promised; the switch itself revalidates."""
+    try:
+        return await preview_switch(application, transfer_id, artifact_id, candidate_id)
+    except (KeyError, TransferError) as exc:
+        raise _switch_http_error(exc) from None
 
 
 @router.get("/events")

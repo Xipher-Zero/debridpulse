@@ -261,33 +261,6 @@
     return String(fallback || 'The selected candidate could not be established.');
   }
 
-  async function switchRequest(transferId, artifactId, candidateId, discardConfirmed) {
-    const controller = new AbortController();
-    const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
-    try {
-      const body = {candidate_id: candidateId};
-      if (discardConfirmed) body.discard_confirmed = true;
-      const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(body),
-        signal: controller.signal
-      });
-      const payload = await response.json().catch(function () { return {}; });
-      if (!response.ok) {
-        const error = new Error(normalizedFailure(payload.detail, response.statusText));
-        error.detail = payload.detail;
-        throw error;
-      }
-      return payload;
-    } catch (error) {
-      if (error && error.name === 'AbortError') throw new Error('Request timed out after 8s');
-      throw error;
-    } finally {
-      window.clearTimeout(timeout);
-    }
-  }
-
   async function refreshAfterSwitch(transferId, key) {
     const generation = ++presentationGeneration;
     await fetchPresentation(transferId, generation);
@@ -314,28 +287,17 @@
     button.disabled = true;
     button.setAttribute('aria-disabled', 'true');
     try {
-      let result;
-      try {
-        result = await switchRequest(activeTransferId, artifactId, candidateId, false);
-      } catch (error) {
-        // The new source cannot continue from what is already downloaded:
-        // nothing changed yet. Ask once, through the canonical dialog owner.
-        const detail = error && error.detail;
-        if (!detail || detail.confirmation !== 'discard_material' || !window.DPSettingsModal) throw error;
-        const confirmed = await window.DPSettingsModal.confirm({
-          title: 'Discard downloaded progress?',
-          message: 'This source cannot continue the existing download. Switching discards '
-            + fileSize(detail.discarded_bytes) + ' of downloaded progress for '
-            + String(file.filename || 'this file') + ' and downloads it again from this source.',
-          confirmLabel: 'Switch Source',
-          cancelLabel: 'Keep Current Source',
-        });
-        if (!confirmed) {
-          switchingRows.delete(key);
-          await refreshAfterSwitch(activeTransferId, key).catch(function () {});
-          return;
-        }
-        result = await switchRequest(activeTransferId, artifactId, candidateId, true);
+      // The one operator switch protocol (ui-group-candidates.js), shared with
+      // the Dashboard, Downloads and Details choosers: a switch that would
+      // discard downloaded progress asks first, and Cancel changes nothing.
+      const item = button.closest('.dp-detail-candidate-item');
+      const source = item && item.querySelector('.dp-detail-candidate-source');
+      const result = await window.DPGroupCandidates.switchArtifact(
+        activeTransferId, artifactId, candidateId, file.filename, source ? source.textContent.trim() : '');
+      if (result === null) {
+        switchingRows.delete(key);
+        await refreshAfterSwitch(activeTransferId, key).catch(function () {});
+        return;
       }
       switchingRows.delete(key);
       await refreshAfterSwitch(activeTransferId, key);

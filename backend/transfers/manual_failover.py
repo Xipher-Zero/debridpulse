@@ -14,6 +14,7 @@ contract (Section 26).
 """
 from __future__ import annotations
 
+from collections.abc import Mapping
 from dataclasses import replace
 
 from transfers.candidate_activation import resolve_candidate_index
@@ -228,12 +229,83 @@ _NOT_COMMITTED_ERROR = {
 class DiscardConfirmationRequired(Exception):
     """The requested source cannot continue from the artifact's existing
     DebridPulse-valid material: switching would discard ``discarded_bytes``.
-    Nothing was changed; the operator must confirm before the rollback."""
+    Nothing was changed; the operator must confirm before the rollback.
 
-    def __init__(self, discarded_bytes: int, retained_bytes: int):
+    ``changed`` marks a confirmed request whose consequence is no longer the
+    one the operator confirmed (see ``_confirmation_outdated``)."""
+
+    def __init__(self, discarded_bytes: int, retained_bytes: int, material_generation: int | None = None,
+                 *, changed: bool = False):
         super().__init__("switching source discards downloaded progress")
         self.discarded_bytes = int(discarded_bytes)
         self.retained_bytes = int(retained_bytes)
+        self.material_generation = material_generation
+        self.changed = bool(changed)
+
+
+def _switch_index(artifact, wanted: str) -> int:
+    """The index of the exact requested candidate, when it may be switched to
+    now; the one eligibility check shared by the switch and its preview."""
+    index = _index_for(artifact, wanted)
+    if index is None:
+        raise _error(Category.SOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+    if artifact.state not in SWITCH_ELIGIBLE_LIFECYCLE_STATES or len(artifact.candidates) < 2:
+        raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
+    if index == artifact.selected:
+        raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
+    return index
+
+
+async def _switch_subject(engine, transfer_id: int, artifact_id: int, candidate_id: str):
+    wanted = str(candidate_id or "").strip()
+    if not wanted:
+        raise _error(
+            Category.INVALID_REQUEST,
+            Stage.CANDIDATE_PREPARATION,
+            domain=Domain.REQUEST,
+        )
+    transfer = await engine.repository.get(int(transfer_id))
+    if transfer is None:
+        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+    artifact = await engine._current_artifact(int(transfer_id), int(artifact_id))
+    if artifact is None:
+        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+    return wanted, artifact
+
+
+def _confirmation_outdated(plan, confirmation: Mapping) -> bool:
+    """A confirmed discard applies only to the consequence the operator saw.
+
+    It is outdated when the material it was computed against no longer means
+    the same thing (another material generation), or when the switch would
+    now keep less than the operator was told it keeps. Within one generation
+    valid material only grows, so any further discard is material written
+    after the confirmation; no material the operator was told survives is
+    ever lost unconfirmed. A confirmation is not a lease: nothing is held."""
+    generation = confirmation.get("material_generation")
+    retained = confirmation.get("retained_bytes")
+    if generation is None or retained is None:
+        return True
+    return int(generation) != plan.material_generation or plan.retained_bytes < int(retained)
+
+
+async def preview_candidate_switch(engine, transfer_id: int, artifact_id: int, candidate_id: str) -> dict:
+    """What switching this artifact to the exact requested candidate would keep
+    and discard now -- the same eligibility check and the same continuation
+    planner the switch itself uses, read-only (nothing is refreshed, recorded,
+    reserved or promised; the switch revalidates when it runs)."""
+    wanted, artifact = await _switch_subject(engine, transfer_id, artifact_id, candidate_id)
+    index = _switch_index(artifact, wanted)
+    plan = await engine.preview_continuation(artifact, artifact.candidates[index])
+    return {
+        "transfer_id": int(transfer_id),
+        "artifact_id": int(artifact_id),
+        "candidate_id": wanted,
+        "filename": artifact.name,
+        "discarded_bytes": plan.discarded_bytes if plan is not None else 0,
+        "retained_bytes": plan.retained_bytes if plan is not None else 0,
+        "material_generation": plan.material_generation if plan is not None else None,
+    }
 
 
 async def manual_candidate_failover(
@@ -243,38 +315,22 @@ async def manual_candidate_failover(
     candidate_id: str,
     *,
     discard_confirmed: bool = False,
+    discard_confirmation: Mapping | None = None,
 ) -> dict:
     """Make one existing candidate authoritative without creating a new artifact.
 
     A switch whose continuation plan would discard existing valid material
     (the new source/executor cannot continue from it) requires the operator's
-    explicit confirmation first; the amount is reported, never guessed."""
-    wanted = str(candidate_id or "").strip()
-    if not wanted:
-        raise _error(
-            Category.INVALID_REQUEST,
-            Stage.CANDIDATE_PREPARATION,
-            domain=Domain.REQUEST,
-        )
-
-    transfer = await engine.repository.get(int(transfer_id))
-    if transfer is None:
-        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
-    artifact = await engine._current_artifact(int(transfer_id), int(artifact_id))
-    if artifact is None:
-        raise _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
+    explicit confirmation first; the amount is reported, never guessed. A
+    confirmation that carries the consequence it confirmed
+    (``discard_confirmation``) is honored only while it is still current."""
+    wanted, artifact = await _switch_subject(engine, transfer_id, artifact_id, candidate_id)
 
     old_candidate = None
     candidate = None
     claim_result = None
     try:
-        index = _index_for(artifact, wanted)
-        if index is None:
-            raise _error(Category.SOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST)
-        if artifact.state not in SWITCH_ELIGIBLE_LIFECYCLE_STATES or len(artifact.candidates) < 2:
-            raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
-        if index == artifact.selected:
-            raise _error(Category.RESOURCE_STATE_CONFLICT, Stage.CANDIDATE_PREPARATION)
+        index = _switch_index(artifact, wanted)
 
         old_candidate = artifact.candidates[artifact.selected]
         candidate = artifact.candidates[index]
@@ -282,10 +338,12 @@ async def manual_candidate_failover(
             artifact, index = await _refresh_exact(engine, artifact, index)
             candidate = artifact.candidates[index]
 
-        if not discard_confirmed:
+        if not discard_confirmed or discard_confirmation is not None:
             preview = await engine.preview_continuation(artifact, candidate)
-            if preview is not None and preview.discarded_bytes:
-                raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes)
+            if preview is not None and preview.discarded_bytes and (
+                    not discard_confirmed or _confirmation_outdated(preview, discard_confirmation)):
+                raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes,
+                                                  preview.material_generation, changed=discard_confirmed)
         claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index)
         if claim_result is None:
             # A concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler recovery
