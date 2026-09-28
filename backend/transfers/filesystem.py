@@ -228,10 +228,12 @@ def material_initially_absent(plan: MaterializationPlan, footprint: ExecutionFoo
 
 async def adoptable_material(plan: MaterializationPlan, footprint: ExecutionFootprint, expected_bytes: int,
                              integrity=(), *, delay=3.25) -> bool:
-    """Pre-dispatch possession: an already stable, fully verified FILE payload
-    needs no execution. A collection is never adopted without a verified
-    execution result naming its members."""
-    if plan.kind != MaterializationKind.FILE:
+    """Pre-dispatch possession: an already stable FILE payload that STRONG
+    integrity evidence verifies needs no execution. File length alone never
+    proves possession (DebridPulse material truth is the other proof, owned by
+    the engine). A collection is never adopted without a verified execution
+    result naming its members."""
+    if plan.kind != MaterializationKind.FILE or not integrity:
         return False
     return await stable_payload(plan.target, expected_bytes,
                                 sidecars=(*footprint.transient_paths, *footprint.transient_trees),
@@ -275,6 +277,17 @@ def _regular_beneath(root: Path, relative: PurePosixPath) -> os.stat_result | No
         return None
 
 
+def member_payload(root: str, relative: str) -> str | None:
+    """The one member file of a COLLECTION an executor may report material
+    for: a normalized relative path whose every component beneath ``root`` is
+    a real directory and whose entry is a regular file (never a link).
+    ``None`` refuses it -- nothing is flushed, committed or reconciled."""
+    member = _relative(relative)
+    if member is None or _regular_beneath(Path(root), member) is None:
+        return None
+    return str(Path(root).joinpath(*member.parts))
+
+
 def observe_path(path: str) -> dict:
     """What is at ``path`` NOW, observed without following, opening, creating
     or repairing anything: one ``lstat``. ``type`` is ``file``, ``directory``,
@@ -292,6 +305,91 @@ def observe_path(path: str) -> dict:
             else "symlink" if stat.S_ISLNK(mode) else "other")
     return {"exists": True, "type": kind, "bytes": info.st_size if kind == "file" else None,
             "modified_at": info.st_mtime, "filesystem_id": str(info.st_dev)}
+
+
+@dataclass(frozen=True)
+class PayloadFacts:
+    """Observable physical facts about one FILE payload, for reconciliation of
+    DebridPulse material truth. Evidence only: nothing here ever makes a byte
+    valid. ``available`` is False when the observation itself failed, which
+    proves nothing either way. ``identity`` is ``"<st_dev>:<st_ino>"``;
+    ``holes`` are unallocated ranges the filesystem reports inside the probed
+    ranges."""
+    available: bool
+    exists: bool = False
+    size: int = 0
+    identity: str = ""
+    holes: tuple[tuple[int, int], ...] = ()
+
+
+def _holes(fd: int, size: int, probe) -> tuple[tuple[int, int], ...]:
+    seek_hole = getattr(os, "SEEK_HOLE", None)
+    seek_data = getattr(os, "SEEK_DATA", None)
+    if seek_hole is None or seek_data is None:
+        return ()
+    found = []
+    for start, end in probe:
+        cursor, end = max(0, int(start)), min(int(end), size)
+        while cursor < end:
+            try:
+                hole = os.lseek(fd, cursor, seek_hole)
+            except OSError:
+                return tuple(found)
+            if hole >= end:
+                break
+            try:
+                data = os.lseek(fd, hole, seek_data)
+            except OSError as exc:
+                if exc.errno != errno.ENXIO:
+                    return tuple(found)
+                data = size
+            found.append((hole, min(data, end)))
+            cursor = data
+    return tuple(found)
+
+
+def payload_facts(path: str, probe=()) -> PayloadFacts:
+    """Observe a FILE payload without following a link or changing it."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except (FileNotFoundError, NotADirectoryError):
+        return PayloadFacts(True, False)
+    except OSError as exc:
+        if exc.errno == errno.ELOOP:
+            # A link where the payload belongs is not the payload.
+            return PayloadFacts(True, False)
+        return PayloadFacts(False)
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            return PayloadFacts(True, False)
+        return PayloadFacts(True, True, info.st_size, f"{info.st_dev}:{info.st_ino}",
+                            _holes(fd, info.st_size, probe))
+    except OSError:
+        return PayloadFacts(False)
+    finally:
+        os.close(fd)
+
+
+def flush_payload(path: str) -> PayloadFacts | None:
+    """The durability boundary of a checkpoint: flush everything already
+    written to ``path`` to stable storage (``fsync`` covers the file's dirty
+    data whichever descriptor wrote it) and report its facts. ``None`` when
+    durability could not be established -- the caller then commits nothing."""
+    try:
+        fd = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    except OSError:
+        return None
+    try:
+        info = os.fstat(fd)
+        if not stat.S_ISREG(info.st_mode):
+            return None
+        os.fsync(fd)
+        return PayloadFacts(True, True, info.st_size, f"{info.st_dev}:{info.st_ino}")
+    except OSError:
+        return None
+    finally:
+        os.close(fd)
 
 
 def observe_material(target: str, member_paths=()) -> dict:
@@ -494,6 +592,28 @@ def _prune_empty_parents(base: Path, target: Path) -> None:
             directory.rmdir()
         except OSError:
             return
+
+
+def retire_native_state(root: str, plan: MaterializationPlan, footprint: ExecutionFootprint) -> None:
+    """Discard an execution's private native transient state (a resume/control
+    file or partial tree) while leaving its materialization boundary -- the
+    payload DebridPulse material truth describes -- untouched. The caller has
+    already proven the execution owns it. Never follows a symlink."""
+    base = Path(root).resolve()
+    transient = tuple(str(item) for item in footprint.transient_paths)
+    trees = tuple(str(item) for item in footprint.transient_trees)
+    for item in (*transient, *trees):
+        path = Path(item)
+        if path.is_symlink() or not path.resolve().is_relative_to(base) or path.resolve() == base:
+            raise _policy_violation(Stage.CLEANUP)
+    try:
+        for item in transient:
+            Path(item).unlink(missing_ok=True)
+        for item in trees:
+            _remove_tree(item)
+    except OSError as exc:
+        raise TransferError(NormalizedError(Domain.LOCAL_RESOURCE, Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP,
+                                            retryability=Retryability.AFTER_RESOURCE_CHANGE)) from exc
 
 
 def retire_materialization(root: str, plan: MaterializationPlan, footprint: ExecutionFootprint, *,

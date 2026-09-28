@@ -7,6 +7,7 @@ from application.service import ApplicationService
 from core.config import get_settings, apply_settings
 from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
+from services.downloader_egress_guard import downloader_egress_guard
 from integrations.definition import (
     AdministeredIntegration, ConfigurableIntegration, IntegrationEnvironment, IntegrationLifecycle,
     ManagedIntegration,
@@ -63,6 +64,9 @@ def configure(application):
         application.engine.dispatch_permitted = False
         return True
 
+    # The connection boundary reads the operator's Local Network Connections
+    # policy live at every CONNECT; this is its one configuration point.
+    downloader_egress_guard.configure_private_lan(policy.private_lan_connections)
     application.engine.configure_policy(replace(application.engine.policy,
         max_attempts=policy.execution_retry_count + 1,
         retry_delay=policy.execution_retry_delay_seconds,
@@ -73,6 +77,10 @@ def configure(application):
         cleanup_after_completion=True,
         stalled_after_seconds=policy.stalled_timeout_hours * 3600,
         resource_poll_interval=policy.provider_poll_interval_seconds,
+        material_checkpoint_interval=policy.material_checkpoint_interval_seconds,
+        graceful_stop_timeout=policy.graceful_stop_timeout_seconds,
+        private_lan_connections=policy.private_lan_connections,
+        skip_private_lan_confirmation=policy.skip_private_lan_confirmation,
         local_resource_failure_handler=contain_local_resource_failure))
     from db import database
     capacity = getattr(application, "capacity", None)

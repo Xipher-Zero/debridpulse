@@ -119,6 +119,21 @@ function nav(el) {
 }
 
 // ── API ────────────────────────────────────────────────────────────────────
+/* The per-transfer private-LAN confirmation, through the canonical dialog
+ * owner. Answers only for the submission that asked; it writes no setting. */
+async function confirmLocalNetwork(hosts) {
+  if (!window.DPSettingsModal || typeof window.DPSettingsModal.confirm !== 'function') return false;
+  const named = (Array.isArray(hosts) ? hosts : []).filter(Boolean).join(', ');
+  return window.DPSettingsModal.confirm({
+    title: 'Connect to a local network address?',
+    message: 'This transfer connects to an address on your private network'
+      + (named ? ' (' + named + ')' : '') + '. Only continue if you trust the source and intended this '
+      + 'connection. Allowing applies to this transfer only; cancelling changes no settings.',
+    confirmLabel: 'Allow',
+    cancelLabel: 'Cancel',
+  });
+}
+
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   const opts = {
@@ -142,7 +157,14 @@ async function api(method, path, body, timeoutMs, options) {
     clearTimeout(tid);
     if (externalSignal) externalSignal.removeEventListener('abort', abortFromExternal);
     const data = await r.json().catch(() => ({detail: r.statusText}));
-    if (!r.ok) throw new Error(data.detail || r.statusText);
+    if (!r.ok) {
+      // A structured refusal keeps its facts for the caller that asked.
+      const detail = data.detail;
+      const error = new Error((detail && typeof detail === 'object' ? detail.message : detail) || r.statusText);
+      error.detail = detail;
+      error.status = r.status;
+      throw error;
+    }
     return data;
   } catch(e) {
     clearTimeout(tid);
@@ -469,9 +491,11 @@ function progress(pct, status) {
   const done = state === 'completed';
   const failed = state === 'error';
   const active = state === 'downloading';
+  // No trustworthy total size: the percentage is unavailable, never 0%.
+  const unknown = !done && (pct === null || pct === undefined);
   const raw = Number(pct);
   const actual = done ? 100 : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
-  const showStripe = active && actual === 0;
+  const showStripe = active && (unknown || actual === 0);
   const visual = actual;
   let fillStyle = showStripe
     ? 'width:100%;opacity:.35;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 8px,transparent 8px,transparent 16px)'
@@ -481,7 +505,7 @@ function progress(pct, status) {
   }
   const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
   const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
-  const label = done ? '100%' : (showStripe ? '…' : actual.toFixed(0) + '%');
+  const label = done ? '100%' : (unknown ? '—' : (showStripe ? '…' : actual.toFixed(0) + '%'));
   const attrs = failed
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
     : '';
@@ -515,9 +539,9 @@ function patchProgressOnlyTransferEvent(data) {
 
   for (const update of updates) {
     const id = Number(update?.id ?? update?.torrent_id);
-    const nextProgress = Number(update?.progress);
+    const nextProgress = update?.progress == null ? null : Number(update.progress);
 
-    if (!Number.isFinite(id) || !Number.isFinite(nextProgress)) {
+    if (!Number.isFinite(id) || (nextProgress !== null && !Number.isFinite(nextProgress))) {
       continue;
     }
 
@@ -1254,6 +1278,7 @@ async function addDashboardEntries() {
 
   setButtonPending(button, true, 'Adding…');
   const failed = [];
+  const kept = [];
   let handled = 0;
   let deferred = 0;
   try {
@@ -1262,9 +1287,27 @@ async function addDashboardEntries() {
         // The built-in browser is an interactive client: a source that proves
         // to be a multi-file collection offers the file selector; a single
         // file is unaffected. Headless callers that omit this keep ALL.
-        const result = await api('POST', '/links/add', {links: direct.map(entry => entry.value), selection_mode: 'interactive'}, 30000);
-        handled += direct.length;
-        if (result && result._deferred) deferred += direct.length;
+        const submission = {links: direct.map(entry => entry.value), selection_mode: 'interactive'};
+        let result;
+        try {
+          result = await api('POST', '/links/add', submission, 30000);
+        } catch (error) {
+          // A private-LAN destination with confirmation required: nothing was
+          // admitted. Allow applies to THIS submission only; neither answer
+          // changes a setting (Skip Local Connection Confirmation is the one
+          // persistent owner of "do not ask").
+          if (error?.detail?.confirmation !== 'local_network') throw error;
+          if (!await confirmLocalNetwork(error.detail.hosts)) {
+            kept.push(...direct);
+            direct.length = 0;
+          } else {
+            result = await api('POST', '/links/add', {...submission, allow_local_network: true}, 30000);
+          }
+        }
+        if (direct.length) {
+          handled += direct.length;
+          if (result && result._deferred) deferred += direct.length;
+        }
       } catch (error) {
         direct.forEach(entry => failed.push({...entry, error}));
       }
@@ -1284,8 +1327,8 @@ async function addDashboardEntries() {
       });
     }
 
-    failed.sort((a, b) => a.line - b.line);
-    input.value = failed.map(entry => entry.value).join('\n');
+    const remaining = [...failed, ...kept].sort((a, b) => a.line - b.line);
+    input.value = remaining.map(entry => entry.value).join('\n');
     resizeDebridLinkInput(input);
     input.focus();
 
@@ -1298,6 +1341,8 @@ async function addDashboardEntries() {
       } else {
         toast(`${handled} handled · ${failed.length} failed`, handled ? 'warn' : 'error');
       }
+    } else if (!handled && kept.length) {
+      toast('Local network transfer not added', 'info');
     } else if (handled && deferred === handled) {
       toast(`${handled} added · processing is paused`, 'success');
     } else if (deferred) {
@@ -1538,7 +1583,9 @@ async function showDetail(id) {
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
-        <div><div class="dk">Progress</div><div class="dv">${(t.progress||0).toFixed(1)}%</div></div>
+        <div><div class="dk">Progress</div><div class="dv">${t.progress == null
+          ? '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '')
+          : Number(t.progress).toFixed(1) + '%'}</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>

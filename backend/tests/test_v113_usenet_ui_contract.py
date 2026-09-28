@@ -235,7 +235,7 @@ def test_server_collection_has_exactly_one_writer():
 
 def test_downloads_has_the_three_master_cards_in_order():
     panel = downloads_panel()
-    first = panel.index("'Download Location & Limits'")
+    first = panel.index("'Download Behavior & Limits'")
     second = panel.index("groupCard('Transfer Method Settings'")
     third = panel.index("'Disk Space & Recovery'")
     assert first < second < third
@@ -275,7 +275,7 @@ def test_child_tuning_cards_default_collapsed_with_the_control_beside_the_label(
 def test_tuning_headers_have_centred_neutral_explanatory_text():
     panel = downloads_panel()
     # DP 1.0.13 consolidation: operator-facing flavour text, in the SAME
-    # de-emphasised titlebar treatment the Download Location & Limits header
+    # de-emphasised titlebar treatment the Download Behavior & Limits header
     # uses -- one declaration, two users, never a second heading style.
     assert "How DebridPulse handles downloads from direct network sources." in panel
     assert "Global download behavior shared by all Usenet servers." in panel

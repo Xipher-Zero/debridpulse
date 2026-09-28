@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import errno
+import logging
 from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlsplit
 
@@ -19,11 +20,24 @@ from transfers.errors import Category, Domain, NormalizedError, Stage, TransferE
 from transfers.models import ExecutionState, TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
-    extract_hash_from_torrent, normalize_direct_links,
+    direct_link_host, extract_hash_from_torrent, normalize_direct_links,
 )
+from services.network_safety import names_private_lan
 from transfers.staged_input import StagedInputError
 from transfers.storage import StorageDomain
 
+
+
+
+
+logger = logging.getLogger("debridpulse.application")
+class LocalNetworkConfirmationRequired(Exception):
+    """A submission names private-LAN hosts and the operator has not allowed
+    this submission to reach them yet. Nothing was admitted."""
+
+    def __init__(self, hosts: tuple[str, ...]):
+        super().__init__("local network connection requires confirmation")
+        self.hosts = tuple(hosts)
 
 class ApplicationService:
     def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None,
@@ -275,7 +289,7 @@ class ApplicationService:
         return {
             "id": int(transfer.id),
             "status": str(state),
-            "progress": float(transfer.progress or 0),
+            "progress": None if transfer.progress is None else float(transfer.progress),
             "status_changed": bool(status_changed),
         }
 
@@ -351,7 +365,7 @@ class ApplicationService:
         referenced = await self.repository.referenced_staged_inputs()
         return self.staged_input.sweep(referenced)
 
-    async def submit_links(self, links, *, selection_mode="all"):
+    async def submit_links(self, links, *, selection_mode="all", allow_local_network=False):
         # DP 1.0.12 corrective: one Quick Add batch is one user submission
         # and admits as ONE durable transfer owning N independent root
         # requests -- submission scope is not the same thing as equivalence
@@ -368,11 +382,33 @@ class ApplicationService:
         # converges through the same cross-transfer path, unaffected by this.
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
         urls = normalize_direct_links(links)
+        consented = await self._local_network_consent(urls, allow_local_network=allow_local_network)
         requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index),
-                                         selection_mode=selection_mode) for index, url in enumerate(urls, 1))
+                                         selection_mode=selection_mode,
+                                         local_network_consent=direct_link_host(url) in consented)
+                         for index, url in enumerate(urls, 1))
         item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
+
+    async def _local_network_consent(self, urls, *, allow_local_network: bool) -> frozenset[str]:
+        """Admission's private-LAN decision for one submission: the hosts it
+        consents to connect to on the operator's LAN.
+
+        Local Network Connections off: nothing is consented (the connection
+        boundary keeps refusing private destinations, as before). On, with
+        Skip Local Connection Confirmation on: the explicitly entered LAN hosts
+        are consented. On without it: nothing is admitted until the operator
+        allows THIS submission; that answer is recorded on its requests only
+        and never changes a setting."""
+        policy = self.engine.policy
+        if not policy.private_lan_connections:
+            return frozenset()
+        hosts = {host for host in (direct_link_host(url) for url in urls) if host}
+        lan = frozenset([host for host in sorted(hosts) if await names_private_lan(host)])
+        if lan and not (policy.skip_private_lan_confirmation or allow_local_network):
+            raise LocalNetworkConfirmationRequired(tuple(sorted(lan)))
+        return lan
 
     async def submit_input(self, transfer_id, *, challenge_id, method, values):
         async with self.application_operation():
@@ -574,8 +610,8 @@ class ApplicationService:
                     continue
                 previous_state = str(getattr(previous.state, "value", previous.state))
                 current_state = str(getattr(current.state, "value", current.state))
-                previous_progress = float(previous.progress or 0)
-                current_progress = float(current.progress or 0)
+                previous_progress = previous.progress
+                current_progress = current.progress
                 if current_state != previous_state or current_progress != previous_progress:
                     updates.append(
                         self._active_overlay_item(
@@ -663,6 +699,12 @@ class ApplicationService:
             await integration.start()
 
     async def stop_integrations(self):
+        # Clean executor shutdown is a forced material checkpoint boundary:
+        # what live writers proved written becomes durable before they stop.
+        try:
+            await self.engine.checkpoint_live_material("executor_shutdown")
+        except Exception as exc:
+            logger.warning("Material checkpoint before shutdown failed: %s", type(exc).__name__)
         for integration in reversed(self.lifecycle):
             await integration.stop()
 

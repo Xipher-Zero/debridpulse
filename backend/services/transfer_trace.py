@@ -47,7 +47,15 @@ strict superset of 2 except that rows of the requested transfer's direct
 consolidation participants are now exported under scope ``component`` (with
 all of their transfer-scoped rows) instead of ``context``; it adds
 ``metadata.closure.component`` (the bounded component, its limits and any
-truncation) and ``metadata.component_transfer_ids``.
+truncation) and ``metadata.component_transfer_ids``. 4 is a strict superset
+of 3: it exports ``artifact_material_state`` rows (DebridPulse-owned material
+truth per artifact) with every transfer-scoped artifact set, and each
+``observations.filesystem.targets[]`` entry gains ``material`` -- the durable
+VALID frontier reconciled against what the payload on disk shows now (length,
+physical identity, holes). Continuation plans ride on the exported
+``execution_attempts.continuation`` column and material decisions (rollback,
+invalidation, forced checkpoints, writer retirement and how it stopped) on
+``application_events`` of kind ``material_audit``.
 """
 from __future__ import annotations
 
@@ -64,8 +72,9 @@ from core.config import get_settings
 from core.version import process_timing, read_build_revision, read_version
 from db.database import get_db
 from transfers import codec
+from transfers import material as mat
 from transfers.contracts import Health
-from transfers.filesystem import observe_material
+from transfers.filesystem import observe_material, payload_facts
 from transfers.models import ExecutionState, MaterializationKind
 from transfers.storage import StorageDomain, observe_capacity
 
@@ -74,7 +83,7 @@ TRACE_FORMAT = "debridpulse.transfer-trace"
 # runtime_context, and metadata.process; build_revision is populated.
 # 3: adds the bounded consolidation component (scope 'component',
 # metadata.closure.component, metadata.component_transfer_ids).
-TRACE_FORMAT_VERSION = 3
+TRACE_FORMAT_VERSION = 4
 # Bounds of the consolidation component (``_component``); hitting one is
 # declared in metadata.closure.component, never silent.
 COMPONENT_MAX_TRANSFERS = 32
@@ -95,7 +104,7 @@ _TABLES = (
     "transfer_file_manifests", "transfer_file_manifest_entries", "transfer_file_selections",
     "transfer_file_selection_entries", "download_files", "canonical_candidate_bindings",
     "canonical_candidate_origins", "artifact_consolidations", "execution_attempts", "execution_attempt_provenance",
-    "artifact_recovery_state", "transfer_outcomes", "postprocess_attempts", "transfer_pause_intents",
+    "artifact_recovery_state", "artifact_material_state", "transfer_outcomes", "postprocess_attempts", "transfer_pause_intents",
     "transfer_input_challenges", "deferred_provider_submissions", "events", "application_events",
     "transfer_controls",
 )
@@ -134,6 +143,8 @@ _REFERENCES = (
     ("execution_attempt_provenance", "artifact_id", "download_files", "id"),
     ("execution_attempt_provenance", "route_attempt_id", "resolution_attempts", "id"),
     ("artifact_recovery_state", "artifact_id", "download_files", "id"),
+    ("artifact_material_state", "artifact_id", "download_files", "id"),
+    ("artifact_material_state", "checkpoint_attempt_id", "execution_attempts", "id"),
 )
 
 # Values of these keys/columns are credentials or capabilities by name.
@@ -306,6 +317,8 @@ async def _transfer_rows(collector: _Collector, transfer_id: int, scope: str) ->
         await select(table, "transfer_id=?", (transfer_id,), scope=scope)
     for table in ("download_files", "transfer_pause_intents", "deferred_provider_submissions", "events"):
         await select(table, "torrent_id=?", (transfer_id,), scope=scope)
+    await select("artifact_material_state", "artifact_id IN (SELECT id FROM download_files WHERE torrent_id=?)",
+                 (transfer_id,), scope=scope)
     for table, column, parent in (("resolution_attempts", "request_id", "transfer_requests"),
                                   ("transfer_file_manifest_entries", "manifest_id", "transfer_file_manifests"),
                                   ("transfer_file_selection_entries", "selection_id", "transfer_file_selections")):
@@ -426,6 +439,7 @@ async def _collect(collector: _Collector, transfer_id: int) -> dict:
     await select("execution_attempts", f"artifact_id IN {clause}", params, scope=context)
     await select("execution_attempt_provenance", f"artifact_id IN {clause}", params, scope=context)
     await select("artifact_recovery_state", f"artifact_id IN {clause}", params, scope=context)
+    await select("artifact_material_state", f"artifact_id IN {clause}", params, scope=context)
     clause, params = _in(values("canonical_candidate_bindings", "id"))
     await select("canonical_candidate_origins", f"binding_id IN {clause}", params, scope=context)
     requests = (values("download_files", "request_id") | values("canonical_candidate_origins", "request_id")
@@ -516,6 +530,7 @@ async def _observe_filesystem(collector: _Collector, roots) -> tuple[dict, dict]
     attempts = {}
     for _, row in collector.rows["execution_attempts"].values():
         attempts.setdefault(row["artifact_id"], []).append(row)
+    materials = {row["artifact_id"]: row for _, row in collector.rows.get("artifact_material_state", {}).values()}
     targets, directories = [], {}
     counts = {"observed": 0, "unavailable": 0, "no_recorded_target": 0}
     for scope, row in collector.rows["download_files"].values():
@@ -555,6 +570,7 @@ async def _observe_filesystem(collector: _Collector, roots) -> tuple[dict, dict]
             "durable_size_bytes": expected,
             "size_matches_durable": (target["bytes"] == expected) if comparable else None,
             "members": observed["members"],
+            "material": await _material_facts(materials.get(row["id"]), str(path)),
         })
     capacity, seen = [], set()
     for directory in (*roots, *directories):
@@ -570,6 +586,38 @@ async def _observe_filesystem(collector: _Collector, roots) -> tuple[dict, dict]
                      empty_reason="no exported artifact records a material target")
     status["counts"] = counts
     return {"targets": targets, "capacity": capacity}, status
+
+
+async def _material_facts(row, path: str) -> dict | None:
+    """DebridPulse material truth for one artifact, reconciled -- read-only --
+    against the payload now: what DP holds VALID, how far it reaches, and
+    whether the file still backs it. Observation only; nothing is changed."""
+    if row is None:
+        return None
+    valid = mat.decode(row.get("valid_ranges"))
+    members, _identities = mat.decode_members(row.get("member_ranges"))
+    answered, facts = await _bounded(asyncio.to_thread(payload_facts, path, valid))
+    observed = facts if answered and facts.available else None
+    frontier = valid[-1][1] if valid else 0
+    return {
+        "material_generation": row.get("material_generation"), "writer_generation": row.get("writer_generation"),
+        "geometry_version": row.get("geometry_version"), "valid_bytes": mat.total(valid),
+        "safe_prefix": mat.contiguous_prefix(valid), "valid_ranges": mat.summary(valid),
+        "valid_range_count": len(valid), "valid_frontier": frontier,
+        "observation": "observed" if observed is not None else "unavailable",
+        "observed_bytes": observed.size if observed is not None and observed.exists else None,
+        "payload_present": observed.exists if observed is not None else None,
+        "identity_matches_checkpoint": (observed.identity == row.get("destination_identity")
+                                        if observed is not None and observed.exists and row.get("destination_identity")
+                                        else None),
+        "valid_beyond_observed_length": (frontier > observed.size if observed is not None and observed.exists
+                                         else bool(valid) if observed is not None else None),
+        "holes_in_valid_bytes": mat.total(observed.holes) if observed is not None else None,
+        "member_count": len(members),
+        "member_valid_bytes": sum(mat.total(ranges) for _member, ranges in members),
+        "members": [{"member": member, "valid_bytes": mat.total(ranges), "safe_prefix": mat.contiguous_prefix(ranges)}
+                    for member, ranges in members[:16]],
+    }
 
 
 async def _observe_executors(application, collector: _Collector) -> tuple[dict, dict]:

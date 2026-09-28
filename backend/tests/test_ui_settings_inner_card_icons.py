@@ -4,7 +4,7 @@ ROOT = Path(__file__).resolve().parents[2]
 STATIC = ROOT / 'frontend' / 'static'
 
 EXPECTED = {
-    'Download Location & Limits': ('downloads', 'download-engine.svg'),
+    'Download Behavior & Limits': ('downloads', 'download-engine.svg'),
     'Disk Space & Recovery': ('downloads', 'download-safety-recovery.svg'),
     'Download Engine Activity': ('downloads', 'download-engine-state.svg'),
     'Automatic Extraction': ('extraction', 'automatic-extraction.svg'),

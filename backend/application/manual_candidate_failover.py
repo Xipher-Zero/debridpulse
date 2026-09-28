@@ -9,6 +9,8 @@ async def switch_candidate(
     transfer_id: int,
     artifact_id: int,
     candidate_id: str,
+    *,
+    discard_confirmed: bool = False,
 ) -> dict:
     async with application.application_operation():
         await application.require(int(transfer_id))
@@ -17,6 +19,7 @@ async def switch_candidate(
             int(transfer_id),
             int(artifact_id),
             str(candidate_id),
+            discard_confirmed=bool(discard_confirmed),
         )
         application.execution_wakeup.set()
         await application._publish(int(transfer_id))

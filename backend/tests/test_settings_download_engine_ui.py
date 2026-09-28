@@ -30,14 +30,14 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     css = source(SETTINGS_PAGE_CSS)
     chrome = source(SETTINGS_CHROME_CSS)
 
-    assert "card('Download Location & Limits'" in downloads
+    assert "card('Download Behavior & Limits'" in downloads
     assert "aria2 Delivery" not in downloads
     # Operator-facing tuning labels name capabilities, never daemons.
     assert "card('Download Engine'" not in downloads
     # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
     assert "wrapTitle: true" in downloads
     assert "dp-settings-download-engine-icon" not in downloads
-    assert "'Download Location & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
+    assert "'Download Behavior & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
     assert "Where DebridPulse saves downloads and how many it runs at once." in downloads
@@ -71,8 +71,8 @@ def test_download_engine_presents_one_aria2_with_one_download_folder():
     assert "Maximum downloads DebridPulse runs at once." in downloads
     # No topology control exists, visible or hidden, in the global card.
     # (Collapsed Transfer Method Settings child cards legitimately use `hidden`,
-    # so the check is scoped to the Download Location & Limits card it is about.)
-    global_card = downloads[downloads.index("card('Download Location & Limits'"):
+    # so the check is scoped to the Download Behavior & Limits card it is about.)
+    global_card = downloads[downloads.index("card('Download Behavior & Limits'"):
                             downloads.index("const tuning = groupCard('Transfer Method Settings'")]
     assert " hidden" not in global_card and "'hidden'" not in global_card
     for absent in ("aria2_mode", "aria2_url", "aria2_secret", "aria2_download_path",

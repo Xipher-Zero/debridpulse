@@ -12,9 +12,10 @@ import json
 from core.presentation_safety import safe_public_host
 from db.database import get_db
 from transfers import codec
+from transfers import material as mat
 from transfers._repository_base import is_canonical_artifact_row
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
-from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, TransferProgress
+from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
 
 
@@ -143,14 +144,6 @@ def _decode_source(value):
         return codec.load(value, None)
     except (TypeError, ValueError, KeyError):
         return None
-
-
-def _progress(value) -> TransferProgress:
-    try:
-        payload = codec.load(value, {}) if value else {}
-        return TransferProgress(**payload) if isinstance(payload, dict) else TransferProgress()
-    except (TypeError, ValueError, KeyError):
-        return TransferProgress()
 
 
 def recovery_presentation(status, context=None, *, paused=False, input_required=False,
@@ -541,9 +534,10 @@ class TransferRepository(_CanonicalTransferRepository):
                           recovery_failures,recovery_refreshes
                     FROM download_files WHERE torrent_id=? ORDER BY id""", (transfer_id,)
             )
+            # DP-valid material per artifact: the only completion truth.
             progress_rows = await db.fetchall(
-                """SELECT artifact_id,progress FROM execution_attempts
-                    WHERE transfer_id=? AND progress IS NOT NULL ORDER BY created_at,id""", (transfer_id,)
+                """SELECT m.artifact_id,m.valid_ranges,m.member_ranges FROM artifact_material_state m
+                    JOIN download_files f ON f.id=m.artifact_id WHERE f.torrent_id=?""", (transfer_id,)
             )
 
             # Magnet/torrent identities are dictated by the root request and must
@@ -679,10 +673,9 @@ class TransferRepository(_CanonicalTransferRepository):
                     except (KeyError, TypeError, ValueError):
                         contexts[artifact_id] = {}
 
-        retained = {}
-        for row in progress_rows:
-            artifact_id = int(row["artifact_id"])
-            retained[artifact_id] = max(retained.get(artifact_id, 0), int(_progress(row.get("progress")).completed_bytes or 0))
+        retained = {int(row["artifact_id"]): mat.total(mat.decode(row["valid_ranges"]))
+                    + sum(mat.total(ranges) for _member, ranges in mat.decode_members(row["member_ranges"])[0])
+                    for row in progress_rows}
         for row in file_rows:
             if str(row.get("status") or "").lower() == "completed" and int(row.get("size_bytes") or 0) > 0:
                 retained[int(row["id"])] = max(retained.get(int(row["id"]), 0), int(row["size_bytes"]))
@@ -693,6 +686,7 @@ class TransferRepository(_CanonicalTransferRepository):
         voting_presentations = []
         total_expected = 0
         total_retained = 0
+        size_unknown = False
         for row in file_rows:
             artifact_id = int(row["id"])
             # Section 9: the only fact consulted for capacity-wait is whether
@@ -717,6 +711,9 @@ class TransferRepository(_CanonicalTransferRepository):
             if not bool(row.get("blocked")) and str(row.get("mirror_state") or "") != "standby":
                 total_expected += expected_bytes
                 total_retained += projection["retained_bytes"]
+                size_unknown = size_unknown or (
+                    str(row.get("status") or "").lower() != "completed"
+                    and SizeKnowledge.durable(row.get("size_bytes"), row.get("size_knowledge")) == SizeKnowledge.UNKNOWN)
 
         result.update(effective_presentation(
             result.get("status"), voting_presentations,
@@ -726,9 +723,16 @@ class TransferRepository(_CanonicalTransferRepository):
         result["retained_bytes"] = total_retained
         if str(result.get("status") or "").lower() == "completed":
             result["progress"] = 100.0
+        elif size_unknown:
+            # No trustworthy total yet: DP-valid bytes stay available
+            # (``retained_bytes``); a percentage does not exist.
+            result["progress"] = None
         elif total_expected > 0:
-            retained_percent = min(100.0, total_retained / total_expected * 100.0)
-            result["progress"] = max(float(result.get("progress") or 0), retained_percent)
+            # Exactly DP-valid material over expected bytes: a real rollback
+            # moves this backward by exactly the invalidated amount.
+            result["progress"] = min(100.0, total_retained / total_expected * 100.0)
+        else:
+            result["progress"] = 0.0
 
         if details and result.get("files"):
             for item in result["files"]:
@@ -742,6 +746,8 @@ class TransferRepository(_CanonicalTransferRepository):
                     item["progress"] = 100.0
                 elif size > 0:
                     item["progress"] = min(100.0, retained_bytes / size * 100.0)
+                elif SizeKnowledge.durable(item.get("size_bytes"), item.get("size_knowledge")) == SizeKnowledge.UNKNOWN:
+                    item["progress"] = None  # unavailable, never a fabricated 0%
                 if item.get("presentation_status") != "downloading":
                     item["download_speed"] = 0
 

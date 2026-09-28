@@ -13,8 +13,10 @@ from collections import OrderedDict
 from dataclasses import dataclass, field, replace
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
@@ -33,7 +35,7 @@ from transfers.models import (
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
-    MaterializedEntry,
+    MaterializedEntry, ContinuationCapability, ContinuationStrategy,
 )
 
 
@@ -102,9 +104,20 @@ class Aria2Executor:
     # Semantic guarantees only. The daemon-wide pause is NOT offered as an
     # acquisition gate: unpausing it would also unpause jobs a transfer-level
     # intent keeps paused, so per-execution controls converge global pause.
+    #
+    # Continuation: aria2 continues a FILE exactly at a DebridPulse-authorized
+    # offset (the payload is cut to the plan boundary and the job resumes
+    # there), exports completed pieces as exact final-file ranges, and pauses
+    # gracefully. Its ``.aria2`` control file is private and never used to
+    # continue across writers, so native private resume is not declared.
     capabilities = ExecutorCapabilities(
         candidate_sampling=True, per_execution_pause=True, aggregate_bandwidth_ceiling=True,
         transient_input=True, remote_discovery=True, materialization_kinds=frozenset({MaterializationKind.FILE}),
+        continuation=frozenset({
+            ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
+            ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES,
+            ContinuationCapability.NATIVE_QUIESCE,
+        }),
     )
 
     def __init__(self, client: Aria2Service, configuration: Aria2Configuration,
@@ -116,6 +129,11 @@ class Aria2Executor:
         self.runtime = runtime
         self._redactions = runtime.redactions if runtime is not None else OrderedDict()
         self.binding = execution_binding(configuration.local_root, getattr(client, "url", ""))
+        if not configuration.continue_downloads:
+            # The operator disabled continuing partial downloads with aria2:
+            # declare it, so core plans restarts for it rather than offsets.
+            self.capabilities = replace(type(self).capabilities, continuation=type(self).capabilities.continuation - {
+                ContinuationCapability.CONTIGUOUS_FROM_OFFSET, ContinuationCapability.IMPORT_EXISTING_MATERIAL})
 
     def claim(self, subject) -> ExecutorClaim:
         """Pure: a subject is claimed when one of its candidate endpoints uses a
@@ -170,6 +188,30 @@ class Aria2Executor:
     def footprint(self, work) -> ExecutionFootprint:
         """aria2's control file beside the planned target is its only transient path."""
         return ExecutionFootprint((str(self._target(work.materialization.target)) + ".aria2",))
+
+    def _apply_continuation(self, request: ExecutionRequest, target: Path) -> str:
+        """Put the payload in exactly the state the core plan authorizes and
+        return aria2's per-job ``continue`` value.
+
+        The private control file never outlives a writer: whatever it claims
+        (possibly more than DebridPulse ever committed) is discarded, so aria2
+        cannot promote bytes DebridPulse did not authorize. A contiguous plan
+        cuts the payload to its boundary -- aria2 then continues exactly there
+        -- and fails closed when the retained prefix is not physically present.
+        Any other plan retains nothing and aria2 starts from zero."""
+        Path(str(target) + ".aria2").unlink(missing_ok=True)
+        plan = request.continuation
+        if (plan is None or plan.strategy != ContinuationStrategy.CONTIGUOUS_FROM_OFFSET or plan.boundary <= 0
+                or ContinuationCapability.CONTIGUOUS_FROM_OFFSET not in self.capabilities.continuation):
+            return "false"
+        try:
+            info = target.lstat()
+        except FileNotFoundError:
+            info = None
+        if info is None or not stat.S_ISREG(info.st_mode) or info.st_size < plan.boundary:
+            raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+        os.truncate(target, plan.boundary)
+        return "true"
 
     def prepare(self, request: ExecutionRequest) -> ExecutionHandle:
         target = self._target(self._plan_target(request))
@@ -305,14 +347,16 @@ class Aria2Executor:
                 headers["Authorization"] = "Basic " + base64.b64encode(":".join(credentials).encode()).decode()
             result = await sampled_public_artifact_fingerprint(
                 endpoint.address, headers=headers, expected_bytes=max(0, int(candidate.expected_bytes or 0)),
+                **self._granted(self._private_lan(candidate)),
             )
             if isinstance(result, AccessRequired):
                 return auth_required(username_password()) if accepts_input and not provider_authorization else refused
             return ArtifactFingerprint(*result) if result else None
         # FTP/SFTP evidence reaches its origin only through the egress guard,
         # after the same destination validation execution applies.
+        lan = self._private_lan(candidate)
         try:
-            await validate_resolved_public_destination(endpoint.address)
+            await validate_resolved_public_destination(endpoint.address, **self._granted(lan))
         except DestinationLookupError:
             return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "dns_failure")
         except ValueError:
@@ -322,7 +366,7 @@ class Aria2Executor:
             result = await ftp_fingerprint(
                 endpoint.address, username=username, password=password,
                 connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
-                                                                  port=port),
+                                                                  port=port, **self._granted(lan)),
             )
             if isinstance(result, AccessRequired):
                 return auth_required(username_password()) if accepts_input else refused
@@ -337,7 +381,8 @@ class Aria2Executor:
                 return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "destination_rejected")
             host, identity, username, password = access
             result = await sftp_fingerprint(
-                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
+                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address,
+                                                                                    **self._granted(lan)),
                 host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
                 username=username, password=password,
             )
@@ -403,8 +448,9 @@ class Aria2Executor:
         if (endpoint is None or endpoint.scheme not in {"ftp", "sftp"}
                 or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods):
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
+        lan = self._private_lan(candidate)
         try:
-            await validate_resolved_public_destination(endpoint.address)
+            await validate_resolved_public_destination(endpoint.address, **self._granted(lan))
         except DestinationLookupError as exc:
             raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.RESOLUTION,
                 retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
@@ -416,7 +462,8 @@ class Aria2Executor:
                 raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
             host, identity, username, password = access
             result = await sftp_discovery(
-                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address),
+                endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address,
+                                                                                    **self._granted(lan)),
                 host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
                 username=username, password=password,
             )
@@ -432,7 +479,7 @@ class Aria2Executor:
             result = await ftp_discovery(
                 endpoint.address, username=login[0], password=login[1],
                 connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
-                                                                  port=port),
+                                                                  port=port, **self._granted(lan)),
             )
             if isinstance(result, AccessRequired):
                 return auth_required(username_password())
@@ -472,6 +519,19 @@ class Aria2Executor:
     @staticmethod
     def _endpoint(candidate):
         return next((item for item in candidate.endpoints if item.scheme in SUPPORTED_SCHEMES), None)
+
+    @staticmethod
+    def _granted(lan: bool) -> dict:
+        """The private-LAN keyword for a validation/egress call: present only
+        for a granted candidate, so every ungranted call is exactly as before."""
+        return {"private_lan": True} if lan else {}
+
+    def _private_lan(self, candidate) -> bool:
+        """Core's private-LAN grant for this candidate, honored only while the
+        guard reports the operator's global policy on. The guard re-checks
+        both at every connection; this only lets validation not refuse early."""
+        return bool(getattr(candidate, "private_network_grant", False)
+                    and getattr(self.egress, "private_lan_enabled", False))
 
     def input_requirement(self, candidate, observed: ExecutionObservation) -> InputRequirement | None:
         # Only a candidate that explicitly advertises transient username/
@@ -517,8 +577,9 @@ class Aria2Executor:
         endpoint = self._endpoint(request.work.subject.candidate)
         if endpoint is None or urlsplit(endpoint.address).scheme != endpoint.scheme:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
+        lan = self._private_lan(request.work.subject.candidate)
         try:
-            address = await validate_resolved_public_destination(endpoint.address)
+            address = await validate_resolved_public_destination(endpoint.address, **self._granted(lan))
         except DestinationLookupError as exc:
             raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.QUEUE,
                 retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
@@ -529,7 +590,7 @@ class Aria2Executor:
             # One passive FTP job also opens a server-selected data connection
             # to the same host; every other transport is one exact endpoint.
             scope = RouteScope.SAME_HOST if endpoint.scheme == "ftp" else RouteScope.ENDPOINT
-            guarded = self.egress.job_options(address, scope=scope)
+            guarded = self.egress.job_options(address, scope=scope, **self._granted(lan))
         except Exception as exc:
             raise self._failure(Category.EGRESS_POLICY_VIOLATION, domain=Domain.SECURITY) from exc
         target = self._target(self._plan_target(request))
@@ -543,7 +604,8 @@ class Aria2Executor:
             "http-user": "", "http-passwd": "",
             "split": str(max(1, cfg.split)), "min-split-size": cfg.minimum_split_size,
             "max-connection-per-server": str(max(1, cfg.connections_per_server)),
-            "continue": "true" if cfg.continue_downloads else "false",
+            # Set per start from the core continuation plan, never from config.
+            "continue": "false",
             "pause": "true" if request.paused else "false", **guarded,
         }
         if endpoint.scheme in {"ftp", "sftp"}:
@@ -626,6 +688,7 @@ class Aria2Executor:
             address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             # A deletion can revoke authority during DNS or egress startup.
             await self._check(handle, "start")
+            options["continue"] = self._apply_continuation(request, self._target(self._plan_target(request)))
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
@@ -672,6 +735,7 @@ class Aria2Executor:
                     raise
             address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             await self._check(handle, "resume")
+            options["continue"] = self._apply_continuation(request, self._target(self._plan_target(request)))
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)

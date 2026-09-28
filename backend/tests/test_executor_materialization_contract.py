@@ -325,7 +325,12 @@ async def test_candidate_switch_never_retires_material_the_old_writer_does_not_o
     assert Path(str(target) + ".ledger-journal").read_bytes() == b"pre-existing journal"
 
 
-async def test_candidate_switch_retires_material_the_old_writer_owns(tmp_path, monkeypatch):
+async def test_candidate_switch_keeps_the_payload_for_the_planner_and_drops_owned_native_state(tmp_path, monkeypatch):
+    """DP 1.0.13: physical material is not an executor's to keep or lose. A
+    switch leaves the payload where it is; the next writer's continuation plan
+    decides what of it is kept (here the restart-only replacement keeps
+    nothing, logically), and only the retired executor's own native state is
+    discarded -- when the different executor is admitted."""
     from transfers.models import TransferRequest
     core = await _switch_core(tmp_path, monkeypatch)
     transfer = await core.engine.submit((TransferRequest("ledger", "switch", name="switch.bin"),))
@@ -335,9 +340,19 @@ async def test_candidate_switch_retires_material_the_old_writer_owns(tmp_path, m
     target = Path(artifact.target)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_bytes(b"partial written by the owning attempt")
+    journal = Path(str(target) + ".ledger-journal")
+    journal.write_bytes(b"route-a private state")
     result = await core.engine.activate_candidate_command(transfer.id, artifact.id, 1)
     assert result is not None and result.committed
-    assert not target.exists()
+    assert target.read_bytes() == b"partial written by the owning attempt"
+    await core.engine.reconcile_executions()
+    replaced = await artifact_of(core, transfer.id)
+    assert replaced.execution.executor_id == "route-b"
+    assert not journal.exists()
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT continuation FROM execution_attempts WHERE id=?",
+                                (replaced.execution.attempt_id,))
+    assert '"strategy":"full_restart"' in row["continuation"] and '"retained":[]' in row["continuation"]
 
 
 async def test_retry_attempt_inherits_its_artifacts_material_ownership(tmp_path, monkeypatch):

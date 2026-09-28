@@ -122,6 +122,21 @@ def remote_object_coordinate(address) -> str:
     return f"{scope.family}://{host}:{scope.port}/" + "/".join(quote(item, safe="") for item in segments)
 
 
+def direct_link_host(address) -> str:
+    """The exact host an operator-submitted direct link names ('' when the
+    input is not a direct link) -- the only host a local-network consent for
+    that submission can ever cover."""
+    if not isinstance(address, str):
+        return ""
+    try:
+        parsed = urlsplit(address.strip())
+    except ValueError:
+        return ""
+    if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES:
+        return ""
+    return str(parsed.hostname or "").rstrip(".").casefold()
+
+
 def normalize_direct_links(values: List[str]) -> List[str]:
     """Validate and de-duplicate direct-source links without fetching them.
 

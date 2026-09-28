@@ -699,6 +699,34 @@ TRANSFER_REPOSITORY_SCHEMA = (
         last_applied_reason TEXT,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_artifact_recovery_state_transfer ON artifact_recovery_state(transfer_id)",
+    # DP 1.0.13 protocol-agnostic continuation: the ONE canonical durable
+    # owner of an artifact's reusable material (``transfers.material``),
+    # keyed by logical artifact -- never by transfer, whose membership is too
+    # mutable to own physical truth. ``valid_ranges`` is the normalized
+    # ``[start, end)`` VALID set; IN_FLIGHT/UNKNOWN are its complement and are
+    # never stored. ``material_generation`` and ``writer_generation`` are
+    # independent counters. The expected size is NOT stored here: it is the
+    # artifact's own canonical size fact (``download_files.size_bytes`` /
+    # ``size_knowledge``), read through ``SizeKnowledge.durable``.
+    # ``destination_identity`` is the physical identity observed at the last
+    # durable checkpoint; filesystem reconciliation compares against it and
+    # never promotes anything from it. Rows are created lazily and only ever
+    # hold material a checkpoint or verified completion proved. A COLLECTION
+    # artifact keeps the same per-member truth in ``member_ranges`` (relative
+    # path -> VALID ranges and physical identity) on this same row.
+    """CREATE TABLE IF NOT EXISTS artifact_material_state (
+        artifact_id INTEGER PRIMARY KEY REFERENCES download_files(id),
+        material_generation INTEGER NOT NULL DEFAULT 1 CHECK(material_generation > 0),
+        geometry_version INTEGER NOT NULL DEFAULT 1,
+        valid_ranges TEXT NOT NULL DEFAULT '[]',
+        member_ranges TEXT NOT NULL DEFAULT '{}',
+        destination TEXT NOT NULL,
+        destination_identity TEXT NOT NULL DEFAULT '',
+        writer_generation INTEGER NOT NULL DEFAULT 0,
+        checkpoint_at REAL,
+        checkpoint_attempt_id TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
     """CREATE TRIGGER IF NOT EXISTS trg_execution_provenance_candidate_route
         AFTER INSERT ON execution_attempt_provenance
         WHEN NEW.route_attempt_id IS NULL AND NEW.candidate_id IS NOT NULL
@@ -868,6 +896,14 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # owner inherited from this artifact's immediately preceding attempt).
         # NULL = no ownership: cleanup may delete nothing.
         'material_owner_attempt_id': 'TEXT',
+        # Writer authority over the artifact's material: the monotonic writer
+        # generation this attempt was admitted as, and the core continuation
+        # plan (``transfers.models.ContinuationPlan``) it is bound to --
+        # material generation, retained/discarded/authorized ranges and the
+        # transition reason. Additive and nullable: an attempt admitted before
+        # continuation ownership existed holds no material authority at all.
+        'writer_generation': 'INTEGER',
+        'continuation': 'TEXT',
     },
     # Additive nullable column for databases created before the Torrent/Magnet
     # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
@@ -908,7 +944,8 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
-    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation'},
+    'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},

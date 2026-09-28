@@ -10,9 +10,10 @@ call ``activate_candidate`` below. It owns:
 - old-writer retirement, when the old writer might still be genuinely active
   (the operator path) as well as when it is already confirmed terminal (the
   automatic path, whose caller already observed this upstream);
-- the ONE partial-file/resume policy for both callers (Section 28): reuse
-  partial bytes only when the same executor owns the same resumable sidecar
-  contract, otherwise integrity wins and the partial file is retired;
+- the one writer retirement (``retire_writer``): graceful quiesce, forced
+  material checkpoint, then fencing. Which existing material a replacement
+  keeps is decided by the one Continuation Planner at the next admission
+  (``transfers.continuation``), never by comparing executors or sidecars;
 - the durable commit, through ``transition_recovery(candidate_switched=True)``
   -- the same gate that already refuses to authorize a new writer before the
   old execution_attempts row is confirmed terminal, and already revokes that
@@ -36,7 +37,8 @@ from dataclasses import dataclass, replace
 
 from transfers.errors import TransferError
 from transfers.filesystem import retire_materialization
-from transfers.models import ExecutionState, ExecutionSubject, TransferCandidate
+from transfers.continuation import parks_on_pause
+from transfers.models import ExecutionState, ExecutionSubject, MaterializationKind, TransferCandidate
 from transfers.recovery_execution import RecoveryClaim
 from transfers.size_evidence import reported_sizes_compatible
 
@@ -119,28 +121,47 @@ class WriterRetirement:
     reason: str
     retirement: str = "not_needed"
     partial_decision: str = "not_applicable"
+    # ``graceful`` (quiesced, then checkpointed), ``forced`` (checkpointed
+    # without native quiesce), ``timeout`` (quiesce exceeded the graceful stop
+    # timeout: force-fenced, nothing further checkpointed), ``stopped`` or
+    # ``not_needed``.
+    quiesce: str = "not_needed"
 
 
-async def retire_writer(engine, artifact, old_candidate, replacement_artifact, replacement_candidate) -> WriterRetirement:
-    """The one writer-retirement and partial-file/resume policy (Sections 27
-    and 28), for every caller that replaces an artifact's writer: candidate
-    activation (``activate_candidate``, where the replacement is the same
-    artifact on another candidate) and collection ownership convergence
-    (``convergence_engine.TransferEngine.converge_collection_member``, where it
-    is the collection owner's artifact at its own target).
+async def retire_writer(engine, artifact, old_candidate, replacement_artifact, replacement_candidate, *,
+                        boundary: str = "handoff", park: bool = False) -> WriterRetirement:
+    """THE writer retirement of every execution replacement (Pause, operator
+    candidate switch, automatic failover, collection ownership convergence).
 
-    A genuinely active writer is cancelled and must be observed terminal; an
+    One sequence, whatever the reason: quiesce the writer gracefully where the
+    executor can (bounded by the graceful stop timeout), force a material
+    checkpoint of the work it has proven written, then fence it -- a genuinely
+    active writer is cancelled and must be observed terminal; an
     already-succeeded writer is never retired; an uncertain stop detaches
-    nothing. Partial bytes are reused only when the same executor owns the same
-    materialization and footprint for the replacement; otherwise owned partial
-    material is retired and unowned material is never deleted. The caller holds
-    the recovery claim that fences all of this."""
+    nothing. ``boundary`` names the lifecycle boundary in provenance.
+
+    Physical material is not an executor's to keep or lose. For a FILE
+    artifact that stays at the same target, the payload stays exactly where it
+    is and the next writer's continuation plan (``transfers.continuation``)
+    decides what of it is kept (a different executor's private native state is
+    discarded when that next writer is admitted). Material is
+    retired only when the replacement no longer lives where it was written (or,
+    for a collection, which has no range model in v1, when another executor
+    or shape takes over) -- and then only material this execution owns. The
+    caller holds the recovery claim (or, for Pause, the durable pause fence)
+    that fences all of this.
+
+    ``park`` (Pause only): the temporary collection/no-range-export
+    compatibility exception (``transfers.continuation.parks_on_pause``) -- such
+    a writer is left quiesced rather than cancelled once it is observed paused,
+    holding no progress authority while the pause intent stands."""
     transfer_id, artifact_id = artifact.transfer_id, artifact.id
     partial_decision = "not_applicable"
     old_executor = None
     old_work = old_footprint = None
     old_owned = False
     retirement = "not_needed"
+    quiesce = "not_needed"
     if artifact.execution is not None:
         old_executor = engine.registry.executor_for_handle(artifact.execution)
         if old_executor is None:
@@ -149,6 +170,11 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
             old_work = engine._work(artifact, old_candidate)
             old_footprint = engine._footprint(old_executor, old_work)
         old_owned = await engine.repository.execution_owns_target(artifact.execution)
+        if await engine.repository.execution_start_pending(artifact.execution.attempt_id):
+            # A native start may still be in flight: its dispatcher records the
+            # result and converges it against the current intent. Fencing it
+            # from here could only orphan a native job that starts afterwards.
+            return WriterRetirement("writer_start_in_flight", "uncertain")
         async with engine._convergence_lock(artifact.execution.attempt_id):
             current = await engine._current_artifact(transfer_id, artifact_id)
             if current is None or current.execution != artifact.execution:
@@ -157,31 +183,49 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
             if observed.state == ExecutionState.SUCCEEDED:
                 await engine.repository.execution(observed)
                 return WriterRetirement("writer_already_succeeded", "not_applicable")
+            observed, quiesce = await engine._quiesce_and_checkpoint(current, old_executor, observed,
+                                                                     boundary=boundary)
+            if (park and observed.state == ExecutionState.PAUSED and old_work is not None
+                    and parks_on_pause(old_executor.capabilities, old_work.materialization.kind)):
+                await engine.repository.execution(observed)
+                await engine.repository.record_material_event(
+                    transfer_id, artifact_id, "writer_parked", boundary=boundary, quiesce=quiesce,
+                    executor_id=old_executor.descriptor.id, attempt_id=artifact.execution.attempt_id)
+                return WriterRetirement("", "parked", "reused", quiesce)
             if observed.state in _TERMINAL_EXECUTION_STATES:
                 # Already confirmed terminal before we ever asked -- the
                 # automatic path's caller observed this upstream.
                 retirement = "confirmed"
             else:
-                # Writer retirement requested: cancel a genuinely active writer.
-                # The executor reports observed stop truth; an unconfirmed or
-                # lost acknowledgement stays uncertain and nothing is detached.
+                # Fence: cancel the (quiesced or still active) writer. The
+                # executor reports observed stop truth; an unconfirmed or lost
+                # acknowledgement stays uncertain and nothing is detached.
                 observed = await engine._cancel_execution(old_executor, artifact.execution)
                 retirement = "requested_confirmed" if observed.stopped else "uncertain"
             await engine.repository.execution(observed)
             if observed.state not in _TERMINAL_EXECUTION_STATES or retirement == "uncertain":
-                return WriterRetirement("writer_retirement_uncertain", "uncertain")
+                return WriterRetirement("writer_retirement_uncertain", "uncertain", quiesce=quiesce)
+            await engine.repository.record_material_event(
+                transfer_id, artifact_id, "writer_retired", boundary=boundary, quiesce=quiesce,
+                retirement=retirement, executor_id=old_executor.descriptor.id,
+                attempt_id=artifact.execution.attempt_id)
 
-    # One partial-file/resume policy regardless of caller (Section 28): reuse
-    # partial bytes only when the same executor owns the same resumable
-    # sidecar contract; otherwise integrity wins.
     if old_executor is not None and old_work is not None:
         new_executor = engine.registry.executor_for_subject(ExecutionSubject.of(replacement_candidate))
         new_work = engine._work(replacement_artifact, replacement_candidate)
-        new_footprint = engine._footprint(new_executor, new_work)
-        if (old_executor.descriptor.id != new_executor.descriptor.id or old_work.materialization != new_work.materialization
-                or old_footprint != new_footprint):
+        relocated = old_work.materialization != new_work.materialization
+        state = (await engine.repository.material_state(artifact_id)
+                 if old_work.materialization.kind == MaterializationKind.COLLECTION and not relocated else None)
+        if not relocated and (old_work.materialization.kind == MaterializationKind.FILE
+                              or (state is not None and state.members)):
+            # The payload stays for the next writer's continuation plan (a
+            # collection too, once DebridPulse holds member material for it).
+            partial_decision = "reused"
+        elif relocated or new_executor is None or old_executor.descriptor.id != new_executor.descriptor.id \
+                or old_footprint != engine._footprint(new_executor, new_work):
             if old_owned:
                 retire_materialization(engine.root, old_work.materialization, old_footprint, owned=True)
+                await engine.repository.invalidate_material(artifact_id, "material_relocated")
                 partial_decision = "retired"
             else:
                 # Material the retired writer does not durably own (it existed
@@ -189,7 +233,7 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
                 partial_decision = "preserved_unowned"
         else:
             partial_decision = "reused"
-    return WriterRetirement("", retirement, partial_decision)
+    return WriterRetirement("", retirement, partial_decision, quiesce)
 
 
 async def activate_candidate(
@@ -320,7 +364,8 @@ async def activate_candidate(
             ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
         )
 
-    retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate)
+    retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate,
+                                  boundary=claim.trigger.value)
     retirement, partial_decision = retired.retirement, retired.partial_decision
     if retired.reason:
         return await _record(

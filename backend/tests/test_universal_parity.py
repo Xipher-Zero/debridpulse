@@ -31,7 +31,12 @@ async def test_resume_all_obeys_capacity_and_releases_parked_successors(canonica
     core.executor.finish(active.handle)
     await core.engine.tick()
     assert sum(job.state in acquiring for job in core.executor.jobs.values()) == 1
-    assert len(core.executor.jobs) == len(parents)
+    # Pause fenced the original writers (cancelled); Resume admits new ones
+    # under capacity, never more than one live writer per parent.
+    live = [job for job in core.executor.jobs.values() if job.state != ExecutionState.CANCELLED]
+    assert len(live) <= len(parents)
+    for parent in parents:
+        assert len([item for item in await core.repository.live_executions() if item.transfer_id == parent.id]) <= 1
 
 
 @pytest.mark.asyncio

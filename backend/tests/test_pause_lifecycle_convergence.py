@@ -67,7 +67,11 @@ async def test_pause_converges_parent_execution_and_canonical_presentation(pause
     presentation = await ctx.repository.presentation(transfer.id)
     assert current.paused is True
     assert current.state == TransferState.PAUSED
-    assert execution.state == ExecutionState.PAUSED.value
+    # DebridPulse owns pause: the writer is fenced (stopped, no authority
+    # left) and the artifact holds no writer, rather than a native pause.
+    assert execution.state == ExecutionState.CANCELLED.value
+    assert artifact.execution is None and artifact.state == "paused"
+    assert not await ctx.repository.authorize_execution(execution.handle, "resume")
     assert presentation["presentation_status"] == "paused"
     assert artifact.target == target
     assert artifact.candidates == candidates
@@ -84,8 +88,8 @@ async def test_paused_aggregate_self_heals_stale_parent_without_dispatch_or_retr
     provider_calls = tuple(ctx.provider.calls)
     executor_calls = tuple(ctx.executor.calls)
 
-    # Reproduce the persisted crash window: pause intent + native execution are
-    # already paused, but the legacy parent row is stale.
+    # Reproduce the persisted crash window: pause intent is durable and the
+    # writer already fenced, but the legacy parent row is stale.
     assert await ctx.repository.state(transfer.id, TransferState.TRANSFERRING)
     stale = await ctx.repository.get(transfer.id)
     assert stale.paused is True
@@ -98,7 +102,7 @@ async def test_paused_aggregate_self_heals_stale_parent_without_dispatch_or_retr
     presentation = await ctx.repository.presentation(transfer.id)
     assert repaired.paused is True
     assert repaired.state == TransferState.PAUSED
-    assert execution.state == ExecutionState.PAUSED.value
+    assert execution.state == ExecutionState.CANCELLED.value
     assert presentation["presentation_status"] == "paused"
     assert tuple(ctx.provider.calls) == provider_calls
     assert tuple(ctx.executor.calls) == executor_calls

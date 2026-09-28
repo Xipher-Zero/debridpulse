@@ -267,6 +267,12 @@ class TransferRequest:
     # NOT part of source identity and is excluded from the dedupe fingerprint
     # (which keys on ``fingerprint``, the BitTorrent infohash).
     selection_mode: str = "all"
+    # The operator's per-submission consent to connect THIS explicitly entered
+    # source to a private-LAN (RFC1918) address, recorded at admission (the
+    # per-transfer confirmation, or the global skip-confirmation setting). Not
+    # identity; never a global permission; never inherited by anything the
+    # source's provider returns for another host.
+    local_network_consent: bool = False
 
 
 # BitTorrent-class request kinds: a magnet URI, or a torrent metainfo upload
@@ -376,6 +382,12 @@ class TransferCandidate:
     # Provider-declared neutral acquisition shape; core derives the
     # materialization plan from it without knowing the eventual executor.
     materialization: MaterializationKind = MaterializationKind.FILE
+    # Core-stamped lineage fact (never provider-chosen): every endpoint of this
+    # candidate is exactly the host the operator explicitly submitted with
+    # local-network consent. Only such a candidate may reach an RFC1918
+    # address, and only while the global Local Network Connections policy is
+    # on -- enforced at the connection boundary, never by this flag alone.
+    private_network_grant: bool = False
 
     def __post_init__(self):
         if not isinstance(self.materialization, MaterializationKind):
@@ -572,6 +584,106 @@ class ExecutorClaim:
     supported: bool
 
 
+class ContinuationCapability(StrEnum):
+    """What an executor can honor when core hands it existing artifact
+    material. Declarations only: which of them a replacement uses is decided
+    by the one core planner (``transfers.continuation``), never here."""
+    FULL_RESTART = "full_restart"
+    CONTIGUOUS_FROM_OFFSET = "contiguous_from_offset"
+    ARBITRARY_RANGE_FETCH = "arbitrary_range_fetch"
+    IMPORT_EXISTING_MATERIAL = "import_existing_material"
+    # Observations carry the exact final-file ranges written so far
+    # (``ExecutionObservation.material``); the only way uncommitted work can
+    # ever become DebridPulse-valid before completion.
+    EXPORT_MATERIAL_RANGES = "export_material_ranges"
+    SOURCE_SEGMENT_TO_FINAL_RANGE = "source_segment_to_final_range"
+    DESTINATION_AWARE_CONTINUATION = "destination_aware_continuation"
+    NATIVE_PRIVATE_RESUME = "native_private_resume"
+    # ``PauseResume.pause`` stops acquisition gracefully so the final completed
+    # work can be checkpointed before the writer is fenced. An optimization:
+    # lacking it never prevents a DebridPulse Pause.
+    NATIVE_QUIESCE = "native_quiesce"
+    # ``transfers.contracts.ContinuationBoundaryDiscovery``: the executor can
+    # answer, for concrete source data, the largest offset at or below the
+    # DP-valid prefix where it can continue exactly (e.g. where decoded source
+    # segments begin). Data-dependent, unlike ``continuation_alignment``.
+    BOUNDARY_DISCOVERY = "boundary_discovery"
+
+
+class ContinuationStrategy(StrEnum):
+    FULL_RESTART = "full_restart"
+    CONTIGUOUS_FROM_OFFSET = "contiguous_from_offset"
+
+
+@dataclass(frozen=True)
+class ContinuationPlan:
+    """The one authorization a writer receives for an artifact's material.
+
+    Produced only by ``transfers.continuation.plan_continuation`` and bound to
+    the material generation it was computed against: an executor may reject a
+    plan it cannot honor, but never retains more than ``retained`` nor writes
+    outside ``authorized``. Ranges are ``[start, end)`` final-file offsets."""
+    artifact_id: int
+    material_generation: int
+    geometry_version: int
+    candidate_id: str
+    executor_id: str
+    strategy: ContinuationStrategy
+    boundary: int
+    retained: tuple[tuple[int, int], ...]
+    discarded: tuple[tuple[int, int], ...]
+    authorized: tuple[tuple[int, int], ...]
+    expected_size: int | None
+    reason: str
+    # Provenance: the selected executor's declared continuation capabilities
+    # (and alignment) this decision was made from.
+    capabilities: tuple[str, ...] = ()
+    alignment: int = 1
+    # COLLECTION artifacts: per member file (relative path), the retained
+    # contiguous boundary and what is reclassified. A member not listed keeps
+    # nothing and may be written from 0; a listed member from its boundary.
+    member_boundaries: tuple[tuple[str, int], ...] = ()
+    member_discarded: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = ()
+
+    def member_boundary(self, member: str) -> int:
+        return dict(self.member_boundaries).get(member, 0)
+
+    @property
+    def retained_bytes(self) -> int:
+        return (sum(end - start for start, end in self.retained)
+                + sum(boundary for _member, boundary in self.member_boundaries))
+
+    @property
+    def discarded_bytes(self) -> int:
+        return (sum(end - start for start, end in self.discarded)
+                + sum(end - start for _member, ranges in self.member_discarded for start, end in ranges))
+
+    def as_dict(self) -> dict:
+        return {
+            "artifact_id": self.artifact_id, "material_generation": self.material_generation,
+            "geometry_version": self.geometry_version, "candidate_id": self.candidate_id,
+            "executor_id": self.executor_id, "strategy": self.strategy.value, "boundary": self.boundary,
+            "retained": [list(item) for item in self.retained], "discarded": [list(item) for item in self.discarded],
+            "authorized": [list(item) for item in self.authorized], "expected_size": self.expected_size,
+            "reason": self.reason, "capabilities": list(self.capabilities), "alignment": self.alignment,
+            "member_boundaries": [[member, boundary] for member, boundary in self.member_boundaries],
+            "member_discarded": [[member, [list(item) for item in ranges]] for member, ranges in self.member_discarded],
+        }
+
+    @classmethod
+    def from_dict(cls, value: Mapping) -> "ContinuationPlan":
+        def ranges(key):
+            return tuple((int(start), int(end)) for start, end in value.get(key) or ())
+        return cls(int(value["artifact_id"]), int(value["material_generation"]), int(value["geometry_version"]),
+                   str(value["candidate_id"]), str(value["executor_id"]), ContinuationStrategy(value["strategy"]),
+                   int(value["boundary"]), ranges("retained"), ranges("discarded"), ranges("authorized"),
+                   None if value.get("expected_size") is None else int(value["expected_size"]), str(value["reason"]),
+                   tuple(str(item) for item in value.get("capabilities") or ()), int(value.get("alignment") or 1),
+                   tuple((str(member), int(boundary)) for member, boundary in value.get("member_boundaries") or ()),
+                   tuple((str(member), tuple((int(start), int(end)) for start, end in ranges))
+                         for member, ranges in value.get("member_discarded") or ()))
+
+
 @dataclass(frozen=True)
 class ExecutorCapabilities:
     """Static semantic guarantees an executor implementation declares.
@@ -591,12 +703,25 @@ class ExecutorCapabilities:
     # execution (``transfers.contracts.RemoteDiscovery``).
     remote_discovery: bool = False
     materialization_kinds: frozenset[MaterializationKind] = frozenset({MaterializationKind.FILE})
+    # Material-continuation declarations (``ContinuationCapability``). Every
+    # executor can at least restart from zero. ``continuation_alignment`` is
+    # the byte grain at which this executor can begin continuing (1 = any
+    # offset); the planner derives the maximal mutually safe boundary from it.
+    continuation: frozenset[ContinuationCapability] = frozenset({ContinuationCapability.FULL_RESTART})
+    continuation_alignment: int = 1
 
     def __post_init__(self):
         kinds = self.materialization_kinds
         if (not isinstance(kinds, frozenset) or not kinds
                 or any(not isinstance(item, MaterializationKind) for item in kinds)):
             raise ValueError("Executors must declare canonical materialization kinds")
+        continuation = self.continuation
+        if (not isinstance(continuation, frozenset)
+                or any(not isinstance(item, ContinuationCapability) for item in continuation)
+                or ContinuationCapability.FULL_RESTART not in continuation):
+            raise ValueError("Executors must declare canonical continuation capabilities, FULL_RESTART included")
+        if isinstance(self.continuation_alignment, bool) or int(self.continuation_alignment) < 1:
+            raise ValueError("Continuation alignment is a positive byte count")
 
 
 class ExecutorRuntimeCapability(StrEnum):
@@ -672,6 +797,9 @@ class ExecutionRequest:
     work: ExecutionWork
     attempt_id: str
     paused: bool = False
+    # The core continuation plan this writer is authorized under. ``None``
+    # authorizes no existing material at all (a restart from zero).
+    continuation: ContinuationPlan | None = None
 
     def __post_init__(self):
         # One attempt identity, never two. Once a request exists its attempt is
@@ -738,6 +866,18 @@ class ExecutionObservation:
     controls: frozenset[ExecutionControl] = frozenset()
     # Supplied only with SUCCEEDED; core verifies it before trusting it.
     materialization: MaterializationResult | None = None
+    # ``EXPORT_MATERIAL_RANGES``: exact ``[start, end)`` final-file ranges this
+    # writer reports completely written. Evidence for a core checkpoint only --
+    # it never becomes DebridPulse-valid by being reported (``None`` = the
+    # executor reports none).
+    material: tuple[tuple[int, int], ...] | None = None
+    # The same evidence for a COLLECTION: per member file (relative path to
+    # the collection root), the exact ranges completely written.
+    member_material: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] | None = None
+
+    @property
+    def reports_material(self) -> bool:
+        return self.material is not None or self.member_material is not None
 
     @property
     def resumable(self) -> bool:
@@ -786,7 +926,9 @@ class Transfer:
     source: str = ""
     priority: int = 0
     paused: bool = False
-    progress: float = 0.0
+    # DP-valid completion percentage; ``None`` while any unfinished artifact's
+    # size is unknown (unavailable, never a fabricated 0%).
+    progress: float | None = 0.0
     error: NormalizedError | None = None
     epoch: int = 0
 

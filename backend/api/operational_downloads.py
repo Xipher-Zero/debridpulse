@@ -30,6 +30,7 @@ from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
 from transfers.input_required import public_challenge
+from transfers.manual_failover import DiscardConfirmationRequired
 from transfers.presentation_repository import (
     ARTIFACT_PRESENTATION_SNAPSHOT_KEYS,
     _CAPACITY_WAIT_PRESENTATION,
@@ -288,11 +289,23 @@ async def activate_artifact_candidate(
     transfer_id: int,
     artifact_id: int,
     candidate_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+    discard_confirmed: Annotated[bool, Body(embed=True)] = False,
     application: ApplicationService = Depends(get_application),
 ):
-    """Request activation of one exact existing canonical acquisition candidate."""
+    """Request activation of one exact existing canonical acquisition candidate.
+
+    When the requested source cannot continue from the artifact's existing
+    valid material, nothing changes until the operator confirms the discard
+    (``discard_confirmed``); the refusal reports exactly how much is lost."""
     try:
-        return await switch_candidate(application, transfer_id, artifact_id, candidate_id)
+        return await switch_candidate(application, transfer_id, artifact_id, candidate_id,
+                                      discard_confirmed=discard_confirmed)
+    except DiscardConfirmationRequired as exc:
+        raise HTTPException(status_code=409, detail={
+            "confirmation": "discard_material", "discarded_bytes": exc.discarded_bytes,
+            "retained_bytes": exc.retained_bytes,
+            "message": "Switching to this source discards downloaded progress.",
+        }) from None
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None
     except TransferError as exc:

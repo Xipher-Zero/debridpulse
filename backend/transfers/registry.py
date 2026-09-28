@@ -8,7 +8,8 @@ from transfers.applicability import (
     assess_provider_applicability,
 )
 from transfers.contracts import (
-    ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup, Executor,
+    ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup,
+    ContinuationBoundaryDiscovery, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
     ExecutorInputRecovery, RemoteDiscovery,
     ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, ResourceLookup,
@@ -16,7 +17,8 @@ from transfers.contracts import (
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import (
-    Capability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim, ExecutorRuntimeCapability, TransferRequest,
+    Capability, ContinuationCapability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim,
+    ExecutorRuntimeCapability, TransferRequest,
 )
 
 
@@ -89,6 +91,12 @@ class IntegrationRegistry:
         if (capabilities.candidate_sampling and capabilities.transient_input
                 and not isinstance(executor, CandidateSamplingContinuation)):
             raise TypeError("Executor declares input-continued sampling without implementing it")
+        if (ContinuationCapability.BOUNDARY_DISCOVERY in capabilities.continuation
+                and not isinstance(executor, ContinuationBoundaryDiscovery)):
+            raise TypeError("Executor declares boundary discovery without implementing it")
+        # Native quiesce IS the per-execution pause operation (validated above).
+        if ContinuationCapability.NATIVE_QUIESCE in capabilities.continuation and not capabilities.per_execution_pause:
+            raise TypeError("Executor declares native quiesce without per-execution pause")
         self.executors[descriptor.id] = executor
 
     def mark_health(self, integration_id: str, *, healthy: bool) -> None:

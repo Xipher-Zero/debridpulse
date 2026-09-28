@@ -304,13 +304,17 @@ async def test_unprovable_reserved_ceiling_engages_available_acquisition_gate(tm
     status = await core.engine.converge_runtime_limits()
     assert not status.ok and executor.gate == [True]  # uncontrolled acquisition stopped, nothing cancelled
     assert core.engine.runtime.gated == frozenset({"exec-a"})
+    cancels = lambda: len([call for call in executor.calls if call[0] == "cancel"])  # noqa: E731
+    assert cancels() == 0  # the gate stopped acquisition without cancelling anything
     await core.engine.pause_all()
+    fenced = cancels()  # DebridPulse pause fences the one writer: the only cancellation
+    assert fenced == 1
     await core.engine.resume_all()
     assert executor.gate[-1] is True  # global resume never releases a cap-held gate
     executor.ceiling_failure = False
     status = await core.engine.converge_runtime_limits()
     assert status.ok and executor.gate[-1] is False and core.engine.runtime.gated == frozenset()
-    assert not [call for call in executor.calls if call[0] == "cancel"]
+    assert cancels() == fenced  # the runtime-limit owner itself never cancels a writer
 
 
 async def test_positive_cap_below_executor_count_never_becomes_unlimited(tmp_path, monkeypatch):
@@ -357,7 +361,7 @@ async def test_capability_loss_with_unchanged_assigned_share_blocks_start_and_re
     first = await submit_ledger(core, "item")
     artifact = await artifact_of(core, first.id)
     await core.engine.pause(first.id)
-    assert core.executors[0].job_for(artifact.execution).state.value == "paused"
+    assert (await artifact_of(core, first.id)).execution is None  # DebridPulse pause fenced the writer
     core.executors[0].runtime_available = frozenset()  # the share (CAP) is unchanged and still "assigned"
     starts = log.count(("exec-a", "start"))
     second = await submit_ledger(core, "second")
@@ -365,8 +369,10 @@ async def test_capability_loss_with_unchanged_assigned_share_blocks_start_and_re
     assert log.count(("exec-a", "start")) == starts
     await core.engine.resume(first.id)
     await core.engine.reconcile_executions()
+    # Neither a native resume nor a new writer: admission is blocked.
     assert ("exec-a", "resume") not in log
-    assert core.executors[0].job_for(artifact.execution).state.value == "paused"
+    assert log.count(("exec-a", "start")) == starts
+    assert (await artifact_of(core, first.id)).execution is None
 
 
 async def test_failed_newcomer_admission_restores_the_unchanged_reserved_split(tmp_path, monkeypatch):

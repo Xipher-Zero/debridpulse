@@ -124,6 +124,11 @@
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
+    // Downloads -> Download Behavior & Limits -> Advanced Settings
+    material_checkpoint_interval_seconds: {scope: 'transfer-policy', option: 'material_checkpoint_interval_seconds'},
+    graceful_stop_timeout_seconds: {scope: 'transfer-policy', option: 'graceful_stop_timeout_seconds'},
+    private_lan_connections: {scope: 'transfer-policy', option: 'private_lan_connections', commit: 'immediate'},
+    skip_private_lan_confirmation: {scope: 'transfer-policy', option: 'skip_private_lan_confirmation', commit: 'immediate'},
     aria2_error_retry_count: {scope: 'transfer-policy', option: 'execution_retry_count'},
     aria2_error_retry_delay_seconds: {scope: 'transfer-policy', option: 'execution_retry_delay_seconds'},
     stuck_download_timeout_hours: {scope: 'transfer-policy', option: 'stalled_timeout_hours'},
@@ -561,7 +566,7 @@
 
   // Inner-card title icons, keyed by the card's title.
   const CARD_ICONS = Object.freeze({
-    'Download Location & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
+    'Download Behavior & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
     'Disk Space & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
     'Download Engine Activity': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
     'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
@@ -765,9 +770,12 @@
 
   function tuningToggle(key, label, detail, value, options = {}) {
     const id = fieldId(key);
+    // ``disabled``: a dependent control whose parent permission is off. Its
+    // stored value is untouched; only its availability is projected.
+    const disabled = options.disabled ? ' disabled' : '';
     const boolean = `
           <span class="toggle">
-            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
+            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}${disabled}>
             <span class="ttrack"></span>
           </span>`;
     if (options.inline) {
@@ -780,11 +788,11 @@
         {className: options.className});
     }
     return `
-      <div class="dp-settings-field dp-settings-engine-tuning-toggle-field">
+      <div class="dp-settings-field dp-settings-engine-tuning-toggle-field${options.disabled ? ' is-disabled' : ''}">
         <label class="form-label" for="${id}">${html(label)}</label>
         <label class="dp-settings-engine-tuning-toggle-control" for="${id}">
           <span class="toggle">
-            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}>
+            <input id="${id}" data-setting="${html(key)}" type="checkbox" ${commitAttributes(key)} ${checked(value)}${disabled}>
             <span class="ttrack"></span>
           </span>
         </label>
@@ -1462,7 +1470,7 @@
   function downloadsPanel(s) {
     const policy = policyOf(s);
     const globalCopy = 'Where DebridPulse saves downloads and how many it runs at once.';
-    const delivery = card('Download Location & Limits', `
+    const delivery = card('Download Behavior & Limits', `
       <div class="dp-settings-download-engine-row" role="group" aria-label="Download location and limits">
         <div class="dp-settings-download-path-stack">
           ${directoryField('download_folder', 'Download Folder', s.download_folder || '/download', {
@@ -1480,6 +1488,7 @@
           })}
         </div>
       </div>
+      ${downloadBehaviorAdvanced(policy)}
     `, {
       className: 'dp-settings-download-engine-card',
       wrapTitle: true,
@@ -1528,6 +1537,42 @@
     ), {className: 'dp-settings-download-recovery-card'});
 
     return delivery + tuning + recovery + executorWorkCard();
+  }
+
+  /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
+   * continuation and local-network policy, four ordinary tuning cells in the
+   * one tuning grammar. Collapsed by default; expansion is presentation only. */
+  function downloadBehaviorAdvanced(policy) {
+    return disclosureSection('Advanced Settings', 'download-behavior-advanced', tuningCells(
+      input('material_checkpoint_interval_seconds', 'Material Checkpoint Interval (seconds)',
+        policy.material_checkpoint_interval_seconds ?? 5, {
+          type: 'number', min: 1, max: 60,
+          hint: 'How often DebridPulse records reusable download progress. Lower values reduce work that may need to be repeated after an unexpected interruption, at the cost of more storage activity.',
+        }),
+      input('graceful_stop_timeout_seconds', 'Graceful Stop Timeout (seconds)',
+        policy.graceful_stop_timeout_seconds ?? 10, {
+          type: 'number', min: 1, max: 60,
+          hint: 'How long DebridPulse allows an active download engine to finish and preserve current work before forcing it to stop.',
+        }),
+      tuningToggle('private_lan_connections', 'Local Network Connections',
+        'Allow explicitly entered downloads to connect to private LAN addresses.',
+        !!policy.private_lan_connections),
+      tuningToggle('skip_private_lan_confirmation', 'Skip Local Connection Confirmation',
+        'Allow new private-LAN transfers without asking for confirmation each time.',
+        !!policy.skip_private_lan_confirmation, {disabled: !policy.private_lan_connections}),
+    ));
+  }
+
+  /* The Skip Local Connection Confirmation cell is available only while Local
+   * Network Connections is on -- a projection of ACCEPTED canonical policy,
+   * applied wherever that policy is adopted. Its stored preference is never
+   * changed by this, so re-enabling LAN access restores it as it was. */
+  function projectPrivateLanDependency() {
+    const allowed = !!policyOf(state.settings).private_lan_connections;
+    const control = document.getElementById(fieldId('skip_private_lan_confirmation'));
+    if (!control) return;
+    control.disabled = !allowed;
+    control.closest('.dp-settings-field')?.classList.toggle('is-disabled', !allowed);
   }
 
   /* The two extraction behaviour controls are ONE group.
@@ -2952,6 +2997,7 @@
   function adoptTransferPolicy(result) {
     const {ok, last_apply_error, ...policy} = result || {};
     syncGlobalSettings({...state.settings, transfer_policy: policy});
+    projectPrivateLanDependency();
   }
 
   /* A control's committed value, in the shape its canonical namespace holds.

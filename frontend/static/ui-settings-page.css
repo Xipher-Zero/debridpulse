@@ -856,6 +856,16 @@
   opacity: .45;
 }
 
+/* A tuning cell whose parent permission is off: visibly deactivated, its
+   stored value kept (ui-settings-page.js projectPrivateLanDependency). */
+#view-settings .dp-settings-field.is-disabled {
+  opacity: .45;
+}
+
+#view-settings .dp-settings-field.is-disabled label {
+  cursor: not-allowed;
+}
+
 #view-settings .dp-settings-actions {
   display: flex;
   align-items: center;

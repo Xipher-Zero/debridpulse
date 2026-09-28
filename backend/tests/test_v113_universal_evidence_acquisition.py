@@ -516,15 +516,19 @@ async def test_pause_arriving_between_prepare_and_start_is_ordered_after_the_con
     assert len(starts) == 1  # exactly one native execution
     artifact = (await repository.artifacts(incoming.id))[0]
     assert (await repository.get(incoming.id)).paused
-    assert executor.jobs[artifact.execution.attempt_id].state.value == "paused"
+    # DebridPulse pause fenced the writer the consuming start produced.
+    assert artifact.execution is None and artifact.state == "paused"
     await engine.resume(incoming.id)
     for _ in range(3):
         await engine.tick()
     artifact_after = (await repository.artifacts(incoming.id))[0]
     assert artifact_after.id == artifact.id and artifact_after.request_id == record.id
     assert artifact_after.candidates[artifact_after.selected].id == artifact.candidates[artifact.selected].id
-    assert executor.input_starts == [(challenge.operation_id, USER)]
-    assert len([call for call in executor.calls if call[0] == "start"]) == 1
+    # Resume is one new writer, started with the credential this lineage
+    # already validated -- the operator is not asked again.
+    assert artifact_after.execution is not None
+    assert executor.input_starts == [(challenge.operation_id, USER), (challenge.operation_id, USER)]
+    assert len([call for call in executor.calls if call[0] == "start"]) == 2
     assert await engine.challenges.current(incoming.id) is None  # no duplicate challenge from the race
 
 

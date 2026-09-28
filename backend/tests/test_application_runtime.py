@@ -391,5 +391,10 @@ async def test_pause_wins_while_executor_start_acknowledgement_is_delayed(runtim
     release.set()
     await task
     artifact = (await application.repository.artifacts(item["id"]))[0]
-    assert artifact.state == "paused"
-    assert (await executor.observe(artifact.execution)).state == "paused"
+    # DebridPulse owns pause: the writer whose start was acknowledged late is
+    # fenced by the dispatcher that received the acknowledgement, and no
+    # writer remains authorized -- not merely paused natively.
+    assert artifact.state == "paused" and artifact.execution is None
+    started = next(handle for name, handle in executor.calls if name == "start")
+    assert executor.jobs[started.attempt_id].state == "cancelled"
+    assert not await application.repository.authorize_execution(started, "resume")

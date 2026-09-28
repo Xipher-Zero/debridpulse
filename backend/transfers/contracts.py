@@ -237,6 +237,21 @@ class RemoteDiscovery(Protocol):
 
 
 @runtime_checkable
+class ContinuationBoundaryDiscovery(Protocol):
+    """``ContinuationCapability.BOUNDARY_DISCOVERY``: where this executor can
+    continue ``subject`` exactly, for concrete source data.
+
+    ``member`` is ``""`` for a FILE artifact, else a collection member's
+    relative path. The answer is the largest offset ``<= prefix`` (the
+    DP-valid contiguous prefix) at which the executor can continue writing
+    final-file bytes exactly -- e.g. the start of the first source segment
+    whose decoded range begins there. Core bounds and validates it; the
+    executor never decides how much material is retained."""
+
+    async def continuation_boundary(self, subject: ExecutionSubject, member: str, prefix: int) -> int: ...
+
+
+@runtime_checkable
 class PostProcessor(Protocol):
     descriptor: IntegrationDescriptor
 

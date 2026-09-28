@@ -115,6 +115,7 @@ async def _refresh_exact(engine, artifact, index: int):
             provider.descriptor.id,
             await provider.refresh(bound),
             request_kind=origin.request.request.kind,
+            lan_host=await engine._consented_lan_host(origin.request),
         )
         live = await engine.repository.resolution(attempt, result)
         if not live and origin.request.transfer_id == artifact.transfer_id:
@@ -224,13 +225,30 @@ _NOT_COMMITTED_ERROR = {
 }
 
 
+class DiscardConfirmationRequired(Exception):
+    """The requested source cannot continue from the artifact's existing
+    DebridPulse-valid material: switching would discard ``discarded_bytes``.
+    Nothing was changed; the operator must confirm before the rollback."""
+
+    def __init__(self, discarded_bytes: int, retained_bytes: int):
+        super().__init__("switching source discards downloaded progress")
+        self.discarded_bytes = int(discarded_bytes)
+        self.retained_bytes = int(retained_bytes)
+
+
 async def manual_candidate_failover(
     engine,
     transfer_id: int,
     artifact_id: int,
     candidate_id: str,
+    *,
+    discard_confirmed: bool = False,
 ) -> dict:
-    """Make one existing candidate authoritative without creating a new artifact."""
+    """Make one existing candidate authoritative without creating a new artifact.
+
+    A switch whose continuation plan would discard existing valid material
+    (the new source/executor cannot continue from it) requires the operator's
+    explicit confirmation first; the amount is reported, never guessed."""
     wanted = str(candidate_id or "").strip()
     if not wanted:
         raise _error(
@@ -264,6 +282,10 @@ async def manual_candidate_failover(
             artifact, index = await _refresh_exact(engine, artifact, index)
             candidate = artifact.candidates[index]
 
+        if not discard_confirmed:
+            preview = await engine.preview_continuation(artifact, candidate)
+            if preview is not None and preview.discarded_bytes:
+                raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes)
         claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index)
         if claim_result is None:
             # A concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler recovery

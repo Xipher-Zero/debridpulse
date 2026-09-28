@@ -299,11 +299,14 @@ async def test_provider_reenable_while_user_paused_does_not_resume(runtime):
     await engine.reconcile_executions()
     provider.descriptor = replace(provider.descriptor, enabled=True)
     resume_before = len([call for call in executor.calls if call[0] == "resume"])
+    starts_before = len([call for call in executor.calls if call[0] == "start"])
     await engine.reconcile_executions()
     current = (await repository.artifacts(transfer.id))[0]
-    assert current.execution == original
+    # The user's pause fenced the writer; a provider coming back admits none.
+    assert current.execution is None and original is not None
     assert current.state == "paused"
     assert len([call for call in executor.calls if call[0] == "resume"]) == resume_before
+    assert len([call for call in executor.calls if call[0] == "start"]) == starts_before
 
 
 @pytest.mark.asyncio

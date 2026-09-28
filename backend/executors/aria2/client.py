@@ -64,6 +64,11 @@ class Aria2DownloadStatus:
     error_code: str = ""
     error_message: str = ""
     files: Optional[List[Dict[str, Any]]] = None
+    # Piece-completion evidence: hex bitfield (piece 0 = highest bit of the
+    # first byte) over ``num_pieces`` pieces of ``piece_length`` bytes.
+    bitfield: str = ""
+    piece_length: int = 0
+    num_pieces: int = 0
 
 
 def aria2_download_to_dict(download: Aria2DownloadStatus) -> Dict[str, Any]:
@@ -426,6 +431,9 @@ class Aria2Service:
             error_code=str(raw.get("errorCode", "") or ""),
             error_message=str(raw.get("errorMessage", "") or ""),
             files=list(raw.get("files") or []),
+            bitfield=str(raw.get("bitfield", "") or ""),
+            piece_length=int(raw.get("pieceLength", 0) or 0),
+            num_pieces=int(raw.get("numPieces", 0) or 0),
         )
 
     @staticmethod
@@ -439,6 +447,9 @@ class Aria2Service:
             "errorCode",
             "errorMessage",
             "files",
+            "bitfield",
+            "pieceLength",
+            "numPieces",
         ]
 
     @staticmethod

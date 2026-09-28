@@ -173,20 +173,31 @@ async def _read_exactly(response, count: int) -> bytes | None:
         return None
 
 
+def _granted(lan: bool) -> dict:
+    """The private-LAN keyword only for a granted origin: every ungranted call
+    is exactly the public-destination call it always was."""
+    return {"private_lan": True} if lan else {}
+
+
 def _origin(uri: str) -> tuple[str, str, int]:
     parsed = urlsplit(uri)
     return parsed.scheme.casefold(), str(parsed.hostname or "").casefold(), int(
         parsed.port or network_safety.default_destination_port(parsed.scheme))
 
 
-async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3):
+async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3, private_lan: bool = False):
     current = uri
     current_headers = dict(headers)
     prior_origin = _origin(uri)
+    granted_host = prior_origin[1] if private_lan else ""
     redirected = False
     for hop in range(max_redirects + 1):
+        # A private-LAN grant covers the operator's own host only: a redirect
+        # to any other name never inherits it.
+        lan = bool(granted_host) and _origin(current)[1] == granted_host
         try:
-            validated = await network_safety.validate_resolved_public_destination(current)
+            validated = await (network_safety.validate_resolved_public_destination(current, private_lan=True) if lan
+                               else network_safety.validate_resolved_public_destination(current))
         except network_safety.DestinationLookupError:
             return None, "dns_failure"
         except network_safety.UnsafeDestinationError:
@@ -200,8 +211,9 @@ async def _range_request(session, uri: str, headers: dict, *, max_redirects: int
             return None, "redirect"
         next_uri = urljoin(validated, location)
         try:
-            network_safety.validate_provider_download_url(next_uri, context="redirect target",
-                                                          schemes=SAMPLED_FINGERPRINT_SCHEMES)
+            network_safety.validate_provider_download_url(
+                next_uri, context="redirect target", schemes=SAMPLED_FINGERPRINT_SCHEMES,
+                **_granted(bool(granted_host) and _origin(next_uri)[1] == granted_host))
         except network_safety.UnsafeDestinationError:
             return None, "destination_rejected"
         next_origin = _origin(next_uri)
@@ -221,6 +233,7 @@ async def sampled_public_artifact_fingerprint(
     timeout_seconds: float = 20.0,
     headers: dict | None = None,
     expected_bytes: int = 0,
+    private_lan: bool = False,
 ) -> Sample | AccessRequired:
     """Return bounded structured content evidence for a public HTTP(S) capability.
 
@@ -237,20 +250,24 @@ async def sampled_public_artifact_fingerprint(
     if urlsplit(str(uri or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
         return unavailable("destination_rejected")
     try:
-        validated = await network_safety.validate_resolved_public_destination(uri)
+        validated = await network_safety.validate_resolved_public_destination(uri, **_granted(private_lan))
     except network_safety.DestinationLookupError:
         return unavailable("dns_failure")
     except network_safety.UnsafeDestinationError:
         return unavailable("destination_rejected")
+    granted_host = _origin(validated)[1] if private_lan else ""
 
     sample_bytes = sample_size(sample_bytes)
     timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
     base_headers = {**(headers or {}), "Accept-Encoding": "identity"}
-    connector = aiohttp.TCPConnector(resolver=network_safety.PublicDestinationResolver(), use_dns_cache=False)
+    connector = aiohttp.TCPConnector(
+        resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
+        use_dns_cache=False)
     try:
         async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
             first_headers = {**base_headers, "Range": f"bytes=0-{sample_bytes - 1}"}
-            response, redirect_reason = await _range_request(session, validated, first_headers)
+            response, redirect_reason = await _range_request(session, validated, first_headers,
+                                                             private_lan=bool(granted_host))
             if response is None:
                 return unavailable(redirect_reason or "sampler_unavailable")
             try:
@@ -297,7 +314,8 @@ async def sampled_public_artifact_fingerprint(
 
             last_start = last_window_start(total, sample_bytes)
             last_headers = {**base_headers, "Range": f"bytes={last_start}-{total - 1}"}
-            response, last_redirect_reason = await _range_request(session, validated, last_headers)
+            response, last_redirect_reason = await _range_request(session, validated, last_headers,
+                                                                  private_lan=bool(granted_host))
             if response is None:
                 return sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
                                last_redirect_reason or "sampler_unavailable", prefix)

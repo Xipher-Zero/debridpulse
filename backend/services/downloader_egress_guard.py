@@ -17,6 +17,16 @@ admits the same hostname on the authorized port plus server-selected
 unprivileged ports, for native transports whose one job opens a second
 connection the server chooses (a passive FTP data channel). No scope ever admits
 another hostname or skips this guard's own resolution and address policy.
+
+A credential may additionally carry a private-LAN grant (signed into the
+credential itself, domain-separated from ungranted credentials). Such a job may
+reach RFC1918 addresses of its one authorized hostname -- and only while the
+operator's global Local Network Connections policy is on at the moment of each
+CONNECT (``configure_private_lan``). Loopback, link-local, metadata and every
+other non-global class stay refused for every credential, and the whole DNS
+answer set is still judged at connection time, so a mixed or rebinding answer
+cannot smuggle one in. Core grants a job this only for an operator-submitted
+LAN destination; a provider-returned endpoint never carries it.
 """
 from __future__ import annotations
 
@@ -36,7 +46,7 @@ from urllib.parse import urlsplit
 
 from services.network_safety import PUBLIC_DESTINATION_SCHEMES, default_destination_port
 from services.network_safety import validate_provider_download_url
-from services.network_safety import reject_non_public_resolution
+from services.network_safety import private_lan_address, reject_non_public_resolution
 
 logger = logging.getLogger("debridpulse.downloader_egress_guard")
 
@@ -58,8 +68,10 @@ class RouteScope(StrEnum):
 
 
 _SAME_HOST_USER = re.compile(
-    re.escape(f"{_PROXY_USER}.{RouteScope.SAME_HOST.value}.") + r"([0-9]{1,5})"
+    re.escape(f"{_PROXY_USER}.") + r"(lan\.)?" + re.escape(f"{RouteScope.SAME_HOST.value}.") + r"([0-9]{1,5})"
 )
+# The marker a private-LAN-granted credential's username carries.
+_LAN = "lan"
 
 Resolver = Callable[[str, int], Awaitable[list[tuple]]]
 PublicCheck = Callable[[str], bool]
@@ -73,9 +85,9 @@ def _is_public(address: str) -> bool:
         return False
 
 
-def _target(uri: str) -> tuple[str, int]:
+def _target(uri: str, private_lan: bool = False) -> tuple[str, int]:
     validated = validate_provider_download_url(
-        uri, context="aria2 download link", schemes=PUBLIC_DESTINATION_SCHEMES)
+        uri, context="aria2 download link", schemes=PUBLIC_DESTINATION_SCHEMES, private_lan=private_lan)
     parsed = urlsplit(validated)
     host = str(parsed.hostname or "").rstrip(".").casefold()
     if not host:
@@ -111,6 +123,16 @@ class DownloaderEgressGuard:
         self._server: asyncio.AbstractServer | None = None
         self._lock = asyncio.Lock()
         self._bound_port = 0
+        # The operator's global Local Network Connections policy, read at every
+        # CONNECT: turning it off stops granted jobs from reaching LAN too.
+        self._private_lan = False
+
+    def configure_private_lan(self, enabled: bool) -> None:
+        self._private_lan = bool(enabled)
+
+    @property
+    def private_lan_enabled(self) -> bool:
+        return self._private_lan
 
     @property
     def bound_port(self) -> int:
@@ -162,47 +184,57 @@ class DownloaderEgressGuard:
                 server.close()
                 await server.wait_closed()
 
-    def _token(self, host: str, port: int) -> str:
-        authority = f"{str(host).rstrip('.').casefold()}:{int(port)}".encode("utf-8")
+    def _token(self, host: str, port: int, lan: bool = False) -> str:
+        # A granted message is domain-separated ("lan|..."): a hostname never
+        # contains "|", so an ungranted credential can never verify as granted.
+        authority = f"{_LAN + '|' if lan else ''}{str(host).rstrip('.').casefold()}:{int(port)}".encode("utf-8")
         return hmac.new(self._secret, authority, hashlib.sha256).hexdigest()
 
-    def _same_host_token(self, host: str, port: int) -> str:
+    def _same_host_token(self, host: str, port: int, lan: bool = False) -> str:
         # Domain-separated from the endpoint token: a hostname never contains
         # "|", so no endpoint message can equal a same-host message.
-        message = f"{RouteScope.SAME_HOST.value}|{str(host).rstrip('.').casefold()}:{int(port)}"
+        message = (f"{_LAN + '|' if lan else ''}{RouteScope.SAME_HOST.value}|"
+                   f"{str(host).rstrip('.').casefold()}:{int(port)}")
         return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
 
-    def _credential(self, host: str, port: int, scope: RouteScope) -> tuple[str, str]:
+    def _credential(self, host: str, port: int, scope: RouteScope, lan: bool = False) -> tuple[str, str]:
+        user = f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER
         if scope == RouteScope.ENDPOINT:
-            return _PROXY_USER, self._token(host, port)
+            return user, self._token(host, port, lan)
         if scope == RouteScope.SAME_HOST:
-            return f"{_PROXY_USER}.{scope.value}.{int(port)}", self._same_host_token(host, port)
+            return f"{user}.{scope.value}.{int(port)}", self._same_host_token(host, port, lan)
         raise ValueError("Unsupported egress route scope")
 
-    def _admits(self, username: str, password: str, host: str, port: int) -> bool:
-        """Verify a CONNECT credential against the authority it names."""
-        if username == _PROXY_USER:
-            return hmac.compare_digest(password, self._token(host, port))
+    def _admits(self, username: str, password: str, host: str, port: int) -> bool | None:
+        """Verify a CONNECT credential against the authority it names.
+        ``None`` refuses; otherwise whether the credential carries a
+        private-LAN grant."""
+        for lan in (False, True):
+            if username == (f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER):
+                return lan if hmac.compare_digest(password, self._token(host, port, lan)) else None
         match = _SAME_HOST_USER.fullmatch(username)
         if match is None:
-            return False
-        authorized = int(match.group(1))
+            return None
+        lan = bool(match.group(1))
+        authorized = int(match.group(2))
         if not 0 < authorized <= 65535:
-            return False
+            return None
         if port != authorized and port < _SERVER_SELECTED_PORT_FLOOR:
-            return False
-        return hmac.compare_digest(password, self._same_host_token(host, authorized))
+            return None
+        return lan if hmac.compare_digest(password, self._same_host_token(host, authorized, lan)) else None
 
     def _proxy_url(self) -> str:
         if self._server is None or self._bound_port <= 0:
             raise RuntimeError("DebridPulse egress guard is not running")
         return f"http://{_LOOPBACK}:{self._bound_port}"
 
-    def job_options(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT) -> dict[str, str]:
-        """Return per-addUri proxy policy that cannot inherit a daemon bypass."""
-        host, port = _target(uri)
+    def job_options(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
+                    private_lan: bool = False) -> dict[str, str]:
+        """Return per-addUri proxy policy that cannot inherit a daemon bypass.
+        ``private_lan`` signs core's private-LAN grant into the credential."""
+        host, port = _target(uri, private_lan)
         proxy = self._proxy_url()
-        user, token = self._credential(host, port, RouteScope(scope))
+        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan))
         options = {
             "all-proxy": proxy,
             "all-proxy-user": user,
@@ -228,7 +260,7 @@ class DownloaderEgressGuard:
 
     async def open_tunnel(
         self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT, port: int | None = None,
-        timeout_seconds: float = 10.0,
+        timeout_seconds: float = 10.0, private_lan: bool = False,
     ) -> socket.socket:
         """Open one in-process connection through this guard's own CONNECT boundary.
 
@@ -241,9 +273,9 @@ class DownloaderEgressGuard:
         Returns a connected non-blocking socket carrying nothing but the
         tunnelled bytes; a refusal raises ``PermissionError``.
         """
-        host, authorized = _target(uri)
+        host, authorized = _target(uri, private_lan)
         await self.ensure_started()
-        user, token = self._credential(host, authorized, RouteScope(scope))
+        user, token = self._credential(host, authorized, RouteScope(scope), bool(private_lan))
         server = self._server
         if server is None or not server.sockets:
             raise RuntimeError("DebridPulse egress guard is not running")
@@ -296,14 +328,19 @@ class DownloaderEgressGuard:
                 raise ValueError(f"Provider download host {host!r} could not be resolved") from exc
         return list(answers or ())
 
-    async def _approved_endpoints(self, host: str, port: int) -> list[tuple[int, str, int]]:
+    def _admitted(self, address: str, lan: bool) -> bool:
+        return self._public_check(address) or (lan and private_lan_address(address))
+
+    async def _approved_endpoints(self, host: str, port: int, *, lan: bool = False) -> list[tuple[int, str, int]]:
+        # The grant counts only while the operator's global policy is on NOW.
+        lan = bool(lan) and self._private_lan
         try:
             literal = ipaddress.ip_address(host)
         except ValueError:
             literal = None
         if literal is not None:
             addresses = [str(literal)]
-            if not self._public_check(str(literal)):
+            if not self._admitted(str(literal), lan):
                 raise ValueError(f"Provider download host {host!r} is not public")
             family = socket.AF_INET6 if literal.version == 6 else socket.AF_INET
             return [(family, str(literal), port)]
@@ -321,11 +358,11 @@ class DownloaderEgressGuard:
         # Preserve the shared validator's all-answers rule in production while
         # allowing a deterministic injected classifier for tunnel-path tests.
         if self._public_check is _is_public:
-            reject_non_public_resolution(addresses, host=host)
+            reject_non_public_resolution(addresses, host=host, private_lan=lan)
         else:
             if not addresses:
                 raise ValueError(f"Provider download host {host!r} did not resolve to an address")
-            blocked = [address for address in addresses if not self._public_check(address)]
+            blocked = [address for address in addresses if not self._admitted(address, lan)]
             if blocked:
                 raise ValueError(
                     f"Provider download host {host!r} resolved to non-public address(es): "
@@ -388,7 +425,8 @@ class DownloaderEgressGuard:
                 return
             host, port = _authority_target(request[1])
             username, password = self._proxy_credentials(lines[1:])
-            if not self._admits(username, password, host, port):
+            lan = self._admits(username, password, host, port)
+            if lan is None:
                 writer.write(
                     b"HTTP/1.1 407 Proxy Authentication Required\r\n"
                     b"Proxy-Authenticate: Basic realm=\"DebridPulse\"\r\n"
@@ -398,7 +436,7 @@ class DownloaderEgressGuard:
                 return
 
             try:
-                endpoints = await self._approved_endpoints(host, port)
+                endpoints = await self._approved_endpoints(host, port, lan=lan)
                 upstream_reader, upstream_writer = await self._connect_upstream(endpoints)
             except (ValueError, OSError):
                 writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")

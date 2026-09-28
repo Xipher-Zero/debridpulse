@@ -17,13 +17,14 @@ from uuid import NAMESPACE_URL, uuid5
 from core.presentation_safety import safe_public_host, safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
+from transfers import material as mat
 from transfers.cohorts import _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
-    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, DeliveryKind, ExecutionAttempt, ExecutionHandle,
-    ExecutionState, MaterializationResult,
+    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, ContinuationPlan, DeliveryKind, ExecutionAttempt,
+    ExecutionHandle, ExecutionState, MaterializationResult,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
@@ -839,7 +840,8 @@ class TransferRepository:
         display_hash = str(row.get("source_fingerprint") or "") if raw_hash.startswith("deleted:") else raw_hash
         return Transfer(int(row["id"]), str(row["name"] or ""), TransferState(row["status"]),
                         display_hash, str(row["source"] or ""), int(row["priority"] or 0),
-                        bool(row.get("paused_intent")), float(row["progress"] or 0), codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0))
+                        bool(row.get("paused_intent")), None if row["progress"] is None else float(row["progress"]),
+                        codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0))
 
     async def get(self, transfer_id: int) -> Transfer | None:
         async with get_db() as db:
@@ -948,7 +950,9 @@ class TransferRepository:
                 item["is_canonical"] = is_canonical_artifact_row(item)
                 progress = TransferProgress(**codec.load(item.pop("execution_progress", None), {}))
                 item["download_speed"] = progress.bytes_per_second if item["status"] == "downloading" else 0
-                item["progress"] = 100 if item["status"] == "completed" else min(100, progress.completed_bytes / item["size_bytes"] * 100) if item["size_bytes"] else 0
+                # Completion is projected from DP-valid material by the
+                # presentation owner; the executor's percentage is not it.
+                item["progress"] = 100 if item["status"] == "completed" else 0
                 result["files"].append(item)
             result["source_outcomes"] = []
             for item in requests:
@@ -1181,7 +1185,6 @@ class TransferRepository:
                 for a in artifact_rows
             )
             execution_rows = await db.fetchall("SELECT * FROM execution_attempts WHERE transfer_id=?", (transfer_id,))
-            attempts_by_id = {e["id"]: self._execution_attempt(e) for e in execution_rows}
             # DP 1.0.12 Root Cause B (Section 5): a failed artifact whose own
             # logical delivery obligation a different, already-completed
             # canonical artifact durably satisfies must not vote toward
@@ -1313,17 +1316,24 @@ class TransferRepository:
             # otherwise-untouched edge case rather than inventing a new one.
             path_source = voting_artifacts or artifacts
             local_path = str(Path(path_source[0].target).parent) if path_source else ""
+            # A percentage exists only when every unfinished artifact's size is
+            # known; otherwise it is unavailable (NULL), never a fabricated 0%.
+            size_known = all(item.state == "completed" or item.size_knowledge != SizeKnowledge.UNKNOWN
+                             for item in artifacts)
             await db.execute(
-                "UPDATE torrents SET size_bytes=?,local_path=? WHERE id=? AND status NOT IN ('deleted','consolidated')",
-                (total, local_path, transfer_id),
+                """UPDATE torrents SET size_bytes=?,local_path=?,progress=CASE WHEN ? THEN progress ELSE NULL END
+                    WHERE id=? AND status NOT IN ('deleted','consolidated')""",
+                (total, local_path, int(size_known), transfer_id),
             )
+            # Completion is DebridPulse-valid material, never an executor's
+            # own percentage: a handoff that keeps all material keeps the
+            # figure, and a real rollback lowers it by exactly what was lost.
+            valid_bytes = await self._valid_material_bytes(db, [item.id for item in artifacts])
             completed = sum(
-                item.expected_bytes if item.state == "completed" else
-                (min(item.expected_bytes, attempts_by_id[item.execution.attempt_id].progress.completed_bytes)
-                 if item.execution else 0)
+                item.expected_bytes if item.state == "completed" else min(item.expected_bytes, valid_bytes.get(item.id, 0))
                 for item in artifacts
             )
-            progress = min(100.0, completed / total * 100) if total else 0.0
+            progress = (min(100.0, completed / total * 100) if total else 0.0) if size_known else None
 
             should_complete = False
             paused = transfer.paused or await self._globally_paused(db)
@@ -2138,11 +2148,19 @@ class TransferRepository:
         return {str(row["local_path"]).casefold() for row in rows}
 
     async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False,
-                                target_initially_absent: bool | None = None) -> bool:
+                                target_initially_absent: bool | None = None,
+                                continuation: ContinuationPlan | None = None) -> bool:
         """``target_initially_absent`` is the caller's direct observation, made
         at this same final admission boundary, of whether the validated target
         held any pre-existing material. It is stored with the attempt and never
-        recomputed; ``None`` (no observation) persists as NULL."""
+        recomputed; ``None`` (no observation) persists as NULL.
+
+        This is also THE writer admission of the artifact's material: in the
+        same transaction the continuation plan is re-validated against the
+        current material generation (a stale plan admits nothing), everything
+        the plan does not retain is reclassified out of VALID, and the attempt
+        becomes the next writer generation. Only one writer can hold that
+        generation, because only a detached artifact is admitted here."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
@@ -2152,6 +2170,12 @@ class TransferRepository:
                 (artifact.id, "input_required" if from_input_required else "queued"))
             if not row:
                 return False
+            writer_generation = None
+            if continuation is not None:
+                writer_generation = await self._admit_material_writer(db, artifact, continuation)
+                if writer_generation is None:
+                    await db.rollback()
+                    return False
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
             route_attempt_id = await self._candidate_route(
                 db, artifact.transfer_id, candidate, artifact_id=artifact.id
@@ -2173,10 +2197,12 @@ class TransferRepository:
                     (artifact.id,))
                 owner = (predecessor or {}).get("material_owner_attempt_id")
             await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate,
-                target_initially_absent,material_owner_attempt_id) VALUES(?,?,?,?,?,'prepared',?,?,?)""",
+                target_initially_absent,material_owner_attempt_id,writer_generation,continuation)
+                VALUES(?,?,?,?,?,'prepared',?,?,?,?,?)""",
                 (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
                  codec.dump(candidate) if candidate else None,
-                 None if target_initially_absent is None else int(bool(target_initially_absent)), owner))
+                 None if target_initially_absent is None else int(bool(target_initially_absent)), owner,
+                 writer_generation, codec.dump(continuation.as_dict()) if continuation is not None else None))
             await db.execute("""INSERT INTO execution_attempt_provenance(
                 execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
                 outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
@@ -2212,6 +2238,354 @@ class TransferRepository:
                     break
             await db.commit()
         return True
+
+    # ------------------------------------------------------------------
+    # Artifact material: the ONE durable owner of reusable bytes
+    # (``transfers.material``; DP 1.0.13 protocol-agnostic continuation)
+    # ------------------------------------------------------------------
+
+    _MATERIAL_SELECT = """SELECT m.*,f.size_bytes,f.size_knowledge,f.torrent_id AS transfer_id
+        FROM artifact_material_state m JOIN download_files f ON f.id=m.artifact_id WHERE m.artifact_id=?"""
+
+    @staticmethod
+    def _material(row) -> mat.MaterialState:
+        knowledge = SizeKnowledge.durable(row.get("size_bytes"), row.get("size_knowledge"))
+        expected = (int(row["size_bytes"]) if knowledge == SizeKnowledge.KNOWN_POSITIVE
+                    else 0 if knowledge == SizeKnowledge.KNOWN_ZERO else None)
+        members, identities = mat.decode_members(row.get("member_ranges"))
+        return mat.MaterialState(
+            int(row["artifact_id"]), int(row["material_generation"]), int(row["geometry_version"]),
+            mat.decode(row["valid_ranges"]), str(row["destination"]), int(row.get("writer_generation") or 0),
+            expected, str(row.get("destination_identity") or ""), row.get("checkpoint_at"), members, identities,
+        )
+
+    @staticmethod
+    async def _material_audit(db, transfer_id, artifact_id: int, event: str, **fields) -> None:
+        """Sparse durable provenance of material decisions (rollback,
+        invalidation, forced checkpoint, completion) -- never periodic commits."""
+        detail = {"artifact_id": int(artifact_id), "event": str(event), **fields}
+        await db.execute("INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,1)",
+                         (int(transfer_id), "material_audit", codec.dump(detail)))
+
+    async def record_material_event(self, transfer_id: int, artifact_id: int, event: str, **fields) -> None:
+        async with get_db() as db:
+            await self._material_audit(db, transfer_id, artifact_id, event, **fields)
+            await db.commit()
+
+    @staticmethod
+    async def _valid_material_bytes(db, artifact_ids) -> dict[int, int]:
+        """DP-valid material bytes per artifact (absent = nothing valid)."""
+        ids = [int(item) for item in artifact_ids]
+        if not ids:
+            return {}
+        rows = await db.fetchall(
+            "SELECT artifact_id,valid_ranges,member_ranges FROM artifact_material_state "
+            f"WHERE artifact_id IN ({','.join('?' * len(ids))})", tuple(ids))
+        return {int(row["artifact_id"]): mat.total(mat.decode(row["valid_ranges"]))
+                + sum(mat.total(ranges) for _member, ranges in mat.decode_members(row["member_ranges"])[0])
+                for row in rows}
+
+    async def material_state(self, artifact_id: int) -> mat.MaterialState | None:
+        async with get_db() as db:
+            row = await db.fetchone(self._MATERIAL_SELECT, (int(artifact_id),))
+        return self._material(row) if row else None
+
+    async def open_material_state(self, artifact: Artifact) -> mat.MaterialState:
+        """The artifact's material, created lazily at its first planning.
+
+        Migration policy for material that predates this owner: nothing is
+        inferred from a partial file. A new row trusts no byte (the next
+        writer re-establishes checkpointed validity); only an artifact that is
+        already canonically completed carries its verified size as VALID.
+        Idempotent: an existing row is returned untouched."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(self._MATERIAL_SELECT, (artifact.id,))
+            if row is None:
+                current = await db.fetchone("SELECT status,size_bytes FROM download_files WHERE id=?", (artifact.id,))
+                if current is None:
+                    await db.rollback()
+                    raise KeyError(artifact.id)
+                size = int(current.get("size_bytes") or 0)
+                valid = ((0, size),) if current.get("status") == "completed" and size > 0 else ()
+                await db.execute("""INSERT INTO artifact_material_state(artifact_id,geometry_version,valid_ranges,destination)
+                    VALUES(?,?,?,?)""", (artifact.id, mat.GEOMETRY_VERSION, mat.encode(valid), str(artifact.target)))
+                row = await db.fetchone(self._MATERIAL_SELECT, (artifact.id,))
+            await db.commit()
+        return self._material(row)
+
+    async def _replace_material(self, db, row, *, valid, reason: str, advance: bool, destination=None,
+                                members=None, member_identities=None, **facts) -> None:
+        """Replace an artifact's VALID material (and, for a collection, its
+        per-member material; ``members=None`` keeps it as it is)."""
+        previous = mat.decode(row["valid_ranges"])
+        previous_members, previous_identities = mat.decode_members(row.get("member_ranges"))
+        members = previous_members if members is None else members
+        member_identities = previous_identities if member_identities is None else member_identities
+        lost = mat.total(mat.subtract(previous, valid)) + sum(
+            mat.total(mat.subtract(ranges, dict(members).get(member, ()))) for member, ranges in previous_members)
+        generation = int(row["material_generation"]) + (1 if advance else 0)
+        await db.execute("""UPDATE artifact_material_state SET valid_ranges=?,member_ranges=?,material_generation=?,
+            destination=?,destination_identity=CASE WHEN ? THEN '' ELSE destination_identity END,
+            updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?""",
+                         (mat.encode(valid), mat.encode_members(members, member_identities), generation,
+                          str(destination or row["destination"]), int(advance), row["artifact_id"]))
+        await self._material_audit(
+            db, row["transfer_id"], row["artifact_id"], "invalidated" if advance else "moved", reason=reason,
+            material_generation=generation, invalidated_bytes=lost,
+            invalidated=mat.summary(mat.subtract(previous, valid)), valid_bytes=mat.total(valid)
+            + sum(mat.total(ranges) for _member, ranges in members), **facts,
+        )
+
+    @staticmethod
+    def _reconciled(valid, identity: str, facts, end_of_file):
+        """One payload's VALID ranges against its observed facts:
+        ``(kept, reason)``; ``reason`` is empty when nothing changed."""
+        if not valid:
+            return valid, ""
+        if not facts.exists:
+            return (), "payload_missing"
+        if identity and facts.identity != identity:
+            return (), "destination_replaced"
+        keep, reason = valid, ""
+        if facts.size < valid[-1][1]:
+            keep = mat.align_inward(mat.intersect(keep, ((0, facts.size),)), end_of_file=end_of_file)
+            reason = "payload_truncated"
+        if mat.intersect(keep, facts.holes):
+            keep = mat.align_inward(mat.subtract(keep, facts.holes), end_of_file=end_of_file)
+            reason = reason or "payload_sparse"
+        return keep, reason
+
+    async def reconcile_material(self, artifact_id: int, target: str, facts,
+                                 member_facts=None) -> mat.MaterialState | None:
+        """Reconcile DebridPulse material truth with observed payload facts.
+
+        Conservative in one direction only: missing, truncated, replaced or
+        hole-bearing payload removes affected VALID ranges and advances the
+        material generation (previously valid content may no longer mean the
+        same thing, so any plan made against it is stale). Extra physical
+        bytes, a larger file or a missing executor control file never add
+        validity. A payload moved by canonical materialization is recognized
+        only by its unchanged physical identity. Filesystem inspection is
+        evidence here; this row stays the only semantic owner.
+
+        ``member_facts`` (a collection): facts per member path, reconciled by
+        exactly the same rules; any member losing validity advances the
+        artifact's material generation."""
+        if not getattr(facts, "available", False) and not member_facts:
+            return await self.material_state(artifact_id)
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(self._MATERIAL_SELECT, (int(artifact_id),))
+            if row is None:
+                await db.rollback()
+                return None
+            state = self._material(row)
+            valid, identity = state.valid, state.destination_identity
+            moved = str(target) != state.destination
+            reason, keep = "", valid
+            if getattr(facts, "available", False):
+                if moved and not (facts.exists and identity and facts.identity == identity) and valid:
+                    keep, reason = (), "destination_replaced"
+                else:
+                    keep, reason = self._reconciled(valid, identity, facts, state.expected_size)
+            members, identities = dict(state.members), dict(state.member_identities)
+            for member, member_fact in dict(member_facts or {}).items():
+                if member not in members or not getattr(member_fact, "available", False):
+                    continue
+                kept, why = self._reconciled(members[member], identities.get(member, ""), member_fact, None)
+                if why:
+                    members[member], reason = kept, reason or f"member_{why}"
+            members_changed = tuple(sorted((m, r) for m, r in members.items() if r)) != state.members
+            if keep == valid and not moved and not members_changed:
+                await db.rollback()
+                return state
+            await self._replace_material(db, row, valid=keep, reason=reason or "destination_moved",
+                                         advance=keep != valid or members_changed, destination=str(target),
+                                         members=tuple(sorted((m, r) for m, r in members.items() if r)),
+                                         member_identities=tuple(sorted(identities.items())),
+                                         observed_bytes=int(facts.size) if getattr(facts, "exists", False) else None)
+            row = await db.fetchone(self._MATERIAL_SELECT, (int(artifact_id),))
+            await db.commit()
+        return self._material(row)
+
+    async def previous_writer(self, artifact_id: int):
+        """The artifact's most recent execution attempt and whether DebridPulse
+        durably owns the material it wrote (``None`` when it never had one)."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT * FROM execution_attempts WHERE artifact_id=? ORDER BY rowid DESC LIMIT 1",
+                                    (int(artifact_id),))
+        if row is None:
+            return None
+        attempt = self._execution_attempt(row)
+        return SimpleNamespace(handle=attempt.handle, candidate=attempt.candidate, state=attempt.state,
+                               owned=bool(row.get("material_owner_attempt_id")))
+
+    async def execution_continuation(self, attempt_id: str) -> ContinuationPlan | None:
+        """The continuation plan an attempt was admitted under (its writer
+        authorization), or ``None`` when it was admitted without one."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT continuation FROM execution_attempts WHERE id=?", (attempt_id,))
+        return ContinuationPlan.from_dict(codec.load(row["continuation"])) if row and row["continuation"] else None
+
+    async def execution_start_pending(self, attempt_id: str) -> bool:
+        """The attempt was admitted but its native start result is not yet
+        recorded: its dispatcher still owns it and will converge it."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT state FROM execution_attempts WHERE id=?", (attempt_id,))
+        return bool(row) and row["state"] == "prepared"
+
+    async def detach_retired_writer(self, artifact_id: int, attempt_id: str, *, state: str) -> bool:
+        """Release a writer that was positively observed stopped: the artifact
+        keeps no writer and its old attempt loses every authority, so neither
+        a late callback nor a stale plan of it can act again. Only the exact
+        still-current attempt, and only once it is terminal, is detached."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute("""UPDATE download_files SET status=?,execution_attempt_id=NULL,
+                continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP
+                WHERE id=? AND execution_attempt_id=? AND EXISTS(SELECT 1 FROM execution_attempts e
+                    WHERE e.id=? AND e.state IN ('failed','absent','cancelled'))""",
+                                      (state, int(artifact_id), attempt_id, attempt_id))
+            if cursor.rowcount:
+                await db.execute("UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                                 (attempt_id,))
+            await db.commit()
+        return cursor.rowcount == 1
+
+    async def invalidate_material(self, artifact_id: int, reason: str) -> None:
+        """Previously valid content no longer means what it meant (a rejected
+        verification, an incompatible rewrite, a repair that mutated it):
+        nothing stays VALID and the material generation advances."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(self._MATERIAL_SELECT, (int(artifact_id),))
+            if row is None:
+                await db.rollback()
+                return
+            await self._replace_material(db, row, valid=(), reason=reason, advance=True, members=(),
+                                         member_identities=())
+            await db.commit()
+
+    async def _admit_material_writer(self, db, artifact: Artifact, plan: ContinuationPlan) -> int | None:
+        """Inside ``prepare_execution``'s transaction: bind a plan to the next
+        writer generation, applying its rollback. ``None`` refuses admission."""
+        row = await db.fetchone(self._MATERIAL_SELECT, (artifact.id,))
+        if (row is None or plan.artifact_id != artifact.id
+                or plan.material_generation != int(row["material_generation"])
+                or plan.geometry_version != int(row["geometry_version"])):
+            return None
+        valid = mat.decode(row["valid_ranges"])
+        members, identities = mat.decode_members(row.get("member_ranges"))
+        members = dict(members)
+        if mat.subtract(plan.retained, valid):
+            return None
+        kept_members = {}
+        for member, boundary in plan.member_boundaries:
+            if mat.subtract(((0, boundary),), members.get(member, ())):
+                return None  # a stale plan: that member no longer holds what it keeps
+            kept_members[member] = ((0, boundary),)
+        writer = int(row.get("writer_generation") or 0) + 1
+        await db.execute("""UPDATE artifact_material_state SET valid_ranges=?,member_ranges=?,writer_generation=?,
+            destination=?,updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?""",
+                         (mat.encode(plan.retained), mat.encode_members(kept_members, identities), writer,
+                          str(artifact.target), artifact.id))
+        if plan.discarded_bytes:
+            await self._material_audit(
+                db, artifact.transfer_id, artifact.id, "rollback", reason=plan.reason,
+                strategy=plan.strategy.value, material_generation=plan.material_generation,
+                discarded_bytes=plan.discarded_bytes, discarded=mat.summary(plan.discarded),
+                discarded_members=[member for member, _ranges in plan.member_discarded][:8],
+                retained_bytes=plan.retained_bytes,
+            )
+        return writer
+
+    async def commit_material(self, handle: ExecutionHandle, ranges, facts, *, now: float,
+                              forced: str = "", member: str = "") -> mat.Ranges | None:
+        """Commit checkpointed material for the CURRENT writer only.
+
+        ``ranges`` are what the writer reported completely written BEFORE
+        ``facts`` were produced by the durability flush. Refused (``None``)
+        unless this exact attempt is still the artifact's current, authorized
+        writer of the current writer generation and its plan names the
+        current material generation; a superseded writer, a late callback or
+        a stale plan commits nothing. Accepted material is clipped to the
+        plan's authorized ranges, the known size and the flushed length, and
+        aligned inward to the geometry. Returns the newly VALID ranges.
+
+        ``member`` commits one member file of a COLLECTION artifact under the
+        very same fence; it may be written from its plan boundary onwards."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("""SELECT e.handle,e.authorized,e.writer_generation AS attempt_writer,e.continuation,
+                    f.execution_attempt_id AS current_id,m.*,f.size_bytes,f.size_knowledge,f.torrent_id AS transfer_id
+                FROM execution_attempts e JOIN download_files f ON f.id=e.artifact_id
+                JOIN artifact_material_state m ON m.artifact_id=e.artifact_id WHERE e.id=?""", (handle.attempt_id,))
+            if (row is None or not row["authorized"] or row.get("current_id") != handle.attempt_id
+                    or codec.handle(codec.load(row["handle"])) != handle or row.get("attempt_writer") is None
+                    or int(row["attempt_writer"]) != int(row.get("writer_generation") or 0)
+                    or not row.get("continuation") or facts is None or not facts.exists):
+                await db.rollback()
+                return None
+            plan = ContinuationPlan.from_dict(codec.load(row["continuation"]))
+            state = self._material(row)
+            if plan.material_generation != state.material_generation:
+                await db.rollback()
+                return None
+            if member:
+                return await self._commit_member(db, row, state, plan, handle, member, ranges, facts, now=now,
+                                                 forced=forced)
+            if state.destination_identity and facts.identity != state.destination_identity and state.valid:
+                await db.rollback()
+                return None
+            bound = state.expected_size if state.expected_size else mat.OPEN_END
+            accepted = mat.intersect(mat.intersect(ranges, plan.authorized), ((0, min(bound, int(facts.size))),))
+            accepted = mat.align_inward(accepted, end_of_file=state.expected_size)
+            valid = mat.union(state.valid, accepted)
+            added = mat.subtract(valid, state.valid)
+            await db.execute("""UPDATE artifact_material_state SET valid_ranges=?,destination_identity=?,checkpoint_at=?,
+                checkpoint_attempt_id=?,updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?""",
+                             (mat.encode(valid), str(facts.identity), float(now), handle.attempt_id, state.artifact_id))
+            if forced:
+                await self._material_audit(
+                    db, row["transfer_id"], state.artifact_id, "checkpoint", boundary=forced,
+                    writer_generation=state.writer_generation, material_generation=state.material_generation,
+                    valid_bytes=mat.total(valid), committed_bytes=mat.total(added),
+                )
+            await db.commit()
+        return added
+
+    async def _commit_member(self, db, row, state: mat.MaterialState, plan: ContinuationPlan,
+                             handle: ExecutionHandle, member: str, ranges, facts, *, now: float,
+                             forced: str) -> mat.Ranges | None:
+        """``commit_material`` for one member of a collection (inside its
+        transaction, already fenced to the current writer and generation)."""
+        current = state.member_valid(member)
+        identity = dict(state.member_identities).get(member, "")
+        if current and identity and facts.identity != identity:
+            await db.rollback()
+            return None
+        # Only a verified completion knows a member's end of file.
+        end_of_file = int(facts.size) if forced == "completion" else None
+        authorized = ((plan.member_boundary(member), mat.OPEN_END),)
+        accepted = mat.intersect(mat.intersect(ranges, authorized), ((0, int(facts.size)),))
+        accepted = mat.align_inward(accepted, end_of_file=end_of_file)
+        valid = mat.union(current, accepted)
+        added = mat.subtract(valid, current)
+        members = {**dict(state.members), member: valid}
+        identities = {**dict(state.member_identities), member: str(facts.identity)}
+        await db.execute("""UPDATE artifact_material_state SET member_ranges=?,checkpoint_at=?,checkpoint_attempt_id=?,
+            updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?""",
+                         (mat.encode_members(members, tuple(identities.items())), float(now), handle.attempt_id,
+                          state.artifact_id))
+        if forced:
+            await self._material_audit(
+                db, row["transfer_id"], state.artifact_id, "checkpoint", boundary=forced, member=member,
+                writer_generation=state.writer_generation, material_generation=state.material_generation,
+                valid_bytes=mat.total(valid), committed_bytes=mat.total(added),
+            )
+        await db.commit()
+        return added
 
     async def bind_execution_handle(self, prepared: ExecutionHandle, bound: ExecutionHandle) -> bool:
         """THE one-way native identity binding of a durable execution attempt.

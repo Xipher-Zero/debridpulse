@@ -343,16 +343,18 @@ async def test_paused_established_writer_is_not_resumed_by_alternate_arrival(can
     primary = (await pair.repository.artifacts(first.id))[0]
     handle = primary.execution
     await pair.engine.pause(first.id)
-    assert pair.executor.jobs[handle.attempt_id].state == ExecutionState.PAUSED
+    # DebridPulse pause fences the writer: none remains authorized.
+    assert pair.executor.jobs[handle.attempt_id].state == ExecutionState.CANCELLED
+    assert (await pair.repository.artifacts(first.id))[0].execution is None
 
     second = await admit(pair, pair.b, "submission-b")
     await pair.engine.tick()
 
     canonical = (await pair.repository.artifacts(first.id))[0]
-    assert canonical.execution == handle
+    # The alternate joins the paused artifact without reviving any writer.
+    assert canonical.execution is None and canonical.state == "paused"
     assert len(canonical.candidates) == 2
     assert await pair.repository.artifacts(second.id) == ()
-    assert pair.executor.jobs[handle.attempt_id].state == ExecutionState.PAUSED
     assert len([call for call in pair.executor.calls if call[0] == "start"]) == 1
 
 

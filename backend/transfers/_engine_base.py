@@ -113,20 +113,27 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
+from transfers.candidate_activation import retire_writer
+from transfers import material as mat
+from transfers.continuation import parks_on_pause, plan_continuation
 from transfers.filesystem import (
-    adoptable_material, destination, material_initially_absent, materialization_plan, retire_materialization,
-    safe_name, validate_plan, verified_material_paths, verify_materialization,
+    adoptable_material, destination, flush_payload, material_initially_absent, materialization_plan,
+    PayloadFacts, member_payload, payload_facts, retire_materialization, retire_native_state, safe_name,
+    validate_plan, verified_material_paths,
+    verify_materialization,
 )
 from transfers.input_required import (
     AuthOutcome, EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected, split_user_supplied,
 )
-from transfers.requests import auth_scope
+from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
-    Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective,
+    Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
+    DeliveryKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, InputChallenge,
-    InputOrigin, InputReason, InputRequirement, MaterializationAdmissionKind, OutcomeKind, Ownership, ProviderObservation,
+    InputOrigin, InputReason, InputRequirement, MaterializationAdmissionKind, MaterializationKind, OutcomeKind,
+    Ownership, ProviderObservation,
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
@@ -243,6 +250,10 @@ class _EvidenceAuth:
         return transition
 
 
+# Bound on one executor boundary-discovery answer (it may read source data).
+BOUNDARY_DISCOVERY_SECONDS = 30.0
+
+
 class TransferEngine:
     def __init__(self, repository: TransferRepository, registry: IntegrationRegistry, *,
                  download_root: str, policy: TransferPolicy | None = None, postprocessors=(), clock=time.time):
@@ -271,6 +282,10 @@ class TransferEngine:
         # two lock objects for the same active key.
         self._transfer_locks = WeakValueDictionary()
         self._execution_convergence_locks = WeakValueDictionary()
+        # Engine-clock time of each current writer's last material checkpoint
+        # (process memory only: after a restart the first observation of a
+        # surviving writer is simply due).
+        self._material_checkpoints: dict[str, float] = {}
         self._collection_affinity_locks = WeakValueDictionary()
         self._cohort_locks = WeakValueDictionary()
         self.dispatch_permitted = True
@@ -326,9 +341,16 @@ class TransferEngine:
 
     @classmethod
     def _authoritative_provider_result(cls, provider_id: str, result: ResolutionResult, *,
-                                       request_kind: str) -> ResolutionResult:
+                                       request_kind: str, lan_host: str = "") -> ResolutionResult:
         """Validate and stamp provider output with the selected route identity
-        and the canonical request class each candidate was resolved for."""
+        and the canonical request class each candidate was resolved for.
+
+        Also the ONE writer of ``private_network_grant``: a candidate carries it
+        only when the request lineage holds the operator's local-network consent
+        for ``lan_host`` AND the candidate is that source itself -- a direct
+        delivery whose every endpoint names exactly that host. Whatever a
+        provider put there is overwritten, so no provider-returned or
+        redirected endpoint ever inherits a private-LAN permission."""
         if not isinstance(result, ResolutionResult):
             raise TransferError(cls._error(
                 Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
@@ -359,13 +381,30 @@ class TransferEngine:
                 ))
             candidates.append(replace(
                 candidate, provider_id=provider_id, resource=authoritative_resource(candidate.resource),
-                request_kind=str(request_kind),
+                request_kind=str(request_kind), private_network_grant=cls._lan_granted(candidate, lan_host),
             ))
 
         observation = result.observation
         if observation is not None:
             observation = replace(observation, resource=authoritative_resource(observation.resource))
         return replace(result, candidates=tuple(candidates), observation=observation)
+
+    @staticmethod
+    def _lan_granted(candidate: TransferCandidate, lan_host: str) -> bool:
+        return bool(lan_host) and candidate.delivery == DeliveryKind.DIRECT and bool(candidate.endpoints) and all(
+            direct_link_host(endpoint.address) == lan_host for endpoint in candidate.endpoints)
+
+    async def _consented_lan_host(self, record: RequestRecord) -> str:
+        """The host the operator explicitly submitted, with local-network
+        consent, at the root of ``record``'s lineage ('' when there is none)."""
+        records = {item.id: item for item in await self.repository.requests(record.transfer_id)}
+        current, seen = records.get(record.id, record), set()
+        while current.parent_id and current.parent_id in records and current.id not in seen:
+            seen.add(current.id)
+            current = records[current.parent_id]
+        if not current.request.local_network_consent:
+            return ""
+        return direct_link_host(current.request.payload)
 
     async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, reacquire=True, deduplicate=True):
         if not requests or len(requests) > 100 or any(not isinstance(item, TransferRequest) or not item.kind or not item.payload for item in requests):
@@ -1001,6 +1040,7 @@ class TransferEngine:
             return observed
         handle = artifact.execution
         controllable = executor.capabilities.per_execution_pause
+        pause_writer = False
         async with self._convergence_lock(handle.attempt_id):
             current = await self._current_artifact(artifact.transfer_id, artifact.id)
             if current is None or current.execution is None or current.execution.attempt_id != handle.attempt_id:
@@ -1038,11 +1078,19 @@ class TransferEngine:
                         return observed
 
                     if desired_paused:
-                        if (observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
-                                and ExecutionControl.PAUSE in controls):
-                            observed = await self._accept_observation(handle, await executor.pause(handle))
-                            await self.repository.execution(observed)
-                            continue
+                        # DebridPulse owns pause: a writer still able to make
+                        # progress is retired through the one writer
+                        # retirement below, never merely paused natively --
+                        # including a parked job observed acquiring again. Only
+                        # a job parked under the temporary collection
+                        # exception (``parks_on_pause``) stays paused natively.
+                        selected = current.candidates[current.selected] if current.candidates else None
+                        parkable = selected is not None and parks_on_pause(
+                            executor.capabilities, selected.materialization)
+                        if observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING} or (
+                                observed.state == ExecutionState.PAUSED and not parkable):
+                            pause_writer = True
+                            break
                         if persist_passive:
                             await self.repository.execution(observed)
                         return observed
@@ -1088,14 +1136,24 @@ class TransferEngine:
                         await self.repository.execution(observed)
                     return observed
 
-                return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, NormalizedError(
-                    Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
-                    retryability=Retryability.BACKOFF,
-                    operator_action_required=False, integration_id=executor.descriptor.id,
-                ))
+                if not pause_writer:
+                    return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, NormalizedError(
+                        Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
+                        retryability=Retryability.BACKOFF,
+                        operator_action_required=False, integration_id=executor.descriptor.id,
+                    ))
             except Exception as exc:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                     error=self._control_error(exc, executor.descriptor.id))
+        # Outside the per-execution lock: the one writer retirement takes it.
+        error = await self._pause_writer(replace(artifact, execution=handle))
+        if error is not None:
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, error)
+        current = await self._current_artifact(artifact.transfer_id, artifact.id)
+        if current is not None and current.execution is not None and current.execution.attempt_id == handle.attempt_id:
+            # Parked (native private resume): observe what is really there now.
+            return await self._observe_execution(executor, handle)
+        return ExecutionObservation(handle, ExecutionState.CANCELLED)
 
     async def _process_executions(self, transfer_id, artifacts, observations, *, dispatch_allowed=True):
         for artifact in artifacts:
@@ -1115,6 +1173,11 @@ class TransferEngine:
                         observed = await self._accept_observation(artifact.execution, observed)
                     artifact = replace(artifact, execution=observed.handle)
                     observed = await self._converge_execution(artifact, executor, observed, persist_passive=False)
+                    current = await self._current_artifact(transfer_id, artifact.id)
+                    if current is None or current.execution is None \
+                            or current.execution.attempt_id != observed.handle.attempt_id:
+                        # Retired meanwhile (DebridPulse Pause): no writer left.
+                        continue
                     await self._execution_result(artifact, executor, observed)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "queued" and artifact.retry_at <= self.clock():
                     await self._dispatch(artifact)
@@ -1146,7 +1209,9 @@ class TransferEngine:
 
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
                                 *, challenge: InputChallenge | None = None, submitted=None):
-        result = self._authoritative_provider_result(provider.descriptor.id, result, request_kind=record.request.kind)
+        lan_host = await self._consented_lan_host(record)
+        result = self._authoritative_provider_result(provider.descriptor.id, result, request_kind=record.request.kind,
+                                                     lan_host=lan_host)
         if result.discovery is not None:
             if result.error or result.candidates or result.observation or result.input_required:
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1155,7 +1220,7 @@ class TransferEngine:
                 await self._provider_input_required(record, attempt, provider, discovered, challenge)
                 return
             result = self._authoritative_provider_result(provider.descriptor.id, discovered,
-                                                         request_kind=record.request.kind)
+                                                         request_kind=record.request.kind, lan_host=lan_host)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1169,7 +1234,7 @@ class TransferEngine:
                 try:
                     result = self._authoritative_provider_result(
                         provider.descriptor.id, await provider.resolve_with_input(record.request, matched),
-                        request_kind=record.request.kind)
+                        request_kind=record.request.kind, lan_host=lan_host)
                 finally:
                     matched.discard()
                 await self._settle_input(record.transfer_id, matched.token, accepted=not result.input_required)
@@ -1230,6 +1295,8 @@ class TransferEngine:
         candidate = TransferCandidate(record.request.name or "", (request.endpoint,), provider_id=provider.descriptor.id,
                                       accepted_input_methods=request.accepted_input_methods,
                                       request_kind=record.request.kind)
+        candidate = replace(candidate, private_network_grant=self._lan_granted(
+            candidate, await self._consented_lan_host(record)))
         subject = ExecutionSubject.of(candidate)
         executor = self.registry.executor_for_subject(subject)
         if not executor.capabilities.remote_discovery:
@@ -1684,7 +1751,243 @@ class TransferEngine:
         await self.repository.artifact_state(artifact.id, "unresolved", release=True)
         await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
 
-    async def _dispatch(self, artifact: Artifact, *, retry_from: ExecutionHandle | None = None):
+    async def _plan_material(self, artifact: Artifact, candidate: TransferCandidate, executor, work: ExecutionWork,
+                             reason: str):
+        """The artifact's current material truth and the continuation plan the
+        next writer is offered: reconcile DP material with observable payload
+        facts (FILE material only), then ask the one planner. Returns
+        ``(state, facts, plan)``; ``facts`` is ``None`` for a collection."""
+        # Read first: a queued artifact is planned on every admission attempt,
+        # so an unchanged material row must cost no write transaction.
+        state = await self.repository.material_state(artifact.id) or await self.repository.open_material_state(artifact)
+        facts = None
+        if work.materialization.kind == MaterializationKind.FILE:
+            await self._discard_foreign_native_state(artifact, executor, work)
+            facts = await asyncio.to_thread(payload_facts, work.materialization.target, state.valid)
+            if state.valid or state.destination != work.materialization.target:
+                state = await self.repository.reconcile_material(artifact.id, work.materialization.target,
+                                                                 facts) or state
+        elif state.members:
+            member_facts = await asyncio.to_thread(self._member_facts, work.materialization.root, state)
+            state = await self.repository.reconcile_material(artifact.id, str(artifact.target), None,
+                                                             member_facts) or state
+        plan = plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
+                                 capabilities=executor.capabilities, reason=reason,
+                                 discovered=await self._discovered_boundaries(executor, candidate, state))
+        return state, facts, plan
+
+    @staticmethod
+    def _member_facts(root: str, state) -> dict:
+        """Observed facts of every collection member DP holds material for; a
+        member that is gone or no longer a plain file reads as missing."""
+        facts = {}
+        for member, valid in state.members:
+            path = member_payload(root, member)
+            facts[member] = payload_facts(path, valid) if path is not None else PayloadFacts(True, False)
+        return facts
+
+    async def _discovered_boundaries(self, executor, candidate: TransferCandidate, state) -> dict[str, int]:
+        """``BOUNDARY_DISCOVERY``: ask the selected executor, for the concrete
+        source, where it can continue exactly at or below each DP-valid prefix.
+        An answer outside ``[0, prefix]``, a failure or a timeout retains
+        nothing for that payload -- never more than DP holds valid."""
+        if ContinuationCapability.BOUNDARY_DISCOVERY not in executor.capabilities.continuation:
+            return {}
+        prefixes = ([("", state.safe_prefix)] if candidate.materialization == MaterializationKind.FILE
+                    else [(member, mat.contiguous_prefix(ranges)) for member, ranges in state.members])
+        found = {}
+        for member, prefix in prefixes:
+            if prefix <= 0:
+                continue
+            try:
+                async with asyncio.timeout(BOUNDARY_DISCOVERY_SECONDS):
+                    boundary = await executor.continuation_boundary(ExecutionSubject.of(candidate), member, prefix)
+            except Exception:
+                boundary = 0
+            valid_answer = isinstance(boundary, int) and not isinstance(boundary, bool) and 0 <= boundary <= prefix
+            found[member] = boundary if valid_answer else 0
+        return found
+
+    async def preview_continuation(self, artifact: Artifact, candidate: TransferCandidate):
+        """What the one planner would keep and discard if ``candidate`` wrote
+        this artifact next -- read-only, nothing is created or reconciled.
+        ``None`` when no executor can take the candidate."""
+        executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
+        if executor is None:
+            return None
+        state = await self.repository.material_state(artifact.id)
+        if state is None:
+            return None
+        return plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
+                                 capabilities=executor.capabilities, reason="user_candidate_switch",
+                                 discovered=await self._discovered_boundaries(executor, candidate, state))
+
+    async def _discard_foreign_native_state(self, artifact: Artifact, executor, work: ExecutionWork) -> None:
+        """A different executor is about to write this FILE artifact: the
+        previous writer's private native state (a resume/control file) means
+        nothing to it and is never translated. Discarded only when DebridPulse
+        owns it; the payload itself is untouched -- the plan governs it."""
+        previous = await self.repository.previous_writer(artifact.id)
+        if previous is None or previous.handle.executor_id == executor.descriptor.id or not previous.owned:
+            return
+        old_executor = self.registry.executor_for_handle(previous.handle)
+        if old_executor is None or previous.candidate is None:
+            return
+        old_work = self._work(artifact, previous.candidate, previous.handle.attempt_id)
+        if old_work.materialization != work.materialization:
+            return
+        try:
+            await asyncio.to_thread(retire_native_state, self.root, old_work.materialization,
+                                    self._footprint(old_executor, old_work))
+        except (TransferError, OSError) as exc:
+            logger.warning("previous executor native state could not be discarded transfer=%s artifact=%s: %s",
+                           artifact.transfer_id, artifact.id, type(exc).__name__)
+
+    async def _possessed(self, artifact: Artifact, candidate: TransferCandidate, work: ExecutionWork,
+                         footprint: ExecutionFootprint, state=None, facts=None) -> bool:
+        """THE possession rule: an artifact needs no execution only when
+        DebridPulse material already covers its whole known payload (and the
+        payload still has exactly that length), or strong integrity evidence
+        verifies the stable payload -- never because a file has the right
+        length."""
+        if state is None:
+            state = await self.repository.material_state(artifact.id)
+            if state is not None and work.materialization.kind == MaterializationKind.FILE:
+                facts = await asyncio.to_thread(payload_facts, work.materialization.target, state.valid)
+                state = await self.repository.reconcile_material(artifact.id, work.materialization.target,
+                                                                 facts) or state
+        if state is not None and state.complete and facts is not None and facts.exists \
+                and facts.size == state.expected_size:
+            return True
+        return await adoptable_material(work.materialization, footprint, artifact.expected_bytes, candidate.integrity,
+                                        delay=self.policy.adoption_stability_seconds)
+
+    async def _checkpoint_material(self, artifact: Artifact, observed: ExecutionObservation, *,
+                                   forced: str = "", ranges=None):
+        """One material checkpoint of the current writer, in the only legal
+        order: the writer already reported ``ranges`` completely written, the
+        payload is then flushed to stable storage, and only after that does
+        DebridPulse durably commit -- fenced to this writer and material
+        generation. Nothing is committed when durability cannot be proven."""
+        if artifact.execution is None:
+            return None
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        if candidate is not None and candidate.materialization == MaterializationKind.COLLECTION:
+            return await self._checkpoint_members(artifact, observed, forced=forced, members=ranges)
+        ranges = observed.material if ranges is None else ranges
+        if ranges is None or candidate is None or candidate.materialization != MaterializationKind.FILE:
+            return None
+        facts = await asyncio.to_thread(flush_payload, artifact.target)
+        if facts is None:
+            return None
+        self._material_checkpoints[observed.handle.attempt_id] = self.clock()
+        return await self.repository.commit_material(observed.handle, ranges, facts, now=self.clock(), forced=forced)
+
+    async def _checkpoint_members(self, artifact: Artifact, observed: ExecutionObservation, *, forced: str,
+                                  members=None):
+        """The same checkpoint, per member file of a COLLECTION artifact: each
+        reported member is flushed, then committed under the one writer fence.
+        A member path that is not a plain file beneath the collection root is
+        refused. Returns the committed ranges per member, or ``None``."""
+        members = observed.member_material if members is None else members
+        if not members:
+            return None
+        root = str(artifact.target)
+        committed = {}
+        self._material_checkpoints[observed.handle.attempt_id] = self.clock()
+        for member, ranges in members:
+            path = await asyncio.to_thread(member_payload, root, member)
+            facts = await asyncio.to_thread(flush_payload, path) if path is not None else None
+            if facts is None:
+                continue
+            added = await self.repository.commit_material(observed.handle, ranges, facts, now=self.clock(),
+                                                          forced=forced, member=member)
+            if added is None:
+                return None  # the fence refused this writer: nothing more from it
+            committed[member] = added
+        return committed
+
+    async def _quiesce_and_checkpoint(self, artifact: Artifact, executor, observed: ExecutionObservation, *,
+                                      boundary: str) -> tuple[ExecutionObservation, str]:
+        """Graceful quiesce, then the forced checkpoint of a writer about to be
+        fenced. Native quiesce is an optimization an executor may declare; it
+        is bounded by the graceful stop timeout and no executor holds the
+        lifecycle beyond it. On timeout nothing further is checkpointed -- the
+        writer's uncommitted work stays UNKNOWN. Returns the latest accepted
+        observation and how the writer stopped."""
+        mode = "stopped" if observed.stopped else "forced"
+        if (observed.resumable and ContinuationCapability.NATIVE_QUIESCE in executor.capabilities.continuation
+                and observed.state != ExecutionState.PAUSED
+                and ExecutionControl.PAUSE in self._controls(executor, observed)):
+            try:
+                async with asyncio.timeout(max(1.0, float(self.policy.graceful_stop_timeout))):
+                    quiesced = await executor.pause(observed.handle)
+            except TimeoutError:
+                return observed, "timeout"
+            except Exception:
+                quiesced = None
+            if quiesced is not None:
+                try:
+                    observed = await self._accept_observation(observed.handle, quiesced)
+                except TransferError:
+                    pass
+        if observed.state == ExecutionState.PAUSED:
+            mode = "graceful"
+        if observed.reports_material and observed.state != ExecutionState.SUCCEEDED:
+            await self._checkpoint_material(artifact, observed, forced=boundary)
+        return observed, mode
+
+    async def _pause_writer(self, artifact: Artifact) -> NormalizedError | None:
+        """DebridPulse Pause of one artifact's writer, through the one writer
+        retirement every replacement uses: quiesce, forced checkpoint, fence.
+        Afterwards no writer is authorized to make acquisition progress; the
+        artifact's material stays exactly as committed. Returns an error only
+        when the writer's stop could not (yet) be proven -- the durable pause
+        intent still stands and convergence retries."""
+        if artifact.execution is None:
+            return None
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        retired = await retire_writer(self, artifact, candidate, artifact, candidate, boundary="pause", park=True)
+        if retired.reason in {"writer_already_succeeded", "writer_start_in_flight"}:
+            # Completion, or a start whose dispatcher will fence it against
+            # this very intent when its acknowledgement lands: nothing failed.
+            return None
+        if retired.reason:
+            return self._error(Category.RECONCILIATION_FAILED, Stage.EXECUTION, domain=Domain.RECONCILIATION,
+                               retryability=Retryability.BACKOFF)
+        if retired.retirement != "parked":
+            await self.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="paused")
+        return None
+
+    async def checkpoint_live_material(self, boundary: str) -> int:
+        """Forced checkpoint of every live writer's reported material at a
+        clean lifecycle boundary (an executor about to stop cleanly). Returns
+        how many writers committed. A writer that cannot be observed commits
+        nothing -- its uncommitted work simply stays UNKNOWN."""
+        committed = 0
+        for attempt in await self.repository.live_executions():
+            executor = self.registry.executor_for_handle(attempt.handle)
+            if executor is None or ContinuationCapability.EXPORT_MATERIAL_RANGES not in executor.capabilities.continuation:
+                continue
+            try:
+                observed = await self._observe_execution(executor, attempt.handle)
+            except TransferError:
+                continue
+            artifact = await self._current_artifact(attempt.transfer_id, attempt.artifact_id)
+            if (not observed.reports_material or artifact is None or artifact.execution is None
+                    or artifact.execution.attempt_id != attempt.handle.attempt_id):
+                continue
+            if await self._checkpoint_material(replace(artifact, execution=observed.handle), observed,
+                                               forced=boundary) is not None:
+                committed += 1
+        return committed
+
+    def _material_checkpoint_due(self, attempt_id: str) -> bool:
+        last = self._material_checkpoints.get(attempt_id)
+        return last is None or self.clock() - last >= max(1.0, float(self.policy.material_checkpoint_interval))
+
+    async def _dispatch(self, artifact: Artifact, *, retry_from: ExecutionHandle | None = None,
+                        reason: str = "admission"):
         try:
             # Universal execution-admission invariant (DP 1.0.12 canonical
             # architecture correction, Workstream A): stops before ANY
@@ -1712,8 +2015,8 @@ class TransferEngine:
             attempt_id = artifact.execution.attempt_id if artifact.execution else new_identity()
             work = self._work(artifact, candidate, attempt_id)
             footprint = self._footprint(executor, work)
-            if await adoptable_material(work.materialization, footprint, artifact.expected_bytes, candidate.integrity,
-                                        delay=self.policy.adoption_stability_seconds):
+            state, facts, plan = await self._plan_material(artifact, candidate, executor, work, reason)
+            if await self._possessed(artifact, candidate, work, footprint, state, facts):
                 await self.repository.artifact_state(artifact.id, "completed")
                 return
             if candidate.expires_at is not None and candidate.expires_at <= self.clock():
@@ -1721,7 +2024,7 @@ class TransferEngine:
                     retryability=Retryability.AFTER_RERESOLUTION)
                 await self._schedule_refresh(artifact, error)
                 return
-            request = ExecutionRequest(work, attempt_id)
+            request = ExecutionRequest(work, attempt_id, continuation=plan)
             prepared = executor.prepare(request)
             if isinstance(prepared, InputRequirement):
                 if not executor.capabilities.transient_input:
@@ -1766,7 +2069,8 @@ class TransferEngine:
                     return
                 if not await self.repository.prepare_execution(
                         artifact, handle,
-                        target_initially_absent=material_initially_absent(work.materialization, footprint)):
+                        target_initially_absent=material_initially_absent(work.materialization, footprint),
+                        continuation=plan):
                     return
                 # Input that already proved this exact candidate's evidence
                 # starts the writer admitted for it, once, through the
@@ -1877,11 +2181,14 @@ class TransferEngine:
         # The challenge's operation IS this continuation's attempt, so the work
         # names it explicitly rather than inheriting the artifact's current one.
         work = self._work(artifact, candidate, challenge.operation_id)
-        request = ExecutionRequest(work, challenge.operation_id)
         submitted = None
 
         if artifact.execution is not None and artifact.execution.attempt_id == challenge.operation_id:
             try:
+                # The same writer continues: exactly the plan it was admitted under.
+                request = ExecutionRequest(work, challenge.operation_id,
+                                           continuation=await self.repository.execution_continuation(
+                                               challenge.operation_id))
                 async with self._dispatch_lock:
                     if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
                         return
@@ -1919,6 +2226,9 @@ class TransferEngine:
 
         try:
             footprint = self._footprint(executor, work)
+            # A new writer after input: planned by the one planner, like any admission.
+            _state, _facts, plan = await self._plan_material(artifact, candidate, executor, work, "admission")
+            request = ExecutionRequest(work, challenge.operation_id, continuation=plan)
             async with self._dispatch_lock:
                 if not self.dispatch_permitted or not await self._live(challenge.transfer_id, admission=True):
                     return
@@ -1945,7 +2255,8 @@ class TransferEngine:
                 self._require_prepared(prepared, challenge.integration_id, challenge.operation_id)
                 if not await self.repository.prepare_execution(
                         artifact, prepared, from_input_required=True,
-                        target_initially_absent=material_initially_absent(work.materialization, footprint)):
+                        target_initially_absent=material_initially_absent(work.materialization, footprint),
+                        continuation=plan):
                     return
                 handle = prepared
             await self.challenges.clear(challenge)
@@ -2025,6 +2336,13 @@ class TransferEngine:
         artifact = replace(artifact, execution=observed.handle)
         idle_seconds = await self.repository.execution_idle_seconds(observed, self.clock())
         await self.repository.execution(observed)
+        if observed.resumable and observed.reports_material and self._material_checkpoint_due(
+                observed.handle.attempt_id):
+            await self._checkpoint_material(artifact, observed)
+        elif observed.state == ExecutionState.FAILED and observed.reports_material:
+            # The writer stopped by itself: what it reported written before it
+            # stopped is checkpointed once, at this recovery handoff.
+            await self._checkpoint_material(artifact, observed, forced="writer_failed")
         if artifact.candidates and executor.capabilities.transient_input:
             candidate = artifact.candidates[artifact.selected]
             requirement = executor.input_requirement(candidate, observed)
@@ -2080,6 +2398,16 @@ class TransferEngine:
                 delay=self.policy.adoption_stability_seconds,
             )
             if verified is not None and await self.repository.record_materialization(observed.handle, verified.result):
+                if work.materialization.kind == MaterializationKind.FILE and verified.total_bytes > 0:
+                    # Normal completion is a forced checkpoint of the whole
+                    # verified payload by the writer that produced it.
+                    await self._checkpoint_material(artifact, observed, forced="completion",
+                                                    ranges=((0, verified.total_bytes),))
+                elif work.materialization.kind == MaterializationKind.COLLECTION:
+                    # ...and of every verified member of a collection.
+                    await self._checkpoint_material(artifact, observed, forced="completion", ranges=tuple(
+                        (entry.relative_path, ((0, int(entry.bytes)),))
+                        for entry in verified.result.entries if entry.bytes))
                 # FUNC-001: record the canonical size fact durably alongside the
                 # accepted size, so a restart reconstructs the same semantics
                 # instead of re-reading a bare number. KNOWN_ZERO is returned
@@ -2096,6 +2424,8 @@ class TransferEngine:
                 # still-current execution, and is a durable admission-time fact
                 # -- never inferred here from size, name, mtime or the executor.
                 owned = await self.repository.execution_owns_target(observed.handle)
+                # The payload failed verification: nothing in it keeps meaning.
+                await self.repository.invalidate_material(artifact.id, "verification_rejected")
                 await self.repository.artifact_state(artifact.id, "error", error=error)
                 await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error), attempt_id=observed.handle.attempt_id)
                 if owned:
@@ -2501,8 +2831,32 @@ class TransferEngine:
         await self.inputs.discard_transfer(transfer_id)
         await self.repository.delete(transfer_id, remote=remote, now=self.clock())
         await self._cleanup_executions_pending(transfer_id=transfer_id)
+        await self._retire_detached_material(transfer_id)
         if remote:
             await self._cleanup_resources(transfer_id, explicit=True)
+
+    async def _retire_detached_material(self, transfer_id: int) -> None:
+        """A DELETED transfer's incomplete material that no writer holds any
+        more (a DebridPulse Pause fenced it, or it failed) is still
+        DebridPulse's to reclaim when -- and only when -- the artifact's latest
+        writer durably owned it. Unowned material is never touched; a live
+        writer's material is reclaimed by the execution-cleanup obligation."""
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None or transfer.state != TransferState.DELETED:
+            return
+        for artifact in await self.repository.artifacts(transfer_id):
+            if artifact.execution is not None or artifact.state == "completed":
+                continue
+            previous = await self.repository.previous_writer(artifact.id)
+            if previous is None or not previous.owned or previous.candidate is None:
+                continue
+            executor = self.registry.executor_for_handle(previous.handle)
+            if executor is None:
+                continue
+            work = self._work(artifact, previous.candidate, previous.handle.attempt_id)
+            await self._retire_execution_owned_material(artifact, work, self._footprint(executor, work),
+                                                        prune_empty_parents=True)
+            await self.repository.invalidate_material(artifact.id, "transfer_deleted")
 
     async def _cleanup_resources(self, transfer_id: int, *, explicit=False):
         for resource, state, pending in await self.repository.resources(transfer_id):

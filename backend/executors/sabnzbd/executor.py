@@ -73,6 +73,7 @@ from transfers.errors import Category, Domain, Retryability, Stage, TransferErro
 from transfers.filesystem import safe_name
 from transfers.staged_input import StagedInputError, StagedPayload
 from transfers.models import (
+    ContinuationCapability,
     ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutorCapabilities, ExecutorClaim,
     ExecutorHealth, ExecutorRuntimeCapability, ExecutorRuntimeControlResult, ExecutorThroughput,
@@ -129,6 +130,15 @@ class SabnzbdExecutor:
         # figure rather than letting core invent one per execution.
         aggregate_throughput=True,
         materialization_kinds=frozenset({MaterializationKind.COLLECTION}),
+        # SAB exports no final-file ranges, so the only reusable progress is
+        # SAB's own job: it quiesces natively and a paused job resumes
+        # natively -- executor-private optimizations, never material truth.
+        # With these declarations SAB falls under core's TEMPORARY
+        # collection/no-range-export pause exception
+        # (``transfers.continuation.parks_on_pause``), which exists only until
+        # dp-nzbget replaces SAB for the Usenet path.
+        continuation=frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.NATIVE_PRIVATE_RESUME,
+                                ContinuationCapability.NATIVE_QUIESCE}),
     )
 
     def __init__(self, client, configuration: SabnzbdConfiguration,

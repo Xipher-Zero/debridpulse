@@ -28,16 +28,18 @@ async def test_unknown_size_http_progress_advances_live_then_completes_normally(
     artifact = (await repository.artifacts(transfer.id))[0]
     assert artifact.candidates[0].expected_bytes == 0
     assert artifact.expected_bytes == 10
-    assert (await repository.get(transfer.id)).progress == 20.0
+    # DP 1.0.13: the executor's own byte count is not progress; completion is
+    # DebridPulse-valid material over the accepted denominator (none yet).
+    assert (await repository.get(transfer.id)).progress == 0.0
 
     executor.jobs[artifact.execution.attempt_id] = replace(
         executor.jobs[artifact.execution.attempt_id],
         progress=TransferProgress(10, 6, 3),
     )
     await engine.reconcile_executions()
-    assert (await repository.get(transfer.id)).progress == 60.0
+    assert (await repository.get(transfer.id)).progress == 0.0
     active = await repository.presentation(transfer.id, details=True)
-    assert active["files"][0]["progress"] == 60.0
+    assert active["files"][0]["progress"] == 0 and active["files"][0]["size_bytes"] == 10
 
     artifact = (await repository.artifacts(transfer.id))[0]
     executor.finish(artifact.execution)
@@ -72,10 +74,12 @@ async def test_contradictory_active_runtime_total_cannot_rewrite_accepted_denomi
 
     current = (await repository.artifacts(transfer.id))[0]
     assert current.expected_bytes == 10
-    assert (await repository.get(transfer.id)).progress == 60.0
+    # The contradictory runtime total (12) never replaces the denominator (10);
+    # progress is DP-valid material over it (DP 1.0.13), none committed here.
+    assert (await repository.get(transfer.id)).progress == 0.0
     details = await repository.presentation(transfer.id, details=True)
     assert details["files"][0]["size_bytes"] == 10
-    assert details["files"][0]["progress"] == 60.0
+    assert details["files"][0]["progress"] == 0
 
 
 @pytest.mark.asyncio

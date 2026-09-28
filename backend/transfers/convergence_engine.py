@@ -24,7 +24,7 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
     unknown_failure,
 )
-from transfers.filesystem import adoptable_material
+from transfers.filesystem import payload_facts
 from transfers.models import (
     Artifact, CleanupAuthority, ExecutionControl, ExecutionHandle, ExecutionObservation, ExecutionState,
     ExecutionSubject, ExecutorRuntimeCapability, MaterializationAdmissionKind, Ownership,
@@ -130,8 +130,21 @@ class TransferEngine(_QualifiedTransferEngine):
         for transfer in await self.repository.active():
             for artifact in await self.repository.artifacts(transfer.id):
                 existing.add(artifact.id)
+                if artifact.state != "completed":
+                    await self._reconcile_startup_material(artifact)
         self._startup_recovery_artifacts = existing
         return result
+
+    async def _reconcile_startup_material(self, artifact: Artifact) -> None:
+        """Startup reconciliation of DP material truth with the payload now on
+        disk (nothing uncheckpointed was ever stored, so IN_FLIGHT is already
+        UNKNOWN). Only material DP holds VALID is examined; the same one
+        reconciliation owner runs again before any continuation."""
+        state = await self.repository.material_state(artifact.id)
+        if state is None or not state.valid:
+            return
+        facts = await asyncio.to_thread(payload_facts, artifact.target, state.valid)
+        await self.repository.reconcile_material(artifact.id, artifact.target, facts)
 
     @staticmethod
     def _candidate(artifact: Artifact):
@@ -540,7 +553,8 @@ class TransferEngine(_QualifiedTransferEngine):
         # This dispatch runs under the recovery claim that decided to reuse the
         # same candidate: the one place a native-assisted retry may hand the
         # previous (already fenced) attempt's native state to the new attempt.
-        await super()._dispatch(current, retry_from=await self._native_retry_predecessor(current, candidate))
+        await super()._dispatch(current, retry_from=await self._native_retry_predecessor(current, candidate),
+                                reason=claim.trigger.value)
         return True
 
     async def _native_retry_predecessor(self, artifact: Artifact, candidate) -> ExecutionHandle | None:
@@ -715,6 +729,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 provider.descriptor.id,
                 await provider.refresh(bound_candidate),
                 request_kind=record.request.kind,
+                lan_host=await self._consented_lan_host(record),
             )
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
@@ -1788,8 +1803,7 @@ class TransferEngine(_QualifiedTransferEngine):
                             executor, work, footprint = self._artifact_work(artifact, executor)
                         except TransferError:
                             return False
-                        if await adoptable_material(work.materialization, footprint, artifact.expected_bytes,
-                                                    candidate.integrity, delay=self.policy.adoption_stability_seconds):
+                        if await self._possessed(artifact, candidate, work, footprint):
                             await self.repository.artifact_state(artifact.id, "completed")
                             continue
                         if artifact.execution and not await self._stop_confirmed(executor, artifact.execution):
@@ -2042,6 +2056,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 return False
             retired = await retire_writer(
                 self, current, self._candidate(current), replace(current, target=target), inversion.candidates[0],
+                boundary=RecoveryTrigger.COLLECTION_CONVERGENCE.value,
             )
             retirement = retired.retirement
             if retired.reason:
@@ -2061,7 +2076,7 @@ class TransferEngine(_QualifiedTransferEngine):
     # Dispatch readiness routing
     # ------------------------------------------------------------------
 
-    async def _dispatch(self, artifact: Artifact):
+    async def _dispatch(self, artifact: Artifact, *, reason: str = "admission"):
         """Route pre-execution readiness failures through canonical recovery."""
         candidate = self._candidate(artifact)
         if candidate is not None and not self._candidate_provider_enabled(candidate):
@@ -2090,7 +2105,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 trigger=RecoveryTrigger.AUTO_RETRY,
                 error=error,
             )
-        return await super()._dispatch(artifact)
+        return await super()._dispatch(artifact, reason=reason)
 
     # ------------------------------------------------------------------
     # Automatic recovery adapters / wake / startup / pause-resume
@@ -2351,6 +2366,12 @@ class TransferEngine(_QualifiedTransferEngine):
                 )
 
     async def pause(self, transfer_id: int):
+        """DebridPulse Pause: durable pause intent, then every writer of the
+        transfer through the one writer retirement (quiesce, forced
+        checkpoint, fence). Afterwards no writer may make acquisition
+        progress and the artifacts' material is exactly what was committed.
+        A native executor pause is only an optional quiesce inside that
+        retirement; lacking one never prevents a Pause."""
         transfer = await self.repository.get(transfer_id)
         if transfer is None:
             raise KeyError(transfer_id)
@@ -2359,38 +2380,16 @@ class TransferEngine(_QualifiedTransferEngine):
         async with self._dispatch_lock:
             await self.repository.set_pause_and_fence(transfer_id, True)
         errors = []
-        globally_paused = await self.repository.globally_paused()
         for artifact in await self.repository.artifacts(transfer_id):
-            if artifact.execution is None:
+            if artifact.execution is None or artifact.state == "completed":
                 continue
-            # An engaged executor-wide acquisition gate prevents network
-            # acquisition for global pause even where one execution cannot be
-            # paused individually right now; it never proves full quiescence.
-            covered = globally_paused and artifact.execution.executor_id in self._acquisition_gated
             executor = self.registry.executor_for_handle(artifact.execution)
-            if executor is None or not executor.capabilities.per_execution_pause:
-                if not covered:
-                    errors.append(self._error(
-                        Category.UNSUPPORTED_CAPABILITY,
-                        Stage.EXECUTION,
-                        domain=Domain.REQUEST,
-                        retryability=Retryability.NEVER,
-                    ))
+            if executor is None:
+                errors.append(self._executor_wait_error(artifact.execution.executor_id))
                 continue
             observed = await self._converge_execution(artifact, executor)
-            if observed and observed.error:
+            if observed is not None and observed.error is not None:
                 errors.append(observed.error)
-            elif observed is not None and observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING} \
-                    and not covered:
-                # Pause is not currently offered for this execution: the
-                # intent is durable and convergence continues, but the pause is
-                # reported as unconfirmed rather than guessed successful.
-                errors.append(self._error(
-                    Category.RECONCILIATION_FAILED,
-                    Stage.EXECUTION,
-                    domain=Domain.RECONCILIATION,
-                    retryability=Retryability.BACKOFF,
-                ))
         await self._aggregate(transfer_id)
         return tuple(errors)
 

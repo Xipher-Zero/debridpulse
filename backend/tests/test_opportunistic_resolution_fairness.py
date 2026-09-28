@@ -137,18 +137,20 @@ class GatedProvider(ParcelProvider):
 
 
 class GatedExecutor(MemoryExecutor):
-    """Memory executor whose native resume() the test can hold open."""
+    """Memory executor whose writer start the test can hold open: DebridPulse
+    Resume continues through a NEW writer, so the start of that writer is
+    where Resume's artifact recovery is still in progress."""
 
     def __init__(self, authorize):
         super().__init__(authorize)
         self.resume_gate: asyncio.Event | None = None
         self.resuming = asyncio.Event()
 
-    async def resume(self, handle):
+    async def start(self, request, handle):
         if self.resume_gate is not None:
             self.resuming.set()
             await self.resume_gate.wait()
-        return await super().resume(handle)
+        return await super().start(request, handle)
 
 
 def _members(payload: str, count: int) -> tuple:
@@ -974,7 +976,7 @@ async def test_resume_reaches_the_scheduler_before_artifact_recovery_returns(bui
     """Section 21.3 boundary. ``resume()`` holds no transfer lock, and its
     durable unpause is complete before it starts artifact recovery, so that is
     where the scheduler is told: B's parked request reaches the provider while
-    ``resume()`` is still blocked inside the executor's native resume."""
+    ``resume()`` is still blocked inside the start of B's resumed writer."""
     runtime = await build(concurrency=2)
     provider, executor = runtime.provider, runtime.executor
     b = await runtime.submit("b", 2)

@@ -23,10 +23,19 @@ class ControlledMemoryExecutor(MemoryExecutor):
         self.resume_entered = asyncio.Event()
         self.resume_release = asyncio.Event()
         self.block_resume = False
+        self.start_entered = asyncio.Event()
+        self.start_release = asyncio.Event()
+        self.block_start = False
+
+    def starts(self):
+        return [handle for name, handle in self.calls if name == "start"]
 
     async def start(self, request, handle):
         assert await self.authorize(handle, "start")
         self.calls.append(("start", handle))
+        if self.block_start:
+            self.start_entered.set()
+            await self.start_release.wait()
         error = self.start_errors.pop(0) if self.start_errors else None
         progress = TransferProgress(4, 0 if self.zero_progress else 1, 0 if self.zero_progress else 1)
         result = ExecutionObservation(handle, ExecutionState.FAILED if error else ExecutionState.RUNNING,
@@ -133,69 +142,132 @@ def executor_uncertainty():
     )
 
 
+async def live_writers(ctx, transfer_id):
+    """Writers still authorized to make acquisition progress for a transfer."""
+    return [item for item in await ctx.repository.live_executions()
+            if item.transfer_id == transfer_id and item.state in {"prepared", "queued", "running"}]
+
+
 @pytest.mark.asyncio
-async def test_scheduler_and_explicit_resume_share_one_native_convergence_owner(convergence):
+async def test_pause_leaves_durable_intent_material_and_no_writer(convergence):
+    transfer = await submit(convergence)
+    before = (await convergence.repository.artifacts(transfer.id))[0].execution
+    await convergence.engine.pause(transfer.id)
+    artifact = (await convergence.repository.artifacts(transfer.id))[0]
+    # DebridPulse owns pause: durable intent, the writer fenced, no writer
+    # authorized to make progress -- not "the executor says paused".
+    assert (await convergence.repository.get(transfer.id)).paused
+    assert artifact.execution is None and artifact.state == "paused"
+    assert convergence.executor.jobs[before.attempt_id].state == ExecutionState.CANCELLED
+    assert await live_writers(convergence, transfer.id) == []
+    assert not await convergence.repository.authorize_execution(before, "resume")
+    assert (await convergence.repository.get(transfer.id)).state == TransferState.PAUSED
+
+
+@pytest.mark.asyncio
+async def test_scheduler_and_explicit_resume_admit_exactly_one_writer(convergence):
     transfer = await submit(convergence)
     await convergence.engine.pause(transfer.id)
     artifact = (await convergence.repository.artifacts(transfer.id))[0]
-    stale = convergence.executor.jobs[artifact.execution.attempt_id]
-    convergence.executor.native_resume_calls = 0
+    starts = len(convergence.executor.starts())
 
     scheduler = asyncio.create_task(convergence.engine._process_executions(
-        transfer.id, (artifact,), {artifact.execution.attempt_id: stale}, dispatch_allowed=True,
+        transfer.id, (artifact,), {}, dispatch_allowed=True,
     ))
     explicit = asyncio.create_task(convergence.engine.resume(transfer.id))
     await asyncio.gather(scheduler, explicit)
+    await convergence.engine.reconcile_executions()
 
-    assert convergence.executor.native_resume_calls == 1
-    assert convergence.executor.jobs[artifact.execution.attempt_id].state == ExecutionState.RUNNING
+    # Resume is a new writer planned from DebridPulse material, never a
+    # native resume of the fenced one; one owner admits exactly one writer.
+    assert convergence.executor.native_resume_calls == 0
+    assert len(convergence.executor.starts()) == starts + 1
+    assert len(await live_writers(convergence, transfer.id)) == 1
 
 
 @pytest.mark.asyncio
 async def test_rapid_triple_resume_is_idempotent(convergence):
     transfer = await submit(convergence)
     await convergence.engine.pause(transfer.id)
-    convergence.executor.native_resume_calls = 0
+    starts = len(convergence.executor.starts())
     await asyncio.gather(*(convergence.engine.resume(transfer.id) for _ in range(3)))
-    assert convergence.executor.native_resume_calls == 1
+    await convergence.engine.reconcile_executions()
+    assert len(convergence.executor.starts()) == starts + 1
+    assert len(await live_writers(convergence, transfer.id)) == 1
+    assert convergence.executor.native_resume_calls == 0
 
 
 @pytest.mark.asyncio
 async def test_pause_arriving_during_resume_reconciliation_wins(convergence):
     transfer = await submit(convergence)
     await convergence.engine.pause(transfer.id)
-    artifact = (await convergence.repository.artifacts(transfer.id))[0]
-    convergence.executor.native_pause_calls = 0
-    convergence.executor.native_resume_calls = 0
-    convergence.executor.block_resume = True
+    convergence.executor.block_start = True
 
     resuming = asyncio.create_task(convergence.engine.resume(transfer.id))
-    await convergence.executor.resume_entered.wait()
+    await convergence.executor.start_entered.wait()
     pausing = asyncio.create_task(convergence.engine.pause(transfer.id))
     await asyncio.sleep(0)
-    convergence.executor.resume_release.set()
+    convergence.executor.start_release.set()
     await asyncio.gather(resuming, pausing)
+    await convergence.engine.reconcile_executions()
 
-    assert convergence.executor.native_resume_calls == 1
-    assert convergence.executor.native_pause_calls == 1
-    assert convergence.executor.jobs[artifact.execution.attempt_id].state == ExecutionState.PAUSED
+    # The later durable Pause wins: the writer Resume started is fenced by
+    # the dispatcher that started it, and no writer is left making progress.
     assert (await convergence.repository.get(transfer.id)).paused
+    artifact = (await convergence.repository.artifacts(transfer.id))[0]
+    assert artifact.execution is None
+    started = convergence.executor.starts()[-1]
+    assert convergence.executor.jobs[started.attempt_id].state == ExecutionState.CANCELLED
+    assert await live_writers(convergence, transfer.id) == []
+    assert convergence.executor.native_resume_calls == 0
 
 
 @pytest.mark.asyncio
-async def test_capacity_starvation_does_not_emit_unpause_or_consume_source_budget(convergence):
+async def test_capacity_starvation_does_not_admit_a_writer_or_consume_source_budget(convergence):
     target = await submit(convergence, "target", "target.bin")
     await convergence.engine.pause(target.id)
     convergence.engine.configure_policy(replace(convergence.engine.policy, max_active_executions=1))
     blocker = await submit(convergence, "blocker", "blocker.bin")
     assert (await convergence.repository.get(blocker.id)).state == TransferState.TRANSFERRING
     artifact = (await convergence.repository.artifacts(target.id))[0]
-    convergence.executor.native_resume_calls = 0
+    starts = len(convergence.executor.starts())
 
     await convergence.engine.resume(target.id)
-    assert convergence.executor.native_resume_calls == 0
-    assert convergence.executor.jobs[artifact.execution.attempt_id].state == ExecutionState.PAUSED
+    await convergence.engine.reconcile_executions()
+    assert len(convergence.executor.starts()) == starts
+    assert (await convergence.repository.artifacts(target.id))[0].execution is None
+    assert await live_writers(convergence, target.id) == []
     assert await convergence.repository.recovery_budget(artifact.id) == (0, 0)
+
+
+@pytest.mark.asyncio
+async def test_stale_native_callback_cannot_unpause_or_commit(convergence):
+    transfer = await submit(convergence)
+    artifact = (await convergence.repository.artifacts(transfer.id))[0]
+    stale = replace(convergence.executor.jobs[artifact.execution.attempt_id], state=ExecutionState.RUNNING)
+    await convergence.engine.pause(transfer.id)
+    # A late "running" report of the fenced writer changes nothing.
+    await convergence.engine._process_executions(transfer.id, (artifact,), {artifact.execution.attempt_id: stale})
+    assert (await convergence.repository.get(transfer.id)).paused
+    assert (await convergence.repository.artifacts(transfer.id))[0].execution is None
+    assert await live_writers(convergence, transfer.id) == []
+
+
+@pytest.mark.asyncio
+async def test_pause_survives_engine_restart(convergence):
+    transfer = await submit(convergence)
+    await convergence.engine.pause(transfer.id)
+    from transfers.convergence_engine import TransferEngine as CanonicalEngine
+    restarted = CanonicalEngine(convergence.repository, convergence.registry,
+                                download_root=convergence.engine.root, policy=convergence.engine.policy,
+                                clock=lambda: convergence.now[0])
+    await restarted.initialize()
+    starts = len(convergence.executor.starts())
+    for _ in range(3):
+        await restarted.tick()
+    assert (await convergence.repository.get(transfer.id)).paused
+    assert len(convergence.executor.starts()) == starts
+    assert await live_writers(convergence, transfer.id) == []
 
 
 @pytest.mark.asyncio

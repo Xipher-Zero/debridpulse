@@ -1,4 +1,5 @@
 """Local possession and path reservation through the universal lifecycle."""
+import hashlib
 from dataclasses import replace
 from pathlib import Path
 
@@ -6,15 +7,20 @@ import pytest
 
 from test_universal_lifecycle import core, submit, failure
 from transfers.errors import Category
-from transfers.models import ExecutionObservation, ExecutionState, ResolutionResult, ResourceState, TransferState, TransferOutcome, OutcomeKind
+from transfers.models import ExecutionObservation, ExecutionState, IntegrityMetadata, ResolutionResult, ResourceState, TransferState, TransferOutcome, OutcomeKind
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize('condition,adopt', [('exact',True),('missing',False),('wrong_size',False),('unknown_size',False),('sidecar',False),('directory',False),('symlink',False)])
+# DP 1.0.13: a file of exactly the right length is NOT possession -- file
+# length never proves material. Strong integrity evidence (or DebridPulse's own
+# committed material) does.
+@pytest.mark.parametrize('condition,adopt', [('exact',False),('exact_verified',True),('missing',False),('wrong_size',False),('unknown_size',False),('sidecar',False),('directory',False),('symlink',False)])
 async def test_existing_payload_requires_verified_possession(core, condition, adopt, tmp_path):
     candidate = core.provider.candidate()
     if condition == 'unknown_size':
         candidate = replace(candidate, expected_bytes=0)
+    if condition == 'exact_verified':
+        candidate = replace(candidate, integrity=(IntegrityMetadata('sha256', hashlib.sha256(b'done').hexdigest()),))
     core.provider.responses = [ResolutionResult(ResourceState.AVAILABLE,(candidate,))]
     transfer = await submit(core)
     await core.engine.resolve_pending()

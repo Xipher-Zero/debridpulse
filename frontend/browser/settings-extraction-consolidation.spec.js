@@ -9,7 +9,7 @@ const { test, expect } = require('@playwright/test');
  *                no remaining page-level save responsibility of any kind.
  *   AllDebrid    the credential block keeps the canonical label / control /
  *                help rhythm rather than a taller one of its own.
- *   Downloads    Download Location & Limits is a deliberate two-zone primary
+ *   Downloads    Download Behavior & Limits is a deliberate two-zone primary
  *                form whose zones share three rows.
  *
  * Every case restores what it changed, so the shared backend is left as found.
@@ -454,9 +454,9 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
     expect(String(hit)).not.toContain('dp-settings-key-present');
   });
 
-// --- Download Location & Limits --------------------------------------------
+// --- Download Behavior & Limits --------------------------------------------
 
-test('Download Location & Limits puts both settings on one line in the inline grammar',
+test('Download Behavior & Limits puts both settings on one line in the inline grammar',
   async ({page}) => {
     await isolateExternalFonts(page);
     await page.goto('/');
@@ -528,7 +528,7 @@ test('Download Location & Limits puts both settings on one line in the inline gr
  * hosted container reproduced at metrics ~1.08x this machine's, with only 2px
  * of local slack against a 3px tolerance to hide it. Stressing the font size
  * is what makes the promise provable rather than lucky. */
-test('Download Location & Limits keeps one shared baseline at any text size',
+test('Download Behavior & Limits keeps one shared baseline at any text size',
   async ({page}) => {
     await isolateExternalFonts(page);
     await page.goto('/');

@@ -261,14 +261,16 @@
     return String(fallback || 'The selected candidate could not be established.');
   }
 
-  async function switchRequest(transferId, artifactId, candidateId) {
+  async function switchRequest(transferId, artifactId, candidateId, discardConfirmed) {
     const controller = new AbortController();
     const timeout = window.setTimeout(function () { controller.abort(); }, 8000);
     try {
+      const body = {candidate_id: candidateId};
+      if (discardConfirmed) body.discard_confirmed = true;
       const response = await window.debridPulseAuth.fetch('/api/torrents/' + transferId + '/artifacts/' + artifactId + '/candidate', {
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({candidate_id: candidateId}),
+        body: JSON.stringify(body),
         signal: controller.signal
       });
       const payload = await response.json().catch(function () { return {}; });
@@ -312,7 +314,29 @@
     button.disabled = true;
     button.setAttribute('aria-disabled', 'true');
     try {
-      const result = await switchRequest(activeTransferId, artifactId, candidateId);
+      let result;
+      try {
+        result = await switchRequest(activeTransferId, artifactId, candidateId, false);
+      } catch (error) {
+        // The new source cannot continue from what is already downloaded:
+        // nothing changed yet. Ask once, through the canonical dialog owner.
+        const detail = error && error.detail;
+        if (!detail || detail.confirmation !== 'discard_material' || !window.DPSettingsModal) throw error;
+        const confirmed = await window.DPSettingsModal.confirm({
+          title: 'Discard downloaded progress?',
+          message: 'This source cannot continue the existing download. Switching discards '
+            + fileSize(detail.discarded_bytes) + ' of downloaded progress for '
+            + String(file.filename || 'this file') + ' and downloads it again from this source.',
+          confirmLabel: 'Switch Source',
+          cancelLabel: 'Keep Current Source',
+        });
+        if (!confirmed) {
+          switchingRows.delete(key);
+          await refreshAfterSwitch(activeTransferId, key).catch(function () {});
+          return;
+        }
+        result = await switchRequest(activeTransferId, artifactId, candidateId, true);
+      }
       switchingRows.delete(key);
       await refreshAfterSwitch(activeTransferId, key);
       if (typeof window.toast === 'function') {

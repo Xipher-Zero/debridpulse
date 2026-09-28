@@ -14,7 +14,9 @@ import pytest
 
 from executor_fakes import LedgerExecutor, artifact_of, ledger_capabilities, ledger_core, submit_ledger
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
-from transfers.models import ExecutionActivity, ExecutionControl, ExecutionObservation, ExecutionState
+from transfers.models import (
+    ContinuationCapability, ExecutionActivity, ExecutionControl, ExecutionObservation, ExecutionState,
+)
 from transfers.policy import TransferPolicy
 
 pytestmark = pytest.mark.asyncio
@@ -103,43 +105,65 @@ async def test_one_batch_observation_call_per_executor_per_reconcile_cycle(tmp_p
     assert len(batches) == 1 and len(batches[0][1]) == 3
 
 
-async def test_core_pauses_only_when_current_observation_advertises_pause(tmp_path, monkeypatch):
-    core = await ledger_core(tmp_path, monkeypatch)
+QUIESCE = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.NATIVE_QUIESCE})
+
+
+def _cancels(core):
+    return [call for call in core.executor.calls if call[0] == "cancel"]
+
+
+def _starts(core):
+    return [call for call in core.executor.calls if call[0] == "start"]
+
+
+async def test_native_quiesce_is_used_only_when_the_current_observation_advertises_pause(tmp_path, monkeypatch):
+    """DP 1.0.13: the writer is fenced by DebridPulse Pause either way; a
+    native pause is only the optional graceful quiesce before it, invoked
+    only while the current observation offers it."""
+    core = await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (
+        LedgerExecutor(authorize, capabilities=ledger_capabilities(continuation=QUIESCE)),))
     transfer, artifact = await _running(core)
     core.executor.job_for(artifact.execution).controls = frozenset()
     await core.engine.pause(transfer.id)
     assert not [call for call in core.executor.calls if call[0] == "pause"]
-    assert core.executor.job_for(artifact.execution).state == ExecutionState.RUNNING
-    core.executor.job_for(artifact.execution).controls = frozenset({ExecutionControl.PAUSE})
-    await core.engine.reconcile_executions()
-    assert [call for call in core.executor.calls if call[0] == "pause"] == [("pause", artifact.execution.attempt_id)]
-    assert core.executor.job_for(artifact.execution).state == ExecutionState.PAUSED
+    assert _cancels(core) == [("cancel", artifact.execution.attempt_id)]
+    assert (await artifact_of(core, transfer.id)).execution is None
+
+    second = await submit_ledger(core, "second")
+    running = await artifact_of(core, second.id)
+    core.executor.run(running.execution)
+    await core.engine.pause(second.id)
+    assert [call for call in core.executor.calls if call[0] == "pause"] == [("pause", running.execution.attempt_id)]
+    assert (await artifact_of(core, second.id)).execution is None
 
 
-async def test_core_resumes_only_when_current_observation_advertises_resume(tmp_path, monkeypatch):
+async def test_resume_is_a_new_writer_never_a_native_resume(tmp_path, monkeypatch):
     core = await ledger_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)
     await core.engine.pause(transfer.id)
     job = core.executor.job_for(artifact.execution)
-    job.controls = frozenset()
-    await core.engine.resume(transfer.id)
-    assert not [call for call in core.executor.calls if call[0] == "resume"]
     job.controls = frozenset({ExecutionControl.RESUME})
+    starts = len(_starts(core))
+    await core.engine.resume(transfer.id)
     await core.engine.reconcile_executions()
-    assert [call for call in core.executor.calls if call[0] == "resume"] == [("resume", artifact.execution.attempt_id)]
+    assert not [call for call in core.executor.calls if call[0] == "resume"]
+    assert len(_starts(core)) == starts + 1
+    assert (await artifact_of(core, transfer.id)).execution.attempt_id != artifact.execution.attempt_id
 
 
-async def test_control_capability_can_change_between_observations(tmp_path, monkeypatch):
+async def test_a_writer_whose_stop_cannot_yet_be_proven_stays_owned_until_it_can(tmp_path, monkeypatch):
     core = await ledger_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)
     job = core.executor.job_for(artifact.execution)
-    job.controls = frozenset()
+    core.executor.cancel_mode = "unconfirmed"
     await core.engine.pause(transfer.id)
     await core.engine.reconcile_executions()
-    assert job.state == ExecutionState.RUNNING  # temporarily non-pauseable, still observable and owned
-    job.controls = frozenset({ExecutionControl.PAUSE})
+    current = await artifact_of(core, transfer.id)
+    assert current.execution is not None  # still observable and owned, never guessed stopped
+    core.executor.cancel_mode = "confirm"
     await core.engine.reconcile_executions()
-    assert job.state == ExecutionState.PAUSED
+    assert job.state == ExecutionState.CANCELLED
+    assert (await artifact_of(core, transfer.id)).execution is None
 
 
 async def test_executor_without_static_pause_capability_is_never_asked_to_pause(tmp_path, monkeypatch):
@@ -155,44 +179,52 @@ async def test_scheduler_and_operator_control_still_share_one_convergence_owner(
     core = await ledger_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)
     await core.engine.pause(transfer.id)
-    stale = (await core.engine._observe_execution(core.executor, artifact.execution))
     core.executor.calls.clear()
     scheduler = asyncio.create_task(core.engine._process_executions(
-        transfer.id, (await artifact_of(core, transfer.id),), {artifact.execution.attempt_id: stale}))
+        transfer.id, (await artifact_of(core, transfer.id),), {}))
     explicit = asyncio.create_task(core.engine.resume(transfer.id))
     await asyncio.gather(scheduler, explicit)
-    assert [call for call in core.executor.calls if call[0] == "resume"] == [("resume", artifact.execution.attempt_id)]
+    await core.engine.reconcile_executions()
+    assert len(_starts(core)) == 1  # one owner admits exactly one new writer
+    assert not [call for call in core.executor.calls if call[0] == "resume"]
 
 
 async def test_pause_arriving_during_resume_still_wins(tmp_path, monkeypatch):
     entered, release = asyncio.Event(), asyncio.Event()
 
     class Blocking(LedgerExecutor):
-        async def resume(self, handle):
-            entered.set()
-            await release.wait()
-            return await super().resume(handle)
+        async def start(self, request, handle):
+            if self.block:
+                entered.set()
+                await release.wait()
+            return await super().start(request, handle)
 
     core = await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (Blocking(authorize),))
+    core.executor.block = False
     transfer, artifact = await _running(core)
     await core.engine.pause(transfer.id)
+    core.executor.block = True
     resuming = asyncio.create_task(core.engine.resume(transfer.id))
     await entered.wait()
     pausing = asyncio.create_task(core.engine.pause(transfer.id))
     await asyncio.sleep(0)
     release.set()
     await asyncio.gather(resuming, pausing)
-    assert core.executor.job_for(artifact.execution).state == ExecutionState.PAUSED
+    await core.engine.reconcile_executions()
     assert (await core.repository.get(transfer.id)).paused
+    assert (await artifact_of(core, transfer.id)).execution is None
+    assert not [item for item in await core.repository.live_executions() if item.transfer_id == transfer.id]
 
 
 async def test_rapid_repeated_control_remains_idempotent(tmp_path, monkeypatch):
     core = await ledger_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)
+    starts = len(_starts(core))
     await asyncio.gather(*(core.engine.pause(transfer.id) for _ in range(3)))
     await asyncio.gather(*(core.engine.resume(transfer.id) for _ in range(3)))
-    assert len([call for call in core.executor.calls if call[0] == "pause"]) == 1
-    assert len([call for call in core.executor.calls if call[0] == "resume"]) == 1
+    await core.engine.reconcile_executions()
+    assert len(_cancels(core)) == 1
+    assert len(_starts(core)) == starts + 1
 
 
 async def test_global_acquisition_gate_blocks_network_start_before_new_admission(tmp_path, monkeypatch):
@@ -222,7 +254,7 @@ async def test_acquisition_gate_does_not_claim_full_database_wipe_quiescence(tmp
     core = await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (
         LedgerExecutor(authorize, capabilities=ledger_capabilities(acquisition_gate=True)),))
     _transfer, artifact = await _running(core)
-    core.executor.job_for(artifact.execution).controls = frozenset()  # cannot pause this execution now
+    core.executor.cancel_mode = "unconfirmed"  # the writer's stop cannot be proven now
     service = ApplicationService(core.engine)
     with pytest.raises(RuntimeError):
         await service.quiesce_for_database_wipe()
@@ -289,11 +321,11 @@ async def test_cancel_contract_returns_an_observation_not_an_acknowledgement():
 async def test_pause_that_cannot_be_confirmed_is_reported_not_assumed(tmp_path, monkeypatch):
     core = await ledger_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)
-    core.executor.job_for(artifact.execution).controls = frozenset()
+    core.executor.cancel_mode = "unconfirmed"
     errors = await core.engine.pause(transfer.id)
     assert errors and errors[0].category.value == "reconciliation_failed"
     assert (await core.repository.get(transfer.id)).paused  # the durable intent stands
-    core.executor.job_for(artifact.execution).controls = frozenset({ExecutionControl.PAUSE})
+    core.executor.cancel_mode = "confirm"
     assert await core.engine.pause(transfer.id) == ()
 
 
@@ -305,3 +337,69 @@ async def test_engaged_acquisition_gate_covers_global_pause_of_an_unpausable_exe
     results = await core.engine.pause_all()
     assert core.executor.gate == [True]
     assert all(errors == () for errors in results.values())
+
+
+# -- Temporary collection / no-range-export pause exception (parks_on_pause) --
+
+PARKING = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.NATIVE_PRIVATE_RESUME,
+                     ContinuationCapability.NATIVE_QUIESCE})
+
+
+async def _parking_core(tmp_path, monkeypatch):
+    return await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (
+        LedgerExecutor(authorize, capabilities=ledger_capabilities(continuation=PARKING)),))
+
+
+async def test_a_parked_collection_job_has_no_progress_authority_while_paused(tmp_path, monkeypatch):
+    core = await _parking_core(tmp_path, monkeypatch)
+    transfer = await submit_ledger(core, "bundle:collection")
+    artifact = await artifact_of(core, transfer.id)
+    core.executor.run(artifact.execution)
+    await core.engine.reconcile_executions()
+    assert await core.engine.pause(transfer.id) == ()
+    job = core.executor.job_for(artifact.execution)
+    parked = await artifact_of(core, transfer.id)
+    # Parked, not fenced: the native job keeps its private progress...
+    assert parked.execution == artifact.execution and job.state == ExecutionState.PAUSED
+    assert not _cancels(core)
+    # ...but no acquisition mutation is authorized while the intent stands.
+    assert not await core.repository.authorize_execution(artifact.execution, "resume")
+    assert not await core.repository.authorize_execution(artifact.execution, "start")
+    for _ in range(3):
+        await core.engine.reconcile_executions()
+    assert job.state == ExecutionState.PAUSED
+    assert not [call for call in core.executor.calls if call[0] == "resume"]
+    # A parked job observed acquiring again (e.g. resumed natively outside DP)
+    # is re-quiesced by the one writer retirement, never left making progress.
+    job.state, job.controls = ExecutionState.RUNNING, frozenset({ExecutionControl.PAUSE})
+    await core.engine.reconcile_executions()
+    assert job.state in {ExecutionState.PAUSED, ExecutionState.CANCELLED}
+    assert (await core.repository.get(transfer.id)).paused
+
+
+async def test_only_resume_through_the_canonical_lifecycle_continues_a_parked_job(tmp_path, monkeypatch):
+    core = await _parking_core(tmp_path, monkeypatch)
+    transfer = await submit_ledger(core, "bundle:collection")
+    artifact = await artifact_of(core, transfer.id)
+    core.executor.run(artifact.execution)
+    await core.engine.reconcile_executions()
+    await core.engine.pause(transfer.id)
+    starts = len(_starts(core))
+    await core.engine.resume(transfer.id)
+    await core.engine.reconcile_executions()
+    # Resume cleared the durable intent first; the canonical convergence
+    # owner then continued the parked job under ordinary admission.
+    assert not (await core.repository.get(transfer.id)).paused
+    assert [call for call in core.executor.calls if call[0] == "resume"] == [("resume", artifact.execution.attempt_id)]
+    assert core.executor.job_for(artifact.execution).state == ExecutionState.RUNNING
+    assert len(_starts(core)) == starts
+
+
+async def test_the_parking_exception_never_applies_to_a_file_artifact(tmp_path, monkeypatch):
+    core = await _parking_core(tmp_path, monkeypatch)
+    transfer, artifact = await _running(core)  # an ordinary FILE artifact
+    await core.engine.pause(transfer.id)
+    # Same executor capabilities, but a FILE: paused means no writer at all.
+    assert (await artifact_of(core, transfer.id)).execution is None
+    assert _cancels(core) == [("cancel", artifact.execution.attempt_id)]
+    assert not [item for item in await core.repository.live_executions() if item.transfer_id == transfer.id]

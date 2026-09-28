@@ -333,7 +333,7 @@
 /* --- Transfer Method Settings child cards --------------------------------
    Structure, the disclosure chip and the centred header copy all belong to the
    canonical Settings card header in ui-settings-page.css; the copy's
-   de-emphasised treatment is the one Download Location & Limits declares, and
+   de-emphasised treatment is the one Download Behavior & Limits declares, and
    these cards render that same class rather than a second one. Nothing about
    the card is declared here but the footer that closes its tuning region. */
 

@@ -192,10 +192,11 @@ async def test_retained_progress_survives_failed_gid_and_recovery_quiescence(run
     assert current.target == target
     presentation = await repository.presentation(transfer.id, details=True)
     file_view = next(item for item in presentation["files"] if item["id"] == artifact.id)
-    assert presentation["retained_bytes"] >= 2
-    assert presentation["progress"] >= 50.0
-    assert file_view["retained_bytes"] == 2
-    assert file_view["progress"] == 50.0
+    # DP 1.0.13: retained progress is DebridPulse-valid material only. The
+    # failed writer's own byte count (2 of 4, no exported material) proves
+    # nothing reusable, so nothing is shown as retained or complete.
+    assert presentation["retained_bytes"] == 0 and presentation["progress"] == 0
+    assert file_view["retained_bytes"] == 0 and file_view["progress"] == 0
     assert file_view["presentation_status"] in {"waiting_for_retry", "recovering"}
     assert file_view["attention_required"] is False
     context = await repository.recovery_context(artifact.id)

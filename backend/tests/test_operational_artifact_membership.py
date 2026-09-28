@@ -506,15 +506,22 @@ async def test_capacity_wait_excludes_expired_candidate(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_capacity_wait_excludes_stable_completed_payload(tmp_path, monkeypatch):
-    """queued + capacity full + an already-stable, correctly-sized payload on
-    disk => NOT waiting_for_slot. _dispatch() marks the artifact completed
-    before ever reaching the capacity gate."""
+    """queued + capacity full + an already-stable payload whose possession is
+    PROVEN (DP 1.0.13: strong integrity evidence -- a correctly-sized file
+    alone proves nothing) => NOT waiting_for_slot. _dispatch() marks the
+    artifact completed before ever reaching the capacity gate."""
+    import hashlib
+    from dataclasses import replace as _replace
+    from transfers.models import IntegrityMetadata, ResolutionResult, ResourceState
     repository, registry, (provider,), executor, engine, now_box = await build_production_runtime(
         tmp_path, monkeypatch, db_name="capacity_wait_stable_payload.db",
         max_active_executions=1,
     )
     await _saturate_the_only_slot(engine, repository, provider)
 
+    verified = _replace(provider.candidate("already_done.bin", payload="already-done"),
+                        integrity=(IntegrityMetadata("sha256", hashlib.sha256(b"x" * 4).hexdigest()),))
+    provider.responses.append(ResolutionResult(ResourceState.AVAILABLE, (verified,)))
     transfer = await engine.submit((TransferRequest(
         "parcel", "already-done", name="already_done.bin",
     ),), deduplicate=False)

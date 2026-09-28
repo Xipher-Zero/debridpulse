@@ -269,7 +269,9 @@ async def test_discovered_size_survives_unknown_size_failover_and_stale_a_observ
         progress=TransferProgress(4, 2, 1),
     )
     await restarted.reconcile_executions()
-    assert (await restarted_repository.get(transfer.id)).progress == 50.0
+    # The discovered denominator survived; progress is DP-valid material over
+    # it (DP 1.0.13) -- the executor's 2-of-4 report commits nothing.
+    assert (await restarted_repository.get(transfer.id)).progress == 0.0
     assert (await restarted_repository.artifacts(transfer.id))[0].expected_bytes == 4
 
 
@@ -307,15 +309,17 @@ async def test_mixed_provider_known_and_executor_discovered_sizes_aggregate_corr
     await engine.tick()
     artifacts = await repository.artifacts(transfer.id)
     assert sorted(item.expected_bytes for item in artifacts) == [4, 10]
-    assert (await repository.get(transfer.id)).progress == pytest.approx(3 / 14 * 100)
+    # DP 1.0.13: aggregate progress is DP-valid material over the aggregate
+    # denominator (4 + 10); executor byte reports contribute nothing.
+    assert (await repository.get(transfer.id)).progress == 0.0
 
     known = next(item for item in artifacts if item.candidates[item.selected].provider_id == "parcel-known")
     memory.finish(known.execution)
     await engine.reconcile_executions()
-    assert (await repository.get(transfer.id)).progress == pytest.approx(6 / 14 * 100)
+    assert (await repository.get(transfer.id)).progress == pytest.approx(4 / 14 * 100)
 
     details = await repository.presentation(transfer.id, details=True)
     by_name = {item["filename"]: item for item in details["files"]}
     assert by_name["known.bin"]["progress"] == 100
-    assert by_name["runtime.bin"]["progress"] == 20.0
+    assert by_name["runtime.bin"]["progress"] == 0
     assert details["size_bytes"] == 14

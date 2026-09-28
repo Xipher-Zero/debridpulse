@@ -234,7 +234,7 @@ async def test_pause_during_refresh_fences_result_then_resume_replays_without_se
 
 
 @pytest.mark.asyncio
-async def test_resume_and_startup_reconcile_race_reuses_paused_gid(runtime):
+async def test_resume_and_startup_reconcile_race_admits_exactly_one_writer(runtime):
     repository, _registry, _provider, executor, engine, _now = runtime
     transfer, artifact = await running(runtime)
     original = artifact.execution
@@ -245,9 +245,14 @@ async def test_resume_and_startup_reconcile_race_reuses_paused_gid(runtime):
         engine.resume(transfer.id),
         engine.recover_artifact(paused, trigger=RecoveryTrigger.STARTUP_RECONCILE),
     )
+    await engine.reconcile_executions()
     current = (await repository.artifacts(transfer.id))[0]
-    assert current.execution == original
-    assert len([call for call in executor.calls if call[0] == "resume"]) <= resume_before + 1
+    # Resume is one new writer planned from DebridPulse material -- never a
+    # native resume of the fenced one, and never two racing writers.
+    assert current.execution is not None and current.execution != original
+    assert len(await repository.executions(transfer.id)) == 2
+    assert len([item for item in await repository.live_executions() if item.transfer_id == transfer.id]) == 1
+    assert len([call for call in executor.calls if call[0] == "resume"]) == resume_before
 
 
 @pytest.mark.asyncio

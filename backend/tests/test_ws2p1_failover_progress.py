@@ -398,10 +398,12 @@ async def test_runtime_total_size_is_accepted_in_core_and_drives_transfer_and_fi
     artifact = (await repository.artifacts(transfer.id))[0]
     assert artifact.candidates[0].expected_bytes == 0
     assert artifact.expected_bytes == 10
-    assert (await repository.get(transfer.id)).progress == 20.0
+    # DP 1.0.13: the accepted runtime total is the denominator; progress is
+    # DP-valid material over it, never the executor's own byte count.
+    assert (await repository.get(transfer.id)).progress == 0.0
     details = await repository.presentation(transfer.id, details=True)
     assert details["files"][0]["size_bytes"] == 10
-    assert details["files"][0]["progress"] == 20.0
+    assert details["files"][0]["progress"] == 0
 
     restarted_repository = TransferRepository()
     restarted = TransferEngine(
@@ -414,7 +416,8 @@ async def test_runtime_total_size_is_accepted_in_core_and_drives_transfer_and_fi
     await restarted.initialize()
     persisted = (await restarted_repository.artifacts(transfer.id))[0]
     assert persisted.expected_bytes == 10
-    assert (await restarted_repository.presentation(transfer.id, details=True))["files"][0]["progress"] == 20.0
+    restarted_details = await restarted_repository.presentation(transfer.id, details=True)
+    assert restarted_details["files"][0]["size_bytes"] == 10 and restarted_details["files"][0]["progress"] == 0
 
 
 @pytest.mark.asyncio
@@ -429,7 +432,7 @@ async def test_runtime_total_does_not_override_known_artifact_size(tmp_path, mon
     assert artifact.candidates[0].expected_bytes == 4
     details = await repository.presentation(transfer.id, details=True)
     assert details["files"][0]["size_bytes"] == 4
-    assert details["files"][0]["progress"] == 50.0
+    assert details["files"][0]["progress"] == 0  # DP-valid material over the known size (DP 1.0.13)
 
 
 @pytest.mark.asyncio

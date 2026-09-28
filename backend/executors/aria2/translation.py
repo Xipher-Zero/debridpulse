@@ -167,6 +167,35 @@ def is_missing(exc: Exception, gid: str) -> bool:
     return bool(re.search(r"\bGID\s+" + re.escape(gid) + r"\s+is not found\b", str(exc), re.I))
 
 
+def material_ranges(native) -> tuple[tuple[int, int], ...] | None:
+    """Exact final-file ranges of the pieces aria2 reports complete.
+
+    aria2 marks a piece complete only once its data left the daemon's write
+    cache, so these ranges are already written to the file (core then makes
+    them durable before committing anything). ``None`` when the job reports
+    no piece evidence yet. Evidence only: never DebridPulse-valid by itself."""
+    bitfield = str(getattr(native, "bitfield", "") or "")
+    piece = int(getattr(native, "piece_length", 0) or 0)
+    pieces = int(getattr(native, "num_pieces", 0) or 0)
+    total = int(getattr(native, "total_length", 0) or 0)
+    if not bitfield or piece <= 0 or pieces <= 0 or total <= 0 or len(getattr(native, "files", None) or ()) > 1:
+        return None
+    try:
+        bits = int(bitfield, 16)
+    except ValueError:
+        return None
+    width = len(bitfield) * 4
+    ranges = []
+    for index in range(min(pieces, width)):
+        if bits >> (width - 1 - index) & 1:
+            start, end = index * piece, min((index + 1) * piece, total)
+            if ranges and ranges[-1][1] == start:
+                ranges[-1] = (ranges[-1][0], end)
+            elif end > start:
+                ranges.append((start, end))
+    return tuple(ranges)
+
+
 def observation(handle: ExecutionHandle, native, *, secrets=()) -> ExecutionObservation:
     """Translate one native job into neutral lifecycle, activity and controls.
 
@@ -192,5 +221,5 @@ def observation(handle: ExecutionHandle, native, *, secrets=()) -> ExecutionObse
     return ExecutionObservation(
         handle, state,
         TransferProgress(max(0, int(native.total_length)), max(0, int(native.completed_length)), max(0, int(native.download_speed))),
-        error, activity, controls,
+        error, activity, controls, material=material_ranges(native),
     )

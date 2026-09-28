@@ -75,7 +75,7 @@ def _sql_date(field: str) -> str:
 from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
-from application.service import ApplicationService
+from application.service import ApplicationService, LocalNetworkConfirmationRequired
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
 from services import transfer_trace
@@ -750,7 +750,16 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
     try:
         # Explicit per-submission intent: the browser opts in; an omitted field
         # keeps the ALL default. Never inferred from the source or client.
-        return public_payload(await application.submit_links(links, selection_mode=body.get("selection_mode")))
+        # ``allow_local_network`` is the operator's answer to THIS submission's
+        # private-LAN confirmation only; it never changes a setting.
+        return public_payload(await application.submit_links(
+            links, selection_mode=body.get("selection_mode"),
+            **({"allow_local_network": True} if body.get("allow_local_network") is True else {})))
+    except LocalNetworkConfirmationRequired as exc:
+        raise HTTPException(409, {
+            "confirmation": "local_network", "hosts": list(exc.hosts),
+            "message": "This transfer connects to an address on your private network.",
+        }) from None
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:
@@ -1601,6 +1610,10 @@ class TransferPolicyUpdate(BaseModel):
     execution_poll_interval_seconds: int | None = None
     provider_poll_interval_seconds: int | None = None
     stalled_timeout_hours: int | None = None
+    material_checkpoint_interval_seconds: int | None = None
+    graceful_stop_timeout_seconds: int | None = None
+    private_lan_connections: bool | None = None
+    skip_private_lan_confirmation: bool | None = None
 
 
 @router.get("/transfer-policy")

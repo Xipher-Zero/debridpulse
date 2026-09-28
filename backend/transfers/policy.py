@@ -237,6 +237,15 @@ class TransferPolicy:
     local_resource_failure_handler: Callable[[NormalizedError], bool] | None = None
     same_candidate_no_progress_limit: int = 2
     refreshes_per_recovery_epoch: int = 1
+    # DebridPulse-owned material continuation: how often a running writer's
+    # reported material is made durable and committed, and how long a writer
+    # being replaced may quiesce before it is force-fenced.
+    material_checkpoint_interval: float = 5.0
+    graceful_stop_timeout: float = 10.0
+    # Explicit operator-submitted private-LAN destinations (admission policy;
+    # the connection boundary enforces the same setting independently).
+    private_lan_connections: bool = False
+    skip_private_lan_confirmation: bool = False
 
     @staticmethod
     def compatibility(error: NormalizedError) -> NormalizedError:
