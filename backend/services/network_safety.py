@@ -35,6 +35,8 @@ DEFAULT_DESTINATION_PORTS: dict[str, int] = {
     "https": 443,
     "ftp": 21,
     "sftp": 22,
+    "rsync": 873,
+    "rsync+ssh": 22,
 }
 
 # Transports a *provider-issued link* may name. Providers hand back web
@@ -44,8 +46,9 @@ PROVIDER_LINK_SCHEMES: frozenset[str] = frozenset({"http", "https"})
 
 # Transports the downloader may be pointed at. This is the guarded-transport
 # set: every scheme here is carried through the same hardened validation,
-# connection-time resolution, and egress guard. It is kept equal to the aria2
-# executor's positive claim by regression, not by importing across the layer.
+# connection-time resolution, and egress guard. It is kept equal to the union
+# of the executors' positive claims by regression, not by importing across the
+# layer.
 PUBLIC_DESTINATION_SCHEMES: frozenset[str] = frozenset(DEFAULT_DESTINATION_PORTS)
 
 

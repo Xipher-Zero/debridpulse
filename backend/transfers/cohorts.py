@@ -7,6 +7,8 @@ evidence is always gathered before canonical ownership mutation.
 """
 from __future__ import annotations
 
+import hashlib
+
 from dataclasses import dataclass, replace
 import logging
 from types import SimpleNamespace
@@ -15,8 +17,8 @@ from db.database import get_db
 from transfers.errors import TransferError
 from transfers.models import ExecutionSubject
 from transfers.mirrors import (
-    EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key, self_evidence,
-    shared_evidence,
+    REMOTE_CAPACITY_REASON, EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key,
+    self_evidence, shared_evidence,
 )
 
 
@@ -453,6 +455,24 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
         if row.get("equivalence_disposition") == "pending" and scheduled_at > now:
             await db.commit()
             _decision(record, incoming, "proof_retry_already_pending", evidence.reason,
+                      evidence=evidence, mapping_cardinality=mapping_cardinality, retry_count=retries)
+            return True
+        if evidence.reason == REMOTE_CAPACITY_REASON:
+            # The source server refused to admit the proof (its own connection
+            # limit): nothing was proven or disproven, so no budget is spent --
+            # the proof simply waits for capacity, never becoming a held state.
+            # Siblings refused together must not retry together (they would
+            # only collide again): each waits its own stable share of one to
+            # four retry delays.
+            share = int(hashlib.sha256(str(record.id).encode("utf-8")).hexdigest()[:8], 16) % 3000
+            retry_at = now + _retry_delay(engine) * (1 + share / 1000)
+            await db.execute(
+                """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition='pending',
+                    equivalence_target_artifact_id=NULL,retry_at=? WHERE id=? AND state='materializing'""",
+                (evidence.reason, retry_at, record.id),
+            )
+            await db.commit()
+            _decision(record, incoming, "remote_capacity_wait", evidence.reason,
                       evidence=evidence, mapping_cardinality=mapping_cardinality, retry_count=retries)
             return True
         if retries >= _PROOF_RETRY_BUDGET:

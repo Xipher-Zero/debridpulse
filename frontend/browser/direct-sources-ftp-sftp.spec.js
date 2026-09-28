@@ -66,11 +66,13 @@ const CARDS = [
    ['Direct downloads from', 'FTP and SFTP URLs.']],
   ['general_scp', '.dp-settings-provider-card--general-scp', 'SCP',
    ['Direct downloads from', 'SCP and SSH file URLs.']],
+  ['general_rsync', '.dp-settings-provider-card--general-rsync', 'rsync',
+   ['Direct downloads from', 'rsync and rsync-over-SSH sources.']],
 ];
 
 /* Protocols that do not exist yet. They appear when a real provider is
  * registered through the canonical machinery, and never before. */
-const UNREGISTERED = ['WebDAV', 'rsync', 'Multilink'];
+const UNREGISTERED = ['WebDAV', 'Multilink'];
 
 const grid = page => page.locator('.dp-settings-general-sources .dp-settings-source-box-grid');
 

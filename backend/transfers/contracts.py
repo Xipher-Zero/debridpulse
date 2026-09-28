@@ -271,11 +271,13 @@ class RemoteDiscovery(Protocol):
     Answers the neutral ``InputRequirement`` when access input is definitively
     needed (the one INPUT_REQUIRED lifecycle and the authentication-input owner
     carry it; ``submitted`` is that owner's answer), a ``DiscoveryResult`` of the
-    directory's immediate regular files, or raises a normalized
-    ``TransferError`` for a definitive failure."""
+    directory's immediate regular files -- its whole tree when ``recursive`` --
+    or raises a normalized ``TransferError`` for a definitive failure. An
+    executor that cannot list a tree raises ``UNSUPPORTED_CAPABILITY`` for a
+    recursive discovery rather than answer with less."""
 
-    async def discover(self, subject: ExecutionSubject,
-                       submitted: SubmittedInput | None = None) -> DiscoveryResult | InputRequirement: ...
+    async def discover(self, subject: ExecutionSubject, submitted: SubmittedInput | None = None, *,
+                       recursive: bool = False) -> DiscoveryResult | InputRequirement: ...
 
 
 @runtime_checkable

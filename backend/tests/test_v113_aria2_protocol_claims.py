@@ -33,6 +33,8 @@ from transfers.models import ExecutionSubject
 
 CLAIMED = ("http", "https", "ftp", "sftp")
 UNCLAIMED = ("scp", "rsync", "ftps", "webdav", "webdavs", "metalink", "magnet", "file")
+# Transports no executor delivers: the guarded-destination validator refuses them.
+UNGUARDED = tuple(scheme for scheme in UNCLAIMED if scheme != "rsync")
 
 
 def _candidate(*schemes: str) -> TransferCandidate:
@@ -224,13 +226,15 @@ async def test_the_sampler_itself_fails_closed_on_an_unsampleable_scheme(scheme)
 
 def test_one_validator_owns_both_scheme_sets() -> None:
     assert safety.PROVIDER_LINK_SCHEMES == frozenset({"http", "https"})
-    assert safety.PUBLIC_DESTINATION_SCHEMES == frozenset({"http", "https", "ftp", "sftp"})
+    assert safety.PUBLIC_DESTINATION_SCHEMES == frozenset({"http", "https", "ftp", "sftp", "rsync", "rsync+ssh"})
     assert safety.PROVIDER_LINK_SCHEMES < safety.PUBLIC_DESTINATION_SCHEMES
 
 
 def test_guarded_transport_set_matches_the_executor_claim() -> None:
-    """The guarded-transport set and the executor claim may never drift apart."""
-    assert safety.PUBLIC_DESTINATION_SCHEMES == executor_module.SUPPORTED_SCHEMES
+    """The guarded-transport set and the executors' claims may never drift apart."""
+    import executors.rsync.executor as rsync_module
+    assert executor_module.SUPPORTED_SCHEMES.isdisjoint(rsync_module.SUPPORTED_SCHEMES)
+    assert safety.PUBLIC_DESTINATION_SCHEMES == executor_module.SUPPORTED_SCHEMES | rsync_module.SUPPORTED_SCHEMES
 
 
 @pytest.mark.parametrize("scheme", CLAIMED)
@@ -248,7 +252,7 @@ def test_provider_link_boundary_still_rejects_the_new_transports() -> None:
             safety.validate_provider_download_url(f"{scheme}://provider.example/f.bin")
 
 
-@pytest.mark.parametrize("scheme", UNCLAIMED)
+@pytest.mark.parametrize("scheme", UNGUARDED)
 def test_validator_still_rejects_unclaimed_schemes(scheme) -> None:
     with pytest.raises(safety.UnsafeDestinationError):
         safety.validate_provider_download_url(
@@ -285,7 +289,8 @@ def test_validator_performs_no_destructive_url_rewriting() -> None:
 
 
 def test_one_canonical_default_port_table() -> None:
-    assert safety.DEFAULT_DESTINATION_PORTS == {"http": 80, "https": 443, "ftp": 21, "sftp": 22}
+    assert safety.DEFAULT_DESTINATION_PORTS == {"http": 80, "https": 443, "ftp": 21, "sftp": 22,
+                                                "rsync": 873, "rsync+ssh": 22}
     for scheme, port in safety.DEFAULT_DESTINATION_PORTS.items():
         assert safety.default_destination_port(scheme) == port
 

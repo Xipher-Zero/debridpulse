@@ -9,6 +9,7 @@ const PROTOCOLS = {
   general_http: {glyph: 'globe', colour: 'rgb(59, 130, 246)'},
   general_ftp: {glyph: 'arrow-up-down', colour: 'rgb(45, 212, 191)'},
   general_scp: {glyph: 'file-down', colour: 'rgb(167, 139, 250)'},
+  general_rsync: {glyph: 'folder-sync', colour: 'rgb(124, 58, 237)'},
   usenet: {glyph: 'newspaper', colour: 'rgb(203, 213, 225)'},
 };
 
@@ -214,7 +215,8 @@ test('the chip surface and border derive from the protocol colour', async ({page
   expect(by.general_http.background).toBe(by.direct_sources.background);
   // ...and protocols with different colours do not.
   for (const [a, b] of [['general_http', 'general_ftp'], ['general_ftp', 'usenet'],
-                        ['general_http', 'usenet'], ['general_ftp', 'general_scp']]) {
+                        ['general_http', 'usenet'], ['general_ftp', 'general_scp'],
+                        ['general_scp', 'general_rsync']]) {
     expect(by[a].borderColour, `${a} vs ${b} share a border colour`).not.toBe(by[b].borderColour);
     expect(by[a].background, `${a} vs ${b} share a surface`).not.toBe(by[b].background);
   }

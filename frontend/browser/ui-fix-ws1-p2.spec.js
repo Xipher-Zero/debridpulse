@@ -61,6 +61,7 @@ function fixture(base, {adEnabled = true, adConfigured = false, adVerified = fal
   // are not inherited.
   delete result.integrations.general_ftp;
   delete result.integrations.general_scp;
+  delete result.integrations.general_rsync;
   delete result.integrations.usenet;
   Object.assign(result.integrations, clone(extraProviders));
   result.full_sync_interval_minutes ??= 5;

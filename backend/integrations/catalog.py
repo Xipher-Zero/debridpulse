@@ -1,13 +1,15 @@
 """The production registration point; core routing remains in IntegrationRegistry."""
 from executors.aria2.definition import definition as aria2
+from executors.rsync.definition import definition as rsync
 from providers.alldebrid.definition import definition as alldebrid
 from providers.general_ftp.definition import definition as general_ftp
 from providers.general_scp.definition import definition as general_scp
+from providers.general_rsync.definition import definition as general_rsync
 from providers.general_http.definition import definition as general_http
 from integrations.configuration import effective_integration_settings
 from integrations.usenet.definition import definition as usenet
 
-definitions = (alldebrid, usenet, general_http, general_ftp, general_scp, aria2)
+definitions = (alldebrid, usenet, general_http, general_ftp, general_scp, general_rsync, aria2, rsync)
 
 
 def register(registry, settings, environment, selected=definitions):

@@ -8,12 +8,13 @@ const { test, expect } = require('@playwright/test');
  * never disappears.
  *
  * This file is the ONE spec file that writes `integrations.general_scp.enabled`
- * (spec files share one backend and run concurrently); SCP moves with (S)FTP in
- * every case below, so "every child" really is every Network Sources member.
+ * and `integrations.general_rsync.enabled` (spec files share one backend and
+ * run concurrently); SCP and rsync move with (S)FTP in every case below, so
+ * "every child" really is every Network Sources member.
  */
 
 const GROUP = 'direct_sources';
-const CHILDREN = ['general_http', 'general_ftp', 'general_scp'];
+const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -22,10 +23,11 @@ async function isolateExternalFonts(page) {
 
 const canonical = page => page.request.get('/api/settings').then(r => r.json());
 
-async function setChildren(page, http, ftp, scp = ftp) {
+async function setChildren(page, http, ftp, scp = ftp, rsync = ftp) {
   await page.request.patch('/api/integrations/general_http/configuration', {data: {enabled: http}});
   await page.request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: ftp}});
   await page.request.patch('/api/integrations/general_scp/configuration', {data: {enabled: scp}});
+  await page.request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: rsync}});
 }
 
 async function setMaster(page, enabled) {
@@ -82,7 +84,7 @@ const groupState = page => page.evaluate(group => {
  * integration state to prove a colour would be racing every other spec that
  * owns that same state. The durable semantics below still use the real API --
  * they are about durability and have to. */
-async function renderStatus(page, {http, ftp, scp = ftp, master}) {
+async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, master}) {
   const live = await page.request.get('/api/settings').then(r => r.json());
   await page.goto('/');
   await page.evaluate(([entries, gates]) => {
@@ -91,7 +93,8 @@ async function renderStatus(page, {http, ftp, scp = ftp, master}) {
     {...live.integrations,
      general_http: {...live.integrations.general_http, enabled: http},
      general_ftp: {...live.integrations.general_ftp, enabled: ftp},
-     general_scp: {...live.integrations.general_scp, enabled: scp}},
+     general_scp: {...live.integrations.general_scp, enabled: scp},
+     general_rsync: {...live.integrations.general_rsync, enabled: rsync}},
     {[GROUP]: {enabled: master, label: 'Network Sources', members: CHILDREN}},
   ]);
   await page.evaluate(() => window.DPProviderStatus.refresh());
@@ -108,6 +111,7 @@ test.beforeAll(async ({request}) => {
     http: settings.integrations.general_http.enabled,
     ftp: settings.integrations.general_ftp.enabled,
     scp: settings.integrations.general_scp.enabled,
+    rsync: settings.integrations.general_rsync.enabled,
     master: settings.integration_groups?.[GROUP]?.enabled !== false,
   };
 });
@@ -117,6 +121,7 @@ test.afterAll(async ({request}) => {
   await request.patch('/api/integrations/general_http/configuration', {data: {enabled: original.http}});
   await request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: original.ftp}});
   await request.patch('/api/integrations/general_scp/configuration', {data: {enabled: original.scp}});
+  await request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: original.rsync}});
   await request.patch(`/api/integration-groups/${GROUP}/configuration`, {data: {enabled: original.master}});
 });
 
@@ -247,7 +252,8 @@ test('every Services enable control is immediate', async ({page}) => {
     '.dp-settings-panel[data-panel="sources"] [data-integration-enabled], ' +
     '.dp-settings-panel[data-panel="sources"] [data-integration-group-enabled]',
     nodes => nodes.map(n => n.dataset.integrationEnabled || n.dataset.integrationGroupEnabled));
-  expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', 'general_scp', GROUP]));
+  expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', 'general_scp',
+    'general_rsync', GROUP]));
 });
 
 /* The suite's designated NEUTRAL whole-settings probe.
@@ -332,10 +338,13 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'one member off did not converge').toBe('mixed');
 
-    // The SCP member's Enable is the same immediate canonical control.
+    // The SCP and rsync members' Enables are the same immediate canonical control.
     await flipChild(page, 'general_scp');
     await expect.poll(async () => (await canonical(page)).integrations.general_scp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'two members off did not converge').toBe('mixed');
+    await flipChild(page, 'general_rsync');
+    await expect.poll(async () => (await canonical(page)).integrations.general_rsync.enabled).toBe(false);
+    await expect.poll(() => groupState(page), 'three members off did not converge').toBe('mixed');
 
     await flipChild(page, 'general_http');
     await expect.poll(async () => (await canonical(page)).integrations.general_http.enabled).toBe(false);

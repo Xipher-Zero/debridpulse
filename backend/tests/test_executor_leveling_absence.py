@@ -41,13 +41,26 @@ def _without_legacy_input_maps(path: Path) -> str:
     return "\n".join(lines)
 
 
+# The modules that own URL-scheme (request-kind) knowledge name every
+# transport's scheme. The rsync scheme shares its word with the rsync executor,
+# so there -- and only there -- the word is a request kind, never an executor
+# identity; these modules never consult an executor at all (asserted below).
+_SCHEME_OWNERS = frozenset({"transfers/requests.py", "core/presentation_safety.py"})
+
+
 def test_universal_core_contains_no_concrete_executor_name():
     offenders = []
     for path in _files(CORE_PACKAGES):
         text = _without_legacy_input_maps(path)
-        if re.search(r"aria2|sabnzbd|\bsab\b|rsync", text, re.I):
+        names = r"aria2|sabnzbd|\bsab\b" + ("" if str(path.relative_to(BACKEND)) in _SCHEME_OWNERS else "|rsync")
+        if re.search(names, text, re.I):
             offenders.append(str(path.relative_to(BACKEND)))
     assert offenders == []
+
+
+def test_the_scheme_owners_never_consult_an_executor():
+    for relative in _SCHEME_OWNERS:
+        assert "executor" not in (BACKEND / relative).read_text().lower(), relative
 
 
 def test_universal_core_contains_no_native_job_identity_names():

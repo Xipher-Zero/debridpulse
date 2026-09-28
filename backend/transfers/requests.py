@@ -54,16 +54,18 @@ def extract_hash(magnet: str) -> Optional[str]:
 
 # The direct-source transports one link submission may carry. The request kind
 # is the URL scheme; provider applicability decides who resolves it.
-DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh"})
+DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh"})
 
 
 # The authentication target scope of a URL-shaped resource. Scheme knowledge
 # belongs here, with the request kinds themselves: the authentication-input
-# owner only ever compares opaque scopes. SCP, SSH and SFTP are one family --
-# the same server authenticates all three.
+# owner only ever compares opaque scopes. SCP, SSH, SFTP and rsync over SSH
+# are one family -- the same server authenticates all four. An rsync daemon is
+# its own service with its own accounts.
 _AUTH_SCOPE_FAMILIES = {
     "http": ("http", 80), "https": ("https", 443), "ftp": ("ftp", 21),
-    "sftp": ("ssh", 22), "scp": ("ssh", 22), "ssh": ("ssh", 22),
+    "sftp": ("ssh", 22), "scp": ("ssh", 22), "ssh": ("ssh", 22), "rsync+ssh": ("ssh", 22),
+    "rsync": ("rsync", 873),
 }
 
 
@@ -93,7 +95,7 @@ def auth_scope(address) -> AuthScope | None:
 
 # The remote-file transports whose resources a provider can address by one
 # canonical coordinate within a server scope (``remote_object_coordinate``).
-_REMOTE_OBJECT_FAMILIES = frozenset({"ftp", "ssh"})
+_REMOTE_OBJECT_FAMILIES = frozenset({"ftp", "ssh", "rsync"})
 
 
 def remote_object_coordinate(address) -> str:
@@ -155,14 +157,14 @@ def normalize_direct_links(values: List[str]) -> List[str]:
         except ValueError:
             malformed_port = True
         if malformed_port:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL")
         if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES or not parsed.hostname:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL")
+            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL")
         if value not in seen:
             normalized.append(value)
             seen.add(value)
     if not normalized:
-        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP or SSH link is required")
+        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync link is required")
     if len(normalized) > MAX_DIRECT_LINKS_PER_BATCH:
         raise ValueError(
             f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"

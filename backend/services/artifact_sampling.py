@@ -639,12 +639,25 @@ async def ftp_discovery(address: str, *, connect: Connect, username: str, passwo
 
 # ── SFTP ───────────────────────────────────────────────────────────────────
 
+# The host-key preference of every SSH consumer of one authentication scope.
+# A server with several host keys presents the one its client negotiates, so
+# the identity an operator confirms for a scope is only the identity each of
+# its consumers verifies if they all ask in this order -- the packaged libssh2
+# 1.11.1 preference, which the aria2 SFTP executor cannot change.
+SSH_HOST_KEY_ALGORITHMS = (
+    "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
+    "ssh-ed25519", "rsa-sha2-512", "rsa-sha2-256", "ssh-rsa",
+)
+
+
 class _IdentityCheck(asyncssh.SSHClient):
     """Host identity is decided during key exchange, before any authentication."""
 
-    def __init__(self, expected: str | None):
+    def __init__(self, expected: str | None, client_key=None):
         self.expected = expected
         self.observed = ""
+        self.client_key = client_key
+        self.offered = False
 
     def validate_host_public_key(self, host, addr, port, key) -> bool:
         # SHA-1 of the host-key blob is the identity format the native executor
@@ -654,54 +667,99 @@ class _IdentityCheck(asyncssh.SSHClient):
         self.observed = hashlib.sha1(key.public_data).hexdigest()  # nosec B324
         return bool(self.expected) and self.observed == self.expected
 
+    def public_key_auth_requested(self):
+        # The one supplied key, offered once; never a local or agent key.
+        if self.client_key is None or self.offered:
+            return None
+        self.offered = True
+        return self.client_key
 
-def _ssh_options(host_key_algorithms, timeout: float) -> dict:
+
+def _ssh_options(host_key_algorithms, timeout: float, *, key: bool = False) -> dict:
     # Nothing from the local account participates: no config files, no
-    # known_hosts file (never read, never written), no agent, no client keys,
-    # no GSS, no X.509 trust store -- only the explicit identity decision above.
-    # Only password authentication is offered: keyboard-interactive or any
-    # other mechanism is never answered with material supplied for a password.
+    # known_hosts file (never read, never written), no agent, no local client
+    # keys, no GSS, no X.509 trust store -- only the explicit identity decision
+    # above. Exactly the supplied mechanism is offered: a password is never
+    # used to answer keyboard-interactive or any other mechanism, and a
+    # supplied key is only ever offered as that one public key.
     return dict(
         known_hosts=lambda _host, _addr, _port: ([], [], []), config=None, client_keys=None,
-        agent_path=None, gss_host=None, x509_trusted_certs=None, preferred_auth=["password"],
+        agent_path=None, gss_host=None, x509_trusted_certs=None,
+        preferred_auth=["publickey"] if key else ["password"],
         server_host_key_algs=list(host_key_algorithms), connect_timeout=timeout, login_timeout=timeout,
     )
 
 
+def client_key(private_key: str, passphrase: str = ""):
+    """THE one import of a supplied private key: OpenSSH (encrypted or not,
+    via bcrypt's KDF), PKCS#8 (encrypted or not) and the traditional PEM
+    formats. Raises ``ValueError`` for material that cannot sign -- a wrong or
+    missing passphrase, or not a private key -- with no key text in it."""
+    try:
+        return asyncssh.import_private_key(private_key, passphrase or None)
+    except (asyncssh.KeyImportError, asyncssh.KeyEncryptionError, ValueError, TypeError):
+        raise ValueError("unusable private key") from None
+
+
 @asynccontextmanager
-async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None,
-                        username: str, password: str, timeout: float):
-    """THE one SSH/SFTP session primitive: identity, then authentication, then SFTP.
+async def ssh_connection(host: str, *, sock, host_key_algorithms, host_identity: str | None,
+                         username: str, password: str = "", private_key: str = "", passphrase: str = "",
+                         timeout: float):
+    """THE one SSH identity-then-authentication step, over an already
+    connected egress-guarded socket.
 
     Without ``host_identity`` the server's host key is only observed and
     refused as ``AccessRequired(observed)``; no credential is sent. With it, a
     presented key that differs fails closed during key exchange -- before
-    authentication -- and only then is the password offered. A server that
-    never offers password authentication is an unsupported method, never an
-    access requirement: the supplied material cannot answer it. Evidence and
-    discovery both run on this one session, so they cannot trust differently."""
-    host = str(urlsplit(address).hostname or "")
-    client = _IdentityCheck(host_identity)
+    authentication -- and only then is the password (or, with ``private_key``,
+    that one key, imported by ``client_key``) offered. Key material that cannot
+    sign is refused as ``unavailable("key_unusable")`` before any connection
+    work. A server that never asks for the supplied mechanism
+    is an unsupported method, never an access requirement: the supplied
+    material cannot answer it. Every SSH consumer -- SFTP evidence and
+    discovery, and a subprocess transport's SSH channel -- runs through this
+    one step, so none of them can trust or authenticate differently."""
+    key = None
+    if private_key:
+        try:
+            key = client_key(private_key, passphrase)
+        except ValueError:
+            raise _SessionRefused(unavailable("key_unusable")) from None
+    client = _IdentityCheck(host_identity, key)
     offered = []
 
     def supply_password():
         offered.append(True)
         return password or None
 
-    sock = await connect(None)
+    credential = {} if key is not None else {"password": supply_password}
     try:
         connection, _ = await asyncssh.create_connection(
-            lambda: client, host, sock=sock, username=username or "evidence", password=supply_password,
-            **_ssh_options(host_key_algorithms, timeout))
+            lambda: client, host, sock=sock, username=username or "evidence", **credential,
+            **_ssh_options(host_key_algorithms, timeout, key=key is not None))
     except asyncssh.HostKeyNotVerifiable:
         if not host_identity and client.observed:
             raise _SessionRefused(AccessRequired(client.observed)) from None
         raise _SessionRefused(unavailable("destination_rejected")) from None
     except asyncssh.PermissionDenied:
-        if not offered:
+        if not offered and not client.offered:
             raise _SessionRefused(unavailable("auth_method_unsupported")) from None
         raise _SessionRefused(AccessRequired(host_identity or client.observed)) from None
     async with connection:
+        yield connection
+
+
+@asynccontextmanager
+async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None,
+                        username: str, password: str, timeout: float):
+    """THE one SSH/SFTP session primitive: identity, then authentication
+    (``ssh_connection``), then SFTP. Evidence and discovery both run on this
+    one session, so they cannot trust differently."""
+    host = str(urlsplit(address).hostname or "")
+    sock = await connect(None)
+    async with ssh_connection(host, sock=sock, host_key_algorithms=host_key_algorithms,
+                              host_identity=host_identity, username=username, password=password,
+                              timeout=timeout) as connection:
         try:
             sftp = await connection.start_sftp_client()
         except (asyncssh.ChannelOpenError, asyncssh.SFTPError):

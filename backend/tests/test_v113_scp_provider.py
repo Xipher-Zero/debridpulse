@@ -310,7 +310,9 @@ def test_a_disabled_scp_provider_claims_nothing_and_nothing_else_steals_it(tmp_p
 def test_no_scp_executor_and_no_native_scp_transport_exist() -> None:
     from executors.aria2.executor import SUPPORTED_SCHEMES
     assert SUPPORTED_SCHEMES == frozenset({"http", "https", "ftp", "sftp"})
-    assert [item.id for item in definitions if item.kind in {"executor", "provider_executor"}] == ["usenet", "aria2"]
+    # The rsync executor runs rsync (over its own SSH channel), never scp or ssh.
+    assert [item.id for item in definitions if item.kind in {"executor", "provider_executor"}] == [
+        "usenet", "aria2", "rsync"]
     # Nothing ever spawns a native scp/ssh client: every process launch in the
     # backend names a program, and none of them is one.
     for path in (ROOT / "backend").rglob("*.py"):
@@ -359,8 +361,8 @@ def test_intake_accepts_credentials_for_the_core_admission_boundary_to_split(lin
 
 
 def test_admission_wording_names_every_accepted_transport() -> None:
-    with pytest.raises(ValueError, match="HTTP, HTTPS, FTP, SFTP, SCP or SSH"):
-        normalize_direct_links(["rsync://a.invalid/f"])
+    with pytest.raises(ValueError, match="HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync"):
+        normalize_direct_links(["webdav://a.invalid/f"])
 
 
 # ── 6. Truthful provenance ───────────────────────────────────────────────────
@@ -419,8 +421,8 @@ def test_file_down_is_vendored_from_the_pinned_lucide_commit_in_lavender() -> No
 
 def test_quick_add_accepts_scp_and_ssh_links() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "/^(?:https?|s?ftp|scp|ssh):\\/\\/\\S+$/i" in app
-    assert "enter an HTTP(S), FTP, SFTP, SCP or SSH link or a magnet URI" in app
+    assert "/^(?:https?|s?ftp|scp|ssh|rsync(?:\\+ssh)?):\\/\\/\\S+$/i" in app
+    assert "enter an HTTP(S), FTP, SFTP, SCP, SSH or rsync link or a magnet URI" in app
 
 
 # ── Home-relative paths: resolved by the one discovery owner, never a shell ──

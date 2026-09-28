@@ -11,6 +11,9 @@ python-multipart==0.0.32
 prometheus-client==0.26.0
 argon2-cffi==25.1.0
 asyncssh==2.24.0
+# asyncssh's backend for passphrase-encrypted OpenSSH-format private keys (bcrypt
+# KDF), the default format of ssh-keygen; required by username_private_key.
+bcrypt==5.0.0
 authlib==1.7.2
 httpx==0.28.1
 joserfc==1.7.4

@@ -78,6 +78,7 @@ function integratedSettings(base) {
   // Downloads); providers added to the live tree later are not inherited.
   delete settings.integrations.general_ftp;
   delete settings.integrations.general_scp;
+  delete settings.integrations.general_rsync;
   delete settings.integrations.usenet;
   settings.full_sync_interval_minutes ??= 5;
   return settings;

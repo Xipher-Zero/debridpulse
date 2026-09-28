@@ -23,8 +23,8 @@ from urllib.parse import urlsplit
 from executors.aria2.client import Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
-    SAMPLED_FINGERPRINT_SCHEMES, AccessRequired, Listing, ListingRefused, RemoteFile, ftp_discovery, ftp_fingerprint,
-    sampled_public_artifact_fingerprint, sftp_discovery, sftp_fingerprint,
+    SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, RemoteFile,
+    ftp_discovery, ftp_fingerprint, sampled_public_artifact_fingerprint, sftp_discovery, sftp_fingerprint,
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
@@ -54,12 +54,11 @@ _HOST_KEY_SENTINEL = "0" * 40
 # credentials are ever inherited by an owned job.
 _ANONYMOUS_LOGIN = {"ftp-user": "anonymous", "ftp-passwd": "ARIA2USER@"}
 # The packaged libssh2 1.11.1 host-key preference (characterized against servers
-# restricted to subsets of ECDSA/Ed25519/RSA keys). Evidence acquisition asks for
-# the same order, so the identity an operator confirms is the one aria2 verifies.
-_NATIVE_HOST_KEY_ORDER = (
-    "ecdsa-sha2-nistp256", "ecdsa-sha2-nistp384", "ecdsa-sha2-nistp521",
-    "ssh-ed25519", "rsa-sha2-512", "rsa-sha2-256", "ssh-rsa",
-)
+# restricted to subsets of ECDSA/Ed25519/RSA keys). It is the one preference of
+# the whole SSH authentication scope, owned beside the one SSH step, so evidence
+# acquisition -- and every other consumer of that scope -- asks for the same
+# order and the identity an operator confirms is the one aria2 verifies.
+_NATIVE_HOST_KEY_ORDER = SSH_HOST_KEY_ALGORITHMS
 _SHA1_IDENTITY = re.compile(r"[0-9a-f]{40}")
 # Positive transport claim only: a transport aria2 actually delivers and that
 # the canonical destination validator and egress guard cover. Everything else
@@ -456,7 +455,7 @@ class Aria2Executor:
         "timeout": (Domain.NETWORK, Category.CONNECTION_TIMEOUT, Retryability.BACKOFF),
     }
 
-    async def discover(self, subject, submitted: SubmittedInput | None = None):
+    async def discover(self, subject, submitted: SubmittedInput | None = None, *, recursive: bool = False):
         """Read-only classification of one FTP or SFTP path before any candidate exists.
 
         The same destination validation, egress route and access decisions
@@ -465,10 +464,10 @@ class Aria2Executor:
         same host-key order and session primitive as evidence); FTP through the
         same-host passive route, anonymously unless a login was supplied. A
         regular file is reported as one file; a directory as its immediate
-        regular files."""
+        regular files. A tree is never listed here (``recursive`` is refused)."""
         candidate = subject.candidate
         endpoint = self._endpoint(candidate)
-        if (endpoint is None or endpoint.scheme not in {"ftp", "sftp"}
+        if (recursive or endpoint is None or endpoint.scheme not in {"ftp", "sftp"}
                 or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods):
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         lan = self._private_lan(candidate)

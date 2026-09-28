@@ -1331,10 +1331,13 @@ class TransferEngine:
                                             retryability=Retryability.NEVER))
         scope = self._input_scope(candidate)
         family = scope.family if scope is not None else ""
+        # The provider's tree semantics reach the executor only when asked, so
+        # a flat discovery is exactly the call it always was.
+        tree = {"recursive": True} if request.recursive else {}
         try:
             for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
                 try:
-                    outcome = await executor.discover(subject, submitted)
+                    outcome = await executor.discover(subject, submitted, **tree)
                 finally:
                     if submitted is not None:
                         submitted.discard()

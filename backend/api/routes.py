@@ -227,7 +227,7 @@ def _safe_original_resource(request_payload) -> str | None:
     if kind in {"http", "https"}:
         return safe_original_http_resource(raw, max_length=180) or request.name or "HTTP/HTTPS resource"
 
-    if kind in {"ftp", "sftp", "scp", "ssh"}:
+    if kind in {"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh"}:
         # The operator's own remote-file request (never, for SCP/SSH, the SFTP
         # address it executes as): scheme, host, non-default port and path only.
         return safe_original_remote_file_resource(raw, max_length=180) or request.name or f"{kind.upper()} resource"

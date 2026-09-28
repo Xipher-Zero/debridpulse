@@ -57,6 +57,7 @@
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
   const policyOf = s => s?.transfer_policy || {};
   const usenetOf = s => s?.integrations?.usenet?.options || {};
+  const rsyncOf = s => s?.integrations?.rsync?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
   // ``converge`` is the row that has to change because the ACCEPTED state
@@ -96,7 +97,7 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet']);
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet', 'rsync']);
 
   const COMMIT_FIELDS = Object.freeze({
     // Services
@@ -121,6 +122,14 @@
     usenet_max_acquisition_retries: {scope: 'integration:usenet', option: 'max_acquisition_retries'},
     usenet_operation_timeout_seconds: {scope: 'integration:usenet', option: 'operation_timeout_seconds'},
     usenet_direct_write: {scope: 'integration:usenet', option: 'direct_write', commit: 'immediate'},
+
+    // Downloads -> rsync tuning
+    rsync_partial_transfers: {scope: 'integration:rsync', option: 'partial_transfers', commit: 'immediate'},
+    rsync_compression: {scope: 'integration:rsync', option: 'compression', commit: 'immediate'},
+    rsync_preserve_modification_time: {scope: 'integration:rsync', option: 'preserve_modification_time',
+                                       commit: 'immediate'},
+    rsync_connection_timeout_seconds: {scope: 'integration:rsync', option: 'connection_timeout_seconds'},
+    rsync_transfer_timeout_seconds: {scope: 'integration:rsync', option: 'transfer_timeout_seconds'},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -821,8 +830,8 @@
    * of thing, and the only difference is what the mutation is scoped to. */
   /* The ONE Settings protocol identity chip.
    *
-   * Seven appearances (Network Sources, HTTP(S), (S)FTP, SCP and Usenet on
-   * Services; Network Sources and Usenet on Downloads) render this
+   * Nine appearances (Network Sources, HTTP(S), (S)FTP, SCP, rsync and Usenet
+   * on Services; Network Sources, rsync and Usenet on Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
    * and a protocol contributes nothing but its canonical colour. */
   const PROTOCOL_GLYPHS = Object.freeze({
@@ -830,6 +839,7 @@
     general_http: 'globe',
     general_ftp: 'arrow-up-down',
     general_scp: 'file-down',
+    general_rsync: 'folder-sync',
     usenet: 'newspaper',
   });
 
@@ -849,6 +859,7 @@
     general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
     general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
     general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
+    general_rsync: ['Direct downloads from', 'rsync and rsync-over-SSH sources.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {
@@ -1366,6 +1377,47 @@
   // Download Safety and Recovery. Operator-facing labels name capabilities,
   // never daemon implementations.
 
+  function rsyncTuning(s) {
+    // rsync's own transport behaviour only -- the global limits and retry
+    // policy stay where they already live. Two relationships: how one file is
+    // transferred, and how long reaching and running a transfer may take.
+    const options = rsyncOf(s);
+    return tuningCells(
+      tuningGroup(
+        tuningToggle(
+          'rsync_partial_transfers',
+          'Partial Transfers',
+          'Continue an interrupted file from what was already downloaded instead of starting it again.',
+          options.partial_transfers !== false
+        ),
+        tuningToggle(
+          'rsync_compression',
+          'Compression',
+          'Compress data in transit. Rarely helps with archives, video or other already-compressed files.',
+          options.compression === true
+        ),
+        tuningToggle(
+          'rsync_preserve_modification_time',
+          'Preserve Modification Time',
+          'Give each completed file the modification time it has on the source.',
+          options.preserve_modification_time !== false
+        ),
+      ),
+      tuningGroup(
+        input('rsync_connection_timeout_seconds', 'Connection Timeout (seconds)',
+          options.connection_timeout_seconds ?? 30, {
+          type: 'number', min: 5, max: 300,
+          hint: 'How long reaching the source and starting a transfer may take.'
+        }),
+        input('rsync_transfer_timeout_seconds', 'Transfer Timeout (seconds)',
+          options.transfer_timeout_seconds ?? 300, {
+          type: 'number', min: 30, max: 3600,
+          hint: 'How long a running transfer may receive no data before it stops.'
+        }),
+      ),
+    );
+  }
+
   function executorTuningCard(id, label, copy, body, protocol = '') {
     const bodyId = `dp-executor-tuning-${id}`;
     const identity = protocolIcon(protocol);
@@ -1502,6 +1554,8 @@
       executorTuningCard('direct', 'Network Sources',
         'How DebridPulse handles downloads from direct network sources.',
         directTransfersTuning(s), 'direct_sources') +
+      executorTuningCard('rsync', 'rsync',
+        'How DebridPulse transfers files using rsync.', rsyncTuning(s), 'general_rsync') +
       executorTuningCard('usenet', 'Usenet',
         'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',

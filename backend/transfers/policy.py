@@ -61,6 +61,22 @@ _MANDATORY_WAIT_CATEGORIES = frozenset({Category.RATE_LIMITED, Category.CONCURRE
 _MANDATORY_WAIT_RETRYABILITY = frozenset({
     Retryability.BACKOFF, Retryability.AFTER_REAUTH, Retryability.AFTER_RESOURCE_CHANGE,
 })
+# Waiting on remote capacity never grows the retry delay past this exponent.
+_CAPACITY_BACKOFF_STEPS = 32
+
+
+def remote_source_capacity(error: NormalizedError) -> bool:
+    """The source server itself refused to admit more concurrent work right
+    now (its own connection limit, reported by the executor that reached it).
+
+    An external capacity fact, not evidence against the candidate or its route:
+    such a refusal never spends a recovery or retry budget, and it is never a
+    stall or an unrelated network failure. DebridPulse stays the one admission
+    owner -- it simply retries later (or moves to an equivalent alternate), with
+    no second scheduler and no count of the server's slots. A provider
+    account's own concurrency limit is a provider fact (``Domain.PROVIDER``) and
+    keeps its ordinary bounded budget."""
+    return error.domain == Domain.NETWORK and error.category == Category.CONCURRENCY_LIMITED
 
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
@@ -343,6 +359,16 @@ class TransferPolicy:
             )
 
         no_progress = max(context.consecutive_no_progress_failures, context.same_signature_failures)
+        if remote_source_capacity(error):
+            if no_progress >= max(1, self.same_candidate_no_progress_limit) and context.has_alternate:
+                return RecoveryDecision(
+                    RecoveryAction.TRY_ALTERNATE_CANDIDATE, "remote_capacity_alternate", retry_at=now,
+                )
+            retry_at = now + self._delay(error, min(max(1, no_progress), _CAPACITY_BACKOFF_STEPS))
+            return RecoveryDecision(
+                RecoveryAction.BACKOFF, "remote_capacity_wait", retry_at=retry_at,
+                quiescence_reason="retry_backoff", wake_condition=f"retry_at:{retry_at}",
+            )
         if error.category in _RECONCILE_CATEGORIES:
             if no_progress < max(1, self.same_candidate_no_progress_limit):
                 retry_at = now + self._delay(error, max(1, no_progress))
@@ -424,6 +450,11 @@ class TransferPolicy:
             return RetryDecision()
         if error.stage == Stage.CLEANUP and error.retryability == Retryability.UNKNOWN:
             return RetryDecision()
+        if remote_source_capacity(error):
+            if attempts >= max(1, self.max_attempts) and has_alternate:
+                return RetryDecision(Recovery.TRY_ALTERNATE_CANDIDATE, now)
+            return RetryDecision(Recovery.RETRY, now + self._delay(error, min(max(1, attempts),
+                                                                             _CAPACITY_BACKOFF_STEPS)))
         if error.retryability == Retryability.UNKNOWN:
             if attempts >= max(1, self.max_attempts):
                 if has_alternate:

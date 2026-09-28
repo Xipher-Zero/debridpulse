@@ -14,6 +14,8 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # System deps + gosu (for PUID/PGID user-switching).
 # Debian's RAR codec is in non-free and plugs into the 7zip `7z` binary.
 # zstd is the exact outer decoder for .tar.zst/.tzst composite archives.
+# rsync is the rsync executor's native client (rsync daemon and rsync over SSH;
+# the SSH transport is DebridPulse's own channel, so no OpenSSH client ships).
 # The slim base excludes most /usr/share/doc content, so explicitly re-include
 # the 7zip-rar notices needed to ship its licensing terms with the image. The
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
@@ -55,6 +57,7 @@ RUN printf '%s\n' \
     perl-base && \
     apt-get install -y --no-install-recommends \
     aria2 \
+    rsync \
     curl \
     gosu \
     zstd \

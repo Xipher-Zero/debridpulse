@@ -459,16 +459,24 @@ class DiscoveryRequest:
     members; core runs the listing read-only through the executor that claims
     it, under the one authentication-input and server-identity owner, and
     hands the neutral result back to the provider. A provider never opens the
-    connection itself."""
+    connection itself.
+
+    ``recursive``: the provider's source semantics select the whole tree
+    beneath a directory, not only its immediate files. An executor that cannot
+    list a tree refuses the discovery; it never answers with a flat listing."""
     endpoint: Endpoint
     accepted_input_methods: tuple[InputMethod, ...] = ()
+    recursive: bool = False
 
 
 @dataclass(frozen=True)
 class DiscoveredEntry:
-    """One regular file found directly inside a discovered directory."""
+    """One regular file found inside a discovered directory. ``relative_path``
+    is its path below that directory for a recursive discovery (``""`` means
+    the file lies directly inside it, at ``name``)."""
     name: str
     expected_bytes: int = 0
+    relative_path: str = ""
 
 
 class RemoteObjectKind(StrEnum):
@@ -481,8 +489,12 @@ class RemoteObjectKind(StrEnum):
 class DiscoveryResult:
     """Authoritative remote facts about one discovered path.
 
-    A DIRECTORY carries its immediate regular-file members; nothing recursive,
-    no directories, no symbolic links, no remote-browser state. ``directory``
+    A DIRECTORY carries its immediate regular-file members -- or, for a
+    recursive discovery, every regular file of its tree, each at its
+    ``relative_path`` (a server whose top level is a set of named roots lists
+    each root as the first path segment); never directories, symbolic links or
+    special files, and never remote-browser state. Only a complete listing is a
+    result: anything the server refused to list fails the discovery. ``directory``
     is the concrete absolute path they were listed in, as the server resolved
     it -- so a home-relative request reaches execution as a canonical path. A
     regular FILE carries no members, only its size when the server reports it

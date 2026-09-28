@@ -258,6 +258,19 @@ class DownloaderEgressGuard:
             options[f"{protocol}-proxy-passwd"] = token
         return options
 
+    def proxy_credential(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
+                         private_lan: bool = False) -> tuple[str, int, str, str]:
+        """``(proxy host, proxy port, user, token)`` for a native client that
+        can only be pointed at an authenticated CONNECT proxy and cannot take a
+        pre-opened connection (``open_tunnel``). The same signed route-scoped
+        credential an aria2 job receives: it admits exactly the authorized
+        hostname and port, and the guard still performs the final resolution
+        and address policy at every CONNECT."""
+        host, port = _target(uri, private_lan)
+        self._proxy_url()
+        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan))
+        return _LOOPBACK, self._bound_port, user, token
+
     async def open_tunnel(
         self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT, port: int | None = None,
         timeout_seconds: float = 10.0, private_lan: bool = False,

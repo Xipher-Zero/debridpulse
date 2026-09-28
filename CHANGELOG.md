@@ -23,6 +23,29 @@
   form for the login folder) is resolved by the server through SFTP before anything downloads, so aria2
   only ever receives the concrete path; another user's `~name`, fragments, bracket classes and patterns in
   folder names are refused. The provider has its own Enable control.
+- **rsync Network Source and rsync executor** (`general_rsync` / `rsync`, both labelled rsync). `rsync://`
+  links reach an rsync server (`rsync://host/` offers every shared area it advertises) and `rsync+ssh://`
+  links a server reached over SSH (`~/` starts at the login folder). The server decides what a path is: a
+  file is one download; a folder -- with or without a trailing `/`, submitted or chosen alike -- is its whole
+  tree, frozen into the existing file selection. Symbolic links and special files are never members and
+  never followed, and every name is literal (rsync's own wildcards never apply). rsync only reads: nothing
+  is deleted, changed or uploaded on the server. Identity and login go through the existing authentication
+  owner (an rsync server's own accounts; over SSH, password or private key, with the same server-identity
+  confirmation SFTP and SCP use); secrets reach rsync only through one-shot pipes, never its command line,
+  environment or a file, and every connection crosses the egress guard. rsync continues a file exactly
+  from the material DebridPulse holds valid -- including a partial another executor wrote, and aria2 in
+  turn continues rsync's -- and its own quick check can never mark anything done. Downloads → Transfer
+  Method Settings → rsync has five settings: Partial Transfers (on), Compression (off), Preserve
+  Modification Time (on), Connection Timeout (30 s) and Transfer Timeout (300 s). The image now includes
+  the Debian rsync package (GPL-3.0-or-later; see docs/DEPENDENCY_LICENSES.md).
+- **Private-key sign-in accepts passphrase-protected OpenSSH keys.** The one SSH sign-in step imports a
+  supplied key in OpenSSH format (the `ssh-keygen` default, encrypted or not) or PKCS#8, with its optional
+  passphrase; a key that cannot be unlocked is asked for again, never used or skipped. This adds `bcrypt`
+  5.0.0 (Apache-2.0) to the locked runtime dependencies.
+- **A source server's connection limit is waited out, never a failure.** When a server refuses a
+  connection because its own limit is reached (an rsync daemon refuses at once; it never queues), the
+  transfer backs off and tries again -- or moves to an equivalent source -- without spending its retry,
+  recovery or duplicate-proof budget, and is never reported as stalled, timed out or held.
 - **Details shows the submitted FTP and SFTP link** as Original Resource (scheme, host, non-default port
   and path; a query only as `?…`, never credentials) instead of only the file name, through the same
   remote-file presentation owner SCP and SSH use.

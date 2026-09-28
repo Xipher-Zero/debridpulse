@@ -13,8 +13,12 @@ from transfers import size_evidence
 
 logger = logging.getLogger(__name__)
 _STRONG_INTEGRITY_ALGORITHMS = {"sha256", "sha512", "blake2", "blake2b", "blake2s"}
+# The source server refused to admit the proof's connection right now (its own
+# connection limit): no proof was attempted, so none is spent
+# (``cohorts._schedule_proof_retry``; ``policy.remote_source_capacity``).
+REMOTE_CAPACITY_REASON = "remote_capacity"
 _TRANSIENT_REASONS = frozenset({
-    "timeout", "dns_failure", "sampler_unavailable",
+    "timeout", "dns_failure", "sampler_unavailable", REMOTE_CAPACITY_REASON,
     # Real provider capabilities sometimes answer a bounded Range probe with
     # an ambiguous transport fact rather than trustworthy evidence (DP 1.0.12
     # false-negative repair, Section 4D/Case 4). Neither means the artifacts
@@ -545,7 +549,16 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
         first, second = _sampler(left, registry), _sampler(right, registry)
         if first is None or second is None:
             return _diagnose(left, right, _unavailable("sampler_unsupported"))
-        a, b = await asyncio.gather(_fingerprint(first, left, context), _fingerprint(second, right, context))
+        if _source_key(left) == _source_key(right):
+            # Both sides are reached through ONE source, which may admit only
+            # one connection at a time: a proof must never need it to admit
+            # two at once, or a one-connection source refuses the second read
+            # on every retry and the proof never decides. Independent sources
+            # are still sampled concurrently.
+            a = await _fingerprint(first, left, context)
+            b = await _fingerprint(second, right, context)
+        else:
+            a, b = await asyncio.gather(_fingerprint(first, left, context), _fingerprint(second, right, context))
         # A sampler returning None has no proof capability for this candidate.
         # Temporary acquisition failures must cross the contract explicitly as
         # UNAVAILABLE with a retryable reason such as timeout/dns_failure.

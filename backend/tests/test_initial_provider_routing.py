@@ -278,7 +278,7 @@ def test_no_eligible_provider_returns_canonical_nonretryable_unsupported_route()
 
 
 def test_malformed_url_is_rejected_before_unsupported_route_selection():
-    with pytest.raises(ValueError, match="absolute HTTP, HTTPS, FTP, SFTP, SCP or SSH URL"):
+    with pytest.raises(ValueError, match="absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL"):
         normalize_direct_links(["not-a-url"])
 
 

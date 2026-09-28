@@ -22,6 +22,7 @@ the lock file and `licenses/python-runtime.json`.
 | attrs | 26.1.0 | MIT |
 | authlib | 1.7.2 | BSD-3-Clause |
 | babelfish | 0.6.1 | BSD-3-Clause |
+| bcrypt | 5.0.0 | Apache-2.0 |
 | bencode2 | 0.3.33 | MIT ([bundled notice](../licenses/bencode2-MIT.txt)) |
 | certifi | 2026.7.22 | MPL-2.0 |
 | cffi | 2.1.1 | MIT-0 |
@@ -98,6 +99,9 @@ Its only dependencies, `cryptography` and `typing-extensions`, were already
 locked. `asyncssh` is dual-licensed EPL-2.0 OR GPL-2.0-or-later; DebridPulse,
 itself GPL-2.0-or-later, uses it under GPL-2.0-or-later. This is the one
 reviewed copyleft runtime dependency named in `backend/tests/test_license_policy.py`.
+`bcrypt` (Apache-2.0, no Python dependencies) is `asyncssh`'s own backend for
+passphrase-encrypted OpenSSH-format private keys -- the default format of
+`ssh-keygen` -- which the generalized `username_private_key` sign-in accepts.
 Their transitive cryptographic/HTTP dependencies are included in the table and
 machine-readable runtime manifest above. Package/license pairs are cross-checked
 against the corresponding upstream/PyPI metadata when the lock is generated.
@@ -157,6 +161,7 @@ recorded in the image's SBOM attestation.
 | Direct package | License summary |
 |---|---|
 | aria2 | GPL-2.0-or-later |
+| rsync | GPL-3.0-or-later |
 | curl | curl |
 | gosu | Apache-2.0 |
 | zstd | BSD-3-Clause |
@@ -168,6 +173,16 @@ image. `SOURCE_OFFER.md` explains how to request corresponding source for
 copyleft-covered binaries.
 
 `zstd` is installed as the exact outer decoder for `.tar.zst`/`.tzst`; the resulting TAR stream is validated by DebridPulse before extraction.
+
+`rsync` (Debian `3.4.1`, licensed GPL-3.0-or-later per its Debian copyright
+file, which stays installed in the image) is the rsync executor's native
+client. DebridPulse runs it only as a separate program, over argv, and links
+none of its code; its rsync-over-SSH transport is DebridPulse's own SSH
+channel on the already-shipped `asyncssh`, so no OpenSSH client is added. That
+a GPL-3.0-or-later program now ships beside this GPL-2.0-or-later project is
+recorded here as a fact; what it means for the combined image is part of the
+same project/licence review the copyleft section above requires before
+release.
 
 `7zip-rar` is installed from Debian's `non-free` component solely to provide
 RAR extraction through the external `7z` process. Because the slim base filters
