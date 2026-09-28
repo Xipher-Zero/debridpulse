@@ -612,7 +612,8 @@ class Aria2Executor:
             # One passive FTP job also opens a server-selected data connection
             # to the same host; every other transport is one exact endpoint.
             scope = RouteScope.SAME_HOST if endpoint.scheme == "ftp" else RouteScope.ENDPOINT
-            guarded = self.egress.job_options(address, scope=scope, **self._granted(lan))
+            # Every connection of the job draws on aria2's DP download budget.
+            guarded = self.egress.job_options(address, scope=scope, budget=self.descriptor.id, **self._granted(lan))
         except Exception as exc:
             raise self._failure(Category.EGRESS_POLICY_VIOLATION, domain=Domain.SECURITY) from exc
         target = self._target(self._plan_target(request))
@@ -1175,8 +1176,13 @@ class Aria2Executor:
     async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult:
         """Enforce the core-assigned aggregate ceiling as aria2's daemon-wide
         download limit (every job in the managed daemon is DP-owned), and
-        confirm it by reading the native option back."""
+        confirm it by reading the native option back. aria2's own limiter
+        averages over a trailing window and, after its limit is raised, runs
+        ahead of it until the average catches up; every job's connections also
+        draw on aria2's egress download budget at the same rate, which holds
+        the share at every moment."""
         requested = max(0, int(bytes_per_second))
+        self.egress.budget(self.descriptor.id).set_rate(requested)
         if self.runtime is not None:
             self.runtime.assign_bandwidth_ceiling(requested)
         try:

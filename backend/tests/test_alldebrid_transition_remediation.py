@@ -12,7 +12,7 @@ from providers.alldebrid.definition import definition as alldebrid_definition
 from providers.alldebrid.provider import AllDebridProvider
 from providers.alldebrid.runtime_state import AllDebridRuntimeStateStore, credential_scope
 from transfers.engine import TransferEngine
-from transfers.models import ProviderResource, TransferRequest
+from transfers.models import ProviderResource, RequestRecord, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 
@@ -47,13 +47,14 @@ def disabled_resource_record():
         download_root="/tmp/debridpulse-transition-test",
         policy=TransferPolicy(),
     )
-    record = SimpleNamespace(
-        id=17,
+    record = RequestRecord(
+        id="17",
         transfer_id=11,
-        parent_id=None,
-        attempts=0,
         request=TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40),
+        state="waiting",
+        parent_id=None,
         resource=ProviderResource("alldebrid", {"id": "123"}),
+        attempts=0,
     )
     return engine, repository, provider, client, record
 

@@ -1167,7 +1167,8 @@ class TransferRepository:
             requests = tuple(
                 RequestRecord(r["id"], transfer_id, codec.request(codec.load(r["payload"])), r["state"],
                               r["parent_id"], codec.resource(codec.load(r["resource"])), r["attempts"],
-                              r["retry_at"], codec.error(r["error"]), codec.entry(codec.load(r["metadata"])))
+                              r["retry_at"], codec.error(r["error"]), codec.entry(codec.load(r["metadata"])),
+                              codec.optional_request(codec.load(r["interpretation"])))
                 for r in request_rows
             )
             artifact_rows = await db.fetchall(
@@ -1744,7 +1745,8 @@ class TransferRepository:
             rows = await db.fetchall("SELECT * FROM transfer_requests WHERE transfer_id=? ORDER BY parent_id,ordinal", (transfer_id,))
         return tuple(RequestRecord(row["id"], transfer_id, codec.request(codec.load(row["payload"])), row["state"],
                                    row["parent_id"], codec.resource(codec.load(row["resource"])), row["attempts"],
-                                   row["retry_at"], codec.error(row["error"]), codec.entry(codec.load(row["metadata"]))) for row in rows)
+                                   row["retry_at"], codec.error(row["error"]), codec.entry(codec.load(row["metadata"])),
+                                   codec.optional_request(codec.load(row["interpretation"]))) for row in rows)
 
     async def failed_unverified_target(self, request_id: str) -> int | None:
         """The shared ``failed_unverified_target`` reader for callers without
@@ -1894,6 +1896,16 @@ class TransferRepository:
                                  (request_state, resource, error, attempt.request_id))
             await db.commit()
         return row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}
+
+    async def record_interpretation(self, request_id: str, interpretation: TransferRequest) -> None:
+        """Durably establish the provider's alternate reading of one request
+        (``DiscoveryRequest.alternate``). Set once: an established
+        interpretation is never replaced, and the operator's ``payload`` is
+        never touched."""
+        async with get_db() as db:
+            await db.execute("UPDATE transfer_requests SET interpretation=? WHERE id=? AND interpretation IS NULL",
+                             (codec.dump(interpretation), request_id))
+            await db.commit()
 
     async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending", consume_attempt=False) -> None:
         async with get_db() as db:

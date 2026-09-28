@@ -49,7 +49,7 @@ def _executor(tmp_path: Path, *, egress=None) -> Aria2Executor:
         None,
         Aria2Configuration(str(tmp_path)),
         AsyncMock(return_value=True),
-        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, scope=None: {}),
+        egress=egress or SimpleNamespace(ensure_started=AsyncMock(), job_options=lambda address, scope=None, budget=None: {}),
     )
 
 

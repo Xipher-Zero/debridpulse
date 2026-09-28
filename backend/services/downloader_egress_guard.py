@@ -39,6 +39,7 @@ import logging
 import os
 import secrets
 import socket
+import time
 from collections.abc import Awaitable, Callable
 from enum import StrEnum
 import re
@@ -106,6 +107,71 @@ def _authority_target(authority: str) -> tuple[str, int]:
     return host, int(parsed.port)
 
 
+class _UpstreamRefused(OSError):
+    """Every approved address of a destination actively refused the connection."""
+
+
+_BUDGET_NAME = re.compile(r"[a-z0-9_-]{1,32}")
+
+
+class EgressBudget:
+    """One live download byte-rate budget shared by every relayed connection
+    whose route names it (``0`` = unlimited).
+
+    It enforces a rate it is given and owns no policy: DebridPulse's one
+    aggregate owner (``transfers.runtime_coordination``) assigns an executor
+    its share, and the executor sets it here. Pacing is on bytes delivered
+    from the destination, so the sum over every connection of the budget never
+    exceeds the rate by more than one relayed chunk, whatever the remote does;
+    a connection that is paused or gone simply stops consuming it."""
+
+    def __init__(self):
+        self._rate = 0
+        self._next = 0.0
+        self._delivered = 0
+
+    @property
+    def rate(self) -> int:
+        return self._rate
+
+    @property
+    def delivered(self) -> int:
+        """Bytes delivered through this budget so far (paced or not)."""
+        return self._delivered
+
+    def set_rate(self, bytes_per_second: int) -> int:
+        self._rate = max(0, int(bytes_per_second or 0))
+        return self._rate
+
+    async def consume(self, size: int) -> None:
+        rate = self._rate
+        if rate > 0 and size > 0:
+            now = time.monotonic()
+            start = max(now, self._next)
+            self._next = start + size / rate
+            if start > now:
+                await asyncio.sleep(start - now)
+        self._delivered += max(0, size)
+
+
+class _UpstreamTimeout(OSError):
+    """No approved address of a destination answered within the route's bound."""
+
+
+class TunnelTargetTimeout(TimeoutError):
+    """``open_tunnel``: no approved address answered within the tunnel's own
+    timeout. A ``TimeoutError`` -- exactly what a consumer already sees when
+    that timeout elapses first."""
+
+
+class TunnelTargetRefused(PermissionError):
+    """``open_tunnel``: the approved server actively refused the connection.
+
+    Still a ``PermissionError`` -- the tunnel was not opened -- so every
+    consumer keeps its meaning; one that must tell "nothing serves that port"
+    apart from a policy refusal catches this first."""
+
+
 class DownloaderEgressGuard:
     """Authenticated target-scoped CONNECT proxy with connection-time DNS policy."""
 
@@ -126,6 +192,13 @@ class DownloaderEgressGuard:
         # The operator's global Local Network Connections policy, read at every
         # CONNECT: turning it off stops granted jobs from reaching LAN too.
         self._private_lan = False
+        self._budgets: dict[str, EgressBudget] = {}
+
+    def budget(self, name: str) -> EgressBudget:
+        """The named download budget routes may carry (created unlimited)."""
+        if not _BUDGET_NAME.fullmatch(str(name)):
+            raise ValueError("Invalid egress budget name")
+        return self._budgets.setdefault(str(name), EgressBudget())
 
     def configure_private_lan(self, enabled: bool) -> None:
         self._private_lan = bool(enabled)
@@ -197,21 +270,56 @@ class DownloaderEgressGuard:
                    f"{str(host).rstrip('.').casefold()}:{int(port)}")
         return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
 
-    def _credential(self, host: str, port: int, scope: RouteScope, lan: bool = False) -> tuple[str, str]:
+    def _terms(self, token: str, connect_timeout_seconds: float | None, budget: str | None) -> str:
+        """A route token that also carries the route's own terms -- its connect
+        bound (milliseconds, ``0`` = none) and the download budget it draws on
+        -- signed with them; a route without terms keeps its token unchanged."""
+        if connect_timeout_seconds is None and budget is None:
+            return token
+        bound = 0 if connect_timeout_seconds is None else max(1, int(round(float(connect_timeout_seconds) * 1000)))
+        name = "" if budget is None else str(budget)
+        if name and not _BUDGET_NAME.fullmatch(name):
+            raise ValueError("Invalid egress budget name")
+        signed = hmac.new(self._secret, f"{token}|connect={bound}|budget={name}".encode("utf-8"),
+                          hashlib.sha256).hexdigest()
+        return f"{signed}.{bound}" + (f".{name}" if name else "")
+
+    def _credential(self, host: str, port: int, scope: RouteScope, lan: bool = False,
+                    connect_timeout_seconds: float | None = None, budget: str | None = None) -> tuple[str, str]:
         user = f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER
         if scope == RouteScope.ENDPOINT:
-            return user, self._token(host, port, lan)
+            return user, self._terms(self._token(host, port, lan), connect_timeout_seconds, budget)
         if scope == RouteScope.SAME_HOST:
-            return f"{user}.{scope.value}.{int(port)}", self._same_host_token(host, port, lan)
+            return (f"{user}.{scope.value}.{int(port)}",
+                    self._terms(self._same_host_token(host, port, lan), connect_timeout_seconds, budget))
         raise ValueError("Unsupported egress route scope")
 
-    def _admits(self, username: str, password: str, host: str, port: int) -> bool | None:
+    def _verified(self, password: str, token: str) -> tuple[float | None, str | None] | None:
+        """``None`` when ``password`` is not this route's credential; else the
+        terms it carries: ``(connect bound in seconds, budget name)``."""
+        parts = password.split(".")
+        if len(parts) == 1:
+            return (None, None) if hmac.compare_digest(password, token) else None
+        if len(parts) > 3 or not parts[1].isdigit() or not 0 <= int(parts[1]) <= 3_600_000:
+            return None
+        name = parts[2] if len(parts) == 3 else None
+        if name is not None and not _BUDGET_NAME.fullmatch(name):
+            return None
+        bound = int(parts[1]) / 1000 if int(parts[1]) else None
+        if not hmac.compare_digest(password, self._terms(token, bound, name) if (bound or name) else token):
+            return None
+        return bound, name
+
+    def _admits(self, username: str, password: str, host: str, port: int
+                ) -> tuple[bool, float | None, str | None] | None:
         """Verify a CONNECT credential against the authority it names.
         ``None`` refuses; otherwise whether the credential carries a
-        private-LAN grant."""
+        private-LAN grant, its connect bound (``None``: unbounded) and the
+        download budget it draws on (``None``: none)."""
         for lan in (False, True):
             if username == (f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER):
-                return lan if hmac.compare_digest(password, self._token(host, port, lan)) else None
+                terms = self._verified(password, self._token(host, port, lan))
+                return None if terms is None else (lan, *terms)
         match = _SAME_HOST_USER.fullmatch(username)
         if match is None:
             return None
@@ -221,7 +329,8 @@ class DownloaderEgressGuard:
             return None
         if port != authorized and port < _SERVER_SELECTED_PORT_FLOOR:
             return None
-        return lan if hmac.compare_digest(password, self._same_host_token(host, authorized, lan)) else None
+        terms = self._verified(password, self._same_host_token(host, authorized, lan))
+        return None if terms is None else (lan, *terms)
 
     def _proxy_url(self) -> str:
         if self._server is None or self._bound_port <= 0:
@@ -229,12 +338,13 @@ class DownloaderEgressGuard:
         return f"http://{_LOOPBACK}:{self._bound_port}"
 
     def job_options(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
-                    private_lan: bool = False) -> dict[str, str]:
+                    private_lan: bool = False, budget: str | None = None) -> dict[str, str]:
         """Return per-addUri proxy policy that cannot inherit a daemon bypass.
-        ``private_lan`` signs core's private-LAN grant into the credential."""
+        ``private_lan`` signs core's private-LAN grant into the credential;
+        ``budget`` names the download budget the job's bytes draw on."""
         host, port = _target(uri, private_lan)
         proxy = self._proxy_url()
-        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan))
+        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan), budget=budget)
         options = {
             "all-proxy": proxy,
             "all-proxy-user": user,
@@ -259,21 +369,27 @@ class DownloaderEgressGuard:
         return options
 
     def proxy_credential(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
-                         private_lan: bool = False) -> tuple[str, int, str, str]:
+                         private_lan: bool = False, connect_timeout_seconds: float | None = None,
+                         budget: str | None = None) -> tuple[str, int, str, str]:
         """``(proxy host, proxy port, user, token)`` for a native client that
         can only be pointed at an authenticated CONNECT proxy and cannot take a
         pre-opened connection (``open_tunnel``). The same signed route-scoped
         credential an aria2 job receives: it admits exactly the authorized
         hostname and port, and the guard still performs the final resolution
-        and address policy at every CONNECT."""
+        and address policy at every CONNECT. ``connect_timeout_seconds`` is the
+        route's own Connection Timeout, signed into the credential: the guard's
+        connection to the destination is bounded by it (a destination that
+        does not answer in time is ``504``). ``budget`` names the download
+        budget (``budget()``) every byte this route delivers draws on."""
         host, port = _target(uri, private_lan)
         self._proxy_url()
-        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan))
+        user, token = self._credential(host, port, RouteScope(scope), bool(private_lan), connect_timeout_seconds,
+                                       budget)
         return _LOOPBACK, self._bound_port, user, token
 
     async def open_tunnel(
         self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT, port: int | None = None,
-        timeout_seconds: float = 10.0, private_lan: bool = False,
+        timeout_seconds: float = 10.0, private_lan: bool = False, budget: str | None = None,
     ) -> socket.socket:
         """Open one in-process connection through this guard's own CONNECT boundary.
 
@@ -284,11 +400,17 @@ class DownloaderEgressGuard:
         server-selected port. ``port`` names that second connection (a passive
         FTP data channel) and is only admitted under ``RouteScope.SAME_HOST``.
         Returns a connected non-blocking socket carrying nothing but the
-        tunnelled bytes; a refusal raises ``PermissionError``.
+        tunnelled bytes; a refusal raises ``PermissionError`` -- the
+        ``TunnelTargetRefused`` subclass when the approved server itself
+        actively refused (nothing serves that port). ``timeout_seconds`` also
+        bounds the guard's own connection to the destination; when that is
+        what elapses, ``TunnelTargetTimeout`` (a ``TimeoutError``) is raised.
+        ``budget`` names the download budget the tunnel's bytes draw on.
         """
         host, authorized = _target(uri, private_lan)
         await self.ensure_started()
-        user, token = self._credential(host, authorized, RouteScope(scope), bool(private_lan))
+        user, token = self._credential(host, authorized, RouteScope(scope), bool(private_lan), timeout_seconds,
+                                       budget)
         server = self._server
         if server is None or not server.sockets:
             raise RuntimeError("DebridPulse egress guard is not running")
@@ -321,6 +443,10 @@ class DownloaderEgressGuard:
             raise
         if not answer.startswith(b"HTTP/1.1 200 "):
             tunnel.close()
+            if answer.startswith(b"HTTP/1.1 502 "):
+                raise TunnelTargetRefused("The server refused the connection")
+            if answer.startswith(b"HTTP/1.1 504 "):
+                raise TunnelTargetTimeout("The server did not answer in time")
             raise PermissionError("DebridPulse egress guard refused the connection")
         return tunnel
 
@@ -403,18 +529,29 @@ class DownloaderEgressGuard:
             return "", ""
         return tuple(decoded.split(":", 1))  # type: ignore[return-value]
 
-    async def _connect_upstream(self, endpoints: list[tuple[int, str, int]]):
-        last_error: Exception | None = None
-        for family, address, port in endpoints:
-            try:
-                return await asyncio.open_connection(
-                    address,
-                    port,
-                    family=family,
-                    flags=socket.AI_NUMERICHOST,
-                )
-            except OSError as exc:
-                last_error = exc
+    async def _connect_upstream(self, endpoints: list[tuple[int, str, int]], bound: float | None = None):
+        """Connect to the first approved address that accepts, within the
+        route's connect ``bound`` (all addresses together) when it has one."""
+        errors: list[OSError] = []
+        try:
+            async with asyncio.timeout(bound):
+                for family, address, port in endpoints:
+                    try:
+                        return await asyncio.open_connection(
+                            address,
+                            port,
+                            family=family,
+                            flags=socket.AI_NUMERICHOST,
+                        )
+                    except OSError as exc:
+                        errors.append(exc)
+        except TimeoutError as exc:
+            raise _UpstreamTimeout("No approved address answered within the route's connect bound") from exc
+        last_error = errors[-1] if errors else None
+        if errors and all(isinstance(error, ConnectionRefusedError) for error in errors):
+            raise _UpstreamRefused("Every approved address refused the connection") from last_error
+        if any(isinstance(error, TimeoutError) for error in errors):
+            raise _UpstreamTimeout("No approved address answered in time") from last_error
         raise OSError("No approved provider address accepted the connection") from last_error
 
     async def _handle_client(
@@ -438,8 +575,8 @@ class DownloaderEgressGuard:
                 return
             host, port = _authority_target(request[1])
             username, password = self._proxy_credentials(lines[1:])
-            lan = self._admits(username, password, host, port)
-            if lan is None:
+            admitted = self._admits(username, password, host, port)
+            if admitted is None:
                 writer.write(
                     b"HTTP/1.1 407 Proxy Authentication Required\r\n"
                     b"Proxy-Authenticate: Basic realm=\"DebridPulse\"\r\n"
@@ -448,9 +585,24 @@ class DownloaderEgressGuard:
                 await writer.drain()
                 return
 
+            lan, bound, budget_name = admitted
+            budget = self.budget(budget_name) if budget_name else None
             try:
                 endpoints = await self._approved_endpoints(host, port, lan=lan)
-                upstream_reader, upstream_writer = await self._connect_upstream(endpoints)
+                upstream_reader, upstream_writer = await self._connect_upstream(endpoints, bound)
+            except _UpstreamTimeout:
+                # No approved address answered within the route's own bound
+                # (or the network's): uncertainty, never a refusal or a policy fact.
+                writer.write(b"HTTP/1.1 504 Gateway Timeout\r\nConnection: close\r\n\r\n")
+                await writer.drain()
+                return
+            except _UpstreamRefused:
+                # An approved destination that actively refused: definitive
+                # evidence that nothing serves that port -- distinct from a
+                # policy refusal or a network failure, which stay 403.
+                writer.write(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
+                await writer.drain()
+                return
             except (ValueError, OSError):
                 writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
                 await writer.drain()
@@ -459,17 +611,21 @@ class DownloaderEgressGuard:
             writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
             await writer.drain()
 
-            async def relay(source: asyncio.StreamReader, destination: asyncio.StreamWriter) -> None:
+            async def relay(source: asyncio.StreamReader, destination: asyncio.StreamWriter,
+                            paced: EgressBudget | None = None) -> None:
                 while True:
                     chunk = await source.read(64 * 1024)
                     if not chunk:
                         return
+                    if paced is not None:
+                        await paced.consume(len(chunk))
                     destination.write(chunk)
                     await destination.drain()
 
             tasks = {
                 asyncio.create_task(relay(reader, upstream_writer)),
-                asyncio.create_task(relay(upstream_reader, writer)),
+                # Only what the destination delivers draws on a download budget.
+                asyncio.create_task(relay(upstream_reader, writer, budget)),
             }
             done, pending = await asyncio.wait(tasks, return_when=asyncio.FIRST_COMPLETED)
             for task in pending:

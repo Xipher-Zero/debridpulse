@@ -62,6 +62,8 @@ class Category(StrEnum):
     CANDIDATE_REJECTED = "candidate_rejected"
     DNS_FAILURE = "dns_failure"
     CONNECTION_FAILED = "connection_failed"
+    # The endpoint actively refused the connection: nothing serves that port.
+    CONNECTION_REFUSED = "connection_refused"
     CONNECTION_TIMEOUT = "connection_timeout"
     READ_TIMEOUT = "read_timeout"
     REMOTE_RESET = "remote_reset"

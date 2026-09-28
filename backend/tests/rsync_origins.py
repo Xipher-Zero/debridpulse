@@ -46,14 +46,16 @@ def free_port() -> int:
 class RsyncDaemon:
     """A real rsync daemon. ``modules`` maps a module name to its settings:
     ``path`` (required), ``auth`` ((user, password) or None), ``max_connections``
-    (int or None), ``listed`` (bool)."""
+    (int or None), ``listed`` (bool). ``port`` fixes the listening port (the
+    rsync default, 873, for sources written without one); 0 picks a free one."""
 
-    def __init__(self, root: Path, modules: dict, *, motd: str = "", bwlimit: int = 0):
+    def __init__(self, root: Path, modules: dict, *, motd: str = "", bwlimit: int = 0, port: int = 0):
         self.root = Path(root)
         self.modules = modules
         self.motd = motd
         # The daemon's own sending rate (KiB/s): a deterministic slow source.
         self.bwlimit = bwlimit
+        self.fixed_port = int(port)
         self.port = 0
         self.process: subprocess.Popen | None = None
 
@@ -94,7 +96,7 @@ class RsyncDaemon:
     def _launch(self) -> bool:
         """One launch on a fresh port; ``False`` when the daemon exited (a
         port taken between probing and binding)."""
-        self.port = free_port()
+        self.port = self.fixed_port or free_port()
         self.process = subprocess.Popen(
             ["rsync", "--daemon", "--no-detach", f"--config={self.root}/rsyncd.conf", f"--port={self.port}",
              "--address=127.0.0.1", f"--log-file={self.root}/rsyncd.log",
@@ -174,7 +176,8 @@ class RsyncSshOrigin:
     def fingerprint(self, alg: str = "ecdsa-sha2-nistp256") -> str:
         return hashlib.sha1(self.keys[alg].public_data).hexdigest()
 
-    async def start(self, algorithms=("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256")) -> "RsyncSshOrigin":
+    async def start(self, algorithms=("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256"), *,
+                    port: int = 0) -> "RsyncSshOrigin":
         require_rsync()
         self.home.mkdir(parents=True, exist_ok=True)
         origin = self
@@ -197,7 +200,7 @@ class RsyncSshOrigin:
             process.exit(code)
 
         self.server = await asyncssh.listen(
-            "127.0.0.1", 0, server_host_keys=[self.keys[alg] for alg in algorithms],
+            "127.0.0.1", port, server_host_keys=[self.keys[alg] for alg in algorithms],
             server_factory=lambda: _RsyncServer(origin), process_factory=handle, encoding=None,
             allow_scp=False, sftp_factory=None)
         self.port = self.server.sockets[0].getsockname()[1]

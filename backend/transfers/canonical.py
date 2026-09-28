@@ -81,6 +81,7 @@ class CanonicalOwnership:
             identity, int(row["transfer_id"]), codec.request(codec.load(row["payload"])), row["state"],
             row["parent_id"], codec.resource(codec.load(row["resource"])), int(row["attempts"] or 0),
             float(row["retry_at"] or 0), codec.error(row["error"]), codec.entry(codec.load(row["metadata"])),
+            codec.optional_request(codec.load(row.get("interpretation"))),
         )
 
     @staticmethod

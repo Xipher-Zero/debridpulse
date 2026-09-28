@@ -67,7 +67,7 @@ from services.artifact_sampling import (
     MAX_LISTED_ENTRIES, SAMPLE_BYTES, SSH_HOST_KEY_ALGORITHMS, _offset_windows, last_window_start, sample_size,
     unavailable,
 )
-from services.downloader_egress_guard import downloader_egress_guard
+from services.downloader_egress_guard import TunnelTargetRefused, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import validate_target
@@ -79,7 +79,8 @@ from transfers.input_required import (
 from transfers.models import (
     ArtifactFingerprint, ContinuationCapability, ContinuationStrategy, DiscoveredEntry, DiscoveryResult,
     ExecutionActivity, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
-    ExecutionState, ExecutorCapabilities, ExecutorClaim, ExecutorHealth, FingerprintKind, InputFactName, InputField,
+    ExecutionState, ExecutorCapabilities, ExecutorClaim, ExecutorHealth, ExecutorRuntimeCapability,
+    ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
     MaterializedEntry, RemoteObjectKind, TransferProgress,
 )
@@ -231,7 +232,7 @@ class _Refused(Exception):
 class RsyncExecutor:
     descriptor = IntegrationDescriptor("rsync", "rsync", frozenset())
     capabilities = ExecutorCapabilities(
-        candidate_sampling=True, transient_input=True, remote_discovery=True,
+        candidate_sampling=True, transient_input=True, remote_discovery=True, aggregate_bandwidth_ceiling=True,
         materialization_kinds=frozenset({MaterializationKind.FILE}),
         continuation=frozenset({
             ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
@@ -427,7 +428,11 @@ class RsyncExecutor:
         if remote.daemon:
             try:
                 await self.egress.ensure_started()
-                proxy_host, proxy_port, user, token = self.egress.proxy_credential(remote.address, **granted)
+                # The route carries rsync's own Connection Timeout: the guard's
+                # hop to the server is bounded by it (rsync's --contimeout is not).
+                proxy_host, proxy_port, user, token = self.egress.proxy_credential(
+                    remote.address, connect_timeout_seconds=float(cfg.connection_timeout_seconds),
+                    budget=self.descriptor.id, **granted)
             except Exception as exc:
                 raise self._failure(Category.EGRESS_POLICY_VIOLATION, stage, domain=Domain.SECURITY) from exc
             extra = {"RSYNC_PROXY": f"{user}:{token}@{proxy_host}:{proxy_port}"}
@@ -449,7 +454,10 @@ class RsyncExecutor:
             raise self._failure(Category.INVALID_CONFIGURATION, stage)
         try:
             tunnel = await self.egress.open_tunnel(remote.address, timeout_seconds=float(cfg.connection_timeout_seconds),
-                                                   **granted)
+                                                   budget=self.descriptor.id, **granted)
+        except TunnelTargetRefused as exc:
+            raise self._failure(Category.CONNECTION_REFUSED, stage, domain=Domain.NETWORK,
+                                retryability=Retryability.BACKOFF) from exc
         except PermissionError as exc:
             raise self._failure(Category.CONNECTION_FAILED, stage, domain=Domain.NETWORK,
                                 retryability=Retryability.BACKOFF) from exc
@@ -1151,13 +1159,23 @@ class RsyncExecutor:
             except (OSError, TimeoutError):
                 version = None
             if version is not None and version >= MINIMUM_VERSION:
-                health = ExecutorHealth(True, True)
+                health = ExecutorHealth(True, True, frozenset({ExecutorRuntimeCapability.AGGREGATE_BANDWIDTH_CEILING}))
             elif version is not None:
                 health = ExecutorHealth(True, False, error=NormalizedError(
                     Domain.EXECUTOR, Category.INVALID_CONFIGURATION, Stage.QUEUE, retryability=Retryability.NEVER,
                     integration_id=self.descriptor.id, diagnostic="rsync_version_unsupported"))
         self._health = (now, health)
         return health
+
+    async def set_bandwidth_ceiling(self, bytes_per_second: int) -> ExecutorRuntimeControlResult:
+        """Enforce the core-assigned aggregate ceiling: every rsync connection,
+        daemon or SSH, crosses the egress guard on a route that draws on this
+        executor's one download budget, so all of rsync's concurrent transfers
+        together stay within it -- whatever the server does -- and a change
+        applies to running transfers at once."""
+        requested = max(0, int(bytes_per_second))
+        effective = self.egress.budget(self.descriptor.id).set_rate(requested)
+        return ExecutorRuntimeControlResult(requested, effective if effective == requested else None)
 
 
 def ssh_channel_failures() -> frozenset[str]:

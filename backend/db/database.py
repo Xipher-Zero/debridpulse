@@ -850,6 +850,11 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # ``transfer_requests.resource`` -- see
         # ``TransferRepository.materialization_authorization``.
         'materialized_selection_id': 'TEXT',
+        # The provider's alternate reading of this request that discovery
+        # established (``DiscoveryRequest.alternate``), as an encoded request;
+        # ``payload`` always stays what the operator submitted. Additive and
+        # nullable: NULL means the request is resolved as submitted.
+        'interpretation': 'TEXT',
     },
     'provider_resources': {
         'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',

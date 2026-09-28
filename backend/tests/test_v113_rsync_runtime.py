@@ -292,6 +292,55 @@ async def test_an_encrypted_openssh_key_answers_the_challenge_and_is_never_store
 
 # ── Pause / Resume ───────────────────────────────────────────────────────────
 
+async def test_a_wrong_passphrase_returns_to_the_challenge_and_never_downgrades_to_a_password(
+        tmp_path, monkeypatch, caplog):
+    import asyncssh
+    import logging
+    key = asyncssh.generate_private_key("ssh-ed25519")
+    passphrase, wrong = "right-passphrase-sentinel", "wrong-passphrase-sentinel"
+    exported = key.export_private_key("openssh", passphrase).decode()
+    origin = await RsyncSshOrigin(tmp_path / "ssh", credentials=(USER, PASSWORD), authorized_key=key,
+                                  key_user=USER).start()
+    write_tree(origin.root / "files", {"movie.bin": BODY[:MIB]})
+    runtime = await _runtime(tmp_path, monkeypatch)
+    caplog.set_level(logging.DEBUG)
+    try:
+        transfer = await runtime.engine.submit((TransferRequest("rsync+ssh", origin.url(f"{origin.root}/files/movie.bin")),),
+                                               deduplicate=False)
+        first = await runtime.until(lambda: runtime.engine.challenges.current(transfer.id), label="challenge")
+        await runtime.engine.submit_input(transfer.id, first.id, "username_private_key",
+                                          {"username": USER, "private_key": exported, "passphrase": wrong})
+
+        async def asked_again():
+            current = await runtime.engine.challenges.current(transfer.id)
+            return current if current is not None and current.id != first.id else None
+
+        again = await runtime.until(asked_again, label="asked again after a wrong passphrase")
+        # Back through the one lifecycle, both methods still offered; the
+        # transfer never failed and no password login was attempted for it.
+        assert "username_private_key" in [item.method.value for item in again.methods]
+        assert (await runtime.repository.get(transfer.id)).state == TransferState.INPUT_REQUIRED
+        assert not [method for method, _user in origin.auth_attempts if method == "password"]
+        await runtime.engine.submit_input(transfer.id, again.id, "username_private_key",
+                                          {"username": USER, "private_key": exported, "passphrase": passphrase})
+        await runtime.until(lambda: runtime.completed(transfer.id), label="key login after correction")
+        (artifact,) = await runtime.repository.artifacts(transfer.id)
+        assert Path(artifact.target).read_bytes() == BODY[:MIB]
+        assert not [method for method, _user in origin.auth_attempts if method == "password"]
+        async with database.get_db() as db:
+            tables = [row["name"] for row in await db.fetchall(
+                "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
+            durable = json.dumps([dict(row) for table in tables
+                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')])  # nosec B608
+        logged = "\n".join(record.getMessage() for record in caplog.records)
+        for text in (durable, logged):
+            for secret in (passphrase, wrong, exported.splitlines()[1]):
+                assert secret not in text
+    finally:
+        await runtime.close()
+        await origin.close()
+
+
 async def test_pause_stops_acquisition_and_resume_continues_from_dp_material(tmp_path, monkeypatch):
     daemon = RsyncDaemon(tmp_path / "daemon", {"pub": {"path": tmp_path / "srv"}}, bwlimit=2048)
     write_tree(tmp_path / "srv", {"movie.bin": BODY})
@@ -443,11 +492,11 @@ async def test_http_aria2_partial_continues_under_rsync_and_rsync_material_conti
 
 # ── Remote capacity ──────────────────────────────────────────────────────────
 
-async def _collection_under_limit(tmp_path, monkeypatch, parts, limit):
+async def _collection_under_limit(tmp_path, monkeypatch, parts, limit, *, bwlimit=4096):
     source = tmp_path / "srv"
     write_tree(source, parts)
     daemon = RsyncDaemon(tmp_path / "daemon", {"pub": {"path": source, "max_connections": limit}},
-                         bwlimit=4096).start()
+                         bwlimit=bwlimit).start()
     runtime = await _runtime(tmp_path, monkeypatch, active=4)
     try:
         transfer = await runtime.engine.submit((TransferRequest("rsync", daemon.url("/pub/")),), deduplicate=False)
@@ -459,7 +508,10 @@ async def _collection_under_limit(tmp_path, monkeypatch, parts, limit):
             rows = await db.fetchall("SELECT error FROM execution_attempts WHERE transfer_id=?", (transfer.id,))
             held = await db.fetchall("SELECT equivalence_disposition FROM transfer_requests WHERE transfer_id=? "
                                      "AND equivalence_disposition IN ('exhausted','unverified')", (transfer.id,))
-        return [json.loads(row["error"]) for row in rows if row["error"]], held
+        # The daemon's own record of every connection it refused for its limit,
+        # whichever DebridPulse stage (discovery, proof or execution) met it.
+        at_limit = (daemon.root / "rsyncd.log").read_text().count(f"max connections ({limit}) reached")
+        return [json.loads(row["error"]) for row in rows if row["error"]], held, at_limit
     finally:
         await runtime.close()
         daemon.stop()
@@ -471,8 +523,10 @@ async def test_a_daemon_connection_limit_below_dp_concurrency_never_becomes_a_fa
     every refusal is the neutral remote-capacity fact, and the collection
     completes without a failed member, an operator hold or a second scheduler."""
     parts = {f"part{index}.bin": BODY[:(index + 1) * MIB] for index in range(4)}  # distinct sizes: no duplicate proof
-    refused, held = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=1)
-    assert refused, "the daemon never refused an admission: the scenario did not exercise its limit"
+    # A slow daemon (512 KiB/s: 2-8 s a part) keeps each admitted execution
+    # running while DebridPulse admits the next, so the one-slot limit is met.
+    refused, held, at_limit = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=1, bwlimit=512)
+    assert at_limit, "the daemon never refused a connection: the scenario did not exercise its limit"
     assert all((item["domain"], item["category"], item["retryability"]) == ("network", "concurrency_limited", "backoff")
                for item in refused)
     assert held == []
@@ -483,7 +537,7 @@ async def test_duplicate_proof_under_a_connection_limit_waits_instead_of_becomin
     at once; a refusal for capacity is no proof attempt, so it never spends the
     bounded proof budget (formerly: an 'exhausted' identity hold)."""
     parts = {f"vol{index}.part": BODY[index * MIB:index * MIB + 2 * MIB] for index in range(3)}
-    _refused, held = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=2)
+    _refused, held, _at_limit = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=2)
     assert held == []
 
 
@@ -515,7 +569,7 @@ async def test_equal_size_siblings_on_a_one_connection_daemon_are_proven_and_acq
     to admit two connections at once: under ``max connections = 1`` equal-size
     siblings are still proven (distinct here) and every member is acquired."""
     parts = {f"vol{index}.part": BODY[index * MIB:index * MIB + 2 * MIB] for index in range(3)}
-    _refused, held = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=1)
+    _refused, held, _at_limit = await _collection_under_limit(tmp_path, monkeypatch, parts, limit=1)
     assert held == []
 
 

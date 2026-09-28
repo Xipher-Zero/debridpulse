@@ -9,6 +9,14 @@ Two source forms, one grammar, interpreted exactly once by ``_source``:
   the server; ``/~/path`` starts at the login directory, which the server
   resolves (another user's ``~name`` is refused).
 
+An operator need not know which one a server offers. A plain ``rsync://``
+request with a path and no port of its own names its SSH reading as the
+alternate interpretation (``DiscoveryRequest.alternate``); core discovers the
+daemon reading first, and only when the daemon positively establishes that it
+does not provide the path (an unknown module, a missing path, or no daemon
+listening) is the SSH reading tried. A daemon that answers -- even to ask for
+a login, or to say it is full -- is authoritative.
+
 Classification is always the server's, through core-run discovery: what it
 proves a regular file becomes one ordinary candidate; what it proves a
 directory -- with or without a trailing slash, submitted directly or chosen
@@ -24,6 +32,7 @@ decides no server identity: discovery and execution are core's and the
 executor's, access input belongs to the universal authentication-input
 lifecycle, and the canonical resource never carries credentials.
 """
+from dataclasses import replace
 from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from transfers.applicability import ProviderApplicability
@@ -145,11 +154,26 @@ class GeneralRsyncProvider:
             executable = f"{executable}:{port}"
         return _Source(request.kind, hostname.strip().lower().rstrip("."), executable, segments)
 
+    def _alternate(self, request: TransferRequest, source: _Source) -> TransferRequest | None:
+        """The same plain ``rsync://`` request read as rsync over SSH, when it
+        can mean that: a path on the server and no port of its own (a port
+        names one service). Core discovers it only if the daemon positively
+        establishes that it does not provide the path."""
+        if source.kind != _DAEMON or not source.segments or urlsplit(request.payload).port is not None:
+            return None
+        alternate = replace(request, kind=_SSH, payload=_SSH + request.payload[len(_DAEMON):])
+        try:
+            self._source(alternate)
+        except TransferError:
+            return None  # a path SSH cannot name (for example a bare "~") has no SSH reading
+        return alternate
+
     async def resolve(self, request: TransferRequest) -> ResolutionResult:
         source = self._source(request)
         # The server proves what the path is; a directory means its whole tree.
         return ResolutionResult(ResourceState.PREPARING, discovery=DiscoveryRequest(
-            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], recursive=True))
+            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], recursive=True,
+            alternate=self._alternate(request, source)))
 
     async def resolve_discovered(self, request: TransferRequest, discovered) -> ResolutionResult:
         """A proven regular file is one candidate; a proven directory freezes

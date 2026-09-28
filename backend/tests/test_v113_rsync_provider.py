@@ -220,3 +220,36 @@ async def test_home_relative_ssh_collections_keep_their_login_directory_form():
                                                                       expected_bytes=1))).candidates
     # The server resolves the login directory; no absolute coordinate is guessed.
     assert candidate.resolver_identity_evidence.object_coordinate == ""
+
+
+# ── one operator source, the server decides the transport ────────────────────
+
+@pytest.mark.parametrize("url,alternate", [
+    ("rsync://h.example/home/user/file.iso", "rsync+ssh://h.example/home/user/file.iso"),
+    ("rsync://h.example/pub/dir", "rsync+ssh://h.example/pub/dir"),
+    ("rsync://h.example/pub/dir/", "rsync+ssh://h.example/pub/dir/"),
+    ("RSYNC://h.example/~/mine.bin", "rsync+ssh://h.example/~/mine.bin"),
+])
+async def test_a_plain_rsync_path_names_its_ssh_reading_as_the_alternate_interpretation(url, alternate):
+    request = TransferRequest("rsync", url, name="chosen")
+    result = await GeneralRsyncProvider().resolve(request)
+    # The daemon reading is discovered first; SSH is only its named alternate.
+    assert result.discovery.endpoint.scheme == "rsync"
+    assert result.discovery.alternate == TransferRequest("rsync+ssh", alternate, name="chosen")
+    assert result.discovery.alternate.kind == "rsync+ssh" and not result.candidates
+    # The alternate is an ordinary rsync+ssh source: its reading names no further alternate.
+    reread = await GeneralRsyncProvider().resolve(result.discovery.alternate)
+    assert reread.discovery.endpoint.scheme == "rsync+ssh" and reread.discovery.alternate is None
+    assert set(reread.discovery.accepted_input_methods) == {
+        InputMethod.USERNAME_PASSWORD, InputMethod.USERNAME_PRIVATE_KEY}
+
+
+@pytest.mark.parametrize("url", [
+    "rsync+ssh://h.example/home/user/file.iso",  # explicit: SSH only, no daemon reading
+    "rsync://h.example:8873/pub/file.iso",       # a port names one service
+    "rsync://h.example/",                        # the daemon's own list of roots
+    "rsync://h.example/~",                       # SSH cannot name a bare login directory
+])
+async def test_explicit_or_daemon_only_sources_name_no_alternate(url):
+    result = await GeneralRsyncProvider().resolve(_request(url))
+    assert result.discovery.alternate is None

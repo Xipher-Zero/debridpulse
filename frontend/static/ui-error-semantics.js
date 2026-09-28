@@ -12,7 +12,7 @@
     rate_limited: 'Rate Limited', quota_exceeded: 'Quota Exceeded', concurrency_limited: 'Concurrency Limited', account_limited: 'Account Limited', resource_exhausted: 'Resource Exhausted',
     resolution_failed: 'Resolution Failed', resolution_temporarily_failed: 'Resolution Unavailable', no_transfer_candidate: 'No Download Available',
     candidate_expired: 'Download Link Expired', candidate_rejected: 'Download Rejected',
-    dns_failure: 'DNS Failure', connection_failed: 'Connection Failed', connection_timeout: 'Connection Timeout', read_timeout: 'Read Timeout', remote_reset: 'Connection Reset',
+    dns_failure: 'DNS Failure', connection_failed: 'Connection Failed', connection_refused: 'Connection Refused', connection_timeout: 'Connection Timeout', read_timeout: 'Read Timeout', remote_reset: 'Connection Reset',
     protocol_error: 'Protocol Error', tls_failure: 'TLS Failure', host_key_failure: 'Host Identity Failed',
     destination_blocked: 'Destination Blocked', egress_policy_violation: 'Connection Blocked', unsafe_redirect: 'Redirect Blocked', tls_identity_failure: 'TLS Identity Failed', path_policy_violation: 'Path Blocked', security_policy_rejected: 'Security Policy Rejected',
     executor_unavailable: 'Downloader Unavailable', executor_rejected: 'Download Rejected', transfer_failed: 'Download Failed', transfer_stalled: 'Download Stalled', transfer_interrupted: 'Download Interrupted',

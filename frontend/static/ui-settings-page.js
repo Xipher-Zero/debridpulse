@@ -859,7 +859,7 @@
     general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
     general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
     general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
-    general_rsync: ['Direct downloads from', 'rsync and rsync-over-SSH sources.'],
+    general_rsync: ['Direct downloads from', 'rsync sources.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {

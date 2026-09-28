@@ -32,7 +32,7 @@ TERMINAL_TRANSFER_STATES = frozenset({
 SIDE_STATE_RETIRING_TRANSFER_STATES = TERMINAL_TRANSFER_STATES | frozenset({TransferState.FAILED})
 _EXECUTION_ALTERNATE_CATEGORIES = frozenset({
     Category.READ_TIMEOUT, Category.SOURCE_NOT_FOUND, Category.TRANSFER_STALLED,
-    Category.CONNECTION_FAILED, Category.REMOTE_READ_FAILED, Category.DNS_FAILURE,
+    Category.CONNECTION_FAILED, Category.CONNECTION_REFUSED, Category.REMOTE_READ_FAILED, Category.DNS_FAILURE,
     Category.CANDIDATE_EXPIRED, Category.SOURCE_TEMPORARILY_UNAVAILABLE,
     Category.CHECKSUM_MISMATCH, Category.TLS_FAILURE, Category.REMOTE_RESET,
 })
@@ -40,7 +40,7 @@ _EXECUTION_RECONCILE_CATEGORIES = frozenset({Category.TRANSFER_INTERRUPTED, Cate
 _EXPIRY_CATEGORIES = frozenset({Category.CANDIDATE_EXPIRED, Category.SOURCE_EXPIRED, Category.RESOURCE_EXPIRED})
 _PERMANENT_CATEGORIES = frozenset({Category.CONTENT_INVALID})
 _TRANSIENT_CATEGORIES = frozenset({
-    Category.READ_TIMEOUT, Category.CONNECTION_TIMEOUT, Category.CONNECTION_FAILED,
+    Category.READ_TIMEOUT, Category.CONNECTION_TIMEOUT, Category.CONNECTION_FAILED, Category.CONNECTION_REFUSED,
     Category.REMOTE_RESET, Category.REMOTE_READ_FAILED, Category.DNS_FAILURE,
     Category.TLS_FAILURE, Category.SOURCE_TEMPORARILY_UNAVAILABLE,
     Category.SOURCE_UNAVAILABLE, Category.PROVIDER_UNAVAILABLE,
@@ -77,6 +77,19 @@ def remote_source_capacity(error: NormalizedError) -> bool:
     account's own concurrency limit is a provider fact (``Domain.PROVIDER``) and
     keeps its ordinary bounded budget."""
     return error.domain == Domain.NETWORK and error.category == Category.CONCURRENCY_LIMITED
+
+
+def interpretation_absent(error: NormalizedError) -> bool:
+    """The server positively established that one interpretation of a source
+    does not provide it: the server itself reported the resource absent, or
+    the endpoint actively refused (nothing serves that port).
+
+    Only this lets core try a provider's alternate interpretation of the same
+    request. Authentication, authorization, capacity, timeouts and every other
+    network failure say nothing about which interpretation is meant: they stay
+    with the interpretation that produced them."""
+    return ((error.domain == Domain.RESOLUTION and error.category == Category.SOURCE_NOT_FOUND)
+            or (error.domain == Domain.NETWORK and error.category == Category.CONNECTION_REFUSED))
 
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024

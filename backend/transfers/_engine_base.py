@@ -140,7 +140,7 @@ from transfers.models import (
 )
 from transfers.cohorts import _HELD_DISPOSITIONS, _disposition
 from transfers.mirrors import EvidenceContext, shared_evidence, shared_size
-from transfers.policy import TERMINAL_TRANSFER_STATES, TransferPolicy
+from transfers.policy import TERMINAL_TRANSFER_STATES, TransferPolicy, interpretation_absent
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
@@ -148,6 +148,16 @@ from transfers.runtime_telemetry import ExecutionThroughputMeter
 
 
 logger = logging.getLogger(__name__)
+
+
+class _ServerAnswer(Exception):
+    """A core-run discovery the server itself failed (``failure``), kept apart
+    from what a provider concludes about a successful answer: only the former
+    can establish that an interpretation does not provide a resource."""
+
+    def __init__(self, failure: TransferError):
+        super().__init__(str(failure))
+        self.failure = failure
 
 
 class _CleanupOwnershipLost(Exception):
@@ -1237,31 +1247,31 @@ class TransferEngine:
     async def _apply_resolution(self, record: RequestRecord, attempt: ResolutionAttempt, provider, result: ResolutionResult,
                                 *, challenge: InputChallenge | None = None, submitted=None):
         lan_host = await self._consented_lan_host(record)
-        result = self._authoritative_provider_result(provider.descriptor.id, result, request_kind=record.request.kind,
-                                                     lan_host=lan_host)
+        result = self._authoritative_provider_result(provider.descriptor.id, result,
+                                                     request_kind=record.resolvable.kind, lan_host=lan_host)
         if result.discovery is not None:
             if result.error or result.candidates or result.observation or result.input_required:
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
-            discovered = await self._discover(record, provider, result, submitted)
+            record, discovered = await self._interpreted_discovery(record, provider, result, submitted)
             if isinstance(discovered, InputRequirement):
                 await self._provider_input_required(record, attempt, provider, discovered, challenge)
                 return
             result = self._authoritative_provider_result(provider.descriptor.id, discovered,
-                                                         request_kind=record.request.kind, lan_host=lan_host)
+                                                         request_kind=record.resolvable.kind, lan_host=lan_host)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
             if not isinstance(provider, ProviderInputContinuation):
                 raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
                                                 retryability=Retryability.NEVER))
-            resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.request.payload),
+            resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.resolvable.payload),
                                                  result.input_required)
             if resolution.outcome == AuthOutcome.SATISFIED:
                 matched = resolution.submitted
                 try:
                     result = self._authoritative_provider_result(
-                        provider.descriptor.id, await provider.resolve_with_input(record.request, matched),
-                        request_kind=record.request.kind, lan_host=lan_host)
+                        provider.descriptor.id, await provider.resolve_with_input(record.resolvable, matched),
+                        request_kind=record.resolvable.kind, lan_host=lan_host)
                 finally:
                     matched.discard()
                 await self._settle_input(record.transfer_id, matched.token, accepted=not result.input_required)
@@ -1292,7 +1302,7 @@ class TransferEngine:
                                        requirement: InputRequirement, challenge: InputChallenge | None) -> None:
         """Ask once, through the one lifecycle, for input resolution needs --
         after the authentication-input owner had its chance to answer."""
-        resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.request.payload),
+        resolution = await self._match_input(record.transfer_id, record.id, auth_scope(record.resolvable.payload),
                                              requirement)
         requirement = resolution.requirement or requirement
         if challenge:
@@ -1305,6 +1315,57 @@ class TransferEngine:
         else:
             await self.challenges.wait_provider(attempt, requirement, provider.descriptor.id)
 
+    async def _interpreted_discovery(self, record: RequestRecord, provider, requested: ResolutionResult,
+                                     submitted=None) -> tuple[RequestRecord, object]:
+        """THE one owner of a provider's alternate interpretation of a request.
+
+        The request as the provider reads it is discovered first. Only when the
+        server positively establishes that this reading does not provide the
+        resource (``policy.interpretation_absent``) AND the provider named an
+        alternate reading of the same request is that alternate discovered --
+        without input: an answer only ever reaches the interpretation that
+        asked for it. Once the alternate is reached (it answers with anything
+        but its own absence) it durably becomes the request's interpretation,
+        so every later resolution, input scope and retry uses it directly and
+        the first reading is never probed again. When both are absent, a
+        server that answered outranks a port that refused, and otherwise the
+        operator's own reading's failure is the one reported."""
+        try:
+            return record, await self._discovered(record, provider, await self._discover(
+                record, provider, requested, submitted))
+        except _ServerAnswer as exc:
+            primary = exc.failure
+        alternate = requested.discovery.alternate
+        if alternate is None or record.interpretation is not None or not interpretation_absent(primary.error):
+            raise primary
+        if not isinstance(alternate, TransferRequest) or alternate.kind not in provider.descriptor.request_types:
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+        interpreted = replace(record, interpretation=alternate)
+        result = self._authoritative_provider_result(
+            provider.descriptor.id, await provider.resolve(alternate), request_kind=alternate.kind,
+            lan_host=await self._consented_lan_host(record))
+        if (result.discovery is None or result.discovery.alternate is not None or result.error or result.candidates
+                or result.observation or result.input_required):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+        try:
+            outcome = await self._discover(interpreted, provider, result)
+        except _ServerAnswer as exc:
+            if not interpretation_absent(exc.failure.error):
+                await self.repository.record_interpretation(record.id, alternate)
+                raise exc.failure from None
+            answered = (primary.error.category == Category.CONNECTION_REFUSED
+                        and exc.failure.error.category == Category.SOURCE_NOT_FOUND)
+            raise (exc.failure if answered else primary) from None
+        await self.repository.record_interpretation(record.id, alternate)
+        return interpreted, await self._discovered(interpreted, provider, outcome)
+
+    @staticmethod
+    async def _discovered(record: RequestRecord, provider, outcome):
+        """The provider's reading of the server's answer (a requirement passes through)."""
+        if isinstance(outcome, InputRequirement):
+            return outcome
+        return await provider.resolve_discovered(record.resolvable, outcome)
+
     async def _discover(self, record: RequestRecord, provider, requested: ResolutionResult, submitted=None):
         """THE core-run authenticated remote discovery a provider asked for.
 
@@ -1314,14 +1375,15 @@ class TransferEngine:
         exactly as for execution. The authentication-input owner answers any
         requirement it can (its material is settled by the listing's outcome);
         otherwise the requirement is returned for the one INPUT_REQUIRED
-        lifecycle. The provider only receives the neutral result."""
+        lifecycle. Returns the server's neutral answer (or that requirement);
+        ``_interpreted_discovery`` hands an answer to the provider."""
         request = requested.discovery
         if not isinstance(provider, DiscoveryResolution):
             raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
                                             retryability=Retryability.NEVER))
-        candidate = TransferCandidate(record.request.name or "", (request.endpoint,), provider_id=provider.descriptor.id,
+        candidate = TransferCandidate(record.resolvable.name or "", (request.endpoint,), provider_id=provider.descriptor.id,
                                       accepted_input_methods=request.accepted_input_methods,
-                                      request_kind=record.request.kind)
+                                      request_kind=record.resolvable.kind)
         candidate = replace(candidate, private_network_grant=self._lan_granted(
             candidate, await self._consented_lan_host(record)))
         subject = ExecutionSubject.of(candidate)
@@ -1345,7 +1407,7 @@ class TransferEngine:
                     if submitted is not None:
                         await self._settle_input(record.transfer_id, submitted.token, accepted=True)
                     await self.challenges.record(record.transfer_id, "discovery_completed", family)
-                    return await provider.resolve_discovered(record.request, outcome)
+                    return outcome
                 if submitted is not None:
                     await self._settle_input(record.transfer_id, submitted.token, accepted=False)
                 resolution = await self._match_input(record.transfer_id, record.id, scope, outcome)
@@ -1356,9 +1418,9 @@ class TransferEngine:
                     return resolution.requirement or outcome
                 submitted = resolution.submitted
             return outcome
-        except TransferError:
+        except TransferError as exc:
             await self.challenges.record(record.transfer_id, "discovery_failed", family)
-            raise
+            raise _ServerAnswer(exc) from exc
 
     @staticmethod
     def _file_manifest_root(record: RequestRecord, provider) -> bool:
@@ -1438,21 +1500,21 @@ class TransferEngine:
                     Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION, domain=Domain.LIFECYCLE,
                     retryability=Retryability.NEVER,
                 ))
-            provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.request)
+            provider = self.registry.provider_for_bound_continuation(bound_provider_id, record.resolvable)
             async with self._resolution_slot():
                 if not await self._live(challenge.transfer_id, admission=True):
                     return
-                submitted = await self._take_input(challenge, record.id, auth_scope(record.request.payload))
+                submitted = await self._take_input(challenge, record.id, auth_scope(record.resolvable.payload))
                 if submitted is None:
                     return
                 secrets = submitted.secret_values()
                 if isinstance(provider, ProviderInputContinuation):
-                    result = await provider.resolve_with_input(record.request, submitted)
+                    result = await provider.resolve_with_input(record.resolvable, submitted)
                     discovery_input = None
                 else:
                     # A provider that asked core for discovery states its
                     # request again; the answer continues that discovery.
-                    result = await provider.resolve(record.request)
+                    result = await provider.resolve(record.resolvable)
                     discovery_input = submitted
             attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id, "input_required")
             if discovery_input is None:

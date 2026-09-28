@@ -63,7 +63,9 @@ test('the rsync box is a registered Network Sources member after SCP with the Fo
     const box = page.locator('.dp-settings-provider-card--general-rsync');
     await expect(box).toHaveClass(/dp-settings-source-box/);
     await expect(box.locator('.card-title')).toHaveText('rsync');
-    await expect(box).toContainText('rsync and rsync-over-SSH sources.');
+    await expect(box).toContainText('rsync sources.');
+    // One operator source: the transport is the server's to decide, never a label.
+    await expect(box).not.toContainText('SSH');
     const order = await page.locator('.dp-settings-general-sources .dp-settings-source-box').evaluateAll(
       nodes => nodes.map(node => [...node.classList].find(name => name.startsWith('dp-settings-provider-card--'))));
     expect(order.indexOf('dp-settings-provider-card--general-rsync'))

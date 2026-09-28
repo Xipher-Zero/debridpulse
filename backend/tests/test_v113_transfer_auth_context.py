@@ -616,3 +616,41 @@ async def test_a_failed_transfer_is_not_destroyed_by_aggregation(lab):
     assert (await engine.repository.get(transfer.id)).state == TransferState.FAILED
     await engine._aggregate(transfer.id)
     assert await engine.inputs.holds(transfer.id)
+
+
+async def test_a_credential_asked_again_travels_with_the_identity_already_confirmed_for_its_scope():
+    """A server identity confirmed once in a lineage and scope is a separate
+    fact the owner keeps: a later answer to a credential-only question (a key
+    that would not unlock, asked again) carries it -- never re-asked -- while
+    an answer in any other scope never does."""
+    from transfers.input_required import EphemeralInputBroker
+    from transfers.models import InputChallenge, InputOrigin, InputReason
+    from transfers.requests import auth_scope
+
+    broker = EphemeralInputBroker()
+    scope = auth_scope("vault://vault-host.test/item")
+    observed = server_identity_required(username_password(), host="vault-host.test", algorithm="sha-1",
+                                        fingerprint=FINGERPRINT)
+
+    def challenge(identifier, requirement, generation):
+        return InputChallenge(identifier, 7, generation, requirement.reason, InputOrigin.PROVIDER, "locked-source",
+                              "operation", requirement.methods, request_id="root", facts=requirement.facts)
+
+    first = challenge("first", observed, 1)
+    await broker.submit(first, "username_password", {"username": USER, "password": WRONG})
+    wrong = await broker.take(first, chain=("root",), scope=scope)
+    assert {fact.name for fact in wrong.facts} >= {InputFactName.SERVER_IDENTITY_FINGERPRINT}
+    await broker.settle(wrong.token, accepted=False)
+
+    again = challenge("again", auth_required(username_password()), 2)
+    assert again.reason == InputReason.AUTH_REQUIRED and again.facts == ()
+    await broker.submit(again, "username_password", {"username": USER, "password": PASSWORD})
+    answered = await broker.take(again, chain=("root",), scope=scope)
+    facts = {fact.name: fact.value for fact in answered.facts}
+    assert facts == {InputFactName.SERVER_HOST: "vault-host.test", InputFactName.SERVER_IDENTITY_ALGORITHM: "sha-1",
+                     InputFactName.SERVER_IDENTITY_FINGERPRINT: FINGERPRINT}
+
+    elsewhere = challenge("elsewhere", auth_required(username_password()), 3)
+    await broker.submit(elsewhere, "username_password", {"username": USER, "password": PASSWORD})
+    other = await broker.take(elsewhere, chain=("root",), scope=auth_scope("vault://other-host.test/item"))
+    assert other.facts == ()

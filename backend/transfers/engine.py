@@ -51,7 +51,7 @@ class TransferEngine(_RecoveryTransferEngine):
             return None
         provider_id = record.resource.provider_id
         try:
-            return self.registry.provider_for_bound_route(provider_id, record.request)
+            return self.registry.provider_for_bound_route(provider_id, record.resolvable)
         except TransferError as exc:
             configured = self.registry.providers.get(provider_id)
             if (
@@ -144,8 +144,8 @@ class TransferEngine(_RecoveryTransferEngine):
 
             bound_provider_id = await self.repository.bound_route_provider(record.id)
             provider = (
-                self.registry.provider_for_bound_route(bound_provider_id, record.request)
-                if bound_provider_id else self.registry.provider_for(record.request)
+                self.registry.provider_for_bound_route(bound_provider_id, record.resolvable)
+                if bound_provider_id else self.registry.provider_for(record.resolvable)
             )
             async with self._resolution_slot():
                 if not await self._live(record.transfer_id, admission=True):
@@ -155,7 +155,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 )
                 if attempt is None:
                     return
-                result = await provider.resolve(record.request)
+                result = await provider.resolve(record.resolvable)
             await self._apply_resolution(record, attempt, provider, result)
         except ApplicabilityUnresolved:
             return

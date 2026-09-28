@@ -56,6 +56,10 @@ def request(value: dict) -> TransferRequest:
     return TransferRequest(**data)
 
 
+def optional_request(value: dict | None) -> TransferRequest | None:
+    return request(value) if value else None
+
+
 def resource(value: dict | None) -> ProviderResource | None:
     if value is None:
         return None

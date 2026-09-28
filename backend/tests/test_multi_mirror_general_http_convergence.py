@@ -229,7 +229,7 @@ async def _build_runtime(tmp_path, monkeypatch) -> _Runtime:
     await server.start()
 
     proc, service = await _start_aria2(downloads)
-    egress = SimpleNamespace(ensure_started=_noop, job_options=lambda address, scope=None: {})
+    egress = SimpleNamespace(ensure_started=_noop, job_options=lambda address, scope=None, budget=None: {})
     executor = Aria2Executor(service, Aria2Configuration(str(downloads), confirmation_delay=0),
                              repository.authorize_execution, egress=egress)
     registry.register_provider(GeneralHttpProvider())

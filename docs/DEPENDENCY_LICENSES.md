@@ -174,7 +174,9 @@ copyleft-covered binaries.
 
 `zstd` is installed as the exact outer decoder for `.tar.zst`/`.tzst`; the resulting TAR stream is validated by DebridPulse before extraction.
 
-`rsync` (Debian `3.4.1`, licensed GPL-3.0-or-later per its Debian copyright
+`rsync` (the Debian trixie package, taken at its current stable update when the
+image is built -- `3.5.0+ds1-0+deb13u1` as of 2026-09-28, previously
+`3.4.1+ds1-5+deb13u4` -- licensed GPL-3.0-or-later per its Debian copyright
 file, which stays installed in the image) is the rsync executor's native
 client. DebridPulse runs it only as a separate program, over argv, and links
 none of its code; its rsync-over-SSH transport is DebridPulse's own SSH

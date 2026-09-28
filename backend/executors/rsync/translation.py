@@ -180,9 +180,15 @@ def _spec_for(code: str, diagnostic: str):
         if proxy:
             # The egress guard refused the route: 407 is a credential the guard
             # itself did not sign, 403 its own address policy (or an upstream
-            # it could not reach).
+            # it could not reach), 502 an approved server that actively
+            # refused -- nothing serves that port -- and 504 one that did not
+            # answer within the route's Connection Timeout.
             if proxy.group(1) == "407":
                 return (D.SECURITY, C.EGRESS_POLICY_VIOLATION, T.NEVER, O.SECURITY_POLICY, P.PERMANENT), E.DIAGNOSTIC
+            if proxy.group(1) == "502":
+                return (D.NETWORK, C.CONNECTION_REFUSED, T.BACKOFF, O.REMOTE_SOURCE, P.UNKNOWN), E.DIAGNOSTIC
+            if proxy.group(1) == "504":
+                return (D.NETWORK, C.CONNECTION_TIMEOUT, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY), E.DIAGNOSTIC
             return (D.NETWORK, C.CONNECTION_FAILED, T.BACKOFF, O.REMOTE_SOURCE, P.TEMPORARY), E.DIAGNOSTIC
         refused = _CONNECT_FAILED.search(diagnostic)
         if refused and refused.group(1) == "110":

@@ -377,8 +377,13 @@ class EphemeralInputBroker:
                 material = _Material({field: submitted.value(field) for field in InputField if submitted.value(field)},
                                      "operator")
                 context.materials.append(material)
+                # An answer to a question that carried no server identity (a
+                # credential asked again) still travels with the identity this
+                # lineage already confirmed for the same scope -- never re-asked.
+                facts = submitted.facts if identity is not None else (
+                    self._confirmed_facts_locked(challenge.transfer_id, chain or (root,), scope) or submitted.facts)
                 return self._leased_locked((challenge.transfer_id, root, scope), material, submitted.method,
-                                           submitted.facts, challenge_id=challenge.id,
+                                           facts, challenge_id=challenge.id,
                                            generation=challenge.generation, discard=submitted)
             chosen = self._material_locked(challenge.transfer_id, chain or (root,), scope, (username_password(),))
             if chosen is None:
@@ -643,6 +648,18 @@ class EphemeralInputBroker:
         if context is None:
             context = self._contexts[key] = _Context(self.clock())
         return context
+
+    def _confirmed_facts_locked(self, transfer_id: int, chain, scope) -> tuple[InputFact, ...]:
+        """The server identity this lineage confirmed for ``scope``, as the
+        facts an identity-bound consumer reads; empty when none was."""
+        confirmed = next((context.identity for context in self._chain_locked(transfer_id, chain, scope)
+                          if context.identity is not None), None)
+        if confirmed is None or not scope.host:
+            return ()
+        algorithm, fingerprint = confirmed
+        return (InputFact(InputFactName.SERVER_HOST, scope.host),
+                InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, algorithm),
+                InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, fingerprint))
 
     def _chain_locked(self, transfer_id: int, chain, scope):
         for request_id in chain:

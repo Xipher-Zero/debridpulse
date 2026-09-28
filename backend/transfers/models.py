@@ -463,10 +463,19 @@ class DiscoveryRequest:
 
     ``recursive``: the provider's source semantics select the whole tree
     beneath a directory, not only its immediate files. An executor that cannot
-    list a tree refuses the discovery; it never answers with a flat listing."""
+    list a tree refuses the discovery; it never answers with a flat listing.
+
+    ``alternate``: the SAME operator request read another way, when the
+    provider's source semantics admit one (never a second candidate). Core
+    tries it only after discovering ``endpoint`` positively establishes that
+    this interpretation does not provide the resource
+    (``transfers.policy.interpretation_absent``); once reached, it durably
+    becomes the request's interpretation (``RequestRecord.interpretation``).
+    An alternate's own resolution never names a further alternate."""
     endpoint: Endpoint
     accepted_input_methods: tuple[InputMethod, ...] = ()
     recursive: bool = False
+    alternate: TransferRequest | None = None
 
 
 @dataclass(frozen=True)
@@ -979,6 +988,16 @@ class RequestRecord:
     retry_at: float = 0
     error: NormalizedError | None = None
     entry: SourceEntry | None = None
+    # The provider's alternate reading of ``request`` that discovery
+    # established (``DiscoveryRequest.alternate``); ``request`` stays exactly
+    # what the operator submitted.
+    interpretation: TransferRequest | None = None
+
+    @property
+    def resolvable(self) -> TransferRequest:
+        """The request as the provider resolves it: its established
+        interpretation when it has one, otherwise the request itself."""
+        return self.interpretation if self.interpretation is not None else self.request
 
 
 class SizeKnowledge(StrEnum):

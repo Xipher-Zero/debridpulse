@@ -23,16 +23,22 @@
   form for the login folder) is resolved by the server through SFTP before anything downloads, so aria2
   only ever receives the concrete path; another user's `~name`, fragments, bracket classes and patterns in
   folder names are refused. The provider has its own Enable control.
-- **rsync Network Source and rsync executor** (`general_rsync` / `rsync`, both labelled rsync). `rsync://`
-  links reach an rsync server (`rsync://host/` offers every shared area it advertises) and `rsync+ssh://`
-  links a server reached over SSH (`~/` starts at the login folder). The server decides what a path is: a
+- **rsync Network Source and rsync executor** (`general_rsync` / `rsync`, both labelled rsync). One
+  `rsync://host/path` link works whether the server offers rsync directly or only over SSH: DebridPulse asks
+  the rsync server first, and only when it positively shows it does not provide that path -- an unknown
+  shared area, a missing path, or no rsync server answering at all -- is the same path read over SSH
+  (`~/` starts at the login folder). An rsync server that answers is authoritative, even to ask for its own
+  login or to say it is full; a link with its own port means that one service, and `rsync+ssh://` always
+  means SSH. The link as typed is kept, with the way it was resolved recorded beside it. `rsync://host/`
+  offers every shared area the server advertises. The server decides what a path is: a
   file is one download; a folder -- with or without a trailing `/`, submitted or chosen alike -- is its whole
   tree, frozen into the existing file selection. Symbolic links and special files are never members and
   never followed, and every name is literal (rsync's own wildcards never apply). rsync only reads: nothing
   is deleted, changed or uploaded on the server. Identity and login go through the existing authentication
   owner (an rsync server's own accounts; over SSH, password or private key, with the same server-identity
-  confirmation SFTP and SCP use); secrets reach rsync only through one-shot pipes, never its command line,
-  environment or a file, and every connection crosses the egress guard. rsync continues a file exactly
+  confirmation SFTP and SCP use); operator and source credentials reach rsync only through one-shot pipes,
+  never its command line, environment or a file, and every connection crosses the egress guard (an rsync
+  server connection carries only DebridPulse's own route-scoped egress-guard credential, in `RSYNC_PROXY`). rsync continues a file exactly
   from the material DebridPulse holds valid -- including a partial another executor wrote, and aria2 in
   turn continues rsync's -- and its own quick check can never mark anything done. Downloads → Transfer
   Method Settings → rsync has five settings: Partial Transfers (on), Compression (off), Preserve
@@ -40,12 +46,32 @@
   the Debian rsync package (GPL-3.0-or-later; see docs/DEPENDENCY_LICENSES.md).
 - **Private-key sign-in accepts passphrase-protected OpenSSH keys.** The one SSH sign-in step imports a
   supplied key in OpenSSH format (the `ssh-keygen` default, encrypted or not) or PKCS#8, with its optional
-  passphrase; a key that cannot be unlocked is asked for again, never used or skipped. This adds `bcrypt`
-  5.0.0 (Apache-2.0) to the locked runtime dependencies.
+  passphrase; a key that cannot be unlocked is asked for again, never used, skipped or replaced by a
+  password attempt. A sign-in asked for again keeps the server identity already confirmed for that server,
+  so correcting a passphrase never asks to confirm the identity a second time. Private-key sign-in is
+  offered wherever the executor can use it (rsync over SSH); SFTP and SCP downloads, run by aria2, remain
+  password-only. This adds `bcrypt` 5.0.0 (Apache-2.0) to the locked runtime dependencies.
 - **A source server's connection limit is waited out, never a failure.** When a server refuses a
   connection because its own limit is reached (an rsync daemon refuses at once; it never queues), the
   transfer backs off and tries again -- or moves to an equivalent source -- without spending its retry,
   recovery or duplicate-proof budget, and is never reported as stalled, timed out or held.
+- **The global download speed cap governs rsync, and holds across engines at every moment.** DebridPulse's
+  one cap is divided between the engines currently downloading, and each enforces only its share. rsync
+  now takes part: all of its transfers together -- daemon or SSH, however many -- draw on one DebridPulse
+  download budget in the egress guard, so they share its share instead of each receiving the full cap,
+  whatever the server does (rsync's own `--bwlimit` is enforced by the server, which may refuse it). Under
+  a cap, rsync was previously refused instead. aria2 keeps its own daemon-wide limit and now also draws on
+  its budget, which closes the burst aria2's own limiter allowed after its share rose (for example when
+  another engine finished). A paused, stopped or finished transfer releases its part; a changed or lifted
+  cap applies to running transfers at once.
+- **A refused connection is reported as Connection Refused, and a silent one times out on time.** When an
+  approved server actively refuses a connection (nothing serves that port), the egress guard says so
+  (`502`) instead of reporting it like a policy block (`403`), and the new neutral *Connection Refused*
+  category carries it. A route that carries its own Connection Timeout (rsync, and every in-process
+  evidence or discovery connection) now bounds the guard's connection to the server by it: a server that
+  never answers -- a firewall that silently drops the port -- is a `504` and a *Connection Timeout* within
+  that timeout, instead of a *Connection Failed* after the operating system gives up (about two minutes).
+  A timeout is never taken as proof that a source is absent. aria2's own handling is unchanged.
 - **Details shows the submitted FTP and SFTP link** as Original Resource (scheme, host, non-default port
   and path; a query only as `?…`, never credentials) instead of only the file name, through the same
   remote-file presentation owner SCP and SSH use.

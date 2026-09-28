@@ -26,17 +26,17 @@ import executors.process_ownership as ownership_module
 import executors.rsync.executor as executor_module
 from execution_requests import file_request
 from executors.rsync.executor import RsyncConfiguration, RsyncExecutor
-from rsync_origins import RsyncDaemon, RsyncSshOrigin, require_rsync, write_tree
+from rsync_origins import RsyncDaemon, RsyncSshOrigin, free_port, require_rsync, write_tree
 from services.artifact_sampling import SAMPLE_BYTES, digest_full, digest_prefix
 from test_v113_transport_evidence_sampling import guard_for
-from transfers.errors import Category, Domain, Retryability
+from transfers.errors import Category, Domain, Retryability, TransferError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
     ContinuationCapability, ContinuationPlan, ContinuationStrategy, Endpoint, ExecutionState, ExecutionSubject,
     FingerprintKind, InputFact, InputFactName, InputField, InputMethod, InputReason, RemoteObjectKind,
     TransferCandidate,
 )
-from transfers.policy import RecoveryAction, RecoveryContext, TransferPolicy
+from transfers.policy import RecoveryAction, RecoveryContext, TransferPolicy, interpretation_absent
 
 pytestmark = pytest.mark.asyncio
 
@@ -151,7 +151,9 @@ async def test_declared_capabilities_are_exactly_the_characterized_ones(tmp_path
     assert caps.continuation == frozenset({
         ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
         ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES})
-    assert not caps.per_execution_pause and not caps.acquisition_gate and not caps.aggregate_bandwidth_ceiling
+    assert not caps.per_execution_pause and not caps.acquisition_gate
+    # The DP-assigned aggregate ceiling is enforced on every rsync connection.
+    assert caps.aggregate_bandwidth_ceiling
     assert caps.remote_discovery and caps.candidate_sampling and caps.transient_input
     off = _executor(tmp_path, guard_for(), partial_transfers=False)
     assert off.capabilities.continuation == frozenset({ContinuationCapability.FULL_RESTART})
@@ -397,6 +399,7 @@ async def test_a_full_module_is_an_immediate_remote_capacity_fact_never_a_stall(
         error = observed.error
         assert (error.domain, error.category, error.retryability) == (
             Domain.NETWORK, Category.CONCURRENCY_LIMITED, Retryability.BACKOFF)
+        assert not interpretation_absent(error)  # a full module is the daemon's answer, not absence
         assert observed.progress.completed_bytes == 0
         # Core policy waits for capacity: no budget is spent, no second scheduler.
         policy = TransferPolicy(retry_delay=5)
@@ -465,6 +468,50 @@ async def test_evidence_waits_out_the_release_of_the_session_before_it_and_still
         assert time.monotonic() - started < 5
     finally:
         end(holder)
+
+
+async def test_each_daemon_answer_is_classified_for_the_interpretation_owner(tmp_path, daemon):
+    """What the server said decides whether another reading of the same source
+    may be tried: only its own positive absence (an unknown module, a missing
+    path, nothing listening) -- never a login, a full module or a policy block."""
+    origin, guard = daemon
+    executor = _executor(tmp_path, guard)
+    methods = (InputMethod.USERNAME_PASSWORD, InputMethod.USERNAME_PRIVATE_KEY)
+
+    async def failure(url, via=None):
+        with pytest.raises(TransferError) as raised:
+            await (via or executor).discover(ExecutionSubject.of(_candidate(url, methods=methods)), recursive=True)
+        return raised.value.error
+
+    unknown = await failure(origin.url("/home/user/file.iso"))
+    missing = await failure(origin.url("/pub/no-such-file.iso"))
+    closed = await failure(f"rsync://rsync-origin.test:{free_port()}/pub/file.iso")
+    closed_ssh = await failure(f"rsync+ssh://rsync-origin.test:{free_port()}/srv/file.iso")
+    assert (unknown.domain, unknown.category) == (Domain.RESOLUTION, Category.SOURCE_NOT_FOUND)
+    assert (missing.domain, missing.category) == (Domain.RESOLUTION, Category.SOURCE_NOT_FOUND)
+    assert (closed.domain, closed.category) == (Domain.NETWORK, Category.CONNECTION_REFUSED)
+    assert (closed_ssh.domain, closed_ssh.category) == (Domain.NETWORK, Category.CONNECTION_REFUSED)
+    assert all(interpretation_absent(item) for item in (unknown, missing, closed, closed_ssh))
+    # A module that wants its own login asks for it -- a password only: a
+    # daemon account is never a key login.
+    login = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/priv/p.bin"), methods=methods)),
+                                    recursive=True)
+    assert login.reason == InputReason.AUTH_REQUIRED
+    assert [item.method for item in login.methods] == [InputMethod.USERNAME_PASSWORD]
+    # A daemon port that never answers (a firewall that drops it) is a timeout
+    # within rsync's own Connection Timeout: uncertainty, never absence.
+    from test_v113_egress_guard_route_scope import BlackHole
+    with BlackHole() as hole:
+        started = time.monotonic()
+        silent = await failure(f"rsync://rsync-origin.test:{hole.port}/pub/file.iso",
+                               via=_executor(tmp_path, guard, connection_timeout_seconds=5))
+        waited = time.monotonic() - started
+    assert (silent.domain, silent.category) == (Domain.NETWORK, Category.CONNECTION_TIMEOUT)
+    assert not interpretation_absent(silent) and waited < 15
+    # A destination the guard's own policy refuses is no statement about the
+    # server at all.
+    blocked = await failure(origin.url("/home/user/file.iso"), via=_executor(tmp_path, guard_for(public=())))
+    assert blocked.category != Category.CONNECTION_REFUSED and not interpretation_absent(blocked)
 
 
 # ── 6. continuation boundary ─────────────────────────────────────────────────
@@ -645,7 +692,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
                                    _password(facts=confirmed), recursive=True)
     assert {(entry.relative_path, entry.expected_bytes) for entry in tree.entries} == {("one.bin", 3), ("two/2.bin", 3)}
     passphrase = "key-passphrase-sentinel"
-    for fmt, secret in (("openssh", ""), ("openssh", passphrase), ("pkcs8-pem", passphrase)):
+    for fmt, secret in (("openssh", ""), ("openssh", passphrase), ("pkcs8-pem", ""), ("pkcs8-pem", passphrase)):
         exported = key.export_private_key(fmt, secret or None).decode()
         keyed = SubmittedInput("challenge", 1, InputMethod.USERNAME_PRIVATE_KEY,
                                {InputField.USERNAME: USER, InputField.PRIVATE_KEY: exported,
@@ -668,6 +715,16 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
                 origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), bad, recursive=True)
             # A key that cannot be unlocked is asked again, never used or skipped.
             assert refused.reason == InputReason.AUTH_REQUIRED
+    malformed = SubmittedInput("challenge", 1, InputMethod.USERNAME_PRIVATE_KEY,
+                               {InputField.USERNAME: USER, InputField.PRIVATE_KEY: "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+                                "bm90IGEga2V5\n-----END OPENSSH PRIVATE KEY-----\n"}, confirmed)
+    attempted = len(origin.auth_attempts)
+    unusable = await executor.discover(ExecutionSubject.of(_candidate(
+        origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), malformed, recursive=True)
+    # A malformed key is asked again: it never reaches the server, and never
+    # silently becomes a password login.
+    assert unusable.reason == InputReason.AUTH_REQUIRED
+    assert not [method for method, _user in origin.auth_attempts[attempted:] if method == "password"]
     assert ("publickey", USER) in origin.auth_attempts
     for argv, env, _kwargs in spawned:
         blob = json.dumps([argv, env])

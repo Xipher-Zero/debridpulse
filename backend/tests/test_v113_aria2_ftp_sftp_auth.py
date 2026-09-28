@@ -57,7 +57,8 @@ def _failed(code: str, message: str) -> ExecutionObservation:
 
 
 def _executor(tmp_path, client=None, *, scopes=None) -> Aria2Executor:
-    def job_options(address, *, scope=RouteScope.ENDPOINT):
+    def job_options(address, *, scope=RouteScope.ENDPOINT, budget=None):
+        assert budget == "aria2"  # every job draws on aria2's DP download budget
         if scopes is not None:
             scopes.append((address, scope))
         return {"all-proxy": "http://guard:1"}

@@ -730,12 +730,12 @@ class TransferEngine(_QualifiedTransferEngine):
 
         if not await self.repository.recovery_claim_current(claim, now=self.clock()):
             return False, "claim_lost", None
-        bound_candidate = replace(candidate, refresh_request=record.request)
+        bound_candidate = replace(candidate, refresh_request=record.resolvable)
         try:
             result = self._authoritative_provider_result(
                 provider.descriptor.id,
                 await provider.refresh(bound_candidate),
-                request_kind=record.request.kind,
+                request_kind=record.resolvable.kind,
                 lan_host=await self._consented_lan_host(record),
             )
         except Exception as exc:
