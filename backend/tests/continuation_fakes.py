@@ -332,3 +332,196 @@ class CollectionSpoolProvider:
         return ResolutionResult(ResourceState.AVAILABLE, (TransferCandidate(
             request.name or "bundle", (Endpoint(self.scheme, f"{self.scheme}:{request.payload}"),),
             provider_id=self.descriptor.id, materialization=MaterializationKind.COLLECTION),))
+
+
+NATIVE = CONTINUES | {ContinuationCapability.NATIVE_PRIVATE_RESUME, ContinuationCapability.NATIVE_SOURCE_RETARGET}
+
+
+@dataclass
+class NativeJob:
+    """One native job: its private piece map survives pause/resume and a
+    retarget, exactly like a real executor's in-memory state."""
+    target: str
+    source: bytes
+    address: str
+    owner: str
+    pieces: tuple = ()
+    state: ExecutionState = ExecutionState.RUNNING
+
+
+class NativeSpoolExecutor:
+    """A byte-moving FILE executor that writes SPARSE pieces, parks across
+    Pause (native quiesce + native private resume) and can replace the source
+    of a paused job (native source retarget) for the schemes it lists in
+    ``retargetable``. A fresh job continues only at a contiguous plan
+    boundary and discards its private journal -- never sparse ranges. Native
+    identity (``handle.native["job"]``) is independent of the DP attempt."""
+
+    def __init__(self, authorize, sources: dict[str, bytes], *, identity="native", schemes=("parka", "parkb"),
+                 retargetable=("parka", "parkb"), continuation=NATIVE):
+        self.descriptor = IntegrationDescriptor(identity, identity, frozenset())
+        self.capabilities = ExecutorCapabilities(per_execution_pause=True, continuation=frozenset(continuation))
+        self.authorize = authorize
+        self.sources = sources
+        self.schemes = tuple(schemes)
+        self.retargetable = frozenset(retargetable)
+        self.jobs: dict[str, NativeJob] = {}
+        self.plans = []
+        self.calls = []
+        # "ok" | "refused" (no mutation, FAILED) | "ack_lost_b" (source became B,
+        # acknowledgement lost) | "ack_lost_a" (nothing changed, acknowledgement
+        # lost) | "uncertain" (the job ends up on neither source provably)
+        self.retarget_result = "ok"
+        self.cancel_uncertain = False
+        self.before_retarget_prepare = None
+
+    def claim(self, subject):
+        return ExecutorClaim(any(item.scheme in self.schemes for item in subject.candidate.endpoints))
+
+    def journal(self, target) -> str:
+        return str(target) + f".{self.descriptor.id}-journal"
+
+    def footprint(self, work):
+        return ExecutionFootprint((self.journal(work.materialization.target),))
+
+    def prepare(self, request):
+        return ExecutionHandle(self.descriptor.id, request.attempt_id,
+                               {"target": request.work.materialization.target}, {"job": request.attempt_id})
+
+    def _source(self, request):
+        address = request.work.subject.candidate.endpoints[0].address
+        return address, self.sources[address.split(":", 1)[1]]
+
+    async def start(self, request, handle):
+        assert await self.authorize(handle, "start")
+        plan = request.continuation
+        self.plans.append(plan)
+        self.calls.append(("start", handle.attempt_id))
+        assert plan is None or plan.strategy != ContinuationStrategy.NATIVE_STATE_HANDOFF
+        target = request.work.materialization.target
+        address, source = self._source(request)
+        Path(target).parent.mkdir(parents=True, exist_ok=True)
+        boundary = plan.boundary if plan is not None and plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET else 0
+        Path(self.journal(target)).unlink(missing_ok=True)
+        if boundary:
+            os.truncate(target, boundary)
+        else:
+            with open(target, "wb"):
+                pass
+        Path(self.journal(target)).write_text("")
+        self.jobs[handle.native["job"]] = NativeJob(target, source, address, handle.attempt_id)
+        return self._observation(handle, self.jobs[handle.native["job"]])
+
+    def job_for(self, handle):
+        return self.jobs.get(handle.native["job"])
+
+    def write(self, handle, start: int, end: int) -> None:
+        """Write real source bytes ``[start, end)`` -- anywhere, not only at a
+        cursor: a multi-connection job fills several segments at once."""
+        job = self.job_for(handle)
+        assert job.state == ExecutionState.RUNNING
+        end = min(end, len(job.source))
+        with open(job.target, "r+b") as out:
+            out.seek(start)
+            out.write(job.source[start:end])
+        job.pieces = tuple(sorted(set(job.pieces) | {(start, end)}))
+        Path(self.journal(job.target)).write_text(repr(job.pieces))
+
+    def finish(self, handle) -> None:
+        job = self.job_for(handle)
+        self.write(handle, 0, len(job.source))
+        job.state = ExecutionState.SUCCEEDED
+        Path(self.journal(job.target)).unlink(missing_ok=True)  # private state ends with the job
+
+    def _observation(self, handle, job):
+        from transfers import material as mat
+        result = None
+        if job.state == ExecutionState.SUCCEEDED:
+            result = MaterializationResult(MaterializationKind.FILE, (MaterializedEntry(
+                Path(job.target).name, len(job.source)),))
+        running = job.state == ExecutionState.RUNNING
+        controls = (frozenset({ExecutionControl.PAUSE}) if running
+                    else frozenset({ExecutionControl.RESUME}) if job.state == ExecutionState.PAUSED else frozenset())
+        return ExecutionObservation(
+            handle, job.state, TransferProgress(len(job.source), mat.total(mat.normalize(job.pieces)), 1),
+            activity=ExecutionActivity(network_active=running, bandwidth_reservation_required=running,
+                                       progress_expected=running),
+            controls=controls, materialization=result, material=mat.normalize(job.pieces))
+
+    async def observe_many(self, handles):
+        results = []
+        for handle in handles:
+            job = self.job_for(handle)
+            results.append(ExecutionObservation(handle, ExecutionState.ABSENT) if job is None
+                           else self._observation(handle, job))
+        return ExecutionSnapshot(tuple(results))
+
+    async def pause(self, handle):
+        assert await self.authorize(handle, "pause")
+        self.calls.append(("pause", handle.attempt_id))
+        job = self.job_for(handle)
+        if job.state in {ExecutionState.RUNNING, ExecutionState.QUEUED}:
+            job.state = ExecutionState.PAUSED
+        return self._observation(handle, job)
+
+    async def resume(self, handle):
+        assert await self.authorize(handle, "resume")
+        self.calls.append(("resume", handle.attempt_id))
+        job = self.job_for(handle)
+        if job.state == ExecutionState.PAUSED:
+            job.state = ExecutionState.RUNNING
+        return self._observation(handle, job)
+
+    async def cancel(self, handle):
+        assert await self.authorize(handle, "cancel")
+        self.calls.append(("cancel", handle.attempt_id))
+        job = self.job_for(handle)
+        if self.cancel_uncertain:
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN)
+        if job is None:
+            return ExecutionObservation(handle, ExecutionState.ABSENT)
+        if job.state in {ExecutionState.RUNNING, ExecutionState.PAUSED, ExecutionState.QUEUED}:
+            job.state = ExecutionState.CANCELLED
+        return self._observation(handle, job)
+
+    async def prepare_retarget(self, request, previous):
+        if self.before_retarget_prepare is not None:
+            await self.before_retarget_prepare()
+        scheme = request.work.subject.candidate.endpoints[0].scheme
+        job = self.jobs.get((previous.native or {}).get("job"))
+        if scheme not in self.retargetable or job is None or job.target != request.work.materialization.target:
+            return None
+        return ExecutionHandle(self.descriptor.id, request.attempt_id,
+                               {"target": request.work.materialization.target}, dict(previous.native))
+
+    async def retarget_from(self, request, prepared, previous):
+        assert await self.authorize(prepared, "retarget")
+        self.calls.append(("retarget", previous.attempt_id, prepared.attempt_id))
+        job = self.job_for(prepared)
+        assert job is not None and job.owner == previous.attempt_id and job.state == ExecutionState.PAUSED
+        if self.retarget_result == "refused":
+            return ExecutionObservation(prepared, ExecutionState.FAILED)
+        if self.retarget_result == "ack_lost_a":
+            return ExecutionObservation(prepared, ExecutionState.UNKNOWN)
+        job.address, job.source = self._source(request)
+        job.owner = prepared.attempt_id
+        if self.retarget_result == "uncertain":
+            job.address = "mixed:" + job.address
+        if self.retarget_result in {"uncertain", "ack_lost_b"}:
+            return ExecutionObservation(prepared, ExecutionState.UNKNOWN)
+        return self._observation(prepared, job)
+
+    async def retarget_truth(self, request, prepared, original):
+        from transfers.models import RetargetTruth
+        self.calls.append(("truth", prepared.attempt_id))
+        job = self.job_for(prepared)
+        if job is None or job.state != ExecutionState.PAUSED:
+            return RetargetTruth.UNKNOWN
+        if job.address == request.work.subject.candidate.endpoints[0].address:
+            return RetargetTruth.RETARGETED
+        if job.address == original.work.subject.candidate.endpoints[0].address:
+            return RetargetTruth.ORIGINAL
+        return RetargetTruth.UNKNOWN
+
+    async def health(self):
+        return ExecutorHealth(True, True)

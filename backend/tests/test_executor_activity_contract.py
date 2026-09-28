@@ -339,7 +339,7 @@ async def test_engaged_acquisition_gate_covers_global_pause_of_an_unpausable_exe
     assert all(errors == () for errors in results.values())
 
 
-# -- Temporary collection / no-range-export pause exception (parks_on_pause) --
+# -- Native parking across Pause (parks_on_pause: quiesce + private resume) --
 
 PARKING = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.NATIVE_PRIVATE_RESUME,
                      ContinuationCapability.NATIVE_QUIESCE})
@@ -395,11 +395,24 @@ async def test_only_resume_through_the_canonical_lifecycle_continues_a_parked_jo
     assert len(_starts(core)) == starts
 
 
-async def test_the_parking_exception_never_applies_to_a_file_artifact(tmp_path, monkeypatch):
+async def test_a_file_artifact_parks_when_its_executor_resumes_its_own_quiesced_job(tmp_path, monkeypatch):
     core = await _parking_core(tmp_path, monkeypatch)
     transfer, artifact = await _running(core)  # an ordinary FILE artifact
     await core.engine.pause(transfer.id)
-    # Same executor capabilities, but a FILE: paused means no writer at all.
+    # Parking is capability-driven, never materialization-driven.
+    parked = await artifact_of(core, transfer.id)
+    assert parked.execution == artifact.execution and not _cancels(core)
+    assert core.executor.job_for(artifact.execution).state == ExecutionState.PAUSED
+    assert not await core.repository.authorize_execution(artifact.execution, "resume")
+
+
+async def test_a_file_executor_without_native_private_resume_still_retires_on_pause(tmp_path, monkeypatch):
+    quiesce_only = frozenset({ContinuationCapability.FULL_RESTART, ContinuationCapability.NATIVE_QUIESCE})
+    core = await ledger_core(tmp_path, monkeypatch, executors=lambda authorize: (
+        LedgerExecutor(authorize, capabilities=ledger_capabilities(continuation=quiesce_only)),))
+    transfer, artifact = await _running(core)
+    await core.engine.pause(transfer.id)
+    # Quiesce alone is only an optimization of the fence: no writer remains.
     assert (await artifact_of(core, transfer.id)).execution is None
     assert _cancels(core) == [("cancel", artifact.execution.attempt_id)]
     assert not [item for item in await core.repository.live_executions() if item.transfer_id == transfer.id]

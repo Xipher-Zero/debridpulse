@@ -14,6 +14,9 @@ admitted (``TransferRepository.prepare_execution`` re-checks it atomically).
 A changed source, protocol or executor never forces a restart by itself:
 equivalence already decided the candidate is the same logical artifact, and
 the planner keeps the maximal prefix the selected executor can continue from.
+An operator source switch whose writer can hand its quiesced native object to
+the new writer (``transfers.candidate_activation.retire_writer``) asks the same
+planner, with ``native_handoff``, and is admitted by the same material fence.
 """
 from __future__ import annotations
 
@@ -30,30 +33,33 @@ from transfers.size_evidence import positive_size, reported_sizes_compatible
 _CONTINUES = frozenset({ContinuationCapability.CONTIGUOUS_FROM_OFFSET, ContinuationCapability.IMPORT_EXISTING_MATERIAL})
 
 
-def parks_on_pause(capabilities: ExecutorCapabilities, materialization: MaterializationKind) -> bool:
-    """TEMPORARY COMPATIBILITY EXCEPTION -- collection artifacts of executors
-    that export no final-file ranges (today: one stepping-stone executor,
-    pending its replacement by an executor that exports exact per-member
-    ranges and so needs no exception; the executor names itself at its own
-    capability declaration).
+def parks_on_pause(capabilities: ExecutorCapabilities) -> bool:
+    """Whether Pause may leave a writer quiesced ("parked") instead of
+    fencing it -- decided from declared capabilities only, never from an
+    executor identity or a materialization kind: the executor quiesces
+    natively AND resumes that same quiesced job from its own private state.
 
-    Such an artifact has no DebridPulse range material, so fencing its writer
-    at Pause would discard all progress; the executor's own paused job is the
-    only reusable state. Pause may therefore leave that native job quiesced
-    ("parked") instead of cancelling it -- decided here from declared
-    capabilities only, never from an executor identity. While DebridPulse's
-    durable pause intent stands the parked job has NO progress authority
-    (``authorize_execution`` refuses start/resume; a parked job observed
-    running again is re-quiesced by the one writer retirement), and only
-    Resume, through the canonical lifecycle owner, may continue it.
-
-    Never for a FILE artifact: there Pause always fences the writer and DP
-    material carries the progress."""
+    Parking keeps disposable acceleration (the executor's private progress,
+    e.g. sparse pieces the DP-valid prefix does not cover); it never widens
+    DebridPulse material, which the forced checkpoint before parking already
+    committed. While the durable pause intent stands a parked job has NO
+    progress authority (``authorize_execution`` refuses start/resume; a parked
+    job observed acquiring again is re-quiesced by the one writer retirement),
+    only Resume, through the canonical lifecycle owner, may continue it, and a
+    job whose material generation went stale is retired instead of resumed.
+    Parking that cannot be proven falls back to ordinary retirement."""
     continuation = capabilities.continuation
-    return (materialization == MaterializationKind.COLLECTION
-            and ContinuationCapability.NATIVE_PRIVATE_RESUME in continuation
-            and ContinuationCapability.NATIVE_QUIESCE in continuation
-            and ContinuationCapability.EXPORT_MATERIAL_RANGES not in continuation)
+    return (ContinuationCapability.NATIVE_PRIVATE_RESUME in continuation
+            and ContinuationCapability.NATIVE_QUIESCE in continuation)
+
+
+def retargets_natively(capabilities: ExecutorCapabilities) -> bool:
+    """Whether a parked job of this executor may be handed to a new writer for
+    another equivalent source (``NATIVE_STATE_HANDOFF``). Core still requires
+    same executor, same target, current material and a checkpoint at the
+    handoff boundary; the executor still answers per concrete source pair."""
+    return (parks_on_pause(capabilities)
+            and ContinuationCapability.NATIVE_SOURCE_RETARGET in capabilities.continuation)
 
 
 def continuation_conflict() -> TransferError:
@@ -67,11 +73,21 @@ def continuation_conflict() -> TransferError:
 
 def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate, executor_id: str,
                       capabilities: ExecutorCapabilities, reason: str,
-                      discovered: Mapping[str, int] | None = None) -> ContinuationPlan:
+                      discovered: Mapping[str, int] | None = None,
+                      native_handoff: bool = False) -> ContinuationPlan:
     """``discovered``: exact continuation boundaries the selected executor
     reported for concrete source data (``BOUNDARY_DISCOVERY``), keyed ``""``
     for a FILE artifact and by member path for a collection. A boundary is
-    never above the DP-valid prefix, whatever an executor answers."""
+    never above the DP-valid prefix, whatever an executor answers.
+
+    ``native_handoff``: core established that the new writer inherits the
+    current writer's quiesced native object (same executor and target, the
+    current material generation, checkpointed at the handoff boundary). For a
+    FILE artifact of an executor that ``retargets_natively`` the plan is then
+    ``NATIVE_STATE_HANDOFF``: the executor's private state accounts for every
+    piece it holds, so all DP-valid ranges -- sparse ones included -- are
+    retained and nothing is discarded. DP-valid material stays the upper
+    bound: nothing the executor holds beyond it is ever retained here."""
     expected = state.expected_size
     offered = positive_size(candidate.expected_bytes)
     if expected and offered is not None and not reported_sizes_compatible(expected, offered):
@@ -80,6 +96,27 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
     # not state a different one; an unknown or merely plausible size leaves
     # the end open rather than guessing where the artifact stops.
     bound = expected if expected and (offered is None or offered == expected) else None
+    if (native_handoff and retargets_natively(capabilities) and state.geometry_version == mat.GEOMETRY_VERSION
+            and candidate.materialization == MaterializationKind.FILE
+            and candidate.materialization in capabilities.materialization_kinds):
+        return ContinuationPlan(
+            artifact_id=state.artifact_id,
+            material_generation=state.material_generation,
+            geometry_version=mat.GEOMETRY_VERSION,
+            candidate_id=str(candidate.id),
+            executor_id=str(executor_id),
+            strategy=ContinuationStrategy.NATIVE_STATE_HANDOFF,
+            boundary=state.safe_prefix,
+            retained=state.valid,
+            discarded=(),
+            # The inherited job continues wherever its own state says; what it
+            # reports is still clipped to this and aligned inward at commit.
+            authorized=((0, bound if bound is not None else mat.OPEN_END),),
+            expected_size=expected,
+            reason=str(reason),
+            capabilities=tuple(sorted(item.value for item in capabilities.continuation)),
+            alignment=int(capabilities.continuation_alignment),
+        )
     discovered = dict(discovered or {})
     continues = (_CONTINUES <= capabilities.continuation and state.geometry_version == mat.GEOMETRY_VERSION
                  and candidate.materialization in capabilities.materialization_kinds)

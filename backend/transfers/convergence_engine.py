@@ -16,7 +16,7 @@ import asyncio
 import contextlib
 from dataclasses import dataclass, replace
 
-from transfers.candidate_activation import ActivationResult, activate_candidate, retire_writer
+from transfers.candidate_activation import ActivationResult, activate_candidate, resolve_candidate_index, retire_writer
 from transfers.cohorts import reopen_unverified_associations, unverified_association_count
 from transfers.contracts import CandidateRefresh, ResourceLookup
 from transfers.engine import TransferEngine as _QualifiedTransferEngine
@@ -48,6 +48,13 @@ _INFRASTRUCTURE_CATEGORIES = frozenset({
     Category.DOWNLOAD_STORAGE_READ_ONLY,
     Category.DOWNLOAD_STORAGE_UNAVAILABLE,
     Category.PATH_UNAVAILABLE,
+})
+# A Resume-time source transition refused only because something newer holds
+# the artifact (a claim, an intent, a still-starting writer): nothing changed,
+# and the next Resume convergence tries again.
+_TRANSIENT_HANDOFF_REFUSALS = frozenset({
+    "claim_not_current", "native_handoff_refused", "execution_changed_concurrently", "writer_start_in_flight",
+    "commit_conflict",
 })
 
 
@@ -1978,7 +1985,7 @@ class TransferEngine(_QualifiedTransferEngine):
     # ------------------------------------------------------------------
 
     async def activate_candidate_command(
-        self, transfer_id: int, artifact_id: int, target_index: int,
+        self, transfer_id: int, artifact_id: int, target_index: int, *, permit_discard: bool = True,
     ) -> ActivationResult | None:
         """Operator-requested candidate activation entry point: the manual
         counterpart to ``recover_artifact``, fenced by the SAME exclusive
@@ -2010,7 +2017,8 @@ class TransferEngine(_QualifiedTransferEngine):
             if artifact is None:
                 result = ActivationResult(False, "not_found", transfer_id=transfer_id, artifact_id=artifact_id)
                 return result
-            result = await activate_candidate(self, artifact, target_index, retry_at=0, claim=claim)
+            result = await activate_candidate(self, artifact, target_index, retry_at=0, claim=claim,
+                                              permit_discard=permit_discard)
             return result
         finally:
             outcome = result.reason if result is not None else "application_error"
@@ -2020,6 +2028,71 @@ class TransferEngine(_QualifiedTransferEngine):
                 reason=outcome,
                 outcome="activated" if (result is not None and result.committed) else "not_applied",
                 artifact=await self._current_artifact(transfer_id, artifact_id),
+                candidate_changed=bool(result is not None and result.committed),
+                retirement_reason=result.retirement if result is not None else None,
+            )
+
+    async def _complete_source_transition(self, artifact: Artifact, observed: ExecutionObservation):
+        """Resume is the commit point of a paused source switch
+        (``TransferRepository.select_desired_source``), reached only from the
+        canonical lifecycle owner's resume (``_converge_execution``).
+
+        Under a RESUME recovery claim the parked writer's native object is
+        handed to a new writer for the selected candidate through the one
+        candidate activation, which here REQUIRES the handoff: a switch the
+        operator made without any discard never discards at Resume. When the
+        handoff cannot be established the desired selection is withdrawn, the
+        operator is told, and the parked writer continues on its own source;
+        a transient refusal (a newer claim or intent) leaves it for the next
+        Resume convergence."""
+        claim = await self.repository.claim_recovery(
+            artifact.id, RecoveryTrigger.RESUME, self.clock(),
+            lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
+        )
+        if claim is None:
+            return observed
+        result = None
+        try:
+            current = await self._current_artifact(artifact.transfer_id, artifact.id)
+            pending = (await self.pending_source(current)
+                       if current is not None and current.execution == artifact.execution else None)
+            if pending is None:
+                return observed
+            writer_candidate, selected = pending
+            writer_index = resolve_candidate_index(current, writer_candidate)
+            desired = current.candidates[selected]
+            eligible = writer_index is not None and await self.native_handoff_eligible(
+                current, desired, self.registry.executor_for_subject(ExecutionSubject.of(desired)))
+            if eligible:
+                result = await activate_candidate(self, replace(current, selected=writer_index), selected,
+                                                  retry_at=0, claim=claim, permit_discard=False)
+                if result.committed or result.reason in _TRANSIENT_HANDOFF_REFUSALS:
+                    return observed
+            if writer_index is not None:
+                await self.repository.select_desired_source(
+                    current.id, current.execution, writer_index, claim=claim,
+                    activation_provenance=self.repository.build_candidate_activation_detail(
+                        transfer_id=current.transfer_id, artifact_id=current.id, old_candidate=desired,
+                        new_candidate=writer_candidate, authority=claim.trigger.value,
+                        recovery_generation=claim.generation, old_execution_id=current.execution.attempt_id,
+                        partial_decision="reused", admission_decision="source_transition_withdrawn",
+                        outcome="withdrawn"),
+                    transition={"transition": "withdrawn", "from_candidate_id": str(writer_candidate.id),
+                                "to_candidate_id": str(desired.id),
+                                "reason": result.reason if result is not None else "native_handoff_ineligible"})
+                await self.repository.record_manual_candidate_failover(
+                    transfer_id=current.transfer_id, artifact_id=current.id, filename=current.name,
+                    requested_candidate_id=str(desired.id), previous_candidate=writer_candidate,
+                    selected_candidate=desired, source_host="", outcome="failure", execution_transition="unchanged",
+                    error=NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                                          retryability=Retryability.NEVER, operator_action_required=True))
+            return observed
+        finally:
+            await self._finish_claim(
+                claim, action="source_transition",
+                reason=result.reason if result is not None else "source_transition_withdrawn",
+                outcome="activated" if (result is not None and result.committed) else "not_applied",
+                artifact=await self._current_artifact(artifact.transfer_id, artifact.id),
                 candidate_changed=bool(result is not None and result.committed),
                 retirement_reason=result.retirement if result is not None else None,
             )

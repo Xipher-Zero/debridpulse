@@ -3,8 +3,10 @@
 A real aria2 daemon (production-like 64 MiB write cache, falloc, several
 connections per job) downloads from a throttled Range-capable HTTP origin.
 Proves at the executor's real file boundary that DP-valid material is exactly
-what is on disk, that Resume is a new writer continuing at the DP boundary, and
-that aria2's own control file can never expand DP-valid material after a crash.
+what is on disk, that Pause parks the native job and Resume continues it with
+no sparse material re-fetched, that a fresh writer continues only at the DP
+boundary, and that aria2's own control file can never expand DP-valid material
+after a crash.
 """
 from __future__ import annotations
 
@@ -182,30 +184,36 @@ def on_disk_matches(path, ranges) -> bool:
     return True
 
 
-async def test_real_aria2_pause_checkpoints_exact_material_and_resume_continues_at_dp_boundary(tmp_path, monkeypatch):
+async def test_real_aria2_pause_parks_sparse_material_and_resume_continues_the_same_job(tmp_path, monkeypatch):
+    """Four connections fill four segments at once, so DP-valid material is
+    sparse. Pause checkpoints it and parks the native job (aria2 keeps its own
+    piece map); Resume unpauses that same job: no fresh writer, no truncation,
+    no control-file loss, and nothing DP held valid is ever fetched again."""
     server, port, requests = await start_origin()
     ctx = await build(tmp_path, monkeypatch)
     try:
         transfer = await ctx.engine.submit((TransferRequest("http", f"http://127.0.0.1:{port}/movie.bin",
                                                             preferred_provider="general_http"),), deduplicate=False)
 
-        async def committed():
+        async def sparse():
             artifacts = await ctx.repository.artifacts(transfer.id)
             if not artifacts:
                 return None
             state = await ctx.repository.material_state(artifacts[0].id)
-            return (artifacts[0], state) if state and state.safe_prefix >= 3 * MIB else None
+            return (artifacts[0], state) if state and mat.total(state.valid) - state.safe_prefix >= 3 * MIB else None
 
-        artifact, _ = await until(ctx, committed, label="a committed prefix")
+        artifact, _ = await until(ctx, sparse, label="sparse committed material")
         await ctx.engine.pause(transfer.id)
         paused = (await ctx.repository.artifacts(transfer.id))[0]
         state = await ctx.repository.material_state(paused.id)
-        assert paused.execution is None and (await ctx.repository.get(transfer.id)).paused
-        # Everything DP calls VALID is byte-exact on disk -- aria2's write
-        # cache and falloc'd length notwithstanding.
-        assert state.valid and on_disk_matches(paused.target, state.valid)
+        # Parked, not fenced: the same attempt keeps the paused native job.
+        assert paused.execution == artifact.execution and (await ctx.repository.get(transfer.id)).paused
+        assert (await ctx.service.tell_status(paused.execution.native["gid"])).status == "paused"
+        # Everything DP calls VALID is byte-exact on disk -- sparse ranges past
+        # the contiguous prefix included -- and the private control file stays.
+        assert mat.total(state.valid) > state.safe_prefix and on_disk_matches(paused.target, state.valid)
+        assert Path(paused.target + ".aria2").exists()
         assert os.path.getsize(paused.target) == len(BODY)  # falloc: length proves nothing
-        boundary = state.safe_prefix
         before_resume = len(requests)
 
         await ctx.engine.resume(transfer.id)
@@ -215,15 +223,18 @@ async def test_real_aria2_pause_checkpoints_exact_material_and_resume_continues_
             return current if current.state == TransferState.COMPLETED else None
 
         await until(ctx, completed, label="completion after resume")
-        # Resume was a new writer continuing exactly at the DP boundary: no
-        # ranged request below it, and the retained prefix was not fetched again
-        # (aria2's unranged size probe is closed after its headers).
         resumed = requests[before_resume:]
-        assert min(ranged_starts(resumed)) == boundary
-        assert bytes_sent(resumed) <= len(BODY) - boundary + MIB
+        # The same job continued from its own piece map: no request began inside
+        # material DP held valid, so the sparse ranges were never fetched again
+        # (a fresh prefix-only writer would have had to re-fetch all of them).
+        assert resumed and all(not (start <= item.start < end) for item in resumed if item.ranged
+                                for start, end in state.valid)
+        assert bytes_sent(resumed) <= len(BODY) - mat.total(state.valid) + 4 * MIB
         assert Path(paused.target).read_bytes() == BODY
         final = await ctx.repository.material_state(paused.id)
-        assert final.valid == ((0, len(BODY)),) and final.writer_generation == 2
+        assert final.valid == ((0, len(BODY)),) and final.writer_generation == 1
+        assert final.material_generation == state.material_generation
+        assert len(await ctx.repository.executions(transfer.id)) == 1
     finally:
         await stop_daemon(ctx.proc, ctx.service)
         server.close()

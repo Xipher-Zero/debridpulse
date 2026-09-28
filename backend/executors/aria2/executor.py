@@ -35,7 +35,7 @@ from transfers.models import (
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
-    MaterializedEntry, ContinuationCapability, ContinuationStrategy,
+    MaterializedEntry, ContinuationCapability, ContinuationStrategy, RetargetTruth,
 )
 
 
@@ -68,6 +68,18 @@ _SHA1_IDENTITY = re.compile(r"[0-9a-f]{40}")
 # routes by it.
 SUPPORTED_SCHEMES = frozenset({"http", "https", "ftp", "sftp"})
 _OVERALL_DOWNLOAD_LIMIT = "max-overall-download-limit"
+# Native source retarget is offered only between transports whose complete
+# per-source configuration is per-job options aria2 lets a paused job change
+# (proxy route, headers, HTTP credentials). FTP/SFTP jobs carry session and
+# host-identity state that is not retargeted; they continue portably.
+_RETARGETABLE_SCHEMES = frozenset({"http", "https"})
+# Options that name the job itself -- its identity, file layout, segmentation
+# and lifecycle -- and are identical for any source of the same target: never
+# changed by a retarget. Every other option ``_options`` builds is per-source.
+_JOB_IDENTITY_OPTIONS = frozenset({
+    "gid", "dir", "out", "pause", "continue", "allow-overwrite", "auto-file-renaming", "follow-torrent",
+    "follow-metalink", "split", "min-split-size", "max-connection-per-server",
+})
 
 
 @dataclass(frozen=True)
@@ -105,18 +117,24 @@ class Aria2Executor:
     # acquisition gate: unpausing it would also unpause jobs a transfer-level
     # intent keeps paused, so per-execution controls converge global pause.
     #
-    # Continuation: aria2 continues a FILE exactly at a DebridPulse-authorized
-    # offset (the payload is cut to the plan boundary and the job resumes
-    # there), exports completed pieces as exact final-file ranges, and pauses
-    # gracefully. Its ``.aria2`` control file is private and never used to
-    # continue across writers, so native private resume is not declared.
+    # Continuation: a FRESH aria2 job continues a FILE exactly at a
+    # DebridPulse-authorized offset (the payload is cut to the plan boundary,
+    # the ``.aria2`` control file is discarded and the job resumes there); it
+    # cannot import arbitrary sparse ranges. aria2 exports completed pieces as
+    # exact final-file ranges and pauses gracefully. A natively paused job
+    # keeps its own in-memory piece map and ``aria2.unpause`` continues it
+    # (native private resume); a paused HTTP(S) job's source can be replaced
+    # with ``aria2.changeUri`` after re-applying the replacement's per-source
+    # options (native source retarget). Neither reads or writes the control
+    # file, and neither is ever DebridPulse material truth.
     capabilities = ExecutorCapabilities(
         candidate_sampling=True, per_execution_pause=True, aggregate_bandwidth_ceiling=True,
         transient_input=True, remote_discovery=True, materialization_kinds=frozenset({MaterializationKind.FILE}),
         continuation=frozenset({
             ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
             ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES,
-            ContinuationCapability.NATIVE_QUIESCE,
+            ContinuationCapability.NATIVE_QUIESCE, ContinuationCapability.NATIVE_PRIVATE_RESUME,
+            ContinuationCapability.NATIVE_SOURCE_RETARGET,
         }),
     )
 
@@ -198,9 +216,14 @@ class Aria2Executor:
         cannot promote bytes DebridPulse did not authorize. A contiguous plan
         cuts the payload to its boundary -- aria2 then continues exactly there
         -- and fails closed when the retained prefix is not physically present.
-        Any other plan retains nothing and aria2 starts from zero."""
-        Path(str(target) + ".aria2").unlink(missing_ok=True)
+        Any other plan retains nothing and aria2 starts from zero -- except a
+        ``NATIVE_STATE_HANDOFF`` plan: its sparse retained ranges live only in
+        the inherited job, which a fresh job cannot import, so it fails closed
+        rather than overwrite material DebridPulse holds valid."""
         plan = request.continuation
+        if plan is not None and plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
+            raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+        Path(str(target) + ".aria2").unlink(missing_ok=True)
         if (plan is None or plan.strategy != ContinuationStrategy.CONTIGUOUS_FROM_OFFSET or plan.boundary <= 0
                 or ContinuationCapability.CONTIGUOUS_FROM_OFFSET not in self.capabilities.continuation):
             return "false"
@@ -746,6 +769,182 @@ class Aria2Executor:
             error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
             uncertain = error.category == Category.EXECUTOR_UNAVAILABLE or error.retryability == Retryability.UNKNOWN
             return ExecutionObservation(handle, ExecutionState.UNKNOWN if uncertain else ExecutionState.FAILED, error=error)
+
+    async def prepare_retarget(self, request: ExecutionRequest, previous: ExecutionHandle) -> ExecutionHandle | None:
+        """Whether ``previous``'s native job can be retargeted to ``request``'s
+        source, answered without any native mutation: the same daemon and
+        target, a ``NATIVE_STATE_HANDOFF`` plan, an existing owned HTTP(S) job,
+        and a replacement HTTP(S) endpoint that passes the same header and
+        destination validation a fresh start applies. The answer is a handle
+        for the new attempt adopting the job's native identity."""
+        plan = request.continuation
+        candidate = request.work.subject.candidate
+        endpoint = self._endpoint(candidate)
+        if (plan is None or plan.strategy != ContinuationStrategy.NATIVE_STATE_HANDOFF or not request.attempt_id
+                or endpoint is None or endpoint.scheme not in _RETARGETABLE_SCHEMES
+                or urlsplit(endpoint.address).scheme != endpoint.scheme):
+            return None
+        for key, value in endpoint.headers.items():
+            if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
+                return None
+        try:
+            target = self._target(self._plan_target(request))
+            gid = await self._check(previous, "observe")
+            if str(previous.correlation.get("target") or "") != str(target):
+                return None
+            native = await self.client.tell_status(gid)
+            await validate_resolved_public_destination(endpoint.address, **self._granted(self._private_lan(candidate)))
+        except Exception:
+            return None
+        if str(native.gid) != gid or str(native.status) not in {"active", "waiting", "paused"} or not self._retargetable(
+                native, target):
+            return None
+        return ExecutionHandle(self.descriptor.id, request.attempt_id, {"target": str(target), "binding": self.binding},
+                               {"gid": gid})
+
+    async def retarget_truth(self, request: ExecutionRequest, prepared: ExecutionHandle,
+                             original: ExecutionRequest) -> RetargetTruth:
+        """Read-only: which source the paused job inherited by ``prepared``
+        positively serves. A source is proven only when the job's URIs are
+        exactly that source's AND its per-source binding matches what a start
+        of that source configures now: the guarded route credential (bound to
+        that source's host and port) and its headers. Anything else --
+        a mix, a job that is not paused, an unreadable option map -- is
+        UNKNOWN. Option values are compared in memory and never kept."""
+        try:
+            gid = await self._check(prepared, "observe")
+            target = self._target(self._plan_target(request))
+            native = await self.client.tell_status(gid)
+            if str(native.status) != "paused" or not self._retargetable(native, target):
+                return RetargetTruth.UNKNOWN
+            uris = set(self._uris(native))
+            options = await self.client._call("aria2.getOption", [gid])
+            try:
+                for truth, candidate_request in ((RetargetTruth.RETARGETED, request),
+                                                 (RetargetTruth.ORIGINAL, original)):
+                    address, expected = await self._options(candidate_request, prepared)
+                    if uris == {address} and self._binding_matches(options, expected):
+                        return truth
+            finally:
+                if isinstance(options, dict):
+                    options.clear()
+        except Exception:
+            pass
+        return RetargetTruth.UNKNOWN
+
+    @staticmethod
+    def _binding_matches(options, expected: dict) -> bool:
+        """The job's per-source binding equals ``expected``'s: route credential
+        and headers (aria2 reports multiple headers newline-joined)."""
+        if not isinstance(options, dict):
+            return False
+        for key in ("all-proxy-user", "all-proxy-passwd"):
+            if key in expected and str(options.get(key) or "") != str(expected[key]):
+                return False
+        def headers(value):
+            items = value.splitlines() if isinstance(value, str) else list(value or ())
+            return sorted(str(item).strip() for item in items if str(item).strip())
+        return headers(options.get("header")) == headers(expected.get("header"))
+
+    @staticmethod
+    def _uris(native) -> list[str]:
+        """Every URI entry of the job's one file, one per use (a URI a
+        segment is using is listed once per use)."""
+        return [str(uri.get("uri") if isinstance(uri, dict) else uri)
+                for uri in (native.files or [{}])[0].get("uris") or ()]
+
+    async def _await_status(self, gid: str, wanted: set[str]):
+        """The job's native status once it is one of ``wanted`` (or terminal),
+        bounded by the control confirmation window; the last one otherwise."""
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + max(0.01, float(self.configuration.control_confirmation_timeout))
+        while True:
+            native = await self.client.tell_status(gid)
+            if str(native.status) in wanted | {"complete", "error", "removed"} or loop.time() >= deadline:
+                return native
+            await asyncio.sleep(max(0.01, float(self.configuration.confirmation_delay)))
+
+    @staticmethod
+    def _retargetable(native, target: Path) -> bool:
+        """One file at exactly ``target``, fetched only over HTTP(S)."""
+        files = native.files or []
+        if len(files) != 1 or str(files[0].get("path") or "") not in {"", str(target)}:
+            return False
+        uris = [uri.get("uri") if isinstance(uri, dict) else uri for uri in files[0].get("uris") or ()]
+        return bool(uris) and all(urlsplit(str(uri)).scheme in _RETARGETABLE_SCHEMES for uri in uris)
+
+    async def retarget_from(self, request: ExecutionRequest, prepared: ExecutionHandle,
+                            previous: ExecutionHandle) -> ExecutionObservation:
+        """Replace the source of the paused job ``prepared`` inherited from
+        ``previous``, leaving it paused with its private piece map intact.
+
+        aria2 1.37.0 cannot change the URIs of a PAUSED job that has run:
+        ``changeUri`` then spawns connections into the job's closed file (the
+        daemon aborts on its write-cache assertion), so the source is replaced
+        only while the job is active -- core invokes this only while DP intent
+        permits acquisition. One bounded sequence: unpause; once active,
+        replace its URIs and apply the replacement's full per-source options
+        (destination and egress validation, guarded route, headers,
+        credentials -- built exactly as for a fresh start) in one atomic
+        multicall; pause again, which ends every connection to the old source;
+        drop the old URIs aria2 puts back from those in-flight segments (URI
+        deletion alone spawns nothing); then prove only the new source remains.
+        The short active window may fetch from the old, equivalent source.
+        A refusal before the first native mutation is FAILED; after it, only
+        an observed exact result is success -- anything else is UNKNOWN."""
+        secrets = self._secrets(prepared, request=request) + self._redactions.get(previous.attempt_id, ())
+        mutated = False
+        try:
+            gid = await self._check(prepared, "retarget")
+            if (request.paused or gid != self._handle_gid(previous)
+                    or previous.correlation.get("binding") != self.binding):
+                raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
+            self._remember(prepared.attempt_id, (
+                *(value for endpoint in request.work.subject.candidate.endpoints
+                  for value in (endpoint.address, *endpoint.headers.values()) if value),
+                *self._redactions.get(previous.attempt_id, ())))
+            target = self._target(self._plan_target(request))
+            native = await self.client.tell_status(gid)
+            if str(native.status) != "paused" or not self._retargetable(native, target):
+                raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+            address, options = await self._options(request, prepared)
+            options = {key: value for key, value in options.items() if key not in _JOB_IDENTITY_OPTIONS}
+            # No header from the old source may survive the new one.
+            options.setdefault("header", [])
+            # A deletion or pause fence can revoke authority during validation.
+            await self._check(prepared, "retarget")
+            mutated = True
+            await self.client._call("aria2.unpause", [gid])
+            active = await self._await_status(gid, {"active"})
+            if str(active.status) == "complete":
+                return self._observation(prepared, active)
+            if str(active.status) != "active":
+                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+            running = self._uris(active)
+            replaced, applied = await self.client._multicall([
+                ("aria2.changeUri", [gid, 1, running, [address]]),
+                ("aria2.changeOption", [gid, options]),
+            ])
+            await self.client._call("aria2.pause", [gid])
+            paused = await self._await_status(gid, {"paused"})
+            if str(paused.status) != "paused" or list(replaced or ()) != [len(running), 1] or applied != "OK":
+                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+            stale = [uri for uri in self._uris(paused) if uri != address]
+            if stale:
+                await self.client._call("aria2.changeUri", [gid, 1, stale, []])
+            after = await self.client.tell_status(gid)
+            if str(after.status) != "paused" or set(self._uris(after)) != {address}:
+                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+            return self._observation(prepared, after)
+        except _AdmissionDeferred:
+            state = ExecutionState.UNKNOWN if mutated else ExecutionState.FAILED
+            return ExecutionObservation(prepared, state, error=NormalizedError(
+                Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.QUEUE, retryability=Retryability.NEVER,
+                integration_id=self.descriptor.id))
+        except Exception as exc:
+            error = exception_failure(exc, stage=Stage.QUEUE, secrets=secrets)
+            return ExecutionObservation(prepared, ExecutionState.UNKNOWN if mutated else ExecutionState.FAILED,
+                                        error=error)
 
     async def _never_started(self, handle: ExecutionHandle) -> bool:
         """Still authorized for its FIRST start and absent from the daemon.

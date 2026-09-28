@@ -598,7 +598,16 @@ class ContinuationCapability(StrEnum):
     EXPORT_MATERIAL_RANGES = "export_material_ranges"
     SOURCE_SEGMENT_TO_FINAL_RANGE = "source_segment_to_final_range"
     DESTINATION_AWARE_CONTINUATION = "destination_aware_continuation"
+    # A natively quiesced job keeps its own private acquisition state and
+    # continues exactly where it stopped when resumed (``PauseResume.resume``).
+    # Disposable acceleration only: never DebridPulse material truth.
     NATIVE_PRIVATE_RESUME = "native_private_resume"
+    # ``transfers.contracts.ExecutorSourceRetarget``: a quiesced native job may
+    # keep its private acquisition state while the source supplying the same
+    # logical artifact is replaced. A declaration only -- core decides whether
+    # a retarget is appropriate; the executor answers whether one concrete
+    # source pair can be retargeted safely.
+    NATIVE_SOURCE_RETARGET = "native_source_retarget"
     # ``PauseResume.pause`` stops acquisition gracefully so the final completed
     # work can be checkpointed before the writer is fenced. An optimization:
     # lacking it never prevents a DebridPulse Pause.
@@ -610,9 +619,22 @@ class ContinuationCapability(StrEnum):
     BOUNDARY_DISCOVERY = "boundary_discovery"
 
 
+class RetargetTruth(StrEnum):
+    """What a native job inherited through a handoff is observed to serve now
+    (``ExecutorSourceRetarget.retarget_truth``): only the replacement source
+    (``RETARGETED``), still only the previous source (``ORIGINAL``), or
+    anything that is not positively one of those (``UNKNOWN``)."""
+    RETARGETED = "retargeted"
+    ORIGINAL = "original"
+    UNKNOWN = "unknown"
+
+
 class ContinuationStrategy(StrEnum):
     FULL_RESTART = "full_restart"
     CONTIGUOUS_FROM_OFFSET = "contiguous_from_offset"
+    # The new writer inherits the previous writer's quiesced native object of
+    # the same executor and target; every DP-valid range is retained.
+    NATIVE_STATE_HANDOFF = "native_state_handoff"
 
 
 @dataclass(frozen=True)

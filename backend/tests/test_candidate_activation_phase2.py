@@ -744,8 +744,9 @@ def test_every_production_activation_call_passes_a_claim_from_the_one_engine_own
                 importers.append(relative)
     assert {relative for relative, _ in calls} == {"transfers/convergence_engine.py"}
     assert importers == ["transfers/convergence_engine.py"]
-    # Automatic (TRY_ALTERNATE_CANDIDATE) and manual (activate_candidate_command): the two, and only two, callers.
-    assert len(calls) == 2
+    # Automatic (TRY_ALTERNATE_CANDIDATE), manual (activate_candidate_command), and Resume completing a
+    # paused operator switch (_complete_source_transition, under its own RESUME claim): the only callers.
+    assert len(calls) == 3
     for _relative, node in calls:
         claim = next((keyword.value for keyword in node.keywords if keyword.arg == "claim"), None)
         assert isinstance(claim, ast.Name) and claim.id == "claim", ast.unparse(node)

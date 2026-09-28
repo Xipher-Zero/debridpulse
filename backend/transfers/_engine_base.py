@@ -113,9 +113,9 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
-from transfers.candidate_activation import retire_writer
+from transfers.candidate_activation import reconcile_native_transition, resolve_candidate_index, retire_writer
 from transfers import material as mat
-from transfers.continuation import parks_on_pause, plan_continuation
+from transfers.continuation import parks_on_pause, plan_continuation, retargets_natively
 from transfers.filesystem import (
     adoptable_material, destination, flush_payload, material_initially_absent, materialization_plan,
     PayloadFacts, member_payload, payload_facts, retire_materialization, retire_native_state, safe_name,
@@ -128,6 +128,7 @@ from transfers.input_required import (
 from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
     Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
+    ContinuationStrategy,
     DeliveryKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
@@ -1040,7 +1041,7 @@ class TransferEngine:
             return observed
         handle = artifact.execution
         controllable = executor.capabilities.per_execution_pause
-        pause_writer = False
+        pause_writer = stale_writer = source_transition = unresolved_transition = False
         async with self._convergence_lock(handle.attempt_id):
             current = await self._current_artifact(artifact.transfer_id, artifact.id)
             if current is None or current.execution is None or current.execution.attempt_id != handle.attempt_id:
@@ -1077,16 +1078,21 @@ class TransferEngine:
                             await self.repository.execution(observed)
                         return observed
 
+                    # An inherited native object whose source replacement is
+                    # unproven is never paused-then-resumed or left acquiring
+                    # here: only the one native-transition reconciliation acts.
+                    if await self.repository.native_transition_from(handle.attempt_id):
+                        unresolved_transition = True
+                        break
+
                     if desired_paused:
                         # DebridPulse owns pause: a writer still able to make
                         # progress is retired through the one writer
                         # retirement below, never merely paused natively --
                         # including a parked job observed acquiring again. Only
-                        # a job parked under the temporary collection
-                        # exception (``parks_on_pause``) stays paused natively.
-                        selected = current.candidates[current.selected] if current.candidates else None
-                        parkable = selected is not None and parks_on_pause(
-                            executor.capabilities, selected.materialization)
+                        # a job of an executor that resumes its own quiesced
+                        # job (``parks_on_pause``) stays paused natively.
+                        parkable = parks_on_pause(executor.capabilities)
                         if observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING} or (
                                 observed.state == ExecutionState.PAUSED and not parkable):
                             pause_writer = True
@@ -1117,6 +1123,17 @@ class TransferEngine:
                                 if persist_passive:
                                     await self.repository.execution(observed)
                                 return observed
+                            # A parked job's private state never survives an
+                            # incompatible material generation: such a writer is
+                            # retired, and the planner continues portably.
+                            if await self.repository.material_writer_stale(handle):
+                                stale_writer = True
+                                break
+                            # A paused source switch completes only here, at
+                            # Resume: never a plain resume on the old source.
+                            if await self.pending_source(current) is not None:
+                                source_transition = True
+                                break
                             occupied = await self.repository.occupied_execution_slots(
                                 self.clock(), exclude_artifact_id=artifact.id,
                             )
@@ -1136,7 +1153,7 @@ class TransferEngine:
                         await self.repository.execution(observed)
                     return observed
 
-                if not pause_writer:
+                if not (pause_writer or stale_writer or source_transition or unresolved_transition):
                     return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, NormalizedError(
                         Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
                         retryability=Retryability.BACKOFF,
@@ -1146,6 +1163,16 @@ class TransferEngine:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                     error=self._control_error(exc, executor.descriptor.id))
         # Outside the per-execution lock: the one writer retirement takes it.
+        if stale_writer:
+            return await self._retire_stale_writer(replace(artifact, execution=handle), executor, observed)
+        if source_transition:
+            return await self._complete_source_transition(replace(artifact, execution=handle), observed)
+        if unresolved_transition:
+            await reconcile_native_transition(self, artifact.transfer_id, artifact.id)
+            current = await self._current_artifact(artifact.transfer_id, artifact.id)
+            if current is not None and current.execution is not None and current.execution.attempt_id == handle.attempt_id:
+                return await self._observe_execution(executor, handle)
+            return ExecutionObservation(handle, ExecutionState.CANCELLED)
         error = await self._pause_writer(replace(artifact, execution=handle))
         if error is not None:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, error)
@@ -1752,11 +1779,12 @@ class TransferEngine:
         await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
 
     async def _plan_material(self, artifact: Artifact, candidate: TransferCandidate, executor, work: ExecutionWork,
-                             reason: str):
+                             reason: str, *, native_handoff: bool = False):
         """The artifact's current material truth and the continuation plan the
         next writer is offered: reconcile DP material with observable payload
         facts (FILE material only), then ask the one planner. Returns
-        ``(state, facts, plan)``; ``facts`` is ``None`` for a collection."""
+        ``(state, facts, plan)``; ``facts`` is ``None`` for a collection.
+        ``native_handoff``: see ``plan_continuation``."""
         # Read first: a queued artifact is planned on every admission attempt,
         # so an unchanged material row must cost no write transaction.
         state = await self.repository.material_state(artifact.id) or await self.repository.open_material_state(artifact)
@@ -1773,7 +1801,8 @@ class TransferEngine:
                                                              member_facts) or state
         plan = plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
                                  capabilities=executor.capabilities, reason=reason,
-                                 discovered=await self._discovered_boundaries(executor, candidate, state))
+                                 discovered=await self._discovered_boundaries(executor, candidate, state),
+                                 native_handoff=native_handoff)
         return state, facts, plan
 
     @staticmethod
@@ -1808,19 +1837,100 @@ class TransferEngine:
             found[member] = boundary if valid_answer else 0
         return found
 
-    async def preview_continuation(self, artifact: Artifact, candidate: TransferCandidate):
+    async def preview_continuation(self, artifact: Artifact, candidate: TransferCandidate, *, native: bool = True):
         """What the one planner would keep and discard if ``candidate`` wrote
         this artifact next -- read-only, nothing is created or reconciled.
-        ``None`` when no executor can take the candidate."""
+        ``None`` when no executor can take the candidate. A native-state
+        handoff is predicted only when core's own eligibility holds AND the
+        executor answers that this concrete source pair is retargetable (asked
+        without any native mutation); ``native=False`` previews the portable
+        continuation a handoff falls back to."""
         executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
         if executor is None:
             return None
         state = await self.repository.material_state(artifact.id)
         if state is None:
             return None
+        discovered = await self._discovered_boundaries(executor, candidate, state)
+        if native and await self.native_handoff_eligible(artifact, candidate, executor):
+            plan = plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
+                                     capabilities=executor.capabilities, reason="user_candidate_switch",
+                                     discovered=discovered, native_handoff=True)
+            if plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
+                attempt_id = new_identity()
+                request = ExecutionRequest(self._work(artifact, candidate, attempt_id), attempt_id, continuation=plan)
+                if await self._retarget_handle(executor, request, artifact.execution) is not None:
+                    return plan
         return plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
                                  capabilities=executor.capabilities, reason="user_candidate_switch",
-                                 discovered=await self._discovered_boundaries(executor, candidate, state))
+                                 discovered=discovered)
+
+    async def native_handoff_eligible(self, artifact: Artifact, candidate: TransferCandidate, executor) -> bool:
+        """Core's own eligibility for handing the artifact's current writer's
+        native object to a writer of ``candidate``: the same executor, which
+        retargets natively, the same FILE target, and a writer that still
+        passes the material writer fence. Source equivalence is already
+        established by ``candidate`` being one of the artifact's candidates;
+        whether the concrete source pair is retargetable is the executor's
+        answer (``_retarget_handle``), asked separately."""
+        handle = artifact.execution
+        if handle is None or executor is None or not retargets_natively(executor.capabilities):
+            return False
+        if self.registry.executor_for_handle(handle) is not executor or handle.executor_id != executor.descriptor.id:
+            return False
+        if await self.repository.native_transition_from(handle.attempt_id):
+            return False  # an unproven handoff is resolved first, never chained
+        current = await self.writer_candidate(artifact)
+        if (current is None or current.materialization != MaterializationKind.FILE
+                or candidate.materialization != MaterializationKind.FILE
+                or self._work(artifact, current).materialization != self._work(artifact, candidate).materialization):
+            return False
+        return not await self.repository.material_writer_stale(handle)
+
+    async def native_retarget_available(self, artifact: Artifact, candidate: TransferCandidate) -> bool:
+        """Whether the planner would hand the artifact's writer's native object
+        to a writer of ``candidate`` now: core eligibility AND the executor's
+        read-only answer for this concrete source pair (``preview_continuation``)."""
+        plan = await self.preview_continuation(artifact, candidate)
+        return plan is not None and plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF
+
+    async def writer_candidate(self, artifact: Artifact) -> TransferCandidate | None:
+        """The candidate the artifact's current execution was admitted for --
+        durable writer truth, which differs from the selected candidate only
+        while a paused switch awaits Resume (``pending_source``)."""
+        if artifact.execution is None:
+            return None
+        writer = await self.repository.previous_writer(artifact.id)
+        if writer is None or writer.handle.attempt_id != artifact.execution.attempt_id:
+            return None
+        return writer.candidate
+
+    async def pending_source(self, artifact: Artifact) -> tuple[TransferCandidate, int] | None:
+        """A paused source switch not yet completed natively: the artifact's
+        parked writer still serves its own candidate while another candidate
+        is selected. ``(writer candidate, selected index)``; ``None`` when the
+        writer serves the selected candidate (or a refresh descendant of it)."""
+        current = await self.writer_candidate(artifact)
+        if current is None or not artifact.candidates:
+            return None
+        return None if resolve_candidate_index(artifact, current) == artifact.selected else (current, artifact.selected)
+
+    async def _retarget_handle(self, executor, request: ExecutionRequest,
+                               previous: ExecutionHandle) -> ExecutionHandle | None:
+        """The executor's answer for one concrete source pair: the new
+        attempt's handle adopting ``previous``'s native object, or ``None``.
+        Anything malformed or failing answers ``None`` -- never a guess."""
+        try:
+            handle = await executor.prepare_retarget(request, previous)
+        except Exception:
+            return None
+        if handle is None:
+            return None
+        try:
+            self._require_prepared(handle, executor.descriptor.id, request.attempt_id)
+        except TransferError:
+            return None
+        return handle
 
     async def _discard_foreign_native_state(self, artifact: Artifact, executor, work: ExecutionWork) -> None:
         """A different executor is about to write this FILE artifact: the
@@ -1908,13 +2018,14 @@ class TransferEngine:
         return committed
 
     async def _quiesce_and_checkpoint(self, artifact: Artifact, executor, observed: ExecutionObservation, *,
-                                      boundary: str) -> tuple[ExecutionObservation, str]:
+                                      boundary: str) -> tuple[ExecutionObservation, str, bool]:
         """Graceful quiesce, then the forced checkpoint of a writer about to be
-        fenced. Native quiesce is an optimization an executor may declare; it
-        is bounded by the graceful stop timeout and no executor holds the
-        lifecycle beyond it. On timeout nothing further is checkpointed -- the
-        writer's uncommitted work stays UNKNOWN. Returns the latest accepted
-        observation and how the writer stopped."""
+        fenced, parked or handed off. Native quiesce is an optimization an
+        executor may declare; it is bounded by the graceful stop timeout and no
+        executor holds the lifecycle beyond it. On timeout nothing further is
+        checkpointed -- the writer's uncommitted work stays UNKNOWN. Returns
+        the latest accepted observation, how the writer stopped, and whether
+        the forced checkpoint was durably committed."""
         mode = "stopped" if observed.stopped else "forced"
         if (observed.resumable and ContinuationCapability.NATIVE_QUIESCE in executor.capabilities.continuation
                 and observed.state != ExecutionState.PAUSED
@@ -1923,7 +2034,7 @@ class TransferEngine:
                 async with asyncio.timeout(max(1.0, float(self.policy.graceful_stop_timeout))):
                     quiesced = await executor.pause(observed.handle)
             except TimeoutError:
-                return observed, "timeout"
+                return observed, "timeout", False
             except Exception:
                 quiesced = None
             if quiesced is not None:
@@ -1933,9 +2044,10 @@ class TransferEngine:
                     pass
         if observed.state == ExecutionState.PAUSED:
             mode = "graceful"
+        committed = False
         if observed.reports_material and observed.state != ExecutionState.SUCCEEDED:
-            await self._checkpoint_material(artifact, observed, forced=boundary)
-        return observed, mode
+            committed = await self._checkpoint_material(artifact, observed, forced=boundary) is not None
+        return observed, mode, committed
 
     async def _pause_writer(self, artifact: Artifact) -> NormalizedError | None:
         """DebridPulse Pause of one artifact's writer, through the one writer
@@ -1958,6 +2070,20 @@ class TransferEngine:
         if retired.retirement != "parked":
             await self.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="paused")
         return None
+
+    async def _retire_stale_writer(self, artifact: Artifact, executor,
+                                   observed: ExecutionObservation) -> ExecutionObservation:
+        """A parked writer whose material generation went stale is never
+        resumed: it is retired through the one writer retirement, and the next
+        admission plans portably from DebridPulse material alone."""
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        retired = await retire_writer(self, artifact, candidate, artifact, candidate, boundary="stale_material")
+        if retired.reason:
+            return ExecutionObservation(artifact.execution, ExecutionState.UNKNOWN, observed.progress, self._error(
+                Category.RECONCILIATION_FAILED, Stage.EXECUTION, domain=Domain.RECONCILIATION,
+                retryability=Retryability.BACKOFF))
+        await self.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="queued")
+        return ExecutionObservation(artifact.execution, ExecutionState.CANCELLED)
 
     async def checkpoint_live_material(self, boundary: str) -> int:
         """Forced checkpoint of every live writer's reported material at a

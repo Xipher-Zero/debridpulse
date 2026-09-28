@@ -2176,68 +2176,78 @@ class TransferRepository:
                 if writer_generation is None:
                     await db.rollback()
                     return False
-            candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
-            route_attempt_id = await self._candidate_route(
-                db, artifact.transfer_id, candidate, artifact_id=artifact.id
-            )
-            ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
-            ordinal = int(ordinal_row["n"] or 0) + 1
-            # Material ownership is explicit and durable: established when the
-            # boundary was absent at this admission, or carried forward from
-            # this artifact's immediately preceding attempt when THAT attempt
-            # owned it (the present material is DebridPulse's own lineage).
-            # Anything else -- pre-existing material, or no observation -- is
-            # unowned, and no cleanup may delete it.
-            owner = None
-            if target_initially_absent:
-                owner = handle.attempt_id
-            elif target_initially_absent is not None:
-                predecessor = await db.fetchone(
-                    "SELECT material_owner_attempt_id FROM execution_attempts WHERE artifact_id=? ORDER BY rowid DESC LIMIT 1",
-                    (artifact.id,))
-                owner = (predecessor or {}).get("material_owner_attempt_id")
-            await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate,
-                target_initially_absent,material_owner_attempt_id,writer_generation,continuation)
-                VALUES(?,?,?,?,?,'prepared',?,?,?,?,?)""",
-                (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
-                 codec.dump(candidate) if candidate else None,
-                 None if target_initially_absent is None else int(bool(target_initially_absent)), owner,
-                 writer_generation, codec.dump(continuation.as_dict()) if continuation is not None else None))
-            await db.execute("""INSERT INTO execution_attempt_provenance(
-                execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
-                outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
-                (handle.attempt_id, route_attempt_id, artifact.transfer_id, artifact.id, ordinal,
-                 candidate.provider_id if candidate and candidate.provider_id else None, str(candidate.id) if candidate else None,
-                 codec.dump(self._safe_candidate_source(candidate)) if candidate else None))
-            await db.execute("""UPDATE download_files SET execution_attempt_id=?,download_client=?,retry_count=retry_count+1,
-                status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,
-                continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
-            # DP 1.0.12 recovery leveling, Section 29: durably link this new
-            # execution back to the candidate-activation record that selected
-            # it, if any -- a committed activation cannot know the replacement
-            # execution's id at commit time (it doesn't exist yet), so the
-            # audit link is completed here instead, the first time this
-            # artifact actually dispatches afterward. Scans backward for the
-            # most recent still-unlinked "activated" record for this artifact;
-            # bounded, since only a just-activated, not-yet-dispatched
-            # artifact ever has one pending.
-            activation_rows = await db.fetchall(
-                "SELECT id,detail FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id DESC LIMIT 50",
-                (artifact.transfer_id,),
-            )
-            for activation_row in activation_rows:
-                detail = codec.load(activation_row["detail"], {})
-                if (detail.get("artifact_id") == artifact.id and detail.get("outcome") == "activated"
-                        and detail.get("new_execution_id") is None):
-                    detail["new_execution_id"] = handle.attempt_id
-                    await db.execute(
-                        "UPDATE application_events SET detail=? WHERE id=?",
-                        (codec.dump(detail), activation_row["id"]),
-                    )
-                    break
+            await self._record_writer(db, artifact, handle, writer_generation=writer_generation,
+                                      target_initially_absent=target_initially_absent, continuation=continuation,
+                                      from_input_required=from_input_required)
             await db.commit()
         return True
+
+    async def _record_writer(self, db, artifact: Artifact, handle: ExecutionHandle, *, writer_generation,
+                             target_initially_absent: bool | None, continuation: ContinuationPlan | None,
+                             from_input_required: bool = False, link_activation: bool = True) -> None:
+        """Inside an admission transaction: record ``handle`` as the artifact's
+        new, current, 'prepared' writer of ``writer_generation`` -- its durable
+        attempt, route provenance and material ownership."""
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        route_attempt_id = await self._candidate_route(
+            db, artifact.transfer_id, candidate, artifact_id=artifact.id
+        )
+        ordinal_row = await db.fetchone("SELECT COALESCE(MAX(ordinal),0) AS n FROM execution_attempt_provenance WHERE artifact_id=?", (artifact.id,))
+        ordinal = int(ordinal_row["n"] or 0) + 1
+        # Material ownership is explicit and durable: established when the
+        # boundary was absent at this admission, or carried forward from
+        # this artifact's immediately preceding attempt when THAT attempt
+        # owned it (the present material is DebridPulse's own lineage).
+        # Anything else -- pre-existing material, or no observation -- is
+        # unowned, and no cleanup may delete it.
+        owner = None
+        if target_initially_absent:
+            owner = handle.attempt_id
+        elif target_initially_absent is not None:
+            predecessor = await db.fetchone(
+                "SELECT material_owner_attempt_id FROM execution_attempts WHERE artifact_id=? ORDER BY rowid DESC LIMIT 1",
+                (artifact.id,))
+            owner = (predecessor or {}).get("material_owner_attempt_id")
+        await db.execute("""INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,candidate,
+            target_initially_absent,material_owner_attempt_id,writer_generation,continuation)
+            VALUES(?,?,?,?,?,'prepared',?,?,?,?,?)""",
+            (handle.attempt_id, artifact.transfer_id, artifact.id, handle.executor_id, codec.dump(handle),
+             codec.dump(candidate) if candidate else None,
+             None if target_initially_absent is None else int(bool(target_initially_absent)), owner,
+             writer_generation, codec.dump(continuation.as_dict()) if continuation is not None else None))
+        await db.execute("""INSERT INTO execution_attempt_provenance(
+            execution_attempt_id,route_attempt_id,transfer_id,artifact_id,ordinal,provider_id,candidate_id,candidate_source,
+            outcome,delivered,history_quality) VALUES(?,?,?,?,?,?,?,?, 'prepared',0,'recorded')""",
+            (handle.attempt_id, route_attempt_id, artifact.transfer_id, artifact.id, ordinal,
+             candidate.provider_id if candidate and candidate.provider_id else None, str(candidate.id) if candidate else None,
+             codec.dump(self._safe_candidate_source(candidate)) if candidate else None))
+        await db.execute("""UPDATE download_files SET execution_attempt_id=?,download_client=?,retry_count=retry_count+1,
+            status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,
+            continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
+        # DP 1.0.12 recovery leveling, Section 29: durably link this new
+        # execution back to the candidate-activation record that selected
+        # it, if any -- a committed activation cannot know the replacement
+        # execution's id at commit time (it doesn't exist yet), so the
+        # audit link is completed here instead, the first time this
+        # artifact actually dispatches afterward. Scans backward for the
+        # most recent still-unlinked "activated" record for this artifact;
+        # bounded, since only a just-activated, not-yet-dispatched
+        # artifact ever has one pending.
+        activation_rows = await db.fetchall(
+            "SELECT id,detail FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id DESC LIMIT 50",
+            (artifact.transfer_id,),
+        ) if link_activation else ()
+        for activation_row in activation_rows:
+            detail = codec.load(activation_row["detail"], {})
+            if (detail.get("artifact_id") == artifact.id and detail.get("outcome") == "activated"
+                    and detail.get("new_execution_id") is None):
+                detail["new_execution_id"] = handle.attempt_id
+                await db.execute(
+                    "UPDATE application_events SET detail=? WHERE id=?",
+                    (codec.dump(detail), activation_row["id"]),
+                )
+                break
 
     # ------------------------------------------------------------------
     # Artifact material: the ONE durable owner of reusable bytes
@@ -2428,6 +2438,23 @@ class TransferRepository:
             row = await db.fetchone("SELECT continuation FROM execution_attempts WHERE id=?", (attempt_id,))
         return ContinuationPlan.from_dict(codec.load(row["continuation"])) if row and row["continuation"] else None
 
+    async def native_transition_from(self, attempt_id: str) -> str | None:
+        """The attempt whose native object ``attempt_id`` inherited while that
+        handoff's source replacement is still unproven; ``None`` otherwise."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT native_transition_from FROM execution_attempts WHERE id=?", (attempt_id,))
+        return str(row["native_transition_from"]) if row and row["native_transition_from"] else None
+
+    async def resolve_native_transition(self, handle: ExecutionHandle) -> bool:
+        """The inherited native object was positively proven to serve this
+        attempt's source (or was proven stopped): the transition is resolved
+        and the attempt holds its ordinary authority again."""
+        async with get_db() as db:
+            cursor = await db.execute("""UPDATE execution_attempts SET native_transition_from=NULL,
+                updated_at=CURRENT_TIMESTAMP WHERE id=? AND native_transition_from IS NOT NULL""", (handle.attempt_id,))
+            await db.commit()
+        return cursor.rowcount == 1
+
     async def execution_start_pending(self, attempt_id: str) -> bool:
         """The attempt was admitted but its native start result is not yet
         recorded: its dispatcher still owns it and will converge it."""
@@ -2500,6 +2527,35 @@ class TransferRepository:
             )
         return writer
 
+    _WRITER_SELECT = """SELECT e.handle,e.authorized,e.writer_generation AS attempt_writer,e.continuation,
+            e.native_transition_from,
+            f.execution_attempt_id AS current_id,m.*,f.size_bytes,f.size_knowledge,f.torrent_id AS transfer_id
+        FROM execution_attempts e JOIN download_files f ON f.id=e.artifact_id
+        JOIN artifact_material_state m ON m.artifact_id=e.artifact_id WHERE e.id=?"""
+
+    @staticmethod
+    def _writer_current(row, handle: ExecutionHandle) -> bool:
+        """THE material writer fence: ``handle`` is the artifact's current,
+        authorized writer of the current writer generation, admitted under a
+        plan of the current material generation."""
+        if (row is None or not row["authorized"] or row.get("current_id") != handle.attempt_id
+                or codec.handle(codec.load(row["handle"])) != handle or row.get("attempt_writer") is None
+                or int(row["attempt_writer"]) != int(row.get("writer_generation") or 0)
+                or not row.get("continuation")):
+            return False
+        plan = codec.load(row["continuation"])
+        return int(plan["material_generation"]) == int(row["material_generation"])
+
+    async def material_writer_stale(self, handle: ExecutionHandle) -> bool:
+        """A writer admitted under a continuation plan that no longer passes
+        the material writer fence (another writer generation, or its material
+        generation changed): its private native state must not be resumed or
+        handed on. An attempt admitted without a plan is not a material writer
+        and is never stale here."""
+        async with get_db() as db:
+            row = await db.fetchone(self._WRITER_SELECT, (handle.attempt_id,))
+        return row is not None and bool(row.get("continuation")) and not self._writer_current(row, handle)
+
     async def commit_material(self, handle: ExecutionHandle, ranges, facts, *, now: float,
                               forced: str = "", member: str = "") -> mat.Ranges | None:
         """Commit checkpointed material for the CURRENT writer only.
@@ -2517,21 +2573,15 @@ class TransferRepository:
         very same fence; it may be written from its plan boundary onwards."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone("""SELECT e.handle,e.authorized,e.writer_generation AS attempt_writer,e.continuation,
-                    f.execution_attempt_id AS current_id,m.*,f.size_bytes,f.size_knowledge,f.torrent_id AS transfer_id
-                FROM execution_attempts e JOIN download_files f ON f.id=e.artifact_id
-                JOIN artifact_material_state m ON m.artifact_id=e.artifact_id WHERE e.id=?""", (handle.attempt_id,))
-            if (row is None or not row["authorized"] or row.get("current_id") != handle.attempt_id
-                    or codec.handle(codec.load(row["handle"])) != handle or row.get("attempt_writer") is None
-                    or int(row["attempt_writer"]) != int(row.get("writer_generation") or 0)
-                    or not row.get("continuation") or facts is None or not facts.exists):
+            row = await db.fetchone(self._WRITER_SELECT, (handle.attempt_id,))
+            # A writer whose inherited native source is unproven commits
+            # nothing: its reports are not yet attributable to its source.
+            if (not self._writer_current(row, handle) or row.get("native_transition_from")
+                    or facts is None or not facts.exists):
                 await db.rollback()
                 return None
             plan = ContinuationPlan.from_dict(codec.load(row["continuation"]))
             state = self._material(row)
-            if plan.material_generation != state.material_generation:
-                await db.rollback()
-                return None
             if member:
                 return await self._commit_member(db, row, state, plan, handle, member, ranges, facts, now=now,
                                                  forced=forced)
@@ -2676,17 +2726,25 @@ class TransferRepository:
         if not row or not row["authorized"] or row["executor_id"] != handle.executor_id or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
             return False
         is_current = row.get("current_execution_id") == handle.attempt_id
-        if action in {"start", "resume", "pause"} and not is_current:
+        if action in {"start", "resume", "pause", "retarget"} and not is_current:
             return False
         if action == "cancel" and not is_current:
             cleanup_owned = row["transfer_status"] in {"deleted", "cancelled"} and row.get("cleanup_state") in {"pending", "blocked"}
             if not cleanup_owned:
                 return False
-        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"} or row["paused_intent"]):
+        # An inherited native object whose source replacement is not proven
+        # never gains acquisition authority: only the one native-transition
+        # reconciliation (observe, pause, cancel, retarget) may act on it.
+        if action in {"start", "resume"} and row.get("native_transition_from"):
             return False
-        if action in {"start", "resume"} and await self.globally_paused():
+        # A retarget may briefly run the inherited job to replace its source,
+        # so it needs the same acquisition authority as a start or resume.
+        if action in {"start", "resume", "retarget"} and (row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"} or row["paused_intent"]):
             return False
-        return action != "start" or row["state"] == "prepared"
+        if action in {"start", "resume", "retarget"} and await self.globally_paused():
+            return False
+        # A retarget is the first native action of a handed-off attempt.
+        return action not in {"start", "retarget"} or row["state"] == "prepared"
 
     async def converge_staged_input(self, attempt_id: str, *, staged_context: dict,
                                     context_key: str, retire_context_keys=()) -> tuple[str, dict | None]:

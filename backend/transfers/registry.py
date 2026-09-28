@@ -12,8 +12,8 @@ from transfers.contracts import (
     ContinuationBoundaryDiscovery, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
     ExecutorInputRecovery, RemoteDiscovery,
-    ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, ResourceLookup,
-    Manifest,
+    ExecutorNativeRetry, ExecutorSourceRetarget, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource,
+    ResourceLookup, Manifest,
 )
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import (
@@ -94,9 +94,18 @@ class IntegrationRegistry:
         if (ContinuationCapability.BOUNDARY_DISCOVERY in capabilities.continuation
                 and not isinstance(executor, ContinuationBoundaryDiscovery)):
             raise TypeError("Executor declares boundary discovery without implementing it")
-        # Native quiesce IS the per-execution pause operation (validated above).
-        if ContinuationCapability.NATIVE_QUIESCE in capabilities.continuation and not capabilities.per_execution_pause:
-            raise TypeError("Executor declares native quiesce without per-execution pause")
+        # Native quiesce and native private resume ARE the per-execution
+        # pause/resume operations (validated above).
+        if ((ContinuationCapability.NATIVE_QUIESCE in capabilities.continuation
+             or ContinuationCapability.NATIVE_PRIVATE_RESUME in capabilities.continuation)
+                and not capabilities.per_execution_pause):
+            raise TypeError("Executor declares native quiesce or private resume without per-execution pause")
+        # A retarget hands over a quiesced job that resumes privately.
+        if ContinuationCapability.NATIVE_SOURCE_RETARGET in capabilities.continuation and (
+                not isinstance(executor, ExecutorSourceRetarget)
+                or not {ContinuationCapability.NATIVE_QUIESCE,
+                        ContinuationCapability.NATIVE_PRIVATE_RESUME} <= capabilities.continuation):
+            raise TypeError("Executor declares native source retarget without implementing it")
         self.executors[descriptor.id] = executor
 
     def mark_health(self, integration_id: str, *, healthy: bool) -> None:

@@ -10,7 +10,7 @@ from transfers.models import (
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
-    ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
+    ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, RetargetTruth, TransferCandidate,
     TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
 )
 
@@ -195,6 +195,48 @@ class ExecutorNativeRetry(Protocol):
 
     async def retry_from(self, request: ExecutionRequest, prepared: ExecutionHandle,
                          previous: ExecutionHandle) -> ExecutionObservation: ...
+
+
+@runtime_checkable
+class ExecutorSourceRetarget(Protocol):
+    """``ContinuationCapability.NATIVE_SOURCE_RETARGET``: hand a quiesced
+    native job to a NEW DebridPulse execution attempt whose request names a
+    different, already-equivalent source for the same artifact and target.
+
+    Core decides that a retarget is appropriate and fences the previous
+    attempt; the executor only answers whether this concrete source pair can
+    be retargeted safely, and performs it. Native object continuity is never
+    writer-authority continuity: ``previous`` keeps its own identity and loses
+    all authority, and the inherited native object is reached only through
+    the new attempt's handle from then on."""
+
+    async def prepare_retarget(self, request: ExecutionRequest,
+                               previous: ExecutionHandle) -> ExecutionHandle | None:
+        """No native mutation. The new attempt's handle adopting
+        ``previous``'s native object, when this pair is retargetable --
+        including every security and preparation check a fresh start of
+        ``request`` would apply -- else ``None`` (core continues portably)."""
+        ...
+
+    async def retarget_from(self, request: ExecutionRequest, prepared: ExecutionHandle,
+                            previous: ExecutionHandle) -> ExecutionObservation:
+        """After core durably admitted ``prepared`` and fenced ``previous``:
+        prove the inherited native job still exists and is quiesced, re-check
+        the replacement source, replace its source and report observed truth
+        for ``prepared``. The job stays quiesced; only core resumes it. A
+        definitive refusal before any native mutation is ``FAILED``; an
+        uncertain mutation is ``UNKNOWN``."""
+        ...
+
+    async def retarget_truth(self, request: ExecutionRequest, prepared: ExecutionHandle,
+                             original: ExecutionRequest) -> RetargetTruth:
+        """No native mutation. Which source the quiesced job inherited by
+        ``prepared`` positively serves now -- ``request``'s (the replacement),
+        ``original``'s (the previous attempt's), or neither provably -- with
+        everything a start of that source would configure. Core resolves an
+        unproven retarget from this answer alone; while it is unproven the
+        new attempt has no acquisition authority."""
+        ...
 
 
 @runtime_checkable

@@ -904,6 +904,12 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # continuation ownership existed holds no material authority at all.
         'writer_generation': 'INTEGER',
         'continuation': 'TEXT',
+        # A native-state handoff whose source replacement is not yet
+        # positively proven: the attempt id whose native object this attempt
+        # inherited. While set the attempt holds NO acquisition authority
+        # (``authorize_execution`` refuses start/resume) and only the one
+        # native-transition reconciliation may resolve it. NULL = none.
+        'native_transition_from': 'TEXT',
     },
     # Additive nullable column for databases created before the Torrent/Magnet
     # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
@@ -944,7 +950,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
-    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
     'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},

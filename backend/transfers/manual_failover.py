@@ -17,7 +17,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import replace
 
-from transfers.candidate_activation import resolve_candidate_index
+from transfers.candidate_activation import HANDOFF_RETIREMENTS, resolve_candidate_index
 from transfers.contracts import CandidateRefresh
 from transfers.errors import (
     Category,
@@ -222,6 +222,7 @@ _NOT_COMMITTED_ERROR = {
     "artifact_disappeared": lambda: _error(Category.RESOURCE_NOT_FOUND, Stage.RECONCILIATION, domain=Domain.REQUEST),
     "candidate_no_longer_present": lambda: _error(Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION),
     "commit_conflict": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION),
+    "native_handoff_refused": lambda: _error(Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION),
     "not_found": lambda: _error(Category.RESOURCE_NOT_FOUND, Stage.CANDIDATE_PREPARATION, domain=Domain.REQUEST),
 }
 
@@ -344,7 +345,17 @@ async def manual_candidate_failover(
                     not discard_confirmed or _confirmation_outdated(preview, discard_confirmation)):
                 raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes,
                                                   preview.material_generation, changed=discard_confirmed)
-        claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index)
+        # Without a confirmed discard the switch may keep everything the
+        # preview promised (e.g. through a native-state handoff) or nothing
+        # changes: a handoff that turns out impossible is refused, and the
+        # operator is shown the portable consequence to confirm instead.
+        claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index,
+                                                              permit_discard=bool(discard_confirmed))
+        if claim_result is not None and claim_result.reason == "native_handoff_unavailable":
+            fallback = await engine.preview_continuation(artifact, candidate, native=False)
+            if fallback is not None and fallback.discarded_bytes:
+                raise DiscardConfirmationRequired(fallback.discarded_bytes, fallback.retained_bytes,
+                                                  fallback.material_generation, changed=True)
         if claim_result is None:
             # A concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler recovery
             # currently owns this artifact's claim (Section 11). Nothing was
@@ -416,7 +427,10 @@ async def manual_candidate_failover(
             source_host=host,
             outcome="success",
             execution_transition=(
-                "retired_and_redispatch" if claim_result.retirement != "not_needed" else "queued_for_selected_candidate"
+                "native_handoff" if claim_result.retirement in HANDOFF_RETIREMENTS
+                else "pending_native_retarget" if claim_result.retirement == "desired_source"
+                else "retired_and_redispatch" if claim_result.retirement != "not_needed"
+                else "queued_for_selected_candidate"
             ),
             error=None,
         )
