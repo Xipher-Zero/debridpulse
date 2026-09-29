@@ -7,8 +7,8 @@ import application.service as service_module
 from application.service import ApplicationService
 
 
-def _transfer(identity, status, progress):
-    return SimpleNamespace(id=identity, state=status, progress=progress)
+def _transfer(identity, status, progress, active=None):
+    return SimpleNamespace(id=identity, state=status, progress=progress, active_execution_progress=active)
 
 
 class _Repository:
@@ -95,8 +95,10 @@ async def test_active_overlay_marks_transitions_for_authoritative_lightweight_re
     update = published[0]
     assert update[0] == "torrent_updated"
     items = {item["id"]: item for item in update[1]["items"]}
-    assert items[11] == {"id": 11, "status": "downloading", "progress": 35.0, "status_changed": False}
-    assert items[12] == {"id": 12, "status": "paused", "progress": 0.0, "status_changed": True}
+    assert items[11] == {"id": 11, "status": "downloading", "progress": 35.0, "active_execution_progress": None,
+                         "status_changed": False}
+    assert items[12] == {"id": 12, "status": "paused", "progress": 0.0, "active_execution_progress": None,
+                         "status_changed": True}
     assert items[13]["status_changed"] is True
     assert [name for name, _data in published] == ["torrent_updated", "stats_changed"]
 
@@ -117,6 +119,24 @@ async def test_unchanged_active_state_emits_no_browser_churn(monkeypatch):
 
     assert repository.presentation_calls == 0
     assert published == []
+
+
+@pytest.mark.asyncio
+async def test_reconstruction_activity_alone_is_published_and_never_moves_completion(monkeypatch):
+    """A destination-aware reconstruction advances while DP-valid progress
+    holds still: the overlay carries the activity beside, never as, progress."""
+    repository = _Repository([_transfer(31, "downloading", 31.0, 40.0)], [_transfer(31, "downloading", 31.0, 67.0)])
+    application = ApplicationService(_Engine(repository))
+    published = []
+
+    async def capture(name, data):
+        published.append((name, data))
+
+    monkeypatch.setattr(service_module, "publish", capture)
+    await application.reconcile_executions()
+    (item,) = published[0][1]["items"]
+    assert item == {"id": 31, "status": "downloading", "progress": 31.0, "active_execution_progress": 67.0,
+                    "status_changed": False}
 
 
 # --------------------------------------------------------------------------- #

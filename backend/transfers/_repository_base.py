@@ -23,8 +23,8 @@ from transfers.errors import Category, Domain, NormalizedError, Stage, TransferE
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
-    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, ContinuationPlan, DeliveryKind, ExecutionAttempt,
-    ExecutionHandle, ExecutionState, MaterializationResult,
+    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, ContinuationPlan, ContinuationStrategy, DeliveryKind,
+    ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationResult,
     OutcomeKind, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
@@ -85,6 +85,34 @@ class AggregateLifecycleOutcome:
     """
     should_complete: bool
     artifacts: tuple
+
+
+def active_execution_progress_sql(transfer_scope: str) -> str:
+    """THE one read of in-flight execution progress that is not DP material.
+
+    A current, authorized, running writer admitted under a DESTINATION_AWARE
+    plan builds its replacement away from the canonical destination, so what
+    its executor reports is execution activity only: durable completion stays
+    DP-valid material (``torrents.progress``) and never moves with it.
+    ``transfer_scope`` is a SQL predicate over ``f.torrent_id``; one row per
+    transfer: ``transfer_id``, ``execution_completed``, ``execution_total``."""
+    return f"""SELECT f.torrent_id AS transfer_id,
+            SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
+            SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total
+        FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id
+        WHERE e.state = 'running' AND e.authorized = 1
+          AND json_extract(e.continuation, '$.strategy') = '{ContinuationStrategy.DESTINATION_AWARE.value}'
+          AND ({transfer_scope})
+        GROUP BY f.torrent_id"""
+
+
+def active_execution_percentage(completed, total) -> float | None:
+    """Active execution progress of ``active_execution_progress_sql``'s row:
+    ``None`` without a known total (unavailable, never a fabricated 0%)."""
+    total = int(total or 0)
+    if total <= 0:
+        return None
+    return min(100.0, max(0, int(completed or 0)) / total * 100.0)
 
 
 def canonical_artifact_membership_sql(alias: str = "f") -> str:
@@ -841,7 +869,8 @@ class TransferRepository:
         return Transfer(int(row["id"]), str(row["name"] or ""), TransferState(row["status"]),
                         display_hash, str(row["source"] or ""), int(row["priority"] or 0),
                         bool(row.get("paused_intent")), None if row["progress"] is None else float(row["progress"]),
-                        codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0))
+                        codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0),
+                        active_execution_percentage(row.get("execution_completed"), row.get("execution_total")))
 
     async def get(self, transfer_id: int) -> Transfer | None:
         async with get_db() as db:
@@ -1461,8 +1490,10 @@ class TransferRepository:
 
     async def active(self) -> tuple[Transfer, ...]:
         async with get_db() as db:
-            rows = await db.fetchall("""SELECT t.*, COALESCE(p.paused,0) AS paused_intent FROM torrents t
+            rows = await db.fetchall(f"""SELECT t.*, COALESCE(p.paused,0) AS paused_intent,
+                x.execution_completed, x.execution_total FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
+                LEFT JOIN ({active_execution_progress_sql("1=1")}) x ON x.transfer_id=t.id
                 WHERE t.status NOT IN ('completed','consolidated','deleted','cancelled')
                 AND EXISTS(SELECT 1 FROM transfer_requests r WHERE r.transfer_id=t.id)
                 ORDER BY t.priority DESC,t.id""")
@@ -2597,13 +2628,21 @@ class TransferRepository:
             if member:
                 return await self._commit_member(db, row, state, plan, handle, member, ranges, facts, now=now,
                                                  forced=forced)
-            if state.destination_identity and facts.identity != state.destination_identity and state.valid:
-                await db.rollback()
-                return None
             bound = state.expected_size if state.expected_size else mat.OPEN_END
             accepted = mat.intersect(mat.intersect(ranges, plan.authorized), ((0, min(bound, int(facts.size))),))
             accepted = mat.align_inward(accepted, end_of_file=state.expected_size)
             valid = mat.union(state.valid, accepted)
+            if state.destination_identity and facts.identity != state.destination_identity and state.valid:
+                # A different physical payload keeps nothing -- unless it is
+                # the complete verified replacement a destination-aware writer
+                # was authorized to install: then it is the whole payload.
+                whole = ((0, int(facts.size)),) if int(facts.size) > 0 else ()
+                if not (plan.strategy == ContinuationStrategy.DESTINATION_AWARE and forced == "completion"
+                        and whole and accepted == whole
+                        and (not state.expected_size or int(facts.size) == state.expected_size)):
+                    await db.rollback()
+                    return None
+                valid = accepted
             added = mat.subtract(valid, state.valid)
             await db.execute("""UPDATE artifact_material_state SET valid_ranges=?,destination_identity=?,checkpoint_at=?,
                 checkpoint_attempt_id=?,updated_at=CURRENT_TIMESTAMP WHERE artifact_id=?""",

@@ -91,6 +91,22 @@ def interpretation_absent(error: NormalizedError) -> bool:
     return ((error.domain == Domain.RESOLUTION and error.category == Category.SOURCE_NOT_FOUND)
             or (error.domain == Domain.NETWORK and error.category == Category.CONNECTION_REFUSED))
 
+
+def alternate_interpretation_progresses(error: NormalizedError) -> bool:
+    """One reading of an ambiguous request did not reach its resource, so core
+    may advance to the alternate reading its provider named: the reading was
+    positively absent (``interpretation_absent``), or its endpoint never
+    answered within the bounded Connection Timeout.
+
+    Progression through ambiguous input only -- never equivalence and never
+    resource truth: a timeout is still not absence, and everywhere else it
+    keeps its ordinary transient meaning. An unambiguous request (one naming
+    its own port or scheme) has no alternate, so nothing here applies to it.
+    Authentication, authorization, capacity, policy denial and every other
+    failure stay with the reading that produced them."""
+    return interpretation_absent(error) or (
+        error.domain == Domain.NETWORK and error.category == Category.CONNECTION_TIMEOUT)
+
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
 MEANINGFUL_PROGRESS_DIVISOR = 100

@@ -618,6 +618,12 @@ class ContinuationCapability(StrEnum):
     # ever become DebridPulse-valid before completion.
     EXPORT_MATERIAL_RANGES = "export_material_ranges"
     SOURCE_SEGMENT_TO_FINAL_RANGE = "source_segment_to_final_range"
+    # The executor reconstructs an equivalent artifact using the existing
+    # destination as its basis, without collapsing DP-valid material to a
+    # contiguous prefix: it never mutates the destination until it installs a
+    # complete replacement, so an interrupted attempt leaves every retained
+    # range exactly as it was. Its in-flight work is never DP material before
+    # that verified completion.
     DESTINATION_AWARE_CONTINUATION = "destination_aware_continuation"
     # A natively quiesced job keeps its own private acquisition state and
     # continues exactly where it stopped when resumed (``PauseResume.resume``).
@@ -656,6 +662,10 @@ class ContinuationStrategy(StrEnum):
     # The new writer inherits the previous writer's quiesced native object of
     # the same executor and target; every DP-valid range is retained.
     NATIVE_STATE_HANDOFF = "native_state_handoff"
+    # ``DESTINATION_AWARE_CONTINUATION``: every DP-valid range is retained in
+    # place as the new writer's basis; the writer commits nothing before it
+    # installs the complete, verified replacement of the whole payload.
+    DESTINATION_AWARE = "destination_aware"
 
 
 @dataclass(frozen=True)
@@ -974,6 +984,10 @@ class Transfer:
     progress: float | None = 0.0
     error: NormalizedError | None = None
     epoch: int = 0
+    # In-flight execution progress that is not DP material (a destination-aware
+    # reconstruction), as a percentage; ``None`` when there is none. Activity
+    # only -- ``progress`` alone is completion.
+    active_execution_progress: float | None = None
 
 
 @dataclass(frozen=True)

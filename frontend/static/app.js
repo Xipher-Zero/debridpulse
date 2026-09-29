@@ -486,7 +486,9 @@ function transferDisplayStatus(t) {
   const projected = String(t && t.presentation_status || '').trim().toLowerCase();
   return projected || (t && t.status) || '';
 }
-function progress(pct, status) {
+// ``activePct``: in-flight execution activity that is not yet DP material (a
+// destination-aware reconstruction); shown beside, never as, completion.
+function progress(pct, status, activePct) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
   const failed = state === 'error';
@@ -509,8 +511,13 @@ function progress(pct, status) {
   const attrs = failed
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
     : '';
+  const activeRaw = activePct === null || activePct === undefined ? NaN : Number(activePct);
+  const activity = active && Number.isFinite(activeRaw)
+    ? '<span class="prog-activity" data-role="execution-progress" title="In progress on the current source; counts once verified">reconstructing ' +
+      Math.min(Math.max(activeRaw, 0), 100).toFixed(0) + '%</span>'
+    : '';
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
-         '<span class="prog-pct">' + label + '</span>';
+         '<span class="prog-pct">' + label + '</span>' + activity;
 }
 
 // An extraction failure is announced once per event; it paints nothing. The
@@ -540,6 +547,7 @@ function patchProgressOnlyTransferEvent(data) {
   for (const update of updates) {
     const id = Number(update?.id ?? update?.torrent_id);
     const nextProgress = update?.progress == null ? null : Number(update.progress);
+    const nextActivity = update?.active_execution_progress == null ? null : Number(update.active_execution_progress);
 
     if (!Number.isFinite(id) || (nextProgress !== null && !Number.isFinite(nextProgress))) {
       continue;
@@ -557,7 +565,7 @@ function patchProgressOnlyTransferEvent(data) {
 
         if (progressCell) {
           progressCell.innerHTML =
-            progress(nextProgress, status);
+            progress(nextProgress, status, nextActivity);
         }
 
         const dashFill =
@@ -1585,7 +1593,8 @@ async function showDetail(id) {
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
         <div><div class="dk">Progress</div><div class="dv">${t.progress == null
           ? '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '')
-          : Number(t.progress).toFixed(1) + '%'}</div></div>
+          : Number(t.progress).toFixed(1) + '%'}${t.active_execution_progress == null
+          ? '' : ' · reconstructing ' + Number(t.active_execution_progress).toFixed(1) + '%'}</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>

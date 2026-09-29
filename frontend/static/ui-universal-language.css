@@ -540,6 +540,15 @@ textarea.input { resize: vertical; }
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+/* In-flight execution activity beside DP-valid progress -- never completion. */
+.prog-activity {
+  display: block;
+  margin-top: 1px;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
 
 /* ── Generic empty states ─────────────────────────────────────────────── */
 .empty {

@@ -12,10 +12,11 @@ Two source forms, one grammar, interpreted exactly once by ``_source``:
 An operator need not know which one a server offers. A plain ``rsync://``
 request with a path and no port of its own names its SSH reading as the
 alternate interpretation (``DiscoveryRequest.alternate``); core discovers the
-daemon reading first, and only when the daemon positively establishes that it
-does not provide the path (an unknown module, a missing path, or no daemon
-listening) is the SSH reading tried. A daemon that answers -- even to ask for
-a login, or to say it is full -- is authoritative.
+daemon reading first, and only when that reading does not reach the path (an
+unknown module, a missing path, no daemon listening, or a daemon port that
+stays silent past the Connection Timeout) is the SSH reading tried. A daemon
+that answers -- even to ask for a login, or to say it is full -- is
+authoritative.
 
 Classification is always the server's, through core-run discovery: what it
 proves a regular file becomes one ordinary candidate; what it proves a
@@ -157,8 +158,8 @@ class GeneralRsyncProvider:
     def _alternate(self, request: TransferRequest, source: _Source) -> TransferRequest | None:
         """The same plain ``rsync://`` request read as rsync over SSH, when it
         can mean that: a path on the server and no port of its own (a port
-        names one service). Core discovers it only if the daemon positively
-        establishes that it does not provide the path."""
+        names one service). Core discovers it only if the daemon reading does
+        not reach the path (``policy.alternate_interpretation_progresses``)."""
         if source.kind != _DAEMON or not source.segments or urlsplit(request.payload).port is not None:
             return None
         alternate = replace(request, kind=_SSH, payload=_SSH + request.payload[len(_DAEMON):])

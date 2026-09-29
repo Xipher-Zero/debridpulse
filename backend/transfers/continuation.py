@@ -13,7 +13,10 @@ admitted (``TransferRepository.prepare_execution`` re-checks it atomically).
 
 A changed source, protocol or executor never forces a restart by itself:
 equivalence already decided the candidate is the same logical artifact, and
-the planner keeps the maximal prefix the selected executor can continue from.
+the planner keeps the maximal prefix the selected executor can continue from
+-- or, for an executor that continues destination-aware
+(``DESTINATION_AWARE_CONTINUATION``), every DP-valid range wherever it lies,
+when that keeps more than the prefix.
 An operator source switch whose writer can hand its quiesced native object to
 the new writer (``transfers.candidate_activation.retire_writer``) asks the same
 planner, with ``native_handoff``, and is admitted by the same material fence.
@@ -21,6 +24,7 @@ planner, with ``native_handoff``, and is admitted by the same material fence.
 from __future__ import annotations
 
 from collections.abc import Mapping
+from dataclasses import replace
 
 from transfers import material as mat
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
@@ -142,7 +146,7 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
             if dropped:
                 member_discarded.append((member, dropped))
     retained = ((0, boundary),) if boundary else ()
-    return ContinuationPlan(
+    plan = ContinuationPlan(
         artifact_id=state.artifact_id,
         material_generation=state.material_generation,
         geometry_version=mat.GEOMETRY_VERSION,
@@ -163,3 +167,17 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
         member_boundaries=tuple(member_boundaries),
         member_discarded=tuple(member_discarded),
     )
+    if (ContinuationCapability.DESTINATION_AWARE_CONTINUATION in capabilities.continuation
+            and state.geometry_version == mat.GEOMETRY_VERSION
+            and candidate.materialization == MaterializationKind.FILE
+            and candidate.materialization in capabilities.materialization_kinds
+            and mat.total(state.valid) > plan.retained_bytes):
+        # The destination itself is the new writer's basis: every DP-valid
+        # range is kept where it is -- sparse ranges past the prefix included
+        # -- and nothing is discarded for its geometry. UNKNOWN stays unknown,
+        # and the writer commits only the complete verified payload. Chosen
+        # only when it keeps more than the positional plan above would.
+        return replace(plan, strategy=ContinuationStrategy.DESTINATION_AWARE, boundary=state.safe_prefix,
+                       retained=state.valid, discarded=(),
+                       authorized=((0, bound if bound is not None else mat.OPEN_END),))
+    return plan

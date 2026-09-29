@@ -19,7 +19,16 @@ implementation is shaped as it is):
 * Nothing at the destination is reused unless core authorized it: the target
   is cut to the plan boundary (or emptied) before rsync starts, and
   ``--ignore-times`` is always passed, so rsync's size/mtime quick check can
-  never mark a file done. Exit 0 is not completion either (rsync exits 0 after
+  never mark a file done.
+* A DESTINATION_AWARE plan (DP-valid material that is not one prefix, for
+  example an aria2 partial) keeps the target untouched as rsync's ordinary
+  delta basis: rsync may match blocks anywhere in it, and writes its
+  reconstruction to a private temporary file (``--temp-dir`` inside the
+  declared footprint) that replaces the target only once whole-file verified.
+  An interrupted attempt leaves the target -- and so every retained range --
+  exactly as it was; rsync's temporary output is never DP material, and it is
+  discarded (``--partial`` is never passed on this path). ``--inplace`` is
+  never used: it would rewrite the basis while it is still being read. Exit 0 is not completion either (rsync exits 0 after
   skipping a non-regular source, or when the destination is already longer):
   success is reported only for a regular target of exactly the source length.
 * rsync expands wildcards in a source path in a daemon and over SSH alike, so
@@ -206,7 +215,11 @@ class _Run:
     target: Path
     staging: Path
     expected: int
-    appending: bool
+    # How the target is written: "append" (in place, from the plan boundary),
+    # "basis" (a destination-aware reconstruction in the private temporary
+    # tree, the untouched target its basis) or "fresh" (a private temporary
+    # file, nothing kept).
+    mode: str
     status: int | None
     redactions: tuple[str, ...]
     started: float
@@ -237,6 +250,7 @@ class RsyncExecutor:
         continuation=frozenset({
             ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
             ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES,
+            ContinuationCapability.DESTINATION_AWARE_CONTINUATION,
         }),
     )
 
@@ -784,13 +798,15 @@ class RsyncExecutor:
 
     # ── execution ───────────────────────────────────────────────────────────
 
-    def _authorized_material(self, request: ExecutionRequest, target: Path, staging: Path) -> bool:
+    def _authorized_material(self, request: ExecutionRequest, target: Path, staging: Path) -> str:
         """Put the target in exactly the state the core plan authorizes and
-        return whether rsync continues it in place (``--append``).
+        return how rsync writes it (``_Run.mode``).
 
         Nothing the plan does not retain survives: a contiguous plan cuts the
         target to its boundary and fails closed when that prefix is not
-        physically present; any other plan empties the target (or, with
+        physically present; a destination-aware plan leaves the target exactly
+        as it is (every retained range must be physically present) for rsync
+        to read as its basis; any other plan empties the target (or, with
         Partial Transfers off, removes it). The private temporary tree never
         outlives a writer."""
         plan = request.continuation
@@ -807,6 +823,12 @@ class RsyncExecutor:
         if info is not None and not stat.S_ISREG(info.st_mode):
             raise self._failure(Category.LOCAL_PATH_CONFLICT, Stage.QUEUE, domain=Domain.LOCAL_RESOURCE,
                                 retryability=Retryability.AFTER_RESOURCE_CHANGE)
+        if plan is not None and plan.strategy == ContinuationStrategy.DESTINATION_AWARE:
+            if (ContinuationCapability.DESTINATION_AWARE_CONTINUATION not in self.capabilities.continuation
+                    or info is None or (plan.retained and info.st_size < plan.retained[-1][1])):
+                raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+            staging.mkdir(mode=0o700)
+            return "basis"
         appending = ContinuationCapability.CONTIGUOUS_FROM_OFFSET in self.capabilities.continuation
         boundary = 0
         if (plan is not None and plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET and plan.boundary > 0
@@ -817,12 +839,12 @@ class RsyncExecutor:
         if appending:
             with open(target, "ab") as handle:
                 handle.truncate(boundary)
-        else:
-            target.unlink(missing_ok=True)
-            staging.mkdir(mode=0o700)
-        return appending
+            return "append"
+        target.unlink(missing_ok=True)
+        staging.mkdir(mode=0o700)
+        return "fresh"
 
-    def _execution_head(self, appending: bool, staging: Path) -> list[str]:
+    def _execution_head(self, mode: str, staging: Path) -> list[str]:
         cfg = self.configuration
         # Never recursive, never links, never ownership/permission/ACL/xattr
         # replication, never a delete or a source-side change: exactly the
@@ -834,17 +856,27 @@ class RsyncExecutor:
             head.append("--compress")
         if cfg.preserve_modification_time:
             head.append("--times")
-        head += ["--append"] if appending else [f"--temp-dir={staging}"]
+        if mode == "append":
+            head.append("--append")
+        elif mode == "basis":
+            # rsync's ordinary delta transfer: the untouched target is the
+            # basis, and the replacement is built in the private tree.
+            head += ["--no-whole-file", f"--temp-dir={staging}"]
+        else:
+            head.append(f"--temp-dir={staging}")
         return head
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._start(request, handle)
 
     async def _start(self, request: ExecutionRequest, handle: ExecutionHandle,
-                     submitted: SubmittedInput | None = None) -> ExecutionObservation:
+                     submitted: SubmittedInput | None = None, *, authority: str = "start") -> ExecutionObservation:
+        """``authority``: ``start`` for an attempt core has not started yet;
+        ``resume`` continues an attempt core already started (after its own
+        native process ended in the challenge the input answers)."""
         secrets = submitted.secret_values() if submitted is not None else ()
         try:
-            if not await self._check(handle, "start"):
+            if not await self._check(handle, authority):
                 return ExecutionObservation(handle, ExecutionState.PAUSED)
             if self.prepare(request) != handle:
                 raise self._failure(Category.OWNERSHIP_CONFLICT, domain=Domain.LIFECYCLE)
@@ -858,15 +890,15 @@ class RsyncExecutor:
             transport = await self._transport(remote, candidate, submitted, Stage.QUEUE)
             secrets += transport.redactions
             # A deletion or pause can revoke authority during DNS or egress setup.
-            if not await self._check(handle, "start"):
+            if not await self._check(handle, authority):
                 transport.discard()
                 return ExecutionObservation(handle, ExecutionState.PAUSED)
             try:
-                appending = self._authorized_material(request, target, staging)
+                mode = self._authorized_material(request, target, staging)
             except BaseException:
                 transport.discard()
                 raise
-            head = self._execution_head(appending, staging)
+            head = self._execution_head(mode, staging)
             try:
                 owned = await self.processes.spawn(
                     handle.attempt_id, [], env=transport.env, secrets=transport.secrets, stdin=transport.stdin,
@@ -879,7 +911,7 @@ class RsyncExecutor:
                 transport.discard()
                 raise
             transport.close()
-            run = _Run(owned, target, staging, max(0, int(candidate.expected_bytes or 0)), appending,
+            run = _Run(owned, target, staging, max(0, int(candidate.expected_bytes or 0)), mode,
                        transport.status, tuple(value for value in secrets if value), time.monotonic())
             self._runs[handle.attempt_id] = run
             run.tasks = [asyncio.ensure_future(self._follow(run)),
@@ -897,7 +929,10 @@ class RsyncExecutor:
                                submitted: SubmittedInput) -> ExecutionObservation:
         """Start with input: a fresh attempt whose input evidence acquisition
         already proved, or the same attempt again after its own native process
-        ended in the definitive challenge this input answers."""
+        ended in the definitive challenge this input answers. Continuing an
+        attempt core already started is ``resume`` authority (``start`` is only
+        ever granted to an unstarted attempt), asked before anything of the
+        ended run is given up: a refused continuation keeps its truth."""
         run = self._runs.get(handle.attempt_id)
         if run is not None:
             before = await self.observe(handle)
@@ -912,10 +947,22 @@ class RsyncExecutor:
                 return ExecutionObservation(handle, ExecutionState.FAILED, error=NormalizedError(
                     Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE,
                     retryability=Retryability.NEVER, integration_id=self.descriptor.id))
+            try:
+                if not await self._check(handle, "resume"):
+                    return ExecutionObservation(handle, ExecutionState.PAUSED)
+            except TransferError as exc:
+                return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
             del self._runs[handle.attempt_id]
             self._finished.pop(handle.attempt_id, None)
             self.processes.forget(handle.attempt_id)
-        return await self._start(request, handle, submitted)
+            return await self._start(request, handle, submitted, authority="resume")
+        # No run in memory: an unstarted attempt, or one this process only
+        # knows from core (it started before a restart).
+        try:
+            authority = "start" if await self._check(handle, "start") else "resume"
+        except TransferError as exc:
+            return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
+        return await self._start(request, handle, submitted, authority=authority)
 
     async def _follow(self, run: _Run) -> None:
         """Read rsync's own records: the begun record ends the connection phase."""
@@ -952,7 +999,7 @@ class RsyncExecutor:
 
     def _measured(self, run: _Run) -> int:
         try:
-            if run.appending:
+            if run.mode == "append":
                 info = run.target.lstat()
                 return info.st_size if stat.S_ISREG(info.st_mode) else 0
             return sum(item.stat().st_size for item in run.staging.iterdir() if item.is_file())
@@ -969,12 +1016,14 @@ class RsyncExecutor:
         # Until rsync's begun record the session is not yet proven (connected
         # and authenticated), so no byte counts as having arrived -- the
         # retained prefix already at the target is DebridPulse's, not this
-        # writer's progress. Its material evidence is reported either way.
+        # writer's progress. Its material evidence is reported either way. A
+        # destination-aware reconstruction reports its private output's
+        # length as execution progress only: it is never material.
         return ExecutionObservation(
             handle, ExecutionState.RUNNING, TransferProgress(total, size if run.begun else 0, max(0, rate)),
             activity=ExecutionActivity(network_active=True, bandwidth_reservation_required=True,
                                        progress_expected=run.begun),
-            material=((0, size),) if run.appending and size > 0 else None)
+            material=((0, size),) if run.mode == "append" and size > 0 else None)
 
     async def _terminal(self, handle: ExecutionHandle, run: _Run) -> ExecutionObservation:
         if run.terminal is not None:
@@ -994,17 +1043,22 @@ class RsyncExecutor:
         progress = TransferProgress(total, size)
         if run.cancelled:
             observation = ExecutionObservation(handle, ExecutionState.CANCELLED, progress,
-                                               material=((0, size),) if run.appending and size > 0 else None)
+                                               material=((0, size),) if run.mode == "append" and size > 0 else None)
         elif run.timed_out:
             observation = ExecutionObservation(handle, ExecutionState.FAILED, progress, NormalizedError(
                 Domain.NETWORK, Category.CONNECTION_TIMEOUT, Stage.EXECUTION, retryability=Retryability.BACKOFF,
                 integration_id=self.descriptor.id, native_code="connection_timeout"))
         elif code == 0:
+            if run.mode != "append":
+                # rsync installed the replacement: its private temporary tree
+                # never outlives the writer (verification refuses a payload
+                # whose declared transient path still exists).
+                shutil.rmtree(run.staging, ignore_errors=True)
             observation = self._completed(handle, run, total)
         else:
             observation = ExecutionObservation(handle, ExecutionState.FAILED, progress,
                                                self._native_error(code, run, records),
-                                               material=((0, size),) if run.appending and size > 0 else None)
+                                               material=((0, size),) if run.mode == "append" and size > 0 else None)
         run.terminal = observation
         self.processes.forget(handle.attempt_id)
         self._retain(handle.attempt_id)

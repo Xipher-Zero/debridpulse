@@ -27,7 +27,9 @@ from application.service import ApplicationService
 from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
-from transfers._repository_base import canonical_artifact_membership_sql
+from transfers._repository_base import (
+    active_execution_percentage, active_execution_progress_sql, canonical_artifact_membership_sql,
+)
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
 from transfers.input_required import public_challenge
@@ -829,6 +831,11 @@ async def list_operational_torrents(
         -- The transfer's one current challenge row (unique per transfer), for
         -- page transfers only; ``transfers.input_required.public_challenge``
         -- projects it exactly as the single-transfer API does.
+        -- In-flight execution activity that is not DP material (the one
+        -- definition, page transfers only); never completion.
+        page_active_execution AS (
+            {active_execution_progress_sql("f.torrent_id IN (SELECT id FROM page)")}
+        ),
         input_challenge AS (
             SELECT c.transfer_id,
                    json_object(
@@ -1190,6 +1197,8 @@ async def list_operational_torrents(
             artifact_presentation_facts.artifacts AS _artifact_presentation_facts,
             input_challenge.challenge AS _input_challenge,
             COALESCE(pause_intent.paused, 0) AS _paused_intent,
+            page_active_execution.execution_completed AS _execution_completed,
+            page_active_execution.execution_total AS _execution_total,
             root_request.payload AS _source_request_payload,
             root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
@@ -1214,6 +1223,8 @@ async def list_operational_torrents(
           ON input_challenge.transfer_id = t.id
         LEFT JOIN transfer_pause_intents pause_intent
           ON pause_intent.torrent_id = t.id
+        LEFT JOIN page_active_execution
+          ON page_active_execution.transfer_id = t.id
         LEFT JOIN latest_route
           ON latest_route.transfer_id = t.id
         LEFT JOIN delivery
@@ -1274,6 +1285,8 @@ async def list_operational_torrents(
         # The modal acts on this: the same canonical public projection the
         # single-transfer API returns -- descriptors and facts, never input.
         projected["input_required"] = public_challenge(challenge_row) if input_required else None
+        projected["active_execution_progress"] = active_execution_percentage(
+            projected.pop("_execution_completed", None), projected.pop("_execution_total", None))
         file_presentations = _bounded_child_presentations(
             projected.pop("_artifact_presentation_facts", None),
             paused=paused, input_required=input_required,

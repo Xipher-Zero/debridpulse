@@ -215,32 +215,51 @@ async def test_a_directory_through_the_ssh_reading_is_one_tree_with_or_without_a
 
 
 @requires_default_ports
-async def test_a_daemon_port_that_never_answers_is_a_bounded_timeout_and_never_a_fallback(tmp_path, monkeypatch):
+async def test_a_daemon_port_that_never_answers_advances_the_plain_source_to_its_ssh_reading(tmp_path, monkeypatch):
     """The real-world case of a host whose firewall silently drops 873: the
     daemon reading times out within rsync's Connection Timeout (not the
-    kernel's), and a timeout is uncertainty -- SSH is never tried."""
+    kernel's), and that bounded silence advances the ambiguous plain source to
+    its SSH reading -- the same candidate an explicit rsync+ssh:// source names."""
     from test_v113_egress_guard_route_scope import BlackHole
-    origin, _key = await _key_origin(tmp_path)
+    origin, key = await _key_origin(tmp_path)
     write_tree(origin.root / "files", {"movie.bin": BODY[:MIB]})
     runtime = await _runtime(tmp_path, monkeypatch)
+    readings = []
+    discover = runtime.rsync.discover
+
+    async def recorded(subject, *args, **kwargs):
+        readings.append(subject.candidate.endpoints[0].scheme)
+        return await discover(subject, *args, **kwargs)
+
+    monkeypatch.setattr(runtime.rsync, "discover", recorded)
+    typed = f"rsync://{HOST}{origin.root}/files/movie.bin"
+    explicit = f"rsync+ssh://{HOST}{origin.root}/files/movie.bin"
     try:
         with BlackHole(DAEMON_PORT):
             started = time.monotonic()
-            transfer = await runtime.engine.submit((TransferRequest("rsync", f"rsync://{HOST}{origin.root}/files/movie.bin"),),
-                                                   deduplicate=False)
-
-            async def timed_out():
-                (request,) = await runtime.repository.requests(transfer.id)
-                return request.error is not None
-
-            await runtime.until(timed_out, label="daemon timeout", timeout=60)
-            waited = time.monotonic() - started
+            transfer = await runtime.engine.submit((TransferRequest("rsync", typed),), deduplicate=False)
+            passphrase = await _answer_with_key(runtime, transfer.id, key)
+            # Bounded by the configured Connection Timeout (15 s here), not ~127 s.
+            assert time.monotonic() - started < 40
+            await runtime.until(lambda: runtime.completed(transfer.id), label="SSH reading after a silent daemon")
+            # The daemon reading was asked once; the answer and every later
+            # resolution reached only the SSH reading.
+            assert readings[0] == "rsync" and readings.count("rsync") == 1 and set(readings[1:]) == {"rsync+ssh"}
+        assert (await runtime.repository.get(transfer.id)).state == TransferState.COMPLETED
         (request,) = await runtime.repository.requests(transfer.id)
-        assert (request.error.domain.value, request.error.category) == ("network", Category.CONNECTION_TIMEOUT)
-        # Bounded by the configured Connection Timeout (15 s here), not ~127 s.
-        assert waited < 40
-        assert request.interpretation is None and await runtime.engine.challenges.current(transfer.id) is None
-        assert origin.auth_attempts == [] and origin.commands == []
+        assert request.state not in {"pending", "processing"} and request.error is None
+        assert request.request == TransferRequest("rsync", typed)
+        assert request.interpretation == TransferRequest("rsync+ssh", explicit)
+        (plain,) = await runtime.repository.artifacts(transfer.id)
+        assert Path(plain.target).read_bytes() == BODY[:MIB]
+        assert ("publickey", USER) in origin.auth_attempts
+        # The same resource typed explicitly reaches the same SSH candidate.
+        direct = await runtime.engine.submit((TransferRequest("rsync+ssh", explicit),), deduplicate=False)
+        await _answer_with_key(runtime, direct.id, key, passphrase)
+        await runtime.until(lambda: runtime.completed(direct.id), label="explicit rsync+ssh")
+        (named,) = await runtime.repository.artifacts(direct.id)
+        assert plain.candidates[0].endpoints == named.candidates[0].endpoints
+        assert plain.candidates[0].request_kind == named.candidates[0].request_kind == "rsync+ssh"
     finally:
         await runtime.close()
         await origin.close()

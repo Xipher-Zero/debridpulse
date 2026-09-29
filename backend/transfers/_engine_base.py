@@ -140,7 +140,9 @@ from transfers.models import (
 )
 from transfers.cohorts import _HELD_DISPOSITIONS, _disposition
 from transfers.mirrors import EvidenceContext, shared_evidence, shared_size
-from transfers.policy import TERMINAL_TRANSFER_STATES, TransferPolicy, interpretation_absent
+from transfers.policy import (
+    TERMINAL_TRANSFER_STATES, TransferPolicy, alternate_interpretation_progresses, interpretation_absent,
+)
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
@@ -1319,24 +1321,28 @@ class TransferEngine:
                                      submitted=None) -> tuple[RequestRecord, object]:
         """THE one owner of a provider's alternate interpretation of a request.
 
-        The request as the provider reads it is discovered first. Only when the
-        server positively establishes that this reading does not provide the
-        resource (``policy.interpretation_absent``) AND the provider named an
-        alternate reading of the same request is that alternate discovered --
-        without input: an answer only ever reaches the interpretation that
-        asked for it. Once the alternate is reached (it answers with anything
-        but its own absence) it durably becomes the request's interpretation,
-        so every later resolution, input scope and retry uses it directly and
-        the first reading is never probed again. When both are absent, a
-        server that answered outranks a port that refused, and otherwise the
-        operator's own reading's failure is the one reported."""
+        The request as the provider reads it is discovered first. Only when
+        that reading did not reach the resource -- the server positively
+        established it is not provided, or the endpoint never answered within
+        its bounded Connection Timeout (``policy.alternate_interpretation_progresses``)
+        -- AND the provider named an alternate reading of the same request is
+        that alternate discovered -- without input: an answer only ever
+        reaches the interpretation that asked for it. Once the alternate is
+        reached (it answers with anything but its own absence, or its own
+        silence when the first reading was silent too) it durably becomes the
+        request's interpretation, so every later resolution, input scope and
+        retry uses it directly and the first reading is never probed again.
+        When neither is reached, a server that answered outranks a port that
+        refused or stayed silent, and otherwise the operator's own reading's
+        failure is the one reported."""
         try:
             return record, await self._discovered(record, provider, await self._discover(
                 record, provider, requested, submitted))
         except _ServerAnswer as exc:
             primary = exc.failure
         alternate = requested.discovery.alternate
-        if alternate is None or record.interpretation is not None or not interpretation_absent(primary.error):
+        if (alternate is None or record.interpretation is not None
+                or not alternate_interpretation_progresses(primary.error)):
             raise primary
         if not isinstance(alternate, TransferRequest) or alternate.kind not in provider.descriptor.request_types:
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1350,10 +1356,12 @@ class TransferEngine:
         try:
             outcome = await self._discover(interpreted, provider, result)
         except _ServerAnswer as exc:
-            if not interpretation_absent(exc.failure.error):
+            silent = not interpretation_absent(primary.error)
+            unreached = alternate_interpretation_progresses(exc.failure.error)
+            if not (interpretation_absent(exc.failure.error) or (silent and unreached)):
                 await self.repository.record_interpretation(record.id, alternate)
                 raise exc.failure from None
-            answered = (primary.error.category == Category.CONNECTION_REFUSED
+            answered = ((silent or primary.error.category == Category.CONNECTION_REFUSED)
                         and exc.failure.error.category == Category.SOURCE_NOT_FOUND)
             raise (exc.failure if answered else primary) from None
         await self.repository.record_interpretation(record.id, alternate)

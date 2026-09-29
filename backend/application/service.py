@@ -290,6 +290,9 @@ class ApplicationService:
             "id": int(transfer.id),
             "status": str(state),
             "progress": None if transfer.progress is None else float(transfer.progress),
+            # In-flight execution activity, never completion (``Transfer``).
+            "active_execution_progress": (None if transfer.active_execution_progress is None
+                                          else float(transfer.active_execution_progress)),
             "status_changed": bool(status_changed),
         }
 
@@ -610,8 +613,8 @@ class ApplicationService:
                     continue
                 previous_state = str(getattr(previous.state, "value", previous.state))
                 current_state = str(getattr(current.state, "value", current.state))
-                previous_progress = previous.progress
-                current_progress = current.progress
+                previous_progress = (previous.progress, previous.active_execution_progress)
+                current_progress = (current.progress, current.active_execution_progress)
                 if current_state != previous_state or current_progress != previous_progress:
                     updates.append(
                         self._active_overlay_item(

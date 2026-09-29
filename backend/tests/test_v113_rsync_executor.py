@@ -150,7 +150,8 @@ async def test_declared_capabilities_are_exactly_the_characterized_ones(tmp_path
     caps = executor.capabilities
     assert caps.continuation == frozenset({
         ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
-        ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES})
+        ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES,
+        ContinuationCapability.DESTINATION_AWARE_CONTINUATION})
     assert not caps.per_execution_pause and not caps.acquisition_gate
     # The DP-assigned aggregate ceiling is enforced on every rsync connection.
     assert caps.aggregate_bandwidth_ceiling
@@ -251,6 +252,72 @@ async def test_a_daemon_file_completes_with_direct_argv_and_no_destructive_optio
     assert not set(FORBIDDEN_NATIVE) & set(argv[:argv.index("--")])
     assert set(env) == {"PATH", "LC_ALL", "LANG", "HOME", "RSYNC_PROXY"}
     assert env["RSYNC_PROXY"].endswith(f"@127.0.0.1:{guard.bound_port}")
+
+
+def _core_authority(executor, *, paused=False, started=()):
+    """Core's own rule (``authorize_execution``): ``start`` only for an attempt
+    still ``prepared`` -- core records it started once its first observation
+    lands (``started``) -- continuing a started one is ``resume`` authority,
+    and a pause intent withholds both."""
+    started, asked = set(started), []
+
+    async def authorize(handle, action):
+        asked.append(action)
+        if action in {"start", "resume"} and paused:
+            return False
+        return action != "start" or handle.attempt_id not in started
+
+    executor.authorize = authorize
+    return asked
+
+
+async def test_input_continues_the_same_challenged_attempt_under_resume_authority(tmp_path, daemon):
+    """The executor-challenge loop (rsync+ssh after a switch): the answered
+    attempt is no longer unstarted, so its continuation must use ``resume``
+    authority -- and a refused continuation must keep the attempt's truth
+    instead of losing it (observed ABSENT, restarted, asked again)."""
+    origin, guard = daemon
+    executor = _executor(tmp_path, guard)
+    _core_authority(executor)
+    candidate = _candidate(origin.url("/priv/p.bin"), size=4096)
+    target = tmp_path / "downloads" / "continued-input.bin"
+    request = file_request(candidate, target, "attempt-continue-input", root=tmp_path / "downloads")
+    handle = executor.prepare(request)
+    await executor.start(request, handle)
+    failed = await _settle(executor, handle)
+    assert executor.input_requirement(candidate, failed).reason == InputReason.AUTH_REQUIRED
+    # A pause intent refuses the continuation: nothing is started, and the
+    # attempt's own terminal truth is kept (never ABSENT).
+    _core_authority(executor, paused=True, started={handle.attempt_id})
+    held = await executor.start_with_input(request, handle, _password())
+    assert held.state == ExecutionState.PAUSED
+    assert (await executor.observe(handle)).state == ExecutionState.FAILED
+    # Core recorded the attempt as started: it refuses ``start`` for it now.
+    asked = _core_authority(executor, started={handle.attempt_id})
+    await executor.start_with_input(request, handle, _password())
+    done = await _settle(executor, handle)
+    assert done.state == ExecutionState.SUCCEEDED and target.read_bytes() == PAYLOAD[:4096]
+    assert "resume" in asked
+
+
+async def test_input_continues_a_challenged_attempt_after_a_restart(tmp_path, daemon):
+    origin, guard = daemon
+    first = _executor(tmp_path, guard)
+    _core_authority(first)
+    candidate = _candidate(origin.url("/priv/p.bin"), size=4096)
+    target = tmp_path / "downloads" / "restart-input.bin"
+    request = file_request(candidate, target, "attempt-restart-input", root=tmp_path / "downloads")
+    handle = first.prepare(request)
+    await first.start(request, handle)
+    await _settle(first, handle)
+    # DebridPulse restarted: a new executor holds no memory of the attempt,
+    # which core already recorded as started.
+    restarted = _executor(tmp_path, guard)
+    asked = _core_authority(restarted, started={handle.attempt_id})
+    await restarted.start_with_input(request, handle, _password())
+    done = await _settle(restarted, handle)
+    assert done.state == ExecutionState.SUCCEEDED and target.read_bytes() == PAYLOAD[:4096]
+    assert "resume" in asked
 
 
 async def test_daemon_credentials_never_reach_argv_environment_or_diagnostics(tmp_path, daemon, spawned):
@@ -570,6 +637,106 @@ async def test_a_plan_whose_retained_prefix_is_missing_fails_closed(tmp_path, da
     observed = await executor.start(request, executor.prepare(request))
     assert observed.state == ExecutionState.FAILED and observed.error.category == Category.RESOURCE_STATE_CONFLICT
     assert target.read_bytes() == PAYLOAD[:1000]
+
+
+MIB = 1024 * 1024
+# DP-valid material that is not one prefix (an aria2 partial, say).
+SPARSE = ((0, MIB // 2), (MIB, MIB + MIB // 2), (2 * MIB + 4096, 3 * MIB))
+
+
+def _sparse_target(target):
+    """The canonical destination as a previous writer left it: every retained
+    range holds the source's bytes, every gap holds bytes nobody vouched for."""
+    data = bytearray(b"\xa5" * len(PAYLOAD))
+    for start, end in SPARSE:
+        data[start:end] = PAYLOAD[start:end]
+    target.write_bytes(bytes(data))
+    return bytes(data)
+
+
+def _destination_aware(candidate, retained=SPARSE):
+    return ContinuationPlan(1, 1, 1, str(candidate.id), "rsync", ContinuationStrategy.DESTINATION_AWARE,
+                            retained[0][1], retained, (), ((0, len(PAYLOAD)),), len(PAYLOAD), "test")
+
+
+def _argv(monkeypatch):
+    seen = []
+    real = asyncio.create_subprocess_exec
+
+    async def record(*argv, **kwargs):
+        seen.append([str(item) for item in argv])
+        return await real(*argv, **kwargs)
+
+    monkeypatch.setattr("executors.process_ownership.asyncio.create_subprocess_exec", record)
+    return seen
+
+
+async def test_a_destination_aware_plan_reads_the_untouched_target_as_its_basis(tmp_path, daemon, monkeypatch):
+    origin, guard = daemon
+    slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=512).start()
+    try:
+        seen = _argv(monkeypatch)
+        executor = _executor(tmp_path, guard)
+        candidate = _candidate(slow.url("/pub/payload.bin"), size=len(PAYLOAD))
+        target = tmp_path / "downloads" / "basis.bin"
+        before = _sparse_target(target)
+        request = replace(file_request(candidate, target, "attempt-basis", root=tmp_path / "downloads"),
+                          continuation=_destination_aware(candidate))
+        handle = executor.prepare(request)
+        running = await executor.start(request, handle)
+        # Nothing reported while reconstructing is material; the target is the
+        # basis, untouched -- never cut to the prefix, never rewritten in place.
+        assert running.state == ExecutionState.RUNNING and running.material is None
+        (argv,) = [item for item in seen if item and item[0] == "rsync"]
+        assert "--no-whole-file" in argv and any(item.startswith("--temp-dir=") for item in argv)
+        assert not {"--append", "--inplace"} & set(argv) and not any(item.startswith("--partial") for item in argv)
+        progressed = 0
+        while progressed == 0:
+            observed = await executor.observe(handle)
+            assert observed.material is None and target.read_bytes() == before
+            progressed = observed.progress.completed_bytes
+            await asyncio.sleep(0.1)
+        done = await _settle(executor, handle, timeout=60)
+        assert done.state == ExecutionState.SUCCEEDED and target.read_bytes() == PAYLOAD
+        assert done.material == ((0, len(PAYLOAD)),)
+        # The private temporary tree never outlives the writer.
+        assert not executor._staging(target.resolve()).exists()
+    finally:
+        slow.stop()
+
+
+async def test_an_interrupted_destination_aware_writer_leaves_the_target_exactly_as_it_was(tmp_path, daemon):
+    origin, guard = daemon
+    slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=256).start()
+    try:
+        executor = _executor(tmp_path, guard)
+        candidate = _candidate(slow.url("/pub/payload.bin"), size=len(PAYLOAD))
+        target = tmp_path / "downloads" / "interrupted.bin"
+        before = _sparse_target(target)
+        request = replace(file_request(candidate, target, "attempt-interrupted", root=tmp_path / "downloads"),
+                          continuation=_destination_aware(candidate))
+        handle = executor.prepare(request)
+        await executor.start(request, handle)
+        while (await executor.observe(handle)).progress.completed_bytes == 0:
+            await asyncio.sleep(0.1)
+        cancelled = await executor.cancel(handle)
+        assert cancelled.state == ExecutionState.CANCELLED and cancelled.material is None
+        assert target.read_bytes() == before
+    finally:
+        slow.stop()
+
+
+async def test_a_destination_aware_plan_whose_retained_ranges_are_missing_fails_closed(tmp_path, daemon):
+    origin, guard = daemon
+    executor = _executor(tmp_path, guard)
+    candidate = _candidate(origin.url("/pub/payload.bin"), size=len(PAYLOAD))
+    target = tmp_path / "downloads" / "short-basis.bin"
+    target.write_bytes(PAYLOAD[:MIB])
+    request = replace(file_request(candidate, target, "attempt-short-basis", root=tmp_path / "downloads"),
+                      continuation=_destination_aware(candidate))
+    observed = await executor.start(request, executor.prepare(request))
+    assert observed.state == ExecutionState.FAILED and observed.error.category == Category.RESOURCE_STATE_CONFLICT
+    assert target.read_bytes() == PAYLOAD[:MIB]
 
 
 # ── 7. process ownership ─────────────────────────────────────────────────────

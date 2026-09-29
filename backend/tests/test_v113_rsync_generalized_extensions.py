@@ -381,6 +381,7 @@ def _answer(category, domain=Domain.RESOLUTION, retryability=Retryability.NEVER)
 
 ABSENT = _answer(Category.SOURCE_NOT_FOUND)
 REFUSED = _answer(Category.CONNECTION_REFUSED, Domain.NETWORK, Retryability.BACKOFF)
+UNANSWERED = _answer(Category.CONNECTION_TIMEOUT, Domain.NETWORK, Retryability.BACKOFF)
 SSH_FILE = "rsync+ssh://h.example/home/user/file.iso"
 
 
@@ -426,6 +427,31 @@ def test_only_a_positive_absence_lets_core_try_another_interpretation(category, 
     assert interpretation_absent(_answer(category, domain)) is absent
 
 
+@pytest.mark.parametrize("category,domain,progresses", [
+    (Category.SOURCE_NOT_FOUND, Domain.RESOLUTION, True),
+    (Category.CONNECTION_REFUSED, Domain.NETWORK, True),
+    (Category.CONNECTION_TIMEOUT, Domain.NETWORK, True),
+    (Category.AUTHENTICATION_FAILED, Domain.RESOLUTION, False),
+    (Category.CREDENTIAL_MISSING, Domain.RESOLUTION, False),
+    (Category.AUTHORIZATION_FAILED, Domain.RESOLUTION, False),
+    (Category.CONCURRENCY_LIMITED, Domain.NETWORK, False),
+    (Category.CONNECTION_FAILED, Domain.NETWORK, False),
+    (Category.READ_TIMEOUT, Domain.NETWORK, False),
+    (Category.DNS_FAILURE, Domain.NETWORK, False),
+    (Category.EGRESS_POLICY_VIOLATION, Domain.SECURITY, False),
+    (Category.HOST_KEY_FAILURE, Domain.SECURITY, False),
+    (Category.CONNECTION_TIMEOUT, Domain.PROVIDER, False),
+])
+def test_a_reading_whose_endpoint_never_answered_advances_an_ambiguous_request(category, domain, progresses):
+    """A bounded connect timeout advances to a provider-named alternate reading,
+    and is still never absence: timeout keeps its ordinary meaning everywhere else."""
+    from transfers.policy import alternate_interpretation_progresses
+    error = _answer(category, domain)
+    assert alternate_interpretation_progresses(error) is progresses
+    if category == Category.CONNECTION_TIMEOUT:
+        assert interpretation_absent(error) is False
+
+
 @pytest.mark.asyncio
 async def test_a_daemon_that_provides_the_path_is_authoritative_and_ssh_is_never_probed(engine):
     engine, repository, registry, tmp_path = engine
@@ -441,7 +467,8 @@ async def test_a_daemon_that_provides_the_path_is_authoritative_and_ssh_is_never
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("primary", [ABSENT, REFUSED], ids=["unknown-module-or-path", "no-daemon-listening"])
+@pytest.mark.parametrize("primary", [ABSENT, REFUSED, UNANSWERED],
+                         ids=["unknown-module-or-path", "no-daemon-listening", "daemon-port-silent"])
 async def test_a_positively_absent_daemon_reading_resolves_over_ssh_once_and_durably(engine, primary):
     engine, repository, registry, tmp_path = engine
     executor = Interpretations(repository.authorize_execution, objects={SSH_FILE: b"done"},
@@ -481,17 +508,34 @@ async def test_a_positively_absent_daemon_reading_resolves_over_ssh_once_and_dur
 @pytest.mark.asyncio
 @pytest.mark.parametrize("failure", [
     _answer(Category.CONCURRENCY_LIMITED, Domain.NETWORK, Retryability.BACKOFF),
-    _answer(Category.CONNECTION_TIMEOUT, Domain.NETWORK, Retryability.BACKOFF),
     _answer(Category.CONNECTION_FAILED, Domain.NETWORK, Retryability.BACKOFF),
     _answer(Category.AUTHORIZATION_FAILED),
     _answer(Category.AUTHENTICATION_FAILED, retryability=Retryability.AFTER_REAUTH),
-], ids=["capacity", "timeout", "network", "access-denied", "auth-rejected"])
+    _answer(Category.EGRESS_POLICY_VIOLATION, Domain.SECURITY),
+], ids=["capacity", "network", "access-denied", "auth-rejected", "policy-denied"])
 async def test_a_daemon_answer_that_is_not_absence_never_falls_through_to_ssh(engine, failure):
     engine, repository, registry, tmp_path = engine
     executor = Interpretations(repository.authorize_execution, objects={SSH_FILE: b"done"},
                                failures={"rsync": failure})
     registry.register_executor(executor)
     transfer = await engine.submit((TransferRequest("rsync", "rsync://h.example/home/user/file.iso"),),
+                                   deduplicate=False)
+    for _ in range(6):
+        await engine.tick()
+    assert {scheme for scheme, _ in executor.readings} == {"rsync"}
+    (request,) = await repository.requests(transfer.id)
+    assert request.interpretation is None
+    assert request.error is not None and request.error.category == failure.category
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", [UNANSWERED, ABSENT, REFUSED], ids=["timeout", "absent", "refused"])
+async def test_a_source_with_its_own_port_names_one_service_and_never_advances(engine, failure):
+    engine, repository, registry, tmp_path = engine
+    executor = Interpretations(repository.authorize_execution, objects={SSH_FILE: b"done"},
+                               failures={"rsync": failure})
+    registry.register_executor(executor)
+    transfer = await engine.submit((TransferRequest("rsync", "rsync://h.example:873/home/user/file.iso"),),
                                    deduplicate=False)
     for _ in range(6):
         await engine.tick()
@@ -536,6 +580,9 @@ async def test_an_explicit_ssh_source_never_probes_a_daemon(engine):
     (REFUSED, ABSENT, "secondary"),   # a server that answered outranks a port that refused
     (ABSENT, REFUSED, "primary"),
     (REFUSED, REFUSED, "primary"),
+    (UNANSWERED, ABSENT, "secondary"),     # the SSH server answered; the silent daemon did not
+    (UNANSWERED, REFUSED, "primary"),
+    (UNANSWERED, UNANSWERED, "primary"),   # neither endpoint answered: nothing is established
 ])
 async def test_when_neither_reading_provides_the_source_one_stable_answer_is_reported(
         engine, primary, secondary, reported):

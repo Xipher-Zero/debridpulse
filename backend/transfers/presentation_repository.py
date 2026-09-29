@@ -13,7 +13,9 @@ from core.presentation_safety import safe_public_host
 from db.database import get_db
 from transfers import codec
 from transfers import material as mat
-from transfers._repository_base import is_canonical_artifact_row
+from transfers._repository_base import (
+    active_execution_percentage, active_execution_progress_sql, is_canonical_artifact_row,
+)
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
@@ -539,6 +541,8 @@ class TransferRepository(_CanonicalTransferRepository):
                 """SELECT m.artifact_id,m.valid_ranges,m.member_ranges FROM artifact_material_state m
                     JOIN download_files f ON f.id=m.artifact_id WHERE f.torrent_id=?""", (transfer_id,)
             )
+            # In-flight execution activity that is not material (never completion).
+            execution_row = await db.fetchone(active_execution_progress_sql("f.torrent_id = ?"), (transfer_id,))
 
             # Magnet/torrent identities are dictated by the root request and must
             # not be replaced by provider-generated HTTP descendants.
@@ -721,6 +725,8 @@ class TransferRepository(_CanonicalTransferRepository):
             current_resource_state=current_resource_state,
         ))
         result["retained_bytes"] = total_retained
+        result["active_execution_progress"] = active_execution_percentage(
+            (execution_row or {}).get("execution_completed"), (execution_row or {}).get("execution_total"))
         if str(result.get("status") or "").lower() == "completed":
             result["progress"] = 100.0
         elif size_unknown:

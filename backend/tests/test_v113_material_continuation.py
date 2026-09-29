@@ -124,6 +124,53 @@ def test_sparse_valid_ranges_exist_but_a_prefix_plan_never_counts_them():
     assert plan.retained == ((0, MIB),) and plan.discarded == ((3 * MIB, 4 * MIB),)
 
 
+DESTINATION_AWARE = (*CONTIGUOUS, ContinuationCapability.DESTINATION_AWARE_CONTINUATION)
+# The shape of real transfer 437: several DP-valid ranges, a short safe prefix.
+SPARSE = ((0, MIB), (2 * MIB, 3 * MIB), (4 * MIB - 4096, 4 * MIB), (5 * MIB, SIZE))
+
+
+def test_a_destination_aware_executor_keeps_every_valid_range_wherever_it_lies():
+    current = state(SPARSE, generation=4)
+    plan = plan_continuation(current, candidate=candidate(), executor_id="basis", reason="user_candidate_switch",
+                             capabilities=caps(*DESTINATION_AWARE))
+    assert plan.strategy == ContinuationStrategy.DESTINATION_AWARE
+    # Every DP-valid range is retained exactly -- nothing discarded for its
+    # geometry, no UNKNOWN gap promoted -- and the generation is the one the
+    # material had: planning against a sparse destination changes nothing.
+    assert plan.retained == current.valid and plan.discarded == () and plan.discarded_bytes == 0
+    assert plan.retained_bytes == current.valid_bytes
+    assert mat.subtract(((0, SIZE),), plan.retained) == ((MIB, 2 * MIB), (3 * MIB, 4 * MIB - 4096),
+                                                         (4 * MIB, 5 * MIB))
+    assert plan.material_generation == 4 and plan.authorized == ((0, SIZE),)
+    assert type(plan).from_dict(plan.as_dict()) == plan
+
+
+def test_without_destination_awareness_the_same_map_keeps_only_the_safe_prefix():
+    current = state(SPARSE)
+    plan = plan_continuation(current, candidate=candidate(), executor_id="prefix", reason="user_candidate_switch",
+                             capabilities=caps(*CONTIGUOUS))
+    assert plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET
+    assert plan.retained == ((0, MIB),) and plan.discarded == mat.subtract(SPARSE, ((0, MIB),))
+
+
+def test_a_destination_aware_executor_still_appends_when_the_prefix_keeps_everything():
+    # Nothing past the prefix to keep: the positional plan loses nothing and stays.
+    for valid in (((0, 3 * MIB),), ()):
+        plan = plan_continuation(state(valid), candidate=candidate(), executor_id="basis", reason="resume",
+                                 capabilities=caps(*DESTINATION_AWARE))
+        assert plan.strategy != ContinuationStrategy.DESTINATION_AWARE and plan.discarded == ()
+
+
+def test_destination_awareness_is_for_file_material_and_keeps_an_unknown_end_open():
+    open_plan = plan_continuation(state(SPARSE[:2], expected=None), candidate=candidate(0), executor_id="basis",
+                                  capabilities=caps(*DESTINATION_AWARE), reason="resume")
+    assert open_plan.strategy == ContinuationStrategy.DESTINATION_AWARE
+    assert open_plan.authorized == ((0, mat.OPEN_END),) and open_plan.retained == SPARSE[:2]
+    collection = plan_continuation(state(SPARSE), candidate=candidate(0, MaterializationKind.COLLECTION),
+                                   executor_id="basis", capabilities=caps(*DESTINATION_AWARE), reason="admission")
+    assert collection.strategy == ContinuationStrategy.FULL_RESTART
+
+
 def test_unknown_size_leaves_the_authorization_open_and_collections_restart():
     open_plan = plan_continuation(state([(0, MIB)], expected=None), candidate=candidate(0), executor_id="spool-a",
                                   capabilities=caps(*CONTIGUOUS), reason="resume")

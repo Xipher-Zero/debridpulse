@@ -25,11 +25,11 @@
   folder names are refused. The provider has its own Enable control.
 - **rsync Network Source and rsync executor** (`general_rsync` / `rsync`, both labelled rsync). One
   `rsync://host/path` link works whether the server offers rsync directly or only over SSH: DebridPulse asks
-  the rsync server first, and only when it positively shows it does not provide that path -- an unknown
-  shared area, a missing path, or no rsync server answering at all -- is the same path read over SSH
-  (`~/` starts at the login folder). An rsync server that answers is authoritative, even to ask for its own
-  login or to say it is full; a link with its own port means that one service, and `rsync+ssh://` always
-  means SSH. The link as typed is kept, with the way it was resolved recorded beside it. `rsync://host/`
+  the rsync server first, and only when it does not reach that path -- an unknown shared area, a missing
+  path, no rsync server listening, or a port that stays silent past the Connection Timeout (a firewall
+  that drops it) -- is the same path read over SSH (`~/` starts at the login folder). An rsync server that
+  answers is authoritative, even to ask for its own login or to say it is full; a link with its own port
+  means that one service, and `rsync+ssh://` always means SSH. The link as typed is kept, with the way it was resolved recorded beside it. `rsync://host/`
   offers every shared area the server advertises. The server decides what a path is: a
   file is one download; a folder -- with or without a trailing `/`, submitted or chosen alike -- is its whole
   tree, frozen into the existing file selection. Symbolic links and special files are never members and
@@ -40,7 +40,16 @@
   never its command line, environment or a file, and every connection crosses the egress guard (an rsync
   server connection carries only DebridPulse's own route-scoped egress-guard credential, in `RSYNC_PROXY`). rsync continues a file exactly
   from the material DebridPulse holds valid -- including a partial another executor wrote, and aria2 in
-  turn continues rsync's -- and its own quick check can never mark anything done. Downloads → Transfer
+  turn continues rsync's -- and its own quick check can never mark anything done. When that material is
+  not one unbroken start of the file (aria2 fetching several segments at once), rsync keeps every piece:
+  switching to rsync discards nothing downloaded. rsync reads the file as it stands as the basis of its
+  ordinary delta transfer and builds the finished file privately (never `--append`, never `--inplace`), so
+  the file and every downloaded piece stay exactly as they were until the verified whole file replaces
+  them, and an interrupted attempt changes nothing. While it rebuilds, a transfer's progress stays what
+  DebridPulse has verified; the rebuild is shown beside it ("31% · reconstructing 67%") and counts once
+  the whole file is verified. A sign-in or server-identity question an rsync download asks after it
+  started (for example after switching to an rsync-over-SSH source) is answered into that same download:
+  it continues, instead of starting over and asking again without end. Downloads → Transfer
   Method Settings → rsync has five settings: Partial Transfers (on), Compression (off), Preserve
   Modification Time (on), Connection Timeout (30 s) and Transfer Timeout (300 s). The image now includes
   the Debian rsync package (GPL-3.0-or-later; see docs/DEPENDENCY_LICENSES.md).
@@ -71,7 +80,8 @@
   evidence or discovery connection) now bounds the guard's connection to the server by it: a server that
   never answers -- a firewall that silently drops the port -- is a `504` and a *Connection Timeout* within
   that timeout, instead of a *Connection Failed* after the operating system gives up (about two minutes).
-  A timeout is never taken as proof that a source is absent. aria2's own handling is unchanged.
+  A timeout is never taken as proof that a source is absent; it only lets a plain `rsync://` link without
+  its own port move on to its SSH reading. aria2's own handling is unchanged.
 - **Details shows the submitted FTP and SFTP link** as Original Resource (scheme, host, non-default port
   and path; a query only as `?…`, never credentials) instead of only the file name, through the same
   remote-file presentation owner SCP and SSH use.

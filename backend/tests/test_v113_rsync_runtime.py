@@ -97,7 +97,7 @@ class Runtime(SimpleNamespace):
                 await result
 
 
-async def _runtime(tmp_path, monkeypatch, *, aria2=False, active=4) -> Runtime:
+async def _runtime(tmp_path, monkeypatch, *, aria2=False, active=4, aria2_split=1) -> Runtime:
     async def validated(uri, **_kwargs):
         return uri
 
@@ -142,7 +142,11 @@ async def _runtime(tmp_path, monkeypatch, *, aria2=False, active=4) -> Runtime:
                 break
             except Exception:
                 await asyncio.sleep(0.05)
-        runtime.aria2 = Aria2Executor(service, Aria2Configuration(str(downloads), confirmation_delay=0),
+        # ``aria2_split`` > 1: aria2 fetches that many segments at once, so
+        # its DP-valid material is several ranges rather than one prefix.
+        split = {"split": aria2_split, "minimum_split_size": "1M", "connections_per_server": aria2_split}
+        runtime.aria2 = Aria2Executor(service, Aria2Configuration(
+            str(downloads), confirmation_delay=0, **(split if aria2_split > 1 else {})),
                                       repository.authorize_execution, egress=guard)
         runtime.aria2_proc, runtime.aria2_service = proc, service
         registry.register_provider(GeneralHttpProvider())
