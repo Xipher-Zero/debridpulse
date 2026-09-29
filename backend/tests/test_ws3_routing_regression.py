@@ -245,6 +245,7 @@ async def test_resolution_wakeup_set_after_cycle_is_not_lost(monkeypatch):
 
     class Engine:
         policy = Policy()
+        resolution_deadline = None  # the last cycle held no persisted readiness deadline
 
     class Runtime:
         def __init__(self):

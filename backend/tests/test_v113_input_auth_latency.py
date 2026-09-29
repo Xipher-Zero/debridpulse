@@ -1,13 +1,14 @@
 """DP 1.0.13 INPUT_REQUIRED authentication latency: the operator's question
 follows the AUTHENTICATION outcome, never the materialization outcome.
 
-An answered evidence challenge continues the same acquisition inside one
-ordinary materialization decision. The moment the challenged candidate proves
-(or definitively refuses) the submitted material, the durable question must
-converge -- cleared when accepted, reissued as its next generation when
-refused -- while the rest of that decision (peer evidence, equivalence,
-attach/allocate) is still running. Every later step is deliberately held on an
-``asyncio.Event`` here, so the ordering is proven, never timed.
+An answered evidence challenge continues the same acquisition at the request's
+authentication boundary. The moment the challenged candidate proves (or
+definitively refuses) the submitted material, the durable question converges --
+cleared when accepted, reissued as its next generation when refused -- and an
+accepted answer's request then decides (peer evidence, equivalence,
+attach/allocate) as ordinary scheduler work that reads the proof the answer
+acquired. Every later step is deliberately held on an ``asyncio.Event`` here,
+so the ordering is proven, never timed.
 """
 from __future__ import annotations
 
@@ -112,29 +113,26 @@ async def test_an_accepted_answer_closes_the_question_while_materialization_is_s
     finally:
         vault.release.set()
     await asyncio.wait_for(decision, timeout=10)
-    # The SAME decision still finishes its materialization decision correctly.
+    # The decision that follows the answer still finishes correctly.
     for _ in range(3):
         await engine.tick()
     assert (await repository.get(incoming.id)).state == TransferState.CONSOLIDATED
     assert closed_at - answered_at < 1.0
 
 
-async def test_a_refused_answer_reissues_the_question_while_materialization_is_still_held(base):
+async def test_a_refused_answer_reissues_the_question_without_any_decision_running_behind_it(base):
     repository, engine, vault, incoming, challenge = await _challenged(
         base, "locked.example/item.bin|other.example/item.bin")
     await engine.submit_input(incoming.id, challenge.id, "username_password", {"username": USER, "password": "wrong"})
-    decision = asyncio.ensure_future(engine.tick())
-    try:
-        await asyncio.wait_for(vault.held.wait(), timeout=10)
-        assert "auth_rejected" in await _auth_facts(incoming.id)
-        current = await engine.challenges.current(incoming.id)
-        # The next generation is already the question the operator sees.
-        assert current is not None and current.generation == challenge.generation + 1
-        assert current.operation_id == challenge.operation_id and current.origin == InputOrigin.EVIDENCE
-    finally:
-        vault.release.set()
-    await asyncio.wait_for(decision, timeout=10)
-    # The decision's own end never issues the same question a second time.
+    await asyncio.wait_for(engine.tick(), timeout=10)
+    assert "auth_rejected" in await _auth_facts(incoming.id)
+    current = await engine.challenges.current(incoming.id)
+    # The next generation is the question the operator sees, at the refusal ...
+    assert current is not None and current.generation == challenge.generation + 1
+    assert current.operation_id == challenge.operation_id and current.origin == InputOrigin.EVIDENCE
+    # ... and nothing of the request decides behind its outstanding question:
+    # no equivalence sampling ran, and the same question was never issued twice.
+    assert not vault.held.is_set()
     after = await engine.challenges.current(incoming.id)
     assert after is not None and after.id == current.id and after.generation == current.generation
     # The refused material is never offered again: one attempt with it.

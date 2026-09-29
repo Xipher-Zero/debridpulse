@@ -109,6 +109,13 @@ def _acceptance(submitted: SubmittedInput | None):
     return submitted.transport_accepted if submitted is not None else None
 
 
+# The admission-confirmation window (``Aria2Executor._admitted``): long enough
+# to cover the immediate native deaths characterized on a real SSH server
+# (~250 ms), never a multi-second wait, and never longer than the executor's
+# own control-confirmation bound.
+_ADMISSION_CONFIRMATION_SECONDS = 1.0
+
+
 class _AdmissionDeferred(Exception):
     """Owned execution remains parked by a newer core control intent."""
 
@@ -745,6 +752,38 @@ class Aria2Executor:
         return ExecutionObservation(handle, ExecutionState.QUEUED, activity=activity,
                                     controls=frozenset({ExecutionControl.PAUSE}))
 
+    async def _admitted(self, handle: ExecutionHandle, *, paused: bool) -> ExecutionObservation:
+        """The accepted job's admission, confirmed through the one observation
+        (``observe``) for a short bounded window before it is reported.
+
+        aria2 accepts a job that is terminal a few milliseconds later (1.37.0,
+        characterized: a refused port at once, a wrong SSH host key or an
+        anonymous SSH login within ~250 ms of a real server) and keeps that
+        native truth only in its bounded stopped-result history, where later
+        stops evict it. A job that dies inside the window is reported as the
+        native terminal observation it is, while it is certainly still there;
+        one that is acquiring (or already done), still live at the end of the
+        window, or not observable right now is reported as accepted -- the ordinary
+        observation cadence follows it from then on. Never a second monitor:
+        the window ends at the first answer that decides."""
+        accepted = self._accepted(handle, paused=paused)
+        if paused:
+            return accepted
+        loop = asyncio.get_running_loop()
+        deadline = loop.time() + min(_ADMISSION_CONFIRMATION_SECONDS,
+                                     max(0.0, float(self.configuration.control_confirmation_timeout)))
+        while True:
+            observed = await self.observe(handle)
+            if observed.state in {ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}:
+                return observed
+            if (observed.state in {ExecutionState.UNKNOWN, ExecutionState.SUCCEEDED}
+                    or observed.progress.completed_bytes > 0):
+                return accepted
+            remaining = deadline - loop.time()
+            if remaining <= 0:
+                return accepted
+            await asyncio.sleep(min(max(0.01, float(self.configuration.confirmation_delay)), remaining))
+
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._start(request, handle)
 
@@ -779,7 +818,7 @@ class Aria2Executor:
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-            return self._accepted(handle, paused=request.paused)
+            return await self._admitted(handle, paused=request.paused)
         except _AdmissionDeferred:
             return ExecutionObservation(handle, ExecutionState.PAUSED)
         except Exception as exc:
@@ -826,7 +865,7 @@ class Aria2Executor:
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-            return self._accepted(handle, paused=request.paused)
+            return await self._admitted(handle, paused=request.paused)
         except _AdmissionDeferred:
             return await self.observe(handle)
         except Exception as exc:

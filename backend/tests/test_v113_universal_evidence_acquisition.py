@@ -127,7 +127,7 @@ async def test_evidence_requirement_is_one_existing_challenge_before_any_writer(
     assert challenge.artifact_id is None
     assert record.state == "materializing"  # never a request-level input_required: siblings stay in the cohort
     assert await repository.artifacts(incoming.id) == ()  # no writer while evidence waits on input
-    assert set(public_challenge(challenge)) == {"id", "generation", "reason", "origin", "methods", "facts"}
+    assert set(public_challenge(challenge)) == {"id", "generation", "subject", "reason", "origin", "methods", "facts"}
     async with database.get_db() as db:
         challenge_tables = {row["name"] for row in await db.fetchall(
             "SELECT name FROM sqlite_master WHERE type='table' AND name LIKE '%challenge%'")}

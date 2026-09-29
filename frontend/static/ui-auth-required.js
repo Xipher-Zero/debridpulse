@@ -96,6 +96,13 @@
     return `${text(challenge && challenge.id)}:${Number(challenge && challenge.generation || 0)}`;
   }
 
+  // Whether two questions ask about the same source of a transfer (a refused
+  // answer or a follow-up requirement), rather than one source's question
+  // retiring and another source of the same transfer asking its own.
+  function sameSubject(left, right) {
+    return text(left && left.subject) === text(right && right.subject);
+  }
+
   function clearSecretObject(target) {
     if (!target) return;
     for (const key of ['username', 'password', 'passphrase', 'keyMaterial']) {
@@ -466,6 +473,12 @@
       }
       const nextChallenge = item.input_required;
       if (currentIdentity(nextChallenge) !== submittedIdentity) {
+        if (!sameSubject(nextChallenge, state.active.challenge)) {
+          // The answered question retired; another source asks its own now.
+          finishActive();
+          scheduleScan(0);
+          return;
+        }
         snapshotFields();
         applyChallengeUpdate(nextChallenge, {remoteRejected: true});
         setBusy(false);
@@ -590,7 +603,8 @@
       if (!item) {
         finishActive();
       } else if (!state.busy && currentIdentity(item.input_required) !== currentIdentity(state.active.challenge)) {
-        applyChallengeUpdate(item.input_required);
+        if (sameSubject(item.input_required, state.active.challenge)) applyChallengeUpdate(item.input_required);
+        else finishActive();
       }
     }
 

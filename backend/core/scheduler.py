@@ -75,7 +75,13 @@ async def sync_status_loop():
                     await application.resolve_pending()
             except Exception as exc:
                 logger.error("Resolution cycle failed: %s", sanitize_exception(exc))
-        await _wait_for_work(application.resolution_wakeup, max(1, application.engine.policy.resource_poll_interval))
+        # A persisted readiness deadline the last cycle held is a wake of this
+        # same cadence; the poll interval stays the upper bound.
+        wait = max(1, application.engine.policy.resource_poll_interval)
+        deadline = application.engine.resolution_deadline
+        if deadline is not None:
+            wait = min(wait, max(0.05, deadline - application.engine.clock()))
+        await _wait_for_work(application.resolution_wakeup, wait)
 
 
 async def _wait_for_work(event, timeout):

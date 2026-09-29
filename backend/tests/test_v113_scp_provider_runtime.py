@@ -99,10 +99,16 @@ async def test_exact_scp_or_ssh_file_downloads_through_the_existing_sftp_identit
 
 async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_equivalence(tmp_path, monkeypatch):
     # The SFTP mirror is classified by core-run discovery, so it resolves only
-    # after its own first-contact question -- which is answered only once the
-    # SCP writer has COMPLETED. The late equivalent is then satisfied by that
-    # completed canonical artifact: completion freezes ownership, it does not
-    # hide it, and no second writer starts.
+    # after its own first-contact question. A transfer asks one question at a
+    # time and never overwrites the outstanding one, so the mirror's question
+    # may come first or second. When the SCP file asked first, the mirror's
+    # answer waits until the SCP writer has COMPLETED, and the late equivalent
+    # is satisfied by that completed canonical artifact: completion freezes
+    # ownership, it does not hide it, and no second writer starts. When the
+    # mirror asked first nothing else can proceed, so it is answered at once
+    # and the two converge on the live writer instead. (Late-completed
+    # equivalence itself is proven deterministically by
+    # test_canonical_same_source_and_late_completed_equivalence.)
     scp_origin = await SftpOrigin(_origin_root(tmp_path, "scp"), credentials=(USER, PASSWORD)).start()
     sftp_origin = await SftpOrigin(_origin_root(tmp_path, "sftp"), credentials=(USER, PASSWORD)).start()
     runtime = await _scp_runtime(tmp_path, monkeypatch, (scp_origin, sftp_origin))
@@ -116,7 +122,7 @@ async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_eq
         async def step():
             current = await runtime.engine.challenges.current(transfer.id)
             if current is not None and current.id not in answered:
-                if current.origin.value == "provider":
+                if current.origin.value == "provider" and any(origin == "evidence" for origin, _ in reasons):
                     # The late mirror's question waits for the first writer to complete.
                     if not await _completed_bytes(runtime, transfer.id):
                         return None
@@ -134,12 +140,16 @@ async def test_scp_and_sftp_mirrors_of_the_same_bytes_converge_under_existing_eq
             return artifacts[0] if len(await runtime.engine.canonical.bindings(artifacts[0].id)) == 2 else None
 
         await runtime.until(step, label="SCP/SFTP late-completed convergence")
-        assert first_completed == [True]  # the SFTP mirror resolved only after the SCP writer completed
+        # Whenever the SCP file asked first, the SFTP mirror resolved only after its writer completed.
+        assert first_completed == ([True] if reasons[0][0] == "evidence" else [])
         # One first-contact identity question per mirror: the SCP file's from pre-writer
         # evidence, the SFTP path's from the core-run discovery that classifies it.
         assert sorted(reasons) == [("evidence", "server_identity_required"), ("provider", "server_identity_required")]
         assert await runtime.until(lambda: _completed_bytes(runtime, transfer.id), label="completion") == PAYLOAD
-        assert await _aria2_jobs(runtime) == [{f"sftp://scp-mirror.test:{scp_origin.port}/pub/big.iso"}]  # one writer
+        # One writer: on the route that seeded the canonical artifact (the first to ask and prove).
+        seeded = (f"sftp://scp-mirror.test:{scp_origin.port}/pub/big.iso" if reasons[0][0] == "evidence"
+                  else sftp_origin.url("/pub/big.iso", host="sftp-mirror.test"))
+        assert await _aria2_jobs(runtime) == [{seeded}]
         providers = {await runtime.repository.bound_route_provider(item.id)
                      for item in await runtime.repository.requests(transfer.id)}
         assert providers == {"general_scp", "general_ftp"}

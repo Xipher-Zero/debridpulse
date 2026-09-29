@@ -603,6 +603,7 @@ async def test_resolution_wakeup_during_cycle_causes_prompt_rerun(monkeypatch):
 
     class Engine:
         policy = Policy()
+        resolution_deadline = None  # the last cycle held no persisted readiness deadline
 
     class Runtime:
         def __init__(self):

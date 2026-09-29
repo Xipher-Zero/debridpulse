@@ -277,15 +277,17 @@ async def terminal_unverified_association(db, request_id) -> bool:
     owner below and by ``transfers.canonical.CanonicalOwnership`` -- never two
     independently-maintained copies of the same predicate.
 
-    A TEMPORARILY unproven hold (a transient proof failure whose scheduled
-    reconsideration is still pending: ``retry_at`` set, ``transfers.cohorts``)
-    is not terminal: its transfer still has autonomous work and is not
-    settled until that reconsideration decides."""
+    A TEMPORARILY unproven association (a transient proof failure whose
+    scheduled reconsideration is still pending: ``retry_at`` set,
+    ``transfers.cohorts``) settles its leaf exactly the same way: it is just
+    as writer-forbidden, and its reconsideration is proof work the equivalence
+    owner keeps doing after the contributor settled
+    (``CanonicalOwnership.reconsidering``) -- never a reason to keep a
+    duplicate top-level transfer operationally alive."""
     row = await db.fetchone(
         """SELECT r.id FROM transfer_requests r
             JOIN download_files c ON c.id=r.equivalence_target_artifact_id
-            WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id
-            AND COALESCE(r.retry_at,0)=0""",
+            WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id""",
         (request_id,),
     )
     return row is not None and await failed_unverified_target(db, request_id) is None

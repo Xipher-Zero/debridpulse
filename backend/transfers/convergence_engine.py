@@ -203,10 +203,18 @@ class TransferEngine(_QualifiedTransferEngine):
         completed = observed.progress.completed_bytes if observed is not None else 0
         return f"{attempt}:{completed}:{failure_signature(error)}"
 
-    @staticmethod
-    def _counts_recovery_failure(error: NormalizedError) -> bool:
+    def _counts_recovery_failure(self, error: NormalizedError, *, observed: ExecutionObservation | None = None) -> bool:
+        """Whether this failure consumes the source's bounded no-progress
+        budget. Infrastructure never does -- except the one case whose
+        category is infrastructure but whose history is not: a
+        current-generation attempt this engine admitted that then disappeared
+        (``_owned_disappearance``) is a failure of the selected execution
+        path, exactly like any other execution failure. A historical handle
+        found missing after a restart stays reconciliation."""
         if error.domain == Domain.LOCAL_RESOURCE:
             return False
+        if error.category == Category.ORPHANED_RESOURCE and self._owned_disappearance(observed):
+            return True
         if error.category in _INFRASTRUCTURE_CATEGORIES:
             return False
         return True
@@ -908,7 +916,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 current,
                 error,
                 observed=observed,
-                count_failure=self._counts_recovery_failure(error),
+                count_failure=self._counts_recovery_failure(error, observed=observed),
                 retirement_reason=retirement_reason,
             )
 
@@ -1291,7 +1299,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 current,
                 wait_error,
                 observed=observed if factual_terminal_error else None,
-                count_failure=factual_terminal_error and self._counts_recovery_failure(wait_error),
+                count_failure=factual_terminal_error and self._counts_recovery_failure(wait_error, observed=observed),
                 force_provider_not_ready=True,
                 outcome="provider_wait",
                 retirement_reason=retirement_reason,
@@ -1311,7 +1319,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 current,
                 storage_error,
                 observed=observed if factual_terminal_error else None,
-                count_failure=factual_terminal_error and self._counts_recovery_failure(storage_error),
+                count_failure=factual_terminal_error and self._counts_recovery_failure(storage_error, observed=observed),
                 force_storage_not_ready=True,
                 outcome="storage_wait",
                 retirement_reason=retirement_reason,

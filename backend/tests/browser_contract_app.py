@@ -20,6 +20,7 @@ Runtime workflow runs it in the candidate image:
 from __future__ import annotations
 
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 import sys
 from urllib.parse import unquote, urlsplit
@@ -35,8 +36,8 @@ from providers.general_scp.provider import ScpProvider  # noqa: E402
 from transfers.canonical import CanonicalOwnership  # noqa: E402
 from transfers.errors import Category, Domain, NormalizedError, Stage  # noqa: E402
 from transfers.models import (  # noqa: E402
-    DiscoveredEntry, DiscoveryResult, ExecutionObservation, ExecutionState, ExecutorCapabilities, InputField,
-    IntegrationDescriptor, RemoteObjectKind, TransferProgress,
+    ArtifactFingerprint, DiscoveredEntry, DiscoveryResult, ExecutionObservation, ExecutionState, ExecutorCapabilities,
+    FingerprintKind, InputField, IntegrationDescriptor, RemoteObjectKind, TransferProgress,
 )
 from transfers.registry import IntegrationRegistry  # noqa: E402
 
@@ -55,6 +56,22 @@ EVIDENCE_SEED_HOST = "seed.contract.test"
 EVIDENCE_HOST = "evidence.contract.test"
 EVIDENCE_PATH = "/evidence.bin"
 EVIDENCE_HOLD_SECONDS = 8.0
+# Multi-source convergence scenarios (DP 1.0.13), around their own
+# in-progress canonical copy (``seed.contract.test/multi.bin``):
+# * two locked sources of ONE transfer, each needing its own login; the
+#   answered source's canonical attach is held like the evidence one, so the
+#   next source's question must be presented while that work is still held;
+# * a contributor whose one source's proof only ever times out (a transient,
+#   unverified contribution) beside a verified one;
+# * a canonical whose selected route's writer is admitted and then disappears
+#   with no progress, beside a verified alternate that works.
+MULTI_PATH = "/multi.bin"
+MULTI_HOSTS = ("multi-a.contract.test", "multi-b.contract.test")
+PROOF_GOOD_HOST = "good.contract.test"
+PROOF_TIMEOUT_HOST = "slow.contract.test"
+VANISH_HOST = "vanish.contract.test"
+ALIVE_HOST = "alive.contract.test"
+RETRY_PATH = "/retry.bin"
 
 
 class LockedHttpTransport(VaultExecutor):
@@ -82,11 +99,20 @@ class LockedHttpTransport(VaultExecutor):
             return DiscoveryResult(tuple(DiscoveredEntry(name, 4) for name in REMOTE_MEMBERS), path)
         return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=4)
 
+    async def fingerprint(self, subject):
+        # The transient scenario's proof never answers in time.
+        if urlsplit(subject.candidate.endpoints[0].address).hostname == PROOF_TIMEOUT_HOST:
+            return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "timeout")
+        return await super().fingerprint(subject)
+
     async def start(self, request, handle):
         observed = await super().start(request, handle)
+        host = urlsplit(request.work.subject.candidate.endpoints[0].address).hostname
+        if observed.error is None and host == VANISH_HOST:
+            # Admitted, then gone without any progress: no live job, no record.
+            self.jobs.pop(handle.attempt_id, None)
         # The evidence scenario's canonical copy stays in progress.
-        if observed.error is None and urlsplit(request.work.subject.candidate.endpoints[0].address).hostname \
-                != EVIDENCE_SEED_HOST:
+        elif observed.error is None and host != EVIDENCE_SEED_HOST:
             self.finish(handle)
         return observed
 
@@ -108,7 +134,7 @@ class HeldCanonicalOwnership(CanonicalOwnership):
     unrelated to authentication -- deliberately slow."""
 
     async def attach(self, primary, record, candidates, size):
-        if any(urlsplit(item.endpoints[0].address).hostname == EVIDENCE_HOST for item in candidates):
+        if any(urlsplit(item.endpoints[0].address).hostname in {EVIDENCE_HOST, *MULTI_HOSTS} for item in candidates):
             await asyncio.sleep(EVIDENCE_HOLD_SECONDS)
         return await super().attach(primary, record, candidates, size)
 
@@ -120,10 +146,19 @@ registry.register_executor(LockedHttpTransport(
     application.repository.authorize_execution,
     objects={f"{CONTRACT_HOST}{CONTRACT_PATH}": b"four", f"{REMOTE_HOST}{REMOTE_FILE}": b"four",
              f"{EVIDENCE_SEED_HOST}{EVIDENCE_PATH}": b"four", f"{EVIDENCE_HOST}{EVIDENCE_PATH}": b"four",
-             f"{EVIDENCE_SEED_HOST}/refused{EVIDENCE_PATH}": b"four", f"{EVIDENCE_HOST}/refused{EVIDENCE_PATH}": b"four"}
-    | {f"{REMOTE_HOST}/dir/{name}": b"four" for name in REMOTE_MEMBERS},
-    locks={CONTRACT_HOST: (USERNAME, PASSWORD), EVIDENCE_HOST: (USERNAME, PASSWORD)},
+             f"{EVIDENCE_SEED_HOST}/refused{EVIDENCE_PATH}": b"four", f"{EVIDENCE_HOST}/refused{EVIDENCE_PATH}": b"four",
+             f"{EVIDENCE_SEED_HOST}{MULTI_PATH}": b"four",
+             f"{PROOF_GOOD_HOST}{MULTI_PATH}": b"four", f"{PROOF_TIMEOUT_HOST}{MULTI_PATH}": b"four",
+             f"{VANISH_HOST}{RETRY_PATH}": b"four", f"{ALIVE_HOST}{RETRY_PATH}": b"four"}
+    | {f"{REMOTE_HOST}/dir/{name}": b"four" for name in REMOTE_MEMBERS}
+    | {f"{host}{MULTI_PATH}": b"four" for host in MULTI_HOSTS},
+    locks={CONTRACT_HOST: (USERNAME, PASSWORD), EVIDENCE_HOST: (USERNAME, PASSWORD)}
+    | {host: (USERNAME, PASSWORD) for host in MULTI_HOSTS},
 ))
 application.engine.registry = registry
 application.engine.canonical = HeldCanonicalOwnership(application.repository)
+# Execution retries back off seconds, not a minute, so a bounded failover is
+# observable within one browser test (never changed through the settings API:
+# a settings change recomposes the real registry).
+application.engine.configure_policy(replace(application.engine.policy, retry_delay=3.0))
 app.state.application = application

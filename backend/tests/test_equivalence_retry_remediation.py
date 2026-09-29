@@ -694,9 +694,10 @@ async def test_single_target_exhaustion_settles_unverified_and_never_starts_a_wr
     the request becomes a terminal ``unverified`` association to that artifact
     and -- having no writer-capable work left -- its single-leaf transfer
     settles CONSOLIDATED. Required: no competing writer is EVER started, and
-    the unverified source never becomes a canonical member. A settled parent
-    is not reconsidered by any existing lifecycle machinery; recovery of a
-    held request whose parent is still unsettled stays covered by
+    the unverified source never becomes a canonical member. Its bounded
+    reconsiderations run after the parent settled (DP 1.0.13 multi-source
+    convergence) and, proof never arriving, end in the terminal hold; recovery
+    of a held request whose parent is still unsettled stays covered by
     ``test_restart_after_exhaustion_stays_quiescent_and_can_still_recover``."""
     first = await retry_pair.engine.submit(
         (TransferRequest("parcel", "a1", name="same.bin", preferred_provider=retry_pair.a.descriptor.id),),
@@ -725,9 +726,11 @@ async def test_single_target_exhaustion_settles_unverified_and_never_starts_a_wr
     assert held["equivalence_disposition"] == "unverified"
     assert held["equivalence_reason"] == "dns_failure"
     # DP 1.0.13 Defect D: temporarily unproven -- a scheduled, low-frequency
-    # reconsideration keeps it awake, so its transfer is not settled yet.
+    # reconsideration keeps the ASSOCIATION awake. It owes no writer work, so
+    # its contributor transfer is already settled (DP 1.0.13 multi-source
+    # convergence, Defect 2): the reconsiderations below run after settlement.
     assert held["state"] == "materializing" and float(held["retry_at"]) >= retry_pair.now[0] + 30
-    assert (await retry_pair.repository.get(second.id)).state.value != "consolidated"
+    assert (await retry_pair.repository.get(second.id)).state.value == "consolidated"
     async with database.get_db() as db:
         target = await db.fetchone(
             "SELECT equivalence_target_artifact_id FROM transfer_requests WHERE id=?", (held["id"],),

@@ -128,19 +128,19 @@ from transfers.input_required import (
 )
 from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
-    Artifact, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
+    Artifact, ArtifactFingerprint, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
     ContinuationStrategy,
     DeliveryKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
-    ExecutorThroughput, InputChallenge,
+    ExecutorThroughput, FingerprintKind, InputChallenge,
     InputOrigin, InputReason, InputRequirement, MaterializationAdmissionKind, MaterializationKind, OutcomeKind,
     Ownership, ProviderObservation,
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.cohorts import _HELD_DISPOSITIONS, _disposition, _normalized_candidates
-from transfers.mirrors import EvidenceContext, askable, shared_evidence, shared_size
+from transfers.mirrors import EvidenceContext, askable, shared_evidence, shared_size, source_key
 from transfers.policy import (
     TERMINAL_TRANSFER_STATES, TransferPolicy, alternate_interpretation_progresses, interpretation_absent,
 )
@@ -171,6 +171,10 @@ class _CleanupOwnershipLost(Exception):
 # Request states the resolution scheduler may admit; every other state is
 # owned by a later lifecycle stage (or is terminal) and is never resolution work.
 _SCHEDULABLE_REQUEST_STATES = frozenset({"pending", "waiting", "materializing", "resolving"})
+# The finest a persisted readiness deadline is waited for: a deadline that is
+# (by clock arithmetic) already due re-enters its transfer at the next
+# boundary instead of spinning.
+_DEADLINE_RESOLUTION_SECONDS = 0.01
 
 
 class _ResolutionCycle:
@@ -214,6 +218,15 @@ class _ResolutionCycle:
         self.reconsider: set[int] = set()
         self.locks: dict[int, asyncio.Lock] = {}
         self.served: dict[int, int] = {}
+        # Requests whose decision needed its own operator question while
+        # another question of the transfer was outstanding (a transfer asks
+        # one at a time): once served they are never recorded as served, so
+        # they ask the moment that question retires.
+        self.held_behind: set[str] = set()
+        # Per entered transfer: the earliest persisted ``retry_at`` of its
+        # schedulable work that is not due yet. A deadline is a wake
+        # condition of this cycle exactly like an opportunity.
+        self.deadlines: dict[int, float] = {}
         # The current bootstrap round: the pathless transfers that were
         # runnable when it started and are still owed their one turn. ``None``
         # means no round is populated; membership never grows mid-round.
@@ -284,7 +297,7 @@ class TransferEngine:
         self.repository = repository
         self.registry = registry
         self.canonical = CanonicalOwnership(repository)
-        self.challenges = InputChallengeStore(clock=clock)
+        self.challenges = InputChallengeStore(clock=clock, on_retired=self._question_retired)
         self.inputs = EphemeralInputBroker(clock=clock)
         self.root = str(Path(download_root).resolve())
         self.policy = policy or TransferPolicy()
@@ -318,8 +331,26 @@ class TransferEngine:
         # refused, by challenge id, until its decision either asks it again
         # or ends without needing it.
         self._evidence_reissued: dict[str, InputChallenge] = {}
+        # Neutral evidence (never input) an answered evidence question's
+        # authentication acquired, by request id (with its transfer), for that
+        # request's next materialization decision: the proof is acquired once,
+        # and the answer itself stays with the one broker. Process memory
+        # only; a terminal transfer's entries go with its input.
+        self._evidence_carried: dict[str, tuple[int, object]] = {}
+        # Execution attempts THIS engine admitted natively (the executor
+        # answered their start). A current-generation attempt that later
+        # disappears is a failure of the selected execution path; a handle
+        # this engine never admitted (reconciled after a restart) is not.
+        # Process memory only: after a restart every surviving handle is history.
+        self._admitted_executions: set[str] = set()
+        # The earliest persisted readiness deadline the last resolution cycle
+        # held (``None``: none): the scheduler's cadence wakes for it.
+        self.resolution_deadline: float | None = None
         self._collection_affinity_locks = WeakValueDictionary()
         self._cohort_locks = WeakValueDictionary()
+        # (transfer, source) -> the lock sibling authentication boundaries on
+        # one source take turns on (``_authentication_boundary``).
+        self._boundary_locks = WeakValueDictionary()
         self.dispatch_permitted = True
         # Positive, execution-layer-owned evidence (DP 1.0.12 recovery
         # leveling, Section 9) that the REAL _dispatch() reached the capacity
@@ -503,13 +534,35 @@ class TransferEngine:
                         continue
                     if not cycle.units:
                         break
-                    await cycle.opportunity.wait()
+                    await self._next_resolution_boundary(cycle)
             finally:
                 self._resolution_cycle = None
+                self.resolution_deadline = min(cycle.deadlines.values(), default=None)
                 await self._drain_resolution_units(cycle)
             if cycle.failure is not None:
                 raise cycle.failure
             return frozenset(cycle.changed)
+
+    async def _next_resolution_boundary(self, cycle: _ResolutionCycle) -> None:
+        """Wait for the cycle's next admission boundary: an opportunity, or the
+        earliest persisted readiness deadline of the work it holds.
+
+        A ``retry_at`` is a real wake condition: when it passes, the transfer
+        it belongs to is re-entered from current durable truth -- never by
+        polling, never by one sleeper per request, never by another scheduler."""
+        deadline = min(cycle.deadlines.values(), default=None)
+        if deadline is None:
+            await cycle.opportunity.wait()
+            return
+        try:
+            await asyncio.wait_for(cycle.opportunity.wait(),
+                                   timeout=max(_DEADLINE_RESOLUTION_SECONDS, deadline - self.clock()))
+        except TimeoutError:
+            now = self.clock()
+            due = [transfer_id for transfer_id, at in cycle.deadlines.items() if at <= now]
+            for transfer_id in due:
+                del cycle.deadlines[transfer_id]
+            cycle.reconsider.update(due)
 
     def _resolution_opportunity(self, *transfer_ids: int) -> None:
         """The one scheduler wake: canonical resolution work may be runnable
@@ -526,6 +579,37 @@ class TransferEngine:
         if cycle is not None:
             cycle.reconsider.update(transfer_ids)
             cycle.opportunity.set()
+
+    async def _question_retired(self, transfer_id: int) -> None:
+        """The transfer's outstanding question retired (the input challenge
+        owner removed it: accepted, cleared, stale). Whatever was held behind
+        that one question -- resolutions held unasked, decisions that needed
+        their own question -- may ask now: the running cycle re-enters the
+        transfer at once, through its question gate (``_resolution_work``)."""
+        self._resolution_opportunity(transfer_id)
+
+    async def _resolution_live(self, transfer_id: int) -> bool:
+        """Whether the resolution scheduler serves ``transfer_id`` now: a live,
+        unpaused transfer -- or a SETTLED contributor whose unverified
+        association still owes the equivalence owner a reconsideration
+        (``CanonicalOwnership.reconsidering``). That is proof work only: the
+        contributor itself is never reopened to obtain it."""
+        if await self._live(transfer_id, admission=True):
+            return True
+        transfer = await self.repository.get(transfer_id)
+        return (transfer is not None and transfer.state == TransferState.CONSOLIDATED
+                and not await self.repository.globally_paused()
+                and transfer_id in await self.canonical.reconsidering())
+
+    async def _resolution_population(self):
+        """Every transfer this scheduler may have work for: the active ones,
+        then the settled contributors that still owe association reconsideration."""
+        active = await self.repository.active()
+        known = {transfer.id for transfer in active}
+        settled = [transfer for transfer in [await self.repository.get(transfer_id)
+                                             for transfer_id in await self.canonical.reconsidering()]
+                   if transfer is not None and transfer.id not in known]
+        return (*active, *settled)
 
     def _resolution_slot_released(self) -> None:
         """The calling admitted unit no longer claims provider-resolution
@@ -595,7 +679,20 @@ class TransferEngine:
         remaining = []
         for record in await self.repository.requests(transfer_id):
             incarnation = self._resolution_incarnation(record)
-            if record.id == served:
+            if record.id == served and record.id in cycle.held_behind:
+                # Its decision waits for its own question behind another one:
+                # not served. The transfer is re-entered through its question
+                # gate, which admits it again once that question retires.
+                cycle.held_behind.discard(record.id)
+                cycle.admitted.pop(record.id, None)
+                cycle.reconsider.add(transfer_id)
+            elif record.id == served and record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at > self.clock():
+                # Served, and its next turn is a persisted future deadline
+                # (a backoff, a proof retry, a reconsideration): it is this
+                # cycle's work again at that deadline, never before it.
+                cycle.admitted.pop(record.id, None)
+                remaining.append(record)
+            elif record.id == served:
                 cycle.admitted[record.id] = incarnation
             elif record.state in _SCHEDULABLE_REQUEST_STATES and (
                     record.id not in cycle.admitted or cycle.admitted[record.id] not in (None, incarnation)):
@@ -626,10 +723,14 @@ class TransferEngine:
         if not in_flight and self._transfer_locks.setdefault(transfer.id, asyncio.Lock()).locked():
             return None
         if transfer.id not in cycle.remaining:
-            if not await self._live(transfer.id, admission=True):
+            if not await self._resolution_live(transfer.id):
                 cycle.retired.add(transfer.id)
                 return None
             challenge = await self.challenges.current(transfer.id)
+            if challenge is None:
+                # Resolutions held unasked behind a question that has retired
+                # return to ordinary resolution: each asks its own if needed.
+                await self.challenges.release_provider_holds(transfer.id)
             if challenge:
                 # A challenged transfer resolves nothing else this cycle. Its
                 # provider- or evidence-origin continuation is admitted once
@@ -644,9 +745,19 @@ class TransferEngine:
                     cycle.retired.add(transfer.id)
                 return None
             await self._resolution_census(cycle, transfer.id)
+        now = self.clock()
+        pending = []
         for record in cycle.remaining[transfer.id]:
             if self._resolution_ready(record):
+                cycle.deadlines.pop(transfer.id, None)
                 return record
+            if record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at > now:
+                pending.append(record.retry_at)
+        # Work that is not due yet is still this cycle's: its deadline wakes it.
+        if pending:
+            cycle.deadlines[transfer.id] = min(pending)
+        else:
+            cycle.deadlines.pop(transfer.id, None)
         if not in_flight:
             cycle.retired.add(transfer.id)
         return None
@@ -694,7 +805,7 @@ class TransferEngine:
         if cycle.failure is not None or len(cycle.slot_bound) >= capacity:
             return False
         runnable = []
-        for transfer in await self.repository.active():
+        for transfer in await self._resolution_population():
             work = await self._resolution_work(cycle, transfer, capacity)
             if work is not None:
                 runnable.append((transfer, work))
@@ -735,7 +846,7 @@ class TransferEngine:
     async def _serve_resolution_request(self, cycle: _ResolutionCycle, record: RequestRecord):
         """One admitted request unit: admissibility, the work, then the census
         that records it as served and discovers what it made runnable."""
-        if not await self._live(record.transfer_id, admission=True):
+        if not await self._resolution_live(record.transfer_id):
             # Paused or retired after it entered the cycle. Nothing was
             # served: the request keeps its incarnation, and the transfer is
             # out of this cycle until ``_resolution_opportunity`` names it.
@@ -757,10 +868,18 @@ class TransferEngine:
         ordinary request unit."""
         if challenge.origin == InputOrigin.EVIDENCE:
             changed = await self._continue_evidence_input(challenge)
+            # The answered question's continuation is the authentication
+            # boundary only: the challenged request's decision is ordinary
+            # work of this cycle, admitted like any other request once its
+            # transfer asks nothing.
+            if challenge.request_id:
+                cycle.admitted.pop(challenge.request_id, None)
         else:
+            # A provider question interrupted its request's resolution: the
+            # answer resumes that resolution, which is this unit.
             changed = await self._continue_provider_input(challenge)
-        if challenge.request_id:
-            await self._resolution_census(cycle, challenge.transfer_id, served=challenge.request_id)
+            if challenge.request_id:
+                await self._resolution_census(cycle, challenge.transfer_id, served=challenge.request_id)
         self._resolution_opportunity(challenge.transfer_id)
         return changed
 
@@ -797,7 +916,7 @@ class TransferEngine:
             self._release_resolution_transfer(cycle, transfer_id)
 
     async def _process_request(self, record: RequestRecord):
-        if not self._resolution_ready(record) or not await self._live(record.transfer_id, admission=True):
+        if not self._resolution_ready(record) or not await self._resolution_live(record.transfer_id):
             return
         try:
             if record.state == "pending":
@@ -873,8 +992,12 @@ class TransferEngine:
             self.throughput.record(throughput_contributions)
             for transfer in transfers:
                 challenge = challenges[transfer.id]
+                # A pre-writer question (provider or evidence origin) concerns a
+                # source that has no writer: it never holds back the writers of
+                # the transfer's other sources. An execution question does.
                 await self._process_executions(transfer.id, artifacts_by_transfer[transfer.id], observations,
-                                               dispatch_allowed=challenge is None)
+                                               dispatch_allowed=challenge is None
+                                               or challenge.origin != InputOrigin.EXECUTOR)
                 if challenge is None and await self.challenges.release_provider_holds(transfer.id):
                     # A resolution held unasked re-enters ordinary resolution.
                     self._resolution_opportunity(transfer.id)
@@ -1637,25 +1760,36 @@ class TransferEngine:
                     # Already asked at the refusal: one question, one generation.
                     return current
                 return await self.challenges.replace(current, requirement)
-            return await self.challenges.wait_evidence(record.transfer_id, record.id, str(candidate.id),
-                                                       integration_id, requirement)
+            asked = await self.challenges.wait_evidence(record.transfer_id, record.id, str(candidate.id),
+                                                        integration_id, requirement)
         except InputSubmissionRejected:
             return None
+        if asked is None:
+            # Another question of the transfer is outstanding: this request
+            # asks its own the moment that one retires.
+            cycle = self._resolution_cycle
+            if cycle is not None:
+                cycle.held_behind.add(record.id)
+        return asked
 
     async def _continue_evidence_input(self, challenge: InputChallenge):
-        """Continue the SAME evidence acquisition with the submitted input.
+        """Continue the SAME evidence acquisition with the submitted input --
+        the answered question's authentication boundary, and nothing more.
 
-        The input is lent to one ordinary materialization decision
-        (``EvidenceContext``) for exactly the challenged candidate, so
-        equivalence decides before any writer exists. When that decision
-        admits a writer for exactly this candidate, the proven input is handed
-        to its execution once through the one broker; otherwise it is
-        discarded here.
-
-        The durable question follows the AUTHENTICATION outcome, not the
-        decision's: the moment the challenged candidate accepts or refuses the
-        answer, ``_answered_evidence_outcome`` clears or reissues it, while
-        the decision goes on with its evidence, equivalence and attach work."""
+        The input continues exactly the challenged candidate's acquisition --
+        the request's authentication boundary for that candidate -- outside
+        every cohort lock. The durable question follows the
+        AUTHENTICATION outcome: the moment the challenged candidate accepts or
+        refuses the answer, ``_answered_evidence_outcome`` clears or reissues
+        it, and a requirement the candidate still has is asked as the next
+        generation of the same question. The neutral evidence the answer
+        acquired is kept for the request's next materialization decision,
+        which the scheduler admits as ordinary work: equivalence, attach and
+        allocation never run inside this continuation, so no other source's
+        question ever waits behind them. The answer itself stays with the one
+        authentication-input owner (lineage material, proven access) and
+        reaches the writer admitted for the candidate from there; what this
+        continuation borrowed is disposed of by ``_hand_off_proven``."""
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
             return
         target = await self._evidence_target(challenge)
@@ -1673,16 +1807,9 @@ class TransferEngine:
         token = submitted.token
         if token is not None:
             self._evidence_answers[int(token)] = (challenge, candidate)
+        context = EvidenceContext(inputs={str(candidate.id): submitted})
+        submitted = None
         try:
-            # The answer now belongs to this one ordinary decision: the
-            # materialization owner hands it, once, to the writer admitted for
-            # exactly this candidate (``_hand_off_proven``) or discards it.
-            context = EvidenceContext(inputs={str(candidate.id): submitted})
-            submitted = None
-            # The challenged acquisition continues FIRST, outside the
-            # decision's cohort lock: the transport's verdict on the answer
-            # never waits behind the transfer's other decisions. The decision
-            # below reads this same acquisition from its context.
             context.bind(_EvidenceAuth(self, record.transfer_id, await self._lineage(record.transfer_id, record.id),
                                        candidates))
             challenged = next(item for item in _normalized_candidates(record, candidates)
@@ -1691,9 +1818,16 @@ class TransferEngine:
                 await context.fingerprint(executor, challenged)
             except Exception:
                 pass  # kept in the context: the decision judges it like any failed acquisition
-            await self._materialize(record, candidates, evidence=context)
+            found = context.requirement_for((challenged,))
+            if found is not None:
+                # Still asked for (a refusal's next generation, another method,
+                # an identity): the same question asks it, never a second one.
+                await self._evidence_input_required(record, *found)
+            self._evidence_carried[record.id] = (record.transfer_id, context.carry())
             current = await self.challenges.current(challenge.transfer_id)
             if current is not None and current.id == challenge.id:
+                # The transport could not judge the answer (no verdict): the
+                # decision that follows judges the acquisition like any failed one.
                 await self.challenges.clear(challenge)
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
@@ -1702,11 +1836,54 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             await self._request_failure(record, error)
         finally:
-            if submitted:
-                submitted.discard()
+            await self._hand_off_proven(record, context)
             if token is not None:
                 self._evidence_answers.pop(int(token), None)
             await self._retire_unasked_reissue(challenge)
+
+    async def _authentication_boundary(self, record: RequestRecord, routes, evidence: EvidenceContext) -> bool:
+        """THE authentication boundary of one materialization decision.
+
+        ``routes`` are the deciding request's OWN routes its decision will
+        sample (``cohorts.own_routes_to_prove``). Those that may ask its
+        operator are acquired here, OUTSIDE the transfer's cohort lock, into
+        the decision's own ``evidence`` -- so the decision under the lock
+        reads them and never acquires them twice, and a request's own question
+        never waits behind another source's evidence, equivalence or attach
+        work. Material the lineage holds answers first (``_EvidenceAuth``);
+        the first route that yields usable evidence ends the boundary (the
+        decision asks later only if it must). True when the request now waits
+        on its own operator question: asked, or held behind the transfer's one
+        outstanding question (``_evidence_input_required``)."""
+        own = [item for item in routes if item.accepted_input_methods]
+        for candidate in own:
+            try:
+                executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
+            except TransferError:
+                continue
+            capabilities = executor.capabilities
+            if not capabilities.candidate_sampling or not capabilities.transient_input:
+                continue
+            # One source never has to admit two of this transfer's proof
+            # connections at once (the rule ``mirrors.shared_evidence``
+            # applies within one pair): sibling boundaries on one source take
+            # turns; boundaries on different sources never wait for each other.
+            lock = self._boundary_locks.setdefault((record.transfer_id, source_key(candidate)), asyncio.Lock())
+            try:
+                async with lock:
+                    sample = await evidence.fingerprint(executor, candidate)
+            except Exception:
+                continue  # kept in the context: the decision judges it like any failed acquisition
+            if isinstance(sample, ArtifactFingerprint) and sample.kind != FingerprintKind.UNAVAILABLE:
+                # One of the request's own routes is reachable: the decision
+                # has evidence to decide with, and asks only if it must.
+                return False
+        found = evidence.requirement_for(own)
+        if found is None:
+            return False
+        candidate, integration_id, requirement = found
+        await self._evidence_input_required(record, candidate, integration_id, requirement)
+        return True
 
     async def _answered_evidence_outcome(self, submitted, *, accepted: bool, requirement=None) -> None:
         """THE durable consequence of an answered evidence question's
@@ -1757,13 +1934,20 @@ class TransferEngine:
 
         Input that proved one of ``record``'s candidates -- answered through a
         challenge or matched from the lineage's USER_SUPPLIED material -- is
-        handed, once, to the writer admitted for exactly that candidate; the
-        evidence (never the input) is retained with the canonical member, so a
-        later mirror can compare against it after the input is gone, including
-        across restarts. Everything else is discarded here."""
+        handed, once, to the writer admitted for exactly that candidate: at
+        once when this decision admitted it, or -- while the request is still
+        deciding (an answered question's authentication boundary) -- kept in
+        the broker's bounded one-shot handoff for the writer its decision may
+        admit. The evidence (never the input) is retained with the canonical
+        member, so a later mirror can compare against it after the input is
+        gone, including across restarts. Everything else is discarded here."""
         # Neutral evidence a proof-only lease acquired for a peer's canonical
         # member is retained with that member; the lease itself is long gone.
         for candidate_id, proven in evidence.take_borrowed():
+            await self.canonical.retain_evidence(candidate_id, proven)
+        # Evidence an answer proved -- in this decision, or at the answered
+        # question's authentication boundary -- is retained the same way.
+        for candidate_id, proven in evidence.proven_items():
             await self.canonical.retain_evidence(candidate_id, proven)
         supplied = evidence.take_supplied()
         transfer = await self.repository.get(record.transfer_id)
@@ -1771,10 +1955,7 @@ class TransferEngine:
             # This decision settled the transfer (it consolidated): its input
             # retires now through the one lifecycle owner -- an adopted
             # candidate's proven access passes to the adopting canonical owner.
-            for candidate_id, _executor_id, submitted in supplied:
-                proven = evidence.proven_evidence(candidate_id)
-                if proven is not None:
-                    await self.canonical.retain_evidence(candidate_id, proven)
+            for _candidate_id, _executor_id, submitted in supplied:
                 submitted.discard()
             await self._aggregate(record.transfer_id)
             return
@@ -1782,12 +1963,11 @@ class TransferEngine:
             return
         artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
                          if item.request_id == record.id), None)
+        deciding = artifact is None and any(item.id == record.id and item.state == "materializing"
+                                            for item in await self.repository.requests(record.transfer_id))
         for candidate_id, executor_id, submitted in supplied:
-            proven = evidence.proven_evidence(candidate_id)
-            if proven is not None:
-                await self.canonical.retain_evidence(candidate_id, proven)
-            if (artifact is not None and artifact.execution is None and artifact.candidates
-                    and str(artifact.candidates[artifact.selected].id) == candidate_id):
+            if deciding or (artifact is not None and artifact.execution is None and artifact.candidates
+                            and str(artifact.candidates[artifact.selected].id) == candidate_id):
                 await self.inputs.hand_off(record.transfer_id, record.id, candidate_id, executor_id, submitted)
             else:
                 submitted.discard()
@@ -2359,6 +2539,10 @@ class TransferEngine:
             if isinstance(prepared, InputRequirement):
                 if not executor.capabilities.transient_input:
                     raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE, domain=Domain.REQUEST, retryability=Retryability.NEVER))
+                if await self.challenges.current(artifact.transfer_id) is not None:
+                    # One question at a time: held unasked until it retires.
+                    await self.repository.artifact_state(artifact.id, "input_required")
+                    return
                 await self.challenges.wait_executor(artifact, executor.descriptor.id, request.attempt_id, prepared)
                 return
             self._require_prepared(prepared, executor.descriptor.id, request.attempt_id)
@@ -2455,11 +2639,28 @@ class TransferEngine:
                 except Exception as exc:
                     observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
                         error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.QUEUE))
+            self._record_admission(observed)
             current = next(item for item in await self.repository.artifacts(artifact.transfer_id) if item.id == artifact.id)
             await self._execution_result(current, executor, observed)
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.QUEUE)
             await self.repository.artifact_state(artifact.id, "error", error=error)
+
+    def _record_admission(self, observed: ExecutionObservation) -> None:
+        """This engine natively admitted ``observed``'s attempt: the executor
+        answered its start with a job (live, or already terminal) -- not an
+        uncertain acknowledgement and not a deferral that created nothing."""
+        if observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING, ExecutionState.SUCCEEDED,
+                              ExecutionState.FAILED, ExecutionState.ABSENT}:
+            self._admitted_executions.add(observed.handle.attempt_id)
+
+    def _owned_disappearance(self, observed: ExecutionObservation | None) -> bool:
+        """Whether an ABSENT observation is the disappearance of a
+        current-generation attempt this engine admitted -- a failure of the
+        selected execution path -- rather than a historical handle found
+        missing by reconciliation after a restart."""
+        return (observed is not None and observed.state == ExecutionState.ABSENT
+                and observed.handle.attempt_id in self._admitted_executions)
 
     def _require_prepared(self, prepared, executor_id: str, attempt_id: str) -> None:
         if (not isinstance(prepared, ExecutionHandle) or prepared.executor_id != executor_id
@@ -2545,6 +2746,7 @@ class TransferEngine:
                     await self.inputs.mark_use(artifact.transfer_id, artifact.request_id, str(candidate.id),
                                                submitted.token)
                     observed = await executor.start_with_input(request, artifact.execution, submitted)
+                    self._record_admission(observed)
                     current = next(item for item in await self.repository.artifacts(challenge.transfer_id) if item.id == artifact.id)
                     await self._execution_result(current, executor, observed)
                     await self.challenges.current(challenge.transfer_id)
@@ -2602,6 +2804,7 @@ class TransferEngine:
                 observed = ExecutionObservation(handle, ExecutionState.UNKNOWN,
                     error=unknown_failure(exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR,
                                           stage=Stage.QUEUE, secrets=submitted.secret_values()))
+            self._record_admission(observed)
             current = next(item for item in await self.repository.artifacts(challenge.transfer_id) if item.id == artifact.id)
             await self._execution_result(current, executor, observed)
         except Exception as exc:
@@ -2777,6 +2980,10 @@ class TransferEngine:
         elif observed.state == ExecutionState.CANCELLED:
             await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
                 cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
+        if observed.state in {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.ABSENT,
+                              ExecutionState.CANCELLED}:
+            # Its terminal truth was acted on: nothing asks about it any more.
+            self._admitted_executions.discard(observed.handle.attempt_id)
 
 
     async def _retire_execution_owned_material(self, artifact, work: ExecutionWork, footprint: ExecutionFootprint,
@@ -2858,6 +3065,9 @@ class TransferEngine:
             adopted = ({} if transfer.state in {TransferState.DELETED, TransferState.CANCELLED}
                        else await self.canonical.adopted_candidates(transfer_id))
             await self.inputs.discard_transfer(transfer_id, adopted=adopted)
+            for request_id in [key for key, (owner, _carried) in self._evidence_carried.items()
+                               if owner == transfer_id]:
+                del self._evidence_carried[request_id]
         if outcome is None:
             return
         if outcome.should_complete:

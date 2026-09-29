@@ -29,7 +29,7 @@ import asyncio
 
 from transfers._engine_base import TransferEngine as _QualifiedTransferEngine, _EvidenceAuth
 from transfers.applicability import ApplicabilityUnresolved
-from transfers.cohorts import converge_collection_ownership, coordinate_collection
+from transfers.cohorts import converge_collection_ownership, coordinate_collection, own_routes_to_prove
 from transfers.mirrors import EvidenceContext
 from transfers.models import Artifact, ExecutionSubject
 from transfers.policy import RecoveryContext
@@ -102,18 +102,31 @@ class TransferEngine(_QualifiedTransferEngine):
         provider = self.registry.providers.get(candidate.provider_id)
         return bool(provider and provider.descriptor.enabled)
 
-    async def _materialize(self, record, candidates, *, evidence: EvidenceContext | None = None):
+    async def _materialize(self, record, candidates):
+        # One evidence context per materialization decision: its
+        # authentication boundary, the cohort decision and the canonical
+        # attach/allocate step that follows read the same acquisitions.
+        evidence = EvidenceContext()
+        # A settled contributor (its only decision is reconsidering an
+        # unverified association) holds no lineage input any more and can ask
+        # nobody: its sources are re-proven only with access a live lineage
+        # already proved (a proof lease), never by a question.
+        settled = not await self._live(record.transfer_id)
+        # A requirement of this request's own candidates is matched by the
+        # one authentication-input owner before anyone is asked.
+        evidence.bind(_EvidenceAuth(self, record.transfer_id, await self._lineage(record.transfer_id, record.id),
+                                    () if settled else candidates))
+        carried = self._evidence_carried.pop(record.id, None)
+        if carried is not None:
+            evidence.seed(carried[1])
+        if not settled and await self._authentication_boundary(
+                record, await own_routes_to_prove(self, record, candidates), evidence):
+            # This request waits on its own operator question: nothing of it
+            # is decided, and no other source's decision was waited for.
+            await self._hand_off_proven(record, evidence)
+            return
         lock = self._cohort_locks.setdefault(record.transfer_id, asyncio.Lock())
         async with lock:
-            # One evidence context per materialization decision: the cohort
-            # decision and the canonical attach/allocate step that follows it
-            # read the same acquisitions (and the same transient input, when
-            # this decision continues an answered evidence challenge).
-            evidence = evidence if evidence is not None else EvidenceContext()
-            # A requirement of this request's own candidates is matched by the
-            # one authentication-input owner before anyone is asked.
-            evidence.bind(_EvidenceAuth(self, record.transfer_id,
-                                        await self._lineage(record.transfer_id, record.id), candidates))
             try:
                 # ``record`` is the caller's snapshot, taken before this lock:
                 # a sibling's decision holding it may have settled this

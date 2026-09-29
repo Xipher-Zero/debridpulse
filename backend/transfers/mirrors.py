@@ -261,6 +261,29 @@ class EvidenceContext:
         ``candidate_id``, or ``None``."""
         return self._proven.get(str(candidate_id))
 
+    def proven_items(self):
+        """Every ``(candidate id, evidence)`` transient input proved for this decision."""
+        return list(self._proven.items())
+
+    def carry(self):
+        """This context's neutral acquisitions -- never input, never a
+        requirement to ask, never a sample that only waited on another
+        consumer's validation -- for the SAME request's next decision
+        (``seed``): an answered question's authentication boundary proves its
+        candidate once, and the decision that follows reads that proof."""
+        fingerprints = {key: entry for key, entry in self._fingerprints.items()
+                        if not isinstance(entry[0], InputRequirement)
+                        and str(getattr(entry[0], "reason", "") or "") != "input_pending"}
+        return fingerprints, dict(self._proven)
+
+    def seed(self, carried) -> None:
+        """Adopt what ``carry`` kept for this request (nothing already acquired is replaced)."""
+        fingerprints, proven = carried
+        for key, entry in fingerprints.items():
+            self._fingerprints.setdefault(key, entry)
+        for candidate_id, sample in proven.items():
+            self._proven.setdefault(candidate_id, sample)
+
     def take_borrowed(self):
         """Every ``(candidate id, evidence)`` a proof lease acquired in this
         decision -- neutral evidence only, never input -- exactly once."""
@@ -414,6 +437,12 @@ def _source_key(candidate):
     return "candidate", str(candidate.id)
 
 
+def source_key(candidate):
+    """The one source a candidate is reached through (``_source_key``): two
+    candidates with one key are routes of one server's object."""
+    return _source_key(candidate)
+
+
 def _sample_size_compatible_with_reports(actual_size, left, right) -> bool:
     """A discovered actual size must respect every *known* advance report.
 
@@ -528,11 +557,10 @@ def _diagnose(left, right, evidence: EquivalenceEvidence, pair_reason: str = "")
     return evidence
 
 
-async def shared_evidence(left, right, registry, context: EvidenceContext | None = None) -> EquivalenceEvidence:
-    """Return structured provider-neutral evidence without speculative merging.
-
-    ``context`` only lets one coordination decision reuse a fingerprint it has
-    already acquired; it never alters the evidence returned."""
+def _presampling_evidence(left, right) -> EquivalenceEvidence | None:
+    """The evidence ``shared_evidence`` decides WITHOUT sampling either side
+    (a pairing rejection, strong integrity, an integrity mismatch, resolver
+    attestation), or ``None`` when proof needs sampled content. Pure."""
     pair_reason = pairing_failure(left, right)
     if pair_reason:
         return _diagnose(left, right, _unavailable(pair_reason), pair_reason)
@@ -561,6 +589,23 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
                          if _source_key(left) != _source_key(right) else None)
     if resolver_evidence is not None:
         return _diagnose(left, right, resolver_evidence)
+    return None
+
+
+def requires_sampling(left, right) -> bool:
+    """Whether proving ``left`` and ``right`` one object needs sampled content
+    of both -- exactly when ``shared_evidence`` samples them. I/O-free."""
+    return _presampling_evidence(left, right) is None
+
+
+async def shared_evidence(left, right, registry, context: EvidenceContext | None = None) -> EquivalenceEvidence:
+    """Return structured provider-neutral evidence without speculative merging.
+
+    ``context`` only lets one coordination decision reuse a fingerprint it has
+    already acquired; it never alters the evidence returned."""
+    decided = _presampling_evidence(left, right)
+    if decided is not None:
+        return decided
 
     try:
         # Sampling executors are selected by the one subject-claim router

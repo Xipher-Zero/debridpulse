@@ -296,7 +296,7 @@ async def test_scheduler_skips_db_heavy_loop_while_application_storage_unhealthy
 
     fake = SimpleNamespace(
         resolution_wakeup=asyncio.Event(),
-        engine=SimpleNamespace(policy=SimpleNamespace(resource_poll_interval=1)),
+        engine=SimpleNamespace(policy=SimpleNamespace(resource_poll_interval=1), resolution_deadline=None),
         application_storage_permitted=lambda: False,
         resolve_pending=AsyncMock(),
     )

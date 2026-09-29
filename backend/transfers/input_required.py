@@ -30,6 +30,7 @@ import asyncio
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
+import hashlib
 import itertools
 import json
 from types import MappingProxyType
@@ -136,6 +137,15 @@ def _challenge(row) -> InputChallenge:
     )
 
 
+def _challenge_subject(challenge: InputChallenge) -> str:
+    """The opaque, non-secret identity of WHAT a question asks about: the one
+    source (request, and artifact for an execution question) of its transfer.
+    A reissued question -- a refused answer, a follow-up requirement of the
+    same source -- keeps it; another source's question never shares it."""
+    key = f"{challenge.transfer_id}:{challenge.request_id or ''}:{challenge.artifact_id or ''}"
+    return hashlib.sha256(key.encode()).hexdigest()[:16]
+
+
 def public_challenge(value) -> dict | None:
     if value is None:
         return None
@@ -143,6 +153,7 @@ def public_challenge(value) -> dict | None:
     return {
         "id": challenge.id,
         "generation": challenge.generation,
+        "subject": _challenge_subject(challenge),
         "reason": challenge.reason.value,
         "origin": challenge.origin.value,
         "methods": [
@@ -912,10 +923,20 @@ class EphemeralInputBroker:
 
 
 class InputChallengeStore:
-    """The single durable owner of non-secret transfer challenge metadata."""
+    """The single durable owner of non-secret transfer challenge metadata.
 
-    def __init__(self, *, clock=time.time):
+    ``on_retired`` is told the transfer id every time this owner removes a
+    transfer's outstanding question (answered and accepted, cleared, found
+    stale): the transfer asks nothing now, so whatever was held behind that one
+    question may ask its own at once."""
+
+    def __init__(self, *, clock=time.time, on_retired=None):
         self.clock = clock
+        self.on_retired = on_retired
+
+    async def _retired(self, transfer_id: int) -> None:
+        if self.on_retired is not None:
+            await self.on_retired(int(transfer_id))
 
     async def initialize(self):
         # Canonical DB initialization owns schema creation. This store owns only
@@ -948,8 +969,10 @@ class InputChallengeStore:
             if stale:
                 await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
                 await db.commit()
-                return None
-            return _challenge(row)
+            else:
+                return _challenge(row)
+        await self._retired(transfer_id)
+        return None
 
     async def _next(self, db, transfer_id: int) -> tuple[str, int]:
         row = await db.fetchone("SELECT generation FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
@@ -1031,7 +1054,8 @@ class InputChallengeStore:
             await db.execute("UPDATE transfer_requests SET state='resolving' WHERE id=? AND state='input_required'",
                              (challenge.request_id,))
             await db.commit()
-            return True
+        await self._retired(challenge.transfer_id)
+        return True
 
     async def release_provider_holds(self, transfer_id: int) -> bool:
         """Resolutions held unasked (or whose question another one replaced)
@@ -1049,8 +1073,12 @@ class InputChallengeStore:
             return bool(cursor.rowcount)
 
     async def wait_evidence(self, transfer_id: int, request_id: str, candidate_id: str, integration_id: str,
-                            requirement: InputRequirement) -> InputChallenge:
-        """Durably challenge pre-writer evidence acquisition for one resolved candidate.
+                            requirement: InputRequirement) -> InputChallenge | None:
+        """Durably challenge pre-writer evidence acquisition for one resolved candidate
+        -- unless the transfer already has a question outstanding: a transfer
+        asks one question at a time, and one source's question never
+        overwrites another's. ``None`` means ask later (the request stays
+        held, and asks once the outstanding question retires).
 
         The request stays in MATERIALIZING -- it is still deciding, and a
         request-level ``input_required`` would read to its cohort siblings as
@@ -1067,6 +1095,9 @@ class InputChallengeStore:
             if (not row or row["status"] in SIDE_STATE_RETIRING_TRANSFER_STATES or row["state"] != "materializing"
                     or row["artifact"]):
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
+            if await db.fetchone("SELECT 1 FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,)):
+                await db.rollback()
+                return None
             identity, generation = await self._next(db, transfer_id)
             challenge = InputChallenge(identity, transfer_id, generation, requirement.reason, InputOrigin.EVIDENCE,
                 integration_id, str(candidate_id), requirement.methods, request_id=request_id, facts=requirement.facts)
@@ -1137,9 +1168,12 @@ class InputChallengeStore:
 
     async def clear(self, challenge: InputChallenge) -> None:
         async with get_db() as db:
-            await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=? AND challenge_id=? AND generation=?",
-                             (challenge.transfer_id, challenge.id, challenge.generation))
+            cursor = await db.execute(
+                "DELETE FROM transfer_input_challenges WHERE transfer_id=? AND challenge_id=? AND generation=?",
+                (challenge.transfer_id, challenge.id, challenge.generation))
             await db.commit()
+        if cursor.rowcount:
+            await self._retired(challenge.transfer_id)
 
     async def record(self, transfer_id: int, kind: str, detail: str = "") -> None:
         """One durable, non-secret authentication fact (``application_events``):

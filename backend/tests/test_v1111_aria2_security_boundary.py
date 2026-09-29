@@ -15,7 +15,7 @@ from services.downloader_egress_guard import DownloaderEgressGuard
 import executors.aria2.executor as runtime_guard
 from executors.aria2.executor import Aria2Executor, Aria2Configuration
 from execution_requests import file_request
-from transfers.models import Endpoint, ExecutionRequest, TransferCandidate, new_identity
+from transfers.models import Endpoint, ExecutionRequest, ExecutionState, TransferCandidate, new_identity
 from unittest.mock import AsyncMock
 from urllib.parse import urlsplit
 
@@ -517,7 +517,10 @@ async def _start_transfer(executor, uri, target):
     request = file_request(TransferCandidate(target.name, (Endpoint(urlsplit(uri).scheme, uri),)), str(target), new_identity())
     handle = executor.prepare(request)
     observation = await executor.start(request, handle)
-    assert observation.error is None, observation.error
+    # Accepted -- or, for a job the guard kills at once, already its native
+    # terminal failure (admission confirmation); never an uncertain start.
+    assert observation.error is None or (
+        observation.state == ExecutionState.FAILED and observation.error.native_code), observation.error
     return handle.native["gid"]
 
 

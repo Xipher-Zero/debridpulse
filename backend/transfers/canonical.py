@@ -369,6 +369,46 @@ class CanonicalOwnership:
         )
         return True
 
+    async def reconsidering(self) -> frozenset[int]:
+        """Settled (CONSOLIDATED) contributor transfers whose unverified
+        association still owes the equivalence owner work: a scheduled
+        reconsideration, or an associated target that terminally failed (its
+        premise is gone). Only the one resolution scheduler reads this, to
+        reach that proof work without reopening the contributor for it."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT DISTINCT r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                    JOIN download_files c ON c.id=r.equivalence_target_artifact_id
+                    WHERE t.status='consolidated' AND r.state='materializing' AND r.equivalence_disposition=?
+                    AND (COALESCE(r.retry_at,0)>0 OR c.status='error')""",
+                (_UNVERIFIED_DISPOSITION,))
+        return frozenset(int(row["transfer_id"]) for row in rows)
+
+    async def reopen(self, transfer_id: int) -> bool:
+        """The inverse of ``settle``: a CONSOLIDATED contributor that is no
+        longer fully consolidated -- a leaf's unverified association was
+        affirmatively contradicted, or its target terminally failed, so it
+        owes independent work -- returns to the ordinary lifecycle (QUEUED).
+        One ownership transaction, fenced on exactly the settlement predicate
+        (``_full_consolidation``): a transfer that is still fully consolidated
+        is never reopened. True when this call reopened it."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("SELECT status FROM torrents WHERE id=?", (int(transfer_id),))
+            if not row or row["status"] != "consolidated" or await self._full_consolidation(db, int(transfer_id)):
+                await db.rollback()
+                return False
+            await db.execute(
+                """UPDATE torrents SET status='queued',normalized_error=NULL,error_message=NULL,
+                    updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='consolidated'""", (int(transfer_id),))
+            await db.execute(
+                "INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)",
+                (int(transfer_id), "A contributed source proved independent; the transfer resumes on its own"))
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'consolidation_reopened',NULL)",
+                             (int(transfer_id),))
+            await db.commit()
+        return True
+
     async def settle(self, transfer_id: int) -> bool:
         """Re-evaluate transfer settlement after a leaf reached a terminal
         non-writer disposition outside ``attach`` (a terminal ``unverified``
@@ -829,11 +869,16 @@ class CanonicalOwnership:
                     and (int(current["torrent_id"]) == int(record.transfer_id)
                          or await self._collection_related(db, int(current["torrent_id"]), int(record.transfer_id))))):
                 current = None
+            # The incoming request is still deciding in a live transfer -- or
+            # it is a settled contributor's UNVERIFIED association to exactly
+            # this artifact, now proven (``cohorts.reconsider_association``).
             incoming = await db.fetchone(
                 """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                     WHERE r.id=? AND r.transfer_id=? AND r.state='materializing'
-                    AND t.status NOT IN ('completed','consolidated','deleted','cancelled','error')""",
-                (record.id, record.transfer_id),
+                    AND (t.status NOT IN ('completed','consolidated','deleted','cancelled','error')
+                         OR (t.status='consolidated' AND r.equivalence_disposition=?
+                             AND r.equivalence_target_artifact_id=?))""",
+                (record.id, record.transfer_id, _UNVERIFIED_DISPOSITION, int(primary.id)),
             )
             if not current or not incoming:
                 await db.rollback()

@@ -250,8 +250,13 @@ async def _started(tmp_path, monkeypatch, url, outcomes):
     request = file_request(_candidate(url), str(tmp_path / "payload.bin"), "attempt")
     handle = executor.prepare(request)
     started = await executor.start(request, handle)
-    assert started.error is None
     observed = await executor.observe(handle)
+    if observed.state == ExecutionState.FAILED:
+        # Accepted and terminal at once: the start itself already reports the
+        # same native terminal truth (admission confirmation), never "accepted".
+        assert (started.state, started.error) == (observed.state, observed.error)
+    else:
+        assert started.error is None
     return daemon, executor, request, handle, observed
 
 
@@ -569,9 +574,12 @@ async def test_real_aria2_protected_ftp_challenges_then_continues_with_a_fresh_l
     guard, proc, service, executor, request = await _real(tmp_path, monkeypatch, origin)
     try:
         handle = executor.prepare(request)
-        assert (await executor.start(request, handle)).error is None
+        started = await executor.start(request, handle)
         observed = await _terminal(executor, handle)
         assert (observed.error.native_code, observed.error.diagnostic) == ("21", FTP_530)
+        # The refused login is native truth of the admission itself when it
+        # lands inside the confirmation window; never lost behind "accepted".
+        assert started.error is None or (started.error.native_code, started.error.diagnostic) == ("21", FTP_530)
         requirement = executor.input_requirement(request.work.subject.candidate, observed)
         assert requirement.reason == InputReason.AUTH_REQUIRED
 

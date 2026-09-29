@@ -18,7 +18,7 @@ from transfers.errors import TransferError
 from transfers.models import ExecutionSubject
 from transfers.mirrors import (
     REMOTE_CAPACITY_REASON, EvidenceContext, EvidenceFailureClass, EvidenceKind, EquivalenceEvidence, logical_key,
-    self_evidence, shared_evidence,
+    requires_sampling, self_evidence, shared_evidence,
 )
 
 
@@ -611,6 +611,129 @@ async def _hold_unresolved(engine, record, incoming, evidence, *, mapping_cardin
     return False
 
 
+async def decision_acquires_proof(engine, record) -> bool:
+    """Whether ``record``'s next materialization decision acquires any proof
+    at all: it is still deciding (MATERIALIZING) and its durable disposition
+    is undecided, or it is held and its reconsideration is due (or its
+    association's target failed, which reopens the question). Read-only --
+    the same quiescence ``coordinate_collection`` enforces, asked by the
+    authentication boundary before it acquires anything outside the cohort
+    lock, so a quiescent hold is never sampled."""
+    async with get_db() as db:
+        row = await db.fetchone("SELECT state,equivalence_disposition FROM transfer_requests WHERE id=?",
+                                (record.id,))
+    if not row or row["state"] != "materializing":
+        return False
+    disposition = str(row["equivalence_disposition"] or "")
+    if (disposition in _INDEPENDENT_DISPOSITIONS
+            or disposition in {_PROVISIONAL_DISPOSITION, "bootstrap_unprovable"}):
+        return False
+    if disposition in _HELD_DISPOSITIONS:
+        return await _reconsideration_due(engine, record.id) or (
+            disposition == _UNVERIFIED_DISPOSITION
+            and await engine.repository.failed_unverified_target(record.id) is not None)
+    return True
+
+
+async def own_routes_to_prove(engine, record, candidates) -> tuple:
+    """The deciding request's OWN routes whose evidence its next decision
+    acquires from current canonical truth -- read-only and I/O-free, so the
+    materialization owner can acquire exactly these (and nothing the decision
+    would not sample) before the cohort lock:
+
+    * against canonical targets (the associated one of a due UNVERIFIED
+      reconsideration, otherwise every equivalence target): each own route
+      some target route needs sampled content to be proven against
+      (``mirrors.requires_sampling`` -- a pairing rejection, integrity or
+      resolver attestation needs none);
+    * with no target yet: each own route a same-transfer material sibling
+      could compete with (the bootstrap barrier's self-proof), unless the
+      collection owner holds the request or its self-proof is structurally
+      impossible."""
+    if not await decision_acquires_proof(engine, record):
+        return ()
+    incoming = _normalized_candidates(record, candidates)
+    disposition = await _disposition(record.id)
+    associated = (await _association_target(engine, record))[1] if disposition == _UNVERIFIED_DISPOSITION else None
+    targets = (associated,) if associated is not None else await engine.canonical.equivalence_targets(record)
+    if targets:
+        return tuple(route for route in incoming if any(
+            requires_sampling(_with_known_size(left, target.expected_bytes), route)
+            for target in targets for left in target.candidates))
+    if disposition == "bootstrap_unprovable" or await engine.canonical.collection_owner(record.transfer_id) is not None:
+        return ()
+    records = await engine.repository.requests(record.transfer_id)
+    keys = set()
+    for sibling in _same_transfer_material_cohort(records, record):
+        if sibling.id == record.id:
+            continue
+        routes = await engine.repository.resolved_candidates(sibling.id)
+        keys |= {logical_key(item) for item in routes} if routes else {_prospective_logical_key(sibling)}
+    return tuple(route for route in incoming
+                 if any(_could_compete(key, logical_key(route)) for key in keys))
+
+
+async def _association_target(engine, record):
+    """``(target id, artifact)`` of the canonical artifact ``record`` is
+    associated with as an UNVERIFIED contribution; the artifact is ``None``
+    once it is no longer a valid equivalence target."""
+    async with get_db() as db:
+        row = await db.fetchone("SELECT equivalence_target_artifact_id FROM transfer_requests WHERE id=?",
+                                (record.id,))
+    target_id = row["equivalence_target_artifact_id"] if row else None
+    if target_id is None:
+        return None, None
+    return int(target_id), next((item for item in await engine.canonical.equivalence_targets(record)
+                                 if item.id == int(target_id)), None)
+
+
+async def reconsider_association(engine, record, incoming, context) -> bool:
+    """ONE due reconsideration of an UNVERIFIED association: a proof of
+    ``record``'s own routes against exactly the canonical artifact it is
+    associated with -- never against a guessed other target, never a cohort
+    walk. The one path, whether the contributor is still live or has settled
+    CONSOLIDATED (``CanonicalOwnership.reconsidering``).
+
+    * proven (individual proof): promoted -- attached as a verified,
+      executable route of that artifact, disposition ``recovered``;
+    * affirmatively contradicted: detached -- ``contradictory`` with no target;
+      a settled contributor is reopened (``CanonicalOwnership.reopen``), since
+      it now owes independent work, and a live one may allocate (False);
+    * anything else (still transient, a weak match, input that cannot be
+      asked, no proof possible): the association stands, fail-closed, with
+      its next bounded reconsideration or none (``_hold_unresolved``).
+
+    Nothing here ever authorizes a writer from the association itself."""
+    target_id, primary = await _association_target(engine, record)
+    settled = not await engine._live(record.transfer_id)
+    if primary is None:
+        # The target stopped being a valid equivalence target without failing
+        # (its object was delivered): nothing is left to prove against.
+        await _proof_disposition(record.id, _UNVERIFIED_DISPOSITION, "", clear_retry=True, preserve_reason=True,
+                                 target_artifact_id=target_id)
+        return True
+    outcome = await _proof_against_primary(primary, incoming, engine.registry, context)
+    evidence = outcome.evidence
+    if outcome.outcome == MappingOutcome.MATCH and evidence.proves_individual:
+        if await engine.canonical.attach(primary, record, incoming, evidence.total_bytes):
+            await _proof_disposition(record.id, "recovered", evidence.kind, clear_retry=True, preserve_reason=True)
+            _decision(record, incoming, "association_verified", evidence.kind, evidence=evidence,
+                      mapping_cardinality=1)
+        return True
+    if outcome.outcome == MappingOutcome.CONTRADICTORY:
+        await _proof_disposition(record.id, "contradictory", evidence.reason, clear_retry=True)
+        _decision(record, incoming, "association_contradicted", evidence.reason, evidence=evidence)
+        if settled:
+            await engine.canonical.reopen(record.transfer_id)
+            return True
+        return False
+    if not settled and outcome.outcome != MappingOutcome.MATCH and await _await_evidence_input(
+            engine, record, incoming, context):
+        return True
+    await _hold_unresolved(engine, record, incoming, evidence, mapping_cardinality=0, target=primary)
+    return True
+
+
 async def _release_cohort(records, reason: str) -> None:
     """Release proof timers without erasing a more specific stored reason."""
     if not records:
@@ -996,6 +1119,12 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
         if stale_target is not None:
             if await _invalidate_stale_target(record.id, stale_target):
                 _decision(record, incoming, "stale_target_released", "canonical_target_failed")
+                if not await engine._live(record.transfer_id):
+                    # A settled contributor whose association lost its premise
+                    # owes work again: it returns to the ordinary lifecycle,
+                    # whose next decision starts from current canonical truth.
+                    await engine.canonical.reopen(record.transfer_id)
+                    return True
             disposition = await _disposition(record.id)
     if disposition in _INDEPENDENT_DISPOSITIONS or disposition == _PROVISIONAL_DISPOSITION:
         return False
@@ -1004,6 +1133,11 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
         # due gets ONE ordinary proof below (it stays held unless that proof
         # decides); every other hold does no proof work at all.
         return True
+    if disposition == _UNVERIFIED_DISPOSITION:
+        # A due reconsideration of an association proves against exactly its
+        # associated artifact -- the one path, live or settled contributor.
+        return await reconsider_association(
+            engine, record, incoming, context if context is not None else EvidenceContext())
 
     # One evidence context for THIS decision only: the primary mapping, the
     # resolved-sibling re-verification, the collection walk and the bootstrap
