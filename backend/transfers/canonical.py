@@ -15,11 +15,15 @@ from dataclasses import dataclass, replace
 from db.database import get_db
 from transfers import codec
 from transfers._repository_base import (
-    _durable_canonical_targets_for_request, _retire_transfer_auxiliary_state_in_db,
-    terminal_unverified_association,
+    _durable_canonical_targets_for_request, _logical_slot_key_for_artifact, _logical_slot_key_for_request,
+    _retire_transfer_auxiliary_state_in_db, terminal_unverified_association,
+)
+from transfers.cohorts import (
+    _FAILED_CONTRIBUTION_DISPOSITION, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
 )
 from transfers.models import Artifact, ArtifactFingerprint, FingerprintKind, RequestRecord, SizeKnowledge, TransferCandidate
-from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
+from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, dead_source
+from transfers.size_evidence import positive_size, reported_sizes_compatible
 
 
 _SETTLED_TRANSFER_STATES = "(" + ",".join(
@@ -209,6 +213,11 @@ class CanonicalOwnership:
         for request in leaves:
             if request["state"] == "skipped":
                 continue
+            if request["state"] == "failed" and await CanonicalOwnership._failed_contribution(db, request["id"]):
+                # A dead source associated with a live canonical artifact
+                # owes no material work and is settled -- as history, never
+                # as membership (no binding, origin or consolidation row).
+                continue
             artifact = await db.fetchone(
                 "SELECT id,blocked,mirror_state FROM download_files WHERE request_id=?",
                 (request["id"],),
@@ -232,8 +241,106 @@ class CanonicalOwnership:
                 return False
         return material > 0
 
+    @staticmethod
+    async def _failed_contribution(db, request_id: str) -> bool:
+        return bool(await db.fetchone(
+            """SELECT 1 AS ok FROM transfer_requests r JOIN download_files f ON f.id=r.equivalence_target_artifact_id
+                WHERE r.id=? AND r.state='failed' AND r.equivalence_disposition=?""",
+            (request_id, _FAILED_CONTRIBUTION_DISPOSITION)))
+
+    @classmethod
+    async def _associate_failed_contributions(cls, db, transfer_id: int) -> int:
+        """Associate this transfer's DEAD roots with the canonical artifact
+        their own submission cohort was proven to be; returns how many.
+
+        Hygiene, never equivalence, and conservative by construction. Inside
+        one same-transfer material cohort (the leaves of one parent -- one
+        submission's roots, or one manifest's members), a leaf is associated
+        only when ALL of these durable facts hold:
+
+        * its resolution ended for good on a dead route (``policy.dead_source``)
+          and it never produced an artifact of its own;
+        * EVERY other member of the cohort is already decided, and all of them
+          name the SAME canonical artifact: proven into it (consolidated, or
+          owning it), held unverified against it, or already a failed
+          contribution to it -- at least one of them proven. An undecided
+          member (still resolving or proving, or failed on anything but a dead
+          route) leaves the question open, and a member proven distinct -- or
+          owning a second artifact -- closes it;
+        * that artifact has not failed and its transfer is not withdrawn;
+        * its declared logical identity is that artifact's (same non-empty
+          logical key; a size it declared, when known, is compatible).
+
+        The request stays FAILED with its exact error, becomes no candidate,
+        binding, origin, consolidation row or writer, and only records the
+        association (``failed_contribution``, the target, and the failure
+        category as the reason) so history can show it and lifecycle voting
+        can stop treating it as this transfer's own unmet obligation."""
+        rows = await db.fetchall("SELECT * FROM transfer_requests WHERE transfer_id=? ORDER BY ordinal,rowid",
+                                 (int(transfer_id),))
+        parents = {row["parent_id"] for row in rows if row["parent_id"]}
+        cohorts: dict[object, list] = {}
+        for row in rows:
+            if row["id"] not in parents and row["state"] != "skipped":
+                cohorts.setdefault(row["parent_id"], []).append(row)
+        associated = 0
+        for cohort in cohorts.values():
+            dead = [row for row in cohort if row["state"] == "failed" and not row["equivalence_disposition"]
+                    and dead_source(codec.error(row["error"]))]
+            if not dead or any(str(row["equivalence_disposition"] or "") in _PROVEN_DISTINCT_DISPOSITIONS
+                               for row in cohort):
+                continue
+            targets, proven, undecided = set(), 0, False
+            for row in cohort:
+                if row in dead:
+                    continue
+                disposition = str(row["equivalence_disposition"] or "")
+                consolidated = await db.fetchone(
+                    "SELECT canonical_artifact_id FROM artifact_consolidations WHERE source_request_id=?", (row["id"],))
+                owned = None if consolidated else await db.fetchone(
+                    """SELECT id FROM download_files WHERE request_id=? AND COALESCE(blocked,0)=0
+                        AND COALESCE(mirror_state,'')!='standby' AND (mirror_group_id IS NULL OR mirror_group_id=id)""",
+                    (row["id"],))
+                if consolidated or owned:
+                    targets.add(int(consolidated["canonical_artifact_id"] if consolidated else owned["id"]))
+                    proven += 1
+                elif (disposition in {_UNVERIFIED_DISPOSITION, _FAILED_CONTRIBUTION_DISPOSITION}
+                      and row["equivalence_target_artifact_id"] is not None
+                      and row["state"] in {"materializing", "failed"}):
+                    targets.add(int(row["equivalence_target_artifact_id"]))
+                else:
+                    undecided = True
+            if undecided or not proven or len(targets) != 1:
+                continue
+            target = await db.fetchone(
+                """SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                    WHERE f.id=? AND f.status NOT IN ('error','cancelled') AND t.status NOT IN ('deleted','cancelled')""",
+                (next(iter(targets)),))
+            if not target:
+                continue
+            artifact = cls._artifact(target)
+            key = _logical_slot_key_for_artifact(artifact)
+            known = positive_size(artifact.expected_bytes)
+            for row in dead:
+                record = cls._record(row)
+                declared = positive_size(record.entry.expected_bytes) if record.entry is not None else None
+                if (not key or _logical_slot_key_for_request(record) != key
+                        or (known is not None and declared is not None
+                            and not reported_sizes_compatible(known, declared))):
+                    continue
+                cursor = await db.execute(
+                    """UPDATE transfer_requests SET equivalence_disposition=?,equivalence_target_artifact_id=?,
+                        equivalence_reason=? WHERE id=? AND state='failed' AND COALESCE(equivalence_disposition,'')=''""",
+                    (_FAILED_CONTRIBUTION_DISPOSITION, artifact.id, codec.error(row["error"]).category.value, row["id"]))
+                if cursor.rowcount:
+                    associated += 1
+                    await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
+                                     (int(transfer_id), "failed_contribution_associated", str(artifact.id)))
+        return associated
+
     @classmethod
     async def _finalize_transfer(cls, db, transfer_id: int) -> bool:
+        await cls._associate_failed_contributions(db, transfer_id)
         if not await cls._full_consolidation(db, transfer_id):
             return False
         row = await db.fetchone("SELECT status FROM torrents WHERE id=?", (transfer_id,))
@@ -819,6 +926,10 @@ class CanonicalOwnership:
                     (standby_id, record.transfer_id, record.id, primary.id),
                 )
                 await self._finalize_transfer(db, int(record.transfer_id))
+            else:
+                # A same-transfer member proved the cohort's object: its dead
+                # siblings may now be associated with it.
+                await self._associate_failed_contributions(db, int(record.transfer_id))
             await db.commit()
         if self.on_attached is not None:
             await self.on_attached(record.transfer_id)
@@ -900,6 +1011,23 @@ class CanonicalOwnership:
             rebound = await self._bound_origin(db, artifact.id, candidate)
             await db.commit()
             return rebound
+
+    async def adopted_candidates(self, transfer_id: int) -> dict[str, int]:
+        """Candidates ``transfer_id`` contributed that ANOTHER transfer's
+        still-live canonical artifact carries: candidate id -> that canonical
+        transfer. Durable provenance only (bindings and their origins)."""
+        await self.initialize()
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT b.candidate_id,f.torrent_id FROM canonical_candidate_origins o
+                    JOIN canonical_candidate_bindings b ON b.id=o.binding_id
+                    JOIN download_files f ON f.id=b.canonical_artifact_id JOIN torrents t ON t.id=f.torrent_id
+                    WHERE o.contributing_transfer_id=? AND f.torrent_id!=?
+                    AND t.status NOT IN {_SETTLED_TRANSFER_STATES}
+                    ORDER BY o.id""",
+                (int(transfer_id), int(transfer_id)),
+            )
+        return {str(row["candidate_id"]): int(row["torrent_id"]) for row in rows}
 
     async def origins(self, canonical_artifact_id: int) -> tuple[CandidateOrigin, ...]:
         await self.initialize()

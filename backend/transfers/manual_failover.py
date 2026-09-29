@@ -228,20 +228,25 @@ _NOT_COMMITTED_ERROR = {
 
 
 class DiscardConfirmationRequired(Exception):
-    """The requested source cannot continue from the artifact's existing
-    DebridPulse-valid material: switching would discard ``discarded_bytes``.
-    Nothing was changed; the operator must confirm before the rollback.
+    """The requested source cannot reuse part of the artifact's existing
+    DebridPulse-valid material (a capability limitation of the executor that
+    would write it: ``unusable_bytes``) and would rewrite it: switching would
+    discard ``discarded_bytes``. Nothing was changed; the operator must
+    confirm before the rollback. ``abandoned_bytes`` is the current writer's
+    unverified private reconstruction a switch ends -- never DP material.
 
     ``changed`` marks a confirmed request whose consequence is no longer the
     one the operator confirmed (see ``_confirmation_outdated``)."""
 
     def __init__(self, discarded_bytes: int, retained_bytes: int, material_generation: int | None = None,
-                 *, changed: bool = False):
+                 *, changed: bool = False, unusable_bytes: int | None = None, abandoned_bytes: int = 0):
         super().__init__("switching source discards downloaded progress")
         self.discarded_bytes = int(discarded_bytes)
         self.retained_bytes = int(retained_bytes)
         self.material_generation = material_generation
         self.changed = bool(changed)
+        self.unusable_bytes = int(discarded_bytes if unusable_bytes is None else unusable_bytes)
+        self.abandoned_bytes = int(abandoned_bytes)
 
 
 def _switch_index(artifact, wanted: str) -> int:
@@ -303,8 +308,13 @@ async def preview_candidate_switch(engine, transfer_id: int, artifact_id: int, c
         "artifact_id": int(artifact_id),
         "candidate_id": wanted,
         "filename": artifact.name,
-        "discarded_bytes": plan.discarded_bytes if plan is not None else 0,
+        # Verified material kept, verified material this source cannot reuse,
+        # what of that is actually rewritten, and the current writer's
+        # unverified private reconstruction a switch abandons.
         "retained_bytes": plan.retained_bytes if plan is not None else 0,
+        "unusable_bytes": plan.unusable_bytes if plan is not None else 0,
+        "discarded_bytes": plan.discarded_bytes if plan is not None else 0,
+        "abandoned_bytes": await engine.repository.private_reconstruction_bytes(artifact.id),
         "material_generation": plan.material_generation if plan is not None else None,
     }
 
@@ -343,8 +353,10 @@ async def manual_candidate_failover(
             preview = await engine.preview_continuation(artifact, candidate)
             if preview is not None and preview.discarded_bytes and (
                     not discard_confirmed or _confirmation_outdated(preview, discard_confirmation)):
-                raise DiscardConfirmationRequired(preview.discarded_bytes, preview.retained_bytes,
-                                                  preview.material_generation, changed=discard_confirmed)
+                raise DiscardConfirmationRequired(
+                    preview.discarded_bytes, preview.retained_bytes, preview.material_generation,
+                    changed=discard_confirmed, unusable_bytes=preview.unusable_bytes,
+                    abandoned_bytes=await engine.repository.private_reconstruction_bytes(artifact.id))
         # Without a confirmed discard the switch may keep everything the
         # preview promised (e.g. through a native-state handoff) or nothing
         # changes: a handoff that turns out impossible is refused, and the
@@ -355,7 +367,8 @@ async def manual_candidate_failover(
             fallback = await engine.preview_continuation(artifact, candidate, native=False)
             if fallback is not None and fallback.discarded_bytes:
                 raise DiscardConfirmationRequired(fallback.discarded_bytes, fallback.retained_bytes,
-                                                  fallback.material_generation, changed=True)
+                                                  fallback.material_generation, changed=True,
+                                                  unusable_bytes=fallback.unusable_bytes)
         if claim_result is None:
             # A concurrent AUTO_RETRY/USER_RETRY/RESUME/scheduler recovery
             # currently owns this artifact's claim (Section 11). Nothing was

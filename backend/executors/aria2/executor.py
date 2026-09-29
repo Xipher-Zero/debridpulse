@@ -17,6 +17,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import struct
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
@@ -28,6 +29,7 @@ from services.artifact_sampling import (
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
+from transfers import material as mat
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.models import (
@@ -77,8 +79,14 @@ _RETARGETABLE_SCHEMES = frozenset({"http", "https"})
 # changed by a retarget. Every other option ``_options`` builds is per-source.
 _JOB_IDENTITY_OPTIONS = frozenset({
     "gid", "dir", "out", "pause", "continue", "allow-overwrite", "auto-file-renaming", "follow-torrent",
-    "follow-metalink", "split", "min-split-size", "max-connection-per-server",
+    "follow-metalink", "split", "min-split-size", "max-connection-per-server", "piece-length",
 })
+# A job given sparse DP material pieces its payload in exactly the DP geometry
+# grain, so every whole DP chunk is one aria2 piece (characterized 1.37.0: a
+# control file whose piece length or total length differs from the job's is
+# refused before anything is fetched).
+_IMPORT_PIECE_BYTES = mat.CHUNK_BYTES
+_IMPORT_PIECE_OPTION = "1M"
 
 
 @dataclass(frozen=True)
@@ -93,6 +101,12 @@ class Aria2Configuration:
     waiting_window: int = 100
     stopped_window: int = 100
     secrets: tuple[str, ...] = field(default=(), repr=False)
+
+
+def _acceptance(submitted: SubmittedInput | None):
+    """The transport verdict notice of supplied input (none for anonymous
+    access: aria2's own default login proves nothing about an operator)."""
+    return submitted.transport_accepted if submitted is not None else None
 
 
 class _AdmissionDeferred(Exception):
@@ -126,6 +140,14 @@ class Aria2Executor:
     # with ``aria2.changeUri`` after re-applying the replacement's per-source
     # options (native source retarget). Neither reads or writes the control
     # file, and neither is ever DebridPulse material truth.
+    #
+    # Sparse import (characterized 1.37.0, HTTP/FTP/SFTP): a FRESH job whose
+    # control file marks whole pieces complete keeps them untouched and
+    # fetches only the rest; it verifies nothing it is told, and refuses a
+    # piece or total length that is not its own. So the control file is only
+    # ever WRITTEN, from a core plan, stating exactly the DP-valid whole pieces
+    # the plan retains (``IMPORT_SPARSE_MATERIAL``) -- the same trust the
+    # retained prefix of a contiguous plan receives -- and never read.
     capabilities = ExecutorCapabilities(
         candidate_sampling=True, per_execution_pause=True, aggregate_bandwidth_ceiling=True,
         transient_input=True, remote_discovery=True, materialization_kinds=frozenset({MaterializationKind.FILE}),
@@ -133,7 +155,7 @@ class Aria2Executor:
             ContinuationCapability.FULL_RESTART, ContinuationCapability.CONTIGUOUS_FROM_OFFSET,
             ContinuationCapability.IMPORT_EXISTING_MATERIAL, ContinuationCapability.EXPORT_MATERIAL_RANGES,
             ContinuationCapability.NATIVE_QUIESCE, ContinuationCapability.NATIVE_PRIVATE_RESUME,
-            ContinuationCapability.NATIVE_SOURCE_RETARGET,
+            ContinuationCapability.NATIVE_SOURCE_RETARGET, ContinuationCapability.IMPORT_SPARSE_MATERIAL,
         }),
     )
 
@@ -150,7 +172,8 @@ class Aria2Executor:
             # The operator disabled continuing partial downloads with aria2:
             # declare it, so core plans restarts for it rather than offsets.
             self.capabilities = replace(type(self).capabilities, continuation=type(self).capabilities.continuation - {
-                ContinuationCapability.CONTIGUOUS_FROM_OFFSET, ContinuationCapability.IMPORT_EXISTING_MATERIAL})
+                ContinuationCapability.CONTIGUOUS_FROM_OFFSET, ContinuationCapability.IMPORT_EXISTING_MATERIAL,
+                ContinuationCapability.IMPORT_SPARSE_MATERIAL})
 
     def claim(self, subject) -> ExecutorClaim:
         """Pure: a subject is claimed when one of its candidate endpoints uses a
@@ -206,26 +229,31 @@ class Aria2Executor:
         """aria2's control file beside the planned target is its only transient path."""
         return ExecutionFootprint((str(self._target(work.materialization.target)) + ".aria2",))
 
-    def _apply_continuation(self, request: ExecutionRequest, target: Path) -> str:
+    def _apply_continuation(self, request: ExecutionRequest, target: Path) -> dict[str, str]:
         """Put the payload in exactly the state the core plan authorizes and
-        return aria2's per-job ``continue`` value.
+        return aria2's per-job continuation options.
 
         The private control file never outlives a writer: whatever it claims
         (possibly more than DebridPulse ever committed) is discarded, so aria2
         cannot promote bytes DebridPulse did not authorize. A contiguous plan
         cuts the payload to its boundary -- aria2 then continues exactly there
         -- and fails closed when the retained prefix is not physically present.
-        Any other plan retains nothing and aria2 starts from zero -- except a
-        ``NATIVE_STATE_HANDOFF`` plan: its sparse retained ranges live only in
-        the inherited job, which a fresh job cannot import, so it fails closed
-        rather than overwrite material DebridPulse holds valid."""
+        A sparse-import plan keeps the payload and states exactly its retained
+        whole pieces in a fresh control file (``_import_sparse``). Any other
+        plan retains nothing and aria2 starts from zero -- except a
+        ``NATIVE_STATE_HANDOFF`` plan: its retained ranges belong to the
+        inherited job's own state, so a fresh job fails closed on it rather
+        than overwrite material DebridPulse holds valid."""
         plan = request.continuation
         if plan is not None and plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
             raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
         Path(str(target) + ".aria2").unlink(missing_ok=True)
+        if (plan is not None and plan.strategy == ContinuationStrategy.SPARSE_IMPORT
+                and ContinuationCapability.IMPORT_SPARSE_MATERIAL in self.capabilities.continuation):
+            return self._import_sparse(plan, target)
         if (plan is None or plan.strategy != ContinuationStrategy.CONTIGUOUS_FROM_OFFSET or plan.boundary <= 0
                 or ContinuationCapability.CONTIGUOUS_FROM_OFFSET not in self.capabilities.continuation):
-            return "false"
+            return {"continue": "false"}
         try:
             info = target.lstat()
         except FileNotFoundError:
@@ -233,7 +261,41 @@ class Aria2Executor:
         if info is None or not stat.S_ISREG(info.st_mode) or info.st_size < plan.boundary:
             raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
         os.truncate(target, plan.boundary)
-        return "true"
+        return {"continue": "true"}
+
+    def _import_sparse(self, plan, target: Path) -> dict[str, str]:
+        """Hand a fresh job exactly the plan's retained whole pieces.
+
+        Fails closed -- before anything is written -- unless the total is
+        known, every retained range is whole pieces of it (the last one may
+        end at the end of file), and the payload physically holds every one of
+        them as a regular file. Bytes past the end of file are no material and
+        are cut. Then one version-1 control file (aria2's documented format:
+        no info hash, the job's piece length, the total, the completed-piece
+        bitfield, no in-flight piece) states those pieces and nothing else;
+        the job itself pieces in that grain."""
+        total = int(plan.expected_size or 0)
+        retained = mat.normalize(plan.retained)
+        piece = _IMPORT_PIECE_BYTES
+        if (total <= 0 or not retained or retained[-1][1] > total
+                or any(start % piece or (end % piece and end != total) for start, end in retained)):
+            raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+        try:
+            info = target.lstat()
+        except FileNotFoundError:
+            info = None
+        if info is None or not stat.S_ISREG(info.st_mode) or info.st_size < retained[-1][1]:
+            raise self._failure(Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE, domain=Domain.LIFECYCLE)
+        if info.st_size > total:
+            os.truncate(target, total)
+        pieces = -(-total // piece)
+        bitfield = bytearray(-(-pieces // 8))
+        for start, end in retained:
+            for index in range(start // piece, -(-end // piece)):
+                bitfield[index // 8] |= 0x80 >> (index % 8)
+        Path(str(target) + ".aria2").write_bytes(
+            struct.pack(">HIIIQQI", 1, 0, 0, piece, total, 0, len(bitfield)) + bytes(bitfield) + struct.pack(">I", 0))
+        return {"continue": "true", "piece-length": _IMPORT_PIECE_OPTION}
 
     def prepare(self, request: ExecutionRequest) -> ExecutionHandle:
         target = self._target(self._plan_target(request))
@@ -389,6 +451,7 @@ class Aria2Executor:
                 endpoint.address, username=username, password=password,
                 connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
                                                                   port=port, **self._granted(lan)),
+                on_authenticated=_acceptance(submitted),
             )
             if isinstance(result, AccessRequired):
                 return auth_required(username_password()) if accepts_input else refused
@@ -406,7 +469,7 @@ class Aria2Executor:
                 endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address,
                                                                                     **self._granted(lan)),
                 host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
-                username=username, password=password,
+                username=username, password=password, on_authenticated=_acceptance(submitted),
             )
             if isinstance(result, AccessRequired):
                 requirement = self._sftp_requirement(host, result.server_identity)
@@ -487,7 +550,7 @@ class Aria2Executor:
                 endpoint.address, connect=lambda port=None: self.egress.open_tunnel(endpoint.address,
                                                                                     **self._granted(lan)),
                 host_key_algorithms=_NATIVE_HOST_KEY_ORDER, host_identity=identity,
-                username=username, password=password,
+                username=username, password=password, on_authenticated=_acceptance(submitted),
             )
             if isinstance(result, AccessRequired):
                 requirement = self._sftp_requirement(host, result.server_identity)
@@ -502,6 +565,7 @@ class Aria2Executor:
                 endpoint.address, username=login[0], password=login[1],
                 connect=lambda port=None: self.egress.open_tunnel(endpoint.address, scope=RouteScope.SAME_HOST,
                                                                   port=port, **self._granted(lan)),
+                on_authenticated=_acceptance(submitted),
             )
             if isinstance(result, AccessRequired):
                 return auth_required(username_password())
@@ -711,7 +775,7 @@ class Aria2Executor:
             address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             # A deletion can revoke authority during DNS or egress startup.
             await self._check(handle, "start")
-            options["continue"] = self._apply_continuation(request, self._target(self._plan_target(request)))
+            options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
@@ -758,7 +822,7 @@ class Aria2Executor:
                     raise
             address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             await self._check(handle, "resume")
-            options["continue"] = self._apply_continuation(request, self._target(self._plan_target(request)))
+            options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
             returned = await self.client._call("aria2.addUri", [[address], options])
             if str(returned) != gid:
                 raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)

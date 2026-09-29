@@ -299,6 +299,7 @@ def _switch_http_error(exc: Exception) -> HTTPException:
         return HTTPException(status_code=409, detail={
             "confirmation": "discard_material", "discarded_bytes": exc.discarded_bytes,
             "retained_bytes": exc.retained_bytes, "material_generation": exc.material_generation,
+            "unusable_bytes": exc.unusable_bytes, "abandoned_bytes": exc.abandoned_bytes,
             "changed": exc.changed,
             "message": ("Downloaded progress changed after the switch was confirmed; nothing was switched."
                         if exc.changed else "Switching to this source discards downloaded progress."),

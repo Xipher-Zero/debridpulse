@@ -28,6 +28,16 @@ _PENDING_STATES = {
 }
 _PROOF_RETRY_BUDGET = 2
 _PROOF_RETRY_DELAY_CAP = 1.0
+# TEMPORARILY_UNPROVEN (a transient proof failure, ``EvidenceFailureClass
+# .TRANSIENT``) outlives the short automatic budget: the hold stays, and the
+# one durable scheduler seam (MATERIALIZING + ``retry_at``) brings it back for
+# ONE ordinary proof at a low, doubling frequency -- never a hot loop, never a
+# second scheduler -- for a bounded series (about three hours), after which it
+# is the terminal fail-closed hold every STRUCTURALLY_UNPROVABLE hold is from
+# the start. Operator retry reopens either (``reopen_unverified_associations``).
+_RECONSIDER_BASE_SECONDS = 60.0
+_RECONSIDER_CAP_SECONDS = 3600.0
+_RECONSIDER_LIMIT = 8
 
 # DP 1.0.12 canonical equivalence/lifecycle correction, Section 4: these are
 # the only durable equivalence_disposition values that authorize the caller
@@ -58,6 +68,19 @@ _PROVEN_DISTINCT_DISPOSITIONS = frozenset({"independent", "contradictory"})
 # "exhausted" -- a target is never guessed.
 _UNVERIFIED_DISPOSITION = "unverified"
 _HELD_DISPOSITIONS = frozenset({"exhausted", _UNVERIFIED_DISPOSITION})
+# "failed_contribution" is the association of a DEAD source -- a request whose
+# resolution permanently failed (``policy.dead_source``) -- with the one
+# canonical artifact its own submission cohort was proven to be
+# (``transfers.canonical.CanonicalOwnership``): operator hygiene, never
+# equivalence. The request stays FAILED with its exact error, never becomes a
+# candidate, binding, origin, consolidation row or writer, and only stops
+# voting its transfer FAILED. With the other dispositions it completes the
+# four canonical relations a source can have:
+#   * executable alternate  -- a bound candidate ("recovered");
+#   * failed contribution   -- this;
+#   * unverified contribution -- "unverified" above;
+#   * independent           -- "contradictory"/"independent" (affirmative).
+_FAILED_CONTRIBUTION_DISPOSITION = "failed_contribution"
 # "provisional" is the honest disposition of the ONE bootstrap writer admitted
 # when bounded self-proof exhausted with no canonical writer anywhere and the
 # evidence class is eligible (``EquivalenceEvidence
@@ -318,6 +341,28 @@ def _decision(record, incoming, decision: str, reason: str = "", *, evidence=Non
     )
 
 
+def _reconsideration_delay(retries: int) -> float:
+    """Delay before the next reconsideration of a temporarily unproven hold,
+    after ``retries`` automatic proof attempts (budget included)."""
+    return min(_RECONSIDER_CAP_SECONDS,
+               _RECONSIDER_BASE_SECONDS * 2 ** max(0, int(retries) - _PROOF_RETRY_BUDGET))
+
+
+def _temporarily_unproven(reason: str) -> bool:
+    """A held proof whose failure was transient (``EvidenceFailureClass``)."""
+    return EquivalenceEvidence(EvidenceKind.UNAVAILABLE, reason=str(reason or "")).failure_class \
+        == EvidenceFailureClass.TRANSIENT
+
+
+async def _reconsideration_due(engine, request_id: str) -> bool:
+    """A temporarily unproven hold whose scheduled reconsideration is due."""
+    async with get_db() as db:
+        row = await db.fetchone(
+            "SELECT state,retry_at,equivalence_reason FROM transfer_requests WHERE id=?", (request_id,))
+    return bool(row) and row["state"] == "materializing" and 0 < float(row["retry_at"] or 0) <= float(
+        engine.clock()) and _temporarily_unproven(row["equivalence_reason"])
+
+
 def _retry_delay(engine) -> float:
     configured = float(getattr(engine.policy, "retry_delay", 1.0) or 0.0)
     return min(_PROOF_RETRY_DELAY_CAP, max(0.1, configured))
@@ -476,15 +521,27 @@ async def _schedule_proof_retry(engine, record, incoming, evidence, *, mapping_c
                       evidence=evidence, mapping_cardinality=mapping_cardinality, retry_count=retries)
             return True
         if retries >= _PROOF_RETRY_BUDGET:
+            # The short budget is spent. A transient failure only leaves the
+            # identity TEMPORARILY unproven: the same hold is written, plus
+            # its next low-frequency reconsideration. Anything else stays the
+            # terminal, fail-closed hold it always was.
+            reconsider = (exhaustion_disposition in _HELD_DISPOSITIONS
+                          and evidence.failure_class == EvidenceFailureClass.TRANSIENT)
+            # A hold that was already there is the outcome of a performed
+            # reconsideration: it counts, so the next one waits longer.
+            if reconsider and row.get("equivalence_disposition") in _HELD_DISPOSITIONS:
+                retries += 1
+            reconsider = reconsider and retries < _PROOF_RETRY_BUDGET + _RECONSIDER_LIMIT
             await db.execute(
                 """UPDATE transfer_requests SET equivalence_reason=?,equivalence_disposition=?,
-                    equivalence_target_artifact_id=?,retry_at=0 WHERE id=?""",
+                    equivalence_target_artifact_id=?,equivalence_retry_count=?,retry_at=? WHERE id=?""",
                 (evidence.reason or "sampler_unavailable", exhaustion_disposition,
                  exhaustion_target_artifact_id if exhaustion_disposition == _UNVERIFIED_DISPOSITION else None,
-                 record.id),
+                 retries, now + _reconsideration_delay(retries) if reconsider else 0, record.id),
             )
             await db.commit()
-            _decision(record, incoming, "proof_retry_exhausted", evidence.reason or "sampler_unavailable",
+            _decision(record, incoming, "proof_reconsideration_scheduled" if reconsider else "proof_retry_exhausted",
+                      evidence.reason or "sampler_unavailable",
                       evidence=evidence, mapping_cardinality=mapping_cardinality, retry_count=retries)
             return False
         retries += 1
@@ -942,7 +999,10 @@ async def coordinate_collection(engine, record, candidates, context: EvidenceCon
             disposition = await _disposition(record.id)
     if disposition in _INDEPENDENT_DISPOSITIONS or disposition == _PROVISIONAL_DISPOSITION:
         return False
-    if disposition in _HELD_DISPOSITIONS:
+    if disposition in _HELD_DISPOSITIONS and not await _reconsideration_due(engine, record.id):
+        # Held. A TEMPORARILY unproven hold whose scheduled reconsideration is
+        # due gets ONE ordinary proof below (it stays held unless that proof
+        # decides); every other hold does no proof work at all.
         return True
 
     # One evidence context for THIS decision only: the primary mapping, the

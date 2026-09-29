@@ -114,6 +114,9 @@ class SftpOrigin:
         self.credentials = credentials
         self.auth_attempts = []
         self.read_bytes = []
+        # When set, every SFTP STAT waits for it: the session is already
+        # authenticated, the evidence itself has not been read yet.
+        self.stat_gate = None
         self.keys = {alg: asyncssh.generate_private_key(alg)
                      for alg in ("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256")}
         self.server = None
@@ -132,6 +135,11 @@ class SftpOrigin:
             def read(self, file_obj, offset, size):
                 origin.read_bytes.append(size)
                 return super().read(file_obj, offset, size)
+
+            async def stat(self, path):
+                if origin.stat_gate is not None:
+                    await origin.stat_gate.wait()
+                return super().stat(path)
 
         self.server = await asyncssh.listen(
             "127.0.0.1", 0, server_host_keys=[self.keys[alg] for alg in algorithms],

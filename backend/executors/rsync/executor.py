@@ -510,9 +510,16 @@ class RsyncExecutor:
     # ── bounded invocations: listings and evidence windows ─────────────────
 
     async def _invoke(self, argv_head: list[str], tail: list[str], transport: _Transport, *,
-                      stop: Callable[[], bool] | None = None, limit: int = _LISTING_LIMIT):
+                      stop: Callable[[], bool] | None = None, limit: int = _LISTING_LIMIT,
+                      on_accepted: Callable[[], None] | None = None):
         """One bounded native invocation under a throwaway ownership identity;
-        returns ``(exit code, stdout, stderr, channel records)``."""
+        returns ``(exit code, stdout, stderr, channel records)``.
+
+        ``on_accepted`` is the transport verdict notice: called once, while
+        the invocation still runs, when the server definitively accepted the
+        supplied credential -- the SSH channel's ``connected`` record (written
+        right after user authentication), or a daemon's first answer after
+        its login."""
         identity = f"invocation:{uuid.uuid4().hex}"
         cfg = self.configuration
         try:
@@ -525,7 +532,8 @@ class RsyncExecutor:
             raise
         transport.close()
         deadline = time.monotonic() + cfg.connection_timeout_seconds + cfg.transfer_timeout_seconds
-        stdout, stderr = bytearray(), bytearray()
+        stdout, stderr, status = bytearray(), bytearray(), bytearray()
+        verdict = on_accepted is None
 
         async def pump(stream, into, cap):
             while chunk := await stream.read(65536):
@@ -536,6 +544,9 @@ class RsyncExecutor:
                  asyncio.ensure_future(pump(owned.process.stderr, stderr, _STDERR_LIMIT))]
         try:
             while owned.process.returncode is None:
+                if not verdict and self._accepted(transport, status, stdout):
+                    verdict = True
+                    on_accepted()
                 if (stop is not None and stop()) or time.monotonic() >= deadline or len(stdout) >= limit:
                     await self.processes.terminate(owned, identity, grace=1.0)
                     break
@@ -548,25 +559,39 @@ class RsyncExecutor:
         finally:
             for task in pumps:
                 task.cancel()
-            records = self._status(transport.status)
+            records = self._status(transport.status, status)
             self.processes.forget(identity)
         overflow = len(stdout) >= limit
         return owned.process.returncode, bytes(stdout), bytes(stderr), records, overflow
 
     @staticmethod
-    def _status(fd: int | None) -> list[dict]:
+    def _drain(fd: int, into: bytearray) -> None:
+        """Whatever the channel's status pipe holds right now (non-blocking)."""
+        while True:
+            try:
+                chunk = os.read(fd, 65536)
+            except BlockingIOError:
+                return
+            if not chunk:
+                return
+            into.extend(chunk)
+
+    @classmethod
+    def _accepted(cls, transport: _Transport, status: bytearray, stdout: bytearray) -> bool:
+        if transport.status is None:
+            # A daemon answers nothing on this invocation before its login.
+            return bool(stdout)
+        cls._drain(transport.status, status)
+        complete = bytes(status[:status.rfind(b"\n") + 1])
+        return any(record.get("event") == ssh_channel.CONNECTED for record in ssh_channel.read_status(complete))
+
+    @classmethod
+    def _status(cls, fd: int | None, data: bytearray | None = None) -> list[dict]:
         if fd is None:
             return []
-        data = bytearray()
+        data = bytearray() if data is None else data
         try:
-            while True:
-                try:
-                    chunk = os.read(fd, 65536)
-                except BlockingIOError:
-                    break
-                if not chunk:
-                    break
-                data.extend(chunk)
+            cls._drain(fd, data)
         finally:
             os.close(fd)
         return ssh_channel.read_status(bytes(data))
@@ -605,7 +630,8 @@ class RsyncExecutor:
             # A daemon sends its module list only with its message of the day.
             head.remove("--no-motd")
         code, stdout, stderr, records, overflow = await self._invoke(
-            head, [remote.native(directory=directory, segments=segments)], transport)
+            head, [remote.native(directory=directory, segments=segments)], transport,
+            on_accepted=submitted.transport_accepted if submitted is not None else None)
         if overflow:
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST, stage,
                 retryability=Retryability.NEVER, integration_id=self.descriptor.id, diagnostic="too_many_entries"))
@@ -766,7 +792,8 @@ class RsyncExecutor:
                     return False
 
             code, _out, stderr, records, _overflow = await self._invoke(
-                self._head("-I", "--append"), [remote.native(), str(scratch)], transport, stop=enough)
+                self._head("-I", "--append"), [remote.native(), str(scratch)], transport, stop=enough,
+                on_accepted=submitted.transport_accepted if submitted is not None else None)
             if not enough() and code not in {0}:
                 self._outcome(remote, candidate, code, stderr, records, transport.redactions,
                               Stage.CANDIDATE_PREPARATION)

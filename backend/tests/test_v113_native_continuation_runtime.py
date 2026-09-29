@@ -9,8 +9,8 @@ an FTP origin serves them too.
 
 HTTP A -> HTTP B while paused only records the desired source; Resume retargets
 the parked native job through the guard (no discard to confirm). HTTP -> FTP
-cannot be retargeted and falls back to the portable planner, which reports and
-needs confirmation for its discard.
+cannot be retargeted and falls back to the portable planner, whose fresh job
+imports every DP-valid whole piece (DP 1.0.13: nothing to discard or confirm).
 """
 from __future__ import annotations
 
@@ -35,9 +35,7 @@ from test_v113_transport_evidence_sampling import guard_for
 from transfers import codec
 from transfers import material as mat
 from transfers.convergence_engine import TransferEngine
-from transfers.manual_failover import (
-    DiscardConfirmationRequired, manual_candidate_failover, preview_candidate_switch,
-)
+from transfers.manual_failover import manual_candidate_failover, preview_candidate_switch
 from transfers.models import ContinuationStrategy, TransferRequest, TransferState
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
@@ -232,24 +230,21 @@ async def test_real_http_to_ftp_switch_cannot_retarget_and_falls_back_truthfully
 
         preview = await preview_candidate_switch(rt.engine, transfer.id, artifact.id, str(source_ftp.id))
         state = await rt.repository.material_state(artifact.id)
-        assert preview["discarded_bytes"] > 0 and preview["retained_bytes"] <= state.safe_prefix
-        with pytest.raises(DiscardConfirmationRequired):
-            await manual_candidate_failover(rt.engine, transfer.id, artifact.id, str(source_ftp.id))
-        assert (await rt.repository.artifacts(transfer.id))[0].execution == first.execution
-
-        await manual_candidate_failover(rt.engine, transfer.id, artifact.id, str(source_ftp.id),
-                                        discard_confirmed=True, discard_confirmation=preview)
+        # DP 1.0.13 adverse conditions (Defect E): the FTP job cannot inherit
+        # the HTTP job natively, but a fresh job imports every whole DP-valid
+        # piece -- nothing DP holds valid is discarded, so nothing to confirm.
+        assert preview["discarded_bytes"] == 0 and preview["retained_bytes"] == state.valid_bytes
+        await manual_candidate_failover(rt.engine, transfer.id, artifact.id, str(source_ftp.id))
         await completed(rt, transfer)
-        # The old native job was retired and a fresh FTP writer continued at
-        # the DP prefix boundary (REST) -- never an import of sparse ranges.
+        # The old native job was retired and a fresh FTP writer continued from
+        # DP material: it fetched (REST) only past DP-valid ranges.
         with pytest.raises(Exception):
             await rt.service.tell_status(gid)
-        rollback = (await audit(transfer.id, "rollback"))[-1]
-        plan_retained = rollback["retained_bytes"]
-        assert plan_retained in ftp.rest_offsets and plan_retained <= state.safe_prefix + MIB
-        assert rollback["discarded_bytes"] >= preview["discarded_bytes"]
+        assert not await audit(transfer.id, "rollback")
+        assert ftp.rest_offsets and all(not any(start <= offset < end for start, end in state.valid)
+                                        for offset in ftp.rest_offsets)
         unavailable = (await audit(transfer.id, "native_retarget"))[-1]
-        assert unavailable["accepted"] is False and unavailable["fallback"] == "contiguous_from_offset"
+        assert unavailable["accepted"] is False and unavailable["fallback"] == "sparse_import"
         assert Path(artifact.target).read_bytes() == BODY
     finally:
         await rt.close()

@@ -6,6 +6,7 @@ from dataclasses import dataclass
 import logging
 import socket
 
+from transfers.input_required import authenticated
 from transfers.models import ExecutionSubject
 from transfers.models import ArtifactFingerprint, FingerprintKind, InputMethod, InputRequirement
 from transfers import size_evidence
@@ -280,13 +281,26 @@ class EvidenceContext:
         return supplied
 
     async def _with_input(self, executor, subject, candidate, submitted, attempts):
-        sample = await executor.fingerprint_with_input(subject, submitted)
+        async def accepted():
+            # The transport accepted this material: that verdict settles it
+            # now, while the evidence read it authenticated for goes on.
+            if self._auth is not None:
+                await self._auth.settle(submitted, accepted=True, candidate=candidate)
+
+        sample = await authenticated(executor.fingerprint_with_input(subject, submitted), submitted, accepted)
         if sample is not None and not isinstance(sample, InputRequirement) \
                 and _fingerprint_kind(sample) != FingerprintKind.UNAVAILABLE.value:
             self._proven[str(candidate.id)] = sample
             self._supplied[str(candidate.id)] = (executor.descriptor.id, submitted)
-            if self._auth is not None:
-                await self._auth.settle(submitted, accepted=True)
+            if self._auth is not None and not submitted.accepted_by_transport:
+                await self._auth.settle(submitted, accepted=True, candidate=candidate)
+            return sample
+        if submitted.accepted_by_transport:
+            # Accepted, then no usable evidence (a timeout, a vanished file):
+            # the evidence outcome is its own fact, never a credential verdict.
+            if isinstance(sample, InputRequirement):
+                return sample
+            submitted.discard()
             return sample
         if isinstance(sample, InputRequirement) and self._auth is not None:
             # The transport definitively refused this material: it is rejected

@@ -146,7 +146,7 @@ test('Dashboard Recent artifact chooser: one confirmation naming the file and am
 
   await expect(dialog(page)).toHaveCount(1);
   await expect(dialog(page)).toContainText('file-5001.mkv');
-  await expect(dialog(page)).toContainText('keeps the first');
+  await expect(dialog(page)).toContainText('of verified material is kept');
   await page.locator('.dp-modal-overlay [data-modal-accept]').click();
   await expect.poll(() => posts(log).length).toBe(2);
   expect(posts(log).map(entry => entry.body)).toEqual([

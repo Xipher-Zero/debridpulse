@@ -13,10 +13,19 @@ admitted (``TransferRepository.prepare_execution`` re-checks it atomically).
 
 A changed source, protocol or executor never forces a restart by itself:
 equivalence already decided the candidate is the same logical artifact, and
-the planner keeps the maximal prefix the selected executor can continue from
--- or, for an executor that continues destination-aware
-(``DESTINATION_AWARE_CONTINUATION``), every DP-valid range wherever it lies,
-when that keeps more than the prefix.
+the planner keeps the most DP-valid material the selected executor can
+consume: the maximal prefix it can continue from; every whole chunk of a FILE
+of known size for an executor that imports sparse material
+(``IMPORT_SPARSE_MATERIAL``, a fresh job acquiring only the rest); or every
+DP-valid range in place as the basis of an executor that reconstructs
+destination-aware (``DESTINATION_AWARE_CONTINUATION`` -- a bandwidth-saving
+reconstruction, never instant continuation: its private work is not DP
+material until the verified whole payload is installed).
+
+What the selected executor cannot consume is stated as exactly that
+(``ContinuationPlan.unusable``: a capability limitation, never a finding about
+the material). Of it, only what the new writer will rewrite (its authorized
+region) leaves VALID at admission (``discarded``).
 An operator source switch whose writer can hand its quiesced native object to
 the new writer (``transfers.candidate_activation.retire_writer``) asks the same
 planner, with ``native_handoff``, and is admitted by the same material fence.
@@ -146,6 +155,7 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
             if dropped:
                 member_discarded.append((member, dropped))
     retained = ((0, boundary),) if boundary else ()
+    positional_unusable = mat.subtract(state.valid, retained)
     plan = ContinuationPlan(
         artifact_id=state.artifact_id,
         material_generation=state.material_generation,
@@ -156,9 +166,10 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
                   else ContinuationStrategy.FULL_RESTART),
         boundary=boundary,
         retained=retained,
-        # Everything valid the new writer does not keep -- sparse ranges past
-        # the prefix and any alignment tail -- is reclassified, never counted.
-        discarded=mat.subtract(state.valid, retained),
+        # Everything valid the new writer cannot keep -- sparse ranges past
+        # the prefix and any alignment tail -- is unusable to it, and since it
+        # writes from the boundary on, rewritten: it leaves VALID at admission.
+        discarded=positional_unusable,
         authorized=((boundary, bound if bound is not None else mat.OPEN_END),),
         expected_size=expected,
         reason=str(reason),
@@ -166,7 +177,22 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
         alignment=int(capabilities.continuation_alignment),
         member_boundaries=tuple(member_boundaries),
         member_discarded=tuple(member_discarded),
+        unusable=positional_unusable,
     )
+    if (ContinuationCapability.IMPORT_SPARSE_MATERIAL in capabilities.continuation
+            and state.geometry_version == mat.GEOMETRY_VERSION and bound is not None
+            and candidate.materialization == MaterializationKind.FILE
+            and candidate.materialization in capabilities.materialization_kinds):
+        # A fresh job is handed every whole chunk DP holds valid (the chunk is
+        # the geometry grain, or the executor's coarser alignment); what is not
+        # a whole chunk is unusable to it and rewritten. Only a KNOWN total can
+        # be stated to the executor, so an open-ended artifact keeps its prefix.
+        grain = max(int(capabilities.continuation_alignment), mat.CHUNK_BYTES)
+        kept = mat.align_inward(state.valid, end_of_file=expected, chunk=grain)
+        if mat.total(kept) > plan.retained_bytes:
+            unusable = mat.subtract(state.valid, kept)
+            plan = replace(plan, strategy=ContinuationStrategy.SPARSE_IMPORT, boundary=mat.contiguous_prefix(kept),
+                           retained=kept, discarded=unusable, unusable=unusable, authorized=((0, bound),))
     if (ContinuationCapability.DESTINATION_AWARE_CONTINUATION in capabilities.continuation
             and state.geometry_version == mat.GEOMETRY_VERSION
             and candidate.materialization == MaterializationKind.FILE
@@ -178,6 +204,6 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
         # and the writer commits only the complete verified payload. Chosen
         # only when it keeps more than the positional plan above would.
         return replace(plan, strategy=ContinuationStrategy.DESTINATION_AWARE, boundary=state.safe_prefix,
-                       retained=state.valid, discarded=(),
+                       retained=state.valid, discarded=(), unusable=(),
                        authorized=((0, bound if bound is not None else mat.OPEN_END),))
     return plan

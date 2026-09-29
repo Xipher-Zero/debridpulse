@@ -12,10 +12,22 @@ consumer can tell which. Consumers only emit ordinary requirements; the broker
 alone matches, validates (single-flight), reuses within a bounded request
 lineage and target scope, rejects and destroys that material. Confirmed server
 identities are held beside it as a separate fact, never merged into it.
+
+Transport authentication is a verdict of its own: a transport reports the
+moment it definitively ACCEPTED submitted material
+(``SubmittedInput.transport_accepted``), independently of whether the listing,
+sample or transfer it authenticated for ever completes, and its consumer
+settles the material at that moment (``authenticated``). A refusal is reported
+as the transport's ordinary requirement; anything else (a timeout, a route or
+capacity failure) is no verdict at all. Material that proved access to one
+exact candidate is remembered with that candidate (``AccessProof``) so the
+canonical owner that later adopts the candidate reuses exactly it
+(``adopted_input``) -- never a host-wide credential, never persisted.
 """
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from enum import StrEnum
 import itertools
@@ -151,7 +163,7 @@ class SubmittedInput:
     continuation acts on exactly what the operator saw; they are not secrets.
     """
 
-    __slots__ = ("challenge_id", "generation", "method", "_values", "facts", "token")
+    __slots__ = ("challenge_id", "generation", "method", "_values", "facts", "token", "_accepted", "_listener")
 
     def __init__(self, challenge_id: str, generation: int, method: InputMethod, values: Mapping[InputField, str],
                  facts: tuple[InputFact, ...] = (), *, token: int | None = None):
@@ -163,6 +175,31 @@ class SubmittedInput:
         # Opaque settlement handle into the authentication-input owner; carries
         # no secret and means nothing outside it.
         self.token = token
+        self._accepted = False
+        self._listener: Callable[[], None] | None = None
+
+    def transport_accepted(self) -> None:
+        """Called by a transport at the moment it definitively ACCEPTED this
+        material (e.g. SSH user authentication succeeded, an FTP login was
+        answered 230) -- before and independently of the operation it
+        authenticated for. Idempotent; never called for a refusal or for an
+        outcome that is no verdict (timeout, route or capacity failure)."""
+        if self._accepted:
+            return
+        self._accepted = True
+        if self._listener is not None:
+            self._listener()
+
+    @property
+    def accepted_by_transport(self) -> bool:
+        return self._accepted
+
+    def on_transport_acceptance(self, listener: Callable[[], None]) -> None:
+        """The one consumer's notice of the transport's acceptance (at once,
+        when it was already reported)."""
+        self._listener = listener
+        if self._accepted:
+            listener()
 
     def value(self, field: InputField) -> str | None:
         return self._values.get(field)
@@ -231,6 +268,40 @@ def split_user_supplied(payload) -> tuple[object, dict[InputField, str]]:
     return sanitized, values
 
 
+async def authenticated(operation: Awaitable, submitted: SubmittedInput | None,
+                        on_accepted: Callable[[], Awaitable[object]]):
+    """Run one transport ``operation`` that uses ``submitted`` and settle the
+    material at the transport's definitive acceptance -- not at the end of
+    the operation. ``on_accepted`` is awaited at most once, as soon as the
+    transport reports acceptance (``SubmittedInput.transport_accepted``),
+    while the operation (listing, sampling) keeps running; its result is
+    returned unchanged. Without a report nothing is settled here: the caller
+    judges the operation's own outcome exactly as before."""
+    if submitted is None:
+        return await operation
+    reported = asyncio.Event()
+    submitted.on_transport_acceptance(reported.set)
+    work = asyncio.ensure_future(operation)
+    notice = asyncio.ensure_future(reported.wait())
+    try:
+        await asyncio.wait({work, notice}, return_when=asyncio.FIRST_COMPLETED)
+        if reported.is_set():
+            await on_accepted()
+        return await work
+    finally:
+        notice.cancel()
+        if not work.done():
+            work.cancel()
+
+
+@dataclass(frozen=True)
+class AccessProof:
+    """What an ACCEPTED settlement proved: access to exactly ``candidate_id``,
+    by the request ``request_id`` of the settling transfer that owns it."""
+    candidate_id: str
+    request_id: str
+
+
 class AuthOutcome(StrEnum):
     SATISFIED = "satisfied"                  # continue now with ``submitted``
     PENDING = "pending"                      # another consumer is validating the same material
@@ -277,6 +348,27 @@ class _Context:
         self.established = established
 
 
+class _ProvenAccess:
+    """Accepted material that proved access to ONE candidate: the material
+    itself (the same object its lineage context holds -- never a copy), the
+    method and server-identity facts the transport accepted, the proving
+    transfer and request (the candidate's provenance) and the transfers whose
+    lifecycle currently holds the candidate (its origin, then the canonical
+    owner that adopted it)."""
+
+    __slots__ = ("key", "material", "method", "facts", "origin", "holders", "established")
+
+    def __init__(self, key, material: _Material, method: InputMethod, facts, origin: tuple[int, str],
+                 established: float):
+        self.key = key
+        self.material = material
+        self.method = method
+        self.facts = tuple(facts)
+        self.origin = origin
+        self.holders = {origin[0]}
+        self.established = established
+
+
 def _identity_fact(facts) -> tuple[str, str] | None:
     named = {fact.name: fact.value for fact in facts}
     algorithm = named.get(InputFactName.SERVER_IDENTITY_ALGORITHM)
@@ -316,6 +408,14 @@ class EphemeralInputBroker:
     material is never offered again. Semantic lifetime is primary -- a
     transfer's contexts are destroyed when it is cancelled, deleted or reaches
     a terminal state; ``context_ceiling_seconds`` is only a safety ceiling.
+
+    An ACCEPTED settlement that names the candidate it proved (``AccessProof``)
+    also keeps that candidate's proven access: the same material object, the
+    accepted method and server identity, and the candidate's provenance. A
+    canonical owner that adopted exactly that candidate reuses exactly that
+    access (``adopted_input``); a transfer ending hands it to the canonical
+    owner that adopted the candidate, or destroys it. Nothing is keyed by a
+    hostname, and nothing outlives every transfer holding the candidate.
     """
 
     def __init__(self, *, clock=time.time, lifetime_seconds: float = 120.0,
@@ -327,8 +427,11 @@ class EphemeralInputBroker:
         self._pending: dict[str, tuple[float, SubmittedInput, int]] = {}
         self._handoffs: dict[tuple[int, str, str, str], tuple[float, SubmittedInput]] = {}
         self._contexts: dict[tuple[int, str, AuthScope], _Context] = {}
-        self._tokens: dict[int, tuple[tuple[int, str, AuthScope], _Material]] = {}
+        # token -> (context key, material, leased method, leased facts)
+        self._tokens: dict[int, tuple[tuple[int, str, AuthScope], _Material, InputMethod, tuple]] = {}
         self._in_use: dict[tuple[int, str, str], int] = {}
+        # candidate id -> the access that candidate's transport accepted
+        self._proven: dict[str, _ProvenAccess] = {}
         self._token_sequence = itertools.count(1)
 
     # ── answers to a current challenge ──────────────────────────────────────
@@ -442,22 +545,34 @@ class EphemeralInputBroker:
             return AuthResolution(AuthOutcome.SATISFIED, submitted=self._leased_locked(
                 key, material, descriptor.method, requirement.facts))
 
-    async def settle(self, token: int | None, *, accepted: bool) -> tuple[str, str] | None:
+    async def settle(self, token: int | None, *, accepted: bool,
+                     proof: AccessProof | None = None) -> tuple[str, str] | None:
         """Record what the consumer observed with leased material.
 
         Returns ``("auth_accepted" | "auth_rejected", origin)`` only when this
         settlement changed the material's state, so each material produces one
         coalesced indication however many siblings used it; else ``None``.
-        Rejected material is destroyed and never offered again."""
+        Rejected material is destroyed and never offered again. An accepted
+        settlement with a ``proof`` also keeps the proven candidate's access:
+        exactly this material, with the method and facts it was leased under."""
         if token is None:
             return None
         async with self._lock:
             entry = self._tokens.pop(int(token), None)
             if entry is None:
                 return None
-            _key, material = entry
+            key, material, method, facts = entry
             if material.lease == token:
                 material.lease = None
+            if accepted and proof is not None and material.values:
+                known = self._proven.get(str(proof.candidate_id))
+                # Access re-proven with the very material an earlier proof
+                # recorded (e.g. by the adopting owner's writer) keeps that
+                # proof's provenance; new material records its own.
+                if known is None or known.material is not material:
+                    self._proven[str(proof.candidate_id)] = _ProvenAccess(
+                        key, material, method, self._identity_facts_locked(key, facts),
+                        (int(key[0]), str(proof.request_id)), self.clock())
             if accepted:
                 if material.state == _MaterialState.UNTESTED:
                     material.state = _MaterialState.VALID
@@ -510,6 +625,32 @@ class EphemeralInputBroker:
             )
             submitted = self._leased_locked(key, material, descriptor.method, facts)
             self._in_use[(transfer_id, str(request_id), str(candidate_id))] = submitted.token
+            return submitted
+
+    async def adopted_input(self, transfer_id: int, request_id: str, candidate_id: str, scope: AuthScope | None,
+                            methods, *, origin: tuple[int, str] | None) -> SubmittedInput | None:
+        """The proven access of exactly ``candidate_id`` for a writer of a
+        canonical owner that adopted it, or ``None``.
+
+        Every fence must hold: the candidate's own provenance (``origin``:
+        the contributing transfer and request, from canonical ownership) is
+        the one that proved it; the dispatch scope -- family, host and port --
+        is the proven scope; the proven method is one the candidate declares
+        (``methods``); the material is still VALID. The confirmed server
+        identity travels as the canonical facts, so the transport pins exactly
+        it (a changed identity fails closed there). The lease is held in use by
+        ``candidate_id`` for this writer and settles like any other."""
+        async with self._lock:
+            self._purge_locked()
+            entry = self._proven.get(str(candidate_id))
+            if (entry is None or origin is None or scope is None
+                    or (int(origin[0]), str(origin[1])) != entry.origin or entry.key[2] != scope
+                    or entry.method not in set(methods)
+                    or entry.material.state != _MaterialState.VALID or not entry.material.values
+                    or _compatible(entry.material.values, (_METHOD_DESCRIPTORS[entry.method](),)) is None):
+                return None
+            submitted = self._leased_locked(entry.key, entry.material, entry.method, entry.facts)
+            self._in_use[(int(transfer_id), str(request_id), str(candidate_id))] = submitted.token
             return submitted
 
     async def lease_for_proof(self, scope: AuthScope | None, methods,
@@ -625,12 +766,25 @@ class EphemeralInputBroker:
             self._purge_locked()
             return (any(key[0] == transfer_id for key in self._contexts)
                     or any(key[0] == transfer_id for key in self._handoffs)
-                    or any(entry[2] == transfer_id for entry in self._pending.values()))
+                    or any(entry[2] == transfer_id for entry in self._pending.values())
+                    or any(transfer_id in entry.holders for entry in self._proven.values()))
 
-    async def discard_transfer(self, transfer_id: int) -> None:
-        """Destroy everything this transfer's lineages hold, immediately."""
+    async def discard_transfer(self, transfer_id: int, *, adopted: Mapping[str, int] | None = None) -> None:
+        """Destroy everything this transfer's lineages hold, immediately --
+        except the proven access of a candidate another transfer's canonical
+        artifact adopted (``adopted``: candidate id -> that canonical
+        transfer), which from now on lives exactly as long as the adopter."""
         transfer_id = int(transfer_id)
+        adopted = {str(candidate): int(owner) for candidate, owner in dict(adopted or {}).items()}
         async with self._lock:
+            for candidate_id, entry in tuple(self._proven.items()):
+                if transfer_id not in entry.holders:
+                    continue
+                entry.holders.discard(transfer_id)
+                if candidate_id in adopted and adopted[candidate_id] != transfer_id:
+                    entry.holders.add(adopted[candidate_id])
+                if not entry.holders:
+                    self._proven.pop(candidate_id)
             for key in [key for key in self._handoffs if key[0] == transfer_id]:
                 self._handoffs.pop(key)[1].discard()
             for challenge_id in [cid for cid, entry in self._pending.items() if entry[2] == transfer_id]:
@@ -639,6 +793,7 @@ class EphemeralInputBroker:
                 self._drop_context_locked(key)
             for key in [key for key in self._in_use if key[0] == transfer_id]:
                 self._in_use.pop(key)
+            self._forget_unreferenced_locked()
 
     # ── internals ───────────────────────────────────────────────────────────
 
@@ -648,6 +803,20 @@ class EphemeralInputBroker:
         if context is None:
             context = self._contexts[key] = _Context(self.clock())
         return context
+
+    def _identity_facts_locked(self, key, facts) -> tuple[InputFact, ...]:
+        """The server identity a proven access pins: the one its lease carried,
+        else the one its lineage confirmed for the scope; none is invented."""
+        identity = _identity_fact(facts)
+        if identity is None:
+            context = self._contexts.get(key)
+            identity = context.identity if context is not None else None
+        scope = key[2]
+        if identity is None or not scope.host:
+            return ()
+        return (InputFact(InputFactName.SERVER_HOST, scope.host),
+                InputFact(InputFactName.SERVER_IDENTITY_ALGORITHM, identity[0]),
+                InputFact(InputFactName.SERVER_IDENTITY_FINGERPRINT, identity[1]))
 
     def _confirmed_facts_locked(self, transfer_id: int, chain, scope) -> tuple[InputFact, ...]:
         """The server identity this lineage confirmed for ``scope``, as the
@@ -686,7 +855,7 @@ class EphemeralInputBroker:
     def _leased_locked(self, key, material: _Material, method: InputMethod, facts, *, challenge_id: str = "",
                        generation: int = 0, discard: SubmittedInput | None = None) -> SubmittedInput:
         token = next(self._token_sequence)
-        self._tokens[token] = (key, material)
+        self._tokens[token] = (key, material, method, tuple(facts))
         if material.state == _MaterialState.UNTESTED:
             material.lease = token
             material.lease_expires = self.clock() + self.lifetime_seconds
@@ -695,13 +864,28 @@ class EphemeralInputBroker:
         return SubmittedInput(challenge_id, generation, method, material.values, facts, token=token)
 
     def _drop_context_locked(self, key) -> None:
+        """Drop one lineage context and destroy its material -- except
+        material a live proven access still refers to (an adopted candidate's
+        access outlives the lineage that proved it)."""
         context = self._contexts.pop(key, None)
         if context is None:
             return
-        for token in [token for token, (owner, _material) in self._tokens.items() if owner == key]:
+        kept = {id(entry.material) for entry in self._proven.values()}
+        for token in [token for token, entry in self._tokens.items()
+                      if entry[0] == key and id(entry[1]) not in kept]:
             self._tokens.pop(token)
         for material in context.materials:
-            material.values = {}
+            if id(material) not in kept:
+                material.values = {}
+
+    def _forget_unreferenced_locked(self) -> None:
+        """Destroy material no context and no proven access refers to any more."""
+        live = {id(material) for context in self._contexts.values() for material in context.materials}
+        live |= {id(entry.material) for entry in self._proven.values()}
+        for token, entry in tuple(self._tokens.items()):
+            if id(entry[1]) not in live:
+                self._tokens.pop(token)
+                entry[1].values = {}
 
     def _purge_locked(self):
         now = self.clock()
@@ -713,9 +897,18 @@ class EphemeralInputBroker:
             if expires <= now:
                 submitted.discard()
                 self._handoffs.pop(key, None)
+        expired = False
+        for candidate_id, entry in tuple(self._proven.items()):
+            if (entry.established + self.context_ceiling_seconds <= now
+                    or entry.material.state == _MaterialState.REJECTED or not entry.material.values):
+                self._proven.pop(candidate_id)
+                expired = True
         for key, context in tuple(self._contexts.items()):
             if context.established + self.context_ceiling_seconds <= now:
                 self._drop_context_locked(key)
+                expired = True
+        if expired:
+            self._forget_unreferenced_locked()
 
 
 class InputChallengeStore:
@@ -815,6 +1008,28 @@ class InputChallengeStore:
                 return False
             await db.execute("UPDATE resolution_attempts SET state='input_required',error=NULL,result=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (attempt.id,))
             await db.execute("UPDATE transfer_requests SET state='input_required',retry_at=0,error=NULL,attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
+            await db.commit()
+            return True
+
+    async def accept_provider(self, challenge: InputChallenge) -> bool:
+        """The transport accepted the answer to this provider question: the
+        question retires NOW, while the resolution it answered goes on. One
+        transaction, fenced on the exact challenge id and generation: the row
+        is removed and the answered request and attempt return to resolving
+        -- their state before they asked -- so no scheduler reads them as
+        held, released or unanswered. True only when this call retired it."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            cursor = await db.execute(
+                "DELETE FROM transfer_input_challenges WHERE transfer_id=? AND challenge_id=? AND generation=?",
+                (challenge.transfer_id, challenge.id, challenge.generation))
+            if not cursor.rowcount:
+                await db.rollback()
+                return False
+            await db.execute("UPDATE resolution_attempts SET state='started',updated_at=CURRENT_TIMESTAMP "
+                             "WHERE id=? AND state='input_required'", (challenge.operation_id,))
+            await db.execute("UPDATE transfer_requests SET state='resolving' WHERE id=? AND state='input_required'",
+                             (challenge.request_id,))
             await db.commit()
             return True
 

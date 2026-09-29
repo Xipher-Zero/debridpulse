@@ -79,6 +79,38 @@ def remote_source_capacity(error: NormalizedError) -> bool:
     return error.domain == Domain.NETWORK and error.category == Category.CONCURRENCY_LIMITED
 
 
+# A source route that is permanently unusable as submitted. Intrinsically so:
+# the object is not there, the endpoint is unsupported, or DebridPulse may not
+# reach it. Otherwise only a route failure its emitter declared terminal
+# (non-retryable or permanent): an ordinary transient failure -- a timeout, a
+# DNS or connection failure retried with backoff -- is never a dead route,
+# however many retries it exhausted. Never a credential or identity question
+# (operator-actionable), a local, provider-account or internal fault, or a
+# fact about the object's identity.
+_INTRINSICALLY_DEAD_CATEGORIES = frozenset({
+    Category.SOURCE_NOT_FOUND, Category.RESOURCE_NOT_FOUND, Category.DESTINATION_BLOCKED,
+    Category.UNSUPPORTED_REQUEST,
+})
+_ROUTE_FAILURE_CATEGORIES = frozenset({
+    Category.SOURCE_UNAVAILABLE, Category.CONNECTION_REFUSED, Category.CONNECTION_FAILED,
+    Category.CONNECTION_TIMEOUT, Category.DNS_FAILURE, Category.PROTOCOL_ERROR,
+})
+
+
+def dead_source(error: NormalizedError | None) -> bool:
+    """A request whose resolution failed because its route is dead: an
+    intrinsically dead route, or a route failure declared terminal. Such a
+    source may still be associated with the canonical artifact its submission
+    cohort proved, as a failed, non-executable contribution
+    (``transfers.canonical``); this says nothing more."""
+    if error is None:
+        return False
+    if error.category in _INTRINSICALLY_DEAD_CATEGORIES:
+        return True
+    return error.category in _ROUTE_FAILURE_CATEGORIES and (
+        error.retryability == Retryability.NEVER or error.permanence == Permanence.PERMANENT)
+
+
 def interpretation_absent(error: NormalizedError) -> bool:
     """The server positively established that one interpretation of a source
     does not provide it: the server itself reported the resource absent, or
@@ -339,6 +371,18 @@ class TransferPolicy:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "security_failure")
         if error.domain == Domain.INTEGRITY:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "integrity_failure")
+        # A route failure during execution (the exact source is gone, refused
+        # or unreachable) is scoped to that candidate's route, like expiry: it
+        # says nothing about the logical artifact, so a verified alternate is
+        # tried first however permanent the route's own failure is. Security
+        # and integrity failures were decided above; a logical-artifact
+        # failure (``_PERMANENT_CATEGORIES``) and every other permanent or
+        # non-retryable failure stay terminal below, as does this one when no
+        # alternate exists.
+        if (error.stage == Stage.EXECUTION and error.category in _EXECUTION_ALTERNATE_CATEGORIES
+                and error.category not in _PERMANENT_CATEGORIES and context.has_alternate
+                and (error.permanence == Permanence.PERMANENT or error.retryability == Retryability.NEVER)):
+            return RecoveryDecision(RecoveryAction.TRY_ALTERNATE_CANDIDATE, "permanent_source_alternate", retry_at=now)
         # Expiry permanence is scoped to the current candidate/source/resource;
         # the logical transfer may still refresh or select an alternate below.
         if ((error.permanence == Permanence.PERMANENT and error.category not in _EXPIRY_CATEGORIES)

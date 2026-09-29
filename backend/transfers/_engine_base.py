@@ -123,7 +123,8 @@ from transfers.filesystem import (
     verify_materialization,
 )
 from transfers.input_required import (
-    AuthOutcome, EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected, split_user_supplied,
+    AccessProof, AuthOutcome, EphemeralInputBroker, InputChallengeStore, InputSubmissionRejected, authenticated,
+    split_user_supplied,
 )
 from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
@@ -138,7 +139,7 @@ from transfers.models import (
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
-from transfers.cohorts import _HELD_DISPOSITIONS, _disposition
+from transfers.cohorts import _HELD_DISPOSITIONS, _disposition, _normalized_candidates
 from transfers.mirrors import EvidenceContext, askable, shared_evidence, shared_size
 from transfers.policy import (
     TERMINAL_TRANSFER_STATES, TransferPolicy, alternate_interpretation_progresses, interpretation_absent,
@@ -244,12 +245,16 @@ class _EvidenceAuth:
         return await self.engine.inputs.resolve(self.transfer_id, self.chain,
                                                 self.engine._input_scope(candidate), requirement)
 
-    async def settle(self, submitted, *, accepted: bool, requirement=None):
+    async def settle(self, submitted, *, accepted: bool, requirement=None, candidate=None):
         """The challenged consumer established this material's validity. The
         broker settles it; an answer to a durable question moves that question
         at once (``_answered_evidence_outcome``). ``requirement``: what the
-        transport asked for again when it refused the material."""
-        transition = await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted)
+        transport asked for again when it refused the material. ``candidate``:
+        the deciding request's own candidate whose access the acceptance
+        proved -- its proven access is kept with it (``AccessProof``)."""
+        proof = AccessProof(str(candidate.id), self.chain[0]) if accepted and candidate is not None else None
+        transition = await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted,
+                                                     proof=proof)
         await self.engine._answered_evidence_outcome(submitted, accepted=accepted, requirement=requirement)
         return transition
 
@@ -626,16 +631,17 @@ class TransferEngine:
                 return None
             challenge = await self.challenges.current(transfer.id)
             if challenge:
-                # A challenged transfer resolves nothing else this cycle; only
-                # a provider- or evidence-origin challenge has a continuation to
-                # admit here, and never beside work of the transfer that is
-                # still in flight.
-                if in_flight:
-                    return None
+                # A challenged transfer resolves nothing else this cycle. Its
+                # provider- or evidence-origin continuation is admitted once
+                # an answer is actually pending -- also beside the transfer's
+                # own in-flight work: the answer is authenticated at once, and
+                # the decision it continues is serialized by the ordinary
+                # cohort lock. An unanswered question admits nothing.
                 if (challenge.origin in {InputOrigin.PROVIDER, InputOrigin.EVIDENCE}
-                        and challenge.id not in cycle.admitted):
+                        and challenge.id not in cycle.admitted and await self.inputs.has(challenge)):
                     return challenge
-                cycle.retired.add(transfer.id)
+                if not in_flight:
+                    cycle.retired.add(transfer.id)
                 return None
             await self._resolution_census(cycle, transfer.id)
         for record in cycle.remaining[transfer.id]:
@@ -715,7 +721,10 @@ class TransferEngine:
         else:
             cycle.retired.add(transfer.id)
             cycle.admitted[work.id] = None
-            unit = self._serve_input_continuation(work)
+            if work.request_id:
+                # The continuation serves the challenged request itself.
+                cycle.admitted[work.request_id] = None
+            unit = self._serve_input_continuation(cycle, work)
         cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
         task = asyncio.create_task(unit)
         cycle.units[task] = transfer.id
@@ -737,17 +746,21 @@ class TransferEngine:
         await self._resolution_census(cycle, record.transfer_id, served=record.id)
         return changed
 
-    async def _serve_input_continuation(self, challenge: InputChallenge):
+    async def _serve_input_continuation(self, cycle: _ResolutionCycle, challenge: InputChallenge):
         """One admitted provider- or evidence-input continuation. Whatever it
         changed -- the challenge cleared or replaced, requests created, a
         writer admitted -- the scheduler re-enters the transfer from current
         truth through its ordinary entry path: liveness, the CURRENT challenge,
         then the census. A challenge that is still current keeps blocking the
-        transfer, and its identity is never continued twice in one cycle."""
+        transfer, and its identity is never continued twice in one cycle; the
+        challenged request is recorded as served by it, exactly like an
+        ordinary request unit."""
         if challenge.origin == InputOrigin.EVIDENCE:
             changed = await self._continue_evidence_input(challenge)
         else:
             changed = await self._continue_provider_input(challenge)
+        if challenge.request_id:
+            await self._resolution_census(cycle, challenge.transfer_id, served=challenge.request_id)
         self._resolution_opportunity(challenge.transfer_id)
         return changed
 
@@ -1256,6 +1269,11 @@ class TransferEngine:
         retry_state = "waiting" if waiting and decision.action != Recovery.RERESOLVE else "pending"
         await self.repository.request_failure(record.id, error, decision.retry_at, retry_state=retry_state, consume_attempt=waiting)
         await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+        if decision.retry_at is None:
+            # A source that failed for good: the canonical owner decides
+            # whether its submission cohort already proved which artifact it
+            # is (a failed contribution) and whether the transfer is settled.
+            await self.canonical.settle(record.transfer_id)
 
     async def _resolve(self, record: RequestRecord):
         raise NotImplementedError("_resolve is implemented by transfers.engine.TransferEngine")
@@ -1268,7 +1286,8 @@ class TransferEngine:
         if result.discovery is not None:
             if result.error or result.candidates or result.observation or result.input_required:
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
-            record, discovered = await self._interpreted_discovery(record, provider, result, submitted)
+            record, discovered = await self._interpreted_discovery(record, provider, result, submitted,
+                                                                   challenge=challenge)
             if isinstance(discovered, InputRequirement):
                 await self._provider_input_required(record, attempt, provider, discovered, challenge)
                 return
@@ -1322,8 +1341,11 @@ class TransferEngine:
                                              requirement)
         requirement = resolution.requirement or requirement
         if challenge:
-            await self.challenges.replace(challenge, requirement)
-            return
+            try:
+                await self.challenges.replace(challenge, requirement)
+                return
+            except InputSubmissionRejected:
+                pass  # its question already retired at the transport's acceptance: ask afresh
         current = await self.challenges.current(record.transfer_id)
         # One question at a time: held unasked, released when it settles --
         # also when another request's question landed first meanwhile.
@@ -1332,7 +1354,8 @@ class TransferEngine:
             await self.challenges.hold_provider(attempt, provider.descriptor.id)
 
     async def _interpreted_discovery(self, record: RequestRecord, provider, requested: ResolutionResult,
-                                     submitted=None) -> tuple[RequestRecord, object]:
+                                     submitted=None, *, challenge: InputChallenge | None = None
+                                     ) -> tuple[RequestRecord, object]:
         """THE one owner of a provider's alternate interpretation of a request.
 
         The request as the provider reads it is discovered first. Only when
@@ -1351,7 +1374,7 @@ class TransferEngine:
         failure is the one reported."""
         try:
             return record, await self._discovered(record, provider, await self._discover(
-                record, provider, requested, submitted))
+                record, provider, requested, submitted, challenge=challenge))
         except _ServerAnswer as exc:
             primary = exc.failure
         alternate = requested.discovery.alternate
@@ -1388,7 +1411,8 @@ class TransferEngine:
             return outcome
         return await provider.resolve_discovered(record.resolvable, outcome)
 
-    async def _discover(self, record: RequestRecord, provider, requested: ResolutionResult, submitted=None):
+    async def _discover(self, record: RequestRecord, provider, requested: ResolutionResult, submitted=None, *,
+                        challenge: InputChallenge | None = None):
         """THE core-run authenticated remote discovery a provider asked for.
 
         One read-only listing of one directory, before any candidate exists,
@@ -1398,7 +1422,11 @@ class TransferEngine:
         requirement it can (its material is settled by the listing's outcome);
         otherwise the requirement is returned for the one INPUT_REQUIRED
         lifecycle. Returns the server's neutral answer (or that requirement);
-        ``_interpreted_discovery`` hands an answer to the provider."""
+        ``_interpreted_discovery`` hands an answer to the provider.
+
+        The material is settled at the transport's acceptance, not at the end
+        of the listing, and the operator's answered question (``challenge``)
+        retires at that same moment while the listing goes on."""
         request = requested.discovery
         if not isinstance(provider, DiscoveryResolution):
             raise TransferError(self._error(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST,
@@ -1420,17 +1448,23 @@ class TransferEngine:
         tree = {"recursive": True} if request.recursive else {}
         try:
             for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
+                used = submitted
+
+                async def accepted():
+                    await self._settle_input(record.transfer_id, used.token, accepted=True)
+                    if challenge is not None and await self.challenges.accept_provider(challenge):
+                        await self._aggregate(record.transfer_id)
                 try:
-                    outcome = await executor.discover(subject, submitted, **tree)
+                    outcome = await authenticated(executor.discover(subject, submitted, **tree), submitted, accepted)
                 finally:
                     if submitted is not None:
                         submitted.discard()
                 if not isinstance(outcome, InputRequirement):
-                    if submitted is not None:
+                    if submitted is not None and not submitted.accepted_by_transport:
                         await self._settle_input(record.transfer_id, submitted.token, accepted=True)
                     await self.challenges.record(record.transfer_id, "discovery_completed", family)
                     return outcome
-                if submitted is not None:
+                if submitted is not None and not submitted.accepted_by_transport:
                     await self._settle_input(record.transfer_id, submitted.token, accepted=False)
                 resolution = await self._match_input(record.transfer_id, record.id, scope, outcome)
                 if resolution.outcome == AuthOutcome.IDENTITY_CHANGED:
@@ -1645,6 +1679,18 @@ class TransferEngine:
             # exactly this candidate (``_hand_off_proven``) or discards it.
             context = EvidenceContext(inputs={str(candidate.id): submitted})
             submitted = None
+            # The challenged acquisition continues FIRST, outside the
+            # decision's cohort lock: the transport's verdict on the answer
+            # never waits behind the transfer's other decisions. The decision
+            # below reads this same acquisition from its context.
+            context.bind(_EvidenceAuth(self, record.transfer_id, await self._lineage(record.transfer_id, record.id),
+                                       candidates))
+            challenged = next(item for item in _normalized_candidates(record, candidates)
+                              if str(item.id) == str(candidate.id))
+            try:
+                await context.fingerprint(executor, challenged)
+            except Exception:
+                pass  # kept in the context: the decision judges it like any failed acquisition
             await self._materialize(record, candidates, evidence=context)
             current = await self.challenges.current(challenge.transfer_id)
             if current is not None and current.id == challenge.id:
@@ -1720,6 +1766,18 @@ class TransferEngine:
         for candidate_id, proven in evidence.take_borrowed():
             await self.canonical.retain_evidence(candidate_id, proven)
         supplied = evidence.take_supplied()
+        transfer = await self.repository.get(record.transfer_id)
+        if transfer is not None and transfer.state in TERMINAL_TRANSFER_STATES:
+            # This decision settled the transfer (it consolidated): its input
+            # retires now through the one lifecycle owner -- an adopted
+            # candidate's proven access passes to the adopting canonical owner.
+            for candidate_id, _executor_id, submitted in supplied:
+                proven = evidence.proven_evidence(candidate_id)
+                if proven is not None:
+                    await self.canonical.retain_evidence(candidate_id, proven)
+                submitted.discard()
+            await self._aggregate(record.transfer_id)
+            return
         if not supplied:
             return
         artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
@@ -2370,6 +2428,12 @@ class TransferEngine:
                         await self._lineage(artifact.transfer_id, artifact.request_id),
                         self._input_scope(candidate), candidate.accepted_input_methods,
                     )
+                    if submitted is None and candidate.accepted_input_methods:
+                        # A candidate this canonical artifact adopted from
+                        # another lineage (consolidation) carries the access
+                        # its own transport accepted -- exactly that access,
+                        # fenced by the candidate's durable provenance.
+                        submitted = await self._adopted_input(artifact, candidate)
                 if submitted is not None:
                     try:
                         observed = await executor.start_with_input(request, handle, submitted)
@@ -2627,7 +2691,8 @@ class TransferEngine:
                 # Bytes arrived: the material this attempt was started with is proven.
                 token = await self.inputs.release_use(artifact.transfer_id, artifact.request_id, str(candidate.id))
                 if token is not None:
-                    await self._settle_input(artifact.transfer_id, token, accepted=True)
+                    await self._settle_input(artifact.transfer_id, token, accepted=True,
+                                             proof=AccessProof(str(candidate.id), str(artifact.request_id)))
         if not await self._live(artifact.transfer_id):
             await self.repository.execution(await self._cancel_execution(executor, observed.handle))
             return
@@ -2787,8 +2852,12 @@ class TransferEngine:
         outcome = await self.repository.aggregate_lifecycle(transfer_id, input_required=bool(challenge))
         transfer = await self.repository.get(transfer_id)
         if transfer is not None and transfer.state in TERMINAL_TRANSFER_STATES:
-            # A terminal lineage has no legitimate consumer left.
-            await self.inputs.discard_transfer(transfer_id)
+            # A terminal lineage has no legitimate consumer left -- except a
+            # candidate another transfer's canonical artifact adopted, whose
+            # proven access now lives as long as that owner.
+            adopted = ({} if transfer.state in {TransferState.DELETED, TransferState.CANCELLED}
+                       else await self.canonical.adopted_candidates(transfer_id))
+            await self.inputs.discard_transfer(transfer_id, adopted=adopted)
         if outcome is None:
             return
         if outcome.should_complete:
@@ -2927,6 +2996,9 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             raise InputSubmissionRejected("Input challenge is stale")
         await self.inputs.submit(challenge, method, values)
+        # An answer is resolution work now: a running cycle serves it at its
+        # next admission boundary, never after the whole cycle.
+        self._resolution_opportunity(transfer_id)
         return challenge
 
     # ── Authentication Input Context: the engine is the owner's one consumer ──
@@ -2952,13 +3024,25 @@ class TransferEngine:
     async def _match_input(self, transfer_id: int, request_id, scope, requirement):
         return await self.inputs.resolve(transfer_id, await self._lineage(transfer_id, request_id), scope, requirement)
 
-    async def _settle_input(self, transfer_id: int, token, *, accepted: bool):
-        transition = await self.inputs.settle(token, accepted=accepted)
+    async def _settle_input(self, transfer_id: int, token, *, accepted: bool, proof: AccessProof | None = None):
+        transition = await self.inputs.settle(token, accepted=accepted, proof=proof)
         if transition is not None:
             await self.challenges.record(transfer_id, transition[0], transition[1])
             if accepted:
                 await self._release_input_holds(transfer_id)
         return transition
+
+    async def _adopted_input(self, artifact: Artifact, candidate: TransferCandidate):
+        origin = await self.canonical.origin_for(artifact, candidate)
+        if origin is None:
+            return None
+        submitted = await self.inputs.adopted_input(
+            artifact.transfer_id, artifact.request_id, str(candidate.id), self._input_scope(candidate),
+            candidate.accepted_input_methods, origin=(origin.contributing_transfer_id, origin.request.id))
+        if submitted is not None:
+            scope = self._input_scope(candidate)
+            await self.challenges.record(artifact.transfer_id, "proven_access_used", scope.family if scope else "")
+        return submitted
 
     async def _take_input(self, challenge: InputChallenge, request_id, scope):
         submitted = await self.inputs.take(challenge, chain=await self._lineage(challenge.transfer_id, request_id),

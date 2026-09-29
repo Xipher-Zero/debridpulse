@@ -369,3 +369,25 @@ class VaultExecutor(MemoryExecutor):
             return await self.start(request, handle)
         finally:
             self._unlocked = False
+
+
+async def drain_reconsiderations(now, request_ids, step):
+    """Advance the test clock through every scheduled reconsideration of these
+    held requests (DP 1.0.13: a temporarily unproven hold is reconsidered a
+    bounded number of times, then becomes the terminal hold), running ``step``
+    (one scheduler pass) at each due point; returns how many passes ran."""
+    import db.database as database
+    from transfers import cohorts
+    passes = 0
+    for _ in range(cohorts._RECONSIDER_LIMIT + 2):
+        async with database.get_db() as db:
+            rows = [await db.fetchone("SELECT retry_at,equivalence_disposition FROM transfer_requests WHERE id=?",
+                                      (request_id,)) for request_id in request_ids]
+        due = [float(row["retry_at"] or 0) for row in rows
+               if row and row["equivalence_disposition"] in cohorts._HELD_DISPOSITIONS and float(row["retry_at"] or 0) > 0]
+        if not due:
+            return passes
+        now[0] = max(now[0], max(due)) + 0.01
+        await step()
+        passes += 1
+    return passes

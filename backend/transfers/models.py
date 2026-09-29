@@ -625,6 +625,14 @@ class ContinuationCapability(StrEnum):
     # range exactly as it was. Its in-flight work is never DP material before
     # that verified completion.
     DESTINATION_AWARE_CONTINUATION = "destination_aware_continuation"
+    # A FRESH native job can be given arbitrary DP-valid material -- every
+    # whole geometry chunk (``material.CHUNK_BYTES``, or the executor's coarser
+    # ``continuation_alignment``) DebridPulse holds valid, anywhere in a FILE of
+    # KNOWN total size -- and acquires only the rest, never rewriting what it
+    # was given. The executor states the trust in its own native terms and
+    # refuses a total or geometry it cannot state; the material itself is
+    # exactly as trusted as a retained prefix.
+    IMPORT_SPARSE_MATERIAL = "import_sparse_material"
     # A natively quiesced job keeps its own private acquisition state and
     # continues exactly where it stopped when resumed (``PauseResume.resume``).
     # Disposable acceleration only: never DebridPulse material truth.
@@ -666,6 +674,9 @@ class ContinuationStrategy(StrEnum):
     # place as the new writer's basis; the writer commits nothing before it
     # installs the complete, verified replacement of the whole payload.
     DESTINATION_AWARE = "destination_aware"
+    # ``IMPORT_SPARSE_MATERIAL``: every retained range (whole chunks of the
+    # known total) is handed to a fresh job, which writes only the rest.
+    SPARSE_IMPORT = "sparse_import"
 
 
 @dataclass(frozen=True)
@@ -697,6 +708,10 @@ class ContinuationPlan:
     # nothing and may be written from 0; a listed member from its boundary.
     member_boundaries: tuple[tuple[str, int], ...] = ()
     member_discarded: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] = ()
+    # DP-valid material the selected executor cannot consume (a capability
+    # limitation, stated as such). Distinct from ``discarded``: only what this
+    # writer will actually rewrite leaves VALID at admission.
+    unusable: tuple[tuple[int, int], ...] = ()
 
     def member_boundary(self, member: str) -> int:
         return dict(self.member_boundaries).get(member, 0)
@@ -705,6 +720,10 @@ class ContinuationPlan:
     def retained_bytes(self) -> int:
         return (sum(end - start for start, end in self.retained)
                 + sum(boundary for _member, boundary in self.member_boundaries))
+
+    @property
+    def unusable_bytes(self) -> int:
+        return sum(end - start for start, end in self.unusable)
 
     @property
     def discarded_bytes(self) -> int:
@@ -721,6 +740,7 @@ class ContinuationPlan:
             "reason": self.reason, "capabilities": list(self.capabilities), "alignment": self.alignment,
             "member_boundaries": [[member, boundary] for member, boundary in self.member_boundaries],
             "member_discarded": [[member, [list(item) for item in ranges]] for member, ranges in self.member_discarded],
+            "unusable": [list(item) for item in self.unusable],
         }
 
     @classmethod
@@ -734,7 +754,8 @@ class ContinuationPlan:
                    tuple(str(item) for item in value.get("capabilities") or ()), int(value.get("alignment") or 1),
                    tuple((str(member), int(boundary)) for member, boundary in value.get("member_boundaries") or ()),
                    tuple((str(member), tuple((int(start), int(end)) for start, end in ranges))
-                         for member, ranges in value.get("member_discarded") or ()))
+                         for member, ranges in value.get("member_discarded") or ()),
+                   ranges("unusable"))
 
 
 @dataclass(frozen=True)

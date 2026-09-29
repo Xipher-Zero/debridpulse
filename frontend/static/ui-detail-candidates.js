@@ -204,7 +204,8 @@
       // mutation, so nothing can address a contributed or association row as an
       // artifact by selector either.
       const reason = file.unverified_reason
-        ? ' title="Equivalence unproven: ' + html(file.unverified_reason) + '"' : '';
+        ? ' title="Equivalence unproven: ' + html(file.unverified_reason) + '"'
+        : (file.failure_reason ? ' title="Source failed: ' + html(file.failure_reason) + '"' : '');
       const main = '<tr class="dp-detail-file-row" data-dp-row-id="' + html(key) + '"' +
         (artifactId ? ' data-dp-artifact-id="' + html(artifactId) + '"' : '') + '>' +
         '<td class="dp-detail-filename"><div class="dp-detail-filename-line"><span class="dp-detail-filename-copy">' + html(file.filename) + '</span>' +

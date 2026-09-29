@@ -113,7 +113,10 @@ def test_route_history_renderer_is_a_thin_projector_of_backend_route_fields():
         # Route History. These are backend-projected presentation facts (which
         # transfer contributed a source, and whether it is a verified member or
         # an unverified association) -- still nothing the renderer derives.
-        "presentation_ordinal", "relation", "contributing_transfer_id", "verification_state", "unverified_reason"}
+        "presentation_ordinal", "relation", "contributing_transfer_id", "verification_state", "unverified_reason",
+        # DP 1.0.13 adverse conditions: a failed contribution's backend-projected
+        # failure category (a dead source associated for history only).
+        "failure_reason"}
     for forbidden in ("alldebrid", "debrid", "cache", "torrent", "magnet", "general_http",
                       "route_origin", "provider_id", "source_identity", "delivery", "hostname",
                       "endsWith", "new URL", "URL("):

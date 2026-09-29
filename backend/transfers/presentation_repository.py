@@ -302,7 +302,8 @@ def effective_presentation(
 # complete canonical-object source/file story the Details Files card shows --
 # this transfer's own physical artifacts, the artifacts other transfers durably
 # contributed to the canonical object, and the terminal UNVERIFIED associations
-# that have no artifact at all by design. Nothing here is persisted and nothing
+# and FAILED contributions (dead sources of a proven cohort) that have no
+# artifact at all by design. Nothing here is persisted and nothing
 # is inferred: a contributed row exists only because
 # ``canonical_candidate_bindings`` -> ``canonical_candidate_origins`` names its
 # real contributing artifact, and an association row exists only because the
@@ -318,8 +319,10 @@ def effective_presentation(
 _NATIVE_RELATIONSHIP = "original"
 _CONTRIBUTED_RELATIONSHIP = "consolidated"
 _UNVERIFIED_RELATIONSHIP = "unverified"
+_FAILED_RELATIONSHIP = "failed"
 _VERIFIED = "verified"
 _UNVERIFIED_STATUS = "unverified"
+_FAILED_STATUS = "failed"
 _PRESENTATION_FIELDS = ("presentation_status", "presentation_label", "presentation_badge_status")
 
 
@@ -373,7 +376,9 @@ def canonical_file_presentations(files, refs, contributed, associations, *, tran
 
     1. native physical artifacts, in their durable artifact order;
     2. verified contributed artifacts, in durable binding/origin order;
-    3. terminal UNVERIFIED associations, in durable request order.
+    3. associations without an artifact, in durable request order: terminal
+       UNVERIFIED associations, and FAILED contributions (a dead source kept
+       with its exact failure; never executable, never a candidate).
 
     ``presentation_id`` is the row's render/DOM identity and is always present.
     ``artifact_id`` is the real artifact-MUTATION identity and is ``None`` for
@@ -414,6 +419,8 @@ def canonical_file_presentations(files, refs, contributed, associations, *, tran
             "contributing_transfer_id": contributor,
         })
     for item in associations or []:
+        failed = bool(item.get("failure_reason"))
+        status = "error" if failed else _UNVERIFIED_STATUS
         rows.append({
             "presentation_id": _association_presentation_id(item["request_id"]),
             # No artifact exists by design, so there is no artifact identity to
@@ -424,11 +431,12 @@ def canonical_file_presentations(files, refs, contributed, associations, *, tran
             # Independently unknown. The canonical artifact's size is a
             # DIFFERENT object's fact and is never borrowed to fill this in.
             "size_bytes": None,
-            "status": _UNVERIFIED_STATUS,
-            **_presentation_fields(_UNVERIFIED_STATUS),
+            "status": status,
+            **_presentation_fields(status),
             "unverified_reason": item.get("unverified_reason"),
-            "relationship": _UNVERIFIED_RELATIONSHIP,
-            "verification_state": _UNVERIFIED_STATUS,
+            "failure_reason": item.get("failure_reason"),
+            "relationship": _FAILED_RELATIONSHIP if failed else _UNVERIFIED_RELATIONSHIP,
+            "verification_state": _FAILED_STATUS if failed else _UNVERIFIED_STATUS,
             "contributing_transfer_id": item.get("contributing_transfer_id"),
         })
     return rows
@@ -643,9 +651,11 @@ class TransferRepository(_CanonicalTransferRepository):
                 # own name -- never a URL, host or filename guess.
                 for row in await db.fetchall(
                     """SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
-                        r.equivalence_reason,r.payload FROM transfer_requests r
+                        r.equivalence_disposition,r.equivalence_reason,r.payload FROM transfer_requests r
                         JOIN download_files f ON f.id=r.equivalence_target_artifact_id
-                        WHERE r.equivalence_disposition='unverified' AND r.transfer_id!=?
+                        WHERE (r.equivalence_disposition='unverified'
+                               OR (r.equivalence_disposition='failed_contribution' AND r.state='failed'))
+                        AND r.transfer_id!=?
                         AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
                         ORDER BY r.transfer_id,r.ordinal,r.id""",
                     (transfer_id, transfer_id),
@@ -654,10 +664,12 @@ class TransferRepository(_CanonicalTransferRepository):
                         name = codec.request(codec.load(row["payload"])).name
                     except (TypeError, ValueError, KeyError):
                         name = None
+                    failed = row["equivalence_disposition"] == "failed_contribution"
                     associations.append({
                         "request_id": row["request_id"],
                         "contributing_transfer_id": int(row["contributing_transfer_id"]),
-                        "unverified_reason": row["equivalence_reason"] or None,
+                        "unverified_reason": None if failed else (row["equivalence_reason"] or None),
+                        "failure_reason": (row["equivalence_reason"] or "failed") if failed else None,
                         "filename": name or None,
                     })
 

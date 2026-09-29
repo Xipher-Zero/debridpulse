@@ -49,6 +49,9 @@ Sample = tuple[int, str, FingerprintKind, str, str]
 # Returns a connected socket through the egress guard; ``None`` selects the
 # authorized endpoint port, an integer a server-selected port on the same host.
 Connect = Callable[[int | None], Awaitable[object]]
+# Called once, at the moment the server definitively accepted the supplied
+# credential -- before the read it authenticated for (the transport verdict).
+Accepted = Callable[[], None] | None
 
 
 @dataclass(frozen=True)
@@ -437,11 +440,12 @@ def _passive_port(code: int, text: str) -> int | None:
 
 
 @asynccontextmanager
-async def _ftp_session(connect: Connect, username: str, password: str):
+async def _ftp_session(connect: Connect, username: str, password: str, on_authenticated: Accepted = None):
     """THE one FTP login: control connection through the egress guard, then
     USER/PASS, binary type and the login directory -- exactly aria2's own
     sequence. Only a 530 answer to the login itself is access evidence;
-    anything else is an ordinary unavailable fact."""
+    anything else is an ordinary unavailable fact. A 230 to the login is the
+    server's acceptance (``on_authenticated``)."""
     writer = None
     try:
         reader, writer = await asyncio.open_connection(sock=await connect(None))
@@ -455,6 +459,8 @@ async def _ftp_session(connect: Connect, username: str, password: str):
             raise _SessionRefused(AccessRequired())
         if code != 230:
             raise _SessionRefused(unavailable("range_unsupported"))
+        if on_authenticated is not None:
+            on_authenticated()
         if (await control.command("TYPE", "I"))[0] != 200:
             raise _SessionRefused(unavailable("range_unsupported"))
         code, text = await control.command("PWD")
@@ -482,7 +488,8 @@ async def _ftp_data(control: _FtpControl, connect: Connect) -> tuple[object, obj
 
 async def ftp_fingerprint(address: str, *, connect: Connect, username: str, password: str,
                           sample_bytes: int = SAMPLE_BYTES,
-                          timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Sample | AccessRequired:
+                          timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+                          on_authenticated: Accepted = None) -> Sample | AccessRequired:
     """Bounded FTP evidence: binary type, SIZE, then REST/RETR offset windows.
 
     Only a 530 answer to the login itself is authentication evidence; a
@@ -494,7 +501,7 @@ async def ftp_fingerprint(address: str, *, connect: Connect, username: str, pass
     try:
         directories, filename = _ftp_path(address)
         async with asyncio.timeout(max(5.0, float(timeout_seconds))):
-            async with _ftp_session(connect, username, password) as control:
+            async with _ftp_session(connect, username, password, on_authenticated) as control:
                 for directory in directories:
                     if (await control.command("CWD", directory))[0] != 250:
                         return unavailable("range_unsupported")
@@ -566,7 +573,7 @@ async def _ftp_listing_lines(control: _FtpControl, connect: Connect, verb: str) 
 
 
 async def ftp_discovery(address: str, *, connect: Connect, username: str, password: str,
-                        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+                        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, on_authenticated: Accepted = None,
                         ) -> Listing | RemoteFile | ListingRefused | AccessRequired | Sample:
     """Classify one FTP path from the server's own answers, read-only.
 
@@ -581,7 +588,7 @@ async def ftp_discovery(address: str, *, connect: Connect, username: str, passwo
     parents = segments if directory_intent else segments[:-1]
     try:
         async with asyncio.timeout(max(5.0, float(timeout_seconds))):
-            async with _ftp_session(connect, username, password) as control:
+            async with _ftp_session(connect, username, password, on_authenticated) as control:
                 for directory in parents:
                     if (await control.command("CWD", directory))[0] != 250:
                         return ListingRefused("not_found")
@@ -704,7 +711,7 @@ def client_key(private_key: str, passphrase: str = ""):
 @asynccontextmanager
 async def ssh_connection(host: str, *, sock, host_key_algorithms, host_identity: str | None,
                          username: str, password: str = "", private_key: str = "", passphrase: str = "",
-                         timeout: float):
+                         timeout: float, on_authenticated: Accepted = None):
     """THE one SSH identity-then-authentication step, over an already
     connected egress-guarded socket.
 
@@ -718,7 +725,11 @@ async def ssh_connection(host: str, *, sock, host_key_algorithms, host_identity:
     is an unsupported method, never an access requirement: the supplied
     material cannot answer it. Every SSH consumer -- SFTP evidence and
     discovery, and a subprocess transport's SSH channel -- runs through this
-    one step, so none of them can trust or authenticate differently."""
+    one step, so none of them can trust or authenticate differently.
+
+    The connection exists only once user authentication succeeded: that is
+    the server's definitive acceptance of the credential (``on_authenticated``),
+    reported before any channel, listing or read."""
     key = None
     if private_key:
         try:
@@ -746,12 +757,14 @@ async def ssh_connection(host: str, *, sock, host_key_algorithms, host_identity:
             raise _SessionRefused(unavailable("auth_method_unsupported")) from None
         raise _SessionRefused(AccessRequired(host_identity or client.observed)) from None
     async with connection:
+        if on_authenticated is not None:
+            on_authenticated()
         yield connection
 
 
 @asynccontextmanager
 async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None,
-                        username: str, password: str, timeout: float):
+                        username: str, password: str, timeout: float, on_authenticated: Accepted = None):
     """THE one SSH/SFTP session primitive: identity, then authentication
     (``ssh_connection``), then SFTP. Evidence and discovery both run on this
     one session, so they cannot trust differently."""
@@ -759,7 +772,7 @@ async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, 
     sock = await connect(None)
     async with ssh_connection(host, sock=sock, host_key_algorithms=host_key_algorithms,
                               host_identity=host_identity, username=username, password=password,
-                              timeout=timeout) as connection:
+                              timeout=timeout, on_authenticated=on_authenticated) as connection:
         try:
             sftp = await connection.start_sftp_client()
         except (asyncssh.ChannelOpenError, asyncssh.SFTPError):
@@ -770,7 +783,8 @@ async def _sftp_session(address: str, *, connect: Connect, host_key_algorithms, 
 
 async def sftp_fingerprint(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
                            username: str = "", password: str = "", sample_bytes: int = SAMPLE_BYTES,
-                           timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS) -> Sample | AccessRequired:
+                           timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+                           on_authenticated: Accepted = None) -> Sample | AccessRequired:
     """Bounded SFTP evidence behind a confirmed server identity: STAT, then two
     bounded offset windows. ``host_key_algorithms`` is the caller's executor
     preference order, so the key observed here is the key execution verifies."""
@@ -781,7 +795,7 @@ async def sftp_fingerprint(address: str, *, connect: Connect, host_key_algorithm
         async with asyncio.timeout(timeout):
             async with _sftp_session(address, connect=connect, host_key_algorithms=host_key_algorithms,
                                      host_identity=host_identity, username=username, password=password,
-                                     timeout=timeout) as sftp:
+                                     timeout=timeout, on_authenticated=on_authenticated) as sftp:
                 try:
                     attributes = await sftp.stat(path)
                 except asyncssh.SFTPError:
@@ -824,7 +838,7 @@ _LISTING_STATUS = {
 
 async def sftp_discovery(address: str, *, connect: Connect, host_key_algorithms, host_identity: str | None = None,
                          username: str = "", password: str = "",
-                         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS
+                         timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, on_authenticated: Accepted = None,
                          ) -> Listing | RemoteFile | ListingRefused | AccessRequired | Sample:
     """Classify one SFTP path, on the one session primitive, read-only.
 
@@ -841,7 +855,7 @@ async def sftp_discovery(address: str, *, connect: Connect, host_key_algorithms,
         async with asyncio.timeout(timeout):
             async with _sftp_session(address, connect=connect, host_key_algorithms=host_key_algorithms,
                                      host_identity=host_identity, username=username, password=password,
-                                     timeout=timeout) as sftp:
+                                     timeout=timeout, on_authenticated=on_authenticated) as sftp:
                 try:
                     if home_relative:
                         path = await sftp.realpath(path)

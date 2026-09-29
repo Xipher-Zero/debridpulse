@@ -18,7 +18,9 @@ from core.presentation_safety import safe_public_host, safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
 from transfers import codec
 from transfers import material as mat
-from transfers.cohorts import _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION
+from transfers.cohorts import (
+    _FAILED_CONTRIBUTION_DISPOSITION, _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
+)
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
@@ -273,11 +275,17 @@ async def terminal_unverified_association(db, request_id) -> bool:
     and nothing anywhere derives a binding, origin or consolidation row from
     it. The single reader-side definition, shared by the lifecycle/completion
     owner below and by ``transfers.canonical.CanonicalOwnership`` -- never two
-    independently-maintained copies of the same predicate."""
+    independently-maintained copies of the same predicate.
+
+    A TEMPORARILY unproven hold (a transient proof failure whose scheduled
+    reconsideration is still pending: ``retry_at`` set, ``transfers.cohorts``)
+    is not terminal: its transfer still has autonomous work and is not
+    settled until that reconsideration decides."""
     row = await db.fetchone(
         """SELECT r.id FROM transfer_requests r
             JOIN download_files c ON c.id=r.equivalence_target_artifact_id
-            WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id""",
+            WHERE r.id=? AND r.equivalence_disposition='unverified' AND c.torrent_id!=r.transfer_id
+            AND COALESCE(r.retry_at,0)=0""",
         (request_id,),
     )
     return row is not None and await failed_unverified_target(db, request_id) is None
@@ -1073,6 +1081,11 @@ class TransferRepository:
           binding; its own most recent successful resolution -- the route
           proof was attempted through -- is projected, in durable
           request/resolution order, with its factual unresolved reason.
+        * ``failed`` -- a dead source associated with an owned canonical
+          artifact as a failed contribution (``equivalence_disposition=
+          'failed_contribution'``). It has no binding and never resolved; its
+          own last route attempt -- the one that failed -- is projected with
+          the failure category as its reason.
 
         Nothing is inferred from a current candidate, URL, host, filename or
         transfer adjacency. ``lineage`` / ``requests`` are the contributing
@@ -1091,14 +1104,20 @@ class TransferRepository:
             WHERE r.equivalence_disposition='unverified' AND r.transfer_id!=?
             AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
             ORDER BY r.transfer_id,r.ordinal,r.id""", (transfer_id, transfer_id))
-        if not verified and not unverified:
+        failed = await db.fetchall("""SELECT r.id AS request_id,r.transfer_id AS contributing_transfer_id,
+            r.equivalence_reason FROM transfer_requests r
+            JOIN download_files f ON f.id=r.equivalence_target_artifact_id
+            WHERE r.equivalence_disposition='failed_contribution' AND r.state='failed' AND r.transfer_id!=?
+            AND f.torrent_id=? AND COALESCE(f.mirror_state,'')!='standby'
+            ORDER BY r.transfer_id,r.ordinal,r.id""", (transfer_id, transfer_id))
+        if not verified and not unverified and not failed:
             # The ordinary transfer: nothing was contributed, so the native
             # route query stays the only route-provenance read Details makes.
             return (), (), ()
         # The contributing transfers' own durable history, one bounded read per
         # contributor (there are at most as many as contributed sources).
         history, lineage_requests = [], []
-        for contributor in sorted({int(row["contributing_transfer_id"]) for row in (*verified, *unverified)}):
+        for contributor in sorted({int(row["contributing_transfer_id"]) for row in (*verified, *unverified, *failed)}):
             history.extend(await db.fetchall("""SELECT p.resolution_attempt_id AS id,p.transfer_id,p.request_id,p.ordinal,
                 p.operation,p.previous_attempt_id,p.transition_kind,p.transition_reason,p.candidate_summary,p.outcome,
                 p.history_quality,a.provider_id,a.state AS resolution_state,a.result AS resolution_result,
@@ -1124,6 +1143,16 @@ class TransferRepository:
                 selected.setdefault(attempt_id, {
                     "request_id": row["request_id"], "relation": "unverified", "verification_state": "unverified",
                     "unverified_reason": row["equivalence_reason"] or None,
+                    "contributing_transfer_id": int(row["contributing_transfer_id"]),
+                })
+        for row in failed:
+            # Its last route attempt is the one whose failure made it dead.
+            attempt_id = next((item["id"] for item in reversed(history)
+                               if item["request_id"] == row["request_id"]), None)
+            if attempt_id is not None:
+                selected.setdefault(attempt_id, {
+                    "request_id": row["request_id"], "relation": "failed", "verification_state": "failed",
+                    "unverified_reason": None, "failure_reason": row["equivalence_reason"] or "failed",
                     "contributing_transfer_id": int(row["contributing_transfer_id"]),
                 })
         contributed = []
@@ -1213,6 +1242,15 @@ class TransferRepository:
                          a["retry_at"], codec.error(a["normalized_error"]),
                          SizeKnowledge.durable(a["size_bytes"], a["size_knowledge"]))
                 for a in artifact_rows
+            )
+            # A failed request associated with a canonical artifact as a failed
+            # contribution (``transfers.canonical``) is history of that
+            # artifact, not an unmet obligation of this transfer: it casts no
+            # FAILED vote. Every other failed request still does.
+            voting_requests = tuple(
+                record for record, row in zip(requests, request_rows)
+                if not (row["state"] == "failed"
+                        and str(row["equivalence_disposition"] or "") == _FAILED_CONTRIBUTION_DISPOSITION)
             )
             execution_rows = await db.fetchall("SELECT * FROM execution_attempts WHERE transfer_id=?", (transfer_id,))
             # DP 1.0.12 Root Cause B (Section 5): a failed artifact whose own
@@ -1421,8 +1459,9 @@ class TransferRepository:
                 # instead of the real FAILED outcome. The hold must prevent
                 # false COMPLETED and false RESOLVING; it must not launder an
                 # actual terminal failure into a nonterminal wait.
-                elif any(item.state == "error" for item in voting_artifacts) or any(item.state == "failed" for item in requests):
-                    error = next((item.error for item in (*voting_artifacts, *requests) if item.error), None)
+                elif any(item.state == "error" for item in voting_artifacts) or any(
+                        item.state == "failed" for item in voting_requests):
+                    error = next((item.error for item in (*voting_artifacts, *voting_requests) if item.error), None)
                     await _transition(TransferState.FAILED, progress=progress, error=error)
                 elif artifacts and all(item.state == "cancelled" for item in artifacts):
                     await _transition(TransferState.CANCELLED, progress=progress)
@@ -2609,6 +2648,14 @@ class TransferRepository:
             return False
         plan = codec.load(row["continuation"])
         return int(plan["material_generation"]) == int(row["material_generation"])
+
+    async def private_reconstruction_bytes(self, artifact_id: int) -> int:
+        """What the artifact's current writer has built privately under a
+        DESTINATION_AWARE plan (``active_execution_progress_sql``): unverified
+        executor work, never DP material, that a switch away abandons."""
+        async with get_db() as db:
+            row = await db.fetchone(active_execution_progress_sql("f.id = ?"), (int(artifact_id),))
+        return max(0, int((row or {}).get("execution_completed") or 0))
 
     async def material_writer_stale(self, handle: ExecutionHandle) -> bool:
         """A writer admitted under a continuation plan that no longer passes

@@ -3,8 +3,9 @@
 The executor boundary only: a paused job's source is replaced -- in the short
 active window aria2 1.37.0 requires -- through the same destination/egress/
 header preparation a fresh start applies, its private piece state (and control
-file) is never read, written or trusted, and a fresh job still continues only
-at a contiguous DebridPulse boundary.
+file) is never read or trusted, and a fresh job continues only from what a
+core plan states (a contiguous boundary, or -- DP 1.0.13 -- the plan's own
+retained whole pieces, written into a fresh control file).
 """
 from __future__ import annotations
 
@@ -248,7 +249,7 @@ async def test_a_fresh_job_stays_prefix_only_and_never_honours_a_handoff_plan(ar
     assert Path(str(aria2.target) + ".aria2").exists() and os.path.getsize(aria2.target) == 3 << 20
     # A contiguous plan: control file discarded, payload cut to the boundary.
     contiguous = aria2.request(NEW, "attempt-c", plan(ContinuationStrategy.CONTIGUOUS_FROM_OFFSET, 2 << 20))
-    assert aria2.executor._apply_continuation(contiguous, aria2.target) == "true"
+    assert aria2.executor._apply_continuation(contiguous, aria2.target) == {"continue": "true"}
     assert not Path(str(aria2.target) + ".aria2").exists() and os.path.getsize(aria2.target) == 2 << 20
 
 

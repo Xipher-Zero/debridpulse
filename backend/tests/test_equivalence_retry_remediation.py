@@ -7,7 +7,7 @@ import pytest
 import pytest_asyncio
 
 import db.database as database
-from fake_integrations import MemoryExecutor, ParcelProvider
+from fake_integrations import MemoryExecutor, ParcelProvider, drain_reconsiderations
 from transfers import codec, cohorts
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
@@ -213,7 +213,9 @@ async def test_persistent_transient_failure_exhausts_bound_and_holds_unresolved(
     failed = next(row for row in rows if row["equivalence_reason"] == "timeout")
     assert int(failed["equivalence_retry_count"]) == 2
     assert failed["equivalence_disposition"] == "unverified"
-    assert float(failed["retry_at"] or 0) == 0
+    # DP 1.0.13 Defect D: temporarily unproven, so a low-frequency
+    # reconsideration is scheduled -- never due now, never a hot loop.
+    assert float(failed["retry_at"]) >= retry_pair.now[0] + 30
     assert sum(row["equivalence_disposition"] == "unverified" for row in rows) == 1
     # No sibling is released to independence merely because one member
     # exhausted proof acquisition (Section 8.1.6).
@@ -722,12 +724,20 @@ async def test_single_target_exhaustion_settles_unverified_and_never_starts_a_wr
     held = (await _proof_rows(second.id))[0]
     assert held["equivalence_disposition"] == "unverified"
     assert held["equivalence_reason"] == "dns_failure"
-    assert held["state"] == "materializing" and float(held["retry_at"] or 0) == 0
+    # DP 1.0.13 Defect D: temporarily unproven -- a scheduled, low-frequency
+    # reconsideration keeps it awake, so its transfer is not settled yet.
+    assert held["state"] == "materializing" and float(held["retry_at"]) >= retry_pair.now[0] + 30
+    assert (await retry_pair.repository.get(second.id)).state.value != "consolidated"
     async with database.get_db() as db:
         target = await db.fetchone(
             "SELECT equivalence_target_artifact_id FROM transfer_requests WHERE id=?", (held["id"],),
         )
     assert int(target["equivalence_target_artifact_id"]) == canonical.id
+    # The bounded reconsideration series runs out without proof: the hold is
+    # then terminal and the transfer settles -- never a zombie, never a writer.
+    assert await drain_reconsiderations(retry_pair.now, [held["id"]], retry_pair.engine.resolve_pending) > 0
+    assert float((await _proof_rows(second.id))[0]["retry_at"] or 0) == 0
+    await retry_pair.engine.reconcile_executions()
     assert len(await retry_pair.repository.artifacts(second.id)) == 0
     assert len([call for call in retry_pair.executor.calls if call[0] == "start"]) == 1  # never a competing writer.
     assert (await retry_pair.repository.get(second.id)).state.value == "consolidated"  # settled, not a zombie.

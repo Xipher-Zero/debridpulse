@@ -301,7 +301,7 @@ function renderRouteHistory(t) {
     // One provenance wording for any route another transfer contributed; the
     // status column alone says whether it was verified.
     if (state === 'consolidated' && contributed) return {state, label: `From #${contributor}`};
-    if (state === 'unverified') return {state, label: contributed ? `From #${contributor}` : 'Original'};
+    if (state === 'unverified' || state === 'failed') return {state, label: contributed ? `From #${contributor}` : 'Original'};
     if (state === 'original') return {state, label: 'Original'};
     return {state: '', label: ''};
   };
@@ -315,7 +315,8 @@ function renderRouteHistory(t) {
     // replaces the route's own outcome label and never reads as a verified candidate.
     const unverified = attempt.verification_state === 'unverified';
     const outcome = unverified ? {label: 'Unverified', state: 'unverified'} : routeOutcomePresentation(attempt.outcome);
-    const outcomeTitle = unverified && attempt.unverified_reason ? `Equivalence unproven: ${attempt.unverified_reason}` : '';
+    const outcomeTitle = unverified && attempt.unverified_reason ? `Equivalence unproven: ${attempt.unverified_reason}`
+      : (attempt.failure_reason ? `Source failed: ${attempt.failure_reason}` : '');
     const relation = relationOf(attempt);
     const identity = attempt.route_identity || '—';
     const identityTitle = attempt.route_location || attempt.route_identity || '';

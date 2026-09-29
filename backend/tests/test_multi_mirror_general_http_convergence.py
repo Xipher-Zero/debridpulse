@@ -32,7 +32,7 @@ import transfers._engine_base as engine_base_module
 import services.network_safety as network_safety
 from executors.aria2.client import Aria2Service
 from executors.aria2.executor import Aria2Configuration, Aria2Executor
-from fake_integrations import MemoryExecutor, ParcelProvider
+from fake_integrations import MemoryExecutor, ParcelProvider, drain_reconsiderations
 from providers.general_http.provider import GeneralHttpProvider
 from test_route_provider_provenance import _canonical_history_runtime
 from transfers import cohorts
@@ -886,7 +886,7 @@ async def test_mixed_six_proven_four_transient_siblings_stay_one_transfer(tmp_pa
             )
             assert row["equivalence_disposition"] == "unverified"
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
-            assert float(row["retry_at"] or 0) == 0
+            assert float(row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     artifacts_after = await engine.repository.artifacts(transfer.id)
     # Zero competing writers for the unresolved siblings -- only the 6-source
@@ -1009,7 +1009,7 @@ async def test_five_mirror_production_263_regression(tmp_path, monkeypatch):
             assert row["equivalence_disposition"] == "unverified"
             assert int(row["equivalence_retry_count"]) == 2  # proof counters stop at the budget.
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
-            assert float(row["retry_at"] or 0) == 0
+            assert float(row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     artifacts_after = await engine.repository.artifacts(transfer.id)
     assert len(artifacts_after) == 1  # still exactly one physical canonical artifact.
@@ -1116,7 +1116,7 @@ async def test_production_266_empty_bootstrap_bad_source_first(tmp_path, monkeyp
             )
             assert row["equivalence_disposition"] == "unverified"
             assert row["equivalence_reason"] in {"range_unsupported", "dns_failure"}
-            assert float(row["retry_at"] or 0) == 0
+            assert float(row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     artifacts_after = await engine.repository.artifacts(transfer.id)
     assert len(artifacts_after) == 1  # still exactly one physical canonical artifact -- no numbered duplicate.
@@ -1208,7 +1208,7 @@ async def test_production_270_exhausted_identity_satisfied_by_completed_canonica
         )
     assert held_row["equivalence_disposition"] == "unverified"
     assert held_row["equivalence_reason"] == "dns_failure"
-    assert float(held_row["retry_at"] or 0) == 0
+    assert float(held_row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     artifacts_before_completion = await engine.repository.artifacts(transfer.id)
     assert len(artifacts_before_completion) == 1  # still exactly one physical canonical artifact -- no duplicate.
@@ -1258,7 +1258,9 @@ async def test_production_270_exhausted_identity_satisfied_by_completed_canonica
     assert final_e_row["equivalence_disposition"] == "unverified"
     assert final_e_row["equivalence_reason"] == "dns_failure"
     assert int(final_e_row["equivalence_retry_count"]) == 2
-    assert float(final_e_row["retry_at"] or 0) == 0
+    # DP 1.0.13 Defect D: its low-frequency reconsideration was still pending
+    # when the transfer completed; a completed transfer admits none.
+    assert float(final_e_row["retry_at"]) > 0
     assert int(artifact_count["n"]) == 0
     assert int(execution_count["n"]) == 0
     assert int(origin_count["n"]) == 0
@@ -1421,7 +1423,7 @@ async def test_all_transient_cohort_creates_no_writer_and_bounds_retry(tmp_path,
             assert row["equivalence_disposition"] == "exhausted"
             assert row["equivalence_reason"] == "dns_failure"
             assert int(row["equivalence_retry_count"]) == 2
-            assert float(row["retry_at"] or 0) == 0
+            assert float(row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     assert len(await engine.repository.artifacts(transfer.id)) == 0  # still zero writers.
 
@@ -1703,7 +1705,7 @@ async def test_resolved_sibling_reverify_bounds_retry_without_hot_loop(tmp_path,
         )
     assert row["equivalence_disposition"] == "exhausted"
     assert int(row["equivalence_retry_count"]) == 2
-    assert float(row["retry_at"] or 0) == 0
+    assert float(row["retry_at"]) > now[0]  # DP 1.0.13 Defect D: a scheduled reconsideration, not due now
 
     # Quiescent: further ticks must not keep re-sampling A/B on C's behalf.
     calls_at_exhaustion = dict(call_counts)
@@ -2951,6 +2953,13 @@ async def test_exhausted_single_plausible_target_settles_unverified_without_memb
         now[0] = max(now[0], record.retry_at) + 0.01
         await runtime.engine._process_request(record)
 
+    async def reconsider():
+        (current,) = await runtime.repository.requests(runtime.incoming_transfer.id)
+        await runtime.engine._process_request(current)
+    # DP 1.0.13 Defect D: a retryable (temporarily unproven) hold is
+    # reconsidered a bounded number of times before it is terminal.
+    await drain_reconsiderations(now, [runtime.incoming_record.id], reconsider)
+
     row = await _request_row(runtime.incoming_record.id)
     assert row["equivalence_disposition"] == "unverified"
     assert row["equivalence_reason"] == incoming_reason  # the factual unresolved reason.
@@ -3157,7 +3166,16 @@ async def test_production_298_299_300_shape_consolidates_with_unverified_sources
                 assert acquisitions.count(host) == 1
                 assert len(acquisitions) == len(set(acquisitions)) <= 1 + len(a_hosts) + len(b_hosts) + len(c_good)
     assert runtime.probes.count(ustc) == 1  # non-retryable: one attempted proof, then terminal.
-    assert runtime.probes.count(aliyun) == 3  # initial attempt + the two bounded retries, never more.
+    # Initial attempt + the two bounded retries; this loop's own clock jump
+    # then made the first scheduled low-frequency reconsideration due (DP
+    # 1.0.13 Defect D) -- and nothing more ran in between.
+    assert runtime.probes.count(aliyun) == 4
+
+    async def reconsider():
+        refreshed = next(item for item in await repository.requests(transfer_c.id) if item.id == by_host[aliyun].id)
+        await decide(refreshed)
+    # The bounded reconsideration series runs out without proof: terminal.
+    await drain_reconsiderations(runtime.now, [by_host[aliyun].id], reconsider)
 
     # --- B and C settle consolidated; A remains the one canonical material transfer.
     assert (await repository.get(transfer_b.id)).state == TransferState.CONSOLIDATED

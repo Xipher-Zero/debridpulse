@@ -1035,17 +1035,18 @@
     let message;
     if (consequences.length === 1) {
       const only = consequences[0];
-      message = 'This source cannot continue the existing download of ' + String(only.filename || 'this file') +
-        '. Switching discards ' + bytes(only.discarded_bytes) + ' of downloaded progress' +
-        (Number(only.retained_bytes) > 0 ? ' and keeps the first ' + bytes(only.retained_bytes) : '') +
-        '; the rest is downloaded again from ' + target + '.';
+      message = 'This source cannot reuse ' + bytes(only.discarded_bytes) + ' of verified material already ' +
+        'downloaded for ' + String(only.filename || 'this file') + '; that part is downloaded again from ' + target +
+        '.' + (Number(only.retained_bytes) > 0 ? ' ' + bytes(only.retained_bytes) + ' of verified material is kept.' : '') +
+        (Number(only.abandoned_bytes) > 0 ? ' The current source\'s unverified reconstruction (' +
+          bytes(only.abandoned_bytes) + ') is abandoned.' : '');
     } else {
       const listed = consequences.slice(0, 5).map(function (item) {
         return String(item.filename || 'file') + ' (' + bytes(item.discarded_bytes) + ')';
       });
       if (consequences.length > listed.length) listed.push('and ' + (consequences.length - listed.length) + ' more');
-      message = 'Switching to ' + target + ' discards ' + bytes(total) + ' of downloaded progress across ' +
-        consequences.length + ' files: ' + listed.join(', ') + '. That progress is downloaded again from ' + target + '.';
+      message = 'Switching to ' + target + ' cannot reuse ' + bytes(total) + ' of verified material across ' +
+        consequences.length + ' files: ' + listed.join(', ') + '. That part is downloaded again from ' + target + '.';
     }
     return window.DPSettingsModal.confirm({
       title: 'Discard downloaded progress?',
@@ -1066,6 +1067,7 @@
       const detail = error.detail;
       const confirmed = await confirmDiscard([{
         filename: filename, discarded_bytes: detail.discarded_bytes, retained_bytes: detail.retained_bytes,
+        abandoned_bytes: detail.abandoned_bytes,
       }], target || 'this source');
       if (!confirmed) return null;
       return switchOne(transferId, artifactId, candidateId, detail);

@@ -168,6 +168,9 @@ class RsyncSshOrigin:
         self.remote_rsync = remote_rsync
         self.auth_attempts: list[tuple[str, str]] = []
         self.commands: list[str] = []
+        # When set, every exec waits for it AFTER authentication succeeded:
+        # the session is accepted, the remote command has not run yet.
+        self.exec_gate: asyncio.Event | None = None
         self.keys = {alg: asyncssh.generate_private_key(alg)
                      for alg in ("ssh-rsa", "ssh-ed25519", "ecdsa-sha2-nistp256")}
         self.server = None
@@ -185,6 +188,8 @@ class RsyncSshOrigin:
         async def handle(process: asyncssh.SSHServerProcess):
             command = process.command or ""
             origin.commands.append(command)
+            if origin.exec_gate is not None:
+                await origin.exec_gate.wait()
             if not origin.remote_rsync:
                 process.stderr.write(b"sh: 1: rsync: not found\n")
                 process.exit(127)
