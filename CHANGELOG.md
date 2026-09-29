@@ -149,6 +149,16 @@
 
 ### Changed
 
+- **A source already merged into an existing download stays merged.** When one download's source was
+  recognized as the same file another download already has, a slower decision still under way for that
+  source could later try to set it up as a download of its own. It touched the merged copy's record,
+  failed with an internal error ("coroutine raised StopIteration") and put the source back into retry.
+  Such a late decision now sees that the source was already settled and changes nothing, and a decision
+  that waited behind another no longer contacts the source again for work already done.
+- **Two sources asking to sign in at the same moment are asked one after the other.** Two links to the
+  same SSH server in one transfer could both reach their sign-in question in the same instant; the
+  second silently replaced the first, and the first was asked again later. Each question is now asked
+  once, in turn; separate links still each ask for their own sign-in, as before.
 - **The sign-in question follows the sign-in, not the rest of the work.** When a login or server
   identity is needed before a source can be compared with the copies DebridPulse already has, the
   question now closes the moment the source accepts the answer -- or comes back at once with

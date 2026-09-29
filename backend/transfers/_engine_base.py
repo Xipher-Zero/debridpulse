@@ -1325,11 +1325,11 @@ class TransferEngine:
             await self.challenges.replace(challenge, requirement)
             return
         current = await self.challenges.current(record.transfer_id)
-        if current is not None and current.request_id != record.id:
-            # One question at a time: held unasked, released when it settles.
+        # One question at a time: held unasked, released when it settles --
+        # also when another request's question landed first meanwhile.
+        if ((current is not None and current.request_id != record.id)
+                or await self.challenges.wait_provider(attempt, requirement, provider.descriptor.id) is None):
             await self.challenges.hold_provider(attempt, provider.descriptor.id)
-        else:
-            await self.challenges.wait_provider(attempt, requirement, provider.descriptor.id)
 
     async def _interpreted_discovery(self, record: RequestRecord, provider, requested: ResolutionResult,
                                      submitted=None) -> tuple[RequestRecord, object]:

@@ -166,8 +166,13 @@ async def test_resource_re_resolution_supersedes_prior_generation_as_stale(repo)
     # (queued, never dispatched).
     from transfers.models import RequestRecord, TransferCandidate, Endpoint
 
-    child_record = RequestRecord(child_id, seed.transfer_id, entries[0].request, "resolved")
+    child_record = RequestRecord(child_id, seed.transfer_id, entries[0].request, "materializing")
     candidate = TransferCandidate("a", (Endpoint("memory", "memory:a"),), expected_bytes=1, provider_id="parcel-lab")
+    # The child resolved to this candidate: durably deciding its materialization
+    # (only a materializing request may be materialized).
+    async with database.get_db() as db:
+        await db.execute("UPDATE transfer_requests SET state='materializing' WHERE id=?", (child_id,))
+        await db.commit()
     artifact_a = await repo.materialize(child_record, (candidate,), "/tmp/payload-a.bin")
 
     rebound = await rebind_resource(seed, suffix="regen")

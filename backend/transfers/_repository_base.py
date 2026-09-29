@@ -2138,15 +2138,34 @@ class TransferRepository:
             await db.commit()
 
     async def materialize(self, record: RequestRecord, candidates: tuple[TransferCandidate, ...], target: str) -> Artifact | None:
+        """Allocate (or rebuild) ``record``'s own canonical artifact.
+
+        ``record`` is the caller's SNAPSHOT, never authority: the opportunity
+        is revalidated from durable truth inside this one transaction. The
+        transfer is live, the request still belongs to it and is still exactly
+        ``materializing``, and any row the request already has is still its
+        canonical actionable artifact -- not a standby contribution, not
+        blocked, not grouped under another canonical owner. When another
+        legitimate owner settled the request first (a canonical attach, a
+        consolidation, a failure), nothing is mutated and ``None`` says so:
+        losing that opportunity is not a failure."""
         if not candidates:
             return None
         chosen = candidates[0]
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
-            if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
+            current = await db.fetchone("""SELECT r.state,t.status FROM transfer_requests r
+                JOIN torrents t ON t.id=r.transfer_id WHERE r.id=? AND r.transfer_id=?""",
+                                        (record.id, record.transfer_id))
+            if (not current or current["status"] in {"deleted", "completed", "consolidated", "cancelled"}
+                    or current["state"] != "materializing"):
+                await db.rollback()
                 return None
-            previous = await db.fetchone("SELECT id FROM download_files WHERE request_id=?", (record.id,))
+            previous = await db.fetchone("SELECT * FROM download_files WHERE request_id=?", (record.id,))
+            if previous and not (is_canonical_artifact_row(previous)
+                                 and int(previous.get("mirror_group_id") or previous["id"]) == int(previous["id"])):
+                await db.rollback()
+                return None
             if previous:
                 # ``target`` is the coordinate the caller derived from CURRENT
                 # canonical truth. It is applied under exactly the condition
@@ -2168,7 +2187,9 @@ class TransferRepository:
                     (record.transfer_id, record.id, chosen.name, chosen.expected_bytes, target, codec.dump(candidates)))
             await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=?", (record.id,))
             await db.commit()
-        return next(item for item in await self.artifacts(record.transfer_id) if item.request_id == record.id)
+        # Read back through the one canonical projection; a row settled by
+        # another owner after this commit is honestly ``None``.
+        return next((item for item in await self.artifacts(record.transfer_id) if item.request_id == record.id), None)
 
     async def artifacts(self, transfer_id: int) -> tuple[Artifact, ...]:
         async with get_db() as db:

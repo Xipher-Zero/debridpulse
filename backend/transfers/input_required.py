@@ -762,7 +762,12 @@ class InputChallengeStore:
         row = await db.fetchone("SELECT generation FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         return new_identity(), (int(row["generation"]) + 1 if row else 1)
 
-    async def wait_provider(self, attempt: ResolutionAttempt, requirement: InputRequirement, integration_id: str) -> InputChallenge:
+    async def wait_provider(self, attempt: ResolutionAttempt, requirement: InputRequirement,
+                            integration_id: str) -> InputChallenge | None:
+        """Durably ask a resolution's question -- unless another request of
+        the transfer already has its question outstanding: a transfer asks one
+        question at a time, and one request's question never overwrites
+        another's. ``None`` means ask later (the caller holds the request)."""
         now = float(self.clock())
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -771,6 +776,11 @@ class InputChallengeStore:
                 WHERE r.id=?""", (attempt.id, attempt.request_id))
             if not row or row["status"] in SIDE_STATE_RETIRING_TRANSFER_STATES or row["provider_id"] != integration_id:
                 raise InputSubmissionRejected("Input challenge is no longer applicable")
+            outstanding = await db.fetchone("SELECT request_id FROM transfer_input_challenges WHERE transfer_id=?",
+                                            (row["transfer_id"],))
+            if outstanding and outstanding["request_id"] != attempt.request_id:
+                await db.rollback()
+                return None
             identity, generation = await self._next(db, row["transfer_id"])
             challenge = InputChallenge(identity, row["transfer_id"], generation, requirement.reason, InputOrigin.PROVIDER,
                 integration_id, attempt.id, requirement.methods, request_id=attempt.request_id, facts=requirement.facts)

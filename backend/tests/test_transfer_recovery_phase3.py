@@ -445,7 +445,10 @@ async def test_existing_materialized_artifact_never_reallocates_target(runtime):
     record = next(item for item in await repository.requests(transfer.id) if item.id == artifact.request_id)
     alternate_target = str(Path(artifact.target).with_name("payload (2).bin"))
     rematerialized = await repository.materialize(record, artifact.candidates, alternate_target)
-    assert rematerialized is not None
+    # The request is already resolved: materialization is the request's
+    # decision to make only while it is materializing, so a late call is a
+    # neutral no-op (the repository revalidates; the snapshot is not authority).
+    assert record.state == "resolved" and rematerialized is None
     current = (await repository.artifacts(transfer.id))[0]
     assert current.id == artifact.id
     assert current.target == artifact.target

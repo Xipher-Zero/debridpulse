@@ -115,6 +115,14 @@ class TransferEngine(_QualifiedTransferEngine):
             evidence.bind(_EvidenceAuth(self, record.transfer_id,
                                         await self._lineage(record.transfer_id, record.id), candidates))
             try:
+                # ``record`` is the caller's snapshot, taken before this lock:
+                # a sibling's decision holding it may have settled this
+                # request meanwhile (a cohort attaches its siblings). The
+                # decision is made from durable truth -- settled work gets no
+                # evidence acquisition, no lineage material, no mutation.
+                if not any(item.id == record.id and item.state == "materializing"
+                           for item in await self.repository.requests(record.transfer_id)):
+                    return
                 if not await coordinate_collection(self, record, candidates, evidence):
                     await super()._materialize(record, candidates, evidence=evidence)
                     artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
