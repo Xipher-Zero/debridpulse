@@ -19,6 +19,7 @@ Runtime workflow runs it in the candidate image:
 """
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 import sys
 from urllib.parse import unquote, urlsplit
@@ -31,6 +32,7 @@ from main import app  # noqa: E402
 from providers.general_ftp.provider import GeneralFtpProvider  # noqa: E402
 from providers.general_http.provider import GeneralHttpProvider  # noqa: E402
 from providers.general_scp.provider import ScpProvider  # noqa: E402
+from transfers.canonical import CanonicalOwnership  # noqa: E402
 from transfers.errors import Category, Domain, NormalizedError, Stage  # noqa: E402
 from transfers.models import (  # noqa: E402
     DiscoveredEntry, DiscoveryResult, ExecutionObservation, ExecutionState, ExecutorCapabilities, InputField,
@@ -44,6 +46,15 @@ USERNAME, PASSWORD = "contract-operator", "contract-password"
 REMOTE_HOST = "remote.contract.test"
 REMOTE_FILE = "/file.bin"
 REMOTE_MEMBERS = ("alpha.bin", "beta.bin", "gamma.bin")
+# The evidence-origin scenario: an in-progress canonical copy on an open host,
+# and an equivalent on a locked host whose pre-writer sampling needs the login.
+# The canonical attach that follows the answered sample (the rest of that
+# materialization decision) is held for EVIDENCE_HOLD_SECONDS, so the modal's
+# timing can be told apart from the decision's.
+EVIDENCE_SEED_HOST = "seed.contract.test"
+EVIDENCE_HOST = "evidence.contract.test"
+EVIDENCE_PATH = "/evidence.bin"
+EVIDENCE_HOLD_SECONDS = 8.0
 
 
 class LockedHttpTransport(VaultExecutor):
@@ -73,7 +84,9 @@ class LockedHttpTransport(VaultExecutor):
 
     async def start(self, request, handle):
         observed = await super().start(request, handle)
-        if observed.error is None:
+        # The evidence scenario's canonical copy stays in progress.
+        if observed.error is None and urlsplit(request.work.subject.candidate.endpoints[0].address).hostname \
+                != EVIDENCE_SEED_HOST:
             self.finish(handle)
         return observed
 
@@ -90,14 +103,27 @@ class LockedHttpTransport(VaultExecutor):
         return observed
 
 
+class HeldCanonicalOwnership(CanonicalOwnership):
+    """The one canonical owner, with the evidence scenario's attach -- work
+    unrelated to authentication -- deliberately slow."""
+
+    async def attach(self, primary, record, candidates, size):
+        if any(urlsplit(item.endpoints[0].address).hostname == EVIDENCE_HOST for item in candidates):
+            await asyncio.sleep(EVIDENCE_HOLD_SECONDS)
+        return await super().attach(primary, record, candidates, size)
+
+
 registry = IntegrationRegistry()
 for provider in (GeneralHttpProvider(), GeneralFtpProvider(), ScpProvider()):
     registry.register_provider(provider)
 registry.register_executor(LockedHttpTransport(
     application.repository.authorize_execution,
-    objects={f"{CONTRACT_HOST}{CONTRACT_PATH}": b"four", f"{REMOTE_HOST}{REMOTE_FILE}": b"four"}
+    objects={f"{CONTRACT_HOST}{CONTRACT_PATH}": b"four", f"{REMOTE_HOST}{REMOTE_FILE}": b"four",
+             f"{EVIDENCE_SEED_HOST}{EVIDENCE_PATH}": b"four", f"{EVIDENCE_HOST}{EVIDENCE_PATH}": b"four",
+             f"{EVIDENCE_SEED_HOST}/refused{EVIDENCE_PATH}": b"four", f"{EVIDENCE_HOST}/refused{EVIDENCE_PATH}": b"four"}
     | {f"{REMOTE_HOST}/dir/{name}": b"four" for name in REMOTE_MEMBERS},
-    locks={CONTRACT_HOST: (USERNAME, PASSWORD)},
+    locks={CONTRACT_HOST: (USERNAME, PASSWORD), EVIDENCE_HOST: (USERNAME, PASSWORD)},
 ))
 application.engine.registry = registry
+application.engine.canonical = HeldCanonicalOwnership(application.repository)
 app.state.application = application

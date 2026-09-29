@@ -238,12 +238,7 @@ class EvidenceContext:
             except Exception as exc:
                 self._fingerprints[key] = (None, exc)
             sample = self._fingerprints[key][0]
-            # Only a candidate that advertises every requested input method may
-            # ever ask its operator; anything else stays an unresolved proof.
-            # Confirming an identity alone is an answer, not a transport method.
-            if isinstance(sample, InputRequirement) and {
-                    item.method for item in sample.methods if item.method != InputMethod.SERVER_IDENTITY
-            } <= set(candidate.accepted_input_methods):
+            if askable(candidate, sample):
                 self._requirements[key[0]] = (executor.descriptor.id, sample)
         sample, error = self._fingerprints[key]
         if error is not None:
@@ -295,8 +290,9 @@ class EvidenceContext:
             return sample
         if isinstance(sample, InputRequirement) and self._auth is not None:
             # The transport definitively refused this material: it is rejected
-            # for this lineage and scope and never offered again.
-            await self._auth.settle(submitted, accepted=False)
+            # for this lineage and scope and never offered again. Its next
+            # requirement travels with the refusal (the neutral outcome).
+            await self._auth.settle(submitted, accepted=False, requirement=sample)
             submitted.discard()
             if self._auth.owns(candidate):
                 return await self._matched(executor, subject, candidate, sample, attempts - 1)
@@ -337,6 +333,15 @@ class EvidenceContext:
         # Another consumer is validating the same material: an unresolved
         # fact for this decision, never a second prompt.
         return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "input_pending")
+
+
+def askable(candidate, sample) -> bool:
+    """Only a candidate that advertises every requested input method may ever
+    ask its operator; anything else stays an unresolved proof. Confirming an
+    identity alone is an answer, not a transport method."""
+    return isinstance(sample, InputRequirement) and {
+        item.method for item in sample.methods if item.method != InputMethod.SERVER_IDENTITY
+    } <= set(candidate.accepted_input_methods)
 
 
 def _retained(candidate, sample):

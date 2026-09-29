@@ -149,6 +149,14 @@
 
 ### Changed
 
+- **The sign-in question follows the sign-in, not the rest of the work.** When a login or server
+  identity is needed before a source can be compared with the copies DebridPulse already has, the
+  question now closes the moment the source accepts the answer -- or comes back at once with
+  "Authentication failed" when it refuses it -- instead of waiting, "Authenticating…", until every
+  comparison and consolidation step after it has finished. The accepted answer still reaches that
+  source's download exactly once; an answer the source could not judge (a timeout or network failure) is
+  never reported as a wrong password.
+
 - **Enable/Disable toggles are immediate operational controls.** Turning a source or provider on or off
   in Sources & Providers now takes effect at once and the control shows the state the server accepted.
   Previously the toggle looked switched while the saved state stayed unchanged until Apply Settings was

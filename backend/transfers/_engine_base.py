@@ -139,7 +139,7 @@ from transfers.models import (
     TransferOutcome, TransferRequest, TransferCandidate, TransferState, new_identity,
 )
 from transfers.cohorts import _HELD_DISPOSITIONS, _disposition
-from transfers.mirrors import EvidenceContext, shared_evidence, shared_size
+from transfers.mirrors import EvidenceContext, askable, shared_evidence, shared_size
 from transfers.policy import (
     TERMINAL_TRANSFER_STATES, TransferPolicy, alternate_interpretation_progresses, interpretation_absent,
 )
@@ -244,8 +244,14 @@ class _EvidenceAuth:
         return await self.engine.inputs.resolve(self.transfer_id, self.chain,
                                                 self.engine._input_scope(candidate), requirement)
 
-    async def settle(self, submitted, *, accepted: bool):
-        return await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted)
+    async def settle(self, submitted, *, accepted: bool, requirement=None):
+        """The challenged consumer established this material's validity. The
+        broker settles it; an answer to a durable question moves that question
+        at once (``_answered_evidence_outcome``). ``requirement``: what the
+        transport asked for again when it refused the material."""
+        transition = await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted)
+        await self.engine._answered_evidence_outcome(submitted, accepted=accepted, requirement=requirement)
+        return transition
 
     async def proof_lease(self, candidate, requirement):
         """A proof-only lease for sampling a peer's candidate (never this
@@ -299,6 +305,14 @@ class TransferEngine:
         # (process memory only: after a restart the first observation of a
         # surviving writer is simply due).
         self._material_checkpoints: dict[str, float] = {}
+        # Answered evidence questions whose continuation is in flight, by the
+        # submitted material's token: ``(challenge, candidate)``. Process
+        # memory only; the durable question stays the challenge store's.
+        self._evidence_answers: dict[int, tuple] = {}
+        # A question reissued (next generation) the moment its answer was
+        # refused, by challenge id, until its decision either asks it again
+        # or ends without needing it.
+        self._evidence_reissued: dict[str, InputChallenge] = {}
         self._collection_affinity_locks = WeakValueDictionary()
         self._cohort_locks = WeakValueDictionary()
         self.dispatch_permitted = True
@@ -1584,6 +1598,10 @@ class TransferEngine:
         try:
             if (current is not None and current.origin == InputOrigin.EVIDENCE and current.request_id == record.id
                     and current.operation_id == str(candidate.id) and current.integration_id == integration_id):
+                reissued = self._evidence_reissued.pop(current.id, None)
+                if reissued is not None and self._same_question(reissued, requirement):
+                    # Already asked at the refusal: one question, one generation.
+                    return current
                 return await self.challenges.replace(current, requirement)
             return await self.challenges.wait_evidence(record.transfer_id, record.id, str(candidate.id),
                                                        integration_id, requirement)
@@ -1598,7 +1616,12 @@ class TransferEngine:
         equivalence decides before any writer exists. When that decision
         admits a writer for exactly this candidate, the proven input is handed
         to its execution once through the one broker; otherwise it is
-        discarded here."""
+        discarded here.
+
+        The durable question follows the AUTHENTICATION outcome, not the
+        decision's: the moment the challenged candidate accepts or refuses the
+        answer, ``_answered_evidence_outcome`` clears or reissues it, while
+        the decision goes on with its evidence, equivalence and attach work."""
         if not await self.inputs.has(challenge) or not await self._live(challenge.transfer_id, admission=True):
             return
         target = await self._evidence_target(challenge)
@@ -1613,6 +1636,9 @@ class TransferEngine:
         if submitted is None:
             return
         secrets = submitted.secret_values()
+        token = submitted.token
+        if token is not None:
+            self._evidence_answers[int(token)] = (challenge, candidate)
         try:
             # The answer now belongs to this one ordinary decision: the
             # materialization owner hands it, once, to the writer admitted for
@@ -1632,6 +1658,53 @@ class TransferEngine:
         finally:
             if submitted:
                 submitted.discard()
+            if token is not None:
+                self._evidence_answers.pop(int(token), None)
+            await self._retire_unasked_reissue(challenge)
+
+    async def _answered_evidence_outcome(self, submitted, *, accepted: bool, requirement=None) -> None:
+        """THE durable consequence of an answered evidence question's
+        authentication outcome, at the moment the challenged candidate
+        established it (``EvidenceContext`` reports it through
+        ``_EvidenceAuth.settle``). Accepted: the question is cleared --
+        exactly its id and generation. Refused with a requirement that
+        candidate may ask: the question is reissued as its next generation.
+        Anything else -- material that answered no durable question, a
+        question already replaced or retired -- changes nothing here. The
+        material itself stays the decision's (``_hand_off_proven``)."""
+        token = getattr(submitted, "token", None)
+        answered = self._evidence_answers.pop(int(token), None) if token is not None else None
+        if answered is None:
+            return
+        challenge, candidate = answered
+        try:
+            if accepted:
+                await self.challenges.clear(challenge)
+                # The transfer stops presenting the question now: its status
+                # comes back from the one lifecycle aggregation owner.
+                await self._aggregate(challenge.transfer_id)
+            elif askable(candidate, requirement):
+                replacement = await self.challenges.replace(challenge, requirement)
+                self._evidence_reissued[replacement.id] = replacement
+        except InputSubmissionRejected:
+            return
+
+    async def _retire_unasked_reissue(self, challenge: InputChallenge) -> None:
+        """A question reissued at a refusal whose decision then ended without
+        asking it (another answer proved the candidate meanwhile, or the
+        request stopped deciding) no longer asks anything."""
+        for identity in [key for key, item in self._evidence_reissued.items()
+                         if item.transfer_id == challenge.transfer_id and item.operation_id == challenge.operation_id]:
+            reissued = self._evidence_reissued.pop(identity)
+            current = await self.challenges.current(challenge.transfer_id)
+            if current is not None and current.id == reissued.id and current.generation == reissued.generation:
+                await self.challenges.clear(reissued)
+                await self.inputs.clear(reissued.id)
+
+    @staticmethod
+    def _same_question(challenge: InputChallenge, requirement: InputRequirement) -> bool:
+        return (challenge.reason == requirement.reason and tuple(challenge.methods) == tuple(requirement.methods)
+                and tuple(challenge.facts) == tuple(requirement.facts))
 
     async def _hand_off_proven(self, record: RequestRecord, evidence: EvidenceContext) -> None:
         """THE disposal of transient input one materialization decision used.
