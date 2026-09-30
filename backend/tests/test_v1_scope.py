@@ -293,14 +293,22 @@ def test_topbar_uses_live_aria2_speed_with_human_download_units():
     # one application-owned fact that aggregates every acquiring executor, so
     # the human download units below are proven against that owner rather than
     # against one daemon's global-stat response.
+    # The volatile speed has its own cheap read and cadence; the occupancy
+    # count keeps its own -- one state, one writer, one source per fact.
+    speed_handler = frontend.split("async function loadRuntimeSpeed()", 1)[1].split(
+        "async function loadRuntimeStatus()", 1
+    )[0]
     runtime_handler = frontend.split("async function loadRuntimeStatus()", 1)[1].split(
         "function updateRuntimeStatusBadge(", 1
     )[0]
+    assert "liveBps: Number(data.download_bytes_per_second) || 0" in speed_handler
+    assert "api('GET', '/execution/throughput', null, 3000)" in speed_handler
     assert "active: Number(data.active_execution_slots) || 0" in runtime_handler
-    assert "liveBps: Number(data.download_bytes_per_second) || 0" in runtime_handler
-    assert "api('GET', '/execution/runtime-status', null, 3000)" in frontend
-    assert "}, 1000);" in frontend
-    assert "_runtimeStatusBusy" in frontend
+    assert "liveBps" not in runtime_handler
+    assert "api('GET', '/execution/runtime-status', null, 3000)" in runtime_handler
+    assert "var RUNTIME_SPEED_INTERVAL_MS = 500;" in frontend
+    assert "var RUNTIME_STATUS_INTERVAL_MS = 1000;" in frontend
+    assert "_runtimeSpeedBusy" in frontend and "_runtimeStatusBusy" in frontend
     assert 'id="runtime-badge-limit"' in index
     assert 'id="runtime-cap-menu"' in index
     assert 'id="runtime-cap-custom-mbps"' in index

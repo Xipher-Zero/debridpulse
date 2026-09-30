@@ -8,7 +8,8 @@ async function isolateExternalFonts(page) {
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
 }
 
-/** Serve the neutral runtime-status payload and record every request path. */
+/** Serve the neutral runtime facts and record every request path: the speed
+ *  and cap from the throughput read, the occupancy from runtime-status. */
 async function runtimeStatus(page, value, seen) {
   await page.route(url => url.pathname.startsWith('/api/'), route => {
     const path = route.request().url().replace(/^https?:\/\/[^/]+/, '').split('?')[0];
@@ -16,6 +17,11 @@ async function runtimeStatus(page, value, seen) {
     if (path === '/api/execution/runtime-status') {
       return route.fulfill({status: 200, contentType: 'application/json',
         body: JSON.stringify({ok: true, ...value})});
+    }
+    if (path === '/api/execution/throughput') {
+      return route.fulfill({status: 200, contentType: 'application/json',
+        body: JSON.stringify({ok: true, download_bytes_per_second: value.download_bytes_per_second,
+          max_download_bytes_per_second: value.max_download_bytes_per_second})});
     }
     return route.fallback();
   });
@@ -53,7 +59,7 @@ test('throughput settles to zero rather than retaining the last sampled speed', 
   await isolateExternalFonts(page);
   let current = {download_bytes_per_second: 8 * 1024 * 1024,
     active_execution_slots: 3, max_download_bytes_per_second: 0};
-  await page.route(url => url.pathname === '/api/execution/runtime-status',
+  await page.route(url => ['/api/execution/runtime-status', '/api/execution/throughput'].includes(url.pathname),
     route => route.fulfill({status: 200, contentType: 'application/json',
       body: JSON.stringify({ok: true, ...current})}));
   await page.goto('/');

@@ -19,6 +19,8 @@ Each executor therefore reaches the aggregate through exactly one path.
 Freshness: the meter is REBUILT from scratch at the end of every execution
 reconcile cycle, so a paused, finished, unreachable or absent executor stops
 contributing in the very next cycle rather than leaving a stale rate behind.
+Between cycles the engine re-samples the same executions the last cycle found
+live every ``THROUGHPUT_SAMPLE_SECONDS``, with the same counting rule.
 ``max_age_seconds`` is the second guard, for the case where the cycle itself
 stops running: past it the meter reports nothing rather than a frozen figure.
 For ordinary operator presentation, "nothing currently measurable" is ``0``.
@@ -31,6 +33,10 @@ from typing import Callable, Mapping
 # Generous against the ~1 s reconcile cadence: this bounds a STOPPED cycle, not
 # an idle one (an idle cycle records zero contributions, which is already 0).
 DEFAULT_MAX_AGE_SECONDS = 15.0
+# Presentation cadence of the between-cycle sample of the same counting rule
+# (``TransferEngine.sample_throughput``): the operator-facing speed follows the
+# executors at this pace instead of the repository-backed reconcile cycle's.
+THROUGHPUT_SAMPLE_SECONDS = 0.5
 
 
 class ExecutionThroughputMeter:

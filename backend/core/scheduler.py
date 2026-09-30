@@ -8,6 +8,7 @@ from core.logging_utils import sanitize_exception
 from core.performance import async_timer
 from core.version import is_version_newer, normalize_version_tag
 from services.notification_service import NotificationService, reporting_participates
+from transfers.runtime_telemetry import THROUGHPUT_SAMPLE_SECONDS
 
 application = None
 
@@ -130,6 +131,21 @@ async def sync_download_clients_loop():
             except Exception as e:
                 logger.error("Download client sync error: %s", sanitize_exception(e))
         await _wait_for_work(application.execution_wakeup, max(1, application.execution_poll_interval))
+
+
+async def throughput_sampling_loop():
+    """Sample the one core throughput fact at presentation cadence.
+
+    The reconcile cycle keeps its own pace; the operator-facing speed does not
+    wait for it (``TransferEngine.sample_throughput``)."""
+    while True:
+        started = time.monotonic()
+        if _application_storage_ready():
+            try:
+                await application.engine.sample_throughput()
+            except Exception as e:
+                logger.error("Throughput sampling error: %s", sanitize_exception(e))
+        await asyncio.sleep(max(0.05, THROUGHPUT_SAMPLE_SECONDS - (time.monotonic() - started)))
 
 
 async def postprocessing_loop():
@@ -316,6 +332,7 @@ async def start_scheduler(service=None):
     _tasks.append(asyncio.create_task(sync_status_loop()))
     _tasks.append(asyncio.create_task(full_sync_loop()))
     _tasks.append(asyncio.create_task(sync_download_clients_loop()))
+    _tasks.append(asyncio.create_task(throughput_sampling_loop()))
     _tasks.append(asyncio.create_task(postprocessing_loop()))
     _tasks.append(asyncio.create_task(integration_maintenance_loop()))
     _tasks.append(asyncio.create_task(application_events_loop()))

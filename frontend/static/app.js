@@ -508,17 +508,29 @@ function progress(pct, status, activePct) {
   }
   const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
   const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
-  const label = done ? '100%' : (unknown ? '—' : (showStripe ? '…' : actual.toFixed(0) + '%'));
   const attrs = failed
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
     : '';
+  // Two truths, never one number: the bar and percentage above are DP-valid
+  // material; in-flight execution activity that is not yet material (a
+  // destination-aware reconstruction, from any executor) gets its own thinner
+  // lane and label beneath, and the verified figure says so.
   const activeRaw = activePct === null || activePct === undefined ? NaN : Number(activePct);
-  const activity = active && Number.isFinite(activeRaw)
+  const reconstructing = active && Number.isFinite(activeRaw);
+  const label = done ? '100%' : (unknown ? '—' : (showStripe ? '…'
+    : actual.toFixed(0) + '%' + (reconstructing ? ' verified' : '')));
+  const activeValue = reconstructing ? Number(Math.min(Math.max(activeRaw, 0), 100).toFixed(1)) : 0;
+  const lane = reconstructing
+    ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
+      ' aria-valuenow="' + activeValue + '" aria-label="Reconstructing on the current source, not yet verified">' +
+      '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
+    : '';
+  const activityLabel = reconstructing
     ? '<span class="prog-activity" data-role="execution-progress" title="In progress on the current source; counts once verified">reconstructing ' +
-      Math.min(Math.max(activeRaw, 0), 100).toFixed(0) + '%</span>'
+      activeValue.toFixed(1) + '%</span>'
     : '';
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
-         '<span class="prog-pct">' + label + '</span>' + activity;
+         lane + '<span class="prog-pct">' + label + '</span>' + activityLabel;
 }
 
 // An extraction failure is announced once per event; it paints nothing. The
@@ -1746,10 +1758,14 @@ function updateThemeToggle(isLight) {
   window.DPIcons.renderThemeGlyph(!!isLight);
 }
 document.addEventListener('DOMContentLoaded', () => {
+  loadRuntimeSpeed().catch(()=>{});
   loadRuntimeStatus().catch(()=>{});
   setInterval(function() {
+    loadRuntimeSpeed().catch(()=>{});
+  }, RUNTIME_SPEED_INTERVAL_MS);
+  setInterval(function() {
     loadRuntimeStatus().catch(()=>{});
-  }, 1000);
+  }, RUNTIME_STATUS_INTERVAL_MS);
   document.addEventListener('click', function(event) {
     if (!event.target.closest('.runtime-cap-control')) closeSpeedCapMenu();
   });
@@ -2071,16 +2087,40 @@ async function _setDownloadSpeedCap(bps) {
 //
 // ONE state object, ONE writer, ONE neutral backend fact. The topbar and the
 // browser-tab title both read `_runtimeStatusState`, so they can never disagree,
-// and nothing here polls an executor: `/execution/runtime-status` aggregates
-// every currently acquiring executor through the core throughput owner. A
+// and nothing here polls an executor: `/execution/throughput` reads the core
+// throughput owner, which aggregates every currently acquiring executor. A
 // future executor contributes by implementing the neutral executor contracts,
 // without either of these surfaces changing.
+//
+// The facts arrive at their own cadence: the volatile speed (and the cap it
+// is shown against) from `/execution/throughput`, a pure in-memory read of the
+// core throughput fact; the occupancy count from `/execution/runtime-status`,
+// which also reads the repository. Each fact has exactly one source, both land
+// in the one state through the one writer, and neither poll waits for the
+// other -- a slow occupancy read can never stretch the speed cadence.
 var _runtimeStatusState = {
   active: 0,
   limitBps: 0,
   liveBps: 0,
 };
+var _runtimeSpeedBusy = false;
 var _runtimeStatusBusy = false;
+var RUNTIME_SPEED_INTERVAL_MS = 500;
+var RUNTIME_STATUS_INTERVAL_MS = 1000;
+
+async function loadRuntimeSpeed() {
+  if (_runtimeSpeedBusy) return;
+  _runtimeSpeedBusy = true;
+  try {
+    const data = await api('GET', '/execution/throughput', null, 3000);
+    updateRuntimeStatusBadge({
+      liveBps: Number(data.download_bytes_per_second) || 0,
+      limitBps: Number(data.max_download_bytes_per_second) || 0,
+    });
+  } finally {
+    _runtimeSpeedBusy = false;
+  }
+}
 
 async function loadRuntimeStatus() {
   if (_runtimeStatusBusy) return;
@@ -2090,8 +2130,6 @@ async function loadRuntimeStatus() {
     updateRuntimeStatusBadge({
       // DebridPulse's own execution-admission occupancy, never a native queue count.
       active: Number(data.active_execution_slots) || 0,
-      liveBps: Number(data.download_bytes_per_second) || 0,
-      limitBps: Number(data.max_download_bytes_per_second) || 0,
     });
   } finally {
     _runtimeStatusBusy = false;

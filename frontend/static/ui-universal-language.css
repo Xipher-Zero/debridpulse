@@ -540,7 +540,23 @@ textarea.input { resize: vertical; }
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
-/* In-flight execution activity beside DP-valid progress -- never completion. */
+/* In-flight execution activity beside DP-valid progress -- never completion:
+   its own thinner, hatched lane under the verified bar, never part of it. */
+.prog-lane {
+  position: relative;
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--dp-progress-processing) 16%, transparent);
+}
+.prog-lane-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: repeating-linear-gradient(90deg, var(--dp-progress-processing) 0 6px,
+    color-mix(in srgb, var(--dp-progress-processing) 45%, transparent) 6px 9px);
+  transition: width .28s ease;
+}
 .prog-activity {
   display: block;
   margin-top: 1px;

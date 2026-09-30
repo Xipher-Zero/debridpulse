@@ -265,11 +265,11 @@
       overlay.querySelector('[data-dp-identity-fingerprint]').textContent = challengeFact(active.challenge, FACT_FINGERPRINT);
     }
 
+    // A blocking required-input surface: a click on the backdrop (the whole
+    // page outside the dialog) is inert. Only the explicit Cancel control
+    // cancels the transfer.
     overlay.onclick = event => {
-      if (event.target === overlay && !state.busy && !state.cancelling) {
-        event.preventDefault();
-        cancelActive();
-      }
+      if (event.target === overlay) event.preventDefault();
     };
     overlay.onkeydown = handleKeydown;
 
@@ -297,10 +297,11 @@
   }
 
   function handleDocumentKeydown(event) {
+    // Escape is held by the dialog -- nothing beneath it reacts -- and is
+    // inert: passive dismissal never cancels the transfer.
     if (event.key !== 'Escape' || !state.overlay) return;
     event.preventDefault();
     event.stopPropagation();
-    if (!state.busy && !state.cancelling) cancelActive();
   }
 
   function handleKeydown(event) {

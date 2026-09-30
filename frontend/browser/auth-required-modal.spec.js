@@ -344,23 +344,87 @@ test('successful authentication closes on challenge resolution while the same lo
   expect(fixture.item(1008).status).toBe('paused');
 });
 
-test('Cancel and Escape resolve the canonical pending challenge instead of only hiding the dialog', async ({ page }) => {
+test('the explicit Cancel control resolves the canonical pending challenge exactly once', async ({ page }) => {
   await isolateExternalFonts(page);
   const fixture = await installFixture(page, [authItem(1009, 'cancel-A', 1, [passwordMethod()])]);
-  let modal = await openModal(page);
+  const modal = await openModal(page);
   await modal.locator('[data-dp-auth-username]').fill('cancel-user-sentinel');
   await modal.locator('[data-dp-auth-secret]').fill('cancel-password-sentinel');
+  await expect(modal).toBeVisible();
+  expect(fixture.cancellations).toEqual([]);  // nothing is cancelled before the explicit action
   await modal.locator('[data-dp-auth-cancel]').click();
+  // The dialog retires only as the consequence of that one explicit request.
   await expect(modal).toBeHidden();
   expect(fixture.cancellations).toEqual([1009]);
+  await page.waitForTimeout(500);
+  expect(fixture.cancellations).toEqual([1009]);
+});
 
-  fixture.set(authItem(1010, 'cancel-B', 1, [passwordMethod()]));
-  await page.evaluate(() => window.DPAuthRequired.scan());
-  modal = page.locator('[data-dp-input-required-modal]');
+// The dialog is a blocking required-input surface: passive dismissal never
+// retires the challenge and never cancels the transfer.
+test('a backdrop click or a click elsewhere on the page is inert', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(page, [authItem(1030, 'backdrop-A', 1, [passwordMethod()])]);
+  const modal = await openModal(page);
+  await modal.locator('[data-dp-auth-username]').fill('backdrop-user-sentinel');
+  const overlay = page.locator('[data-dp-auth-required-overlay]');
+  // The overlay's own surface (outside the dialog), then the page chrome it covers.
+  await overlay.click({position: {x: 4, y: 4}});
+  const topbar = await page.locator('#topbar').boundingBox();
+  await page.mouse.click(topbar.x + topbar.width - 8, topbar.y + topbar.height / 2);
+  await page.mouse.click(8, (await page.viewportSize()).height - 8);
+  await page.waitForTimeout(500);
   await expect(modal).toBeVisible();
+  await expect(modal).toHaveAttribute('data-dp-auth-transfer-id', '1030');
+  await expect(modal.locator('[data-dp-auth-username]')).toHaveValue('backdrop-user-sentinel');
+  expect(fixture.cancellations).toEqual([]);
+  expect(fixture.item(1030).status).toBe('input_required');
+  expect(fixture.item(1030).input_required.id).toBe('backdrop-A');
+});
+
+test('Escape is inert and never cancels the transfer', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(page, [authItem(1031, 'escape-A', 1, [passwordMethod()])]);
+  const modal = await openModal(page);
+  await modal.locator('[data-dp-auth-username]').fill('escape-user-sentinel');
   await page.keyboard.press('Escape');
-  await expect(modal).toBeHidden();
-  expect(fixture.cancellations).toEqual([1009, 1010]);
+  await modal.locator('[data-dp-auth-secret]').focus();
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(500);
+  await expect(modal).toBeVisible();
+  await expect(modal.locator('[data-dp-auth-username]')).toHaveValue('escape-user-sentinel');
+  expect(fixture.cancellations).toEqual([]);
+  expect(fixture.item(1031).input_required.id).toBe('escape-A');
+  // The dialog still works afterwards: the explicit answer is submitted normally.
+  await modal.locator('[data-dp-auth-secret]').fill('escape-password-sentinel');
+  await modal.locator('[data-dp-auth-continue]').click();
+  await expect.poll(() => fixture.submissions.length).toBe(1);
+  expect(fixture.submissions[0]).toMatchObject({id: 1031, body: {challenge_id: 'escape-A'}});
+  expect(fixture.cancellations).toEqual([]);
+});
+
+test('Tab and Shift+Tab stay trapped inside the dialog after passive dismissal attempts', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await installFixture(page, [authItem(1032, 'trap-A', 1, [passwordMethod()])]);
+  const modal = await openModal(page);
+  await page.locator('[data-dp-auth-required-overlay]').click({position: {x: 4, y: 4}});
+  await page.keyboard.press('Escape');
+  const controls = modal.locator('button:not([disabled]), input:not([disabled]):not([type="file"])');
+  const count = await controls.count();
+  expect(count).toBeGreaterThan(1);
+  const inside = () => page.evaluate(() =>
+    !!document.activeElement && !!document.activeElement.closest('[data-dp-input-required-modal]'));
+  await controls.last().focus();
+  await page.keyboard.press('Tab');
+  expect(await inside()).toBe(true);
+  await expect(controls.first()).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(controls.last()).toBeFocused();
+  for (let i = 0; i < count + 2; i += 1) {
+    await page.keyboard.press('Tab');
+    expect(await inside()).toBe(true);
+  }
+  await expect(modal).toBeVisible();
 });
 
 test('multiple simultaneous challenges are queued deterministically and never carry credentials into the next transfer', async ({ page }) => {

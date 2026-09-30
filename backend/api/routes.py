@@ -1544,6 +1544,17 @@ async def get_execution_runtime_limits(application: ApplicationService = Depends
     return await application.execution_runtime_limits()
 
 
+@router.get("/execution/throughput")
+async def get_execution_throughput(application: ApplicationService = Depends(get_application)):
+    """Neutral live download speed for the operator-facing shell.
+
+    The volatile part of the runtime facts on its own cheap read: the one core
+    throughput fact and the configured download cap, never awaiting the slower
+    occupancy fact ``/execution/runtime-status`` also carries. The topbar and
+    the browser-tab title present this one sample."""
+    return {"ok": True, **await application.execution_throughput()}
+
+
 @router.get("/execution/runtime-status")
 async def get_execution_runtime_status(application: ApplicationService = Depends(get_application)):
     """Neutral live runtime status for the operator-facing shell.

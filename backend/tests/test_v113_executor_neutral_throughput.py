@@ -313,9 +313,10 @@ def test_the_topbar_and_the_browser_tab_read_the_same_value_from_the_same_owner(
 
 
 def test_the_speed_cap_display_reads_the_neutral_runtime_limit_owner():
-    loader = APP_JS[APP_JS.index("async function loadRuntimeStatus("):]
+    # The cap is shown with the speed, from the one volatile neutral read.
+    loader = APP_JS[APP_JS.index("async function loadRuntimeSpeed("):]
     loader = loader[:loader.index("\n}") + 2]
-    assert "max_download_bytes_per_second" in loader
+    assert "'/execution/throughput'" in loader and "max_download_bytes_per_second" in loader
     # Writes already went to the neutral surface and still do.
     assert "'/execution/runtime-limits'" in APP_JS
 

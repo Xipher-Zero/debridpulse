@@ -294,7 +294,9 @@ test('Dashboard Recent Items renders host artwork on cold load without navigatio
  await page.goto('/');
  await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
  await expect.poll(()=>page.locator('#dash-tbody .dp-source-host-logo').evaluateAll(nodes=>nodes.every(node=>node.complete&&node.naturalWidth>0))).toBe(true);
- await page.waitForLoadState('networkidle');
+ // The cold-load render has happened and the canonical owner is registered (the
+ // shell polls the runtime speed continuously, so the network never idles).
+ await expect.poll(()=>page.evaluate(()=>typeof window.__dpRegisterRecentRenderer==='function'&&window.__recentEvents>=1)).toBe(true);
  // The canonical owner is the sole producer of the event and the app.js
  // entrypoint never becomes a second renderer: one explicit refresh => one event.
  const state=await page.evaluate(async()=>{

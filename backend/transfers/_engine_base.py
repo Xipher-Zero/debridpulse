@@ -368,8 +368,11 @@ class TransferEngine:
         # bandwidth split across reserved executors).
         self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository)
         # The one core owner of current aggregate download throughput. Rebuilt
-        # from scratch each reconcile cycle, so it can never retain a stale rate.
+        # from scratch each reconcile cycle, so it can never retain a stale rate,
+        # and sampled between cycles (``sample_throughput``) from exactly the
+        # executions the last cycle found live.
         self.throughput = ExecutionThroughputMeter()
+        self._throughput_handles: dict[str, tuple[ExecutionHandle, ...]] = {}
         # Executors whose acquisition gate global pause has confirmed engaged.
         self._acquisition_gated: set[str] = set()
 
@@ -990,6 +993,7 @@ class TransferEngine:
             # handles: an executor with none contributes nothing at all, so a
             # finished or paused acquisition cannot leave a live rate behind.
             self.throughput.record(throughput_contributions)
+            self._throughput_handles = {executor_id: tuple(handles) for executor_id, handles in grouped.items()}
             for transfer in transfers:
                 challenge = challenges[transfer.id]
                 # A pre-writer question (provider or evidence origin) concerns a
@@ -1004,6 +1008,30 @@ class TransferEngine:
                 if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
             await self._release_runtime_reservations()
+
+    async def sample_throughput(self) -> None:
+        """Refresh the one throughput fact between reconcile cycles.
+
+        The reconcile cycle is repository-backed and paced by the execution
+        poll interval; the operator-facing speed is not. This applies the
+        cycle's own counting rule (``_executor_throughput``) to exactly the
+        executions the last cycle found live -- never another set, so an
+        executor the cycle found idle cannot be revived -- through the one
+        batched observation call. It is serialized with the cycle, reads and
+        persists nothing durable, and accepts no observation: execution truth
+        stays the cycle's."""
+        async with self._execution_cycle_lock:
+            contributions = {}
+            for executor_id, handles in self._throughput_handles.items():
+                executor = self.registry.executor_for_handle(handles[0])
+                if executor is None:
+                    continue
+                # An aggregating executor is counted by its one figure alone:
+                # its executions need no observation to sample it.
+                observed = () if getattr(executor.capabilities, "aggregate_throughput", False) \
+                    else (await self._observe_batch(executor, handles)).observations
+                contributions[executor_id] = await self._executor_throughput(executor, observed)
+            self.throughput.record(contributions)
 
     @staticmethod
     async def _executor_throughput(executor, observations) -> int:
