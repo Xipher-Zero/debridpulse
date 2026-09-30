@@ -213,16 +213,17 @@ def test_database_reset_card_copy_and_operator_order_are_locked():
     assert "Configure database safeguards. Perform a destructive database reset when required." in js
     assert "Database Reset is Destructive" in js
     assert (
-        "Processing must be paused before the database can be reset. "
-        "A backup can be created automatically before the reset begins."
+        "Processing is paused automatically for the reset and returned to its previous state afterwards. "
+        "A safety backup is always created first; the reset is aborted if it fails."
     ) in js
-    assert "Backup Database Before Reset" in js
-    assert "Create a backup before resetting the database. The reset is aborted if the backup fails." in js
+    # The safety backup is mandatory: there is no control that could skip it.
+    assert "Backup Database Before Reset" not in js
+    assert "db_backup_before_wipe" not in js
     assert "Allow Database Reset" in js
     assert "Unlock the database reset action." in js
     assert '>Reset Database</button>' in js
     row = js.split('<div class="dp-settings-database-wipe-row">', 1)[1]
-    assert row.index("'db_backup_before_wipe'") < row.index("'db_wipe_enabled'") < row.index('data-action="wipe-database"')
+    assert row.index("'db_wipe_enabled'") < row.index('data-action="wipe-database"')
     assert "Database Destructive Actions" not in js and "dpWipeControlsPolished" not in js
 
 
@@ -265,13 +266,16 @@ def test_reset_safety_is_unchanged_and_only_the_stale_apply_copy_moved():
     # The action settles pending writes, then reads CANONICAL truth.
     assert "await settlePendingWrites();" in wipe
     assert "if (!state.settings?.db_wipe_enabled) {" in wipe
-    # Destructive confirmation, typed phrase and the paused requirement remain.
+    # Destructive confirmation and typed phrase remain; the wipe owns its own
+    # pause, so the operator is told it happens rather than asked to do it.
     assert "window.DPSettingsModal.confirm({" in wipe
     assert "typedPhrase: 'WIPE'," in wipe
     assert "tone: 'danger'," in wipe
-    assert "Processing must be paused." in wipe
+    assert "Processing must be paused" not in wipe
+    assert "DebridPulse pauses processing for the wipe and returns it to its previous state afterwards" in wipe
+    assert "creates a safety backup first; if the backup fails, nothing is wiped." in wipe
     assert "request('POST', '/admin/database/wipe', {confirm: true}, 60000)" in wipe
-    assert "Pre-wipe backup created." in wipe
+    assert "notify('Database wiped. Pre-wipe backup created.', 'success');" in wipe
     # The one stale sentence -- and only it -- was corrected.
     assert "Apply" not in wipe
     assert "Turn on 'Allow Database Reset' before resetting the database" in wipe

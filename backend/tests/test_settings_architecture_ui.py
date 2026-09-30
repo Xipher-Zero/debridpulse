@@ -255,9 +255,10 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "stats_snapshot_keep_days",
         "events_keep_days",
         "db_wipe_enabled",
-        "db_backup_before_wipe",
     ):
         assert key in maintenance
+    # The pre-reset safety backup is mandatory; nothing in Settings can turn it off.
+    assert "db_backup_before_wipe" not in maintenance
 
     assert "function advancedPanel" not in runtime
     assert "panel('advanced'" not in runtime
@@ -502,11 +503,12 @@ def test_modal_shell_has_exactly_one_owner_and_one_global_assignment():
     owner = source(MODAL_JS)
     exported = re.search(r"window\.DPSettingsModal = Object\.freeze\(\{([^}]*)\}\);", owner)
     assert exported, "the canonical global must be one frozen API"
-    # DP 1.0.13 work item B: the ONE owner exposes the three dialog shapes the
-    # application needs -- the generic shell, a confirmation, and a single
-    # text field. A browser-native prompt() is not an option, and a second
+    # DP 1.0.13 work item B: the ONE owner exposes the dialog shapes the
+    # application needs -- the generic shell, a confirmation, a single text
+    # field, and the non-dismissible progress presentation (restore in
+    # progress). A browser-native prompt() is not an option, and a second
     # implementation would be a second owner.
-    assert {name.strip() for name in exported.group(1).split(",") if name.strip()} == {"open", "confirm", "prompt"}
+    assert {name.strip() for name in exported.group(1).split(",") if name.strip()} == {"open", "confirm", "prompt", "progress"}
     # No other read/rebind of the global inside the owner (no self-wrapping, no late replacement).
     assert owner.count("DPSettingsModal") == 1
 

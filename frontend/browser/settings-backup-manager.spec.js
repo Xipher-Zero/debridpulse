@@ -21,7 +21,7 @@ const BACKUPS = [
 const ADDED = {id: '20260801_101010_2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c', created_at: '2026-08-01T10:10:10+00:00',
   size_bytes: 1048576, contents: 'DP State'};
 
-async function mockBackups(page, {addResult, restoreResult} = {}) {
+async function mockBackups(page, {addResult, restoreResult, restoreGate} = {}) {
   const state = {inventory: BACKUPS.map(item => ({...item})), added: [], removed: [], restored: [], saved: []};
   await page.route('**/api/admin/backups**', async route => {
     const request = route.request();
@@ -39,6 +39,7 @@ async function mockBackups(page, {addResult, restoreResult} = {}) {
     }
     if (path === '/api/admin/backups/restore' && method === 'POST') {
       state.restored.push(request.postDataJSON());
+      if (restoreGate) await restoreGate;  // the long-running restore, held by the test
       const result = restoreResult || {status: 200, body: {ok: true}};
       return route.fulfill({status: result.status, contentType: 'application/json', body: JSON.stringify(result.body)});
     }
@@ -234,7 +235,7 @@ test('Restore Backup asks for an explicit confirmation that explains the consequ
   await page.locator('.dp-backup-restore-dialog [data-modal-accept]').click();
   await expect.poll(() => state.restored.length).toBe(1);
   expect(state.restored[0]).toEqual({id: BACKUPS[0].id});
-  await expect(page.locator('#toasts .toast').last()).toContainText('Backup restored');
+  await expect(page.locator('#toasts .toast', {hasText: 'Backup restored successfully.'})).toHaveCount(1);
 });
 
 test('a refused restore reports that the current state was left unchanged', async ({page}) => {
@@ -281,4 +282,172 @@ test('Close, the upper-right close control and Escape all close the manager', as
     await expect(page.locator('.dp-backup-manager-dialog')).toHaveCount(0);
     await expect(page.locator('#view-settings [data-action="backups"]')).toBeFocused();
   }
+});
+
+// --- restore in progress -----------------------------------------------------
+
+const PROGRESS = '.dp-modal-dialog.dp-modal-progress';
+const RESTORED_MARKER = 'dp.backupRestored';
+
+function held() {
+  let release;
+  const gate = new Promise(resolve => { release = resolve; });
+  return {gate, release};
+}
+
+async function confirmRestoreOf(page, dialog, index) {
+  await selectBox(dialog, index).check();
+  await action(dialog, 'restore').click();
+  await page.locator('.dp-backup-restore-dialog [data-modal-accept]').click();
+  await expect(page.locator(PROGRESS)).toBeVisible();
+}
+
+const marker = page => page.evaluate(key => window.sessionStorage.getItem(key), RESTORED_MARKER);
+
+test('a confirmed restore becomes one non-dismissible, centred progress presentation', async ({page}) => {
+  const hold = held();
+  await mockBackups(page, {restoreGate: hold.gate});
+  const dialog = await openManager(page);
+  await confirmRestoreOf(page, dialog, 0);
+  const progress = page.locator(PROGRESS);
+
+  // The confirmation is replaced, not hidden underneath: the manager and the
+  // one progress presentation are the only dialogs.
+  await expect(page.locator('.dp-backup-restore-dialog')).toHaveCount(0);
+  await expect(page.locator('.dp-modal-dialog')).toHaveCount(2);
+  await expect(progress).toHaveAttribute('aria-busy', 'true');
+  await expect(progress.locator('.dp-modal-progress-status')).toHaveText('Restoring DebridPulse…');
+  await expect(progress.locator('.dp-modal-progress-detail p')).toHaveText([
+    'Processing is paused while the selected backup is restored.',
+    'DebridPulse will restart automatically when restoration is complete.',
+  ]);
+  // Nothing to press: no X, no Cancel, no footer, no header.
+  await expect(progress.locator('button, a, input')).toHaveCount(0);
+  await expect(progress.locator('.dp-modal-header, .dp-modal-footer, [data-modal-close]')).toHaveCount(0);
+
+  const look = await progress.evaluate(node => {
+    const frame = node.getBoundingClientRect();
+    const centre = frame.left + frame.width / 2;
+    const status = node.querySelector('.dp-modal-progress-status');
+    const lines = [status, ...node.querySelectorAll('.dp-modal-progress-detail p')];
+    // Every rendered LINE of every text block, centred on the dialog frame.
+    const offsets = lines.flatMap(element => {
+      const range = document.createRange();
+      range.selectNodeContents(element);
+      return [...range.getClientRects()].map(rect => Math.abs(rect.left + rect.width / 2 - centre));
+    });
+    const style = element => getComputedStyle(element);
+    const detail = node.querySelector('.dp-modal-progress-detail p');
+    return {
+      offsets,
+      statusSize: parseFloat(style(status).fontSize),
+      detailSize: parseFloat(style(detail).fontSize),
+      statusWeight: Number(style(status).fontWeight),
+      statusAnimation: style(status).animationName,
+      detailAnimation: [...node.querySelectorAll('.dp-modal-progress-detail, .dp-modal-progress-detail p')]
+        .map(element => style(element).animationName),
+      statusTop: status.getBoundingClientRect().bottom,
+      detailTop: detail.getBoundingClientRect().top,
+    };
+  });
+  expect(look.offsets.length).toBeGreaterThanOrEqual(3);
+  for (const offset of look.offsets) expect(offset).toBeLessThan(1);
+  expect(look.statusSize).toBeGreaterThan(look.detailSize);
+  expect(look.statusWeight).toBeGreaterThanOrEqual(700);
+  expect(look.detailTop).toBeGreaterThan(look.statusTop);
+  // Only the primary line breathes.
+  expect(look.statusAnimation).toBe('dp-modal-progress-pulse');
+  expect(look.detailAnimation.every(name => name === 'none')).toBe(true);
+
+  // Escape, the backdrop and Tab cannot end it or leave it.
+  await page.keyboard.press('Escape');
+  await page.mouse.click(4, 4);
+  await page.keyboard.press('Tab');
+  await expect(progress).toBeVisible();
+  expect(await progress.evaluate(node => node.contains(document.activeElement))).toBe(true);
+  // No success is recorded while the backend has not answered.
+  expect(await marker(page)).toBeNull();
+  hold.release();
+});
+
+test('reduced motion leaves the restoring line static', async ({page}) => {
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  const hold = held();
+  await mockBackups(page, {restoreGate: hold.gate});
+  const dialog = await openManager(page);
+  await confirmRestoreOf(page, dialog, 0);
+  const status = page.locator(`${PROGRESS} .dp-modal-progress-status`);
+  expect(await status.evaluate(node => {
+    const style = getComputedStyle(node);
+    return [style.animationName, style.opacity];
+  })).toEqual(['none', '1']);
+  hold.release();
+});
+
+test('a refused restore removes the progress and returns to the usable manager', async ({page}) => {
+  const detail = 'Backup could not be restored. The current DebridPulse state was left unchanged.';
+  const hold = held();
+  await mockBackups(page, {restoreGate: hold.gate, restoreResult: {status: 409, body: {detail}}});
+  const dialog = await openManager(page);
+  await confirmRestoreOf(page, dialog, 1);
+  hold.release();
+  await expect(page.locator(PROGRESS)).toHaveCount(0);
+  await expect(page.locator('#toasts .toast').last()).toContainText('left unchanged');
+  await expect(dialog).toBeVisible();
+  await expect(rows(dialog)).toHaveCount(3);
+  await expect(selectBox(dialog, 1)).toBeChecked();
+  await expect(action(dialog, 'restore')).toBeEnabled();
+  await expect(action(dialog, 'restore')).toBeFocused();
+  expect(await marker(page)).toBeNull();
+});
+
+test('a successful restore reloads straight from the progress and says so exactly once', async ({page}) => {
+  const hold = held();
+  await mockBackups(page, {restoreGate: hold.gate});
+  const dialog = await openManager(page);
+  await confirmRestoreOf(page, dialog, 0);
+  // Record, across the reload, whether the progress ever gave way before the page did.
+  await page.evaluate(() => {
+    new MutationObserver(() => {
+      if (!document.querySelector('.dp-modal-dialog.dp-modal-progress')) {
+        window.sessionStorage.setItem('dp-test-progress-gone', '1');
+      }
+    }).observe(document.body, {childList: true, subtree: true});
+  });
+  const reloaded = page.waitForEvent('load');
+  hold.release();
+  await reloaded;
+
+  const restored = page.locator('#toasts .toast', {hasText: 'Backup restored successfully.'});
+  await expect(restored).toHaveCount(1);
+  expect(await marker(page)).toBeNull();
+  expect(await page.evaluate(() => window.sessionStorage.getItem('dp-test-progress-gone'))).toBeNull();
+
+  // The marker was consumed: a later load says nothing.
+  await page.reload();
+  await expect(page.locator('#sidebar .nav-item[data-view="dashboard"]')).toBeVisible();
+  await expect(page.locator('#toasts .toast', {hasText: 'Backup restored successfully.'})).toHaveCount(0);
+});
+
+// --- presentation -------------------------------------------------------------
+
+test('the table header is flat and the footer action group sits on the dialog centreline', async ({page}) => {
+  await mockBackups(page);
+  const dialog = await openManager(page);
+  const headers = dialog.locator('thead th');
+  await expect(headers).toHaveText(['', 'Backup', 'Contents', 'Size', '']);
+  const images = await headers.evaluateAll(cells => cells.map(cell => getComputedStyle(cell).backgroundImage));
+  expect(images).toEqual(['none', 'none', 'none', 'none', 'none']);
+  const colours = await headers.evaluateAll(cells => [...new Set(cells.map(cell => getComputedStyle(cell).backgroundColor))]);
+  expect(colours).toHaveLength(1);
+
+  const footer = await dialog.evaluate(node => {
+    const frame = node.getBoundingClientRect();
+    const buttons = [...node.querySelectorAll('.dp-modal-footer button')].map(button => button.getBoundingClientRect());
+    return {frameCentre: frame.left + frame.width / 2,
+      groupCentre: (buttons[0].left + buttons[buttons.length - 1].right) / 2};
+  });
+  expect(Math.abs(footer.groupCentre - footer.frameCentre)).toBeLessThan(1);
+  const labels = await dialog.locator('.dp-modal-footer button').allInnerTexts();
+  expect(labels.map(label => label.trim())).toEqual(['Add Backup', 'Save Backup', 'Restore Backup', 'Close']);
 });

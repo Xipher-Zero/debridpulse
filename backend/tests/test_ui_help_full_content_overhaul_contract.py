@@ -131,9 +131,11 @@ def test_settings_reference_matches_the_six_current_settings_sections_and_save_s
         "API Access",
         "Run Backup",
         "Allow Database Wipe",
-        "processing to be paused",
+        "always creates a safety backup first",
     ):
         assert phrase in panel
+    # The wipe owns its own pause; the operator is never told to pause first.
+    assert "processing to be paused" not in panel
 
     for retired in (
         "Apply Settings",

@@ -445,9 +445,8 @@
                 <li><b>Backups &amp; Retention:</b> enable scheduled backups, choose the backup folder and interval, and set how long backups, statistics snapshots, and event-log entries are retained.</li>
                 <li><b>Run Backup:</b> creates a backup immediately. <b>Backups</b> opens the backup manager: select one backup to <b>Save Backup</b> (keep a copy elsewhere), <b>Restore Backup</b> (replaces the current database and configuration after an automatic safety backup), or <b>Remove</b> it; <b>Add Backup</b> brings a saved copy back in after validating it.</li>
                 <li><b>Allow Database Wipe:</b> is a safety gate that must be enabled before a wipe can run.</li>
-                <li><b>Backup Before Wipe:</b> makes the destructive operation depend on a successful pre-wipe backup.</li>
               </ul>
-              <p>Database wipe also requires processing to be paused and uses an explicit confirmation flow. Treat it as a reset operation, not routine cleanup.</p>
+              <p>Database wipe uses an explicit confirmation flow and always creates a safety backup first. DebridPulse pauses processing for the wipe itself and returns it to its previous state afterwards. Treat it as a reset operation, not routine cleanup.</p>
             </div>
           </details>
         </div>
@@ -547,8 +546,8 @@
           <details class="dp-help-accordion">
             <summary>Database maintenance will not run</summary>
             <div class="dp-help-accordion-body dp-help-copy dp-help-prose">
-              <p>Database wipe is intentionally difficult to trigger accidentally. Processing must be paused, <b>Allow Database Wipe</b> must be enabled, and the confirmation flow must be completed.</p>
-              <p>If <b>Backup Before Wipe</b> is enabled, a failed required backup aborts the wipe. Fix the backup folder, permissions, or storage problem instead of bypassing the protection.</p>
+              <p>Database wipe is intentionally difficult to trigger accidentally. <b>Allow Database Wipe</b> must be enabled and the confirmation flow must be completed. DebridPulse pauses processing for the wipe itself and returns it to its previous state afterwards.</p>
+              <p>A failed safety backup aborts the wipe. Fix the backup folder, permissions, or storage problem; the backup cannot be skipped.</p>
               <p>Use <b>Run Backup</b> and <b>Backups</b> before destructive maintenance when you want to verify that recovery material exists.</p>
             </div>
           </details>

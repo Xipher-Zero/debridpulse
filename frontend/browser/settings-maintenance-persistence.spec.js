@@ -301,10 +301,10 @@ test('every Data & Maintenance value commits at its own boundary, with no Apply'
   });
 
 test('every Data & Maintenance toggle commits immediately', async ({page}) => {
-  const before = await keep(page, 'backup_enabled', 'db_backup_before_wipe', 'db_wipe_enabled');
+  const before = await keep(page, 'backup_enabled', 'db_wipe_enabled');
   try {
     await openMaintenance(page);
-    for (const key of ['backup_enabled', 'db_backup_before_wipe', 'db_wipe_enabled']) {
+    for (const key of ['backup_enabled', 'db_wipe_enabled']) {
       const control = field(page, key);
       const track = page.locator(`label[for="dp-settings-field-${key.replaceAll('_', '-')}"]`);
       const was = await control.isChecked();
@@ -434,7 +434,7 @@ test('Reset Database keeps its warning, its spacer, its island and its confirmat
       await openMaintenance(page);
       const card = resetCard(page);
       await expect(card.getByText('Database Reset is Destructive')).toBeVisible();
-      await expect(card.getByText(/Processing must be paused before the database can be reset/))
+      await expect(card.getByText(/Processing is paused automatically for the reset/))
         .toBeVisible();
 
       const layout = await card.evaluate(node => {
@@ -468,7 +468,7 @@ test('Reset Database keeps its warning, its spacer, its island and its confirmat
       expect(layout.share).toBeLessThan(0.98);   // never a full-width band
       expect(layout.oneRow).toBe(true);
       expect(layout.order)
-        .toEqual(['db_backup_before_wipe', 'db_wipe_enabled', 'wipe-database']);
+        .toEqual(['db_wipe_enabled', 'wipe-database']);
 
       // The destructive flow is untouched: a typed confirmation, and nothing
       // happens when it is declined.

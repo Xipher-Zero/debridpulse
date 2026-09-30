@@ -308,14 +308,6 @@ class DatabaseMaintenanceRouteTests(unittest.IsolatedAsyncioTestCase):
                 await routes.wipe_database_admin({"confirm": True}, application=application)
         self.assertEqual(exc.exception.status_code, 400)
 
-    async def test_database_wipe_requires_pause(self):
-        cfg = SimpleNamespace(db_wipe_enabled=True, db_backup_before_wipe=True)
-        application = SimpleNamespace(repository=SimpleNamespace(globally_paused=AsyncMock(return_value=False)))
-        with patch("api.routes.get_settings", return_value=cfg):
-            with self.assertRaises(routes.HTTPException) as exc:
-                await routes.wipe_database_admin({"confirm": True}, application=application)
-        self.assertEqual(exc.exception.status_code, 409)
-
 
 class _FakeResponse:
     def __init__(self, status=204):

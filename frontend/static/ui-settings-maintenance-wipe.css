@@ -190,6 +190,11 @@
   width: min(720px, 100%);
 }
 
+/* The action group sits on the dialog's own centreline. */
+.dp-backup-manager-dialog > .dp-modal-footer {
+  justify-content: center;
+}
+
 .dp-backup-table-wrap {
   max-height: min(48vh, 400px);
   overflow: auto;
@@ -209,7 +214,7 @@
   position: sticky;
   top: 0;
   padding: 8px 10px;
-  background: var(--dp-panel-header-surface);
+  background: var(--dp-surface-3);
   color: var(--dp-text-muted);
   font-size: 11px;
   font-weight: 600;

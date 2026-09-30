@@ -232,7 +232,6 @@
     stats_snapshot_interval_minutes: {scope: 'settings-document', option: 'stats_snapshot_interval_minutes'},
     stats_snapshot_keep_days: {scope: 'settings-document', option: 'stats_snapshot_keep_days'},
     events_keep_days: {scope: 'settings-document', option: 'events_keep_days'},
-    db_backup_before_wipe: {scope: 'settings-document', option: 'db_backup_before_wipe', commit: 'immediate'},
     db_wipe_enabled: {scope: 'settings-document', option: 'db_wipe_enabled', commit: 'immediate'},
   });
 
@@ -2695,11 +2694,10 @@
     const reset = card('Database Reset Controls', `
       <div class="dp-settings-caution">
         <b>Database Reset is Destructive</b>
-        <span>Processing must be paused before the database can be reset. A backup can be created automatically before the reset begins.</span>
+        <span>Processing is paused automatically for the reset and returned to its previous state afterwards. A safety backup is always created first; the reset is aborted if it fails.</span>
       </div>
       <div class="dp-settings-database-reset-spacer" aria-hidden="true"></div>
       <div class="dp-settings-database-wipe-row">
-        ${toggle('db_backup_before_wipe', 'Backup Database Before Reset', 'Create a backup before resetting the database. The reset is aborted if the backup fails.', s.db_backup_before_wipe !== false, 'dp-settings-database-wipe-toggle')}
         ${toggle('db_wipe_enabled', 'Allow Database Reset', 'Unlock the database reset action.', s.db_wipe_enabled, 'dp-settings-database-wipe-toggle')}
         <div class="dp-settings-actions dp-settings-database-wipe-action">
           <button class="btn btn-danger btn-sm" type="button" data-action="wipe-database">Reset Database</button>
@@ -3695,7 +3693,7 @@
     }
     const confirmed = await window.DPSettingsModal.confirm({
       title: 'Wipe database?',
-      message: 'Processing must be paused. This permanently removes all database rows. If Backup Before Wipe is enabled, DebridPulse will create the required backup first.',
+      message: 'This permanently removes all database rows. DebridPulse pauses processing for the wipe and returns it to its previous state afterwards, and creates a safety backup first; if the backup fails, nothing is wiped.',
       confirmLabel: 'Wipe Database',
       tone: 'danger',
       typedPhrase: 'WIPE',
@@ -3705,7 +3703,7 @@
     setBusy(button, true, 'Wiping…');
     try {
       const result = await request('POST', '/admin/database/wipe', {confirm: true}, 60000);
-      notify(result.backup && !result.backup.skipped ? 'Database wiped. Pre-wipe backup created.' : 'Database wiped.', 'success');
+      notify('Database wiped. Pre-wipe backup created.', 'success');
       try { if (typeof loadStats === 'function') loadStats(); } catch (_) {}
       try { if (typeof loadRecent === 'function') loadRecent(); } catch (_) {}
       try {

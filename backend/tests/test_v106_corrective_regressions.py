@@ -64,7 +64,6 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=True,
-            db_backup_before_wipe=False,
         ),
     )
     monkeypatch.setattr(routes.scheduler_runtime, "scheduler_running", lambda: True)
@@ -75,12 +74,21 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
     async def start_scheduler(application):
         calls.append("scheduler-start")
 
-    async def quiesce():
-        calls.append("transfer-quiesce")
-        return {"ok": True}
+    async def drain():
+        calls.append("transfer-drain")
+        return {"live_before": 0, "live_after": 0}
 
-    async def release():
-        calls.append("transfer-release")
+    async def pause_intent():
+        calls.append("intent-read")
+        return "operator-intent"
+
+    async def record_pause_intent(intent):
+        assert intent == "operator-intent"
+        calls.append("intent-record")
+
+    async def restore_pause_intent(intent):
+        assert intent == "operator-intent"
+        calls.append("intent-restore")
 
     @asynccontextmanager
     async def maintenance():
@@ -98,32 +106,48 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
     monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", stop_scheduler)
     monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", start_scheduler)
     from services.maintenance_gate import ApplicationMaintenanceGate
-    application = SimpleNamespace(database_wipe_admission=ApplicationMaintenanceGate().maintenance, quiesce_for_database_wipe=quiesce, release_database_wipe_quiescence=release, repository=SimpleNamespace(globally_paused=AsyncMock(return_value=True)))
+    application = SimpleNamespace(database_wipe_admission=ApplicationMaintenanceGate().maintenance,
+        drain_executions=drain, pause_intent=pause_intent, record_pause_intent=record_pause_intent,
+        restore_pause_intent=restore_pause_intent, repository=SimpleNamespace(live_executions=AsyncMock(return_value=())))
     monkeypatch.setattr(routes, "database_maintenance", maintenance)
     monkeypatch.setattr(db_maintenance, "wipe_database", wipe_database)
+
+    async def safety_backup():
+        calls.append("safety-backup")
+        return SimpleNamespace(public=lambda: {"id": "safety"})
+
+    monkeypatch.setattr(routes.backup_store, "create_restore_point", safety_backup)
 
     result = await routes.wipe_database_admin({"confirm": True}, application=application)
     assert result["ok"] is True
     assert calls == [
+        "intent-read",
         "scheduler-stop",
-        "transfer-quiesce",
+        "transfer-drain",
         "db-gate-enter",
+        "intent-record",
+        "safety-backup",
         "wipe",
         "db-gate-exit",
-        "transfer-release",
+        "intent-restore",
         "scheduler-start",
     ]
 
 
-def test_database_wipe_route_releases_quiescence_in_finally():
+def test_database_wipe_route_unwinds_its_own_pause_in_finally():
     routes = (Path(__file__).resolve().parents[1] / "api" / "routes.py").read_text()
     block = routes.split('async def wipe_database_admin', 1)[1].split('# ── Statistics & Reporting', 1)[0]
     assert "scheduler_runtime.stop_scheduler" in block
     assert "database_maintenance()" in block
-    assert "quiesce_for_database_wipe" in block
+    assert "application.drain_executions()" in block
     assert "finally:" in block
-    assert "release_database_wipe_quiescence" in block
+    assert "application.restore_pause_intent(intent)" in block
+    # Resume All clears every transfer's own pause; the wipe never uses it.
+    assert "resume_all" not in block
     assert "scheduler_runtime.start_scheduler" in block
+    # The operator no longer has to pause first; the wipe owns its quiescence.
+    assert "Pause processing before wiping" not in block
+    assert "quiesce_for_database_wipe" not in routes
 
 
 def test_settings_secret_merge_preserve_replace_clear():
@@ -269,8 +293,9 @@ async def test_application_maintenance_gate_drains_admitted_work_and_rejects_new
 
 
 @pytest.mark.asyncio
-async def test_database_wipe_rechecks_pause_after_application_admission_drain(monkeypatch):
+async def test_database_wipe_reads_pause_intent_after_application_admission_drain(monkeypatch):
     import api.routes as routes
+    import services.db_maintenance as db_maintenance
 
     calls = []
     state = SimpleNamespace(paused=True)
@@ -279,35 +304,49 @@ async def test_database_wipe_rechecks_pause_after_application_admission_drain(mo
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=True,
-            db_backup_before_wipe=False,
         ),
     )
-    monkeypatch.setattr(routes.scheduler_runtime, "scheduler_running", lambda: True)
+    monkeypatch.setattr(routes.scheduler_runtime, "scheduler_running", lambda: False)
 
     @asynccontextmanager
     async def application_gate():
-        calls.append("app-gate-enter")
-        # Simulate a Resume that was admitted just before maintenance closed.
+        # Simulate a Resume that was admitted just before maintenance closed:
+        # that Resume, not the stale pre-admission read, is the operator's intent.
         state.paused = False
-        try:
-            yield
-        finally:
-            calls.append("app-gate-exit")
+        yield
 
-    async def globally_paused():
+    async def pause_intent():
         return state.paused
 
-    application = SimpleNamespace(database_wipe_admission=application_gate,
-        repository=SimpleNamespace(globally_paused=globally_paused))
-    monkeypatch.setattr(routes.scheduler_runtime, "stop_scheduler", AsyncMock())
-    monkeypatch.setattr(routes.scheduler_runtime, "start_scheduler", AsyncMock())
+    async def drain():
+        state.paused = True
+        return {"live_before": 0, "live_after": 0}
 
-    with pytest.raises(Exception) as exc:
-        await routes.wipe_database_admin({"confirm": True}, application=application)
-    assert getattr(exc.value, "status_code", None) == 409
-    routes.scheduler_runtime.stop_scheduler.assert_not_awaited()
-    routes.scheduler_runtime.start_scheduler.assert_not_awaited()
-    assert calls == ["app-gate-enter", "app-gate-exit"]
+    async def record_pause_intent(intent):
+        state.paused = intent
+
+    async def restore_pause_intent(intent):
+        calls.append(("restore", intent))
+        state.paused = intent
+
+    @asynccontextmanager
+    async def maintenance():
+        yield
+
+    async def wipe_database(*, verified_quiesced=False):
+        return {"ok": True, "wiped_tables": []}
+
+    application = SimpleNamespace(database_wipe_admission=application_gate, drain_executions=drain,
+        pause_intent=pause_intent, record_pause_intent=record_pause_intent, restore_pause_intent=restore_pause_intent,
+        repository=SimpleNamespace(live_executions=AsyncMock(return_value=())))
+    monkeypatch.setattr(routes, "database_maintenance", maintenance)
+    monkeypatch.setattr(db_maintenance, "wipe_database", wipe_database)
+    monkeypatch.setattr(routes.backup_store, "create_restore_point",
+                        AsyncMock(return_value=SimpleNamespace(public=lambda: {"id": "safety"})))
+
+    await routes.wipe_database_admin({"confirm": True}, application=application)
+    assert calls == [("restore", False)]
+    assert state.paused is False
 
 
 def test_mutating_http_requests_share_application_maintenance_admission():
@@ -331,7 +370,6 @@ async def test_database_wipe_refreshes_disabled_setting_after_admission_drain(mo
         "get_settings",
         lambda: SimpleNamespace(
             db_wipe_enabled=state.enabled,
-            db_backup_before_wipe=False,
         ),
     )
     monkeypatch.setattr(routes.scheduler_runtime, "scheduler_running", lambda: True)

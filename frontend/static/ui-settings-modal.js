@@ -26,6 +26,13 @@
  * dialog. `closeControl: true` adds the upper-right close control, which is
  * the cancel slot's settlement under a second, conventional placement.
  *
+ * A dialog that reports work the operator cannot stop declares `progress:
+ * true` (built by `progress()`): its title is the centred status line in the
+ * body, and it has no header, no footer and no control of any kind. Escape
+ * and the backdrop are inert, focus is held on the dialog itself, and only
+ * its client ends it -- `handle.close()` once the work has returned control,
+ * or never, when the page itself is replaced.
+ *
  * Focus contract (explicit lifecycle boundary: settlement of the dialog):
  *   1. The initiating control is restored when it is still focusable.
  *   2. If a refresh replaced it while the dialog was open, its equivalent
@@ -133,7 +140,12 @@
 
   function trapTab(event, entry) {
     const controls = Array.from(entry.dialog.querySelectorAll(FOCUSABLE)).filter(isFocusable);
-    if (!controls.length) return;
+    if (!controls.length) {
+      // Nothing to move between: focus stays on (or returns to) the dialog itself.
+      event.preventDefault();
+      entry.dialog.focus();
+      return;
+    }
     const first = controls[0];
     const last = controls[controls.length - 1];
     const active = document.activeElement;
@@ -157,7 +169,7 @@
     if (overlays[overlays.length - 1] !== entry.overlay) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      entry.settle(false);
+      if (!entry.progress) entry.settle(false);
     } else if (event.key === 'Tab') {
       trapTab(event, entry);
     } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement
@@ -171,6 +183,7 @@
   function open(spec = {}) {
     const role = spec.role === 'alertdialog' ? 'alertdialog' : 'dialog';
     const tone = spec.tone === 'danger' || spec.tone === 'warning' || spec.tone === 'success' ? spec.tone : '';
+    const progress = spec.progress === true;
     const dismissOnly = spec.dismiss === true;
     const actions = Array.isArray(spec.actions) ? spec.actions : [];
     const acceptClass = tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
@@ -179,7 +192,13 @@
 
     const overlay = document.createElement('div');
     overlay.className = 'dp-modal-overlay';
-    overlay.innerHTML = `
+    overlay.innerHTML = progress ? `
+      <section class="dp-modal-dialog dp-modal-progress" role="${role}" aria-modal="true" aria-busy="true"
+               aria-labelledby="${dialogId}-title" tabindex="-1">
+        <div class="dp-modal-body">
+          <p class="dp-modal-progress-status" id="${dialogId}-title"></p>
+        </div>
+      </section>` : `
       <section class="dp-modal-dialog" role="${role}" aria-modal="true" aria-labelledby="${dialogId}-title">
         <header class="dp-modal-header">
           <div class="dp-modal-title" id="${dialogId}-title"></div>
@@ -213,11 +232,11 @@
     if (tone) dialog.dataset.tone = tone;
     if (spec.className) dialog.classList.add(...String(spec.className).split(/\s+/).filter(Boolean));
     if (spec.bodyClassName) body.classList.add(...String(spec.bodyClassName).split(/\s+/).filter(Boolean));
-    overlay.querySelector('.dp-modal-title').textContent = String(spec.title || '');
+    overlay.querySelector(`#${dialogId}-title`).textContent = String(spec.title || '');
     // The one control of a dismiss-only dialog IS the cancel slot: closing is
     // the only outcome there is, so it needs no second name and no second
     // settlement path.
-    cancel.textContent = String(spec.cancelLabel || (dismissOnly ? 'Close' : 'Cancel'));
+    if (cancel) cancel.textContent = String(spec.cancelLabel || (dismissOnly ? 'Close' : 'Cancel'));
     if (accept) {
       accept.textContent = String(spec.acceptLabel || 'Confirm');
       accept.disabled = spec.acceptDisabled === true;
@@ -226,7 +245,7 @@
     let settled = false;
     let resolveClosed;
     const closed = new Promise(resolve => { resolveClosed = resolve; });
-    const entry = {overlay, dialog, body, accept, settle};
+    const entry = {overlay, dialog, body, accept, progress, settle};
 
     function settle(accepted) {
       if (settled) return;
@@ -258,7 +277,7 @@
       dialog.setAttribute('aria-describedby', described.id);
     }
 
-    cancel.addEventListener('click', () => settle(false));
+    if (cancel) cancel.addEventListener('click', () => settle(false));
     if (close) close.addEventListener('click', () => settle(false));
     if (accept) accept.addEventListener('click', () => settle(true));
     actionButtons.forEach((button, id) => button.addEventListener('click', () => {
@@ -269,7 +288,7 @@
     mounted.push(entry);
     document.body.appendChild(overlay);
     document.body.classList.add(BODY_OPEN_CLASS);
-    cancel.focus();
+    (cancel || dialog).focus();
     return handle;
   }
 
@@ -359,5 +378,28 @@
     return dialog.closed.then(result => (result.accepted && field ? field.value : null));
   }
 
-  window.DPSettingsModal = Object.freeze({open, confirm, prompt});
+  /* The non-dismissible progress shape: one centred status line (`title`)
+   * and, beneath it, static centred explanatory `lines`. It resolves nothing
+   * by itself; the returned handle's close() is the only way it ends. */
+  function progress({title, lines = [], className = ''} = {}) {
+    return open({
+      role: 'alertdialog',
+      progress: true,
+      title,
+      className,
+      mount(body) {
+        const detail = document.createElement('div');
+        detail.className = 'dp-modal-progress-detail';
+        for (const line of lines) {
+          const text = document.createElement('p');
+          text.textContent = String(line);
+          detail.appendChild(text);
+        }
+        body.appendChild(detail);
+        return detail;
+      },
+    });
+  }
+
+  window.DPSettingsModal = Object.freeze({open, confirm, prompt, progress});
 })();

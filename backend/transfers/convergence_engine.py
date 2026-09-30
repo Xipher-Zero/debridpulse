@@ -28,7 +28,7 @@ from transfers.filesystem import payload_facts
 from transfers.models import (
     Artifact, CleanupAuthority, ExecutionControl, ExecutionHandle, ExecutionObservation, ExecutionState,
     ExecutionSubject, ExecutorRuntimeCapability, MaterializationAdmissionKind, Ownership,
-    OutcomeKind, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferState,
+    OutcomeKind, PauseIntent, ResolutionAttempt, ResolutionResult, ResourceState, TransferOutcome, TransferState,
 )
 from transfers.policy import RecoveryAction, TERMINAL_TRANSFER_STATES, failure_signature
 from transfers.recovery_execution import RecoveryClaim, RecoveryTrigger, trigger_authority
@@ -2549,17 +2549,57 @@ class TransferEngine(_QualifiedTransferEngine):
         results = {}
         for transfer in await self.repository.active():
             await self.repository.set_pause_and_fence(transfer.id, False)
-            errors = []
-            for artifact in await self.repository.artifacts(transfer.id):
-                if artifact.state == "completed":
-                    continue
-                if not await self.recover_artifact(artifact, trigger=RecoveryTrigger.RESUME):
-                    current = await self._current_artifact(transfer.id, artifact.id)
-                    if current and current.error:
-                        errors.append(current.error)
-            await self._aggregate(transfer.id)
-            results[transfer.id] = tuple(errors)
+            results[transfer.id] = await self._readmit(transfer.id)
         # One wake for the batch: every transfer above is durably admissible,
         # and a running resolution cycle reconsiders them all now.
+        self._resolution_opportunity(*results)
+        return results
+
+    async def _readmit(self, transfer_id: int) -> tuple:
+        """Recover every unfinished artifact of a transfer whose pause intent
+        has just been lifted."""
+        errors = []
+        for artifact in await self.repository.artifacts(transfer_id):
+            if artifact.state == "completed":
+                continue
+            if not await self.recover_artifact(artifact, trigger=RecoveryTrigger.RESUME):
+                current = await self._current_artifact(transfer_id, artifact.id)
+                if current and current.error:
+                    errors.append(current.error)
+        await self._aggregate(transfer_id)
+        return tuple(errors)
+
+    async def pause_intent(self) -> PauseIntent:
+        """The operator's durable pause intent right now."""
+        return PauseIntent(await self.repository.globally_paused(),
+                           {transfer.id: transfer.paused for transfer in await self.repository.active()})
+
+    async def record_pause_intent(self, intent: PauseIntent) -> None:
+        """Write a recorded pause intent back as the durable intent, through
+        the same writers Pause and Resume use -- and nothing else: no gate is
+        released and nothing is readmitted. A whole-state operation that
+        paused everything to quiesce hands the operator's intent back with
+        this before anything captures that state."""
+        async with self._dispatch_lock:
+            await self.repository.global_pause(intent.globally_paused)
+            for transfer in await self.repository.active():
+                if transfer.id in intent.transfers:
+                    await self.repository.set_pause_and_fence(transfer.id, intent.transfers[transfer.id])
+
+    async def restore_pause_intent(self, intent: PauseIntent):
+        """Reinstate a recorded pause intent exactly and enforce it: the
+        durable intent is written back, and -- unless processing was globally
+        paused -- the acquisition gates reopen and only the transfers whose
+        own intent is running are readmitted. A transfer the operator paused
+        stays paused; unlike Resume All, nothing else's intent is cleared."""
+        await self.record_pause_intent(intent)
+        if intent.globally_paused:
+            return {}
+        async with self._dispatch_lock:
+            await self._set_acquisition_gates(False)
+        results = {}
+        for transfer in await self.repository.active():
+            if not transfer.paused:
+                results[transfer.id] = await self._readmit(transfer.id)
         self._resolution_opportunity(*results)
         return results

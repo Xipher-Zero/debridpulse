@@ -257,7 +257,7 @@ async def test_acquisition_gate_does_not_claim_full_database_wipe_quiescence(tmp
     core.executor.cancel_mode = "unconfirmed"  # the writer's stop cannot be proven now
     service = ApplicationService(core.engine)
     with pytest.raises(RuntimeError):
-        await service.quiesce_for_database_wipe()
+        await service.drain_executions()
     assert core.executor.gate == [True]  # the gate engaged, yet it is not proof of quiescence
 
 

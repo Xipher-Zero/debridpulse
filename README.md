@@ -233,7 +233,7 @@ Configure optional Discord lifecycle notifications.
 
 DebridPulse uses a single authoritative SQLite/WAL database. Configure its persistent path through `DB_PATH` or the container data mount.
 
-The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, and retention), statistics snapshot and event-log retention, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; with **Backup Database Before Reset** enabled, the reset is aborted if the backup fails.
+The **Data & Maintenance** tab configures scheduled backups (backup folder, interval, and retention), statistics snapshot and event-log retention, and the guarded **Reset Database** action. Reset stays locked until **Allow Database Reset** is enabled; it always creates a safety backup first and is aborted if that backup fails.
 
 ---
 

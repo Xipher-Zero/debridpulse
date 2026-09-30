@@ -53,7 +53,7 @@ def test_settings_uses_first_party_confirmation_dialog_not_browser_dialogs():
     assert "event.key === 'Escape'" in modal
     assert "event.key === 'Tab'" in modal
     assert "resolveFocusTarget(origin)" in modal
-    assert "cancel.focus()" in modal
+    assert "(cancel || dialog).focus()" in modal
     assert "window.confirm" not in js and "window.confirm" not in modal
     assert "window.prompt" not in js and "window.prompt" not in modal
     assert ".dp-modal-overlay" not in css

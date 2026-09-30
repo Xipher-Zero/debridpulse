@@ -1405,11 +1405,15 @@ _database_wipe_lock = asyncio.Lock()
 
 @router.post("/admin/database/wipe")
 async def wipe_database_admin(body: dict | None = None, application: ApplicationService = Depends(get_application)):
+    """The operator confirms the destructive intent; the wipe establishes what
+    it needs itself. Inside the maintenance admission it drains every native
+    execution through the one generic drain (the one a restore uses), so none
+    outlives the database that owned it. The operator's pre-wipe pause
+    intent -- the global Pause and every transfer's own -- is recorded first,
+    is what the safety backup captures, and is reinstated exactly afterwards."""
     cfg = get_settings()
     if not getattr(cfg, "db_wipe_enabled", False):
         raise HTTPException(400, "Database wipe is disabled in settings")
-    if not await application.repository.globally_paused():
-        raise HTTPException(409, "Pause processing before wiping the database")
     if not (body or {}).get("confirm"):
         raise HTTPException(400, "Wipe confirmation required")
 
@@ -1419,17 +1423,17 @@ async def wipe_database_admin(body: dict | None = None, application: Application
     async with _database_wipe_lock:
         scheduler_was_running = scheduler_runtime.scheduler_running()
         scheduler_stopped = False
-        quiesced = False
+        intent = None
         try:
             async with application.database_wipe_admission():
                 # A state-changing request could have been admitted immediately
                 # before maintenance closed admission. The gate drains it first;
-                # refresh every destructive setting only after that drain.
+                # refresh every destructive setting, and record the operator's
+                # pause intent, only after that drain.
                 cfg = get_settings()
                 if not getattr(cfg, "db_wipe_enabled", False):
                     raise HTTPException(400, "Database wipe is disabled in settings")
-                if not await application.repository.globally_paused():
-                    raise HTTPException(409, "Pause processing before wiping the database")
+                intent = await application.pause_intent()
 
                 if scheduler_was_running:
                     # Claim restart responsibility before the interruptible stop.
@@ -1437,38 +1441,41 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                     await scheduler_runtime.stop_scheduler()
 
                 try:
-                    quiesce_result = await application.quiesce_for_database_wipe()
-                    quiesced = True
+                    drain = await application.drain_executions()
                 except Exception as exc:
                     raise HTTPException(409, _sanitize_error(exc))
 
-                try:
-                    # Application execution admission, scheduler activity, provider
-                    # work, materialization work and owned aria2 execution are all
-                    # closed/drained before this database writer gate is acquired.
-                    async with database_maintenance():
-                        backup_result = None
-                        if getattr(cfg, "db_backup_before_wipe", True):
-                            # The same one creation owner as Run Backup and
-                            # the pre-restore safety backup: a restore point.
-                            try:
-                                backup_result = (await backup_store.create_restore_point()).public()
-                            except backup_store.BackupRejected:
-                                raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted") from None
+                # Application execution admission, scheduler activity, provider
+                # work, materialization work and every native execution are all
+                # closed/drained before this database writer gate is acquired.
+                async with database_maintenance():
+                    if await application.repository.live_executions():
+                        raise HTTPException(409, "Could not prove every native execution stopped")
+                    # The drain's pause is the wipe's own; the backup keeps the
+                    # operator's intent instead.
+                    await application.record_pause_intent(intent)
+                    # Mandatory, like the pre-restore safety backup, and made by
+                    # the same one creation owner as Run Backup: a restore point.
+                    # Without it nothing is deleted.
+                    try:
+                        backup_result = (await backup_store.create_restore_point()).public()
+                    except backup_store.BackupRejected:
+                        raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted") from None
 
-                        from services.db_maintenance import wipe_database
-                        result = await wipe_database(verified_quiesced=True)
+                    from services.db_maintenance import wipe_database
+                    result = await wipe_database(verified_quiesced=True)
 
-                    return {**result, "backup": backup_result, "quiesced": quiesce_result}
-                finally:
-                    if quiesced:
-                        await application.release_database_wipe_quiescence()
-                        quiesced = False
+                return {**result, "backup": backup_result, "drain": drain}
         finally:
-            # Restart only after application admission has reopened so new
-            # scheduler tasks cannot immediately bounce off the maintenance gate.
-            if scheduler_stopped:
-                await scheduler_runtime.start_scheduler(application)
+            # Unwound only once application admission has reopened, so neither
+            # the readmission nor new scheduler tasks bounce off the maintenance
+            # gate. Exactly the operator's recorded intent is reinstated.
+            try:
+                if intent is not None:
+                    await application.restore_pause_intent(intent)
+            finally:
+                if scheduler_stopped:
+                    await scheduler_runtime.start_scheduler(application)
 
 
 

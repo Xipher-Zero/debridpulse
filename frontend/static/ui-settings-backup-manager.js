@@ -15,12 +15,20 @@
  * most one is checked, and the contextual Remove action appears on that row
  * alone. The shared dialog shell (DPSettingsModal) owns focus, Escape, the
  * upper-right close control and settlement.
+ *
+ * A confirmed restore is shown by the shell's non-dismissible progress shape
+ * until the backend answers. A refusal returns to the manager; success -- the
+ * backend's answer, sent only once the restored state has started -- leaves
+ * a one-shot marker in this browser session and reloads, and the reloaded
+ * page consumes the marker exactly once to say so.
  */
 (function () {
   'use strict';
 
   const INVENTORY = '/admin/backups';
   const PACKAGE_TYPE = {description: 'DebridPulse backup', accept: {'application/zip': ['.zip']}};
+  // Presentation only: "the restore this page just asked for succeeded".
+  const RESTORED_MARKER = 'dp.backupRestored';
 
   const state = {
     dialog: null,
@@ -265,22 +273,49 @@
     return dialog.closed.then(result => result.accepted);
   }
 
+  function markRestored() {
+    try { window.sessionStorage.setItem(RESTORED_MARKER, '1'); } catch (_) {}
+  }
+
+  /* Consumed on the first page load after a successful restore, then gone. */
+  function announceRestored() {
+    let restored = false;
+    try {
+      restored = window.sessionStorage.getItem(RESTORED_MARKER) === '1';
+      window.sessionStorage.removeItem(RESTORED_MARKER);
+    } catch (_) {}
+    if (restored) notify('Backup restored successfully.', 'success');
+  }
+
   async function restoreBackup() {
     const selected = selectedBackup();
     if (!selected || !(await confirmRestore(selected))) return;
+    const progress = window.DPSettingsModal.progress({
+      title: 'Restoring DebridPulse…',
+      lines: [
+        'Processing is paused while the selected backup is restored.',
+        'DebridPulse will restart automatically when restoration is complete.',
+      ],
+      className: 'dp-backup-restore-progress',
+    });
+    let failure = null;
     await run(async () => {
       try {
         await request('POST', `${INVENTORY}/restore`, {id: selected.id}, 900000);
       } catch (error) {
-        notify(error.message || 'Backup could not be restored. The current DebridPulse state was left unchanged.', 'error');
+        failure = error;
         try { await load(state.selected); } catch (_) {}
-        return;
       }
-      notify('Backup restored. Reloading DebridPulse…', 'success');
-      state.dialog?.close();
-      // Everything the page holds belongs to the replaced state.
-      window.setTimeout(() => window.location.reload(), 1200);
     });
+    if (!failure) {
+      // The restored state is running. Everything this page holds belongs to
+      // the replaced one, so the progress stays until the page is replaced.
+      markRestored();
+      window.location.reload();
+      return;
+    }
+    progress.close();
+    notify(failure.message || 'Backup could not be restored. The current DebridPulse state was left unchanged.', 'error');
   }
 
   // ── Remove ───────────────────────────────────────────────────────────────
@@ -370,6 +405,8 @@
       }
     });
   }
+
+  announceRestored();
 
   window.DPBackupManager = Object.freeze({open});
 })();

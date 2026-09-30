@@ -17,7 +17,7 @@ from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers import file_selection
 from transfers.contracts import Manifest
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
-from transfers.models import ExecutionState, TransferRequest, TransferState
+from transfers.models import TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
     direct_link_host, extract_hash_from_torrent, normalize_direct_links,
@@ -511,6 +511,21 @@ class ApplicationService:
             await publish("stats_changed", {})
             return {"ok": not any(results.values()), "paused": await self.repository.globally_paused(), "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
 
+    async def pause_intent(self):
+        return await self.engine.pause_intent()
+
+    async def record_pause_intent(self, intent):
+        async with self.application_operation():
+            await self.engine.record_pause_intent(intent)
+
+    async def restore_pause_intent(self, intent):
+        async with self.application_operation():
+            results = await self.engine.restore_pause_intent(intent)
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            await publish("stats_changed", {})
+            return results
+
     async def retry(self, transfer_id):
         async with self.application_operation():
             transfer = await self.require(transfer_id)
@@ -697,39 +712,19 @@ class ApplicationService:
                 "errors": errors,
             }
 
-    async def quiesce_for_database_wipe(self):
-        # The maintenance admission owner has already drained all commands and
-        # scheduler cycles, including in-flight provider submissions.
-        result = await self.pause_all()
-        if result["failed"]:
-            raise RuntimeError("Could not confirm every owned execution is paused")
-        checked = 0
-        for attempt in await self.repository.live_executions():
-            executor = self.engine.registry.executors.get(attempt.handle.executor_id)
-            if executor is None:
-                raise RuntimeError("An execution integration is unavailable")
-            observation = await self.engine._observe_execution(executor, attempt.handle)
-            if observation.state not in {ExecutionState.PAUSED, ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}:
-                raise RuntimeError("An owned execution could not be confirmed idle")
-            checked += 1
-        return {"pause": result, "owned_checked": checked, "provider_operations_drained": True, "materialization_drained": True}
-
     async def drain_executions(self):
-        """Restore quiescence: no native execution owned by the current state
-        may outlive it. Durable global pause stops new admission and quiesces
-        and checkpoints every writer; the engine then releases whatever Pause
-        left parked through the same writer retirement. Nothing is logically
-        cancelled. Raises unless zero pre-restore executions remain live."""
+        """Whole-state quiescence (restore, database wipe): no native execution
+        owned by the current state may outlive it. Durable global pause stops
+        new admission and quiesces and checkpoints every writer; the engine then
+        releases whatever Pause left parked through the same writer retirement.
+        Nothing is logically cancelled. Raises unless zero executions of the
+        current state remain live."""
         live_before = len(await self.repository.live_executions())
         await self.pause_all()
         residue = await self.engine.release_writers("state_replacement")
         if residue:
             raise RuntimeError("Could not prove every native execution stopped")
         return {"live_before": live_before, "live_after": len(await self.repository.live_executions())}
-
-    async def release_database_wipe_quiescence(self):
-        # Admission is released by the surrounding maintenance context.
-        return None
 
     def configure(self):
         if self._configure:

@@ -838,6 +838,14 @@ class ExecutorRuntimeControlResult:
 
 
 @dataclass(frozen=True)
+class PauseIntent:
+    """The operator's durable pause intent: the global Pause and each
+    non-terminal transfer's own pause."""
+    globally_paused: bool
+    transfers: Mapping[int, bool]
+
+
+@dataclass(frozen=True)
 class ExecutorGateResult:
     """Outcome of an executor-wide acquisition gate; ``effective_paused`` is
     confirmed truth, ``None`` when it could not be proven."""

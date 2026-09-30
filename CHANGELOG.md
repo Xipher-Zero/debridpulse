@@ -161,12 +161,22 @@
   if anything fails before the restored state is running, the current state is left unchanged. The Backup
   Folder location is kept, so the safety backup stays in Backups. Signing in again may be required after a
   restore. The pre-reset safety backup is now an ordinary restore point in the same Backups list.
+  While a restore runs, a **Restoring DebridPulse…** window stays in front of everything and cannot be
+  dismissed. If the restore is refused, you return to Backups with the reason and your selection; once the
+  restored state is running, DebridPulse reloads and says **Backup restored successfully.** (once).
 - In the authentication-required dialog, **Enter** submits the username and password when both are
   filled; otherwise it shows which one is missing and sends nothing. **Continue** still proceeds with a
   deliberately partial credential set.
 
 ### Changed
 
+- **Resetting the database no longer asks you to pause first.** After you type WIPE, DebridPulse pauses
+  processing itself, stops every running download — including a paused download whose transfer was still
+  held open — through the same drain Restore uses (they stay paused, not cancelled), creates the safety
+  backup, resets, and then returns processing to what it was before: running resumes, paused stays
+  paused, and a download you paused on its own stays paused — the safety backup records that same state,
+  not the reset's temporary pause. If the running downloads cannot be stopped safely, nothing is reset. The safety backup is now
+  mandatory: the **Backup Database Before Reset** setting is gone, and if the backup fails nothing is reset.
 - **A source already merged into an existing download stays merged.** When one download's source was
   recognized as the same file another download already has, a slower decision still under way for that
   source could later try to set it up as a download of its own. It touched the merged copy's record,

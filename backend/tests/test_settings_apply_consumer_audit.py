@@ -128,20 +128,24 @@ def test_every_editable_control_on_every_panel_declares_its_own_boundary():
 
 
 def test_data_and_maintenance_declares_every_one_of_its_own_controls():
-    """The final migration, named explicitly: the six values and three booleans
-    that were the last Apply consumers now each have exactly one owner."""
+    """The final migration, named explicitly: the six values and two booleans
+    that were the last Apply consumers now each have exactly one owner (the
+    third boolean, the pre-reset backup opt-out, was retired: that backup is
+    mandatory)."""
     declared = declared_fields()
     for field in (
         "backup_enabled", "backup_folder", "backup_interval_hours", "backup_keep_days",
         "stats_snapshot_interval_minutes", "stats_snapshot_keep_days", "events_keep_days",
-        "db_wipe_enabled", "db_backup_before_wipe",
+        "db_wipe_enabled",
     ):
         assert field in declared, field
+    # Retired: the pre-reset safety backup can no longer be switched off.
+    assert "db_backup_before_wipe" not in declared
 
 
 def test_the_maintenance_booleans_commit_immediately_and_the_values_on_blur():
     table = block("const COMMIT_FIELDS", "});")
-    for immediate in ("backup_enabled", "db_backup_before_wipe", "db_wipe_enabled"):
+    for immediate in ("backup_enabled", "db_wipe_enabled"):
         row = re.search(rf"^    {immediate}: \{{(.+)\}},$", table, re.M).group(1)
         assert "scope: 'settings-document'" in row, immediate
         assert "commit: 'immediate'" in row, immediate
