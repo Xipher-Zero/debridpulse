@@ -21,7 +21,7 @@ import struct
 from typing import Awaitable, Callable
 from urllib.parse import urlsplit
 
-from executors.aria2.client import Aria2Service
+from executors.aria2.client import Aria2ResponseError, Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
     SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, RemoteFile,
@@ -784,6 +784,25 @@ class Aria2Executor:
                 return accepted
             await asyncio.sleep(min(max(0.01, float(self.configuration.confirmation_delay)), remaining))
 
+    async def _submit(self, handle: ExecutionHandle, address: str, options: dict, secrets, *,
+                      paused: bool) -> ExecutionObservation:
+        """THE one native job submission (``addUri``) and its admission.
+
+        aria2 answering ``addUri`` with its own JSON-RPC error is a definitive
+        refusal -- no job was admitted -- so the start is FAILED with the
+        sanitized native evidence, never an uncertain acknowledgement. Only
+        what cannot prove the answer (a timeout, a lost connection, a
+        malformed or lost response) propagates to the caller's uncertain
+        handling."""
+        try:
+            returned = await self.client._call("aria2.addUri", [[address], options])
+        except Aria2ResponseError as exc:
+            return ExecutionObservation(handle, ExecutionState.FAILED,
+                                        error=exception_failure(exc, stage=Stage.QUEUE, secrets=secrets))
+        if str(returned) != self._handle_gid(handle):
+            raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+        return await self._admitted(handle, paused=paused)
+
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._start(request, handle)
 
@@ -815,10 +834,7 @@ class Aria2Executor:
             # A deletion can revoke authority during DNS or egress startup.
             await self._check(handle, "start")
             options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
-            returned = await self.client._call("aria2.addUri", [[address], options])
-            if str(returned) != gid:
-                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-            return await self._admitted(handle, paused=request.paused)
+            return await self._submit(handle, address, options, secrets, paused=request.paused)
         except _AdmissionDeferred:
             return ExecutionObservation(handle, ExecutionState.PAUSED)
         except Exception as exc:
@@ -862,10 +878,7 @@ class Aria2Executor:
             address, options = await self._options(request, handle, submitted, host_identity=host_identity)
             await self._check(handle, "resume")
             options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
-            returned = await self.client._call("aria2.addUri", [[address], options])
-            if str(returned) != gid:
-                raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
-            return await self._admitted(handle, paused=request.paused)
+            return await self._submit(handle, address, options, secrets, paused=request.paused)
         except _AdmissionDeferred:
             return await self.observe(handle)
         except Exception as exc:

@@ -54,6 +54,12 @@ class Aria2ConnectionError(Aria2RPCError):
     """Connection error to aria2; subclass retained for compatibility."""
 
 
+class Aria2ResponseError(Aria2RPCError):
+    """The daemon's own JSON-RPC ``error`` answer to one call: the request
+    reached aria2 and aria2 refused it. Never raised for a transport failure,
+    a timeout or a malformed/lost response, whose outcome stays unknown."""
+
+
 @dataclass
 class Aria2DownloadStatus:
     gid: str
@@ -413,8 +419,10 @@ class Aria2Service:
             await connector.close()
 
         if "error" in data:
-            error = data["error"] or {}
-            raise Aria2RPCError(
+            # Only an error object is aria2's answer; anything else is malformed.
+            answered = isinstance(data["error"], dict)
+            error = data["error"] if answered else {}
+            raise (Aria2ResponseError if answered else Aria2RPCError)(
                 f"aria2 [{error.get('code', 'UNKNOWN')}]: {error.get('message', 'Unknown error')}",
                 code=error.get("code"),
             )

@@ -14,7 +14,7 @@ decides no server identity: discovery is core's, the transport observation is
 the executor's, and access input belongs to the universal authentication-input
 lifecycle.
 """
-from urllib.parse import quote, unquote, urlparse, urlsplit, urlunsplit
+from urllib.parse import quote, unquote, urlsplit, urlunsplit
 
 from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError
@@ -46,30 +46,41 @@ class GeneralFtpProvider:
         ))
 
     def _checked(self, request: TransferRequest) -> tuple[str, str, str]:
-        """``(address, scheme, host)`` of one structurally valid FTP/SFTP request."""
+        """``(address, scheme, host)`` of one structurally valid FTP/SFTP request.
+
+        THE one interpretation of the request: ``address`` is the canonical
+        executable URI rebuilt from the parsed parts -- the scheme, the host
+        (IPv6 bracketed), the port only when one was given, and the path,
+        query and fragment exactly as submitted -- so discovery, resolver
+        identity evidence and the candidate endpoint all name one coordinate
+        and no harmless operator spelling (``host:/path``) reaches a writer."""
         if not isinstance(request, TransferRequest) or request.kind not in self.descriptor.request_types:
             raise self._failure(Category.UNSUPPORTED_REQUEST)
         if not isinstance(request.payload, str):
             raise self._failure(Category.INVALID_REQUEST)
 
-        address = request.payload
-        parsed = urlparse(address)
+        parsed = urlsplit(request.payload)
         scheme = parsed.scheme.lower()
         if scheme != request.kind or not parsed.netloc:
             raise self._failure(Category.INVALID_REQUEST)
         try:
-            malformed_port = parsed.port == 0  # urlparse raises on a non-numeric or out-of-range port
+            port = parsed.port  # raises on a non-numeric or out-of-range port
         except ValueError:
-            malformed_port = True
-        if malformed_port:
+            raise self._failure(Category.INVALID_REQUEST) from None
+        if port == 0:
             raise self._failure(Category.INVALID_REQUEST)
         if parsed.username is not None or parsed.password is not None:
             # Core splits credentials out at admission; a provider never sees them.
             raise self._failure(Category.SECURITY_POLICY_REJECTED, domain=Domain.SECURITY)
 
-        host = str(parsed.hostname or "").strip().lower().rstrip(".")
+        hostname = str(parsed.hostname or "")
+        host = hostname.strip().lower().rstrip(".")
         if not host:
             raise self._failure(Category.INVALID_REQUEST)
+        authority = f"[{hostname}]" if ":" in hostname else hostname
+        if port is not None:
+            authority = f"{authority}:{port}"
+        address = urlunsplit((scheme, authority, parsed.path, parsed.query, parsed.fragment))
         return address, scheme, host
 
     async def resolve(self, request: TransferRequest) -> ResolutionResult:

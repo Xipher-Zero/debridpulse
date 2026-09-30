@@ -68,15 +68,17 @@ async def test_every_ftp_or_sftp_path_is_classified_by_core_run_discovery(url):
     assert result.discovery.accepted_input_methods == (InputMethod.USERNAME_PASSWORD,)
 
 
-@pytest.mark.parametrize("url,name", [
-    ("ftp://files.example.org/pub/lone.bin", "lone.bin"),
-    ("sftp://Mirror.Example.org:2222/data/My%20File.tar.gz", "My File.tar.gz"),
-    ("ftp://files.example.org:2121/archive.zip?type=i", "archive.zip"),
+@pytest.mark.parametrize("url,name,address", [
+    ("ftp://files.example.org/pub/lone.bin", "lone.bin", "ftp://files.example.org/pub/lone.bin"),
+    ("sftp://Mirror.Example.org:2222/data/My%20File.tar.gz", "My File.tar.gz",
+     "sftp://mirror.example.org:2222/data/My%20File.tar.gz"),
+    ("ftp://files.example.org:2121/archive.zip?type=i", "archive.zip", "ftp://files.example.org:2121/archive.zip?type=i"),
 ])
-async def test_a_path_proven_to_be_a_regular_file_is_one_ordinary_candidate(url, name):
+async def test_a_path_proven_to_be_a_regular_file_is_one_ordinary_candidate(url, name, address):
     result = await _provider().resolve_discovered(_request(url), _discovered("file", size=77))
     [candidate_] = result.candidates
-    assert [(item.scheme, item.address) for item in candidate_.endpoints] == [(url.split(":", 1)[0], url)]
+    # The canonical executable coordinate (test_v113_ftp_sftp_executable_endpoint.py).
+    assert [(item.scheme, item.address) for item in candidate_.endpoints] == [(url.split(":", 1)[0], address)]
     assert candidate_.name == name and candidate_.expected_bytes == 77
     assert candidate_.provider_id == "general_ftp"
     assert candidate_.accepted_input_methods == (InputMethod.USERNAME_PASSWORD,)

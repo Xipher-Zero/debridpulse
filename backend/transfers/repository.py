@@ -887,6 +887,14 @@ class TransferRepository(_QualifiedTransferRepository):
             if (not bool(row.get("authorized")) and row.get("state") in _TERMINAL_EXECUTION_STATES):
                 await db.rollback()
                 return
+            if row.get("state") == ExecutionState.FAILED.value and observation.state == ExecutionState.ABSENT:
+                # A proven failure is higher-confidence truth than a later
+                # absence of the same attempt: the failed native object is
+                # merely no longer observable. The durable attempt keeps its
+                # FAILED state and native cause; the caller still holds the
+                # absence as runtime evidence.
+                await db.rollback()
+                return
             previous = TransferProgress(**codec.load(row["progress"], {}))
             artifact = await db.fetchone(
                 "SELECT id,torrent_id,size_bytes,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",

@@ -79,18 +79,22 @@ def test_catalog_registers_general_ftp_alongside_the_existing_integrations() -> 
 # ── 2. Resolution ─────────────────────────────────────────────────────────────
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("url,host,name", [
-    ("ftp://files.example.org/pub/linux/image.iso", "files.example.org", "image.iso"),
-    ("sftp://Mirror.Example.org:2222/data/My%20File.tar.gz", "mirror.example.org", "My File.tar.gz"),
-    ("ftp://files.example.org:2121/archive.zip?type=i", "files.example.org", "archive.zip"),
+@pytest.mark.parametrize("url,host,name,address", [
+    ("ftp://files.example.org/pub/linux/image.iso", "files.example.org", "image.iso",
+     "ftp://files.example.org/pub/linux/image.iso"),
+    ("sftp://Mirror.Example.org:2222/data/My%20File.tar.gz", "mirror.example.org", "My File.tar.gz",
+     "sftp://mirror.example.org:2222/data/My%20File.tar.gz"),
+    ("ftp://files.example.org:2121/archive.zip?type=i", "files.example.org", "archive.zip",
+     "ftp://files.example.org:2121/archive.zip?type=i"),
 ])
-async def test_resolution_emits_one_ordinary_candidate(url, host, name) -> None:
+async def test_resolution_emits_one_ordinary_candidate(url, host, name, address) -> None:
     provider = GeneralFtpProvider()
     result = await _proven_file(provider, _request(url))
     assert result.state == ResourceState.AVAILABLE
     assert len(result.candidates) == 1
     candidate = result.candidates[0]
-    assert candidate.endpoints == (Endpoint(url.split(":", 1)[0], url),)
+    # The canonical executable coordinate (test_v113_ftp_sftp_executable_endpoint.py).
+    assert candidate.endpoints == (Endpoint(url.split(":", 1)[0], address),)
     assert candidate.provider_id == "general_ftp"
     assert candidate.source_identity == SourceIdentity("host", host)
     assert candidate.name == name
