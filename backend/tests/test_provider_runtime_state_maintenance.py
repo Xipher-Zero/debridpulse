@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import base64
-import json
-from types import SimpleNamespace
+import sqlite3
 
 import pytest
 
 import db.database as database
+from backup_support import restore_point_database
 import services.db_maintenance as db_maintenance
 from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.repository import TransferRepository
@@ -15,17 +14,7 @@ from transfers.repository import TransferRepository
 @pytest.mark.asyncio
 async def test_runtime_state_participates_in_canonical_backup_and_explicit_database_wipe(tmp_path, monkeypatch):
     db_path = tmp_path / "maintenance.sqlite3"
-    backup_root = tmp_path / "backups"
     monkeypatch.setattr(database, "DB_PATH", db_path)
-    monkeypatch.setattr(
-        db_maintenance,
-        "get_settings",
-        lambda: SimpleNamespace(
-            db_backup_enabled=True,
-            db_backup_folder=str(backup_root),
-            db_backup_keep_days=7,
-        ),
-    )
 
     await database.init_db()
     repository = TransferRepository()
@@ -41,18 +30,18 @@ async def test_runtime_state_participates_in_canonical_backup_and_explicit_datab
         successful_at=1001.0,
     )
 
-    backup = await db_maintenance.run_database_backup()
-    assert backup["errors"] == []
-    assert backup["tables"]["integration_runtime_state"] == 1
-    payload = json.loads((backup_root / backup["timestamp"] / "database.json").read_text(encoding="utf-8"))
-    rows = payload["tables"]["integration_runtime_state"]
+    copied = await restore_point_database(tmp_path, monkeypatch)
+    conn = sqlite3.connect(copied)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM integration_runtime_state").fetchall()
+    finally:
+        conn.close()
     assert len(rows) == 1
     assert rows[0]["integration_id"] == "parcel-lab"
     assert rows[0]["state_key"] == "calibration"
     assert rows[0]["schema_version"] == record.schema_version
-    assert rows[0]["payload"] == {
-        "__base64__": base64.b64encode(record.payload).decode("ascii")
-    }
+    assert bytes(rows[0]["payload"]) == record.payload
     assert rows[0]["generation"] == 1
 
     wiped = await db_maintenance.wipe_database(verified_quiesced=True)

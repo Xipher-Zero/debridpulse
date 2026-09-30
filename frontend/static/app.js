@@ -136,11 +136,13 @@ async function confirmLocalNetwork(hosts) {
 
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
+  // A file sent as itself: the raw body, typed by the file.
+  const isFile = !isFormData && typeof Blob !== 'undefined' && body instanceof Blob;
   const opts = {
     method,
-    headers: isFormData ? {} : {'Content-Type':'application/json'}
+    headers: isFormData ? {} : {'Content-Type': isFile ? (body.type || 'application/octet-stream') : 'application/json'}
   };
-  if (body) opts.body = isFormData ? body : JSON.stringify(body);
+  if (body) opts.body = isFormData || isFile ? body : JSON.stringify(body);
   const ms = timeoutMs || 8000; // default 8s; callers can pass longer for slow operations
   const controller = new AbortController();
   let timedOut = false;

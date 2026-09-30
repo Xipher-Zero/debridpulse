@@ -304,8 +304,41 @@
     event.stopPropagation();
   }
 
+  /* Enter is the keyboard form of Continue only where the credential intent is
+   * unambiguous. In the ordinary username/password form that means BOTH fields
+   * hold something; otherwise the existing missing-credential message is shown,
+   * nothing is sent and the dialog stays open -- the explicit Continue button
+   * remains the deliberate way to proceed with a partial credential set (a
+   * passwordless account, say). The private-key form keeps its own required
+   * fields, which the one validated submission already enforces. */
+  function handleEnter(event) {
+    const field = event.target;
+    if (!(field instanceof HTMLInputElement) || !field.matches('[data-dp-auth-username], [data-dp-auth-secret]')) return;
+    if (event.isComposing || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+    event.preventDefault();
+    const active = state.active;
+    if (!active || state.busy || state.cancelling) return;
+    if (active.mode === 'password') {
+      snapshotFields();
+      if (!text(active.username).trim()) {
+        setInlineError('Username is required.');
+        return;
+      }
+      if (!active.password) {
+        setInlineError('Password is required.');
+        return;
+      }
+    }
+    void submitActive();
+  }
+
   function handleKeydown(event) {
-    if (!state.overlay || event.key !== 'Tab') return;
+    if (!state.overlay) return;
+    if (event.key === 'Enter') {
+      handleEnter(event);
+      return;
+    }
+    if (event.key !== 'Tab') return;
     const dialog = state.overlay.querySelector('[data-dp-input-required-modal]');
     const focusable = Array.from(dialog?.querySelectorAll(
       'button:not([disabled]), input:not([disabled]):not([type="file"])'

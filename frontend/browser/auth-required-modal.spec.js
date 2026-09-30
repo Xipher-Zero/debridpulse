@@ -535,3 +535,123 @@ test('modal keeps dialog semantics, focus containment, light-theme readability h
   expect(geometry.width).toBeGreaterThan(300);
   await page.screenshot({path:'test-results/checkpoint-auth-light-mobile.png', fullPage:true});
 });
+// ── Enter is the keyboard form of Continue only for an unambiguous credential ─
+
+function optionalPasswordMethod() {
+  return {
+    method: 'username_password',
+    fields: [
+      { name: 'username', required: true },
+      { name: 'password', required: false },
+    ],
+  };
+}
+
+test('Enter with both username and password submits exactly once through the Continue path', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(
+    page,
+    [authItem(1040, 'enter-complete', 1, [passwordMethod()])],
+    async ({id, state}) => state.set(authItem(id, 'resolved', 2, [], 'queued')),
+  );
+  const modal = await openModal(page);
+  await modal.locator('[data-dp-auth-username]').fill('enter-user-sentinel');
+  await modal.locator('[data-dp-auth-secret]').fill('enter-password-sentinel');
+  await page.keyboard.press('Enter');
+  await expect(modal).toBeHidden();
+  await page.waitForTimeout(300);
+  expect(fixture.submissions).toHaveLength(1);
+  // The same validated submission Continue sends: same endpoint, same shape.
+  expect(fixture.submissions[0]).toEqual({id: 1040, body: {
+    challenge_id: 'enter-complete', method: 'username_password',
+    username: 'enter-user-sentinel', password: 'enter-password-sentinel',
+  }});
+});
+
+for (const incomplete of [
+  {name: 'username only', username: 'only-user', password: '', message: 'Password is required.'},
+  {name: 'password only', username: '', password: 'only-password', message: 'Username is required.'},
+  {name: 'neither field', username: '', password: '', message: 'Username is required.'},
+]) {
+  test(`Enter with ${incomplete.name} validates inline and never submits`, async ({ page }) => {
+    await isolateExternalFonts(page);
+    // Password is optional here: only the explicit Continue may proceed with a
+    // partial credential set, never the keyboard shortcut.
+    const fixture = await installFixture(page, [authItem(1041, 'enter-incomplete', 1, [optionalPasswordMethod()])]);
+    const modal = await openModal(page);
+    await modal.locator('[data-dp-auth-username]').fill(incomplete.username);
+    await modal.locator('[data-dp-auth-secret]').fill(incomplete.password);
+    for (const field of ['[data-dp-auth-username]', '[data-dp-auth-secret]']) {
+      await modal.locator(field).focus();
+      await page.keyboard.press('Enter');
+      await expect(modal.locator('[data-dp-auth-error]')).toHaveText(incomplete.message);
+    }
+    await page.waitForTimeout(300);
+    await expect(modal).toBeVisible();
+    await expect(modal.locator('[data-dp-auth-continue]')).toBeEnabled();
+    expect(fixture.submissions).toEqual([]);
+    expect(fixture.cancellations).toEqual([]);
+  });
+}
+
+test('explicit Continue still proceeds with an intentionally partial credential set', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(
+    page,
+    [authItem(1042, 'continue-partial', 1, [optionalPasswordMethod()])],
+    async ({id, state}) => state.set(authItem(id, 'resolved', 2, [], 'queued')),
+  );
+  const modal = await openModal(page);
+  await modal.locator('[data-dp-auth-username]').fill('passwordless-user');
+  await page.keyboard.press('Enter');
+  await expect(modal.locator('[data-dp-auth-error]')).toHaveText('Password is required.');
+  expect(fixture.submissions).toEqual([]);
+  await modal.locator('[data-dp-auth-continue]').click();
+  await expect(modal).toBeHidden();
+  expect(fixture.submissions).toHaveLength(1);
+  expect(fixture.submissions[0].body).toEqual({
+    challenge_id: 'continue-partial', method: 'username_password', username: 'passwordless-user', password: '',
+  });
+});
+
+test('private-key Enter keeps the key form\'s own required fields and submits through the same path', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(
+    page,
+    [authItem(1043, 'enter-key', 1, [keyMethod()])],
+    async ({id, state}) => state.set(authItem(id, 'resolved', 2, [], 'queued')),
+  );
+  const modal = await openModal(page);
+  await chooseKey(page, validKeyA, 'key-enter');
+  await modal.locator('[data-dp-auth-secret]').focus();
+  await page.keyboard.press('Enter');
+  await expect(modal.locator('[data-dp-auth-error]')).toHaveText('Username is required.');
+  expect(fixture.submissions).toEqual([]);
+  await modal.locator('[data-dp-auth-username]').fill('key-enter-user');
+  // An empty optional passphrase is legitimate for an unencrypted key.
+  await modal.locator('[data-dp-auth-secret]').focus();
+  await page.keyboard.press('Enter');
+  await expect(modal).toBeHidden();
+  expect(fixture.submissions).toHaveLength(1);
+  expect(fixture.submissions[0].body.method).toBe('username_private_key');
+  expect(fixture.submissions[0].body.private_key).toBe(validKeyA);
+  expect(fixture.submissions[0].body).not.toHaveProperty('passphrase');
+});
+
+test('Enter never makes passive dismissal destructive: Escape stays inert and Cancel cancels once', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const fixture = await installFixture(page, [authItem(1044, 'enter-dismissal', 1, [passwordMethod()])]);
+  const modal = await openModal(page);
+  await modal.locator('[data-dp-auth-username]').fill('dismissal-user');
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Escape');
+  await page.locator('[data-dp-auth-required-overlay]').click({position: {x: 4, y: 4}});
+  await page.waitForTimeout(300);
+  await expect(modal).toBeVisible();
+  expect(fixture.submissions).toEqual([]);
+  expect(fixture.cancellations).toEqual([]);
+  await modal.locator('[data-dp-auth-cancel]').click();
+  await expect(modal).toBeHidden();
+  await page.waitForTimeout(300);
+  expect(fixture.cancellations).toEqual([1044]);
+});

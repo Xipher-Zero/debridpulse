@@ -18,6 +18,7 @@ STATIC = ROOT / "frontend" / "static"
 RUNTIME = STATIC / "ui-settings-page.js"   # the one Settings owner emits this markup
 STYLE = STATIC / "ui-settings-maintenance-wipe.css"
 MODAL = STATIC / "ui-settings-modal.js"
+MANAGER = STATIC / "ui-settings-backup-manager.js"   # the one Backups manager state owner
 
 
 def source(path: Path) -> str:
@@ -34,10 +35,11 @@ def panel() -> str:
 def test_both_backup_actions_live_in_the_card_header_rail_in_order():
     body = panel()
     rail = body[body.index("headerAction:"):body.index("</label>`,")]
-    assert rail.index('data-action="list-backups"') < rail.index('data-action="run-backup"')
+    assert rail.index('data-action="backups"') < rail.index('data-action="run-backup"')
     assert rail.index('data-action="run-backup"') < rail.index('data-setting="backup_enabled"')
-    # Quiet/secondary for the reading, the existing positive treatment for the act.
-    assert '<button class="btn btn-ghost btn-sm" type="button" data-action="list-backups">List Backups</button>' in rail
+    # Quiet/secondary for the manager, the existing positive treatment for the act.
+    assert '<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>' in rail
+    assert "List Backups" not in source(RUNTIME)
     assert 'class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup<' in rail
 
 
@@ -60,32 +62,43 @@ def test_backups_retention_header_copy_and_enable_control_are_locked():
     assert "dpBackupsRetentionPolished" not in js
 
 
-# ── The backup listing modal ───────────────────────────────────────────────
+# ── The Backups manager ─────────────────────────────────────────────────────
 
-def test_the_backup_listing_uses_the_shared_dialog_owner_and_is_bounded():
+def test_settings_only_opens_the_one_backups_manager_owner():
+    """The Settings page settles its writes and hands over; it holds no backup
+    inventory, fetches none and mutates none."""
     js = source(RUNTIME)
-    listing = js[js.index("  async function listBackups(button) {"):js.index("  /* The destructive reset.")]
-    # The ONE canonical dialog owner, with nothing to accept.
-    assert "window.DPSettingsModal.open({" in listing
-    assert "dismiss: true," in listing
-    assert "title: 'Backups'," in listing
-    # Listing semantics are the backend's: same endpoint, same order, same
-    # entries, same files. No restore/delete management is added.
-    assert "request('GET', '/admin/backups', undefined, 15000)" in listing
-    assert "backups.map(item =>" in listing
-    assert "html(item.name || 'backup')" in listing
-    assert "html((item.files || []).join(', '))" in listing
-    assert "No backups found." in listing
-    # A READING adds no management: it issues no mutating request and renders
-    # no control of its own inside the dialog.
-    for absent in ("request('POST'", "request('DELETE'", "request('PUT'",
-                   "request('PATCH'", "<button"):
-        assert absent not in listing, absent
-    # Bounded and internally scrollable, in the page's own list material.
+    opener = js[js.index("  async function openBackups() {"):js.index("  /* The destructive reset.")]
+    assert "await settlePendingWrites();" in opener
+    assert "window.DPBackupManager?.open()" in opener
+    assert "/admin/backups" not in js
+    assert "async function listBackups(" not in js
+
+
+def test_the_backups_manager_is_one_state_owner_in_the_shared_dialog_shell():
+    manager = source(MANAGER)
+    assert manager.count("window.DPBackupManager = Object.freeze({open});") == 1
+    # The ONE canonical dialog owner composes the shell, the close control and
+    # the footer; the manager declares its actions and never builds a footer.
+    assert "window.DPSettingsModal.open({" in manager
+    assert "dismiss: true," in manager and "closeControl: true," in manager
+    for label in ("'Add Backup'", "'Save Backup'", "'Restore Backup'"):
+        assert label in manager, label
+    assert "dp-modal-footer" not in manager
+    # One inventory reader: every refresh goes through load().
+    assert manager.count("request('GET', INVENTORY") == 2  # open() + load()
+    # Application terminology, never transport terminology.
+    for word in ("Upload", "Download", "Import Backup", "Export Backup", "Server Storage", "Remote Backup"):
+        assert word not in manager, word
+    # Single-checkmark selection, never radio buttons, never multi-select.
+    assert 'type="checkbox"' in manager and 'type="radio"' not in manager
+    assert "state.selected = state.selected === id ? '' : id;" in manager
+    # Bounded and internally scrollable, in the page's own material.
     css = source(STYLE)
-    bounds = css.split(".dp-settings-backup-list {", 1)[1].split("}", 1)[0]
+    bounds = css.split(".dp-backup-table-wrap {", 1)[1].split("}", 1)[0]
     assert "max-height:" in bounds
-    assert "overflow-y: auto;" in bounds
+    assert "overflow: auto;" in bounds
+    assert ".dp-settings-backup-list" not in css
 
 
 def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
@@ -93,7 +106,7 @@ def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
     one dialog owner, never by a client hiding a control it does not own."""
     modal = source(MODAL)
     assert "const dismissOnly = spec.dismiss === true;" in modal
-    assert "${dismissOnly ? '' : `<button class=\"btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}\" type=\"button\" data-modal-accept></button>`}" in modal
+    assert "${dismissOnly ? '' : `<button class=\"btn ${acceptClass}\" type=\"button\" data-modal-accept></button>`}" in modal
     # Every other consumer is untouched: accept still exists and still settles.
     assert "if (accept) accept.addEventListener('click', () => settle(true));" in modal
     assert "entry.accept && !entry.accept.disabled" in modal
@@ -271,8 +284,8 @@ def test_every_maintenance_action_settles_pending_writes_before_it_runs():
     assert "const settlePendingWrites = () => window.DPSettingsPersistence.settle(root());" in js
     for start, end in (
         ("  async function browseDirectory(purpose) {", "  async function runBackup(button) {"),
-        ("  async function runBackup(button) {", "  /* The backup listing is a READING"),
-        ("  async function listBackups(button) {", "  /* The destructive reset."),
+        ("  async function runBackup(button) {", "  /* The Backups manager belongs to its one state owner"),
+        ("  async function openBackups() {", "  /* The destructive reset."),
         ("  async function wipeDatabaseClean(button) {", "  /* Erasing a stored credential"),
     ):
         action = js[js.index(start):js.index(end)]

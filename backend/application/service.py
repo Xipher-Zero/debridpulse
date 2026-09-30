@@ -39,6 +39,14 @@ class LocalNetworkConfirmationRequired(Exception):
         super().__init__("local network connection requires confirmation")
         self.hosts = tuple(hosts)
 
+class IntegrationStopFailed(RuntimeError):
+    """An integration failed to stop; ``stopped`` were stopped before it."""
+
+    def __init__(self, stopped):
+        super().__init__("an integration failed to stop")
+        self.stopped = tuple(stopped)
+
+
 class ApplicationService:
     def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None,
                  staged_input=None):
@@ -201,6 +209,9 @@ class ApplicationService:
         return self._storage_checked_admission(maintenance=False)
 
     def database_wipe_admission(self):
+        return self._storage_checked_admission(maintenance=True)
+
+    def state_replacement_admission(self):
         return self._storage_checked_admission(maintenance=True)
 
     async def execution_runtime_limits(self) -> dict:
@@ -703,6 +714,19 @@ class ApplicationService:
             checked += 1
         return {"pause": result, "owned_checked": checked, "provider_operations_drained": True, "materialization_drained": True}
 
+    async def drain_executions(self):
+        """Restore quiescence: no native execution owned by the current state
+        may outlive it. Durable global pause stops new admission and quiesces
+        and checkpoints every writer; the engine then releases whatever Pause
+        left parked through the same writer retirement. Nothing is logically
+        cancelled. Raises unless zero pre-restore executions remain live."""
+        live_before = len(await self.repository.live_executions())
+        await self.pause_all()
+        residue = await self.engine.release_writers("state_replacement")
+        if residue:
+            raise RuntimeError("Could not prove every native execution stopped")
+        return {"live_before": live_before, "live_after": len(await self.repository.live_executions())}
+
     async def release_database_wipe_quiescence(self):
         # Admission is released by the surrounding maintenance context.
         return None
@@ -711,19 +735,31 @@ class ApplicationService:
         if self._configure:
             self._configure(self)
 
-    async def start_integrations(self):
+    async def start_integrations(self, only=None):
+        """Start every integration, or -- given ``only`` -- exactly those, in
+        lifecycle order (what a refused whole-state replacement stopped)."""
         for integration in self.lifecycle:
-            await integration.start()
+            if only is None or integration in only:
+                await integration.start()
 
     async def stop_integrations(self):
+        """Stop integrations in reverse order and return the ones stopped. A
+        stop that fails ends the sequence with ``IntegrationStopFailed``,
+        which names the integrations that were stopped before it."""
         # Clean executor shutdown is a forced material checkpoint boundary:
         # what live writers proved written becomes durable before they stop.
         try:
             await self.engine.checkpoint_live_material("executor_shutdown")
         except Exception as exc:
             logger.warning("Material checkpoint before shutdown failed: %s", type(exc).__name__)
+        stopped = []
         for integration in reversed(self.lifecycle):
-            await integration.stop()
+            try:
+                await integration.stop()
+            except Exception as exc:
+                raise IntegrationStopFailed(stopped) from exc
+            stopped.append(integration)
+        return tuple(stopped)
 
     async def maintain_integrations(self):
         async with self.application_operation():

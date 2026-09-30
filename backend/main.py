@@ -29,12 +29,15 @@ from auth.policy import (
 from auth.sessions import CSRF_HEADER, session_store
 from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME
 from core.config import get_settings as _get_log_settings
-from core.logging_utils import configure_logging, log_startup_banner, sanitize_exception, sanitize_log_value
-from core.scheduler import start_scheduler, stop_scheduler
+from core.logging_utils import configure_logging, log_startup_banner, sanitize_log_value
 from transfers.staged_input import MAX_STAGED_INPUT_BYTES
 from core.version import read_version
 from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
+from application.lifetime import (
+    prepare_settings_and_migrate as _prepare_startup_settings_and_migrate,
+    start_application, stop_application,
+)
 from services.maintenance_gate import ApplicationMaintenanceActive
 from transfers.errors import TransferError
 from transfers.storage import normalize_sqlite_storage_exception
@@ -50,44 +53,17 @@ logger = logging.getLogger("debridpulse.main")
 # persistence initialization on startup
 
 
-async def _prepare_startup_settings_and_migrate():
-    """Establish one sanitized settings authority before migration decisions.
-
-    v1.0.12 migration can mint durable executor mutation authority, so it must
-    bind that authority from the sanitized settings and nothing else.  Keep the tolerant load/repair behavior, but fail
-    closed if a safe effective settings object cannot be established before the
-    ownership-sensitive migration.
-    """
-    try:
-        from core.config import get_settings, apply_settings, save_settings, legacy_paused_input
-        from core.config_validator import validate_and_sanitise
-
-        raw = get_settings()
-        cfg = validate_and_sanitise(raw)
-        if cfg is not raw:
-            save_settings(cfg)
-            apply_settings(cfg)
-    except Exception as exc:
-        detail = sanitize_exception(exc)
-        logger.error(
-            "Configuration validation failed before ownership-sensitive migration: %s",
-            detail,
-        )
-        raise RuntimeError(
-            "Configuration validation failed before ownership-sensitive migration"
-        ) from exc
-
-    from db.migrations.v112 import migrate
-
-    await migrate(globally_paused=legacy_paused_input())
-    return cfg
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # v1.0.12 migration owns database classification and the legacy backup
     # boundary. No current initializer may touch a predecessor database first.
     # Sanitized settings are authoritative before this ownership-sensitive step.
+    # A restore whose restored state never finished starting is reversed
+    # first, so startup always begins from one complete state.
+    from services.backup import recover_interrupted_restore
+    if recover_interrupted_restore():
+        from core.config import apply_settings, load_settings
+        apply_settings(load_settings())
     cfg = await _prepare_startup_settings_and_migrate()
 
     password_enabled = password_auth_enabled(cfg)
@@ -119,14 +95,7 @@ async def lifespan(app: FastAPI):
     from application.composition import application as default_application
     application = getattr(app.state, "application", default_application)
     app.state.application = application
-    await application.engine.initialize()
-    await application.engine.recover_postprocessing()
-    await application.start_integrations()
-    try:
-        await application.recover()
-    except Exception as exc:
-        logger.warning("Startup reconciliation deferred: %s", sanitize_exception(exc))
-    await start_scheduler(application)
+    await start_application(application)
     session_store.start_cleanup()
     try:
         yield
@@ -135,22 +104,21 @@ async def lifespan(app: FastAPI):
         try:
             await session_store.stop_cleanup()
         finally:
-            try:
-                await stop_scheduler()
-            finally:
-                try:
-                    await application.stop_integrations()
-                except Exception as exc:
-                    logger.warning("Integration shutdown failed: %s", sanitize_exception(exc))
+            # A restore replaces the application object: stop the live one.
+            await stop_application(app.state.application)
 
 
 class _RequestBodyTooLarge(Exception):
     pass
 
 
-# The one streamed-upload path, and the one ceiling that governs it. Both come
+# The staged-input upload path, and the one ceiling that governs it. Both come
 # from their canonical owners rather than being restated as constants here.
 STAGED_UPLOAD_PATH = "/api/usenet/add-file"
+# Add Backup: a saved backup package. Anything Save Backup produced must be
+# admissible again, so this path has no body ceiling of its own; the backup
+# owner writes it to private staging and bounds it by the storage it lands on.
+BACKUP_PACKAGE_PATH = "/api/admin/backups"
 
 
 class RequestBodyLimitMiddleware:
@@ -169,13 +137,16 @@ class RequestBodyLimitMiddleware:
         if scope.get("path") == "/login":
             limit = min(self.max_bytes, 64 * 1024)
         elif path == STAGED_UPLOAD_PATH:
-            # The one streamed upload seam. Its body is never buffered by the
+            # The staged-input upload seam. Its body is never buffered by the
             # application -- it is written through to durable storage as it
             # arrives -- so the general ceiling, which exists to bound parsed
             # request bodies, would only forbid legitimate large input. The
             # real ceiling belongs to the staged-input owner and is enforced
             # while writing.
             limit = MAX_STAGED_INPUT_BYTES
+        elif path == BACKUP_PACKAGE_PATH:
+            await self.app(scope, receive, send)
+            return
         elif path in {
             "/api/settings",
             "/api/settings/validate-alldebrid",
@@ -259,7 +230,8 @@ async def sqlite_operational_error_handler(_request: Request, exc: sqlite3.Opera
 
 _MUTATING_HTTP_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
 _DATABASE_WIPE_PATH = "/api/admin/database/wipe"
-# This route owns a stronger maintenance admission inside the endpoint. Wrapping
+_BACKUP_RESTORE_PATH = "/api/admin/backups/restore"
+# These routes own a stronger maintenance admission inside the endpoint. Wrapping
 # it in application_operation() here would put the outer request and downstream
 # endpoint in different Starlette tasks and make maintenance wait on its own request.
 #
@@ -286,6 +258,7 @@ async def application_mutation_admission_middleware(request: Request, call_next)
     if (
         request.method.upper() in _MUTATING_HTTP_METHODS
         and request.url.path != _DATABASE_WIPE_PATH
+        and request.url.path != _BACKUP_RESTORE_PATH
         and request.url.path not in _SELF_MAINTAINED_MUTATION_PATHS
         and request.url.path not in _AUTH_MUTATION_PATHS
     ):

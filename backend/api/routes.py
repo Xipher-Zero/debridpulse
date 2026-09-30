@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
+from starlette.background import BackgroundTask
 from pydantic import BaseModel, Field
 
 from core.branding import APP_SHORT_NAME, REPOSITORY_API_URL
@@ -43,6 +44,8 @@ from auth.oidc_version import oidc_configuration_version
 from auth.passwords import basic_verification_cache, password_credential_version
 from auth.sessions import session_store
 from core import scheduler as scheduler_runtime
+from application.lifetime import RestoreFailed, restore_backup as restore_application_backup
+from services import backup as backup_store
 from db.database import DB_PATH, database_maintenance, get_db
 
 
@@ -1255,27 +1258,64 @@ async def get_changelog():
 
 @router.post("/admin/backup")
 async def trigger_backup():
-    from services.backup import run_backup
-    result = await run_backup()
-    return result
+    try:
+        return await backup_store.run_backup()
+    except backup_store.BackupRejected as exc:
+        raise HTTPException(500, exc.message) from None
+
+
+# ── Backups: one restore point per DebridPulse backup ──────────────────────────
+# Every operation below is owned by services.backup; a restore is the
+# application lifetime owner's whole-state replacement.
+
+def _backup_refusal(exc: backup_store.BackupRejected) -> HTTPException:
+    status = {"not_found": 404, "duplicate": 409, "space": 507}.get(
+        exc.reason, 500 if exc.action in {"save", "remove"} else 400)
+    return HTTPException(status, exc.message)
 
 
 @router.get("/admin/backups")
 async def list_backups():
-    from services.backup import list_backups as _list
-    return {"backups": _list()}
+    return {"backups": [point.public() for point in backup_store.list_restore_points()]}
 
 
-@router.post("/admin/database/backup")
-async def trigger_database_backup():
-    from services.db_maintenance import run_database_backup
-    return await run_database_backup()
+@router.post("/admin/backups")
+async def add_backup(request: Request):
+    # The package is the raw request body, handed over as it arrives: nothing
+    # spools it anywhere first, so the backup owner's storage fence governs
+    # every byte that reaches disk.
+    try:
+        point = await backup_store.add_backup(request.stream())
+    except backup_store.BackupRejected as exc:
+        raise _backup_refusal(exc) from None
+    return {"backup": point.public()}
 
 
-@router.get("/admin/database/backups")
-async def list_database_backups():
-    from services.db_maintenance import list_database_backups as _list
-    return {"backups": _list()}
+@router.get("/admin/backups/{backup_id}/package")
+async def save_backup(backup_id: str):
+    try:
+        package = await asyncio.to_thread(backup_store.package_restore_point, backup_id)
+    except backup_store.BackupRejected as exc:
+        raise _backup_refusal(exc) from None
+    return FileResponse(package, media_type="application/zip", filename=backup_store.package_name(backup_id),
+                        background=BackgroundTask(package.unlink, missing_ok=True))
+
+
+@router.delete("/admin/backups/{backup_id}")
+async def remove_backup(backup_id: str):
+    try:
+        await asyncio.to_thread(backup_store.remove_restore_point, backup_id)
+    except backup_store.BackupRejected as exc:
+        raise _backup_refusal(exc) from None
+    return {"ok": True}
+
+
+@router.post("/admin/backups/restore")
+async def restore_backup(body: dict, request: Request):
+    try:
+        return await restore_application_backup(request.app.state, str((body or {}).get("id") or ""))
+    except RestoreFailed as exc:
+        raise HTTPException(exc.status_code, exc.message) from None
 
 
 @router.post("/admin/drop-page-cache")
@@ -1409,12 +1449,12 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                     async with database_maintenance():
                         backup_result = None
                         if getattr(cfg, "db_backup_before_wipe", True):
-                            from services.db_maintenance import run_database_backup
-                            backup_result = await run_database_backup()
-                            if backup_result.get("skipped"):
-                                raise HTTPException(409, "Pre-wipe database backup is required but disabled")
-                            if backup_result.get("errors"):
-                                raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted")
+                            # The same one creation owner as Run Backup and
+                            # the pre-restore safety backup: a restore point.
+                            try:
+                                backup_result = (await backup_store.create_restore_point()).public()
+                            except backup_store.BackupRejected:
+                                raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted") from None
 
                         from services.db_maintenance import wipe_database
                         result = await wipe_database(verified_quiesced=True)

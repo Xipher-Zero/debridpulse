@@ -2,13 +2,11 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from types import SimpleNamespace
+import sqlite3
 
 import pytest
 
 import db.database as database
-import services.db_maintenance as db_maintenance
 from fake_integrations import MemoryExecutor
 from transfers.applicability import ProviderApplicability
 from transfers.engine import TransferEngine
@@ -139,22 +137,18 @@ async def test_backup_persists_only_challenge_metadata_not_pending_credentials(t
     )
     assert await engine.inputs.has(challenge)
 
-    backup_root = tmp_path / "backups"
-    monkeypatch.setattr(
-        db_maintenance,
-        "get_settings",
-        lambda: SimpleNamespace(
-            db_backup_enabled=True,
-            db_backup_folder=str(backup_root),
-            db_backup_keep_days=7,
-        ),
-    )
-    result = await db_maintenance.run_database_backup()
-    assert not result["errors"]
-    payload = Path(result["file"]).read_text(encoding="utf-8")
-    assert_sensitive_absent(payload, markers)
-    decoded = json.loads(payload)
-    rows = decoded["tables"]["transfer_input_challenges"]
+    from backup_support import restore_point_database
+    copied = await restore_point_database(tmp_path, monkeypatch)
+    # Neither the database member nor any other member of the restore point
+    # holds the pending credentials.
+    for member in copied.parent.iterdir():
+        assert_sensitive_absent(member.read_bytes().decode("latin-1"), markers)
+    conn = sqlite3.connect(copied)
+    conn.row_factory = sqlite3.Row
+    try:
+        rows = conn.execute("SELECT * FROM transfer_input_challenges").fetchall()
+    finally:
+        conn.close()
     assert len(rows) == 1
     assert rows[0]["challenge_id"] == challenge.id
     assert rows[0]["reason"] == "auth_required"

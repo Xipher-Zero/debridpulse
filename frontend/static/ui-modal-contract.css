@@ -300,6 +300,30 @@ body.light .dp-modal-dialog {
   font-weight: 700;
 }
 
+/* The optional upper-right close control (`closeControl`): the cancel slot's
+   settlement in its conventional header placement. */
+.dp-modal-close.btn {
+  width: 34px;
+  min-width: 34px;
+  height: 34px;
+  min-height: 34px;
+  flex: 0 0 34px;
+  margin-left: auto;
+  padding: 0;
+  border-radius: 8px;
+  color: var(--dp-text-secondary);
+}
+
+.dp-modal-close svg {
+  width: 18px;
+  height: 18px;
+  stroke-width: 2;
+}
+
+.dp-modal-close:hover {
+  color: var(--dp-text-primary);
+}
+
 .dp-modal-body {
   display: grid;
   gap: 18px;

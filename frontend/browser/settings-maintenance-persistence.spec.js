@@ -11,9 +11,10 @@ const { test, expect } = require('@playwright/test');
  *
  * The surfaces with real risk get real proof:
  *   - an operational action settles pending field writes BEFORE it runs, so
- *     Run Backup and List Backups act on the folder the operator just typed;
- *   - the backup listing is a bounded dialog from the shared dialog owner, not
- *     a list grown inside the Settings viewport;
+ *     Run Backup and Backups act on the folder the operator just typed;
+ *   - Backups opens the manager dialog from the shared dialog owner, not a
+ *     list grown inside the Settings viewport (the manager itself is proven
+ *     in settings-backup-manager.spec.js);
  *   - `Allow Database Reset` persisting immediately authorizes nothing: the
  *     destructive reset still requires its typed confirmation.
  *
@@ -92,16 +93,17 @@ test('both backup actions are keyboard-operable buttons in the header rail, in o
     await openMaintenance(page);
     const rail = backupsCard(page).locator('.card-header');
     const order = await rail.evaluate(node => Array.from(
-      node.querySelectorAll('[data-action="list-backups"], [data-action="run-backup"], [data-setting="backup_enabled"]'),
+      node.querySelectorAll('[data-action="backups"], [data-action="run-backup"], [data-setting="backup_enabled"]'),
       el => el.dataset.action || el.dataset.setting));
-    expect(order).toEqual(['list-backups', 'run-backup', 'backup_enabled']);
+    expect(order).toEqual(['backups', 'run-backup', 'backup_enabled']);
 
-    for (const action of ['list-backups', 'run-backup']) {
+    for (const action of ['backups', 'run-backup']) {
       const button = rail.locator(`[data-action="${action}"]`);
       await expect(button).toBeVisible();
       expect(await button.evaluate(el => el.tagName)).toBe('BUTTON');
     }
-    await expect(rail.getByRole('button', {name: 'List Backups'})).toBeVisible();
+    await expect(rail.getByRole('button', {name: 'Backups', exact: true})).toBeVisible();
+    await expect(rail.getByRole('button', {name: 'List Backups'})).toHaveCount(0);
     await expect(rail.getByRole('button', {name: 'Run Backup'})).toBeVisible();
     await expect(rail.getByRole('button', {name: 'Run Backup Now'})).toHaveCount(0);
 
@@ -375,25 +377,27 @@ test('Run Backup settles the Backup Folder before it runs', async ({page}) => {
   }
 });
 
-test('List Backups settles the Backup Folder and opens a bounded shared dialog',
+test('Backups settles the Backup Folder and opens the manager in the shared dialog',
   async ({page}) => {
     const before = await keep(page, 'backup_folder');
     const observed = await recordSettleOrder(page, '**/api/admin/backups', {
       backups: Array.from({length: 40}, (_, index) => ({
-        name: `dp-backup-${String(index).padStart(3, '0')}`,
-        files: ['debridpulse.db', 'config.json'],
+        id: `20260901_0000${String(index).padStart(2, '0')}_${'a'.repeat(32)}`,
+        created_at: '2026-09-01T00:00:00+00:00',
+        size_bytes: 1024 * (index + 1),
+        contents: 'DP State',
       })),
     });
     try {
       await openMaintenance(page);
       const folder = `${String(before.backup_folder || '/app/data/backups')}/list-probe`;
       await field(page, 'backup_folder').fill(folder);
-      await backupsCard(page).locator('[data-action="list-backups"]').click();
+      await backupsCard(page).locator('[data-action="backups"]').click();
       await expect.poll(() => observed.timeline.join(','), {timeout: 15000}).toBe('commit,action');
       expect(observed.committed.backup_folder,
-        'List Backups dispatched before the folder it depends on was committed').toBe(folder);
+        'Backups dispatched before the folder it depends on was committed').toBe(folder);
 
-      // The SHARED dialog shell, with nothing to accept.
+      // The SHARED dialog shell, closed by its own Close slot.
       const dialog = page.locator('.dp-modal-overlay .dp-modal-dialog');
       await expect(dialog).toBeVisible();
       await expect(dialog).toHaveAttribute('aria-modal', 'true');
@@ -401,30 +405,20 @@ test('List Backups settles the Backup Folder and opens a bounded shared dialog',
       await expect(dialog.locator('[data-modal-accept]')).toHaveCount(0);
       await expect(dialog.locator('[data-modal-cancel]')).toHaveText('Close');
 
-      // Every entry the backend listed, in the backend's own order, with its
-      // own files -- and bounded, scrolling inside the dialog rather than
-      // growing the Settings viewport.
-      const rows = dialog.locator('.dp-settings-backup-list-row');
-      await expect(rows).toHaveCount(40);
-      await expect(rows.first().locator('.dp-settings-backup-list-name'))
-        .toHaveText('dp-backup-000');
-      await expect(rows.first().locator('.dp-settings-backup-list-files'))
-        .toHaveText('debridpulse.db, config.json');
-      const bounded = await dialog.locator('.dp-settings-backup-list').evaluate(node => ({
+      // Every restore point, in the backend's own order, bounded: the table
+      // scrolls inside the dialog rather than growing the Settings viewport.
+      await expect(dialog.locator('tbody tr')).toHaveCount(40);
+      const bounded = await dialog.locator('.dp-backup-table-wrap').evaluate(node => ({
         scrollable: node.scrollHeight > node.clientHeight + 1,
         withinViewport: node.getBoundingClientRect().bottom <= window.innerHeight + 1,
       }));
       expect(bounded.scrollable).toBe(true);
       expect(bounded.withinViewport).toBe(true);
-      // No management action was invented for the listing.
-      await expect(dialog.getByRole('button')).toHaveCount(1);
 
       // Escape closes it through the shared owner and returns focus.
       await page.keyboard.press('Escape');
       await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);
-      await expect(backupsCard(page).locator('[data-action="list-backups"]')).toBeFocused();
-      // Nothing of it is left behind in the page.
-      await expect(page.locator('#view-settings .dp-settings-backup-list')).toHaveCount(0);
+      await expect(backupsCard(page).locator('[data-action="backups"]')).toBeFocused();
     } finally {
       await observed.release();
       await restore(page, before);

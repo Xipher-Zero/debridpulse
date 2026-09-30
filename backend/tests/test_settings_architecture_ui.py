@@ -114,12 +114,15 @@ def test_settings_runtime_directly_uses_backend_api_contracts():
         "'/settings/validate-discord'",
         "request('POST', '/settings/upload-avatar'",
         "request('POST', '/admin/backup'",
-        "request('GET', '/admin/backups'",
         "request('POST', '/admin/database/wipe'",
         "request('POST', '/settings/send-stats-report'",
     )
     missing = [item for item in required if item not in runtime]
     assert not missing, f"clean Settings runtime is missing backend contracts: {missing}"
+    # The backup inventory belongs to the one Backups manager owner.
+    manager = source(SETTINGS_PAGE_JS.parent / "ui-settings-backup-manager.js")
+    assert "const INVENTORY = '/admin/backups';" in manager
+    assert "request('GET', INVENTORY" in manager
 
 
 

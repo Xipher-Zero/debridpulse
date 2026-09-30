@@ -2520,6 +2520,42 @@ class TransferEngine:
                 committed += 1
         return committed
 
+    async def release_writers(self, boundary: str) -> tuple:
+        """Release every remaining writer at a whole-state boundary (the state
+        a restore is about to replace), after the durable global pause.
+
+        Each writer goes through the ONE writer retirement -- quiesce, forced
+        checkpoint, fence -- exactly as Pause does, except that nothing is left
+        parked: a parked native job is cancelled by its own executor too. The
+        artifact is detached as ``paused``, its DP-valid material stays as
+        committed, and the logical transfer is never cancelled. Afterwards the
+        remaining authorized writers are re-observed through their executors;
+        the returned attempts are the ones still not proven stopped."""
+        terminal = {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.CANCELLED, ExecutionState.ABSENT}
+        for attempt in await self.repository.live_executions():
+            artifact = await self._current_artifact(attempt.transfer_id, attempt.artifact_id)
+            if (artifact is None or artifact.execution is None
+                    or artifact.execution.attempt_id != attempt.handle.attempt_id):
+                continue
+            candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+            retired = await retire_writer(self, artifact, candidate, artifact, candidate, boundary=boundary)
+            if not retired.reason:
+                await self.repository.detach_retired_writer(artifact.id, attempt.handle.attempt_id, state="paused")
+        residue = []
+        for attempt in await self.repository.live_executions():
+            executor = self.registry.executor_for_handle(attempt.handle)
+            if executor is None:
+                residue.append(attempt)
+                continue
+            try:
+                observed = await self._observe_execution(executor, attempt.handle)
+            except TransferError:
+                residue.append(attempt)
+                continue
+            if observed.state not in terminal:
+                residue.append(attempt)
+        return tuple(residue)
+
     def _material_checkpoint_due(self, attempt_id: str) -> bool:
         last = self._material_checkpoints.get(attempt_id)
         return last is None or self.clock() - last >= max(1.0, float(self.policy.material_checkpoint_interval))

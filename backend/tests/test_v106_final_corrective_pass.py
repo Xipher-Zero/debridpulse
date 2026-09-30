@@ -34,15 +34,24 @@ def test_dockerfile_uses_current_v1_oci_identity():
 
 
 def test_lifespan_shutdown_is_finally_guarded():
-    source = (Path(__file__).parents[1] / "main.py").read_text()
+    backend = Path(__file__).parents[1]
+    source = (backend / "main.py").read_text()
     block = source.split("async def lifespan", 1)[1].split("class _RequestBodyTooLarge", 1)[0]
-    started = block.index("await start_scheduler(application)")
+    started = block.index("await start_application(application)")
     guarded = block.index("try:", started)
     yielded = block.index("yield", guarded)
     final = block.index("finally:", yielded)
-    stopped = block.index("await stop_scheduler()", final)
-    aria2 = block.index("await application.stop_integrations()", stopped)
-    assert started < guarded < yielded < final < stopped < aria2
+    stopped = block.index("await stop_application(app.state.application)", final)
+    assert started < guarded < yielded < final < stopped
+    # The one lifetime owner starts the scheduler last and stops it first,
+    # then stops integrations even when stopping the scheduler failed.
+    lifetime = (backend / "application" / "lifetime.py").read_text()
+    start = lifetime.split("async def start_application", 1)[1].split("async def stop_application", 1)[0]
+    assert start.index("await application.start_integrations()") < start.index("await scheduler.start_scheduler(application)")
+    stop = lifetime.split("async def stop_application", 1)[1].split("\ndef ", 1)[0]
+    scheduler_stopped = stop.index("await scheduler.stop_scheduler()")
+    final = stop.index("finally:", scheduler_stopped)
+    assert final < stop.index("await application.stop_integrations()")
 
 
 def test_event_and_snapshot_routes_use_public_timestamp_serialization():

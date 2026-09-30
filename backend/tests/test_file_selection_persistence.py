@@ -125,10 +125,9 @@ async def test_selection_entries_cannot_reference_a_foreign_manifest(repo):
 
 @pytest.mark.asyncio
 async def test_backup_and_wipe_cover_every_selection_table(repo, tmp_path, monkeypatch):
-    from core.config import get_settings
+    import sqlite3
 
-    settings = get_settings()
-    monkeypatch.setattr(settings, "db_backup_folder", str(tmp_path / "backups"), raising=False)
+    from backup_support import restore_point_database
 
     clock = Clock(1000.0)
     seed = await seed_window(transfer_hash="b" * 40)
@@ -143,15 +142,15 @@ async def test_backup_and_wipe_cover_every_selection_table(repo, tmp_path, monke
 
     for table in _SELECTION_TABLES:
         assert table in db_maintenance.TABLES
-        assert table in db_maintenance._TABLE_ORDER
 
-    report = await db_maintenance.run_database_backup()
-    assert not report["errors"]
-    backup = Path(report["file"]).read_text()
-    for table in _SELECTION_TABLES:
-        assert f'"{table}"' in backup
-    assert report["tables"]["transfer_file_manifest_entries"] == 2
-    assert report["tables"]["transfer_file_selection_entries"] == 1
+    copied = await restore_point_database(tmp_path, monkeypatch)
+    conn = sqlite3.connect(copied)
+    try:
+        counts = {table: conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] for table in _SELECTION_TABLES}
+    finally:
+        conn.close()
+    assert counts["transfer_file_manifest_entries"] == 2
+    assert counts["transfer_file_selection_entries"] == 1
 
     await db_maintenance.wipe_database(verified_quiesced=True)
     async with database.get_db() as db:

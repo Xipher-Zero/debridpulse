@@ -286,6 +286,35 @@ def load_settings() -> AppSettings:
     return settings
 
 
+class LegacySettingsDocument(ValueError):
+    """A configuration document written by an older DebridPulse."""
+
+
+def validate_settings_document(data) -> AppSettings:
+    """Strictly check a persisted configuration document without applying it.
+
+    The side-effect-free twin of ``load_settings`` for a document that is not
+    the live one (a backup's configuration): nothing is translated, clamped,
+    migrated or written. A document that would need any of that was written by
+    an older DebridPulse and raises ``LegacySettingsDocument``; one that cannot
+    produce settings at all raises ``ValueError``."""
+    import copy
+
+    from integrations.catalog import definitions
+
+    if not isinstance(data, dict):
+        raise ValueError("configuration root must be a JSON object")
+    candidate = copy.deepcopy(data)
+    if "paused" in candidate or migrate_legacy_settings(candidate, definitions):
+        raise LegacySettingsDocument("configuration requires legacy translation")
+    if clamp_persisted_namespaces(candidate, definitions):
+        raise ValueError("configuration holds out-of-range values")
+    loaded = {k: v for k, v in candidate.items() if k in AppSettings.model_fields}
+    if _migrate_password_settings(loaded):
+        raise LegacySettingsDocument("configuration requires password migration")
+    return normalize_settings(_build_effective_settings(loaded), definitions)
+
+
 def save_settings(s: AppSettings):
     """Atomically persist configuration with secret-safe filesystem permissions."""
     global _settings

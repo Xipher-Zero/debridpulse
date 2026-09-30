@@ -186,11 +186,12 @@ def test_backup_ids_are_unique_and_backward_compatible():
     }
     assert len(generated) == 40
     assert all(backup._BACKUP_DIR_RE.fullmatch(value) for value in generated)
-    assert all(db_maintenance._BACKUP_DIR_RE.fullmatch(value) for value in generated)
     assert backup._BACKUP_DIR_RE.fullmatch("20260820_200000")
-    assert db_maintenance._BACKUP_DIR_RE.fullmatch("20260820_200000")
     assert hasattr(backup, "_BACKUP_RUN_LOCK")
-    assert hasattr(db_maintenance, "_BACKUP_RUN_LOCK")
+    # Backups have one owner: database maintenance keeps no second backup
+    # implementation (id scheme, run lock, or writer) of its own.
+    for retired in ("_BACKUP_DIR_RE", "_BACKUP_RUN_LOCK", "run_database_backup", "list_database_backups"):
+        assert not hasattr(db_maintenance, retired), retired
 
 
 def test_v1_metadata_does_not_claim_multiple_providers():

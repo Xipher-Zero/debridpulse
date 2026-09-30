@@ -1,7 +1,6 @@
 """The actual HTTP commands and scheduler drive the unrelated fake integrations."""
 import asyncio
 from dataclasses import replace
-from pathlib import Path
 
 import httpx
 import pytest
@@ -94,23 +93,31 @@ async def test_duplicate_preview_validates_empty_input_and_accepts_core_resource
 
 @pytest.mark.asyncio
 async def test_database_wipe_backs_up_canonical_state_and_preserves_pause(runtime, tmp_path, monkeypatch):
-    import json
+    import sqlite3
+    from backup_support import prepare_backup_installation
     from core.config import AppSettings
+    from services import backup as backup_store
     application, _provider, _executor, client = runtime
     response = await client.post("/api/links/add", json={"links": ["https://fake.example/payload"]})
     await application.resolve_pending()
     await application.reconcile_executions()
     await application.pause_all()
-    cfg = AppSettings(db_wipe_enabled=True, db_backup_before_wipe=True, db_backup_folder=str(tmp_path / "backups"))
+    await prepare_backup_installation(tmp_path, monkeypatch)
+    cfg = AppSettings(db_wipe_enabled=True, db_backup_before_wipe=True)
     monkeypatch.setattr("api.routes.get_settings", lambda: cfg)
-    monkeypatch.setattr("services.db_maintenance.get_settings", lambda: cfg)
     monkeypatch.setattr("api.routes.scheduler_runtime.scheduler_running", lambda: False)
     wiped = await client.post("/api/admin/database/wipe", json={"confirm": True})
     assert wiped.status_code == 200, wiped.text
     report = wiped.json()
-    backup = json.loads(Path(report["backup"]["file"]).read_text())
-    assert len(backup["tables"]["execution_attempts"]) == 1
-    assert backup["tables"]["torrents"][0]["id"] == response.json()["id"]
+    # The pre-wipe safety backup is an ordinary restore point, listed in Backups.
+    point = backup_store.restore_point(report["backup"]["id"])
+    assert [item.id for item in backup_store.list_restore_points()] == [point.id]
+    conn = sqlite3.connect(point.path / database.DB_PATH.name)
+    try:
+        assert conn.execute("SELECT COUNT(*) FROM execution_attempts").fetchone()[0] == 1
+        assert conn.execute("SELECT id FROM torrents").fetchone()[0] == response.json()["id"]
+    finally:
+        conn.close()
     assert await application.repository.globally_paused()
     assert await application.repository.active() == ()
     async with database.get_db() as db:

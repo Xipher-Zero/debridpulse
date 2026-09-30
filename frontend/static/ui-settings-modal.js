@@ -19,6 +19,13 @@
  * about such a dialog is identical: same shell, same trap, same Escape, same
  * focus restoration, same settlement.
  *
+ * A dialog whose content is operated on declares that too, and the footer is
+ * still composed here: `actions` ([{id, label, tone}]) are client buttons placed
+ * ahead of the cancel slot, reported through `onAction(id)` and enabled
+ * through `handle.setActionEnabled(id, enabled)`; they never settle the
+ * dialog. `closeControl: true` adds the upper-right close control, which is
+ * the cancel slot's settlement under a second, conventional placement.
+ *
  * Focus contract (explicit lifecycle boundary: settlement of the dialog):
  *   1. The initiating control is restored when it is still focusable.
  *   2. If a refresh replaced it while the dialog was open, its equivalent
@@ -163,8 +170,10 @@
 
   function open(spec = {}) {
     const role = spec.role === 'alertdialog' ? 'alertdialog' : 'dialog';
-    const tone = spec.tone === 'danger' || spec.tone === 'warning' ? spec.tone : '';
+    const tone = spec.tone === 'danger' || spec.tone === 'warning' || spec.tone === 'success' ? spec.tone : '';
     const dismissOnly = spec.dismiss === true;
+    const actions = Array.isArray(spec.actions) ? spec.actions : [];
+    const acceptClass = tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
 
@@ -174,17 +183,33 @@
       <section class="dp-modal-dialog" role="${role}" aria-modal="true" aria-labelledby="${dialogId}-title">
         <header class="dp-modal-header">
           <div class="dp-modal-title" id="${dialogId}-title"></div>
+          ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" title="Close"></button>' : ''}
         </header>
         <div class="dp-modal-body"></div>
         <footer class="dp-modal-footer">
+          ${actions.map(() => '<button class="btn" type="button" data-modal-action></button>').join('')}
           <button class="btn btn-ghost" type="button" data-modal-cancel></button>
-          ${dismissOnly ? '' : `<button class="btn ${tone === 'danger' ? 'btn-danger' : 'btn-primary'}" type="button" data-modal-accept></button>`}
+          ${dismissOnly ? '' : `<button class="btn ${acceptClass}" type="button" data-modal-accept></button>`}
         </footer>
       </section>`;
     const dialog = overlay.querySelector('.dp-modal-dialog');
     const body = overlay.querySelector('.dp-modal-body');
     const cancel = overlay.querySelector('[data-modal-cancel]');
     const accept = overlay.querySelector('[data-modal-accept]');
+    const close = overlay.querySelector('[data-modal-close]');
+    const actionButtons = new Map();
+    overlay.querySelectorAll('[data-modal-action]').forEach((button, index) => {
+      const action = actions[index] || {};
+      const id = String(action.id || index);
+      button.dataset.modalAction = id;
+      button.classList.add(action.tone === 'success' ? 'btn-success' : action.tone === 'danger' ? 'btn-danger' : 'btn-ghost');
+      button.textContent = String(action.label || '');
+      button.disabled = action.disabled === true;
+      actionButtons.set(id, button);
+    });
+    if (close) {
+      close.innerHTML = window.DPIcons && typeof window.DPIcons.svg === 'function' ? window.DPIcons.svg('x') : '&times;';
+    }
     if (tone) dialog.dataset.tone = tone;
     if (spec.className) dialog.classList.add(...String(spec.className).split(/\s+/).filter(Boolean));
     if (spec.bodyClassName) body.classList.add(...String(spec.bodyClassName).split(/\s+/).filter(Boolean));
@@ -218,7 +243,12 @@
     const handle = Object.freeze({
       closed,
       get isOpen() { return !settled; },
+      close() { settle(false); },
       setAcceptEnabled(enabled) { if (accept) accept.disabled = !enabled; },
+      setActionEnabled(id, enabled) {
+        const button = actionButtons.get(String(id));
+        if (button) button.disabled = !enabled;
+      },
       setBusy(busy) { dialog.setAttribute('aria-busy', busy ? 'true' : 'false'); },
     });
 
@@ -229,7 +259,11 @@
     }
 
     cancel.addEventListener('click', () => settle(false));
+    if (close) close.addEventListener('click', () => settle(false));
     if (accept) accept.addEventListener('click', () => settle(true));
+    actionButtons.forEach((button, id) => button.addEventListener('click', () => {
+      if (!settled && !button.disabled && typeof spec.onAction === 'function') spec.onAction(id);
+    }));
 
     if (!mounted.length) document.addEventListener('keydown', onKeydown);
     mounted.push(entry);

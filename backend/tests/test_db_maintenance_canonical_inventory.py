@@ -1,8 +1,8 @@
-"""DBMAINT-001 — database-maintenance backup inventory and wipe-ordering proofs.
+"""DBMAINT-001 — database-maintenance inventory, backup content and wipe-ordering proofs.
 
-The JSON database-maintenance backup claims to be a snapshot of the authoritative
-SQLite database, and the explicit wipe claims to purge it. Both are driven by one
-inventory (``services.db_maintenance.TABLES``). Before this module existed, nothing
+A backup (a restore point, ``services.backup``) is a whole-database copy of the
+authoritative SQLite database, and the explicit wipe claims to purge it. The wipe
+is driven by one inventory (``services.db_maintenance.TABLES``). Before this module existed, nothing
 compared that inventory against the *real* initialized schema: the only backup test
 fabricated ``sqlite_master`` rows *from* ``TABLES`` itself, so an omitted table could
 never be detected — the inventory under test was also the oracle.
@@ -15,7 +15,6 @@ foreign-key error rather than a mocked call-order expectation.
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 
@@ -23,18 +22,17 @@ import pytest
 import pytest_asyncio
 
 import db.database as database
-from core.config import get_settings
+from backup_support import restore_point_database
 from services import db_maintenance
 
 # SQLite's own AUTOINCREMENT bookkeeping. It is engine-internal, is recreated by
 # SQLite on demand, and carries no application fact, so database maintenance
-# deliberately neither exports nor enumerates it. (The wipe does reset the
+# deliberately does not enumerate it. (The wipe does reset the
 # relevant counters explicitly; that is a separate, deliberate statement.)
 _ENGINE_INTERNAL_TABLES = {"sqlite_sequence"}
 
 # Created only by the v112 migration path, never by ``init_db()``. The inventory
-# legitimately names it so a migrated database exports it; the backup already
-# skips inventory entries absent from the live schema.
+# legitimately names it because every migrated database has it.
 _MIGRATION_ONLY_TABLES = {"schema_migrations"}
 
 _CANONICAL_TABLES = (
@@ -49,9 +47,6 @@ async def db_path(tmp_path, monkeypatch):
     path = tmp_path / "db-maintenance.db"
     monkeypatch.setattr(database, "DB_PATH", path)
     await database.init_db()
-    settings = get_settings()
-    monkeypatch.setattr(settings, "db_backup_folder", str(tmp_path / "backups"), raising=False)
-    monkeypatch.setattr(settings, "db_backup_enabled", True, raising=False)
     return path
 
 
@@ -136,50 +131,30 @@ async def test_backup_inventory_names_no_unknown_table(db_path):
     assert unknown == [], f"inventory names tables that do not exist in the real schema: {unknown}"
 
 
-@pytest.mark.asyncio
-async def test_every_inventory_table_has_a_real_deterministic_order_key(db_path):
-    """Backup row order must be deterministic and expressed in real columns."""
-    missing_order = sorted(set(db_maintenance.TABLES) - set(db_maintenance._TABLE_ORDER))
-    assert missing_order == [], f"inventory tables without a deterministic order key: {missing_order}"
-
-    with sqlite3.connect(db_path) as conn:
-        for table in db_maintenance.TABLES:
-            if table in _MIGRATION_ONLY_TABLES:
-                continue
-            columns = {row[1] for row in conn.execute(f"PRAGMA table_info({table})")}
-            for key in db_maintenance._TABLE_ORDER[table].split(","):
-                assert key.strip() in columns, f"{table} order key {key!r} is not a real column"
-
-
 # --------------------------------------------------------------------------- #
 # RED-A3 — populated backup content
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_backup_exports_populated_canonical_and_consolidation_state(db_path):
+async def test_backup_exports_populated_canonical_and_consolidation_state(db_path, tmp_path, monkeypatch):
     await _seed_canonical_state()
 
-    report = await db_maintenance.run_database_backup()
-    assert report["errors"] == []
-
-    payload = json.loads(Path(report["file"]).read_text(encoding="utf-8"))
-    exported = payload["tables"]
-
-    for table in _CANONICAL_TABLES:
-        assert table in exported, f"backup omits canonical table {table}"
+    copied = await restore_point_database(tmp_path, monkeypatch)
+    conn = sqlite3.connect(copied)
+    conn.row_factory = sqlite3.Row
+    try:
+        exported = {table: conn.execute(f"SELECT * FROM {table}").fetchall() for table in _CANONICAL_TABLES}
+    finally:
+        conn.close()
 
     assert len(exported["canonical_candidate_bindings"]) == 2
     assert len(exported["canonical_candidate_origins"]) == 1
     assert len(exported["artifact_consolidations"]) == 1
 
-    # Deterministic order, and the authoritative canonical facts really survive.
-    assert [row["candidate_order"] for row in exported["canonical_candidate_bindings"]] == [1, 2]
+    # The authoritative canonical facts really survive.
+    assert sorted(row["candidate_order"] for row in exported["canonical_candidate_bindings"]) == [1, 2]
     assert exported["canonical_candidate_origins"][0]["discovered_candidate_id"] == "cand-1"
     assert exported["artifact_consolidations"][0]["canonical_artifact_id"] == 10
-
-    assert report["tables"]["canonical_candidate_bindings"] == 2
-    assert report["tables"]["canonical_candidate_origins"] == 1
-    assert report["tables"]["artifact_consolidations"] == 1
 
 
 # --------------------------------------------------------------------------- #

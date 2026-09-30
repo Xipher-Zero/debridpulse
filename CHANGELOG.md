@@ -146,6 +146,24 @@
 - Provider/source cards say what enabling them does. Usenet: "Download NZB content from configured
   Usenet news servers." AllDebrid: "Resolve supported links and torrents through your AllDebrid
   account."
+- **Backups manager and in-application restore.** Settings → Data & Maintenance → **Backups** (formerly
+  List Backups) opens a manager listing each DebridPulse backup as one restore point — when it was taken,
+  its contents and its size — never its member files. Select one backup (a single checkmark) to **Save
+  Backup** (a copy to a location you choose, as one file), **Restore Backup**, or **Remove** it (offered on
+  the selected row only, after confirmation; retention settings are untouched). **Add Backup** brings a saved
+  copy back in: it is validated completely first — structure, database integrity, configuration, and an
+  exact match with this installation's schema — and a file that fails is refused with the reason and never
+  appears in the list. Compatibility is judged from the backup's own database, so backups taken earlier in
+  1.0.13 work too; a backup whose database schema differs from this installation's cannot be added or
+  restored. Restore pauses processing, stops every running download (they stay
+  paused, not cancelled), creates a safety backup of the current state, validates the selected backup
+  again, stages it and only then replaces the database, configuration and avatar in one journaled step;
+  if anything fails before the restored state is running, the current state is left unchanged. The Backup
+  Folder location is kept, so the safety backup stays in Backups. Signing in again may be required after a
+  restore. The pre-reset safety backup is now an ordinary restore point in the same Backups list.
+- In the authentication-required dialog, **Enter** submits the username and password when both are
+  filled; otherwise it shows which one is missing and sends nothing. **Continue** still proceeds with a
+  deliberately partial credential set.
 
 ### Changed
 
@@ -250,6 +268,10 @@
   names are ignored and the defaults apply. Downloads in progress keep their identity across the
   upgrade. The predecessor per-GID ownership table (`debridpulse_aria2_owned_gids`) is no longer
   created, read or written; an existing database keeps it untouched as inert history.
+- **The separate database JSON export.** The pre-reset backup no longer writes a JSON snapshot into the
+  hidden database-backup folder; it creates a restore point through the one backup owner. The unused
+  `POST /api/admin/database/backup` and `GET /api/admin/database/backups` endpoints are gone. Existing
+  files in that folder are left untouched.
 
 ### Planned / in progress
 

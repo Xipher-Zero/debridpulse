@@ -2630,7 +2630,7 @@
    * persistence owner -- a number or a path at its changed-blur boundary, a
    * boolean the moment it is flipped. Nothing on this page waits for anything.
    *
-   * List Backups, Run Backup and Reset Database are ACTIONS, not persistence:
+   * Backups, Run Backup and Reset Database are ACTIONS, not persistence:
    * each settles the page's pending field writes first, so it acts on the
    * values the server has accepted rather than on a draft the operator left in
    * a field. That settle is the one shared owner's, not a Maintenance timer. */
@@ -2680,7 +2680,7 @@
       className: 'dp-settings-backups-retention-card',
       headerCenter: 'Configure automated backups and retention for backups, statistics snapshots, and event logs.',
       headerCenterClass: 'dp-settings-backups-header-copy',
-      headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="list-backups">List Backups</button>
+      headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
           <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
       action: `<label class="toggle-row dp-settings-toggle dp-settings-backups-header-toggle" for="${backupEnabledId}">
         <span class="toggle-info">
@@ -3011,7 +3011,7 @@
       else if (action === 'browse-backup-folder') void browseDirectory('backup');
       else if (action === 'send-report') sendStatsReport(button);
       else if (action === 'run-backup') runBackup(button);
-      else if (action === 'list-backups') listBackups(button);
+      else if (action === 'backups') openBackups();
       else if (action === 'wipe-database') wipeDatabaseClean(button);
       else if (action === 'clear-password') clearPassword(button);
       else if (action === 'clear-oidc-secret') clearOidcSecret(button);
@@ -3641,7 +3641,7 @@
 
   /* The ONE deterministic preamble every Data & Maintenance ACTION shares.
    *
-   * Running a backup, listing backups and browsing for a folder all depend on
+   * Running a backup, opening Backups and browsing for a folder all depend on
    * values the operator may still be editing -- the Backup Folder above all --
    * so each one first settles the page's pending field writes through the ONE
    * canonical persistence owner. No Maintenance timer, queue or flush flag
@@ -3669,56 +3669,12 @@
     }
   }
 
-  /* The backup listing is a READING, so it is presented as one: a bounded,
-   * internally scrollable dialog through the ONE canonical dialog owner, with
-   * nothing to accept. It replaces the inline list that used to grow inside
-   * the Settings viewport -- that surface is gone, not hidden, and this is its
-   * only presentation owner.
-   *
-   * It adds no management: what the backend lists, in the order the backend
-   * lists it, with the files each entry actually holds. */
-  async function listBackups(button) {
+  /* The Backups manager belongs to its one state owner
+   * (ui-settings-backup-manager.js); this page only settles its pending writes
+   * first, so the manager reads the Backup Folder the server has accepted. */
+  async function openBackups() {
     await settlePendingWrites();
-    setBusy(button, true, 'Loading…');
-    let backups = null;
-    try {
-      const result = await request('GET', '/admin/backups', undefined, 15000);
-      backups = Array.isArray(result.backups) ? result.backups : [];
-    } catch (error) {
-      notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
-      // Marking the control busy disabled it, which moved focus off it. The
-      // dialog restores focus to whatever opened it, so the control has to be
-      // holding focus again BEFORE the dialog opens -- otherwise Escape would
-      // leave focus nowhere.
-      if (button?.isConnected) button.focus();
-    }
-    if (backups === null) return;
-    window.DPSettingsModal.open({
-      title: 'Backups',
-      dismiss: true,
-      className: 'dp-settings-backup-list-dialog',
-      bodyClassName: 'dp-settings-backup-list-body',
-      mount(body) {
-        const list = document.createElement('div');
-        list.className = 'dp-settings-backup-list';
-        if (!backups.length) {
-          list.innerHTML = '<div class="form-hint">No backups found.</div>';
-        } else {
-          list.setAttribute('role', 'list');
-          list.setAttribute('tabindex', '0');
-          list.setAttribute('aria-label', 'Backups');
-          list.innerHTML = backups.map(item => `
-            <div class="dp-settings-backup-list-row" role="listitem">
-              <span class="dp-settings-backup-list-name">${html(item.name || 'backup')}</span>
-              <span class="dp-settings-backup-list-files">${html((item.files || []).join(', '))}</span>
-            </div>`).join('');
-        }
-        body.appendChild(list);
-        return list;
-      },
-    });
+    await window.DPBackupManager?.open();
   }
 
   /* The destructive reset. Its safety is unchanged and is owned in four

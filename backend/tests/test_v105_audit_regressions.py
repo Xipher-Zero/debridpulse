@@ -68,27 +68,21 @@ def test_scheduler_update_notifications_use_service_boundary():
 
 
 @pytest.mark.asyncio
-async def test_database_json_backup_includes_operational_tables(tmp_path, monkeypatch):
+async def test_restore_point_database_includes_operational_tables(tmp_path, monkeypatch):
     import db.database as database
-    import services.db_maintenance as maintenance
+    from backup_support import restore_point_database
 
     db_path = tmp_path / "state.db"
     monkeypatch.setattr(database, "DB_PATH", db_path)
     await database.init_db()
-    backup_root = tmp_path / "db-backups"
-    monkeypatch.setattr(
-        maintenance,
-        "get_settings",
-        lambda: SimpleNamespace(
-            db_backup_enabled=True,
-            db_backup_folder=str(backup_root),
-            db_backup_keep_days=7,
-        ),
-    )
-    result = await maintenance.run_database_backup()
-    assert result["errors"] == []
-    assert "transfer_pause_intents" in result["tables"]
-    assert "debridpulse_aria2_owned_gids" not in result["tables"]
+    copied = await restore_point_database(tmp_path, monkeypatch)
+    conn = sqlite3.connect(copied)
+    try:
+        tables = {row[0] for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+    finally:
+        conn.close()
+    assert "transfer_pause_intents" in tables
+    assert "debridpulse_aria2_owned_gids" not in tables
 
 
 @pytest.mark.asyncio
@@ -102,6 +96,8 @@ async def test_online_backup_captures_committed_wal_state(tmp_path, monkeypatch)
     async with database.get_db() as db:
         await db.execute("INSERT INTO torrents(hash, name) VALUES(?, ?)", ("wal-hash", "wal-row"))
         await db.commit()
+    from backup_support import prepare_backup_installation
+    await prepare_backup_installation(tmp_path, monkeypatch)
 
     backup_root = tmp_path / "backups"
     monkeypatch.setattr(

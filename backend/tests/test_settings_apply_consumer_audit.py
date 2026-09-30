@@ -165,7 +165,7 @@ def test_no_apply_before_action_guard_or_copy_remains():
     """An action may settle pending writes; none may require an Apply that no
     longer exists, and no copy may tell an operator to press one."""
     assert "before running a wipe" not in RUNTIME
-    for action in ("run-backup", "list-backups", "wipe-database"):
+    for action in ("run-backup", "backups", "wipe-database"):
         assert f"action === '{action}'" in RUNTIME, action
     # The one settle owner, reused; no Maintenance timer, queue or flush flag.
     assert "const settlePendingWrites = () => window.DPSettingsPersistence.settle(root());" in RUNTIME
