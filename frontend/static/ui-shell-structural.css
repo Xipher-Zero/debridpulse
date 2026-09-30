@@ -47,6 +47,15 @@ body {
   mask-image: linear-gradient(90deg, transparent 0%, #000 20%, #000 80%, transparent 100%);
 }
 
+/* The sidebar icon rail. Every navigation icon is centred at
+   item inset + icon size / 2; the brand glyph and the Log Out glyph derive
+   their position from these same values, so the rail cannot drift apart. */
+:root {
+  --dp-sidebar-item-inset: 23px;
+  --dp-sidebar-icon-size: 20px;
+  --dp-sidebar-brand-glyph: 48px;
+}
+
 .logo {
   height: 92px;
   min-height: 92px;
@@ -57,8 +66,8 @@ body {
 }
 
 .logo-icon {
-  width: 48px;
-  height: 48px;
+  width: var(--dp-sidebar-brand-glyph);
+  height: var(--dp-sidebar-brand-glyph);
   border-radius: 12px;
   box-shadow: 0 0 22px rgba(117, 72, 255, .19);
 }
@@ -91,7 +100,7 @@ body.light .logo-name span { color: #7c3aed; }
 .nav-item {
   min-height: 46px;
   margin: 0;
-  padding: 0 23px;
+  padding: 0 var(--dp-sidebar-item-inset);
   gap: 14px;
   border-radius: 0;
   color: #bec3da;
@@ -123,8 +132,8 @@ body.light .logo-name span { color: #7c3aed; }
 }
 .nav-item .icon,
 .nav-item .icon svg {
-  width: 20px;
-  height: 20px;
+  width: var(--dp-sidebar-icon-size);
+  height: var(--dp-sidebar-icon-size);
 }
 .nav-item.active .icon { color: #c9a3ff; }
 
@@ -347,10 +356,19 @@ body.light .theme-toggle {
 }
 
 @media (max-width: 1180px) {
-  :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; }
+  :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; --dp-sidebar-item-inset: 18px; }
   .logo { padding-left: 18px; }
-  .nav-item { padding: 0 18px; }
   .nav-group { padding-left: 18px; }
+}
+
+/* Wherever the navigation icons form the left rail (the expanded sidebar and
+   the drawer; not the compact 900-1179px shell), the brand glyph is centred on
+   that rail. Only the block's leading padding moves, so the wordmark follows
+   the glyph at its existing gap. */
+@media (min-width: 1180px), (max-width: 899px) {
+  .logo {
+    padding-left: calc(var(--dp-sidebar-item-inset) + (var(--dp-sidebar-icon-size) - var(--dp-sidebar-brand-glyph)) / 2);
+  }
 }
 
 /* Preserve the full desktop control row immediately above the compact-shell
