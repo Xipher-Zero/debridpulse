@@ -48,7 +48,7 @@ async def test_provider_identity_request_kinds_and_presentation():
     assert (presentation.status_group, presentation.display_order) == ("direct_sources", 913)
     assert executor_definition.id == "rsync" and executor_definition.kind == "executor"
     # Distinct durable identities, both registered; one operator label.
-    assert [item.id for item in definitions][-4:] == ["general_rsync", "general_webdav", "aria2", "rsync"]
+    assert [item.id for item in definitions][-5:] == ["general_rsync", "general_webdav", "multimeta", "aria2", "rsync"]
     registry = IntegrationRegistry()
     registry.register_provider(provider)
     with pytest.raises(ValueError):

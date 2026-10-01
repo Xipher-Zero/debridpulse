@@ -130,7 +130,7 @@ from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
     Artifact, ArtifactFingerprint, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
     ContinuationStrategy,
-    DeliveryKind, DiscoveryDepth, DiscoveryLimits,
+    DeliveryKind, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, RemoteObjectKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, FingerprintKind, InputChallenge,
@@ -1639,11 +1639,14 @@ class TransferEngine:
         scope = self._input_scope(candidate)
         family = scope.family if scope is not None else ""
         # The provider's depth reaches the executor only when it is deeper than
-        # the directory itself, and its limits only when it set any, so a flat
-        # unlimited discovery is exactly the call it always was.
+        # the directory itself, its limits only when it set any, and a content
+        # read only when it asked for one, so a flat unlimited listing is
+        # exactly the call it always was.
         tree = {"depth": request.depth} if request.depth != DiscoveryDepth.CURRENT else {}
         if request.limits != DiscoveryLimits():
             tree["limits"] = request.limits
+        if request.content_limit is not None:
+            tree["content_limit"] = request.content_limit
         try:
             for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
                 used = submitted
@@ -1658,6 +1661,13 @@ class TransferEngine:
                     if submitted is not None:
                         submitted.discard()
                 if not isinstance(outcome, InputRequirement):
+                    if request.content_limit is not None and not (
+                            isinstance(outcome, DiscoveryResult) and outcome.kind == RemoteObjectKind.FILE
+                            and isinstance(outcome.content, bytes) and len(outcome.content) <= request.content_limit):
+                        # A content read answers with the file's bytes, within
+                        # the bound asked for, or not at all.
+                        raise TransferError(self._error(Category.EXECUTOR_PROTOCOL_VIOLATION, Stage.RESOLUTION,
+                                                        domain=Domain.EXECUTOR))
                     if submitted is not None and not submitted.accepted_by_transport:
                         await self._settle_input(record.transfer_id, submitted.token, accepted=True)
                     await self.challenges.record(record.transfer_id, "discovery_completed", family)
@@ -2055,10 +2065,7 @@ class TransferEngine:
         # candidate is a claim over its subject, decided at dispatch.
         if any(not isinstance(candidate, TransferCandidate) or candidate.expected_bytes < 0 for candidate in candidates):
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.CANDIDATE_PREPARATION))
-        candidates = tuple(sorted(candidates, key=lambda candidate: -candidate.priority))
-        if record.entry:
-            candidates = tuple(replace(candidate, name=record.entry.name, relative_path=record.entry.relative_path,
-                                       expected_bytes=candidate.expected_bytes or record.entry.expected_bytes) for candidate in candidates)
+        candidates = _normalized_candidates(record, candidates)
         transfer = await self.repository.get(record.transfer_id)
         if transfer is None:
             return
@@ -3083,10 +3090,16 @@ class TransferEngine:
                 owned = await self.repository.execution_owns_target(observed.handle)
                 # The payload failed verification: nothing in it keeps meaning.
                 await self.repository.invalidate_material(artifact.id, "verification_rejected")
+                # The rejection is a fact of this attempt. What it means -- an
+                # existing alternate, or with none left a terminal failure -- is
+                # the recovery owner's decision, reached through the same hook
+                # a failed execution uses (which also records the failure
+                # outcome once); it reads this recorded rejection rather than
+                # verifying the attempt again.
                 await self.repository.artifact_state(artifact.id, "error", error=error)
-                await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error), attempt_id=observed.handle.attempt_id)
                 if owned:
                     await self._retire_execution_owned_material(artifact, work, footprint)
+                await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.FAILED:
             error = observed.error or self._error(Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION, domain=Domain.EXECUTOR)
             await self._recover_artifact(artifact, error)
@@ -3102,6 +3115,17 @@ class TransferEngine:
             # Its terminal truth was acted on: nothing asks about it any more.
             self._admitted_executions.discard(observed.handle.attempt_id)
 
+
+    @staticmethod
+    def _verification_rejected(artifact: Artifact, attempt_id: str) -> bool:
+        """Whether attempt ``attempt_id``'s successful material was already
+        judged and rejected by the canonical verifier (``_execution_result``):
+        its success produced nothing that keeps meaning, so it is read as that
+        recorded fact -- never verified again, never kept as a completed writer."""
+        error = artifact.error
+        return (artifact.state == "error" and error is not None and error.domain == Domain.INTEGRITY
+                and error.stage == Stage.VERIFICATION and artifact.execution is not None
+                and artifact.execution.attempt_id == attempt_id)
 
     async def _retire_execution_owned_material(self, artifact, work: ExecutionWork, footprint: ExecutionFootprint,
                                                *, prune_empty_parents=False, required=False) -> None:

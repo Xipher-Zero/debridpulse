@@ -11,6 +11,7 @@ const PROTOCOLS = {
   general_scp: {glyph: 'file-down', colour: 'rgb(167, 139, 250)'},
   general_rsync: {glyph: 'folder-sync', colour: 'rgb(124, 58, 237)'},
   general_webdav: {glyph: 'cloud-sync', colour: 'rgb(56, 189, 248)'},
+  multimeta: {glyph: 'network', colour: 'rgb(232, 121, 249)'},
   usenet: {glyph: 'newspaper', colour: 'rgb(203, 213, 225)'},
 };
 
@@ -141,6 +142,20 @@ test('each protocol block carries its own frozen colour datum', async ({page}) =
   }
 });
 
+test('Multimeta is the Network glyph turned upside down, carried by its own glyph', async ({page}) => {
+  await openSettings(page, 'sources');
+  // The orientation belongs to the glyph asset (scaleY(-1) about its centre),
+  // so the chip stays the one shared primitive: no chip is transformed.
+  const transforms = await page.evaluate(() => Array.from(
+    document.querySelectorAll('.dp-settings-panel[data-panel="sources"] [data-protocol] img'),
+    image => getComputedStyle(image).transform));
+  expect(new Set(transforms)).toEqual(new Set(['none']));
+  const glyph = await (await page.request.get('/icons/lucide/network.svg')).text();
+  expect(glyph).toContain('<g transform="translate(0 24) scale(1 -1)">');
+  expect(glyph).toContain('stroke="#E879F9"');
+  expect(glyph).toContain('<rect x="9" y="2" width="6" height="6" rx="1"/>');
+});
+
 test('Downloads shows Network Sources with the identical identity', async ({page}) => {
   await openSettings(page, 'downloads');
   await expect(page.locator('#view-settings [data-executor-tuning="direct"] .card-title'))
@@ -218,7 +233,8 @@ test('the chip surface and border derive from the protocol colour', async ({page
   for (const [a, b] of [['general_http', 'general_ftp'], ['general_ftp', 'usenet'],
                         ['general_http', 'usenet'], ['general_ftp', 'general_scp'],
                         ['general_scp', 'general_rsync'], ['general_rsync', 'general_webdav'],
-                        ['general_http', 'general_webdav']]) {
+                        ['general_http', 'general_webdav'], ['general_webdav', 'multimeta'],
+                        ['general_scp', 'multimeta']]) {
     expect(by[a].borderColour, `${a} vs ${b} share a border colour`).not.toBe(by[b].borderColour);
     expect(by[a].background, `${a} vs ${b} share a surface`).not.toBe(by[b].background);
   }

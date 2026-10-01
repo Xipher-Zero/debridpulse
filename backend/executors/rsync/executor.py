@@ -642,7 +642,8 @@ class RsyncExecutor:
     # ── discovery ───────────────────────────────────────────────────────────
 
     async def discover(self, subject, submitted: SubmittedInput | None = None, *,
-                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits()):
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits(),
+                       content_limit: int | None = None):
         """Read-only classification of one rsync path before any candidate
         exists, through exactly the preparation execution uses. A regular file
         is one file; a directory is its regular files within the neutral
@@ -651,9 +652,9 @@ class RsyncExecutor:
         filter (``translation.depth_options``) -- and a daemon's server root is
         that listing below every root it advertises. Links and special files
         are never members and never followed. Only a complete listing is a
-        result. ``limits`` are not enforced here, so any is refused before
-        anything is listed."""
-        if limits != DiscoveryLimits():
+        result. ``limits`` are not enforced here, and no content is read
+        here, so either is refused before anything is listed."""
+        if limits != DiscoveryLimits() or content_limit is not None:
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
                 retryability=Retryability.NEVER, integration_id=self.descriptor.id))
         candidate = subject.candidate

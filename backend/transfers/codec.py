@@ -134,7 +134,11 @@ def materialization(value: str | None) -> MaterializationResult | None:
 
 
 def entry(value: dict | None) -> SourceEntry | None:
-    return SourceEntry(value["name"], value["expected_bytes"], value["relative_path"], request(value["request"])) if value else None
+    if not value:
+        return None
+    return SourceEntry(value["name"], value["expected_bytes"], value["relative_path"], request(value["request"]),
+                       tuple(request(item) for item in value.get("alternates") or ()),
+                       tuple(IntegrityMetadata(**item) for item in value.get("integrity") or ()))
 
 
 def error(value: str | None) -> NormalizedError | None:

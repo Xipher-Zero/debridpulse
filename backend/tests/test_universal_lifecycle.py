@@ -272,7 +272,11 @@ async def test_restart_recovers_same_execution_and_does_not_dispatch_duplicate(c
 
 
 @pytest.mark.asyncio
-async def test_completed_executor_observation_requires_actual_payload(core):
+async def test_completed_executor_observation_requires_actual_payload(canonical_core):
+    # A verification rejection is decided by the canonical recovery owner (an
+    # existing alternate, or with none -- as here -- terminal failure), so this
+    # builds the real canonical stack.
+    core = canonical_core
     transfer = await submit(core)
     await core.engine.tick()
     artifact = (await core.repository.artifacts(transfer.id))[0]

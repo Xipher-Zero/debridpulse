@@ -141,7 +141,8 @@ def test_the_lower_tier_keeps_its_identity_and_changes_only_its_label():
     """``general_family`` is the internal tier identity and does not move; only
     what the operator reads changed."""
     members = [d for d in definitions if d.presentation.status_tier == GENERAL_FAMILY]
-    assert {d.id for d in members} == {"general_http", "general_ftp", "general_scp", "general_rsync", "general_webdav"}
+    assert {d.id for d in members} == {"general_http", "general_ftp", "general_scp", "general_rsync", "general_webdav",
+                                       "multimeta"}
     for definition in members:
         assert definition.presentation.status_tier_label == "Standard Services", definition.id
 

@@ -580,12 +580,26 @@ class DiscoveryRequest:
     this interpretation does not provide the resource
     (``transfers.policy.interpretation_absent``); once reached, it durably
     becomes the request's interpretation (``RequestRecord.interpretation``).
-    An alternate's own resolution never names a further alternate."""
+    An alternate's own resolution never names a further alternate.
+
+    ``content_limit``: the provider needs the complete content of the regular
+    file ``endpoint`` names -- at most this many bytes -- rather than a
+    listing (a small resource whose bytes describe the request, such as a
+    descriptor document). The answer is a FILE carrying ``content``; a larger
+    one fails the discovery, it is never truncated. A hard bound the provider
+    sets, never an operator tuning. An executor that cannot read it refuses."""
     endpoint: Endpoint
     accepted_input_methods: tuple[InputMethod, ...] = ()
     depth: DiscoveryDepth = DiscoveryDepth.CURRENT
     alternate: TransferRequest | None = None
     limits: DiscoveryLimits = DiscoveryLimits()
+    content_limit: int | None = None
+
+    def __post_init__(self):
+        if self.content_limit is not None and (
+                isinstance(self.content_limit, bool) or not isinstance(self.content_limit, int)
+                or self.content_limit < 1):
+            raise ValueError("A content limit is a positive number of bytes")
 
 
 @dataclass(frozen=True)
@@ -626,12 +640,15 @@ class DiscoveryResult:
     regular FILE carries no members, only its size when the server reports it
     (``expected_bytes``). ``location`` is the address the server finally
     described the path at when it moved it (a followed redirect), ``""`` when
-    it answered at the requested address itself."""
+    it answered at the requested address itself. ``content`` is the file's
+    complete content when the discovery asked for it
+    (``DiscoveryRequest.content_limit``), else ``None``."""
     entries: tuple[DiscoveredEntry, ...] = ()
     directory: str = ""
     kind: RemoteObjectKind = RemoteObjectKind.DIRECTORY
     expected_bytes: int = 0
     location: str = field(default="", repr=False)
+    content: bytes | None = field(default=None, repr=False)
 
 
 @dataclass(frozen=True)
@@ -662,11 +679,22 @@ class SourceEntry:
     :class:`FileManifestEntry` -- the two must agree exactly, or explicit file
     selection cannot reconcile an early choice against the executable manifest
     (``transfers.file_selection.reconcile_executable_subset``).
+
+    ``alternates``: further ordinary requests for this SAME member, after
+    ``request`` in the provider's order of preference. Core fans each one out
+    as a sibling child of the member, routed like any other request; whether
+    their candidates are one artifact is decided by the existing same-transfer
+    cohort and canonical owners, exactly as for several submitted links.
+    ``integrity``: whole-member integrity the provider declares; core stamps it
+    onto every candidate resolved for the member, as it does
+    ``expected_bytes``, so evidence and final verification use it.
     """
     name: str
     expected_bytes: int
     relative_path: str
     request: TransferRequest = field(repr=False)
+    alternates: tuple[TransferRequest, ...] = field(default=(), repr=False)
+    integrity: tuple[IntegrityMetadata, ...] = ()
 
 
 @dataclass(frozen=True)

@@ -218,7 +218,7 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
             if current is None or current.execution != artifact.execution:
                 return WriterRetirement("execution_changed_concurrently", "not_applicable")
             observed = await engine._observe_execution(old_executor, artifact.execution)
-            if observed.state == ExecutionState.SUCCEEDED:
+            if observed.state == ExecutionState.SUCCEEDED and not engine._verification_rejected(current, observed.handle.attempt_id):
                 await engine.repository.execution(observed)
                 return WriterRetirement("writer_already_succeeded", "not_applicable")
             observed, quiesce, checkpointed = await engine._quiesce_and_checkpoint(current, old_executor, observed,

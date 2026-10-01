@@ -74,6 +74,45 @@
   modification times are never treated as content evidence. Recent Items, Downloads and Details keep the
   WebDAV origin while Details' Route History still shows the HTTP(S) provider and engine that delivered
   each file. Disabling WebDAV follows the Network Sources group exactly like its peers.
+- **Multimeta Network Source** (`multimeta`, labelled Multimeta; Lucide Network turned upside down, Hot
+  Fuchsia). Multimeta reads Metalink4 (RFC 5854) descriptors: an uploaded `.meta4` file, or an `http://` or
+  `https://` link whose path ends in `.meta4` -- recognized from the link itself, so no other HTTP(S) link is
+  claimed or probed. A remote descriptor is read once, through the engine that claims its address, under
+  the existing destination, redirect, sign-in and local-network rules, and is refused rather than truncated
+  past 16 MB. Each `<file>` becomes a member of the existing file selection (a single-file descriptor needs
+  no selection), and each of its `<url>` sources becomes an ordinary link of that member, in the publisher's
+  priority order, routed through the same providers as any other link -- so FTP sources go to (S)FTP and
+  HTTP(S) sources to HTTP(S), and choosing between them, failing over when one fails, retrying and
+  continuing are the existing download lifecycle's, exactly as for several links to one file. A declared
+  size and SHA-256, SHA-512, SHA-1 or MD5 checksum are checked by the existing file verification when the
+  file completes; SHA-256 and SHA-512 also let the sources be recognized as one file without sampling --
+  even two sources on one server, such as its FTP and HTTPS copies.
+  Relative sources resolve against the address the descriptor was finally read from (an upload has none,
+  so they are unusable there). A sign-in the descriptor's server asks for is used for that server only, and
+  local-network permission for the descriptor's host is never extended to a source on any other host. A
+  file described only by `<metaurl>` metadata (for example a torrent) is reported as a failed member and
+  never fetched; Metalink 3 documents, Metalink/HTTP headers, piece checksums and signatures are not
+  supported. Descriptors are parsed with no DTD or XML entity processing, and every count and size is
+  bounded. Recent Items, Downloads and Details keep the Multimeta origin while Route History shows the
+  provider and engine that delivered the file. Multimeta has its own Enable control under Network Sources
+  and no Transfer Method Settings card.
+- **Manifest members with several sources, format-specific claims and bounded content reads** (neutral).
+  A provider's manifest member may carry further ordinary requests (`SourceEntry.alternates`), each
+  fanned out as a sibling of the member, and the member's declared whole-file integrity
+  (`SourceEntry.integrity`), which core stamps onto every candidate resolved for it. A request-aware
+  claim on one resource format (`ProviderApplicability.specific`) competes before scheme-wide claims of its
+  class. A provider's core-run discovery may ask for the complete content of one small file
+  (`DiscoveryRequest.content_limit`); the executor that claims it reads it under the same owners as
+  any listing, and an executor that cannot read it refuses.
+- **One file, one server, two routes** (neutral). Two routes reached through one server are still never
+  treated as independent evidence of one file -- unless both carry the same strong whole-file checksum
+  (SHA-256 or SHA-512), which proves one file wherever it is served from. Such routes become alternates of
+  one download instead of the second failing as a local path conflict; without that checksum nothing
+  changes.
+- **A download whose checksum does not verify tries another source** (neutral). When the finished file fails
+  verification and another source for the same file exists, recovery switches to it through the existing
+  candidate switch, discarding the rejected bytes; once no source is left, the failure is final as
+  before. Every other integrity failure is unchanged.
 - **WebDAV Maximum Files and Collection Scan Timeout.** The WebDAV Transfer Method card is now one
   three-control relationship group of the shared tuning cards: Directory Depth, **Maximum Files** (how many
   files one folder may hold, 1–10,000, default 10,000) and **Collection Scan Timeout** (how long finding a

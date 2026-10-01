@@ -26,8 +26,8 @@ from executors.aria2.client import Aria2ResponseError, Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
     SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, Located, Opaque,
-    RemoteFile, ftp_discovery, ftp_fingerprint, resolve_location, sampled_public_artifact_fingerprint, sftp_discovery,
-    sftp_fingerprint, webdav_discovery,
+    RemoteFile, ftp_discovery, ftp_fingerprint, http_content, resolve_location, sampled_public_artifact_fingerprint,
+    sftp_discovery, sftp_fingerprint, webdav_discovery,
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
@@ -628,6 +628,7 @@ class Aria2Executor:
         "not_a_directory": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER),
         "unsupported_type": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
         "too_many_entries": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
+        "too_large": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER),
         "unsupported_listing": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
         "auth_method_unsupported": (Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Retryability.NEVER),
         "sftp_unavailable": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
@@ -641,7 +642,8 @@ class Aria2Executor:
     }
 
     async def discover(self, subject, submitted: SubmittedInput | None = None, *,
-                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits()):
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits(),
+                       content_limit: int | None = None):
         """Read-only classification of one FTP or SFTP path before any candidate exists.
 
         The same destination validation, egress route and access decisions
@@ -653,13 +655,18 @@ class Aria2Executor:
         regular files -- an FTP or SFTP tree is never listed here (any deeper
         ``depth`` is refused, and so are ``limits`` it does not enforce). HTTP(S)
         is classified and listed through its own collection protocol, WebDAV
-        (``_http_discovery``), at any depth and within the requested limits."""
+        (``_http_discovery``), at any depth and within the requested limits.
+        A ``content_limit`` read of one HTTP(S) file is ``_http_discovery``'s
+        too, flat and unlimited; no other transport reads content here."""
         candidate = subject.candidate
         endpoint = self._endpoint(candidate)
         if endpoint is None or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
+        if content_limit is not None and (endpoint.scheme not in SAMPLED_FINGERPRINT_SCHEMES
+                                          or depth != DiscoveryDepth.CURRENT or limits != DiscoveryLimits()):
+            raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         if endpoint.scheme in SAMPLED_FINGERPRINT_SCHEMES:
-            result = await self._http_discovery(candidate, endpoint, submitted, depth, limits)
+            result = await self._http_discovery(candidate, endpoint, submitted, depth, limits, content_limit)
             return result if isinstance(result, InputRequirement) else self._discovered(result)
         if depth != DiscoveryDepth.CURRENT or limits != DiscoveryLimits() or endpoint.scheme not in {"ftp", "sftp"}:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
@@ -700,8 +707,10 @@ class Aria2Executor:
         return self._discovered(result)
 
     async def _http_discovery(self, candidate, endpoint, submitted: SubmittedInput | None, depth: DiscoveryDepth,
-                              limits: DiscoveryLimits = DiscoveryLimits()):
-        """HTTP(S) classification and listing through WebDAV, read-only.
+                              limits: DiscoveryLimits = DiscoveryLimits(), content_limit: int | None = None):
+        """HTTP(S) classification and listing through WebDAV, read-only -- or,
+        with ``content_limit``, the complete content of one file
+        (``http_content``), never more than that many bytes.
 
         The same destination validation, redirect control and private-LAN
         grant as HTTP(S) evidence (``services.artifact_sampling``): anonymous
@@ -718,15 +727,19 @@ class Aria2Executor:
             if submitted.method != InputMethod.USERNAME_PASSWORD or not username or not password:
                 raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
         start = self._start_address(endpoint.address, submitted)
-        bounded = {}
-        if limits.max_files is not None:
-            bounded["max_files"] = limits.max_files
-        if limits.timeout_seconds is not None:
-            bounded["scan_timeout_seconds"] = limits.timeout_seconds
-        result = await webdav_discovery(
-            start, depth=depth, username=username, password=password, **bounded,
+        access = dict(
+            username=username, password=password,
             credential_scope=(submitted.scope or auth_scope(endpoint.address)) if submitted is not None else None,
             on_authenticated=_acceptance(submitted), **self._granted_at(candidate, endpoint.address, start))
+        if content_limit is not None:
+            result = await http_content(start, max_bytes=content_limit, **access)
+        else:
+            bounded = {}
+            if limits.max_files is not None:
+                bounded["max_files"] = limits.max_files
+            if limits.timeout_seconds is not None:
+                bounded["scan_timeout_seconds"] = limits.timeout_seconds
+            result = await webdav_discovery(start, depth=depth, **bounded, **access)
         if isinstance(result, AccessRequired):
             return self._authority_requirement(endpoint.address, result)
         if start != endpoint.address and isinstance(result, (Listing, RemoteFile)) and not result.location:
@@ -746,7 +759,7 @@ class Aria2Executor:
                 for name, size in result.entries), result.directory, location=result.location)
         if isinstance(result, RemoteFile):
             return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=max(0, result.size),
-                                   location=result.location)
+                                   location=result.location, content=result.content)
         reason = result.reason if isinstance(result, ListingRefused) else result[3]
         domain, category, retryability = self._LISTING_FAILURES.get(
             reason, (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF))

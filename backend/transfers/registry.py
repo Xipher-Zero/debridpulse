@@ -115,14 +115,18 @@ class IntegrationRegistry:
             self._unhealthy.add(integration_id)
 
     @staticmethod
-    def _provider_selection_key(provider: Provider, request: TransferRequest, *, conditional: bool = False):
+    def _provider_selection_key(provider: Provider, request: TransferRequest, *, conditional: bool = False,
+                                specific: bool = False):
         """Established neutral same-class provider ordering. A conditional
         claim (``ProviderApplicability.conditional``) competes before the
         unconditional claims of its class: they can never yield to it, so
-        after them it would never get its probe."""
+        after them it would never get its probe. A specific claim
+        (``ProviderApplicability.specific``) then competes before the
+        scheme-wide ones, which would otherwise always win over it."""
         return (
             provider.descriptor.id != request.preferred_provider,
             not conditional,
+            not specific,
             -provider.descriptor.priority,
             provider.descriptor.id,
         )
@@ -168,6 +172,7 @@ class IntegrationRegistry:
         )
         assessment = assess_provider_applicability(request, inputs)
         conditional = {match.provider_id: match.conditional for match in assessment.matches}
+        specific = {match.provider_id: match.specific for match in assessment.matches}
 
         # The classifier returns only one selectable class: SPECIALIZED when an
         # authoritative specialized match exists, otherwise GENERIC/STATIC.
@@ -180,7 +185,8 @@ class IntegrationRegistry:
             if provider.descriptor.id in conditional and provider.descriptor.id not in declined
         ]
         applicable.sort(key=lambda provider: self._provider_selection_key(
-            provider, request, conditional=conditional[provider.descriptor.id]))
+            provider, request, conditional=conditional[provider.descriptor.id],
+            specific=specific[provider.descriptor.id]))
         return tuple(applicable), assessment
 
     def conditional_claim(self, provider: Provider, request: TransferRequest) -> bool:

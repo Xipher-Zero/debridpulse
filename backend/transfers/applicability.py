@@ -54,6 +54,13 @@ class ProviderApplicability:
     (``ResolutionResult.declined``). An unconditional claimant can never yield,
     so within one applicability class conditional claims compete first --
     otherwise they would never get their probe.
+
+    ``specific``: the claim covers only a form of request the provider
+    recognized from the request itself, without I/O (a resource format its
+    address names), never every request of its schemes. A scheme-wide claim
+    would otherwise always take it, so within one class a specific claim
+    competes before the unconditional scheme-wide ones (after the conditional
+    ones, which need their probe).
     """
 
     generic_schemes: frozenset[str] = frozenset()
@@ -61,6 +68,7 @@ class ProviderApplicability:
     specialized: bool = False
     readiness: ApplicabilityReadiness = ApplicabilityReadiness.READY
     conditional: bool = False
+    specific: bool = False
 
     @property
     def is_specialized(self) -> bool:
@@ -90,6 +98,7 @@ class ApplicabilityMatch:
     provider_id: str
     classification: ApplicabilityClass
     conditional: bool = False
+    specific: bool = False
 
 
 @dataclass(frozen=True)
@@ -280,10 +289,11 @@ def assess_provider_applicability(
             continue
         if any(_specialized_match(view, claim) for claim in facts.specialized_hosts):
             specialized.append(
-                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED, facts.conditional)
+                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED, facts.conditional, facts.specific)
             )
         elif _generic_match(view, item):
-            generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC, facts.conditional))
+            generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC, facts.conditional,
+                                              facts.specific))
 
     # An authoritative specialized match can proceed through the established
     # same-class policy. Otherwise any unresolved specialized competitor makes

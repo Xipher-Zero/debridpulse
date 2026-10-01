@@ -88,9 +88,20 @@ def origin_provider(requests, route_attempts) -> str | None:
     return next(iter(distinct)) if roots and owners.keys() == roots and len(distinct) == 1 else None
 
 
-def manifest_child_identity(parent_id: str, relative_path: str) -> str:
-    """The durable identity of one manifest member request under ``parent_id``."""
+def manifest_child_identity(parent_id: str, relative_path: str, alternate: int = 0) -> str:
+    """The durable identity of one manifest member request under ``parent_id``:
+    the member's own request, or its ``alternate``-th further request
+    (``SourceEntry.alternates``, 1-based). A path never holds NUL, so no
+    member's identity can collide with another member's alternate."""
+    if alternate:
+        return uuid5(NAMESPACE_URL, f"request:{parent_id}:{relative_path}\x00{int(alternate)}").hex
     return uuid5(NAMESPACE_URL, f"request:{parent_id}:{relative_path}").hex
+
+
+def manifest_member_requests(entry: SourceEntry) -> tuple[tuple[int, TransferRequest], ...]:
+    """``(alternate, request)`` for every request of one manifest member, in
+    the provider's order: its own request first (``0``)."""
+    return ((0, entry.request), *enumerate(entry.alternates, start=1))
 
 
 @dataclass(frozen=True)
@@ -2123,10 +2134,14 @@ class TransferRepository:
             if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return
             missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
-            identities = [manifest_child_identity(record.id, entry.relative_path) for entry in entries]
+            # One child per request of every member: a member's alternates are
+            # sibling children of the same member, each its own entry.
+            children = [(manifest_child_identity(record.id, entry.relative_path, alternate),
+                         replace(entry, request=request, alternates=()))
+                        for entry in entries for alternate, request in manifest_member_requests(entry)]
+            identities = [identity for identity, _entry in children]
             await self._retire_superseded_children(db, record, identities, missing_error)
-            for ordinal, entry in enumerate(entries):
-                identity = identities[ordinal]
+            for ordinal, (identity, entry) in enumerate(children):
                 await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata,materialized_selection_id)
                     VALUES(?,?,?,?,?,?,?)""",
                     (identity, record.transfer_id, record.id, ordinal, codec.dump(entry.request), codec.dump(entry), selection_id))

@@ -228,6 +228,7 @@ const UPLOADED_FILE_LABELS = Object.freeze({
   torrent_file: 'Torrent file',
   file: 'Torrent file',
   nzb: 'NZB file',
+  meta4: 'Metalink file',
 });
 
 function sourceLabel(source, requestKinds) {
@@ -1166,6 +1167,9 @@ const TRANSFER_UPLOADS = Object.freeze({
                // is not judged by a metafile's ceiling. This mirrors the one
                // server-side ceiling (transfers/staged_input.py).
                maxBytes: 1024 * 1024 * 1024, maxLabel: '1 GB'},
+  // A Metalink file describes files and their sources: one that describes
+  // several offers the file selector like any other collection.
+  '.meta4':   {endpoint: '/multimeta/add-file', label: 'Metalink file', interactive: true},
 });
 
 function uploadKindFor(name) {
@@ -1180,7 +1184,7 @@ async function uploadTransferFile(input) {
 
   const kind = uploadKindFor(file.name);
   if (!kind) {
-    toast('Choose a .torrent or .nzb file', 'error');
+    toast('Choose a .torrent, .nzb or .meta4 file', 'error');
     input.value = '';
     return;
   }

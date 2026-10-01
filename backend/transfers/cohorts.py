@@ -158,6 +158,9 @@ class MappingResult:
 
 
 def _normalized_candidates(record, candidates):
+    """A request's candidates as core materializes them: in priority order, a
+    manifest member's carrying the member's name, path and the size and
+    integrity it declared (a candidate's own facts win)."""
     ordered = tuple(sorted(candidates, key=lambda candidate: -candidate.priority))
     if record.entry:
         ordered = tuple(replace(
@@ -165,6 +168,7 @@ def _normalized_candidates(record, candidates):
             name=record.entry.name,
             relative_path=record.entry.relative_path,
             expected_bytes=candidate.expected_bytes or record.entry.expected_bytes,
+            integrity=candidate.integrity or record.entry.integrity,
         ) for candidate in ordered)
     return ordered
 

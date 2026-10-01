@@ -100,6 +100,9 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-protocol='general_webdav'] {
   --dp-protocol-color: #38BDF8;
 }
+#view-settings .dp-settings-protocol-chip[data-protocol='multimeta'] {
+  --dp-protocol-color: #E879F9;
+}
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: #CBD5E1;
 }

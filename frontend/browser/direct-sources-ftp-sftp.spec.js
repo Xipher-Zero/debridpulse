@@ -70,6 +70,8 @@ const CARDS = [
    ['Direct downloads from', 'rsync sources.']],
   ['general_webdav', '.dp-settings-provider-card--general-webdav', 'WebDAV',
    ['Direct downloads from', 'WebDAV files and folders.']],
+  ['multimeta', '.dp-settings-provider-card--multimeta', 'Multimeta',
+   ['Downloads described by', 'Metalink (.meta4) files.']],
 ];
 
 /* Protocols that do not exist yet. They appear when a real provider is
@@ -188,14 +190,25 @@ test('Network Sources renders one compact protocol box per real provider, left-f
   await page.goto('/'); await openSettings(page);
   await assertProtocolBoxes(page);
   await assertCapacityLanes(page, 1440);
-  // At the wide viewport every real member fits the lanes the content
-  // establishes (no wrap), and spare capacity never stretches a box to fill it.
-  const wide = await grid(page).evaluate(el => ({
-    capacity: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
-    members: el.children.length,
-    widest: Math.max(...Array.from(el.children, child => child.getBoundingClientRect().width)),
-  }));
-  expect(wide.capacity).toBeGreaterThanOrEqual(wide.members);
+  // At the wide viewport the members fill the lanes the content establishes
+  // row by row -- every row but the last is full, so a member past the
+  // capacity starts the next row at the first lane (assertCapacityLanes) --
+  // and spare capacity never stretches a box to fill it.
+  const wide = await grid(page).evaluate(el => {
+    const tops = new Map();
+    for (const child of el.children) {
+      const top = Math.round(child.getBoundingClientRect().top);
+      tops.set(top, (tops.get(top) || 0) + 1);
+    }
+    return {
+      capacity: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
+      members: el.children.length,
+      rows: [...tops.entries()].sort((a, b) => a[0] - b[0]).map(entry => entry[1]),
+      widest: Math.max(...Array.from(el.children, child => child.getBoundingClientRect().width)),
+    };
+  });
+  expect(wide.rows.length).toBe(Math.ceil(wide.members / wide.capacity));
+  for (const count of wide.rows.slice(0, -1)) expect(count).toBe(wide.capacity);
   expect(wide.widest).toBeLessThanOrEqual(220);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-dark.png'});
   await page.locator('#theme-toggle').click();

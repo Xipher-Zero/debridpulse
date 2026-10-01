@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from transfers import _engine_base, file_selection as fs
-from transfers._repository_base import manifest_child_identity
+from transfers._repository_base import manifest_child_identity, manifest_member_requests
 from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
@@ -66,11 +66,14 @@ class TransferEngine(_RecoveryTransferEngine):
     def _split_member_credentials(entries):
         sanitized, supplied = [], []
         for entry in entries:
-            payload, values = split_user_supplied(entry.request.payload)
-            if values:
-                entry = replace(entry, request=replace(entry.request, payload=payload))
-                supplied.append((entry.relative_path, payload, values))
-            sanitized.append(entry)
+            requests = []
+            for alternate, request in manifest_member_requests(entry):
+                payload, values = split_user_supplied(request.payload)
+                if values:
+                    request = replace(request, payload=payload)
+                    supplied.append((entry.relative_path, alternate, payload, values))
+                requests.append(request)
+            sanitized.append(replace(entry, request=requests[0], alternates=tuple(requests[1:])))
         return tuple(sanitized), supplied
 
     async def _resolve(self, record):
@@ -297,10 +300,11 @@ class TransferEngine(_RecoveryTransferEngine):
                     record, authorized, selection_id=getattr(authorized, "selection_id", None),
                 )
                 members = {entry.relative_path for entry in authorized}
-                for relative_path, address, values in supplied:
+                for relative_path, alternate, address, values in supplied:
                     if relative_path in members:
                         await self._admit_supplied(record.transfer_id,
-                                                   manifest_child_identity(record.id, relative_path), address, values)
+                                                   manifest_child_identity(record.id, relative_path, alternate),
+                                                   address, values)
             elif observation.state in {ResourceState.ABSENT, ResourceState.EXPIRED}:
                 error = self._error(
                     Category.RESOURCE_EXPIRED

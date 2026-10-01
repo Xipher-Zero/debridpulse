@@ -8,14 +8,14 @@ const { test, expect } = require('@playwright/test');
  * never disappears.
  *
  * This file is the ONE spec file that writes `integrations.general_scp.enabled`,
- * `integrations.general_rsync.enabled` and `integrations.general_webdav.enabled`
- * (spec files share one backend and run concurrently); SCP, rsync and WebDAV
- * move with (S)FTP in every case below, so "every child" really is every
- * Network Sources member.
+ * `integrations.general_rsync.enabled`, `integrations.general_webdav.enabled`
+ * and `integrations.multimeta.enabled` (spec files share one backend and run
+ * concurrently); SCP, rsync, WebDAV and Multimeta move with (S)FTP in every
+ * case below, so "every child" really is every Network Sources member.
  */
 
 const GROUP = 'direct_sources';
-const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav'];
+const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -24,12 +24,13 @@ async function isolateExternalFonts(page) {
 
 const canonical = page => page.request.get('/api/settings').then(r => r.json());
 
-async function setChildren(page, http, ftp, scp = ftp, rsync = ftp, webdav = ftp) {
+async function setChildren(page, http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp) {
   await page.request.patch('/api/integrations/general_http/configuration', {data: {enabled: http}});
   await page.request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: ftp}});
   await page.request.patch('/api/integrations/general_scp/configuration', {data: {enabled: scp}});
   await page.request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: rsync}});
   await page.request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: webdav}});
+  await page.request.patch('/api/integrations/multimeta/configuration', {data: {enabled: multimeta}});
 }
 
 async function setMaster(page, enabled) {
@@ -86,7 +87,7 @@ const groupState = page => page.evaluate(group => {
  * integration state to prove a colour would be racing every other spec that
  * owns that same state. The durable semantics below still use the real API --
  * they are about durability and have to. */
-async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = ftp, master}) {
+async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp, master}) {
   const live = await page.request.get('/api/settings').then(r => r.json());
   await page.goto('/');
   await page.evaluate(([entries, gates]) => {
@@ -97,7 +98,8 @@ async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = f
      general_ftp: {...live.integrations.general_ftp, enabled: ftp},
      general_scp: {...live.integrations.general_scp, enabled: scp},
      general_rsync: {...live.integrations.general_rsync, enabled: rsync},
-     general_webdav: {...live.integrations.general_webdav, enabled: webdav}},
+     general_webdav: {...live.integrations.general_webdav, enabled: webdav},
+     multimeta: {...live.integrations.multimeta, enabled: multimeta}},
     {[GROUP]: {enabled: master, label: 'Network Sources', members: CHILDREN}},
   ]);
   await page.evaluate(() => window.DPProviderStatus.refresh());
@@ -116,6 +118,7 @@ test.beforeAll(async ({request}) => {
     scp: settings.integrations.general_scp.enabled,
     rsync: settings.integrations.general_rsync.enabled,
     webdav: settings.integrations.general_webdav.enabled,
+    multimeta: settings.integrations.multimeta.enabled,
     master: settings.integration_groups?.[GROUP]?.enabled !== false,
   };
 });
@@ -127,6 +130,7 @@ test.afterAll(async ({request}) => {
   await request.patch('/api/integrations/general_scp/configuration', {data: {enabled: original.scp}});
   await request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: original.rsync}});
   await request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: original.webdav}});
+  await request.patch('/api/integrations/multimeta/configuration', {data: {enabled: original.multimeta}});
   await request.patch(`/api/integration-groups/${GROUP}/configuration`, {data: {enabled: original.master}});
 });
 
@@ -187,6 +191,13 @@ test('green when the master is on and every child is enabled', async ({page}) =>
 
 test('yellow when the master is on and one child is disabled', async ({page}) => {
   await renderStatus(page, {http: true, ftp: false, master: true});
+  await expect.poll(() => groupState(page)).toBe('mixed');
+});
+
+test('yellow when every member is enabled except Multimeta', async ({page}) => {
+  // Multimeta is a peer like any other: the group's own aggregate, never a
+  // Multimeta-specific rule, reports the one member that does not participate.
+  await renderStatus(page, {http: true, ftp: true, multimeta: false, master: true});
   await expect.poll(() => groupState(page)).toBe('mixed');
 });
 
@@ -258,7 +269,7 @@ test('every Services enable control is immediate', async ({page}) => {
     '.dp-settings-panel[data-panel="sources"] [data-integration-group-enabled]',
     nodes => nodes.map(n => n.dataset.integrationEnabled || n.dataset.integrationGroupEnabled));
   expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', 'general_scp',
-    'general_rsync', 'general_webdav', GROUP]));
+    'general_rsync', 'general_webdav', 'multimeta', GROUP]));
 });
 
 /* The suite's designated NEUTRAL whole-settings probe.
@@ -343,7 +354,7 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'one member off did not converge').toBe('mixed');
 
-    // The SCP, rsync and WebDAV members' Enables are the same immediate canonical control.
+    // The SCP, rsync, WebDAV and Multimeta members' Enables are the same immediate canonical control.
     await flipChild(page, 'general_scp');
     await expect.poll(async () => (await canonical(page)).integrations.general_scp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'two members off did not converge').toBe('mixed');
@@ -354,6 +365,10 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await flipChild(page, 'general_webdav');
     await expect.poll(async () => (await canonical(page)).integrations.general_webdav.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'four members off did not converge').toBe('mixed');
+    // Multimeta too: one more peer of the same group and control.
+    await flipChild(page, 'multimeta');
+    await expect.poll(async () => (await canonical(page)).integrations.multimeta.enabled).toBe(false);
+    await expect.poll(() => groupState(page), 'five members off did not converge').toBe('mixed');
 
     await flipChild(page, 'general_http');
     await expect.poll(async () => (await canonical(page)).integrations.general_http.enabled).toBe(false);

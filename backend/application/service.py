@@ -378,6 +378,26 @@ class ApplicationService:
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
             name=name, source=source)
 
+    async def submit_meta4(self, data, filename, *, source="manual_file", selection_mode="all"):
+        """Admit one uploaded Metalink4 descriptor through the canonical
+        submission seam. As for an NZB, the application does not interpret
+        it: the Multimeta provider reads it during resolution. The stream is
+        staged straight through the neutral durable-input owner."""
+        selection_mode = file_selection.normalize_selection_mode(selection_mode)
+        name = str(filename or "").rsplit(".", 1)[0] or "Multimeta"
+        if self.staged_input is None:
+            raise ValueError("Durable input storage is unavailable")
+        try:
+            payload = await self.staged_input.stage(data)
+        except StagedInputError as exc:
+            raise ValueError(str(exc)) from None
+        if not payload.byte_length:
+            self.staged_input.discard(payload)
+            raise ValueError("Metalink file is empty")
+        return await self.submit(
+            (TransferRequest("meta4", payload, name=filename or f"{name}.meta4", selection_mode=selection_mode),),
+            name=name, source=source)
+
     async def reclaim_staged_input(self) -> int:
         """Reclaim every staged input no live request still references.
 

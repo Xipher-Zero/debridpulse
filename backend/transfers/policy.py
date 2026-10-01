@@ -370,6 +370,12 @@ class TransferPolicy:
         if error.domain == Domain.SECURITY:
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "security_failure")
         if error.domain == Domain.INTEGRITY:
+            # Material the canonical verifier rejected indicts the route that
+            # produced it, not the logical artifact: an existing verified
+            # alternate is activated first; with none left the failure is
+            # terminal. Every other integrity failure stays terminal.
+            if error.stage == Stage.VERIFICATION and context.has_alternate:
+                return RecoveryDecision(RecoveryAction.TRY_ALTERNATE_CANDIDATE, "integrity_alternate", retry_at=now)
             return RecoveryDecision(RecoveryAction.FAIL_PERMANENTLY, "integrity_failure")
         # A route failure during execution (the exact source is gone, refused
         # or unreachable) is scoped to that candidate's route, like expiry: it

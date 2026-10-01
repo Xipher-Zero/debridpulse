@@ -32,6 +32,7 @@ from core.config import (
 )
 from api.legacy_settings_view import legacy_settings_projection
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
+from providers.multimeta.metalink import MAX_DESCRIPTOR_BYTES
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
@@ -738,6 +739,46 @@ async def add_usenet_file(
         raise HTTPException(400, _sanitize_error(exc)) from None
     except Exception as exc:
         logger.exception("add_usenet_file failed: %s", _sanitize_error(exc))
+        raise HTTPException(502, _sanitize_error(exc))
+    finally:
+        await file.close()
+
+
+@router.post("/multimeta/add-file")
+async def add_multimeta_file(
+    file: UploadFile = File(...),
+    selection_mode: str | None = Form(default=None),
+    application: ApplicationService = Depends(get_application),
+):
+    """Upload a Metalink4 (.meta4) descriptor for Multimeta to decompose.
+
+    Like an NZB upload, the route only hands the stream to the canonical
+    submission seam; the Multimeta provider interprets it during resolution
+    and core routes every source it describes. ``selection_mode`` is optional;
+    omitted -> ALL."""
+    filename = Path(file.filename or "upload.meta4").name
+    if not filename.lower().endswith(".meta4"):
+        raise HTTPException(400, "A .meta4 file is required")
+
+    async def chunks():
+        read = 0
+        while True:
+            chunk = await file.read(_UPLOAD_CHUNK_BYTES)
+            if not chunk:
+                return
+            read += len(chunk)
+            # The Multimeta reader's own hard bound: nothing larger is staged.
+            if read > MAX_DESCRIPTOR_BYTES:
+                raise ValueError("Metalink file exceeds the 16 MB upload limit")
+            yield chunk
+
+    try:
+        return public_payload(await application.submit_meta4(
+            chunks(), filename, source="manual_file", selection_mode=selection_mode))
+    except ValueError as exc:
+        raise HTTPException(400, _sanitize_error(exc)) from None
+    except Exception as exc:
+        logger.exception("add_multimeta_file failed: %s", _sanitize_error(exc))
         raise HTTPException(502, _sanitize_error(exc))
     finally:
         await file.close()

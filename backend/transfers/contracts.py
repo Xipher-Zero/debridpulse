@@ -279,11 +279,16 @@ class RemoteDiscovery(Protocol):
     rather than answer with more or less. ``limits`` (``DiscoveryLimits``) are
     enforced the same way: a directory past its file limit, or an enumeration
     past its time limit, fails -- never answers with a partial listing -- and
-    an executor that cannot enforce a requested limit refuses it."""
+    an executor that cannot enforce a requested limit refuses it.
+    ``content_limit`` asks for the complete content of the regular file the
+    subject names instead of a listing (``DiscoveryRequest.content_limit``):
+    a FILE answer carrying at most that many bytes, a larger file failing the
+    discovery; an executor that cannot read it refuses."""
 
     async def discover(self, subject: ExecutionSubject, submitted: SubmittedInput | None = None, *,
                        depth: DiscoveryDepth = DiscoveryDepth.CURRENT,
-                       limits: DiscoveryLimits = DiscoveryLimits()) -> DiscoveryResult | InputRequirement: ...
+                       limits: DiscoveryLimits = DiscoveryLimits(),
+                       content_limit: int | None = None) -> DiscoveryResult | InputRequirement: ...
 
 
 @runtime_checkable

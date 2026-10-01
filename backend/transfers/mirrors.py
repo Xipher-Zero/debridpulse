@@ -477,11 +477,17 @@ def pairing_failure(left, right) -> str:
     (``ResolverArtifactIdentityEvidence.object_coordinate``) may they still be
     compared -- and then only by the ordinary material evidence below: an
     address is not identity, since a server may replace the contents at one
-    path. Different or missing coordinates stay ``non_independent_source``."""
+    path. Strong affirmative identity is the other exception: two routes that
+    both carry the same strong whole-file digest (``_strong_integrity``) name
+    one artifact whichever server reaches them, so they are compared too and
+    proven by that digest -- which final verification still enforces on the
+    material. Different or missing coordinates without it stay
+    ``non_independent_source``."""
     if str(left.id) == str(right.id):
         return "same_candidate"
-    if _source_key(left) == _source_key(right) and (
-            not _object_coordinate(left) or _object_coordinate(left) != _object_coordinate(right)):
+    if (_source_key(left) == _source_key(right)
+            and (not _object_coordinate(left) or _object_coordinate(left) != _object_coordinate(right))
+            and not _strong_integrity(left) & _strong_integrity(right)):
         return "non_independent_source"
     if not logical_key(left) or logical_key(left) != logical_key(right):
         return "logical_pairing_mismatch"

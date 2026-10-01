@@ -847,9 +847,9 @@
    * of thing, and the only difference is what the mutation is scoped to. */
   /* The ONE Settings protocol identity chip.
    *
-   * Eleven appearances (Network Sources, HTTP(S), (S)FTP, SCP, rsync, WebDAV
-   * and Usenet on Services; Network Sources, rsync, WebDAV and Usenet on
-   * Downloads) render this
+   * Twelve appearances (Network Sources, HTTP(S), (S)FTP, SCP, rsync, WebDAV,
+   * Multimeta and Usenet on Services; Network Sources, rsync, WebDAV and
+   * Usenet on Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
    * and a protocol contributes nothing but its canonical colour. */
   const PROTOCOL_GLYPHS = Object.freeze({
@@ -859,6 +859,7 @@
     general_scp: 'file-down',
     general_rsync: 'folder-sync',
     general_webdav: 'cloud-sync',
+    multimeta: 'network',
     usenet: 'newspaper',
   });
 
@@ -880,6 +881,7 @@
     general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
     general_rsync: ['Direct downloads from', 'rsync sources.'],
     general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],
+    multimeta: ['Downloads described by', 'Metalink (.meta4) files.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {

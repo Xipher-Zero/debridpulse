@@ -2,7 +2,8 @@
 
 It is also the one read-only remote discovery reader of those transports
 (``ftp_discovery``, ``sftp_discovery``, and ``webdav_discovery`` -- HTTP(S)'s
-own collection listing), under exactly the same destination, redirect and
+own collection listing -- and ``http_content``, the complete content of one
+small HTTP(S) resource), under exactly the same destination, redirect and
 credential decisions.
 
 Every transport that can read an object's first and last bytes proves the same
@@ -425,10 +426,12 @@ class Listing:
 @dataclass(frozen=True)
 class RemoteFile:
     """The discovered path is one regular file of ``size`` bytes (``location``
-    as for ``Listing``)."""
+    as for ``Listing``); ``content`` is its complete content when it was read
+    (``http_content``)."""
     size: int
     path: str = ""
     location: str = ""
+    content: bytes | None = None
 
 
 @dataclass(frozen=True)
@@ -1019,6 +1022,78 @@ async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str
         refused = isinstance(getattr(exc, "os_error", None), ConnectionRefusedError)
         return ListingRefused("connection_refused" if refused else "connection_failed")
     except (aiohttp.ClientError, OSError):
+        return ListingRefused("connection_failed")
+
+
+async def http_content(address: str, *, max_bytes: int, username: str = "", password: str = "",
+                       credential_scope: AuthScope | None = None,
+                       timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, on_authenticated: Accepted = None,
+                       private_lan: bool = False) -> RemoteFile | ListingRefused | AccessRequired:
+    """Read the complete content of one small HTTP(S) resource, read-only.
+
+    One ``GET`` through the one guarded request owner (``_guarded_request``):
+    every hop's destination, the redirects, the private-LAN grant and the
+    credential -- sent only to the authority it was given for
+    (``credential_scope``, by default ``address``'s own) -- are decided there
+    exactly as for every other read. A Basic challenge is ``AccessRequired``
+    naming the address that asked. A body larger than ``max_bytes`` (after
+    decoding) is refused as ``too_large``; it is never truncated. The answer
+    is a ``RemoteFile`` carrying the bytes and, when the resource moved, the
+    validated address that finally served it (``location``)."""
+    if urlsplit(str(address or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
+        return ListingRefused("destination_rejected")
+    try:
+        validated = await network_safety.validate_resolved_public_destination(address, **_granted(private_lan))
+    except network_safety.DestinationLookupError:
+        return ListingRefused("dns_failure")
+    except network_safety.UnsafeDestinationError:
+        return ListingRefused("destination_rejected")
+    granted_host = _origin(validated)[1] if private_lan else ""
+    credential: Credential = ((credential_scope or auth_scope(validated)),
+                              "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()) if username else None
+    timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
+    connector = aiohttp.TCPConnector(
+        resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
+        use_dns_cache=False)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            response, reason, answered = await _guarded_request(
+                session, validated, {}, private_lan=bool(granted_host), credential=credential)
+            if response is None:
+                return ListingRefused(reason if reason in {"dns_failure", "destination_rejected"}
+                                      else "unsupported_listing")
+            try:
+                if response.status == 401:
+                    if not _basic_challenge(response):
+                        return ListingRefused("auth_method_unsupported")
+                    return AccessRequired(address=answered)
+                if credential is not None and auth_scope(answered) == credential[0] and on_authenticated:
+                    on_authenticated()
+                if not 200 <= response.status < 300:
+                    return ListingRefused(_listing_refusal(response.status))
+                body = bytearray()
+                while len(body) <= max_bytes:
+                    chunk = await response.content.read(max_bytes + 1 - len(body))
+                    if not chunk:
+                        break
+                    body += chunk
+                if len(body) > max_bytes:
+                    return ListingRefused("too_large")
+            finally:
+                response.release()
+            return RemoteFile(len(body), location=answered if answered != validated else "", content=bytes(body))
+    except asyncio.TimeoutError:
+        return ListingRefused("timeout")
+    except network_safety.DestinationLookupError:
+        return ListingRefused("dns_failure")
+    except network_safety.UnsafeDestinationError:
+        return ListingRefused("destination_rejected")
+    except aiohttp.ClientSSLError:
+        return ListingRefused("tls_failure")
+    except aiohttp.ClientConnectorError as exc:
+        refused = isinstance(getattr(exc, "os_error", None), ConnectionRefusedError)
+        return ListingRefused("connection_refused" if refused else "connection_failed")
+    except (aiohttp.ClientError, OSError, ValueError):
         return ListingRefused("connection_failed")
 
 

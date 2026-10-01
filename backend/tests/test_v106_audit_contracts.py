@@ -165,7 +165,7 @@ def test_dashboard_has_one_mixed_submission_control():
     assert 'https://example-hoster.com/file/' in html
     assert 'magnet:?xt=urn:btih:' in html
     assert 'Add links, magnets, torrent or NZB files to the queue.' in html
-    assert 'when empty, choose a .torrent or .nzb file' in html
+    assert 'when empty, choose a .torrent, .nzb or .meta4 file' in html
     assert 'addDashboardEntries()' in html
     assert "function classifyDashboardEntries" in js
     assert "openTorrentFilePicker();" in js

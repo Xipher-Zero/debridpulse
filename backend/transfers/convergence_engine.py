@@ -1237,7 +1237,8 @@ class TransferEngine(_QualifiedTransferEngine):
                 current = replace(current, execution=observed.handle)
 
                 if observed.state == ExecutionState.SUCCEEDED:
-                    await self._execution_result(current, executor, observed)
+                    if not self._verification_rejected(current, observed.handle.attempt_id):
+                        await self._execution_result(current, executor, observed)
                     current = await self._current_artifact(current.transfer_id, current.id)
                     if current is None:
                         return None, error, observed, _Step(
