@@ -2942,7 +2942,7 @@ class TransferRepository:
         if not row or not row["authorized"] or row["executor_id"] != handle.executor_id or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
             return False
         is_current = row.get("current_execution_id") == handle.attempt_id
-        if action in {"start", "resume", "pause", "retarget"} and not is_current:
+        if action in {"start", "resume", "pause"} and not is_current:
             return False
         if action == "cancel" and not is_current:
             cleanup_owned = row["transfer_status"] in {"deleted", "cancelled"} and row.get("cleanup_state") in {"pending", "blocked"}
@@ -2950,17 +2950,14 @@ class TransferRepository:
                 return False
         # An inherited native object whose source replacement is not proven
         # never gains acquisition authority: only the one native-transition
-        # reconciliation (observe, pause, cancel, retarget) may act on it.
+        # reconciliation (observe, pause, cancel) may act on it.
         if action in {"start", "resume"} and row.get("native_transition_from"):
             return False
-        # A retarget may briefly run the inherited job to replace its source,
-        # so it needs the same acquisition authority as a start or resume.
-        if action in {"start", "resume", "retarget"} and (row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"} or row["paused_intent"]):
+        if action in {"start", "resume"} and (row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"} or row["paused_intent"]):
             return False
-        if action in {"start", "resume", "retarget"} and await self.globally_paused():
+        if action in {"start", "resume"} and await self.globally_paused():
             return False
-        # A retarget is the first native action of a handed-off attempt.
-        return action not in {"start", "retarget"} or row["state"] == "prepared"
+        return action != "start" or row["state"] == "prepared"
 
     async def converge_staged_input(self, attempt_id: str, *, staged_context: dict,
                                     context_key: str, retire_context_keys=()) -> tuple[str, dict | None]:

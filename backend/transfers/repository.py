@@ -1114,9 +1114,9 @@ class TransferRepository(_QualifiedTransferRepository):
         """A durable desired-source transition of a PARKED writer: the
         artifact's selected candidate becomes ``selected`` while ``writer``
         stays its current, quiesced execution -- no native mutation, no new
-        writer authority, no discard. The native retarget to the selected
-        candidate is completed by the canonical Resume (the only point at
-        which the executor may run the job to apply it); selecting the
+        writer authority, no discard. The canonical Resume completes it through
+        the one candidate activation (a fresh writer for the selected
+        candidate); selecting the
         writer's own candidate again withdraws the transition. Refused unless
         ``writer`` is still the artifact's current, authorized, observed-paused
         attempt and the caller's recovery claim is current (a Pause/Resume
@@ -1150,89 +1150,6 @@ class TransferRepository(_QualifiedTransferRepository):
             await self._material_audit(db, row["torrent_id"], artifact_id, "source_transition", **transition,
                                        writer_attempt_id=writer.attempt_id,
                                        material_generation=int(material["material_generation"]) if material else None)
-            await db.commit()
-        return True
-
-    async def hand_off_execution(self, successor, previous, handle, continuation, *, activation_provenance: dict,
-                                 handoff: dict, expected_bytes: int | None = None, claim=None,
-                                 unresolved: bool = True) -> bool:
-        """THE native-state handoff: in ONE transaction, fence the artifact's
-        quiesced current writer ``previous`` and admit ``handle`` -- a new
-        attempt of the same executor for ``successor``'s newly selected
-        candidate, adopting ``previous``'s native object -- as the next writer
-        generation under ``continuation``.
-
-        Refused (nothing written) unless ``previous`` is still the artifact's
-        current, authorized, observed-paused writer, still passes the material
-        writer fence, the plan names the current material generation, and the
-        caller's recovery claim is current. ``previous`` keeps its own
-        identity, candidate and history; it only loses all authority, so the
-        native object it drove is reachable from now on only through
-        ``handle``. The candidate-switch provenance and the handoff's material
-        audit (``handoff``: old/new candidate, attempts, writer generations,
-        retained bytes) are written in this same transaction. The handoff is
-        committed only while acquisition is permitted (a paused switch is a
-        ``select_desired_source`` transition instead); the retarget itself is
-        refused by ``authorize_execution`` once a pause intent stands.
-
-        ``unresolved`` (the default): the new attempt is admitted with its
-        native transition UNRESOLVED -- no start/resume authority -- until
-        ``resolve_native_transition`` records the positively proven source.
-        ``False`` only when the native object is already proven to serve the
-        new attempt's source (a restore to the source it never left)."""
-        if expected_bytes is not None and expected_bytes < 0:
-            return False
-        async with get_db() as db:
-            await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone("""SELECT f.*,t.status AS transfer_status FROM download_files f
-                JOIN torrents t ON t.id=f.torrent_id WHERE f.id=?""", (successor.id,))
-            writer = await db.fetchone(self._WRITER_SELECT, (previous.attempt_id,))
-            old = await db.fetchone("SELECT state FROM execution_attempts WHERE id=? AND artifact_id=?",
-                                    (previous.attempt_id, successor.id))
-            if (not row or row["transfer_status"] in {"deleted", "completed", "consolidated", "cancelled"}
-                    or row.get("execution_attempt_id") != previous.attempt_id or not old or old["state"] != "paused"
-                    or not self._writer_current(writer, previous)
-                    or continuation.material_generation != int(writer["material_generation"])):
-                await db.rollback(); return False
-            snapshot = await self._recovery_snapshot(db, successor.id, row=row)
-            if claim is not None and (
-                snapshot.get("recovery_claim_token") != claim.token
-                or int(snapshot.get("recovery_generation") or 0) != claim.generation
-            ):
-                await db.rollback(); return False
-            await db.execute("UPDATE execution_attempts SET authorized=0,updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                             (previous.attempt_id,))
-            await db.execute("""UPDATE execution_attempt_provenance SET outcome='handed_off',updated_at=CURRENT_TIMESTAMP
-                WHERE execution_attempt_id=?""", (previous.attempt_id,))
-            assignments = ["execution_attempt_id=NULL", "selected_candidate=?", "normalized_error=NULL", "retry_at=0",
-                           "recovery_failures=0", "recovery_refreshes=0", "continuation_reservation_expires_at=NULL",
-                           "updated_at=CURRENT_TIMESTAMP"]
-            params = [successor.selected]
-            if expected_bytes is not None:
-                assignments.append("size_bytes=?"); params.append(expected_bytes)
-            await db.execute(f"UPDATE download_files SET {','.join(assignments)} WHERE id=?", (*params, successor.id))
-            apply_recovery_reset(snapshot, RecoveryResetAuthority.CANDIDATE_SWITCHED)
-            snapshot["quiescence_reason"] = None; snapshot["wake_condition"] = None
-            await self._save_recovery_snapshot(db, int(row["torrent_id"]), successor.id, snapshot)
-            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
-                             (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)))
-            generation = await self._admit_material_writer(db, successor, continuation)
-            if generation is None:
-                await db.rollback(); return False
-            await self._record_writer(db, successor, handle, writer_generation=generation,
-                                      target_initially_absent=False, continuation=continuation,
-                                      link_activation=False)
-            if unresolved:
-                # Until the executor positively proves the replacement source,
-                # the new attempt holds no acquisition authority.
-                await db.execute("UPDATE execution_attempts SET native_transition_from=? WHERE id=?",
-                                 (previous.attempt_id, handle.attempt_id))
-            await self._material_audit(db, successor.transfer_id, successor.id, "native_handoff", **handoff,
-                                       old_writer_generation=int(writer["attempt_writer"]),
-                                       new_writer_generation=generation,
-                                       material_generation=continuation.material_generation,
-                                       retained_bytes=continuation.retained_bytes,
-                                       discarded_bytes=continuation.discarded_bytes)
             await db.commit()
         return True
 

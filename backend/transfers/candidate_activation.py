@@ -13,13 +13,14 @@ below. It owns:
   (the operator path) as well as when it is already confirmed terminal (the
   automatic path, whose caller already observed this upstream);
 - the one writer retirement (``retire_writer``): graceful quiesce, forced
-  material checkpoint, then fencing -- or, when the same executor can keep its
-  quiesced native job for the replacement source, the native-state handoff
-  (``_hand_off_writer``), which commits the switch together with the new
-  writer (while paused, the switch is only a durable desired source that
-  Resume completes). Which existing material a replacement keeps is decided
-  by the one Continuation Planner (``transfers.continuation``), never by
-  comparing executors or sidecars;
+  material checkpoint, then fencing (while paused, a lossless switch is only a
+  durable desired source that Resume completes). The replacement is always a
+  fresh execution, prepared by its executor's ordinary start exactly like any
+  other writer -- never another source grafted onto the retired writer's
+  native job. Which existing material it keeps is decided by the one
+  Continuation Planner (``transfers.continuation``), never by comparing
+  executors or sidecars, and a caller that may not discard material
+  (``permit_discard=False``) is refused when that plan would;
 - the durable commit, through ``transition_recovery(candidate_switched=True)``
   -- the same gate that already refuses to authorize a new writer before the
   old execution_attempts row is confirmed terminal, and already revokes that
@@ -41,23 +42,16 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError, unknown_failure
+from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import retire_materialization
 from transfers.continuation import parks_on_pause
-from transfers.models import (
-    ContinuationStrategy, ExecutionControl, ExecutionObservation, ExecutionRequest, ExecutionState,
-    ExecutionSubject, MaterializationKind, RetargetTruth, TransferCandidate, new_identity,
-)
+from transfers.models import ExecutionState, ExecutionSubject, MaterializationKind, TransferCandidate
 from transfers.recovery_execution import RecoveryClaim
 from transfers.size_evidence import reported_sizes_compatible
 
 _TERMINAL_EXECUTION_STATES = frozenset({
     ExecutionState.FAILED, ExecutionState.ABSENT, ExecutionState.CANCELLED, ExecutionState.SUCCEEDED,
 })
-# Retirements after which the candidate switch is durably committed by the
-# native-state handoff itself: the new writer was admitted (and, if its native
-# retarget failed, fenced closed) in the handoff transaction.
-HANDOFF_RETIREMENTS = frozenset({"handed_off", "handoff_abandoned", "handoff_uncertain"})
 
 
 @dataclass(frozen=True)
@@ -71,11 +65,7 @@ class ActivationResult:
     writer was already terminal before this call, e.g. the automatic path),
     ``"requested_confirmed"`` (this call cancelled a genuinely active writer
     and confirmed retirement), ``"uncertain"`` (retirement could not be
-    confirmed; ``committed`` is always False in that case), or one of
-    ``HANDOFF_RETIREMENTS`` (the writer's native object was handed to the new
-    writer: ``"handed_off"``; its retarget failed and the inherited job was
-    removed: ``"handoff_abandoned"``; or its state is still being reconciled
-    under the new writer's sole authority: ``"handoff_uncertain"``), or
+    confirmed; ``committed`` is always False in that case), or
     ``"desired_source"`` (paused: the parked writer is untouched and Resume
     completes the switch -- ``select_desired_source``).
     """
@@ -147,21 +137,9 @@ class WriterRetirement:
     quiesce: str = "not_needed"
 
 
-@dataclass(frozen=True)
-class NativeHandoff:
-    """Ask ``retire_writer`` to hand the retired writer's quiesced native
-    object to a new writer for the replacement candidate instead of fencing
-    it by cancellation, under ``claim`` (the switch's own recovery claim).
-    ``required``: the caller may not fall back to a portable continuation
-    that would discard DP-valid material (an operator who confirmed no
-    discard); the switch is then refused and the old writer left intact."""
-    claim: RecoveryClaim
-    required: bool = False
-
-
 async def retire_writer(engine, artifact, old_candidate, replacement_artifact, replacement_candidate, *,
                         boundary: str = "handoff", park: bool = False,
-                        handoff: NativeHandoff | None = None) -> WriterRetirement:
+                        permit_discard: bool = True) -> WriterRetirement:
     """THE writer retirement of every execution replacement (Pause, operator
     candidate switch, automatic failover, collection ownership convergence).
 
@@ -188,11 +166,13 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
     rather than cancelled once it is observed paused, holding no progress
     authority while the pause intent stands.
 
-    ``handoff`` (operator source switch): once quiesced and checkpointed, the
-    writer's native object is handed to a new writer for the replacement
-    candidate (``_hand_off_writer``) when core and the executor both allow it;
-    otherwise the writer is fenced as usual (or, when the handoff is
-    ``required``, left intact and the switch refused)."""
+    ``permit_discard=False`` (a source switch that promised to discard
+    nothing): once quiesced and checkpointed -- the material is then final --
+    the writer is fenced only when the replacement's continuation plan keeps
+    every DP-valid range (``_discards``); otherwise it is left intact for the
+    canonical lifecycle owner to resume or keep parked, and the switch is
+    refused. Without a writer the material cannot have changed since the
+    caller's own preview."""
     transfer_id, artifact_id = artifact.transfer_id, artifact.id
     partial_decision = "not_applicable"
     old_executor = None
@@ -230,11 +210,9 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
                     checkpointed=checkpointed, native_private_resume=True,
                     executor_id=old_executor.descriptor.id, attempt_id=artifact.execution.attempt_id)
                 return WriterRetirement("", "parked", "reused", quiesce)
-            if handoff is not None:
-                handed = await _hand_off_writer(engine, current, observed, checkpointed, replacement_candidate,
-                                                handoff, quiesce)
-                if handed is not None:
-                    return handed
+            if not permit_discard and await _discards(engine, current, replacement_candidate):
+                await engine.repository.execution(observed)
+                return WriterRetirement("material_discard_refused", "not_applicable", quiesce=quiesce)
             if observed.state in _TERMINAL_EXECUTION_STATES:
                 # Already confirmed terminal before we ever asked -- the
                 # automatic path's caller observed this upstream.
@@ -279,238 +257,55 @@ async def retire_writer(engine, artifact, old_candidate, replacement_artifact, r
     return WriterRetirement("", retirement, partial_decision, quiesce)
 
 
-async def _hand_off_writer(engine, current, observed, checkpointed: bool, replacement_candidate,
-                           handoff: NativeHandoff, quiesce: str) -> WriterRetirement | None:
-    """THE native-state handoff (inside ``retire_writer``, under the old
-    writer's convergence lock, after its quiesce and forced checkpoint).
-
-    Native object continuity is not writer-authority continuity: the old
-    attempt keeps its candidate and history and is fenced; a NEW attempt for
-    the replacement candidate becomes the next writer generation under a
-    ``NATIVE_STATE_HANDOFF`` plan from the one planner, adopting the old
-    native object -- both in one transaction that also commits the switch.
-    The new attempt stays 'prepared' (not yet established) until the executor
-    has positively retargeted the native source; the executor may run the job
-    briefly to do so, which is why a handoff happens only while acquisition is
-    permitted (a paused switch is completed at Resume). The job is left
-    quiesced for the canonical lifecycle owner to resume. What it fetched
-    during the retarget is not checkpointed from that transition observation.
-
-    ``None``: no handoff was possible and the caller may fence the writer as
-    usual. Before the commit nothing is changed. After it the switch stands:
-    a retarget that failed or is uncertain is fenced closed by cancelling the
-    inherited job through the new attempt, which alone owns it -- no second
-    native writer is ever admitted while its stop is unproven."""
-    transfer_id, artifact_id, previous = current.transfer_id, current.id, current.execution
-    index = resolve_candidate_index(current, replacement_candidate)
-    candidate = current.candidates[index] if index is not None else None
-    executor = engine.registry.executor_for_subject(ExecutionSubject.of(candidate)) if candidate else None
-    successor = replace(current, selected=index, execution=None) if candidate is not None else None
-    handle = request = plan = None
-    if (candidate is not None and observed.state == ExecutionState.PAUSED and checkpointed
-            and await engine.native_handoff_eligible(current, candidate, executor)):
-        attempt_id = new_identity()
-        work = engine._work(successor, candidate, attempt_id)
-        _state, _facts, plan = await engine._plan_material(successor, candidate, executor, work,
-                                                           handoff.claim.trigger.value, native_handoff=True)
-        if plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
-            request = ExecutionRequest(work, attempt_id, continuation=plan)
-            handle = await engine._retarget_handle(executor, request, previous)
-    if handle is None:
-        portable = await engine.preview_continuation(current, candidate, native=False) if candidate else None
-        await engine.repository.record_material_event(
-            transfer_id, artifact_id, "native_retarget", accepted=False, native_state="abandoned",
-            fallback=(portable.strategy.value if portable is not None else "none"), checkpointed=checkpointed,
-            quiesce=quiesce, old_attempt_id=previous.attempt_id,
-            new_candidate_id=str(candidate.id) if candidate else None,
-            discarded_bytes=portable.discarded_bytes if portable is not None else None)
-        if handoff.required and (portable is None or portable.discarded_bytes):
-            # The operator confirmed no discard: leave the quiesced writer
-            # intact; the canonical lifecycle owner resumes or parks it.
-            return WriterRetirement("native_handoff_unavailable", "not_applicable", quiesce=quiesce)
-        return None
-    old_candidate = await engine.writer_candidate(current)
-    detail = engine.repository.build_candidate_activation_detail(
-        transfer_id=transfer_id, artifact_id=artifact_id, old_candidate=old_candidate, new_candidate=candidate,
-        authority=handoff.claim.trigger.value, recovery_generation=handoff.claim.generation,
-        old_execution_id=previous.attempt_id, partial_decision="reused", admission_decision="native_handoff",
-        outcome="activated",
-    )
-    detail["new_execution_id"] = handle.attempt_id
-    # The observed quiesce is the durable precondition of the handoff.
-    await engine.repository.execution(observed)
-    accepted_size = current.expected_bytes if current.expected_bytes > 0 else candidate.expected_bytes
-    committed = await engine.repository.hand_off_execution(
-        successor, previous, handle, plan, activation_provenance=detail, expected_bytes=max(0, accepted_size),
-        claim=handoff.claim, handoff={
-            "executor_id": executor.descriptor.id, "old_attempt_id": previous.attempt_id,
-            "new_attempt_id": handle.attempt_id, "old_candidate_id": str(old_candidate.id),
-            "new_candidate_id": str(candidate.id), "strategy": plan.strategy.value, "quiesce": quiesce,
-            "valid_bytes": plan.retained_bytes,
-        })
-    if not committed:
-        # Refused atomically (a newer intent, claim or writer won): nothing
-        # changed and the quiesced writer is left to the lifecycle owner.
-        return WriterRetirement("native_handoff_refused", "not_applicable", quiesce=quiesce)
-    try:
-        result = await executor.retarget_from(request, handle, previous)
-    except Exception as exc:
-        result = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=unknown_failure(
-            exc, integration_id=executor.descriptor.id, domain=Domain.EXECUTOR, stage=Stage.QUEUE))
-    try:
-        result = await engine._accept_observation(handle, result)
-    except TransferError as exc:
-        result = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
-    await engine.repository.execution(result)
-    # The executor's acknowledgement is not proof: the new attempt gains
-    # acquisition authority only once the native source is positively proven.
-    # (The switch's caller reports a failed switch to the operator itself.)
-    return await reconcile_native_transition(engine, transfer_id, artifact_id, required=handoff.required,
-                                             quiesce=quiesce, report=False)
+async def _discards(engine, artifact, candidate) -> bool:
+    """THE no-discard test of a source switch: whether the fresh writer of
+    ``candidate`` would leave DP-valid material behind, as the one planner
+    plans it now (``preview_continuation``); a switch nothing can plan for
+    keeps nothing."""
+    plan = await engine.preview_continuation(artifact, candidate)
+    return plan is None or bool(plan.discarded_bytes)
 
 
-async def reconcile_native_transition(engine, transfer_id: int, artifact_id: int, *, required: bool = True,
-                                      quiesce: str = "not_needed", report: bool = True) -> WriterRetirement:
-    """THE resolution of a native-state handoff whose source replacement is
-    not yet proven (``native_transition_from``). While unresolved the new
-    attempt has no start/resume authority, whatever any observation says.
-
-    Under the attempt's convergence lock the inherited job is first quiesced
-    if it is acquiring at all, then the executor is asked -- read-only -- which
-    source it positively serves (``retarget_truth``):
-
-    - the replacement: the transition is resolved; ordinary authority returns;
-    - the previous source: the switch did not happen natively, so ownership is
-      restored through the one handoff admission -- a NEW attempt for the
-      previous candidate, already proven, adopting the same native object
-      (history is never rewritten; the unproven attempt is fenced) -- and,
-      with ``report``, the operator is told the switch was not applied;
-    - anything else (or a restore that cannot be admitted): the job is
-      cancelled through the unproven attempt's own authority and the artifact
-      continues portably (held for confirmation when ``required`` and that
-      would discard material). A cancellation that is itself unproven leaves
-      the attempt current and unresolved, so no second writer is admitted and
-      nothing acquires until native truth is known."""
+async def reconcile_native_transition(engine, transfer_id: int, artifact_id: int) -> None:
+    """A writer admitted by a native-state handoff whose source replacement
+    was never proven (``native_transition_from``, recorded only by builds that
+    retargeted a job natively). Which source its job serves is unknown, so it
+    is never resumed: it is cancelled through its own authority and the
+    artifact continues portably like any source switch -- held for the
+    operator when that would discard material. A cancellation that is itself
+    unproven leaves the attempt current and unresolved, so no second writer
+    is admitted and nothing acquires until native truth is known."""
     current = await engine._current_artifact(transfer_id, artifact_id)
     handle = current.execution if current is not None else None
     previous_id = await engine.repository.native_transition_from(handle.attempt_id) if handle else None
     if previous_id is None:
-        return WriterRetirement("", "handed_off", "reused", quiesce)
+        return
     executor = engine.registry.executor_for_handle(handle)
     if executor is None:
-        return WriterRetirement("", "handoff_uncertain", "reused", quiesce)
-    attempts = {item.handle.attempt_id: item for item in await engine.repository.executions(transfer_id)}
-    original, successor = attempts.get(previous_id), attempts.get(handle.attempt_id)
-    truth = RetargetTruth.UNKNOWN
-    async with engine._convergence_lock(handle.attempt_id):
-        observed = await engine._observe_execution(executor, handle)
-        if (observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
-                and ExecutionControl.PAUSE in engine._controls(executor, observed)):
-            try:
-                observed = await engine._accept_observation(handle, await executor.pause(handle))
-            except Exception:
-                pass
-        await engine.repository.execution(observed)
-        if (observed.state == ExecutionState.PAUSED and original is not None and original.candidate is not None
-                and successor is not None and successor.candidate is not None):
-            request = ExecutionRequest(engine._work(current, successor.candidate, handle.attempt_id),
-                                       handle.attempt_id,
-                                       continuation=await engine.repository.execution_continuation(handle.attempt_id))
-            original_request = ExecutionRequest(engine._work(current, original.candidate, previous_id), previous_id)
-            try:
-                truth = RetargetTruth(await executor.retarget_truth(request, handle, original_request))
-            except Exception:
-                truth = RetargetTruth.UNKNOWN
-        if truth == RetargetTruth.RETARGETED:
-            await engine.repository.resolve_native_transition(handle)
-            await engine.repository.record_material_event(
-                transfer_id, artifact_id, "native_retarget", accepted=True, native_state="reused",
-                old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
-            return WriterRetirement("", "handed_off", "reused", quiesce)
-    if truth == RetargetTruth.ORIGINAL:
-        restored = await _restore_native_source(engine, current, executor, handle, original, quiesce, report)
-        if restored is not None:
-            return restored
+        return
     stopped = await engine._cancel_execution(executor, handle)
     await engine.repository.execution(stopped)
     if not stopped.stopped:
         await engine.repository.record_material_event(
             transfer_id, artifact_id, "native_retarget", accepted=False, native_state="uncertain", fallback="none",
-            truth=truth.value, old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
-        return WriterRetirement("", "handoff_uncertain", "reused", quiesce)
+            old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
+        return
     # Proven stopped: nothing native remains to be resolved.
     await engine.repository.resolve_native_transition(handle)
     transfer = await engine.repository.get(transfer_id)
     paused = bool(transfer and transfer.paused) or await engine.repository.globally_paused()
     await engine.repository.detach_retired_writer(artifact_id, handle.attempt_id, state="paused" if paused else "queued")
-    candidate = successor.candidate if successor is not None else None
-    portable = await engine.preview_continuation(current, candidate, native=False) if candidate else None
-    if required and (portable is None or portable.discarded_bytes):
-        # The operator chose a switch that discards nothing: the portable
-        # continuation that would now discard waits for the ordinary
-        # confirmation instead of being admitted automatically.
+    successor = next((item for item in await engine.repository.executions(transfer_id)
+                      if item.handle.attempt_id == handle.attempt_id), None)
+    if successor is None or successor.candidate is None or await _discards(engine, current, successor.candidate):
+        # The switch discarded nothing: a portable continuation that would
+        # now discard waits for the ordinary confirmation instead.
         await engine.repository.artifact_state(artifact_id, "error", error=NormalizedError(
             Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
             retryability=Retryability.NEVER, operator_action_required=True, integration_id=executor.descriptor.id))
     await engine.repository.record_material_event(
         transfer_id, artifact_id, "native_retarget", accepted=False, native_state="abandoned", fallback="portable",
-        truth=truth.value, old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
-    return WriterRetirement("", "handoff_abandoned", "reused", quiesce)
-
-
-async def _restore_native_source(engine, current, executor, unproven, original, quiesce: str,
-                                 report: bool) -> WriterRetirement | None:
-    """The inherited job provably still serves the previous source: hand it,
-    through the one handoff admission, to a NEW attempt for that previous
-    candidate -- admitted already proven, since its source never changed.
-    ``None`` when that cannot be admitted (the caller then retires the job)."""
-    index = resolve_candidate_index(current, original.candidate)
-    if index is None:
-        return None
-    candidate = current.candidates[index]
-    successor = replace(current, selected=index, execution=None)
-    attempt_id = new_identity()
-    work = engine._work(successor, candidate, attempt_id)
-    _state, _facts, plan = await engine._plan_material(successor, candidate, executor, work, "native_restore",
-                                                       native_handoff=True)
-    if plan.strategy != ContinuationStrategy.NATIVE_STATE_HANDOFF:
-        return None
-    request = ExecutionRequest(work, attempt_id, continuation=plan)
-    handle = await engine._retarget_handle(executor, request, unproven)
-    if handle is None:
-        return None
-    replaced = current.candidates[current.selected]
-    detail = engine.repository.build_candidate_activation_detail(
-        transfer_id=current.transfer_id, artifact_id=current.id, old_candidate=replaced, new_candidate=candidate,
-        authority="native_transition_reconciliation", recovery_generation=None,
-        old_execution_id=unproven.attempt_id, partial_decision="reused", admission_decision="native_restore",
-        outcome="restored")
-    detail["new_execution_id"] = attempt_id
-    if not await engine.repository.hand_off_execution(
-            successor, unproven, handle, plan, activation_provenance=detail, unresolved=False, handoff={
-                "executor_id": executor.descriptor.id, "old_attempt_id": unproven.attempt_id,
-                "new_attempt_id": attempt_id, "old_candidate_id": str(replaced.id),
-                "new_candidate_id": str(candidate.id), "strategy": plan.strategy.value, "quiesce": quiesce,
-                "valid_bytes": plan.retained_bytes, "restored": True}):
-        return None
-    await engine.repository.execution(await engine._observe_execution(executor, handle))
-    await engine.repository.record_material_event(
-        current.transfer_id, current.id, "native_retarget", accepted=False, native_state="restored",
-        fallback="original_source", old_attempt_id=unproven.attempt_id, new_attempt_id=attempt_id)
-    if report:
-        await engine.repository.record_manual_candidate_failover(
-            transfer_id=current.transfer_id, artifact_id=current.id, filename=current.name,
-            requested_candidate_id=str(replaced.id), previous_candidate=candidate, selected_candidate=replaced,
-            source_host="", outcome="failure", execution_transition="native_restore", error=NormalizedError(
-                Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                retryability=Retryability.NEVER, operator_action_required=True,
-                integration_id=executor.descriptor.id))
-    restored = await engine._current_artifact(current.transfer_id, current.id)
-    if restored is not None and restored.execution == handle:
-        # Proven and ordinary again: the lifecycle owner resumes it (or keeps
-        # it parked) exactly as any writer.
-        await engine._converge_execution(restored, executor)
-    return WriterRetirement("native_retarget_reverted", "handoff_restored", "reused", quiesce)
+        old_attempt_id=previous_id, new_attempt_id=handle.attempt_id)
 
 
 async def activate_candidate(
@@ -642,24 +437,17 @@ async def activate_candidate(
             ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
         )
 
-    # A writer whose native object the replacement's writer can inherit is
-    # handed off instead of cancelled (``permit_discard``: whether the caller
-    # may fall back to a portable continuation that discards material).
-    handoff = None
-    if artifact.execution is not None and await engine.native_handoff_eligible(
-            artifact, new_candidate, engine.registry.executor_for_subject(ExecutionSubject.of(new_candidate))):
+    if artifact.execution is not None:
         transfer = await engine.repository.get(transfer_id)
         paused = bool(transfer and transfer.paused) or await engine.repository.globally_paused()
-        parked = await engine.repository.previous_writer(artifact_id)
-        if not paused:
-            handoff = NativeHandoff(claim, required=not permit_discard)
-        elif (parked is not None and parked.handle == artifact.execution and parked.state == "paused"
-                and await engine.native_retarget_available(artifact, new_candidate)):
-            # Paused, with a parked writer: a durable desired-source transition
-            # -- no native mutation, no new writer authority, no discard.
-            # Resume completes it; switching again only changes the desire.
-            # (Otherwise the writer is retired below, never handed off while
-            # acquisition is paused.)
+        parked = await engine.repository.previous_writer(artifact_id) if paused else None
+        if (parked is not None and parked.handle == artifact.execution and parked.state == "paused"
+                and not await _discards(engine, artifact, new_candidate)):
+            # Paused, with a parked writer, and the fresh writer would keep
+            # every DP-valid range: a durable desired-source transition -- no
+            # native mutation, no new writer authority, no discard. Resume
+            # completes it through this same activation; switching again only
+            # changes the desire. (Otherwise the writer is retired below.)
             writer = await engine.writer_candidate(artifact)
             withdrawn = writer is not None and resolve_candidate_index(artifact, writer) == target_index
             committed = writer is not None and await engine.repository.select_desired_source(
@@ -679,7 +467,7 @@ async def activate_candidate(
                 artifact_id=artifact_id,
             )
     retired = await retire_writer(engine, artifact, old_candidate, artifact, new_candidate,
-                                  boundary=claim.trigger.value, handoff=handoff)
+                                  boundary=claim.trigger.value, permit_discard=permit_discard)
     retirement, partial_decision = retired.retirement, retired.partial_decision
     if retired.reason:
         return await _record(
@@ -688,23 +476,6 @@ async def activate_candidate(
                 retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
             ), partial_decision=partial_decision, admission_decision="not_applicable", old_execution_id=old_execution_id,
         )
-    if retirement in HANDOFF_RETIREMENTS:
-        # Committed by the handoff transaction itself, provenance included.
-        current = await engine._current_artifact(transfer_id, artifact_id)
-        activated = current.candidates[current.selected] if current is not None else new_candidate
-        await engine.repository.record_candidate_attempt(artifact_id, str(activated.id), *(
-            (str(old_candidate.id),) if old_candidate is not None else ()))
-        if retirement == "handed_off" and current is not None and current.execution is not None:
-            # The inherited job is quiesced: the canonical lifecycle owner
-            # resumes it now if the intent is RUNNING, or keeps it parked.
-            executor = engine.registry.executor_for_handle(current.execution)
-            if executor is not None:
-                await engine._converge_execution(current, executor)
-        return ActivationResult(
-            True, "activated", old_candidate=old_candidate, new_candidate=activated,
-            retirement=retirement, transfer_id=transfer_id, artifact_id=artifact_id,
-        )
-
     current = await engine._current_artifact(transfer_id, artifact_id)
     if current is None:
         return await _record(

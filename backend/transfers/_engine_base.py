@@ -115,7 +115,7 @@ from transfers.errors import (
 )
 from transfers.candidate_activation import reconcile_native_transition, resolve_candidate_index, retire_writer
 from transfers import material as mat
-from transfers.continuation import parks_on_pause, plan_continuation, retargets_natively
+from transfers.continuation import parks_on_pause, plan_continuation
 from transfers.filesystem import (
     adoptable_material, destination, flush_payload, material_initially_absent, materialization_plan,
     PayloadFacts, member_payload, payload_facts, retire_materialization, retire_native_state, safe_name,
@@ -129,7 +129,6 @@ from transfers.input_required import (
 from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
     Artifact, ArtifactFingerprint, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
-    ContinuationStrategy,
     DeliveryKind, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, RemoteObjectKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
@@ -2245,12 +2244,11 @@ class TransferEngine:
         await self.repository.retry_requests(artifact.transfer_id, request_id=artifact.request_id)
 
     async def _plan_material(self, artifact: Artifact, candidate: TransferCandidate, executor, work: ExecutionWork,
-                             reason: str, *, native_handoff: bool = False):
+                             reason: str):
         """The artifact's current material truth and the continuation plan the
         next writer is offered: reconcile DP material with observable payload
         facts (FILE material only), then ask the one planner. Returns
-        ``(state, facts, plan)``; ``facts`` is ``None`` for a collection.
-        ``native_handoff``: see ``plan_continuation``."""
+        ``(state, facts, plan)``; ``facts`` is ``None`` for a collection."""
         # Read first: a queued artifact is planned on every admission attempt,
         # so an unchanged material row must cost no write transaction.
         state = await self.repository.material_state(artifact.id) or await self.repository.open_material_state(artifact)
@@ -2267,8 +2265,7 @@ class TransferEngine:
                                                              member_facts) or state
         plan = plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
                                  capabilities=executor.capabilities, reason=reason,
-                                 discovered=await self._discovered_boundaries(executor, candidate, state),
-                                 native_handoff=native_handoff)
+                                 discovered=await self._discovered_boundaries(executor, candidate, state))
         return state, facts, plan
 
     @staticmethod
@@ -2303,62 +2300,20 @@ class TransferEngine:
             found[member] = boundary if valid_answer else 0
         return found
 
-    async def preview_continuation(self, artifact: Artifact, candidate: TransferCandidate, *, native: bool = True):
+    async def preview_continuation(self, artifact: Artifact, candidate: TransferCandidate):
         """What the one planner would keep and discard if ``candidate`` wrote
         this artifact next -- read-only, nothing is created or reconciled.
-        ``None`` when no executor can take the candidate. A native-state
-        handoff is predicted only when core's own eligibility holds AND the
-        executor answers that this concrete source pair is retargetable (asked
-        without any native mutation); ``native=False`` previews the portable
-        continuation a handoff falls back to."""
+        ``None`` when no executor can take the candidate. A source switch is
+        always a fresh writer, so this is exactly what the switch keeps."""
         executor = self.registry.executor_for_subject(ExecutionSubject.of(candidate))
         if executor is None:
             return None
         state = await self.repository.material_state(artifact.id)
         if state is None:
             return None
-        discovered = await self._discovered_boundaries(executor, candidate, state)
-        if native and await self.native_handoff_eligible(artifact, candidate, executor):
-            plan = plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
-                                     capabilities=executor.capabilities, reason="user_candidate_switch",
-                                     discovered=discovered, native_handoff=True)
-            if plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF:
-                attempt_id = new_identity()
-                request = ExecutionRequest(self._work(artifact, candidate, attempt_id), attempt_id, continuation=plan)
-                if await self._retarget_handle(executor, request, artifact.execution) is not None:
-                    return plan
         return plan_continuation(state, candidate=candidate, executor_id=executor.descriptor.id,
                                  capabilities=executor.capabilities, reason="user_candidate_switch",
-                                 discovered=discovered)
-
-    async def native_handoff_eligible(self, artifact: Artifact, candidate: TransferCandidate, executor) -> bool:
-        """Core's own eligibility for handing the artifact's current writer's
-        native object to a writer of ``candidate``: the same executor, which
-        retargets natively, the same FILE target, and a writer that still
-        passes the material writer fence. Source equivalence is already
-        established by ``candidate`` being one of the artifact's candidates;
-        whether the concrete source pair is retargetable is the executor's
-        answer (``_retarget_handle``), asked separately."""
-        handle = artifact.execution
-        if handle is None or executor is None or not retargets_natively(executor.capabilities):
-            return False
-        if self.registry.executor_for_handle(handle) is not executor or handle.executor_id != executor.descriptor.id:
-            return False
-        if await self.repository.native_transition_from(handle.attempt_id):
-            return False  # an unproven handoff is resolved first, never chained
-        current = await self.writer_candidate(artifact)
-        if (current is None or current.materialization != MaterializationKind.FILE
-                or candidate.materialization != MaterializationKind.FILE
-                or self._work(artifact, current).materialization != self._work(artifact, candidate).materialization):
-            return False
-        return not await self.repository.material_writer_stale(handle)
-
-    async def native_retarget_available(self, artifact: Artifact, candidate: TransferCandidate) -> bool:
-        """Whether the planner would hand the artifact's writer's native object
-        to a writer of ``candidate`` now: core eligibility AND the executor's
-        read-only answer for this concrete source pair (``preview_continuation``)."""
-        plan = await self.preview_continuation(artifact, candidate)
-        return plan is not None and plan.strategy == ContinuationStrategy.NATIVE_STATE_HANDOFF
+                                 discovered=await self._discovered_boundaries(executor, candidate, state))
 
     async def writer_candidate(self, artifact: Artifact) -> TransferCandidate | None:
         """The candidate the artifact's current execution was admitted for --
@@ -2372,7 +2327,7 @@ class TransferEngine:
         return writer.candidate
 
     async def pending_source(self, artifact: Artifact) -> tuple[TransferCandidate, int] | None:
-        """A paused source switch not yet completed natively: the artifact's
+        """A paused source switch Resume has not completed yet: the artifact's
         parked writer still serves its own candidate while another candidate
         is selected. ``(writer candidate, selected index)``; ``None`` when the
         writer serves the selected candidate (or a refresh descendant of it)."""
@@ -2380,23 +2335,6 @@ class TransferEngine:
         if current is None or not artifact.candidates:
             return None
         return None if resolve_candidate_index(artifact, current) == artifact.selected else (current, artifact.selected)
-
-    async def _retarget_handle(self, executor, request: ExecutionRequest,
-                               previous: ExecutionHandle) -> ExecutionHandle | None:
-        """The executor's answer for one concrete source pair: the new
-        attempt's handle adopting ``previous``'s native object, or ``None``.
-        Anything malformed or failing answers ``None`` -- never a guess."""
-        try:
-            handle = await executor.prepare_retarget(request, previous)
-        except Exception:
-            return None
-        if handle is None:
-            return None
-        try:
-            self._require_prepared(handle, executor.descriptor.id, request.attempt_id)
-        except TransferError:
-            return None
-        return handle
 
     async def _discard_foreign_native_state(self, artifact: Artifact, executor, work: ExecutionWork) -> None:
         """A different executor is about to write this FILE artifact: the

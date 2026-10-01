@@ -334,13 +334,15 @@ class CollectionSpoolProvider:
             provider_id=self.descriptor.id, materialization=MaterializationKind.COLLECTION),))
 
 
-NATIVE = CONTINUES | {ContinuationCapability.NATIVE_PRIVATE_RESUME, ContinuationCapability.NATIVE_SOURCE_RETARGET}
+NATIVE = CONTINUES | {ContinuationCapability.NATIVE_PRIVATE_RESUME}
+# ...that also hands a fresh job every whole DP-valid chunk (sparse import).
+SPARSE_NATIVE = NATIVE | {ContinuationCapability.IMPORT_SPARSE_MATERIAL}
 
 
 @dataclass
 class NativeJob:
-    """One native job: its private piece map survives pause/resume and a
-    retarget, exactly like a real executor's in-memory state."""
+    """One native job: its private piece map survives pause/resume, exactly
+    like a real executor's in-memory state."""
     target: str
     source: bytes
     address: str
@@ -350,30 +352,24 @@ class NativeJob:
 
 
 class NativeSpoolExecutor:
-    """A byte-moving FILE executor that writes SPARSE pieces, parks across
-    Pause (native quiesce + native private resume) and can replace the source
-    of a paused job (native source retarget) for the schemes it lists in
-    ``retargetable``. A fresh job continues only at a contiguous plan
-    boundary and discards its private journal -- never sparse ranges. Native
-    identity (``handle.native["job"]``) is independent of the DP attempt."""
+    """A byte-moving FILE executor that writes SPARSE pieces and parks across
+    Pause (native quiesce + native private resume). A fresh job discards its
+    private journal and continues only from what its plan retains: a
+    contiguous boundary, or -- declaring ``IMPORT_SPARSE_MATERIAL`` -- the
+    plan's retained ranges in place. Native identity (``handle.native["job"]``)
+    is independent of the DP attempt."""
 
     def __init__(self, authorize, sources: dict[str, bytes], *, identity="native", schemes=("parka", "parkb"),
-                 retargetable=("parka", "parkb"), continuation=NATIVE):
+                 continuation=NATIVE):
         self.descriptor = IntegrationDescriptor(identity, identity, frozenset())
         self.capabilities = ExecutorCapabilities(per_execution_pause=True, continuation=frozenset(continuation))
         self.authorize = authorize
         self.sources = sources
         self.schemes = tuple(schemes)
-        self.retargetable = frozenset(retargetable)
         self.jobs: dict[str, NativeJob] = {}
         self.plans = []
         self.calls = []
-        # "ok" | "refused" (no mutation, FAILED) | "ack_lost_b" (source became B,
-        # acknowledgement lost) | "ack_lost_a" (nothing changed, acknowledgement
-        # lost) | "uncertain" (the job ends up on neither source provably)
-        self.retarget_result = "ok"
         self.cancel_uncertain = False
-        self.before_retarget_prepare = None
 
     def claim(self, subject):
         return ExecutorClaim(any(item.scheme in self.schemes for item in subject.candidate.endpoints))
@@ -402,14 +398,19 @@ class NativeSpoolExecutor:
         address, source = self._source(request)
         Path(target).parent.mkdir(parents=True, exist_ok=True)
         boundary = plan.boundary if plan is not None and plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET else 0
+        sparse = (plan is not None and plan.strategy == ContinuationStrategy.SPARSE_IMPORT
+                  and ContinuationCapability.IMPORT_SPARSE_MATERIAL in self.capabilities.continuation)
         Path(self.journal(target)).unlink(missing_ok=True)
-        if boundary:
+        if sparse:
+            pass  # the payload stays exactly as it is; the plan names what of it is kept
+        elif boundary:
             os.truncate(target, boundary)
         else:
             with open(target, "wb"):
                 pass
         Path(self.journal(target)).write_text("")
-        self.jobs[handle.native["job"]] = NativeJob(target, source, address, handle.attempt_id)
+        self.jobs[handle.native["job"]] = NativeJob(target, source, address, handle.attempt_id,
+                                                    pieces=tuple(plan.retained) if sparse else ())
         return self._observation(handle, self.jobs[handle.native["job"]])
 
     def job_for(self, handle):
@@ -483,45 +484,6 @@ class NativeSpoolExecutor:
         if job.state in {ExecutionState.RUNNING, ExecutionState.PAUSED, ExecutionState.QUEUED}:
             job.state = ExecutionState.CANCELLED
         return self._observation(handle, job)
-
-    async def prepare_retarget(self, request, previous):
-        if self.before_retarget_prepare is not None:
-            await self.before_retarget_prepare()
-        scheme = request.work.subject.candidate.endpoints[0].scheme
-        job = self.jobs.get((previous.native or {}).get("job"))
-        if scheme not in self.retargetable or job is None or job.target != request.work.materialization.target:
-            return None
-        return ExecutionHandle(self.descriptor.id, request.attempt_id,
-                               {"target": request.work.materialization.target}, dict(previous.native))
-
-    async def retarget_from(self, request, prepared, previous):
-        assert await self.authorize(prepared, "retarget")
-        self.calls.append(("retarget", previous.attempt_id, prepared.attempt_id))
-        job = self.job_for(prepared)
-        assert job is not None and job.owner == previous.attempt_id and job.state == ExecutionState.PAUSED
-        if self.retarget_result == "refused":
-            return ExecutionObservation(prepared, ExecutionState.FAILED)
-        if self.retarget_result == "ack_lost_a":
-            return ExecutionObservation(prepared, ExecutionState.UNKNOWN)
-        job.address, job.source = self._source(request)
-        job.owner = prepared.attempt_id
-        if self.retarget_result == "uncertain":
-            job.address = "mixed:" + job.address
-        if self.retarget_result in {"uncertain", "ack_lost_b"}:
-            return ExecutionObservation(prepared, ExecutionState.UNKNOWN)
-        return self._observation(prepared, job)
-
-    async def retarget_truth(self, request, prepared, original):
-        from transfers.models import RetargetTruth
-        self.calls.append(("truth", prepared.attempt_id))
-        job = self.job_for(prepared)
-        if job is None or job.state != ExecutionState.PAUSED:
-            return RetargetTruth.UNKNOWN
-        if job.address == request.work.subject.candidate.endpoints[0].address:
-            return RetargetTruth.RETARGETED
-        if job.address == original.work.subject.candidate.endpoints[0].address:
-            return RetargetTruth.ORIGINAL
-        return RetargetTruth.UNKNOWN
 
     async def health(self):
         return ExecutorHealth(True, True)

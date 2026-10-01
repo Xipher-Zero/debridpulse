@@ -26,9 +26,9 @@ What the selected executor cannot consume is stated as exactly that
 (``ContinuationPlan.unusable``: a capability limitation, never a finding about
 the material). Of it, only what the new writer will rewrite (its authorized
 region) leaves VALID at admission (``discarded``).
-An operator source switch whose writer can hand its quiesced native object to
-the new writer (``transfers.candidate_activation.retire_writer``) asks the same
-planner, with ``native_handoff``, and is admitted by the same material fence.
+A source switch is planned exactly like every other replacement: the new
+writer is a fresh execution that keeps what this planner retains, never the
+previous writer's native object.
 """
 from __future__ import annotations
 
@@ -66,15 +66,6 @@ def parks_on_pause(capabilities: ExecutorCapabilities) -> bool:
             and ContinuationCapability.NATIVE_QUIESCE in continuation)
 
 
-def retargets_natively(capabilities: ExecutorCapabilities) -> bool:
-    """Whether a parked job of this executor may be handed to a new writer for
-    another equivalent source (``NATIVE_STATE_HANDOFF``). Core still requires
-    same executor, same target, current material and a checkpoint at the
-    handoff boundary; the executor still answers per concrete source pair."""
-    return (parks_on_pause(capabilities)
-            and ContinuationCapability.NATIVE_SOURCE_RETARGET in capabilities.continuation)
-
-
 def continuation_conflict() -> TransferError:
     """A supposedly equivalent source whose authoritative size contradicts the
     artifact's: an identity/reconciliation conflict, never a harmless resize."""
@@ -86,21 +77,11 @@ def continuation_conflict() -> TransferError:
 
 def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate, executor_id: str,
                       capabilities: ExecutorCapabilities, reason: str,
-                      discovered: Mapping[str, int] | None = None,
-                      native_handoff: bool = False) -> ContinuationPlan:
+                      discovered: Mapping[str, int] | None = None) -> ContinuationPlan:
     """``discovered``: exact continuation boundaries the selected executor
     reported for concrete source data (``BOUNDARY_DISCOVERY``), keyed ``""``
     for a FILE artifact and by member path for a collection. A boundary is
-    never above the DP-valid prefix, whatever an executor answers.
-
-    ``native_handoff``: core established that the new writer inherits the
-    current writer's quiesced native object (same executor and target, the
-    current material generation, checkpointed at the handoff boundary). For a
-    FILE artifact of an executor that ``retargets_natively`` the plan is then
-    ``NATIVE_STATE_HANDOFF``: the executor's private state accounts for every
-    piece it holds, so all DP-valid ranges -- sparse ones included -- are
-    retained and nothing is discarded. DP-valid material stays the upper
-    bound: nothing the executor holds beyond it is ever retained here."""
+    never above the DP-valid prefix, whatever an executor answers."""
     expected = state.expected_size
     offered = positive_size(candidate.expected_bytes)
     if expected and offered is not None and not reported_sizes_compatible(expected, offered):
@@ -109,27 +90,6 @@ def plan_continuation(state: mat.MaterialState, *, candidate: TransferCandidate,
     # not state a different one; an unknown or merely plausible size leaves
     # the end open rather than guessing where the artifact stops.
     bound = expected if expected and (offered is None or offered == expected) else None
-    if (native_handoff and retargets_natively(capabilities) and state.geometry_version == mat.GEOMETRY_VERSION
-            and candidate.materialization == MaterializationKind.FILE
-            and candidate.materialization in capabilities.materialization_kinds):
-        return ContinuationPlan(
-            artifact_id=state.artifact_id,
-            material_generation=state.material_generation,
-            geometry_version=mat.GEOMETRY_VERSION,
-            candidate_id=str(candidate.id),
-            executor_id=str(executor_id),
-            strategy=ContinuationStrategy.NATIVE_STATE_HANDOFF,
-            boundary=state.safe_prefix,
-            retained=state.valid,
-            discarded=(),
-            # The inherited job continues wherever its own state says; what it
-            # reports is still clipped to this and aligned inward at commit.
-            authorized=((0, bound if bound is not None else mat.OPEN_END),),
-            expected_size=expected,
-            reason=str(reason),
-            capabilities=tuple(sorted(item.value for item in capabilities.continuation)),
-            alignment=int(capabilities.continuation_alignment),
-        )
     discovered = dict(discovered or {})
     continues = (_CONTINUES <= capabilities.continuation and state.geometry_version == mat.GEOMETRY_VERSION
                  and candidate.materialization in capabilities.materialization_kinds)

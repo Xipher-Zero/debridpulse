@@ -53,8 +53,7 @@ _INFRASTRUCTURE_CATEGORIES = frozenset({
 # the artifact (a claim, an intent, a still-starting writer): nothing changed,
 # and the next Resume convergence tries again.
 _TRANSIENT_HANDOFF_REFUSALS = frozenset({
-    "claim_not_current", "native_handoff_refused", "execution_changed_concurrently", "writer_start_in_flight",
-    "commit_conflict",
+    "claim_not_current", "execution_changed_concurrently", "writer_start_in_flight", "commit_conflict",
 })
 
 
@@ -2046,13 +2045,14 @@ class TransferEngine(_QualifiedTransferEngine):
         (``TransferRepository.select_desired_source``), reached only from the
         canonical lifecycle owner's resume (``_converge_execution``).
 
-        Under a RESUME recovery claim the parked writer's native object is
-        handed to a new writer for the selected candidate through the one
-        candidate activation, which here REQUIRES the handoff: a switch the
-        operator made without any discard never discards at Resume. When the
-        handoff cannot be established the desired selection is withdrawn, the
-        operator is told, and the parked writer continues on its own source;
-        a transient refusal (a newer claim or intent) leaves it for the next
+        Under a RESUME recovery claim the parked writer is retired and a fresh
+        writer for the selected candidate admitted through the one candidate
+        activation, with ``permit_discard=False``: a switch the operator made
+        without any discard never discards at Resume. When the selected
+        candidate's continuation plan would discard (or the switch cannot
+        otherwise be applied) the desired selection is withdrawn, the operator
+        is told, and the parked writer continues on its own source; a
+        transient refusal (a newer claim or intent) leaves it for the next
         Resume convergence."""
         claim = await self.repository.claim_recovery(
             artifact.id, RecoveryTrigger.RESUME, self.clock(),
@@ -2070,9 +2070,7 @@ class TransferEngine(_QualifiedTransferEngine):
             writer_candidate, selected = pending
             writer_index = resolve_candidate_index(current, writer_candidate)
             desired = current.candidates[selected]
-            eligible = writer_index is not None and await self.native_handoff_eligible(
-                current, desired, self.registry.executor_for_subject(ExecutionSubject.of(desired)))
-            if eligible:
+            if writer_index is not None:
                 result = await activate_candidate(self, replace(current, selected=writer_index), selected,
                                                   retry_at=0, claim=claim, permit_discard=False)
                 if result.committed or result.reason in _TRANSIENT_HANDOFF_REFUSALS:
@@ -2088,7 +2086,7 @@ class TransferEngine(_QualifiedTransferEngine):
                         outcome="withdrawn"),
                     transition={"transition": "withdrawn", "from_candidate_id": str(writer_candidate.id),
                                 "to_candidate_id": str(desired.id),
-                                "reason": result.reason if result is not None else "native_handoff_ineligible"})
+                                "reason": result.reason if result is not None else "writer_candidate_unavailable"})
                 await self.repository.record_manual_candidate_failover(
                     transfer_id=current.transfer_id, artifact_id=current.id, filename=current.name,
                     requested_candidate_id=str(desired.id), previous_candidate=writer_candidate,

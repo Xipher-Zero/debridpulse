@@ -113,6 +113,15 @@
   verification and another source for the same file exists, recovery switches to it through the existing
   candidate switch, discarding the rejected bytes; once no source is left, the failure is final as
   before. Every other integrity failure is unchanged.
+- **Switching source always starts the new source fresh, keeping downloaded progress** (neutral). Changing
+  a download's source -- from Details, at Resume after switching while paused, or by automatic failover --
+  now always stops the current download and starts the new source as a new download, prepared exactly
+  like any other start (redirects, destination and local-network rules, proxy route, headers and
+  sign-in), which keeps every downloaded part the engine can continue from; for aria2 that is every whole
+  downloaded piece. aria2 no longer re-points a running or paused download at another source, which could
+  skip that preparation and fail with "No URI available" or "Proxy connection failed" before a retry
+  recovered. A switch that would lose downloaded progress still asks first, and one made without that
+  confirmation is refused rather than losing it. Pause and Resume of one source are unchanged.
 - **WebDAV Maximum Files and Collection Scan Timeout.** The WebDAV Transfer Method card is now one
   three-control relationship group of the shared tuning cards: Directory Depth, **Maximum Files** (how many
   files one folder may hold, 1–10,000, default 10,000) and **Collection Scan Timeout** (how long finding a
