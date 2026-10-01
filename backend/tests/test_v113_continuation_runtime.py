@@ -46,6 +46,13 @@ def ranged_starts(served):
     return [item.start for item in served if item.ranged]
 
 
+def writer_starts(served):
+    """Where a WRITER's ranged reads started: every ranged request except the
+    one-byte location probe (``bytes=0-0``) that resolves an HTTP(S)
+    download's answering address before its writer starts."""
+    return [item.start for item in served if item.ranged and (item.start, item.end) != (0, 1)]
+
+
 def bytes_sent(served):
     return sum(item.sent for item in served)
 
@@ -54,7 +61,7 @@ async def start_origin(*, rate=1 * MIB):
     requests = []
 
     async def handle(reader, writer):
-        record = Served(start=0, ranged=False, sent=0)
+        record = Served(start=0, end=len(BODY), ranged=False, sent=0)
         try:
             raw = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), timeout=5)
             start, end = 0, len(BODY)
@@ -65,7 +72,7 @@ async def start_origin(*, rate=1 * MIB):
                     start = int(first)
                     end = int(last) + 1 if last else len(BODY)
                     record.ranged = True
-            record.start = start
+            record.start, record.end = start, end
             requests.append(record)
             partial = (start, end) != (0, len(BODY))
             head = (b"HTTP/1.1 206 Partial Content\r\n" if partial else b"HTTP/1.1 200 OK\r\n")

@@ -252,7 +252,10 @@ function sourceLabel(source, requestKinds) {
 
 function transferProviderPresentation(t) {
   const completed = String(t?.status || '') === 'completed';
-  const name = completed ? t?.delivering_provider_name : t?.current_provider_name;
+  // The backend's origin projection (the provider owning the transfer's root
+  // route) is what the compact chip names; current/delivering stay the
+  // fallback. Nothing here derives an origin.
+  const name = t?.origin_provider_name || (completed ? t?.delivering_provider_name : t?.current_provider_name);
   if (name) return {label: String(name), state: 'known'};
   if (completed && t?.provider_provenance_status === 'unknown_legacy') {
     return {label: 'Unknown', state: 'unknown'};
@@ -277,6 +280,7 @@ function routeOutcomePresentation(value) {
     cancelled: 'Cancelled',
     superseded: 'Superseded',
     resolved: 'Resolved',
+    declined: 'Not Applicable',
     active: 'In Progress',
     started: 'In Progress',
     prepared: 'In Progress',
@@ -1249,7 +1253,7 @@ function classifyDashboardEntries(raw) {
     seen.add(value);
     const entry = {value, line: index + 1};
     // Direct-source transports; the backend admission owner remains the authority.
-    if (/^(?:https?|s?ftp|scp|ssh|rsync(?:\+ssh)?):\/\/\S+$/i.test(value)) direct.push(entry);
+    if (/^(?:https?|s?ftp|scp|ssh|rsync(?:\+ssh)?|(?:web)?davs?):\/\/\S+$/i.test(value)) direct.push(entry);
     else if (/^magnet:\?/i.test(value)) magnets.push(entry);
     else invalid.push(entry);
   });
@@ -1289,12 +1293,12 @@ async function addDashboardEntries() {
   const {direct, magnets, invalid} = classifyDashboardEntries(raw);
   if (invalid.length) {
     const first = invalid[0];
-    toast(`Line ${first.line}: enter an HTTP(S), FTP, SFTP, SCP, SSH or rsync link or a magnet URI`, 'error');
+    toast(`Line ${first.line}: enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI`, 'error');
     input?.focus();
     return;
   }
   if (!direct.length && !magnets.length) {
-    toast('Enter at least one HTTP(S), FTP, SFTP, SCP, SSH or rsync link or a magnet URI', 'warn');
+    toast('Enter at least one HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI', 'warn');
     input?.focus();
     return;
   }
@@ -1630,6 +1634,7 @@ async function showDetail(id) {
         <summary>Advanced acquisition details</summary>
         <div class="dp-detail-advanced-grid">
           <div><span>Executor</span><strong>${esc((t.executors || []).join(', ') || '—')}</strong></div>
+          <div><span>Origin Provider ID</span><strong>${esc(t.origin_provider_id || '—')}</strong></div>
           <div><span>Current Provider ID</span><strong>${esc(t.current_provider_id || '—')}</strong></div>
           <div><span>Delivering Provider ID</span><strong>${esc(t.delivering_provider_id || '—')}</strong></div>
         </div>

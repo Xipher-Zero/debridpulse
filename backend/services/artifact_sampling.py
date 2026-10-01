@@ -1,5 +1,10 @@
 """The one canonical bounded content-evidence owner: HTTP(S), FTP and SFTP.
 
+It is also the one read-only remote discovery reader of those transports
+(``ftp_discovery``, ``sftp_discovery``, and ``webdav_discovery`` -- HTTP(S)'s
+own collection listing), under exactly the same destination, redirect and
+credential decisions.
+
 Every transport that can read an object's first and last bytes proves the same
 neutral fact: the object's total length plus a bounded first window and a
 bounded last window, hashed exactly one way (``digest_full``/``digest_prefix``).
@@ -19,19 +24,23 @@ to be hashed.
 from __future__ import annotations
 
 import asyncio
+import base64
+from collections import deque
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 import hashlib
 import logging
 import re
 from typing import Awaitable, Callable
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import quote, unquote, urljoin, urlsplit, urlunsplit
+from xml.parsers import expat
 
 import aiohttp
 import asyncssh
 
 from services import network_safety
-from transfers.models import FingerprintKind
+from transfers.models import DiscoveryDepth, FingerprintKind
+from transfers.requests import AuthScope, auth_scope
 
 
 # asyncssh narrates connections at INFO, naming the submitted username and the
@@ -60,9 +69,18 @@ class AccessRequired:
 
     ``server_identity`` is empty for plain authentication, or the SHA-1 of the
     host key the server presented, which must be confirmed before any
-    credential is offered to it.
+    credential is offered to it. ``address`` is where an HTTP(S) read was
+    finally asked (the subject's own address, or one it was redirected to):
+    the authority that asked is that address's.
     """
     server_identity: str = ""
+    address: str = ""
+
+
+# An operator credential for one HTTP(S) authority: ``(AuthScope, header
+# value)``. It is attached only to requests whose ``auth_scope`` is exactly
+# that authority (``_guarded_request``).
+Credential = tuple[AuthScope, str] | None
 
 
 def sample_size(requested: int = SAMPLE_BYTES) -> int:
@@ -188,7 +206,25 @@ def _origin(uri: str) -> tuple[str, str, int]:
         parsed.port or network_safety.default_destination_port(parsed.scheme))
 
 
-async def _range_request(session, uri: str, headers: dict, *, max_redirects: int = 3, private_lan: bool = False):
+# Request headers that describe the read itself and therefore survive a move
+# to another origin; every other header -- above all any credential -- stays
+# with the origin it was addressed to.
+_READ_HEADERS = frozenset({"range", "accept-encoding"})
+
+
+async def _guarded_request(session, uri: str, headers: dict, *, method: str = "GET", data: bytes | None = None,
+                           carried: frozenset[str] = _READ_HEADERS, max_redirects: int = 3,
+                           private_lan: bool = False, credential: Credential = None):
+    """THE one in-process HTTP(S) request owner: ``(response, reason, uri)``.
+
+    Every hop's destination is validated by ``network_safety``; redirects are
+    followed here, bounded, never by the client library. A move to another
+    origin (scheme, host or port -- so HTTPS to HTTP always counts) keeps only
+    the ``carried`` read-describing headers: a capability header never follows
+    it, and is never restored even if a later hop returns. An operator
+    ``credential`` is attached to exactly the hops whose authentication scope
+    is the one it was given for -- never another host or port, never HTTP for
+    an HTTPS answer. ``uri`` is the address the returned response answered for."""
     current = uri
     current_headers = dict(headers)
     prior_origin = _origin(uri)
@@ -202,31 +238,34 @@ async def _range_request(session, uri: str, headers: dict, *, max_redirects: int
             validated = await (network_safety.validate_resolved_public_destination(current, private_lan=True) if lan
                                else network_safety.validate_resolved_public_destination(current))
         except network_safety.DestinationLookupError:
-            return None, "dns_failure"
+            return None, "dns_failure", current
         except network_safety.UnsafeDestinationError:
-            return None, "destination_rejected"
-        response = await session.get(validated, headers=current_headers, allow_redirects=False)
+            return None, "destination_rejected", current
+        sent = dict(current_headers)
+        if credential is not None and auth_scope(validated) == credential[0]:
+            sent["Authorization"] = credential[1]
+        response = await session.request(method, validated, headers=sent, data=data, allow_redirects=False)
         if not (300 <= response.status < 400):
-            return response, "redirect" if redirected else ""
+            return response, "redirect" if redirected else "", validated
         location = str(response.headers.get("Location") or "").strip()
         response.release()
         if not location or hop >= max_redirects:
-            return None, "redirect"
+            return None, "redirect", validated
         next_uri = urljoin(validated, location)
         try:
             network_safety.validate_provider_download_url(
                 next_uri, context="redirect target", schemes=SAMPLED_FINGERPRINT_SCHEMES,
                 **_granted(bool(granted_host) and _origin(next_uri)[1] == granted_host))
         except network_safety.UnsafeDestinationError:
-            return None, "destination_rejected"
+            return None, "destination_rejected", next_uri
         next_origin = _origin(next_uri)
         if next_origin != prior_origin:
             current_headers = {key: value for key, value in current_headers.items()
-                               if key.casefold() in {"range", "accept-encoding"}}
+                               if key.casefold() in carried}
         prior_origin = next_origin
         current = next_uri
         redirected = True
-    return None, "redirect"
+    return None, "redirect", current
 
 
 async def sampled_public_artifact_fingerprint(
@@ -237,6 +276,8 @@ async def sampled_public_artifact_fingerprint(
     headers: dict | None = None,
     expected_bytes: int = 0,
     private_lan: bool = False,
+    credential: Credential = None,
+    on_authenticated: Accepted = None,
 ) -> Sample | AccessRequired:
     """Return bounded structured content evidence for a public HTTP(S) capability.
 
@@ -246,7 +287,8 @@ async def sampled_public_artifact_fingerprint(
     digests are the shared ``services.artifact_sampling`` definition, so the
     same bytes fingerprint identically over every transport. A definitive
     Basic authentication challenge on the first window is reported as the
-    typed ``AccessRequired`` fact for the executor to translate.
+    typed ``AccessRequired`` fact (naming the address that asked) for the
+    executor to translate. ``credential`` reaches only its own authority.
     """
     # The sampler speaks HTTP(S) only. A transport it cannot sample is refused
     # here, at its own boundary, so no other caller has to know that.
@@ -269,13 +311,17 @@ async def sampled_public_artifact_fingerprint(
     try:
         async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
             first_headers = {**base_headers, "Range": f"bytes=0-{sample_bytes - 1}"}
-            response, redirect_reason = await _range_request(session, validated, first_headers,
-                                                             private_lan=bool(granted_host))
+            response, redirect_reason, answered = await _guarded_request(session, validated, first_headers,
+                                                                         private_lan=bool(granted_host),
+                                                                         credential=credential)
             if response is None:
                 return unavailable(redirect_reason or "sampler_unavailable")
             try:
                 if _basic_challenge(response):
-                    return AccessRequired()
+                    return AccessRequired(address=answered)
+                if (credential is not None and on_authenticated is not None and response.status != 401
+                        and auth_scope(answered) == credential[0]):
+                    on_authenticated()
                 if response.status == 200:
                     try:
                         length = int(response.headers.get("Content-Length") or 0)
@@ -317,8 +363,9 @@ async def sampled_public_artifact_fingerprint(
 
             last_start = last_window_start(total, sample_bytes)
             last_headers = {**base_headers, "Range": f"bytes={last_start}-{total - 1}"}
-            response, last_redirect_reason = await _range_request(session, validated, last_headers,
-                                                                  private_lan=bool(granted_host))
+            response, last_redirect_reason, _answered = await _guarded_request(session, validated, last_headers,
+                                                                               private_lan=bool(granted_host),
+                                                                               credential=credential)
             if response is None:
                 return sample(total, prefix, FingerprintKind.PREFIX_CONTENT_SAMPLE,
                                last_redirect_reason or "sampler_unavailable", prefix)
@@ -365,17 +412,30 @@ class _SessionRefused(Exception):
 
 @dataclass(frozen=True)
 class Listing:
-    """The immediate regular files of one directory: ``(name, size)`` pairs,
-    listed in ``directory``, the server's concrete absolute path for it."""
+    """The regular files of one directory: ``(name, size)`` pairs, listed in
+    ``directory``, the server's concrete absolute path for it. A name holds
+    ``/`` only for a file a deeper listing found below the directory (its
+    path relative to it). ``location`` is the address the directory was
+    finally listed at when the server moved it (``""``: where it was asked)."""
     entries: tuple[tuple[str, int], ...]
     directory: str = ""
+    location: str = ""
 
 
 @dataclass(frozen=True)
 class RemoteFile:
-    """The discovered path is one regular file of ``size`` bytes."""
+    """The discovered path is one regular file of ``size`` bytes (``location``
+    as for ``Listing``)."""
     size: int
     path: str = ""
+    location: str = ""
+
+
+@dataclass(frozen=True)
+class Opaque:
+    """The server answered definitively, but describes the path through no
+    listing protocol at all: neither a file nor a directory as far as
+    discovery can prove. A positive protocol fact, never a refusal."""
 
 
 @dataclass(frozen=True)
@@ -642,6 +702,367 @@ async def ftp_discovery(address: str, *, connect: Connect, username: str, passwo
         return unavailable("destination_rejected")
     except (ConnectionError, OSError, ValueError, asyncio.IncompleteReadError):
         return unavailable("sampler_unavailable")
+
+
+# ── WebDAV: HTTP(S)'s own collection listing ───────────────────────────────
+
+# The only two properties discovery asks for: whether a member is a
+# collection, and its size where the server states one. Entity tags and
+# modification times are never requested -- nothing here is content evidence.
+_PROPFIND_BODY = (b'<?xml version="1.0" encoding="utf-8"?>'
+                  b'<propfind xmlns="DAV:"><prop><resourcetype/><getcontentlength/></prop></propfind>')
+# The body bound below applies to the decoded listing, whatever encoding the
+# server chose, so no transfer encoding is pinned here.
+_PROPFIND_HEADERS = {"Depth": "1", "Content-Type": 'application/xml; charset="utf-8"'}
+# A listing request moved to another origin is still a listing request; its
+# credential is not (``_guarded_request``).
+_PROPFIND_CARRIED = frozenset({"depth", "content-type"})
+_DAV = "DAV: "
+_HTTP_STATUS = re.compile(r"HTTP/\d(?:\.\d)?\s+(\d{3})(?:\s|$)")
+_DECIMAL = re.compile(r"[0-9]{1,19}")
+
+
+class _Malformed(Exception):
+    """A listing answer DP will not interpret."""
+
+
+def _multistatus(body: bytes) -> list[tuple[str, int, bool, int | None]]:
+    """``(href, status, collection, size)`` for every response of one
+    ``207 Multi-Status`` body.
+
+    Parsed with no document type, no entity declaration and no external
+    entity at all -- a WebDAV answer needs none, so any of them makes the
+    answer malformed rather than something to resolve. A response carries its
+    own status, or the status of the property block that describes it."""
+    parser = expat.ParserCreate(namespace_separator=" ")
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+
+    def refuse(*_arguments):
+        raise _Malformed("declarations are not accepted")
+
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    parser.ExternalEntityRefHandler = refuse
+    stack: list[str] = []
+    text: list[list[str]] = []
+    responses: list[tuple[str, int, bool, int | None]] = []
+    response: dict | None = None
+    block: dict | None = None
+
+    def start(name, _attributes):
+        nonlocal response, block
+        stack.append(name)
+        text.append([])
+        if name == _DAV + "response":
+            response = {"href": None, "status": None, "blocks": []}
+        elif name == _DAV + "propstat" and response is not None:
+            block = {"status": None, "collection": False, "size": None}
+        elif (name == _DAV + "collection" and block is not None
+              and len(stack) >= 2 and stack[-2] == _DAV + "resourcetype"):
+            block["collection"] = True
+
+    def characters(value):
+        text[-1].append(value)
+
+    def end(name):
+        nonlocal response, block
+        value = "".join(text.pop()).strip()
+        stack.pop()
+        parent = stack[-1] if stack else ""
+        if response is None:
+            return
+        if name == _DAV + "href" and parent == _DAV + "response":
+            if response["href"] is not None:
+                raise _Malformed("a response names one resource")
+            response["href"] = value
+        elif name == _DAV + "status" and parent in {_DAV + "response", _DAV + "propstat"}:
+            matched = _HTTP_STATUS.match(value)
+            if matched is None:
+                raise _Malformed("unreadable status")
+            (block if parent == _DAV + "propstat" else response)["status"] = int(matched.group(1))
+        elif name == _DAV + "getcontentlength" and block is not None and parent == _DAV + "prop":
+            block["size"] = int(value) if _DECIMAL.fullmatch(value) else None
+        elif name == _DAV + "propstat" and block is not None:
+            response["blocks"].append(block)
+            block = None
+        elif name == _DAV + "response":
+            described = [item for item in response["blocks"] if 200 <= (item["status"] or 0) < 300]
+            status = response["status"] or (200 if described else 0)
+            if not response["href"] or not status:
+                raise _Malformed("a response names a resource and its status")
+            responses.append((response["href"], status, any(item["collection"] for item in described),
+                              next((item["size"] for item in described if item["size"] is not None), None)))
+            response = None
+            if len(responses) > MAX_LISTED_ENTRIES + 1:
+                raise ListingTooLarge()
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = end
+    parser.CharacterDataHandler = characters
+    try:
+        parser.Parse(body, True)
+    except expat.ExpatError as exc:
+        raise _Malformed("not well-formed") from exc
+    return responses
+
+
+class ListingTooLarge(Exception):
+    """A listing past the neutral entry bound."""
+
+
+def _dav_segments(base: str, href: str) -> tuple[str, ...] | None:
+    """The decoded path segments one ``href`` names, resolved against the
+    address that listed it -- or ``None`` when it cannot name a member there:
+    another origin, a query or fragment, a percent-escape that is not UTF-8,
+    an encoded separator, an empty, ``.`` or ``..`` segment, or a control
+    character. A trailing ``/`` is collection syntax, never part of a name."""
+    target = urljoin(base, href)
+    parts = urlsplit(target)
+    if parts.query or parts.fragment or _origin(target) != _origin(base) or not parts.path.startswith("/"):
+        return None
+    pieces = parts.path.split("/")[1:]
+    if pieces and pieces[-1] == "":
+        pieces.pop()
+    segments = []
+    for piece in pieces:
+        try:
+            value = unquote(piece, errors="strict")
+        except UnicodeDecodeError:
+            return None
+        if value in {"", ".", ".."} or "/" in value or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            return None
+        segments.append(value)
+    return tuple(segments)
+
+
+def _collection_address(base: str, segments: tuple[str, ...]) -> str:
+    parts = urlsplit(base)
+    path = "/" + "".join(quote(item, safe="") + "/" for item in segments)
+    return urlunsplit((parts.scheme, parts.netloc, path, "", ""))
+
+
+def _listing_refusal(status: int) -> str:
+    if status == 403:
+        return "permission_denied"
+    if status in {404, 410}:
+        return "not_found"
+    if status == 429:
+        return "rate_limited"
+    if 500 <= status < 600 and status != 501:
+        return "server_error"
+    return "unsupported_listing"
+
+
+async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str = "", password: str = "",
+                           credential_scope: AuthScope | None = None,
+                           timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, on_authenticated: Accepted = None,
+                           private_lan: bool = False) -> Listing | RemoteFile | Opaque | ListingRefused | AccessRequired:
+    """Classify one HTTP(S) path through WebDAV, read-only, and list it.
+
+    Every request is one ``PROPFIND`` with ``Depth: 1`` -- the depth every
+    WebDAV server must support -- so the neutral ``depth`` is enforced here,
+    by repeated one-level listings, and never depends on the server offering
+    ``Depth: infinity``: ``CURRENT`` lists the collection once, ``N`` descends
+    into at most N levels of subcollections, ``UNLIMITED`` until none remain.
+    A collection is entered at most once (the visited set is its canonical
+    decoded path), and every member must be an immediate child of the
+    collection that listed it, so no answer can make the traversal loop. Only
+    a complete listing is a result: a refused, malformed or oversized member
+    fails the whole discovery; nothing is ever truncated.
+
+    The path's own answer classifies it: a collection lists its regular files;
+    anything else described is one regular file of its stated size. A server
+    that answers without WebDAV -- a success that is not a ``207``, or ``405``
+    or ``501`` for the method itself -- is ``Opaque``; every other answer keeps
+    its ordinary meaning. Destinations, redirects and the private-LAN grant
+    are ``_guarded_request``'s: the credential is sent only to the authority
+    it was given for (``credential_scope``, by default ``address``'s own), and
+    an authentication challenge names the address that asked
+    (``AccessRequired.address``) -- possibly a server the path moved to. No
+    content is ever read."""
+    if urlsplit(str(address or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
+        return ListingRefused("destination_rejected")
+    try:
+        validated = await network_safety.validate_resolved_public_destination(address, **_granted(private_lan))
+    except network_safety.DestinationLookupError:
+        return ListingRefused("dns_failure")
+    except network_safety.UnsafeDestinationError:
+        return ListingRefused("destination_rejected")
+    granted_host = _origin(validated)[1] if private_lan else ""
+    credential: Credential = ((credential_scope or auth_scope(validated)),
+                              "Basic " + base64.b64encode(f"{username}:{password}".encode()).decode()) if username else None
+    accepted = False
+
+    async def propfind(session, uri: str):
+        """``(answered address, 207 body or status)``; a challenge or a
+        refusal of the request itself ends the discovery (``_SessionRefused``)."""
+        nonlocal accepted
+        response, reason, answered = await _guarded_request(
+            session, uri, dict(_PROPFIND_HEADERS), method="PROPFIND", data=_PROPFIND_BODY, carried=_PROPFIND_CARRIED,
+            private_lan=bool(granted_host) and _origin(uri)[1] == granted_host, credential=credential)
+        if response is None:
+            raise _SessionRefused(ListingRefused(
+                reason if reason in {"dns_failure", "destination_rejected"} else "unsupported_listing"))
+        try:
+            if response.status == 401:
+                if not _basic_challenge(response):
+                    raise _SessionRefused(ListingRefused("auth_method_unsupported"))
+                # Whichever authority asked -- this path's own, or one it was
+                # moved to -- the question names it; an answer for another
+                # authority is never offered here.
+                raise _SessionRefused(AccessRequired(address=answered))
+            if (credential is not None and auth_scope(answered) == credential[0] and not accepted
+                    and on_authenticated):
+                accepted = True
+                on_authenticated()
+            if response.status != 207:
+                return answered, response.status
+            body = await response.content.read(_MAX_LISTING_BYTES + 1)
+            chunk = body
+            while chunk and len(body) <= _MAX_LISTING_BYTES:
+                chunk = await response.content.read(_MAX_LISTING_BYTES + 1 - len(body))
+                body += chunk
+            if len(body) > _MAX_LISTING_BYTES:
+                raise _SessionRefused(ListingRefused("too_many_entries"))
+            return answered, body
+        finally:
+            response.release()
+
+    timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
+    connector = aiohttp.TCPConnector(
+        resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
+        use_dns_cache=False)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            answered, outcome = await propfind(session, validated)
+            if isinstance(outcome, int):
+                if 200 <= outcome < 300 or outcome in {405, 501}:
+                    return Opaque()
+                return ListingRefused(_listing_refusal(outcome))
+            root = _dav_segments(answered, answered)
+            listing = _multistatus(outcome)
+            own = [item for item in listing if _dav_segments(answered, item[0]) == root]
+            if root is None or len(own) != 1 or not 200 <= own[0][1] < 300:
+                return ListingRefused("unsupported_listing")
+            location = answered if answered != validated else ""
+            if not own[0][2]:
+                if len(listing) != 1:
+                    return ListingRefused("unsupported_listing")
+                return RemoteFile(max(0, own[0][3] or 0), location=location)
+            files: list[tuple[str, int]] = []
+            listed = 0
+            visited = {root}
+            # Members resolve against the collection's own address, which a
+            # server may have answered without its trailing slash.
+            pending = deque([(_collection_address(answered, root), root, (), 0, listing)])
+            while pending:
+                base, segments, relative, level, members = pending.popleft()
+                if members is None:
+                    moved, outcome = await propfind(session, base)
+                    if isinstance(outcome, int):
+                        return ListingRefused(_listing_refusal(outcome))
+                    members = _multistatus(outcome)
+                    if _dav_segments(moved, moved) != segments or _origin(moved) != _origin(base):
+                        return ListingRefused("unsupported_listing")
+                    base = moved
+                names = set()
+                own_seen = False
+                for href, status, collection, size in members:
+                    path = _dav_segments(base, href)
+                    if path == segments:
+                        own_seen = own_seen or collection
+                        continue
+                    if path is None or len(path) != len(segments) + 1 or path[:-1] != segments or path in names:
+                        return ListingRefused("unsupported_listing")
+                    if not 200 <= status < 300:
+                        return ListingRefused(_listing_refusal(status))
+                    names.add(path)
+                    listed += 1
+                    if listed > MAX_LISTED_ENTRIES:
+                        return ListingRefused("too_many_entries")
+                    member = relative + (path[-1],)
+                    if not collection:
+                        files.append(("/".join(member), max(0, size or 0)))
+                    elif depth.descends(level) and path not in visited:
+                        visited.add(path)
+                        pending.append((_collection_address(base, path), path, member, level + 1, None))
+                if not own_seen:
+                    return ListingRefused("unsupported_listing")
+            directory = "/" + "".join(item + "/" for item in root)
+            return Listing(tuple(sorted(files)), directory, location=location)
+    except _SessionRefused as refused:
+        return refused.outcome
+    except (_Malformed, ValueError):
+        return ListingRefused("unsupported_listing")
+    except ListingTooLarge:
+        return ListingRefused("too_many_entries")
+    except asyncio.TimeoutError:
+        return ListingRefused("timeout")
+    except network_safety.DestinationLookupError:
+        return ListingRefused("dns_failure")
+    except network_safety.UnsafeDestinationError:
+        return ListingRefused("destination_rejected")
+    except aiohttp.ClientSSLError:
+        return ListingRefused("tls_failure")
+    except aiohttp.ClientConnectorError as exc:
+        refused = isinstance(getattr(exc, "os_error", None), ConnectionRefusedError)
+        return ListingRefused("connection_refused" if refused else "connection_failed")
+    except (aiohttp.ClientError, OSError):
+        return ListingRefused("connection_failed")
+
+
+# ── HTTP(S) download location ──────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class Located:
+    """Where an HTTP(S) read of an address is finally answered (``uri``,
+    reached through the guarded redirect owner) and what it answered."""
+    uri: str
+    status: int
+
+
+async def resolve_location(uri: str, *, headers: dict | None = None, credential: Credential = None,
+                           timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, private_lan: bool = False,
+                           on_authenticated: Accepted = None) -> Located | AccessRequired | None:
+    """Follow one address's redirects the way every in-process HTTP(S) read
+    does (``_guarded_request``) and report where it is finally answered.
+
+    One ranged request for at most a single byte, whose body is never read:
+    a download writer can then be pointed at the answering address itself,
+    with the operator credential only when that address is the credential's
+    own authority. A Basic challenge is ``AccessRequired`` naming the address
+    that asked. ``None`` when nothing answered (the address stays as it is,
+    and the writer reports its own failure)."""
+    if urlsplit(str(uri or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
+        return None
+    try:
+        validated = await network_safety.validate_resolved_public_destination(uri, **_granted(private_lan))
+    except (network_safety.DestinationLookupError, network_safety.UnsafeDestinationError):
+        return None
+    granted_host = _origin(validated)[1] if private_lan else ""
+    timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
+    connector = aiohttp.TCPConnector(
+        resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
+        use_dns_cache=False)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            response, _reason, answered = await _guarded_request(
+                session, validated, {**(headers or {}), "Range": "bytes=0-0"}, private_lan=bool(granted_host),
+                credential=credential)
+            if response is None:
+                return None
+            try:
+                if _basic_challenge(response):
+                    return AccessRequired(address=answered)
+                if (credential is not None and on_authenticated is not None and response.status != 401
+                        and auth_scope(answered) == credential[0]):
+                    on_authenticated()
+                return Located(answered, response.status)
+            finally:
+                response.release()
+    except (asyncio.TimeoutError, network_safety.DestinationLookupError, network_safety.UnsafeDestinationError,
+            aiohttp.ClientError, OSError, ValueError):
+        return None
 
 
 # ── SFTP ───────────────────────────────────────────────────────────────────

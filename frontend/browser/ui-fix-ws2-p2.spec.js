@@ -79,6 +79,7 @@ function integratedSettings(base) {
   delete settings.integrations.general_ftp;
   delete settings.integrations.general_scp;
   delete settings.integrations.general_rsync;
+  delete settings.integrations.general_webdav;
   delete settings.integrations.usenet;
   settings.full_sync_interval_minutes ??= 5;
   return settings;

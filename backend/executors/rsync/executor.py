@@ -86,7 +86,7 @@ from transfers.input_required import (
     SubmittedInput, auth_required, server_identity_required, username_password, username_private_key,
 )
 from transfers.models import (
-    ArtifactFingerprint, ContinuationCapability, ContinuationStrategy, DiscoveredEntry, DiscoveryResult,
+    ArtifactFingerprint, ContinuationCapability, ContinuationStrategy, DiscoveredEntry, DiscoveryDepth, DiscoveryResult,
     ExecutionActivity, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
     ExecutionState, ExecutorCapabilities, ExecutorClaim, ExecutorHealth, ExecutorRuntimeCapability,
     ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
@@ -641,13 +641,20 @@ class RsyncExecutor:
 
     # ── discovery ───────────────────────────────────────────────────────────
 
-    async def discover(self, subject, submitted: SubmittedInput | None = None, *, recursive: bool = False):
+    async def discover(self, subject, submitted: SubmittedInput | None = None, *,
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT):
         """Read-only classification of one rsync path before any candidate
         exists, through exactly the preparation execution uses. A regular file
-        is one file; a directory is its immediate regular files, or every
-        regular file of its tree when ``recursive``; a daemon's server root is
-        the tree of every root it advertises. Links and special files are never
-        members and never followed. Only a complete listing is a result."""
+        is one file; a directory is its immediate regular files (``CURRENT``),
+        or every regular file of its tree (``UNLIMITED``); a daemon's server
+        root is the tree of every root it advertises. A finite depth has no
+        rsync translation here and is refused before anything is listed. Links
+        and special files are never members and never followed. Only a
+        complete listing is a result."""
+        if not depth.unlimited and depth != DiscoveryDepth.CURRENT:
+            raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
+                retryability=Retryability.NEVER, integration_id=self.descriptor.id))
+        recursive = depth.unlimited
         candidate = subject.candidate
         remote = self._remote(candidate, Stage.RESOLUTION)
         try:

@@ -361,8 +361,8 @@ def test_intake_accepts_credentials_for_the_core_admission_boundary_to_split(lin
 
 
 def test_admission_wording_names_every_accepted_transport() -> None:
-    with pytest.raises(ValueError, match="HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync"):
-        normalize_direct_links(["webdav://a.invalid/f"])
+    with pytest.raises(ValueError, match="HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL, or a WebDAV URL"):
+        normalize_direct_links(["ftps://a.invalid/f"])
 
 
 # ── 6. Truthful provenance ───────────────────────────────────────────────────
@@ -421,8 +421,8 @@ def test_file_down_is_vendored_from_the_pinned_lucide_commit_in_lavender() -> No
 
 def test_quick_add_accepts_scp_and_ssh_links() -> None:
     app = (STATIC / "app.js").read_text(encoding="utf-8")
-    assert "/^(?:https?|s?ftp|scp|ssh|rsync(?:\\+ssh)?):\\/\\/\\S+$/i" in app
-    assert "enter an HTTP(S), FTP, SFTP, SCP, SSH or rsync link or a magnet URI" in app
+    assert "/^(?:https?|s?ftp|scp|ssh|rsync(?:\\+ssh)?|(?:web)?davs?):\\/\\/\\S+$/i" in app
+    assert "enter an HTTP(S), FTP, SFTP, SCP, SSH, rsync or WebDAV link or a magnet URI" in app
 
 
 # ── Home-relative paths: resolved by the one discovery owner, never a shell ──

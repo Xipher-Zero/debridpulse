@@ -230,9 +230,10 @@ def _safe_original_resource(request_payload) -> str | None:
     if kind in {"http", "https"}:
         return safe_original_http_resource(raw, max_length=180) or request.name or "HTTP/HTTPS resource"
 
-    if kind in {"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh"}:
+    if kind in {"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh", "webdav", "webdavs", "dav", "davs"}:
         # The operator's own remote-file request (never, for SCP/SSH, the SFTP
-        # address it executes as): scheme, host, non-default port and path only.
+        # address it executes as, nor, for WebDAV, the HTTP(S) address): scheme,
+        # host, non-default port and path only.
         return safe_original_remote_file_resource(raw, max_length=180) or request.name or f"{kind.upper()} resource"
 
     if kind == "magnet" or raw.lower().startswith("magnet:?"):
@@ -252,6 +253,8 @@ def _public_transfer_presentation(value, definitions) -> dict:
         result["current_provider_name"] = _provider_display_name(result.get("current_provider_id"), definitions)
     if "delivering_provider_id" in result:
         result["delivering_provider_name"] = _provider_display_name(result.get("delivering_provider_id"), definitions)
+    if "origin_provider_id" in result:
+        result["origin_provider_name"] = _provider_display_name(result.get("origin_provider_id"), definitions)
 
     for attempt in result.get("route_attempts", []) or []:
         attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)

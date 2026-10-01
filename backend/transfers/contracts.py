@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 from transfers.applicability import ProviderApplicability
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CleanupDirective, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    CleanupDirective, DiscoveryDepth, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -271,13 +271,15 @@ class RemoteDiscovery(Protocol):
     Answers the neutral ``InputRequirement`` when access input is definitively
     needed (the one INPUT_REQUIRED lifecycle and the authentication-input owner
     carry it; ``submitted`` is that owner's answer), a ``DiscoveryResult`` of the
-    directory's immediate regular files -- its whole tree when ``recursive`` --
-    or raises a normalized ``TransferError`` for a definitive failure. An
-    executor that cannot list a tree raises ``UNSUPPORTED_CAPABILITY`` for a
-    recursive discovery rather than answer with less."""
+    directory's regular files within ``depth`` (``DiscoveryDepth``: its
+    immediate files, N subdirectory levels, or its whole tree), or raises a
+    normalized ``TransferError`` for a definitive failure. The executor
+    translates the neutral depth into its transport and enforces it itself; one
+    that cannot enumerate exactly that depth raises ``UNSUPPORTED_CAPABILITY``
+    rather than answer with more or less."""
 
     async def discover(self, subject: ExecutionSubject, submitted: SubmittedInput | None = None, *,
-                       recursive: bool = False) -> DiscoveryResult | InputRequirement: ...
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT) -> DiscoveryResult | InputRequirement: ...
 
 
 @runtime_checkable

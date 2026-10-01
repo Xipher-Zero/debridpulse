@@ -151,6 +151,6 @@ def test_sample_fingerprints_request_identity_bytes_with_manual_redirect_control
     # and every hop is explicit with aiohttp redirects disabled.
     assert source.count('"Accept-Encoding": "identity"') == 1
     assert source.count("allow_redirects=False") == 1
-    assert "async def _range_request" in source
+    assert "async def _guarded_request" in source
     assert "urljoin(validated, location)" in source
     assert "network_safety.validate_resolved_public_destination(current)" in source

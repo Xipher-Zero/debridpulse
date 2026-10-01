@@ -18,22 +18,25 @@ from pathlib import Path
 import re
 import stat
 import struct
+import time
 from typing import Awaitable, Callable
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from executors.aria2.client import Aria2ResponseError, Aria2Service
 from executors.aria2.translation import exception_failure, is_missing, observation
 from services.artifact_sampling import (
-    SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, RemoteFile,
-    ftp_discovery, ftp_fingerprint, sampled_public_artifact_fingerprint, sftp_discovery, sftp_fingerprint,
+    SAMPLED_FINGERPRINT_SCHEMES, SSH_HOST_KEY_ALGORITHMS, AccessRequired, Listing, ListingRefused, Located, Opaque,
+    RemoteFile, ftp_discovery, ftp_fingerprint, resolve_location, sampled_public_artifact_fingerprint, sftp_discovery,
+    sftp_fingerprint, webdav_discovery,
 )
 from services.downloader_egress_guard import RouteScope, downloader_egress_guard
 from services.network_safety import DestinationLookupError, validate_resolved_public_destination
 from transfers import material as mat
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
+from transfers.requests import auth_scope
 from transfers.models import (
-    ArtifactFingerprint, DiscoveredEntry, DiscoveryResult, ExecutionActivity, RemoteObjectKind, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ArtifactFingerprint, DiscoveredEntry, DiscoveryDepth, DiscoveryResult, ExecutionActivity, RemoteObjectKind, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
@@ -115,6 +118,17 @@ def _acceptance(submitted: SubmittedInput | None):
 # own control-confirmation bound.
 _ADMISSION_CONFIRMATION_SECONDS = 1.0
 
+# How long an observed move of an HTTP(S) address to another authority is
+# remembered, so input answered for that authority starts there instead of at
+# the original one (which would refuse it, or need its own input again). A
+# small process-local memo of an observation, never durable truth.
+_MOVED_SECONDS = 300.0
+_MOVED_LIMIT = 256
+# The executor's own diagnostic for a download whose address moved to another
+# authority that asks for input (``_download_location``); the requirement it
+# raised is kept per attempt, never carried through a sanitized diagnostic.
+_AUTHORITY_DIAGNOSTIC = "redirected_authority"
+
 
 class _AdmissionDeferred(Exception):
     """Owned execution remains parked by a newer core control intent."""
@@ -175,6 +189,11 @@ class Aria2Executor:
         self.runtime = runtime
         self._redactions = runtime.redactions if runtime is not None else OrderedDict()
         self.binding = execution_binding(configuration.local_root, getattr(client, "url", ""))
+        # address -> (expiry, the address it was last observed answering at
+        # under another authority); see ``_start_address``.
+        self._moved: OrderedDict[str, tuple[float, str]] = OrderedDict()
+        # attempt id -> the requirement a redirected download raised for it.
+        self._asked: OrderedDict[str, InputRequirement] = OrderedDict()
         if not configuration.continue_downloads:
             # The operator disabled continuing partial downloads with aria2:
             # declare it, so core plans restarts for it rather than offsets.
@@ -406,6 +425,94 @@ class Aria2Executor:
     async def fingerprint_with_input(self, subject, submitted: SubmittedInput):
         return await self._evidence(subject.candidate, submitted)
 
+    # ── HTTP(S) authority, credential and redirect policy ──────────────────
+
+    @staticmethod
+    def _credential(address: str, submitted: SubmittedInput | None):
+        """The operator credential of ``submitted`` for exactly the authority
+        it was answered for (its stamped scope, else ``address``'s own), or
+        ``None``. The guarded redirect owner attaches it to that authority's
+        requests only."""
+        if submitted is None or submitted.method != InputMethod.USERNAME_PASSWORD:
+            return None
+        username, password = submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)
+        if not username or not password:
+            return None
+        token = base64.b64encode(f"{username}:{password}".encode()).decode()
+        return (submitted.scope or auth_scope(address)), "Basic " + token
+
+    def _start_address(self, address: str, submitted: SubmittedInput | None) -> str:
+        """Where an HTTP(S) read of ``address`` begins: the address it was
+        recently observed moving to under another authority, when
+        ``submitted`` was answered for exactly that authority -- its own
+        server would only refuse that input -- else ``address`` itself."""
+        now = time.monotonic()
+        for key in [key for key, (expires, _location) in self._moved.items() if expires <= now]:
+            del self._moved[key]
+        entry = self._moved.get(address)
+        if (entry is not None and submitted is not None and submitted.scope is not None
+                and submitted.scope == auth_scope(entry[1])):
+            return entry[1]
+        return address
+
+    def _authority_requirement(self, address: str, accessed: AccessRequired) -> InputRequirement:
+        """The neutral requirement of an HTTP(S) Basic challenge: of
+        ``address``'s own authority, or -- when the read had moved -- of the
+        authority that asked (its bare origin; never a path or token), whose
+        move is remembered for the answer (``_start_address``)."""
+        asked = str(accessed.address or "")
+        if not asked or auth_scope(asked) == auth_scope(address):
+            return auth_required(username_password())
+        parts = urlsplit(asked)
+        host = str(parts.hostname or "")
+        netloc = (f"[{host}]" if ":" in host else host) + (f":{parts.port}" if parts.port else "")
+        self._moved[address] = (time.monotonic() + _MOVED_SECONDS, asked)
+        self._moved.move_to_end(address)
+        while len(self._moved) > _MOVED_LIMIT:
+            self._moved.popitem(last=False)
+        return auth_required(username_password(), authority=urlunsplit((parts.scheme, netloc, "", "", "")))
+
+    def _granted_at(self, candidate, address: str, start: str) -> dict:
+        """The private-LAN grant for a read that starts at ``start``: only
+        ever the candidate's own consented host, never one it moved to."""
+        same_host = str(urlsplit(start).hostname or "").casefold() == str(urlsplit(address).hostname or "").casefold()
+        return self._granted(self._private_lan(candidate) and same_host)
+
+    async def _download_location(self, candidate, endpoint, submitted: SubmittedInput | None,
+                                 attempt_id: str = ""):
+        """THE executor redirect policy for an HTTP(S) download: where the
+        writer is pointed, resolved in-process by the guarded redirect owner
+        (aria2 itself never follows a redirect). Returns the answering
+        address, or a ``NormalizedError`` when another authority the address
+        moved to asked for input of its own. The operator credential reaches
+        only its own authority on the way."""
+        if endpoint.scheme not in SAMPLED_FINGERPRINT_SCHEMES:
+            return endpoint.address
+        headers = dict(endpoint.headers)
+        if any(any(char in str(key) + str(value) for char in "\r\n\x00") for key, value in headers.items()):
+            return endpoint.address  # refused by the one header check in ``_options``
+        provider_authorization = any(str(key).lower() == "authorization" for key in headers)
+        credential = None if provider_authorization else self._credential(endpoint.address, submitted)
+        start = self._start_address(endpoint.address, submitted)
+        result = await resolve_location(start, headers=headers if start == endpoint.address else {},
+                                        credential=credential, on_authenticated=_acceptance(submitted),
+                                        **self._granted_at(candidate, endpoint.address, start))
+        if isinstance(result, AccessRequired):
+            accepts_input = InputMethod.USERNAME_PASSWORD in candidate.accepted_input_methods
+            requirement = self._authority_requirement(endpoint.address, result)
+            if requirement.authority and accepts_input and not provider_authorization:
+                self._asked[attempt_id] = requirement
+                self._asked.move_to_end(attempt_id)
+                while len(self._asked) > _MOVED_LIMIT:
+                    self._asked.popitem(last=False)
+                return NormalizedError(Domain.RESOLUTION, Category.CANDIDATE_EXPIRED, Stage.QUEUE,
+                                       retryability=Retryability.AFTER_RERESOLUTION, integration_id=self.descriptor.id,
+                                       native_code="24", diagnostic=_AUTHORITY_DIAGNOSTIC)
+            return start
+        if isinstance(result, Located):
+            return result.uri
+        return start
+
     async def _evidence(self, candidate, submitted: SubmittedInput | None = None):
         """One neutral CandidateSampling over the endpoint execution would use.
 
@@ -432,16 +539,19 @@ class Aria2Executor:
             # A provider-issued Authorization capability is the candidate's own
             # access; operator credentials never replace it.
             provider_authorization = any(str(key).lower() == "authorization" for key in headers)
-            if credentials is not None:
-                if provider_authorization:
-                    return None
-                headers["Authorization"] = "Basic " + base64.b64encode(":".join(credentials).encode()).decode()
+            if credentials is not None and provider_authorization:
+                return None
+            start = self._start_address(endpoint.address, submitted)
             result = await sampled_public_artifact_fingerprint(
-                endpoint.address, headers=headers, expected_bytes=max(0, int(candidate.expected_bytes or 0)),
-                **self._granted(self._private_lan(candidate)),
+                start, headers=headers if start == endpoint.address else {},
+                expected_bytes=max(0, int(candidate.expected_bytes or 0)),
+                credential=self._credential(endpoint.address, submitted), on_authenticated=_acceptance(submitted),
+                **self._granted_at(candidate, endpoint.address, start),
             )
             if isinstance(result, AccessRequired):
-                return auth_required(username_password()) if accepts_input and not provider_authorization else refused
+                if not accepts_input or provider_authorization:
+                    return refused
+                return self._authority_requirement(endpoint.address, result)
             return ArtifactFingerprint(*result) if result else None
         # FTP/SFTP evidence reaches its origin only through the egress guard,
         # after the same destination validation execution applies.
@@ -523,9 +633,15 @@ class Aria2Executor:
         "sftp_unavailable": (Domain.RESOLUTION, Category.PROTOCOL_ERROR, Retryability.NEVER),
         "destination_rejected": (Domain.SECURITY, Category.DESTINATION_BLOCKED, Retryability.NEVER),
         "timeout": (Domain.NETWORK, Category.CONNECTION_TIMEOUT, Retryability.BACKOFF),
+        "dns_failure": (Domain.NETWORK, Category.DNS_FAILURE, Retryability.BACKOFF),
+        "connection_refused": (Domain.NETWORK, Category.CONNECTION_REFUSED, Retryability.BACKOFF),
+        "tls_failure": (Domain.NETWORK, Category.TLS_FAILURE, Retryability.NEVER),
+        "rate_limited": (Domain.NETWORK, Category.RATE_LIMITED, Retryability.BACKOFF),
+        "server_error": (Domain.NETWORK, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF),
     }
 
-    async def discover(self, subject, submitted: SubmittedInput | None = None, *, recursive: bool = False):
+    async def discover(self, subject, submitted: SubmittedInput | None = None, *,
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT):
         """Read-only classification of one FTP or SFTP path before any candidate exists.
 
         The same destination validation, egress route and access decisions
@@ -534,11 +650,17 @@ class Aria2Executor:
         same host-key order and session primitive as evidence); FTP through the
         same-host passive route, anonymously unless a login was supplied. A
         regular file is reported as one file; a directory as its immediate
-        regular files. A tree is never listed here (``recursive`` is refused)."""
+        regular files -- an FTP or SFTP tree is never listed here (any deeper
+        ``depth`` is refused). HTTP(S) is classified and listed through its own
+        collection protocol, WebDAV (``_http_discovery``), at any depth."""
         candidate = subject.candidate
         endpoint = self._endpoint(candidate)
-        if (recursive or endpoint is None or endpoint.scheme not in {"ftp", "sftp"}
-                or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods):
+        if endpoint is None or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods:
+            raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
+        if endpoint.scheme in SAMPLED_FINGERPRINT_SCHEMES:
+            result = await self._http_discovery(candidate, endpoint, submitted, depth)
+            return result if isinstance(result, InputRequirement) else self._discovered(result)
+        if depth != DiscoveryDepth.CURRENT or endpoint.scheme not in {"ftp", "sftp"}:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         lan = self._private_lan(candidate)
         try:
@@ -574,13 +696,49 @@ class Aria2Executor:
                                                                   port=port, **self._granted(lan)),
                 on_authenticated=_acceptance(submitted),
             )
-            if isinstance(result, AccessRequired):
-                return auth_required(username_password())
+        return self._discovered(result)
+
+    async def _http_discovery(self, candidate, endpoint, submitted: SubmittedInput | None, depth: DiscoveryDepth):
+        """HTTP(S) classification and listing through WebDAV, read-only.
+
+        The same destination validation, redirect control and private-LAN
+        grant as HTTP(S) evidence (``services.artifact_sampling``): anonymous
+        unless a username/password answer was supplied, and that answer is
+        sent only to the origin it was given for. The neutral ``depth`` is
+        translated and enforced by the reader, never by the server."""
+        if endpoint.headers:
+            # Discovery carries no provider-issued capability of any kind.
+            raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+        username = password = ""
+        if submitted is not None:
+            username, password = submitted.value(InputField.USERNAME), submitted.value(InputField.PASSWORD)
+            if submitted.method != InputMethod.USERNAME_PASSWORD or not username or not password:
+                raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
+        start = self._start_address(endpoint.address, submitted)
+        result = await webdav_discovery(
+            start, depth=depth, username=username, password=password,
+            credential_scope=(submitted.scope or auth_scope(endpoint.address)) if submitted is not None else None,
+            on_authenticated=_acceptance(submitted), **self._granted_at(candidate, endpoint.address, start))
+        if isinstance(result, AccessRequired):
+            return self._authority_requirement(endpoint.address, result)
+        if start != endpoint.address and isinstance(result, (Listing, RemoteFile)) and not result.location:
+            # Listed where the path had moved: that is where it was described.
+            result = replace(result, location=start)
+        return result
+
+    def _discovered(self, result):
+        """One transport's discovery facts as the neutral answer."""
+        if isinstance(result, AccessRequired):
+            return auth_required(username_password())
+        if isinstance(result, Opaque):
+            return DiscoveryResult(kind=RemoteObjectKind.OPAQUE)
         if isinstance(result, Listing):
-            return DiscoveryResult(tuple(DiscoveredEntry(name, size) for name, size in result.entries),
-                                   result.directory)
+            return DiscoveryResult(tuple(
+                DiscoveredEntry(name.rsplit("/", 1)[-1], size, relative_path=name if "/" in name else "")
+                for name, size in result.entries), result.directory, location=result.location)
         if isinstance(result, RemoteFile):
-            return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=max(0, result.size))
+            return DiscoveryResult(kind=RemoteObjectKind.FILE, expected_bytes=max(0, result.size),
+                                   location=result.location)
         reason = result.reason if isinstance(result, ListingRefused) else result[3]
         domain, category, retryability = self._LISTING_FAILURES.get(
             reason, (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF))
@@ -636,8 +794,15 @@ class Aria2Executor:
         code, diagnostic = observed.error.native_code, observed.error.diagnostic
         if endpoint.scheme in {"http", "https"}:
             # aria2 code 24 remains the generic candidate-expiry signal for
-            # candidates that accept no input.
-            return auth_required(username_password()) if code == "24" else None
+            # candidates that accept no input. The executor's own redirected-
+            # download refusal names the authority that asked.
+            if code != "24":
+                return None
+            if diagnostic == _AUTHORITY_DIAGNOSTIC:
+                asked = self._asked.get(str(observed.handle.attempt_id))
+                if asked is not None:
+                    return asked
+            return auth_required(username_password())
         if endpoint.scheme == "ftp":
             return auth_required(username_password()) if code == "21" and diagnostic == _FTP_LOGIN_REJECTED else None
         if endpoint.scheme == "sftp" and code == "1":
@@ -666,13 +831,27 @@ class Aria2Executor:
         return match.group(1)
 
     async def _options(self, request: ExecutionRequest, handle: ExecutionHandle,
-                       submitted: SubmittedInput | None = None, *, host_identity: str | None = None) -> tuple[str, dict]:
+                       submitted: SubmittedInput | None = None, *, host_identity: str | None = None,
+                       location: str | None = None) -> tuple[str, dict]:
+        """``location``: where ``_download_location`` resolved an HTTP(S)
+        endpoint to be answered; the job is pointed there, the private-LAN
+        grant and any provider-issued header stay with the endpoint's own
+        origin, and the operator credential with its own authority."""
         endpoint = self._endpoint(request.work.subject.candidate)
         if endpoint is None or urlsplit(endpoint.address).scheme != endpoint.scheme:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
-        lan = self._private_lan(request.work.subject.candidate)
+        location = location or endpoint.address
+        if urlsplit(location).scheme != endpoint.scheme and not (
+                endpoint.scheme in SAMPLED_FINGERPRINT_SCHEMES and urlsplit(location).scheme in SAMPLED_FINGERPRINT_SCHEMES):
+            raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.QUEUE)
+        same_origin = location == endpoint.address or (
+            urlsplit(location).scheme, str(urlsplit(location).hostname or "").casefold(), urlsplit(location).port) == (
+            urlsplit(endpoint.address).scheme, str(urlsplit(endpoint.address).hostname or "").casefold(),
+            urlsplit(endpoint.address).port)
+        lan = self._private_lan(request.work.subject.candidate) and bool(self._granted_at(
+            request.work.subject.candidate, endpoint.address, location))
         try:
-            address = await validate_resolved_public_destination(endpoint.address, **self._granted(lan))
+            address = await validate_resolved_public_destination(location, **self._granted(lan))
         except DestinationLookupError as exc:
             raise TransferError(NormalizedError(Domain.NETWORK, Category.DNS_FAILURE, Stage.QUEUE,
                 retryability=Retryability.BACKOFF, integration_id=self.descriptor.id)) from exc
@@ -725,10 +904,12 @@ class Aria2Executor:
             if endpoint.scheme in {"http", "https"}:
                 # Input exists only because a real HTTP authorization challenge
                 # was already observed. Send the submitted correction directly so
-                # an aria2 challenge cache cannot replay a superseded credential.
-                options["http-auth-challenge"] = "false"
-                options["http-user"] = username
-                options["http-passwd"] = password
+                # an aria2 challenge cache cannot replay a superseded credential
+                # -- and only to the one authority it was answered for.
+                if auth_scope(address) == (submitted.scope or auth_scope(endpoint.address)):
+                    options["http-auth-challenge"] = "false"
+                    options["http-user"] = username
+                    options["http-passwd"] = password
             else:
                 options["ftp-user"] = username
                 options["ftp-passwd"] = password
@@ -736,7 +917,9 @@ class Aria2Executor:
         for key, value in endpoint.headers.items():
             if any(char in str(key) + str(value) for char in "\r\n\x00") or str(key).lower() in {"host", "proxy-authorization"}:
                 raise self._failure(Category.SECURITY_POLICY_REJECTED, domain=Domain.SECURITY)
-            headers.append(f"{key}: {value}")
+            if same_origin:
+                # A provider-issued header is its own origin's capability.
+                headers.append(f"{key}: {value}")
         if headers:
             options["header"] = headers
         return address, options
@@ -830,7 +1013,13 @@ class Aria2Executor:
                 host_identity = self._confirmed_evidence_identity(host, submitted)
                 if host_identity is None:
                     raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.QUEUE, domain=Domain.SECURITY)
-            address, options = await self._options(request, handle, submitted, host_identity=host_identity)
+            location = await self._download_location(candidate, self._endpoint(candidate), submitted,
+                                                     handle.attempt_id)
+            if isinstance(location, NormalizedError):
+                return ExecutionObservation(handle, ExecutionState.FAILED, error=location)
+            secrets += (location,)
+            address, options = await self._options(request, handle, submitted, host_identity=host_identity,
+                                                   location=location)
             # A deletion can revoke authority during DNS or egress startup.
             await self._check(handle, "start")
             options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
@@ -875,7 +1064,14 @@ class Aria2Executor:
             except Exception as exc:
                 if not is_missing(exc, gid):
                     raise
-            address, options = await self._options(request, handle, submitted, host_identity=host_identity)
+            candidate = request.work.subject.candidate
+            location = await self._download_location(candidate, self._endpoint(candidate), submitted,
+                                                     handle.attempt_id)
+            if isinstance(location, NormalizedError):
+                return ExecutionObservation(handle, ExecutionState.FAILED, error=location)
+            secrets += (location,)
+            address, options = await self._options(request, handle, submitted, host_identity=host_identity,
+                                                   location=location)
             await self._check(handle, "resume")
             options.update(self._apply_continuation(request, self._target(self._plan_target(request))))
             return await self._submit(handle, address, options, secrets, paused=request.paused)

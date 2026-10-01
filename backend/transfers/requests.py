@@ -53,17 +53,22 @@ def extract_hash(magnet: str) -> Optional[str]:
 
 
 # The direct-source transports one link submission may carry. The request kind
-# is the URL scheme; provider applicability decides who resolves it.
-DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh"})
+# is the URL scheme; provider applicability decides who resolves it. The WebDAV
+# aliases are request syntax for HTTP(S) WebDAV semantics, not wire transports.
+DIRECT_LINK_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh",
+                                 "webdav", "webdavs", "dav", "davs"})
 
 
 # The authentication target scope of a URL-shaped resource. Scheme knowledge
 # belongs here, with the request kinds themselves: the authentication-input
 # owner only ever compares opaque scopes. SCP, SSH, SFTP and rsync over SSH
 # are one family -- the same server authenticates all four. An rsync daemon is
-# its own service with its own accounts.
+# its own service with its own accounts. A WebDAV alias names the HTTP(S)
+# server it is spoken over, so an answer given for ``davs://host/`` is the
+# answer for ``https://host/`` members of the same authority.
 _AUTH_SCOPE_FAMILIES = {
     "http": ("http", 80), "https": ("https", 443), "ftp": ("ftp", 21),
+    "webdav": ("http", 80), "dav": ("http", 80), "webdavs": ("https", 443), "davs": ("https", 443),
     "sftp": ("ssh", 22), "scp": ("ssh", 22), "ssh": ("ssh", 22), "rsync+ssh": ("ssh", 22),
     "rsync": ("rsync", 873),
 }
@@ -139,6 +144,9 @@ def direct_link_host(address) -> str:
     return str(parsed.hostname or "").rstrip(".").casefold()
 
 
+_EVERY_LINK = "Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL, or a WebDAV URL"
+
+
 def normalize_direct_links(values: List[str]) -> List[str]:
     """Validate and de-duplicate direct-source links without fetching them.
 
@@ -157,14 +165,14 @@ def normalize_direct_links(values: List[str]) -> List[str]:
         except ValueError:
             malformed_port = True
         if malformed_port:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL")
+            raise ValueError(_EVERY_LINK)
         if parsed.scheme.lower() not in DIRECT_LINK_SCHEMES or not parsed.hostname:
-            raise ValueError("Every link must be an absolute HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync URL")
+            raise ValueError(_EVERY_LINK)
         if value not in seen:
             normalized.append(value)
             seen.add(value)
     if not normalized:
-        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync link is required")
+        raise ValueError("At least one HTTP, HTTPS, FTP, SFTP, SCP, SSH or rsync link, or WebDAV link, is required")
     if len(normalized) > MAX_DIRECT_LINKS_PER_BATCH:
         raise ValueError(
             f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once"

@@ -193,6 +193,9 @@
       : fieldRequired(active.challenge, METHOD_PRIVATE_KEY, 'passphrase');
     const showKey = allowed.key;
     const identity = identityChallenge(active.challenge);
+    // The server asking, when it is not the source's own (a server the
+    // source moved to): the backend's safe origin, shown as text only.
+    const authority = text(active.challenge && active.challenge.authority).trim();
 
     if (!state.overlay) {
       state.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
@@ -212,11 +215,13 @@
                data-dp-auth-transfer-id="${active.transferId}"
                role="dialog" aria-modal="true"
                aria-labelledby="dp-auth-required-title"
-               aria-describedby="${identity ? 'dp-auth-required-identity-note ' : ''}dp-auth-required-error">
+               aria-describedby="${authority ? 'dp-auth-required-authority ' : ''}${identity ? 'dp-auth-required-identity-note ' : ''}dp-auth-required-error">
         <header class="dp-modal-header dp-auth-required-header">
           <div class="dp-modal-title" id="dp-auth-required-title">${identity ? 'Verify Server Identity' : 'Authentication Required'}</div>
         </header>
         <div class="dp-modal-body dp-auth-required-body">
+          ${authority ? `
+            <p class="dp-auth-required-identity-note" id="dp-auth-required-authority" data-dp-auth-authority></p>` : ''}
           ${identity ? `
             <div class="dp-auth-required-identity" data-dp-identity>
               <div class="dp-auth-required-identity-server" data-dp-identity-host></div>
@@ -255,6 +260,7 @@
 
     const username = overlay.querySelector('[data-dp-auth-username]');
     const secret = overlay.querySelector('[data-dp-auth-secret]');
+    if (authority) overlay.querySelector('[data-dp-auth-authority]').textContent = `Sign in to ${authority}`;
     if (username) username.value = active.username || '';
     if (secret) secret.value = secretValue || '';
     if (identity) {

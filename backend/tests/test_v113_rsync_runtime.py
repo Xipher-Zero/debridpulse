@@ -37,7 +37,7 @@ from providers.general_http.provider import GeneralHttpProvider
 from providers.general_rsync.provider import GeneralRsyncProvider
 from rsync_origins import RsyncDaemon, RsyncSshOrigin, write_tree
 from services import transfer_trace
-from test_v113_continuation_runtime import BODY, ranged_starts, start_origin
+from test_v113_continuation_runtime import BODY, start_origin, writer_starts
 from test_v113_ftp_sftp_convergence_runtime import _free_port
 from test_v113_transport_evidence_sampling import guard_for
 from transfers import material as mat
@@ -480,7 +480,7 @@ async def test_http_aria2_partial_continues_under_rsync_and_rsync_material_conti
             assert plan["boundary"] >= mat.align_down(before.safe_prefix, plan["alignment"]) > 0
             if target == "aria2":
                 # aria2 continued exactly at the DP boundary, not from zero.
-                assert min(ranged_starts(served[mark:])) == plan["boundary"]
+                assert min(writer_starts(served[mark:])) == plan["boundary"]
             directions.append((source, target))
             boundaries.append(plan["boundary"])
             if need is not None:

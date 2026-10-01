@@ -303,24 +303,37 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
   test('every set declares its own cardinality, and one lane grammar serves all three',
     async ({page}) => {
       // DP 1.0.13 Settings consolidation: the ONLY thing a set contributes is
-      // how many cells it has. Every per-set difference -- the widest cards in
-      // Usenet, the narrowest in Network Sources -- falls out of that alone.
+      // how many cells it has -- plus, for a set holding a selector, that no
+      // lane is narrower than one selector cell (the selector bound, 214px, and
+      // the cell's own 22px), so every value it offers reads whole.
+      const SELECTOR_LANE = 236;
+      const GAP = 16;
       for (const [selector, label, count] of REGIONS) {
-        await expect(page.locator(`${selector} .dp-settings-tuning-grid`), label)
-          .toHaveAttribute('data-tuning-lanes', String(count));
-        const lanes = await page.locator(`${selector} .dp-settings-tuning-grid`).evaluate(el =>
-          getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat));
-        expect(lanes.length, `${label} does not hold one lane per cell`).toBe(count);
+        const grid = page.locator(`${selector} .dp-settings-tuning-grid`);
+        await expect(grid, label).toHaveAttribute('data-tuning-lanes', String(count));
+        const {lanes, width, holdsSelector} = await grid.evaluate(el => ({
+          lanes: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).map(parseFloat),
+          width: el.getBoundingClientRect().width,
+          holdsSelector: !!el.querySelector('select.input'),
+        }));
+        if (holdsSelector) {
+          const fits = Math.floor((width + GAP) / (SELECTOR_LANE + GAP));
+          expect(lanes.length, `${label} does not hold its selector lanes`).toBe(Math.max(1, Math.min(count, fits)));
+          expect(Math.min(...lanes), `${label} has a lane narrower than a selector cell`)
+            .toBeGreaterThanOrEqual(SELECTOR_LANE - 0.5);
+        } else {
+          expect(lanes.length, `${label} does not hold one lane per cell`).toBe(count);
+        }
         expect(Math.max(...lanes) - Math.min(...lanes), `${label} lanes unequal`)
           .toBeLessThanOrEqual(1);
       }
-      // Widest set of cards is the smallest cardinality, from one rule.
+      // Among plain sets the widest cards belong to the smallest cardinality,
+      // from one rule; a selector set's cards are at least one selector cell.
       const widthOf = async selector => (await page.locator(`${selector} .dp-settings-field`)
         .first().evaluate(el => el.getBoundingClientRect().width));
       expect(await widthOf('[data-executor-tuning="usenet"]'))
         .toBeGreaterThan(await widthOf('.dp-settings-download-recovery-card'));
-      expect(await widthOf('.dp-settings-download-recovery-card'))
-        .toBeGreaterThan(await widthOf('[data-executor-tuning="direct"]'));
+      expect(await widthOf('[data-executor-tuning="direct"]')).toBeGreaterThanOrEqual(SELECTOR_LANE - 0.5);
     });
 
   test('cards stay bounded, rows left-fill their lanes, and nothing scrolls at any width',

@@ -18,7 +18,7 @@ from providers.general_rsync.definition import definition as provider_definition
 from providers.general_rsync.provider import GeneralRsyncProvider
 from transfers.errors import Category, Domain, TransferError
 from transfers.models import (
-    DiscoveredEntry, DiscoveryResult, InputMethod, RemoteObjectKind, ResourceState, TransferRequest,
+    DiscoveredEntry, DiscoveryDepth, DiscoveryResult, InputMethod, RemoteObjectKind, ResourceState, TransferRequest,
 )
 from transfers.registry import IntegrationRegistry
 from transfers.requests import auth_scope, remote_object_coordinate
@@ -48,7 +48,7 @@ async def test_provider_identity_request_kinds_and_presentation():
     assert (presentation.status_group, presentation.display_order) == ("direct_sources", 913)
     assert executor_definition.id == "rsync" and executor_definition.kind == "executor"
     # Distinct durable identities, both registered; one operator label.
-    assert [item.id for item in definitions][-3:] == ["general_rsync", "aria2", "rsync"]
+    assert [item.id for item in definitions][-4:] == ["general_rsync", "general_webdav", "aria2", "rsync"]
     registry = IntegrationRegistry()
     registry.register_provider(provider)
     with pytest.raises(ValueError):
@@ -84,7 +84,7 @@ async def test_the_provider_performs_no_native_io():
 ])
 async def test_supported_sources_ask_core_for_one_recursive_discovery(url):
     result = await GeneralRsyncProvider().resolve(_request(url))
-    assert result.state == ResourceState.PREPARING and result.discovery.recursive is True
+    assert result.state == ResourceState.PREPARING and result.discovery.depth == DiscoveryDepth.UNLIMITED
     assert result.discovery.endpoint.scheme == url.split("://", 1)[0]
     expected = {InputMethod.USERNAME_PASSWORD}
     if url.startswith("rsync+ssh"):

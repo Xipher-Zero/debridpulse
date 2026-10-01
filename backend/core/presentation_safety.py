@@ -43,9 +43,10 @@ def safe_public_host(value: object) -> str | None:
     return host
 
 
-_ROUTE_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh"})
+_ROUTE_SCHEMES = frozenset({"http", "https", "ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh",
+                            "webdav", "webdavs", "dav", "davs"})
 _ROUTE_DEFAULT_PORTS = {"http": 80, "https": 443, "ftp": 21, "sftp": 22, "scp": 22, "ssh": 22,
-                        "rsync": 873, "rsync+ssh": 22}
+                        "rsync": 873, "rsync+ssh": 22, "webdav": 80, "dav": 80, "webdavs": 443, "davs": 443}
 
 
 def safe_route_endpoint(value: object, *, max_length: int = 180) -> tuple[str | None, str | None]:
@@ -88,9 +89,10 @@ def safe_route_endpoint(value: object, *, max_length: int = 180) -> tuple[str | 
 
 
 # Remote-file transports whose submitted resource is presented by the one
-# helper below; SCP/SSH and rsync paths carry no query, FTP/SFTP URLs can.
+# helper below; SCP/SSH and rsync paths carry no query, FTP/SFTP and the
+# WebDAV aliases (HTTP underneath) can.
 _REMOTE_FILE_QUERYLESS = frozenset({"scp", "ssh", "rsync", "rsync+ssh"})
-_REMOTE_FILE_WITH_QUERY = frozenset({"ftp", "sftp"})
+_REMOTE_FILE_WITH_QUERY = frozenset({"ftp", "sftp", "webdav", "webdavs", "dav", "davs"})
 
 
 def safe_original_remote_file_resource(value: object, *, max_length: int = 180) -> str | None:

@@ -7,14 +7,15 @@ const { test, expect } = require('@playwright/test');
  * stored preference, in either direction, and the group's Provider Status row
  * never disappears.
  *
- * This file is the ONE spec file that writes `integrations.general_scp.enabled`
- * and `integrations.general_rsync.enabled` (spec files share one backend and
- * run concurrently); SCP and rsync move with (S)FTP in every case below, so
- * "every child" really is every Network Sources member.
+ * This file is the ONE spec file that writes `integrations.general_scp.enabled`,
+ * `integrations.general_rsync.enabled` and `integrations.general_webdav.enabled`
+ * (spec files share one backend and run concurrently); SCP, rsync and WebDAV
+ * move with (S)FTP in every case below, so "every child" really is every
+ * Network Sources member.
  */
 
 const GROUP = 'direct_sources';
-const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync'];
+const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -23,11 +24,12 @@ async function isolateExternalFonts(page) {
 
 const canonical = page => page.request.get('/api/settings').then(r => r.json());
 
-async function setChildren(page, http, ftp, scp = ftp, rsync = ftp) {
+async function setChildren(page, http, ftp, scp = ftp, rsync = ftp, webdav = ftp) {
   await page.request.patch('/api/integrations/general_http/configuration', {data: {enabled: http}});
   await page.request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: ftp}});
   await page.request.patch('/api/integrations/general_scp/configuration', {data: {enabled: scp}});
   await page.request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: rsync}});
+  await page.request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: webdav}});
 }
 
 async function setMaster(page, enabled) {
@@ -84,7 +86,7 @@ const groupState = page => page.evaluate(group => {
  * integration state to prove a colour would be racing every other spec that
  * owns that same state. The durable semantics below still use the real API --
  * they are about durability and have to. */
-async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, master}) {
+async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = ftp, master}) {
   const live = await page.request.get('/api/settings').then(r => r.json());
   await page.goto('/');
   await page.evaluate(([entries, gates]) => {
@@ -94,7 +96,8 @@ async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, master}) {
      general_http: {...live.integrations.general_http, enabled: http},
      general_ftp: {...live.integrations.general_ftp, enabled: ftp},
      general_scp: {...live.integrations.general_scp, enabled: scp},
-     general_rsync: {...live.integrations.general_rsync, enabled: rsync}},
+     general_rsync: {...live.integrations.general_rsync, enabled: rsync},
+     general_webdav: {...live.integrations.general_webdav, enabled: webdav}},
     {[GROUP]: {enabled: master, label: 'Network Sources', members: CHILDREN}},
   ]);
   await page.evaluate(() => window.DPProviderStatus.refresh());
@@ -112,6 +115,7 @@ test.beforeAll(async ({request}) => {
     ftp: settings.integrations.general_ftp.enabled,
     scp: settings.integrations.general_scp.enabled,
     rsync: settings.integrations.general_rsync.enabled,
+    webdav: settings.integrations.general_webdav.enabled,
     master: settings.integration_groups?.[GROUP]?.enabled !== false,
   };
 });
@@ -122,6 +126,7 @@ test.afterAll(async ({request}) => {
   await request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: original.ftp}});
   await request.patch('/api/integrations/general_scp/configuration', {data: {enabled: original.scp}});
   await request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: original.rsync}});
+  await request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: original.webdav}});
   await request.patch(`/api/integration-groups/${GROUP}/configuration`, {data: {enabled: original.master}});
 });
 
@@ -253,7 +258,7 @@ test('every Services enable control is immediate', async ({page}) => {
     '.dp-settings-panel[data-panel="sources"] [data-integration-group-enabled]',
     nodes => nodes.map(n => n.dataset.integrationEnabled || n.dataset.integrationGroupEnabled));
   expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', 'general_scp',
-    'general_rsync', GROUP]));
+    'general_rsync', 'general_webdav', GROUP]));
 });
 
 /* The suite's designated NEUTRAL whole-settings probe.
@@ -338,13 +343,17 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await expect.poll(async () => (await canonical(page)).integrations.general_ftp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'one member off did not converge').toBe('mixed');
 
-    // The SCP and rsync members' Enables are the same immediate canonical control.
+    // The SCP, rsync and WebDAV members' Enables are the same immediate canonical control.
     await flipChild(page, 'general_scp');
     await expect.poll(async () => (await canonical(page)).integrations.general_scp.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'two members off did not converge').toBe('mixed');
     await flipChild(page, 'general_rsync');
     await expect.poll(async () => (await canonical(page)).integrations.general_rsync.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'three members off did not converge').toBe('mixed');
+    // WebDAV joins the same group through the same metadata and the same control.
+    await flipChild(page, 'general_webdav');
+    await expect.poll(async () => (await canonical(page)).integrations.general_webdav.enabled).toBe(false);
+    await expect.poll(() => groupState(page), 'four members off did not converge').toBe('mixed');
 
     await flipChild(page, 'general_http');
     await expect.poll(async () => (await canonical(page)).integrations.general_http.enabled).toBe(false);

@@ -278,7 +278,7 @@ async def test_artifact_sampling_is_the_one_bounded_content_sampling_owner():
     import ast
     from pathlib import Path
     backend = Path(safety.__file__).resolve().parents[1]
-    for name in ("sampled_public_artifact_fingerprint", "SAMPLED_FINGERPRINT_SCHEMES", "_range_request",
+    for name in ("sampled_public_artifact_fingerprint", "SAMPLED_FINGERPRINT_SCHEMES", "_guarded_request",
                  "_read_exactly", "_content_range", "_digest_full", "_digest_prefix", "digest_full", "digest_prefix"):
         assert not hasattr(safety, name), name
     safety_source = Path(safety.__file__).read_text()
@@ -292,7 +292,7 @@ async def test_artifact_sampling_is_the_one_bounded_content_sampling_owner():
         for node in ast.walk(tree):
             if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name in {
                     "sampled_public_artifact_fingerprint", "ftp_fingerprint", "sftp_fingerprint",
-                    "digest_full", "digest_prefix", "_offset_windows", "_range_request"}:
+                    "digest_full", "digest_prefix", "_offset_windows", "_guarded_request"}:
                 owners.append(path.relative_to(backend).as_posix())
     assert set(owners) == {"services/artifact_sampling.py"}
 

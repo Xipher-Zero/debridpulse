@@ -97,6 +97,9 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-protocol='general_rsync'] {
   --dp-protocol-color: #7C3AED;
 }
+#view-settings .dp-settings-protocol-chip[data-protocol='general_webdav'] {
+  --dp-protocol-color: #38BDF8;
+}
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: #CBD5E1;
 }

@@ -3,7 +3,7 @@
 rsync required four generalized DebridPulse surfaces; each is proven here
 without rsync, so another executor can rely on the same contract:
 
-1. recursive remote discovery (``DiscoveryRequest.recursive`` /
+1. recursive remote discovery (``DiscoveryRequest.depth`` UNLIMITED /
    ``DiscoveredEntry.relative_path``) -- through the REAL engine and the real
    rsync provider, with an in-memory tree-listing executor;
 2. remote source capacity (``policy.remote_source_capacity``) -- a source
@@ -32,7 +32,7 @@ from transfers.errors import Category, Domain, NormalizedError, Retryability, St
 from transfers.mirrors import REMOTE_CAPACITY_REASON
 from transfers.input_required import auth_required, username_password, username_private_key
 from transfers.models import (
-    DiscoveredEntry, DiscoveryResult, ExecutionSubject, ExecutorCapabilities, InputField, IntegrationDescriptor,
+    DiscoveredEntry, DiscoveryDepth, DiscoveryResult, ExecutionSubject, ExecutorCapabilities, InputField, IntegrationDescriptor,
     RemoteObjectKind, TransferRequest, TransferState,
 )
 from transfers.policy import (
@@ -63,7 +63,8 @@ class TreeListing(VaultExecutor):
     def _object(candidate):
         return unquote(candidate.endpoints[0].address.removeprefix("rsync://"))
 
-    async def discover(self, subject, submitted=None, *, recursive=False):
+    async def discover(self, subject, submitted=None, *, depth=DiscoveryDepth.CURRENT):
+        recursive = depth.unlimited
         key = self._object(subject.candidate)
         self.discoveries.append((key, recursive))
         if key in self.objects:
@@ -223,7 +224,7 @@ async def test_an_executor_that_cannot_list_a_tree_refuses_rather_than_flatten(t
     from test_v113_transport_evidence_sampling import candidate
     executor = Aria2Executor(None, Aria2Configuration(str(tmp_path)), None)
     with pytest.raises(TransferError) as raised:
-        await executor.discover(ExecutionSubject.of(candidate("sftp://h.example/dir/")), recursive=True)
+        await executor.discover(ExecutionSubject.of(candidate("sftp://h.example/dir/")), depth=DiscoveryDepth.UNLIMITED)
     assert raised.value.error.category == Category.UNSUPPORTED_CAPABILITY
 
 
@@ -364,14 +365,14 @@ class Interpretations(TreeListing):
     def _object(candidate):
         return unquote(candidate.endpoints[0].address)
 
-    async def discover(self, subject, submitted=None, *, recursive=False):
+    async def discover(self, subject, submitted=None, *, depth=DiscoveryDepth.CURRENT):
         scheme = subject.candidate.endpoints[0].scheme
         self.readings.append((scheme, submitted.value(InputField.USERNAME) if submitted is not None else None))
         if scheme in self.failures:
             raise TransferError(self.failures[scheme])
         if scheme == self.login and submitted is None:
             return auth_required(username_password(), username_private_key())
-        return await super().discover(subject, submitted, recursive=recursive)
+        return await super().discover(subject, submitted, depth=depth)
 
 
 def _answer(category, domain=Domain.RESOLUTION, retryability=Retryability.NEVER):

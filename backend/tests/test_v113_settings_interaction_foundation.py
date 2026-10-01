@@ -141,7 +141,7 @@ def test_the_lower_tier_keeps_its_identity_and_changes_only_its_label():
     """``general_family`` is the internal tier identity and does not move; only
     what the operator reads changed."""
     members = [d for d in definitions if d.presentation.status_tier == GENERAL_FAMILY]
-    assert {d.id for d in members} == {"general_http", "general_ftp", "general_scp", "general_rsync"}
+    assert {d.id for d in members} == {"general_http", "general_ftp", "general_scp", "general_rsync", "general_webdav"}
     for definition in members:
         assert definition.presentation.status_tier_label == "Standard Services", definition.id
 
@@ -803,10 +803,14 @@ def test_a_relationship_group_never_draws_a_broken_outline():
         assert marker in SETTINGS_CSS, span
         rule_body = SETTINGS_CSS.split(marker + " {", 1)[1].split("}", 1)[0]
         assert rule_body.strip() == f"--dp-tuning-span: {span};", span
-    # One threshold per CARDINALITY -- the width at which that set still holds
-    # every one of its lanes, which is the only state in which every group is
-    # provably contiguous -- never one per column count.
-    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 3
+    # One threshold per CARDINALITY and lane kind -- the width at which that
+    # set still holds every one of its lanes (ordinary lanes, or the wider
+    # lanes of a set holding a selector), which is the only state in which
+    # every group is provably contiguous -- never one per column count.
+    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 6
+    for lanes in ("4", "5", "7"):
+        assert SETTINGS_CSS.count(f'[data-tuning-lanes="{lanes}"]:not(:has(select.input)) .dp-settings-tuning-group') == 1
+        assert SETTINGS_CSS.count(f'[data-tuning-lanes="{lanes}"]:has(select.input) .dp-settings-tuning-group') == 1
     # No owner measures a cell, a row or a group in JavaScript.
     page = SETTINGS_JS
     for measurement in ("getBoundingClientRect", "offsetWidth", "clientWidth",

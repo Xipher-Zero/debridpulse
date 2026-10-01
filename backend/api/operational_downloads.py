@@ -655,6 +655,58 @@ async def list_operational_torrents(
               AND p.provider_id IS NOT NULL
             GROUP BY p.transfer_id
         ),
+        -- The origin provider: the one provider owning the route of every
+        -- root request (latest route attempt per root, never a provider that
+        -- declined that request) -- the same derivation as
+        -- transfers._repository_base.origin_provider.
+        declined_route AS (
+            SELECT DISTINCT d.request_id, d.provider_id
+            FROM resolution_attempts d
+            JOIN transfer_requests r
+              ON r.id = d.request_id AND r.parent_id IS NULL
+            JOIN page
+              ON page.id = r.transfer_id
+            WHERE d.state = 'declined'
+        ),
+        root_route AS (
+            SELECT request_id, provider_id
+            FROM (
+                SELECT
+                    p.request_id,
+                    a.provider_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.request_id
+                        ORDER BY p.ordinal DESC
+                    ) AS row_number
+                FROM route_attempt_provenance p
+                JOIN resolution_attempts a
+                  ON a.id = p.resolution_attempt_id
+                JOIN transfer_requests r
+                  ON r.id = p.request_id AND r.parent_id IS NULL
+                JOIN page
+                  ON page.id = p.transfer_id
+                LEFT JOIN declined_route
+                  ON declined_route.request_id = p.request_id
+                 AND declined_route.provider_id = a.provider_id
+                WHERE a.provider_id IS NOT NULL
+                  AND declined_route.request_id IS NULL
+            )
+            WHERE row_number = 1
+        ),
+        origin AS (
+            SELECT
+                r.transfer_id,
+                COUNT(DISTINCT root_route.provider_id) AS provider_count,
+                MIN(root_route.provider_id) AS provider_id,
+                SUM(CASE WHEN root_route.request_id IS NULL THEN 1 ELSE 0 END) AS unrouted_count
+            FROM transfer_requests r
+            JOIN page
+              ON page.id = r.transfer_id
+            LEFT JOIN root_route
+              ON root_route.request_id = r.id
+            WHERE r.parent_id IS NULL
+            GROUP BY r.transfer_id
+        ),
         delivered_source AS (
             SELECT transfer_id, candidate_source
             FROM (
@@ -1190,6 +1242,11 @@ async def list_operational_torrents(
                 ELSE NULL
             END AS delivering_provider_id,
             CASE
+                WHEN COALESCE(origin.provider_count, 0) = 1 AND COALESCE(origin.unrouted_count, 0) = 0
+                THEN origin.provider_id
+                ELSE NULL
+            END AS origin_provider_id,
+            CASE
                 WHEN COALESCE(delivery.provider_count, 0) > 0 THEN 'recorded'
                 WHEN t.status = 'completed' THEN 'unknown_legacy'
                 ELSE 'pending'
@@ -1230,6 +1287,8 @@ async def list_operational_torrents(
           ON latest_route.transfer_id = t.id
         LEFT JOIN delivery
           ON delivery.transfer_id = t.id
+        LEFT JOIN origin
+          ON origin.transfer_id = t.id
         LEFT JOIN delivered_source
           ON delivered_source.transfer_id = t.id
         LEFT JOIN active_source

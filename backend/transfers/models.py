@@ -3,7 +3,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Mapping
+from typing import ClassVar, Mapping
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from transfers.errors import NormalizedError
@@ -119,13 +120,44 @@ _REASON_FACTS = {
 }
 
 
+def canonical_authority(value) -> str:
+    """THE canonical form of an input authority: the bare origin
+    ``scheme://host[:port]`` -- scheme and host lower-cased, an IPv6 host
+    bracketed, a port only when one was given. Path, query and fragment are
+    never part of it, so no address-bearing capability (a signed path or
+    token) can reach a question or its durable row. Userinfo, a missing
+    scheme or host, or an invalid port is refused. ``""`` stays ``""``."""
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    try:
+        parts = urlsplit(raw)
+        port = parts.port
+    except ValueError:
+        raise ValueError("An input authority is a credential-free absolute origin") from None
+    host = str(parts.hostname or "").rstrip(".").casefold()
+    if (not parts.scheme or not host or port == 0 or parts.username is not None
+            or parts.password is not None or any(ord(char) <= 32 or ord(char) == 127 for char in raw)):
+        raise ValueError("An input authority is a credential-free absolute origin")
+    netloc = f"[{host}]" if ":" in host else host
+    if port is not None:
+        netloc = f"{netloc}:{port}"
+    return f"{parts.scheme.casefold()}://{netloc}"
+
+
 @dataclass(frozen=True)
 class InputRequirement:
     reason: InputReason
     methods: tuple[InputMethodDescriptor, ...]
     facts: tuple[InputFact, ...] = ()
+    # The server that asked, when it is NOT the subject's own (a server the
+    # subject's address moved to); ``""`` is the subject's own authority. The
+    # authentication-input owner scopes the question, and every answer to it,
+    # to exactly that authority. Always a bare origin (``canonical_authority``).
+    authority: str = ""
 
     def __post_init__(self):
+        object.__setattr__(self, "authority", canonical_authority(self.authority))
         if self.reason not in _REASON_FACTS:
             raise ValueError("Unsupported input-required reason")
         if not self.methods or len({item.method for item in self.methods}) != len(self.methods):
@@ -148,10 +180,15 @@ class InputChallenge:
     request_id: str | None = None
     artifact_id: int | None = None
     facts: tuple[InputFact, ...] = ()
+    # ``InputRequirement.authority`` of the question asked (a bare origin).
+    authority: str = ""
+
+    def __post_init__(self):
+        object.__setattr__(self, "authority", canonical_authority(self.authority))
 
     @property
     def requirement(self) -> InputRequirement:
-        return InputRequirement(self.reason, self.methods, self.facts)
+        return InputRequirement(self.reason, self.methods, self.facts, self.authority)
 
 
 class ResourceState(StrEnum):
@@ -452,6 +489,48 @@ class ProviderObservation:
 
 
 @dataclass(frozen=True)
+class DiscoveryDepth:
+    """How far below a discovered directory DP wants regular files enumerated.
+
+    What DP wants, never how a protocol expresses it: ``levels`` subdirectory
+    levels (``0``, ``CURRENT``: the directory's immediate regular files only),
+    or every reachable level (``None``, ``UNLIMITED``). The executor that
+    lists owns the translation into its transport and enforces the bound
+    itself; an executor that cannot enumerate exactly this depth refuses the
+    discovery rather than answer with more or less.
+
+    Enumeration policy only: it never reaches a candidate, execution work,
+    continuation or materialization."""
+    levels: int | None = 0
+
+    CURRENT: ClassVar[DiscoveryDepth]
+    UNLIMITED: ClassVar[DiscoveryDepth]
+
+    def __post_init__(self):
+        if self.levels is not None and (
+                isinstance(self.levels, bool) or not isinstance(self.levels, int) or self.levels < 0):
+            raise ValueError("A discovery depth is a non-negative number of subdirectory levels, or unlimited")
+
+    @classmethod
+    def of(cls, levels: int) -> DiscoveryDepth:
+        return cls(levels)
+
+    @property
+    def unlimited(self) -> bool:
+        return self.levels is None
+
+    def descends(self, level: int) -> bool:
+        """Whether enumeration enters the subdirectories of a directory that
+        lies ``level`` subdirectory levels below the discovered one (the
+        discovered directory itself is level ``0``)."""
+        return self.levels is None or level < self.levels
+
+
+DiscoveryDepth.CURRENT = DiscoveryDepth(0)
+DiscoveryDepth.UNLIMITED = DiscoveryDepth(None)
+
+
+@dataclass(frozen=True)
 class DiscoveryRequest:
     """A provider's request that core list ONE remote directory for it.
 
@@ -461,9 +540,10 @@ class DiscoveryRequest:
     hands the neutral result back to the provider. A provider never opens the
     connection itself.
 
-    ``recursive``: the provider's source semantics select the whole tree
-    beneath a directory, not only its immediate files. An executor that cannot
-    list a tree refuses the discovery; it never answers with a flat listing.
+    ``depth``: how far below a directory the provider's source semantics
+    select regular files (``DiscoveryDepth``). An executor that cannot
+    enumerate exactly that depth refuses the discovery; it never answers with
+    a flatter or deeper listing.
 
     ``alternate``: the SAME operator request read another way, when the
     provider's source semantics admit one (never a second candidate). Core
@@ -474,44 +554,54 @@ class DiscoveryRequest:
     An alternate's own resolution never names a further alternate."""
     endpoint: Endpoint
     accepted_input_methods: tuple[InputMethod, ...] = ()
-    recursive: bool = False
+    depth: DiscoveryDepth = DiscoveryDepth.CURRENT
     alternate: TransferRequest | None = None
 
 
 @dataclass(frozen=True)
 class DiscoveredEntry:
     """One regular file found inside a discovered directory. ``relative_path``
-    is its path below that directory for a recursive discovery (``""`` means
-    the file lies directly inside it, at ``name``)."""
+    is its path below that directory when a deeper-than-``CURRENT`` discovery
+    found it in a subdirectory (``""`` means the file lies directly inside it,
+    at ``name``)."""
     name: str
     expected_bytes: int = 0
     relative_path: str = ""
 
 
 class RemoteObjectKind(StrEnum):
-    """What authoritative remote evidence proved a discovered path to be."""
+    """What authoritative remote evidence proved a discovered path to be.
+
+    ``OPAQUE``: the server answered definitively, but describes the path
+    through no discovery semantics at all -- it proved neither a file nor a
+    directory. A positive protocol fact, never a failure; only the provider
+    that asked decides what it means (``ResolutionResult.declined``)."""
     FILE = "file"
     DIRECTORY = "directory"
+    OPAQUE = "opaque"
 
 
 @dataclass(frozen=True)
 class DiscoveryResult:
     """Authoritative remote facts about one discovered path.
 
-    A DIRECTORY carries its immediate regular-file members -- or, for a
-    recursive discovery, every regular file of its tree, each at its
-    ``relative_path`` (a server whose top level is a set of named roots lists
-    each root as the first path segment); never directories, symbolic links or
+    A DIRECTORY carries its immediate regular-file members -- or, for a deeper
+    discovery, every regular file within the requested ``DiscoveryDepth``, each
+    at its ``relative_path`` (a server whose top level is a set of named roots
+    lists each root as the first path segment); never directories, symbolic links or
     special files, and never remote-browser state. Only a complete listing is a
     result: anything the server refused to list fails the discovery. ``directory``
     is the concrete absolute path they were listed in, as the server resolved
     it -- so a home-relative request reaches execution as a canonical path. A
     regular FILE carries no members, only its size when the server reports it
-    (``expected_bytes``)."""
+    (``expected_bytes``). ``location`` is the address the server finally
+    described the path at when it moved it (a followed redirect), ``""`` when
+    it answered at the requested address itself."""
     entries: tuple[DiscoveredEntry, ...] = ()
     directory: str = ""
     kind: RemoteObjectKind = RemoteObjectKind.DIRECTORY
     expected_bytes: int = 0
+    location: str = field(default="", repr=False)
 
 
 @dataclass(frozen=True)
@@ -525,6 +615,13 @@ class ResolutionResult:
     # Core-run remote discovery the provider needs before it can describe the
     # resource (``DiscoveryResolution.resolve_discovered`` receives the result).
     discovery: DiscoveryRequest | None = None
+    # Positive post-probe non-applicability: the discovery this provider asked
+    # for proved the resource is not its interpretation (never a failure, and
+    # carrying nothing else). Only a provider whose claim on the request was
+    # conditional (``ProviderApplicability.conditional``) may say it, and only
+    # before it has resolved the request; core then continues the same
+    # established provider competition without it.
+    declined: bool = False
 
 
 @dataclass(frozen=True)

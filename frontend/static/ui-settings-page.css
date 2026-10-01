@@ -660,6 +660,13 @@
   --dp-tuning-lane-min: 160px;
   /* The bounded card inside the lane. */
   --dp-tuning-card-max: 240px;
+  /* The widest a selector grows inside its cell: 160px of value text plus the
+     canonical trigger's own padding, gap and chevron (54px), so an offered
+     value and its menu are read whole, never cut to an ellipsis. */
+  --dp-tuning-select-max: 214px;
+  /* The lane one such selector cell needs: the bound plus the cell's own
+     horizontal padding (2 x 10px) and border (2 x 1px). */
+  --dp-tuning-select-lane: calc(var(--dp-tuning-select-max) + 22px);
   /* What a drawn relationship LOOKS like, declared exactly once for every set
      that has one. The three switches below only turn it on; none of them
      states an appearance, so there is no per-section variant to drift.
@@ -694,6 +701,11 @@
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] { --dp-tuning-lanes: 5; --dp-tuning-lane-min: 160px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="6"] { --dp-tuning-lanes: 6; --dp-tuning-lane-min: 140px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] { --dp-tuning-lanes: 7; --dp-tuning-lane-min: 120px; }
+
+/* A set that holds a selector: no lane is narrower than one selector cell, so
+   every value it offers reads whole wherever the cell lands. The lane count
+   still follows from the region's width alone; nothing is measured. */
+#view-settings .dp-settings-tuning-grid:has(select.input) { --dp-tuning-lane-min: var(--dp-tuning-select-lane); }
 
 /* A relationship between adjacent cells, and nothing more.
  *
@@ -738,6 +750,14 @@
   max-width: 100%;
   box-sizing: border-box;
   text-align: left;
+}
+
+/* A selector is the same cell control, sized for what it offers: it fills its
+   cell up to the one selector bound instead of a number field's width (its
+   menu matches the trigger). */
+#view-settings .dp-settings-tuning-grid .dp-settings-field > select.input,
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .dp-dropdown-shell {
+  width: min(100%, var(--dp-tuning-select-max)) !important;
 }
 
 /* A control that carries a unit inside its own border is the same cell control
@@ -806,7 +826,7 @@
 
 /* 4 lanes x 200px + 3 x 16px */
 @container dp-tuning (min-width: 848px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] .dp-settings-tuning-group {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"]:not(:has(select.input)) .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
     --dp-tuning-relation: var(--dp-tuning-relation-line);
@@ -815,7 +835,7 @@
 
 /* 5 lanes x 160px + 4 x 16px */
 @container dp-tuning (min-width: 864px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] .dp-settings-tuning-group {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"]:not(:has(select.input)) .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
     --dp-tuning-relation: var(--dp-tuning-relation-line);
@@ -824,7 +844,34 @@
 
 /* 7 lanes x 120px + 6 x 16px */
 @container dp-tuning (min-width: 936px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] .dp-settings-tuning-group {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"]:not(:has(select.input)) .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
+  }
+}
+
+/* The same switches for a set that holds a selector, at the width where its
+   selector lanes (236px, ``--dp-tuning-select-lane``) all fit:
+   N x 236px + (N - 1) x 16px. */
+@container dp-tuning (min-width: 992px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"]:has(select.input) .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
+  }
+}
+
+@container dp-tuning (min-width: 1244px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"]:has(select.input) .dp-settings-tuning-group {
+    display: grid;
+    grid-column: span var(--dp-tuning-span);
+    --dp-tuning-relation: var(--dp-tuning-relation-line);
+  }
+}
+
+@container dp-tuning (min-width: 1748px) {
+  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"]:has(select.input) .dp-settings-tuning-group {
     display: grid;
     grid-column: span var(--dp-tuning-span);
     --dp-tuning-relation: var(--dp-tuning-relation-line);

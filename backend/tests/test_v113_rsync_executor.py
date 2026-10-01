@@ -32,7 +32,7 @@ from test_v113_transport_evidence_sampling import guard_for
 from transfers.errors import Category, Domain, Retryability, TransferError
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    ContinuationCapability, ContinuationPlan, ContinuationStrategy, Endpoint, ExecutionState, ExecutionSubject,
+    ContinuationCapability, ContinuationPlan, ContinuationStrategy, DiscoveryDepth, Endpoint, ExecutionState, ExecutionSubject,
     FingerprintKind, InputFact, InputFactName, InputField, InputMethod, InputReason, RemoteObjectKind,
     TransferCandidate,
 )
@@ -182,9 +182,9 @@ async def test_discovery_classifies_files_trees_links_and_missing_paths(tmp_path
     def subject(path):
         return ExecutionSubject.of(_candidate(origin.url(path)))
 
-    file = await executor.discover(subject("/pub/payload.bin"), recursive=True)
+    file = await executor.discover(subject("/pub/payload.bin"), depth=DiscoveryDepth.UNLIMITED)
     assert (file.kind, file.expected_bytes) == (RemoteObjectKind.FILE, len(PAYLOAD))
-    tree = await executor.discover(subject("/pub/tree"), recursive=True)
+    tree = await executor.discover(subject("/pub/tree"), depth=DiscoveryDepth.UNLIMITED)
     assert tree.kind == RemoteObjectKind.DIRECTORY
     assert {(entry.relative_path, entry.expected_bytes) for entry in tree.entries} == {
         ("a.txt", 5), ("sub/b [1].txt", 4), ("sub/deeper/c d.txt", 5)}
@@ -197,7 +197,7 @@ async def test_discovery_classifies_files_trees_links_and_missing_paths(tmp_path
     for path, category in (("/pub/tree/link-out", Category.UNSUPPORTED_REQUEST),
                            ("/pub/nope", Category.SOURCE_NOT_FOUND), ("/nomodule/x", Category.SOURCE_NOT_FOUND)):
         with pytest.raises(Exception) as raised:
-            await executor.discover(subject(path), recursive=True)
+            await executor.discover(subject(path), depth=DiscoveryDepth.UNLIMITED)
         assert raised.value.error.category == category
 
 
@@ -205,9 +205,9 @@ async def test_a_daemon_root_is_the_tree_of_every_advertised_named_root(tmp_path
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
     # "priv" needs authentication: the root is only a result when complete.
-    challenge = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/"))), recursive=True)
+    challenge = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/"))), depth=DiscoveryDepth.UNLIMITED)
     assert challenge.reason == InputReason.AUTH_REQUIRED
-    root = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/"))), _password(), recursive=True)
+    root = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/"))), _password(), depth=DiscoveryDepth.UNLIMITED)
     paths = {entry.relative_path for entry in root.entries}
     assert {"pub/payload.bin", "pub/tree/sub/b [1].txt", "priv/p.bin", "one/slow.bin"} <= paths
     assert not any("link" in path for path in paths)
@@ -218,7 +218,7 @@ async def test_listed_paths_are_literal_never_patterns(tmp_path, daemon):
     executor = _executor(tmp_path, guard)
     for name, data in (("x%5B1%5D.txt", b"bracket"), ("st%2Ar.txt", b"star")):
         candidate = _candidate(origin.url(f"/pub/{name}"), size=len(data))
-        found = await executor.discover(ExecutionSubject.of(candidate), recursive=True)
+        found = await executor.discover(ExecutionSubject.of(candidate), depth=DiscoveryDepth.UNLIMITED)
         assert found.kind == RemoteObjectKind.FILE and found.expected_bytes == len(data)
         target = tmp_path / "downloads" / f"literal-{len(data)}"
         request = file_request(candidate, target, f"literal-{name}", root=tmp_path / "downloads")
@@ -475,7 +475,7 @@ async def test_a_full_module_is_an_immediate_remote_capacity_fact_never_a_stall(
             assert (decision.action, decision.reason) == (RecoveryAction.BACKOFF, "remote_capacity_wait")
         # Discovery against a full module is the same neutral fact.
         with pytest.raises(Exception) as raised:
-            await executor.discover(ExecutionSubject.of(_candidate(origin.url("/one/slow.bin"))), recursive=True)
+            await executor.discover(ExecutionSubject.of(_candidate(origin.url("/one/slow.bin"))), depth=DiscoveryDepth.UNLIMITED)
         assert raised.value.error.category == Category.CONCURRENCY_LIMITED
     finally:
         holder.kill()
@@ -547,7 +547,7 @@ async def test_each_daemon_answer_is_classified_for_the_interpretation_owner(tmp
 
     async def failure(url, via=None):
         with pytest.raises(TransferError) as raised:
-            await (via or executor).discover(ExecutionSubject.of(_candidate(url, methods=methods)), recursive=True)
+            await (via or executor).discover(ExecutionSubject.of(_candidate(url, methods=methods)), depth=DiscoveryDepth.UNLIMITED)
         return raised.value.error
 
     unknown = await failure(origin.url("/home/user/file.iso"))
@@ -562,7 +562,7 @@ async def test_each_daemon_answer_is_classified_for_the_interpretation_owner(tmp
     # A module that wants its own login asks for it -- a password only: a
     # daemon account is never a key login.
     login = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/priv/p.bin"), methods=methods)),
-                                    recursive=True)
+                                    depth=DiscoveryDepth.UNLIMITED)
     assert login.reason == InputReason.AUTH_REQUIRED
     assert [item.method for item in login.methods] == [InputMethod.USERNAME_PASSWORD]
     # A daemon port that never answers (a firewall that drops it) is a timeout
@@ -827,7 +827,7 @@ async def test_ssh_identity_is_confirmed_before_any_credential_and_then_enforced
     methods = (InputMethod.USERNAME_PASSWORD, InputMethod.USERNAME_PRIVATE_KEY)
     url = origin.url(f"{origin.root}/files/payload.bin")
     subject = ExecutionSubject.of(_candidate(url, methods=methods))
-    first = await executor.discover(subject, recursive=True)
+    first = await executor.discover(subject, depth=DiscoveryDepth.UNLIMITED)
     assert first.reason == InputReason.SERVER_IDENTITY_REQUIRED
     facts = {fact.name: fact.value for fact in first.facts}
     # The scope-wide host-key preference: the same key SFTP/SCP would confirm.
@@ -835,14 +835,14 @@ async def test_ssh_identity_is_confirmed_before_any_credential_and_then_enforced
     assert {item.method for item in first.methods} == set(methods)
     assert origin.auth_attempts == []  # nothing was sent before the identity was confirmed
     confirmed = _identity("rsync-ssh-origin.test", origin.fingerprint())
-    found = await executor.discover(subject, _password(facts=confirmed), recursive=True)
+    found = await executor.discover(subject, _password(facts=confirmed), depth=DiscoveryDepth.UNLIMITED)
     assert (found.kind, found.expected_bytes) == (RemoteObjectKind.FILE, len(PAYLOAD))
-    wrong = await executor.discover(subject, _password(password="wrong-sentinel", facts=confirmed), recursive=True)
+    wrong = await executor.discover(subject, _password(password="wrong-sentinel", facts=confirmed), depth=DiscoveryDepth.UNLIMITED)
     assert wrong.reason == InputReason.AUTH_REQUIRED
     # A key other than the confirmed one fails closed as a changed identity.
     with pytest.raises(Exception) as raised:
         await executor.discover(subject, _password(facts=_identity("rsync-ssh-origin.test", "0" * 39 + "1")),
-                                recursive=True)
+                                depth=DiscoveryDepth.UNLIMITED)
     assert raised.value.error.category == Category.HOST_KEY_FAILURE
     for argv, env, _kwargs in spawned:
         blob = json.dumps([argv, env])
@@ -856,7 +856,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
     confirmed = _identity("rsync-ssh-origin.test", origin.fingerprint())
     tree = await executor.discover(ExecutionSubject.of(_candidate(origin.url(f"{origin.root}/files/dir"),
                                                                   methods=methods)),
-                                   _password(facts=confirmed), recursive=True)
+                                   _password(facts=confirmed), depth=DiscoveryDepth.UNLIMITED)
     assert {(entry.relative_path, entry.expected_bytes) for entry in tree.entries} == {("one.bin", 3), ("two/2.bin", 3)}
     passphrase = "key-passphrase-sentinel"
     for fmt, secret in (("openssh", ""), ("openssh", passphrase), ("pkcs8-pem", ""), ("pkcs8-pem", passphrase)):
@@ -879,7 +879,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
                                  {InputField.USERNAME: USER, InputField.PRIVATE_KEY: exported,
                                   InputField.PASSPHRASE: "wrong-passphrase-sentinel"}, confirmed)
             refused = await executor.discover(ExecutionSubject.of(_candidate(
-                origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), bad, recursive=True)
+                origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), bad, depth=DiscoveryDepth.UNLIMITED)
             # A key that cannot be unlocked is asked again, never used or skipped.
             assert refused.reason == InputReason.AUTH_REQUIRED
     malformed = SubmittedInput("challenge", 1, InputMethod.USERNAME_PRIVATE_KEY,
@@ -887,7 +887,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
                                 "bm90IGEga2V5\n-----END OPENSSH PRIVATE KEY-----\n"}, confirmed)
     attempted = len(origin.auth_attempts)
     unusable = await executor.discover(ExecutionSubject.of(_candidate(
-        origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), malformed, recursive=True)
+        origin.url(f"{origin.root}/files/payload.bin"), methods=methods)), malformed, depth=DiscoveryDepth.UNLIMITED)
     # A malformed key is asked again: it never reaches the server, and never
     # silently becomes a password login.
     assert unusable.reason == InputReason.AUTH_REQUIRED
@@ -897,7 +897,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
         blob = json.dumps([argv, env])
         assert passphrase not in blob and "PRIVATE KEY" not in blob and "wrong-passphrase" not in blob
     home = await executor.discover(ExecutionSubject.of(_candidate(origin.url("/~/mine.bin"), methods=methods)),
-                                   _password(facts=confirmed), recursive=True)
+                                   _password(facts=confirmed), depth=DiscoveryDepth.UNLIMITED)
     assert (home.kind, home.expected_bytes) == (RemoteObjectKind.FILE, 9)
 
 
@@ -909,7 +909,7 @@ async def test_a_server_without_rsync_is_a_definitive_protocol_failure(tmp_path)
         confirmed = _identity("rsync-ssh-origin.test", origin.fingerprint())
         with pytest.raises(Exception) as raised:
             await executor.discover(ExecutionSubject.of(_candidate(origin.url("/srv/f.bin"))),
-                                    _password(facts=confirmed), recursive=True)
+                                    _password(facts=confirmed), depth=DiscoveryDepth.UNLIMITED)
         assert (raised.value.error.category, raised.value.error.retryability) == (
             Category.PROTOCOL_ERROR, Retryability.NEVER)
     finally:

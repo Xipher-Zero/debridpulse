@@ -1003,7 +1003,8 @@ async def test_evidence_origin_uses_the_same_projection_validation_and_redaction
     repository, engine, _seed, incoming, challenge = await _evidence_challenge(base)
     projected = public_challenge(challenge)
     assert projected["origin"] == "evidence"
-    assert set(projected) == {"id", "generation", "subject", "reason", "origin", "methods", "facts"}
+    assert set(projected) == {"id", "generation", "subject", "reason", "origin", "methods", "facts", "authority"}
+    assert projected["authority"] == ""
     # The subject names which source asks, opaquely: no request, candidate or artifact identity crosses.
     assert all(str(value) not in projected["subject"] for value in
                (challenge.request_id, challenge.operation_id, challenge.integration_id) if value)

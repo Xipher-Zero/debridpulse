@@ -47,12 +47,20 @@ class ProviderApplicability:
     participation in specialized URL applicability competition even when the
     current request has no specialized host match. Readiness is a separate
     dimension: only READY facts make absence of a specialized match authoritative.
+
+    ``conditional``: the claim holds only if the provider's own probe (a
+    core-run discovery) proves the resource is its interpretation; positive
+    evidence that it is not lets the provider decline after the probe
+    (``ResolutionResult.declined``). An unconditional claimant can never yield,
+    so within one applicability class conditional claims compete first --
+    otherwise they would never get their probe.
     """
 
     generic_schemes: frozenset[str] = frozenset()
     specialized_hosts: tuple[HostClaim, ...] = ()
     specialized: bool = False
     readiness: ApplicabilityReadiness = ApplicabilityReadiness.READY
+    conditional: bool = False
 
     @property
     def is_specialized(self) -> bool:
@@ -81,6 +89,7 @@ class UrlApplicabilityView:
 class ApplicabilityMatch:
     provider_id: str
     classification: ApplicabilityClass
+    conditional: bool = False
 
 
 @dataclass(frozen=True)
@@ -271,10 +280,10 @@ def assess_provider_applicability(
             continue
         if any(_specialized_match(view, claim) for claim in facts.specialized_hosts):
             specialized.append(
-                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED)
+                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED, facts.conditional)
             )
         elif _generic_match(view, item):
-            generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC))
+            generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC, facts.conditional))
 
     # An authoritative specialized match can proceed through the established
     # same-class policy. Otherwise any unresolved specialized competitor makes

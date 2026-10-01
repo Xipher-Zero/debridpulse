@@ -115,10 +115,14 @@ class IntegrationRegistry:
             self._unhealthy.add(integration_id)
 
     @staticmethod
-    def _provider_selection_key(provider: Provider, request: TransferRequest):
-        """Established neutral same-class provider ordering."""
+    def _provider_selection_key(provider: Provider, request: TransferRequest, *, conditional: bool = False):
+        """Established neutral same-class provider ordering. A conditional
+        claim (``ProviderApplicability.conditional``) competes before the
+        unconditional claims of its class: they can never yield to it, so
+        after them it would never get its probe."""
         return (
             provider.descriptor.id != request.preferred_provider,
+            not conditional,
             -provider.descriptor.priority,
             provider.descriptor.id,
         )
@@ -140,6 +144,7 @@ class IntegrationRegistry:
         request: TransferRequest,
         *,
         capability: Capability = Capability.RESOLVE,
+        declined: frozenset[str] = frozenset(),
     ):
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
@@ -162,18 +167,27 @@ class IntegrationRegistry:
             for provider in candidates
         )
         assessment = assess_provider_applicability(request, inputs)
-        applicable_ids = {match.provider_id for match in assessment.matches}
+        conditional = {match.provider_id: match.conditional for match in assessment.matches}
 
         # The classifier returns only one selectable class: SPECIALIZED when an
         # authoritative specialized match exists, otherwise GENERIC/STATIC.
         # When specialized applicability is unresolved it returns no generic
         # matches, making accidental fallback impossible at this boundary.
+        # A provider that positively declined this request after its probe
+        # leaves the competition it was in; the class itself never changes.
         applicable = [
             provider for provider in candidates
-            if provider.descriptor.id in applicable_ids
+            if provider.descriptor.id in conditional and provider.descriptor.id not in declined
         ]
-        applicable.sort(key=lambda provider: self._provider_selection_key(provider, request))
+        applicable.sort(key=lambda provider: self._provider_selection_key(
+            provider, request, conditional=conditional[provider.descriptor.id]))
         return tuple(applicable), assessment
+
+    def conditional_claim(self, provider: Provider, request: TransferRequest) -> bool:
+        """Whether ``provider``'s claim on ``request`` is conditional -- the
+        only kind of claim a provider may decline after its probe."""
+        facts = self._applicability_for(provider, request)
+        return bool(getattr(facts, "conditional", False))
 
     def collection_provider_for(self, requests: tuple[TransferRequest, ...]) -> Provider | None:
         """Select one specialized route owner for a logical request collection.
@@ -215,12 +229,15 @@ class IntegrationRegistry:
             raise ApplicabilityUnresolved(sorted(unresolved))
         return None
 
-    def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE) -> tuple[Provider, ...]:
-        providers, _assessment = self._provider_selection(request, capability=capability)
+    def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE,
+                           declined: frozenset[str] = frozenset()) -> tuple[Provider, ...]:
+        providers, _assessment = self._provider_selection(request, capability=capability, declined=declined)
         return providers
 
-    def provider_for(self, request: TransferRequest) -> Provider:
-        providers, assessment = self._provider_selection(request)
+    def provider_for(self, request: TransferRequest, *, declined: frozenset[str] = frozenset()) -> Provider:
+        """The first provider of the one established competition for
+        ``request``, without the providers that positively declined it."""
+        providers, assessment = self._provider_selection(request, declined=declined)
         if not providers:
             if assessment.unresolved_specialized:
                 raise ApplicabilityUnresolved(assessment.unresolved_specialized)

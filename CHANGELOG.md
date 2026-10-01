@@ -53,6 +53,54 @@
   Method Settings → rsync has five settings: Partial Transfers (on), Compression (off), Preserve
   Modification Time (on), Connection Timeout (30 s) and Transfer Timeout (300 s). The image now includes
   the Debian rsync package (GPL-3.0-or-later; see docs/DEPENDENCY_LICENSES.md).
+- **WebDAV Network Source** (`general_webdav`, labelled WebDAV; Lucide CloudSync, Sky Blue). `webdav://` and
+  `dav://` (over HTTP) and `webdavs://` and `davs://` (over HTTPS) are WebDAV requests: WebDAV alone resolves
+  them, and a failure is an ordinary failure, never a retry as a plain HTTP link. A plain `http://` or
+  `https://` link ending in `/` is tried as WebDAV first and becomes an ordinary HTTP(S) download only when
+  the server positively answers that it does not offer WebDAV there; a plain link without the trailing `/`
+  is routed exactly as before, with no probe at all. The server's own answer classifies the path: a file is
+  one ordinary download owned by WebDAV; a folder offers its files through the existing file selection, and
+  every chosen file is an ordinary HTTP(S) download that knows nothing of WebDAV. Downloads → Transfer
+  Method Settings → WebDAV → **Directory Depth** sets how far below a folder files are collected (Current
+  directory only by default; 1, 2 or 3 subdirectory levels; All subdirectories). Folders are read only by
+  repeated one-level listings, so every depth works on servers that refuse unlimited-depth listing; nothing
+  is downloaded to classify or list. A protected server asks for its password once, through the existing
+  sign-in question, and the files of that folder on the same server reuse the answer. When a server moves
+  a folder or file to another server, no credential follows it (nor ever from HTTPS to HTTP); if that
+  server asks for its own sign-in, the same question asks for it, names that server, and its answer is
+  used for it alone. A listing
+  is refused rather than shortened when a member is malformed, escapes the folder, repeats, or exceeds the
+  existing listing bounds, and listings are read with no DTD or XML entity processing. Entity tags and
+  modification times are never treated as content evidence. Recent Items, Downloads and Details keep the
+  WebDAV origin while Details' Route History still shows the HTTP(S) provider and engine that delivered
+  each file. Disabling WebDAV follows the Network Sources group exactly like its peers.
+- **Post-probe provider fallthrough** (neutral). A provider whose claim on a request is conditional
+  (`ProviderApplicability.conditional`) competes first within its applicability class and may decline the
+  request (`ResolutionResult.declined`) only on positive evidence from its own core-run discovery
+  (`RemoteObjectKind.OPAQUE`); core then continues the same competition without it. Network, TLS,
+  authentication, authorization, rate-limit, transient and malformed answers never fall through, a
+  provider that already resolved a request can never decline it (its route stays bound), and a decline is
+  neither a failure nor a spent attempt. Route History shows the declined route as "Not Applicable".
+- **Neutral discovery depth** (`DiscoveryDepth`: current directory, N subdirectory levels, or unlimited)
+  replaces the binary `recursive` discovery flag. rsync is translated mechanically to unlimited and is
+  unchanged; an executor that cannot enumerate exactly a requested depth refuses it.
+- **Authentication follows the authority that asked** (neutral). An input question may name the server
+  that asked when it is not the source's own (`InputRequirement.authority`, kept with the question); the
+  authentication-input owner matches, asks and answers for exactly that authority, stamps every answer
+  with the authority it was given for, and a question from one authority never condemns another's
+  answer. The one in-process HTTP(S) request owner attaches an operator credential only to that
+  authority's requests -- never another host or port, never HTTP for an HTTPS answer.
+- **HTTP(S) downloads follow redirects safely.** Before an HTTP(S) download starts, DebridPulse follows its
+  redirects itself through that same owner and points aria2 at the address that answers (aria2 still never
+  follows a redirect on its own): a link that redirects to a signed or CDN address now downloads, the
+  sign-in goes only to its own server, a provider's own headers stay with their own origin, and a server
+  a link moved to that asks for its own sign-in gets its own question.
+- **Transfer Method selectors read their values whole.** Every Transfer Method Settings selector fills its
+  cell up to one shared bound, and a settings group that holds a selector keeps its columns wide enough
+  for it -- File Allocation's values included -- wrapping onto further rows instead of cutting text.
+- **Origin provider presentation** (`origin_provider_id` / `origin_provider_name`), derived from the root
+  requests' durable route truth beside the unchanged current, delivering, route-attempt and execution
+  provider facts. The compact provider chip names the origin when the backend projects one.
 - **Private-key sign-in accepts passphrase-protected OpenSSH keys.** The one SSH sign-in step imports a
   supplied key in OpenSSH format (the `ssh-keygen` default, encrypted or not) or PKCS#8, with its optional
   passphrase; a key that cannot be unlocked is asked for again, never used, skipped or replaced by a

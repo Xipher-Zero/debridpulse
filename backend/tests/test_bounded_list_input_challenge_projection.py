@@ -88,4 +88,6 @@ async def test_the_listed_challenge_carries_descriptors_and_facts_only(lab):
     encoded = json.dumps(listed, default=str)
     assert "listed-secret-sentinel" not in encoded and "listed-user-sentinel" not in encoded
     item = next(entry for entry in listed["items"] if entry["id"] == transfer.id)
-    assert set(item["input_required"]) == {"id", "generation", "subject", "reason", "origin", "methods", "facts"}
+    assert set(item["input_required"]) == {"id", "generation", "subject", "reason", "origin", "methods", "facts",
+                                           "authority"}
+    assert item["input_required"]["authority"] == ""  # the source's own authority asked

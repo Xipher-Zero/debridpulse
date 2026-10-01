@@ -28,7 +28,9 @@ def test_http_credentials_are_execution_local_and_saved_netrc_discovery_is_disab
     assert '"no-netrc": "true"' in executor
     assert '"http-auth-challenge": "true"' in executor
     assert '"http-user": "", "http-passwd": ""' in executor
-    assert 'return auth_required(username_password()) if code == "24" else None' in executor
+    # aria2 code 24 asks for an ordinary credential; anything else asks nothing.
+    assert 'if code != "24":\n                return None' in executor
+    assert "            return auth_required(username_password())\n" in executor
     assert 'InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods' in executor
 
 

@@ -40,7 +40,7 @@ from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import safe_name
 from transfers.models import (
-    Capability, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod, IntegrationDescriptor,
+    Capability, DiscoveryDepth, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod, IntegrationDescriptor,
     Ownership, ProviderObservation, ProviderResource, RemoteObjectKind, ResolutionResult,
     ResolverArtifactIdentityEvidence, ResourceState, SourceEntry, SourceIdentity, TransferCandidate, TransferRequest,
 )
@@ -173,7 +173,7 @@ class GeneralRsyncProvider:
         source = self._source(request)
         # The server proves what the path is; a directory means its whole tree.
         return ResolutionResult(ResourceState.PREPARING, discovery=DiscoveryRequest(
-            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], recursive=True,
+            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], depth=DiscoveryDepth.UNLIMITED,
             alternate=self._alternate(request, source)))
 
     async def resolve_discovered(self, request: TransferRequest, discovered) -> ResolutionResult:

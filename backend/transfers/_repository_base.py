@@ -63,6 +63,31 @@ async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
     await db.execute("DELETE FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
 
 
+def origin_provider(requests, route_attempts) -> str | None:
+    """THE origin provider of one transfer: the provider owning the route of
+    every root request, when that is one provider, else ``None``.
+
+    Derived from durable root route truth -- each root request's latest route
+    attempt, never one whose provider positively declined that request -- and
+    never persisted as a second provider identity. It sits beside the current,
+    delivering, route-attempt and execution provider facts and redefines none
+    of them: a collection decomposed into members another provider resolves
+    keeps its root provider as its origin. The bounded list projection
+    (``api.operational_downloads``) derives the same fact in its one SQL read.
+    ``requests`` rows carry ``id``/``parent_id``; ``route_attempts`` rows, in
+    ordinal order, carry ``request_id``/``provider_id``/``resolution_state``."""
+    roots = {row["id"] for row in requests if row.get("parent_id") is None}
+    declined = {(row["request_id"], row["provider_id"]) for row in route_attempts
+                if row.get("resolution_state") == "declined"}
+    owners = {}
+    for row in route_attempts:
+        if (row.get("request_id") in roots and row.get("provider_id")
+                and (row["request_id"], row["provider_id"]) not in declined):
+            owners[row["request_id"]] = row["provider_id"]
+    distinct = set(owners.values())
+    return next(iter(distinct)) if roots and owners.keys() == roots and len(distinct) == 1 else None
+
+
 def manifest_child_identity(parent_id: str, relative_path: str) -> str:
     """The durable identity of one manifest member request under ``parent_id``."""
     return uuid5(NAMESPACE_URL, f"request:{parent_id}:{relative_path}").hex
@@ -861,6 +886,8 @@ class TransferRepository:
             error = codec.error(previous.get("error"))
             if error is not None:
                 transition_reason = str(error.category.value)
+            if previous.get("outcome") == "declined":
+                transition_reason = "provider_declined"
             if previous.get("outcome") in {"started", "resolved", "unknown"}:
                 await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (previous_id,))
         await db.execute("""INSERT INTO route_attempt_provenance(
@@ -963,6 +990,7 @@ class TransferRepository:
         current_provider_id = next((item["provider_id"] for item in reversed(route_attempts) if item.get("provider_id")), None)
         result["historical_providers"] = historical_providers
         result["current_provider_id"] = current_provider_id
+        result["origin_provider_id"] = origin_provider(requests, route_attempts)
         result["delivering_provider_ids"] = delivering_providers
         result["delivering_provider_id"] = delivering_providers[0] if len(delivering_providers) == 1 else None
         result["provider_provenance_status"] = "recorded" if delivering_providers else "unknown_legacy" if result["status"] == "completed" else "pending"
@@ -1829,15 +1857,17 @@ class TransferRepository:
 
     async def bound_route_provider(self, request_id: str) -> str | None:
         """Return the provider owning this request's route: the latest durable
-        route attempt, else the transfer's collection route binding."""
+        route attempt, else the transfer's collection route binding. A
+        provider that positively declined the request never owns its route."""
         async with get_db() as db:
+            declined = await self._declined_route_providers(db, request_id)
             row = await db.fetchone(
                 """SELECT a.provider_id FROM route_attempt_provenance p
                 JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
-                WHERE a.request_id=? ORDER BY p.ordinal DESC LIMIT 1""",
+                WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""",
                 (request_id,),
             )
-            if row and row.get("provider_id"):
+            if row and row.get("provider_id") and str(row["provider_id"]) not in declined:
                 return str(row["provider_id"])
             row = await db.fetchone(
                 """SELECT t.collection_route_provider_id FROM transfer_requests r
@@ -1845,7 +1875,57 @@ class TransferRepository:
                 (request_id,),
             )
         value = str((row or {}).get("collection_route_provider_id") or "").strip()
-        return value or None
+        return value if value and value not in declined else None
+
+    @staticmethod
+    async def _declined_route_providers(db, request_id: str) -> frozenset[str]:
+        rows = await db.fetchall(
+            "SELECT DISTINCT provider_id FROM resolution_attempts WHERE request_id=? AND state='declined'",
+            (request_id,))
+        return frozenset(str(row["provider_id"]) for row in rows)
+
+    async def declined_route_providers(self, request_id: str) -> frozenset[str]:
+        """The providers that positively declined this request after their
+        probe: they have left its provider competition for good."""
+        async with get_db() as db:
+            return await self._declined_route_providers(db, request_id)
+
+    async def decline_route(self, attempt: ResolutionAttempt) -> str:
+        """THE post-probe decline boundary, decided atomically.
+
+        A provider may decline a request only before it has resolved it: once
+        one of its resolution attempts of this request succeeded, or the
+        request holds a provider resource, the route is bound and a later
+        reading that the resource is not the provider's is an ordinary failure
+        of that route -- competition is never reopened. Otherwise the attempt
+        and its route provenance record the decline, and the request returns
+        to ``pending`` without its error and without spending the attempt (a
+        decline is not a failure), ready for the next provider of the same
+        competition. Returns ``"declined"``, ``"bound"``, or ``"gone"`` when
+        the request is no longer live resolution work.
+        """
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT r.resource,t.status FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE r.id=? AND r.state IN ('resolving','input_required')""", (attempt.request_id,))
+            if not row or row["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
+                await db.rollback()
+                return "gone"
+            bound = row["resource"] is not None or await db.fetchone(
+                """SELECT 1 FROM resolution_attempts WHERE request_id=? AND provider_id=? AND state='succeeded'
+                   LIMIT 1""", (attempt.request_id, attempt.provider_id))
+            if bound:
+                await db.rollback()
+                return "bound"
+            await db.execute("UPDATE resolution_attempts SET state='declined',error=NULL,updated_at=CURRENT_TIMESTAMP "
+                             "WHERE id=? AND provider_id=?", (attempt.id, attempt.provider_id))
+            await db.execute("UPDATE route_attempt_provenance SET outcome='declined',updated_at=CURRENT_TIMESTAMP "
+                             "WHERE resolution_attempt_id=?", (attempt.id,))
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,"
+                             "attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
+            await db.commit()
+        return "declined"
 
     async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
         identity = new_identity()

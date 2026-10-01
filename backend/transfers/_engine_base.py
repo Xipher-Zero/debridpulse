@@ -130,7 +130,7 @@ from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
     Artifact, ArtifactFingerprint, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
     ContinuationStrategy,
-    DeliveryKind,
+    DeliveryKind, DiscoveryDepth,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, FingerprintKind, InputChallenge,
@@ -255,8 +255,8 @@ class _EvidenceAuth:
         return str(candidate.id) in self.own
 
     async def resolve(self, candidate, requirement):
-        return await self.engine.inputs.resolve(self.transfer_id, self.chain,
-                                                self.engine._input_scope(candidate), requirement)
+        return await self.engine.inputs.resolve(self.transfer_id, self.chain, self.engine._requirement_scope(
+            requirement, self.engine._input_scope(candidate)), requirement)
 
     async def settle(self, submitted, *, accepted: bool, requirement=None, candidate=None):
         """The challenged consumer established this material's validity. The
@@ -266,6 +266,13 @@ class _EvidenceAuth:
         the deciding request's own candidate whose access the acceptance
         proved -- its proven access is kept with it (``AccessProof``)."""
         proof = AccessProof(str(candidate.id), self.chain[0]) if accepted and candidate is not None else None
+        if (not accepted and requirement is not None and candidate is not None and submitted.scope is not None
+                and submitted.scope != self.engine._requirement_scope(requirement, self.engine._input_scope(candidate))):
+            # Another authority asked (a server the address moved to): this
+            # material was never offered there, so it proved nothing.
+            await self.engine.inputs.release(submitted.token)
+            await self.engine._answered_evidence_outcome(submitted, accepted=False, requirement=requirement)
+            return None
         transition = await self.engine._settle_input(self.transfer_id, submitted.token, accepted=accepted,
                                                      proof=proof)
         await self.engine._answered_evidence_outcome(submitted, accepted=accepted, requirement=requirement)
@@ -1434,6 +1441,9 @@ class TransferEngine:
         lan_host = await self._consented_lan_host(record)
         result = self._authoritative_provider_result(provider.descriptor.id, result,
                                                      request_kind=record.resolvable.kind, lan_host=lan_host)
+        if result.declined:
+            # A decline is only ever the answer to a core-run probe.
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
         if result.discovery is not None:
             if result.error or result.candidates or result.observation or result.input_required:
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1444,6 +1454,8 @@ class TransferEngine:
                 return
             result = self._authoritative_provider_result(provider.descriptor.id, discovered,
                                                          request_kind=record.resolvable.kind, lan_host=lan_host)
+            if result.declined:
+                return await self._provider_declined(record, attempt, provider, result, challenge)
         if result.input_required:
             if result.error or result.candidates or result.observation or not isinstance(result.input_required, InputRequirement):
                 raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
@@ -1483,6 +1495,38 @@ class TransferEngine:
                 return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
+
+    async def _provider_declined(self, record: RequestRecord, attempt: ResolutionAttempt, provider,
+                                 result: ResolutionResult, challenge: InputChallenge | None) -> None:
+        """THE post-probe provider fallthrough: the provider's probe positively
+        proved the resource is not its interpretation.
+
+        Legal only for a conditional claim (``ProviderApplicability.conditional``)
+        and only before the provider resolved the request
+        (``TransferRepository.decline_route``); a bound route is never
+        reopened -- a later decline of it is an ordinary failure of that
+        route. Core, never the provider, then continues the SAME established
+        competition without it: the next provider is whatever
+        ``IntegrationRegistry.provider_for`` selects once the declined one is
+        excluded. Material the operator already answered stays with the
+        authentication-input owner for its lineage and scope, exactly as for
+        any other consumer; a decline is not a failure and spends no attempt."""
+        if (result.candidates or result.observation or result.error or result.input_required
+                or result.discovery is not None or not self.registry.conditional_claim(provider, record.resolvable)):
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION))
+        outcome = await self.repository.decline_route(attempt)
+        if challenge:
+            await self.challenges.clear(challenge)
+            await self.inputs.clear(challenge.id)
+        if outcome == "bound":
+            raise TransferError(self._error(Category.RESOURCE_STATE_CONFLICT, Stage.RESOLUTION,
+                                            domain=Domain.RESOLUTION, retryability=Retryability.NEVER))
+        if outcome != "declined":
+            return
+        current = next((item for item in await self.repository.requests(record.transfer_id)
+                        if item.id == record.id), None)
+        if current is not None:
+            await self._resolve(current)
 
     async def _provider_input_required(self, record: RequestRecord, attempt: ResolutionAttempt, provider,
                                        requirement: InputRequirement, challenge: InputChallenge | None) -> None:
@@ -1594,9 +1638,10 @@ class TransferEngine:
                                             retryability=Retryability.NEVER))
         scope = self._input_scope(candidate)
         family = scope.family if scope is not None else ""
-        # The provider's tree semantics reach the executor only when asked, so
-        # a flat discovery is exactly the call it always was.
-        tree = {"recursive": True} if request.recursive else {}
+        # The provider's depth reaches the executor only when it is deeper than
+        # the directory itself, so a flat discovery is exactly the call it
+        # always was.
+        tree = {"depth": request.depth} if request.depth != DiscoveryDepth.CURRENT else {}
         try:
             for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
                 used = submitted
@@ -1616,7 +1661,7 @@ class TransferEngine:
                     await self.challenges.record(record.transfer_id, "discovery_completed", family)
                     return outcome
                 if submitted is not None and not submitted.accepted_by_transport:
-                    await self._settle_input(record.transfer_id, submitted.token, accepted=False)
+                    await self._concluded_input(record.transfer_id, submitted, outcome, scope)
                 resolution = await self._match_input(record.transfer_id, record.id, scope, outcome)
                 if resolution.outcome == AuthOutcome.IDENTITY_CHANGED:
                     raise TransferError(self._error(Category.HOST_KEY_FAILURE, Stage.RESOLUTION, domain=Domain.SECURITY,
@@ -2896,7 +2941,13 @@ class TransferEngine:
         never re-presented."""
         used = await self.inputs.release_use(artifact.transfer_id, artifact.request_id, str(candidate.id))
         if used is not None:
-            await self._settle_input(artifact.transfer_id, used, accepted=False)
+            used_scope = await self.inputs.token_scope(used)
+            if used_scope is not None and used_scope != self._requirement_scope(requirement, self._input_scope(candidate)):
+                # The question is another authority's: the material the
+                # attempt used was for its own and is not refuted by it.
+                await self.inputs.release(used)
+            else:
+                await self._settle_input(artifact.transfer_id, used, accepted=False)
         resolution = await self._match_input(artifact.transfer_id, artifact.request_id, self._input_scope(candidate),
                                              requirement)
         if resolution.outcome == AuthOutcome.SATISFIED:
@@ -3295,8 +3346,32 @@ class TransferEngine:
         if await self.inputs.supply(transfer_id, request_id, scope, values, origin="admission"):
             await self.challenges.record(transfer_id, "auth_supplied", scope.family)
 
+    @staticmethod
+    def _requirement_scope(requirement, scope):
+        """THE authentication target of a requirement: the authority that
+        asked when it is not the subject's own (``InputRequirement.authority``,
+        e.g. a server the address moved to), else the subject's ``scope``.
+        Every match, question and answer is keyed by exactly this, so an
+        answer is only ever offered back to the authority it was given for."""
+        authority = getattr(requirement, "authority", "") if requirement is not None else ""
+        return auth_scope(authority) if authority else scope
+
     async def _match_input(self, transfer_id: int, request_id, scope, requirement):
-        return await self.inputs.resolve(transfer_id, await self._lineage(transfer_id, request_id), scope, requirement)
+        return await self.inputs.resolve(transfer_id, await self._lineage(transfer_id, request_id),
+                                         self._requirement_scope(requirement, scope), requirement)
+
+    async def _concluded_input(self, transfer_id: int, submitted, requirement, scope) -> None:
+        """What a further requirement says about material a consumer used:
+        a refusal only when the requirement is for that material's own
+        authority. A question from ANOTHER authority (a server the address
+        moved to) proves nothing against it, so its lease ends without a
+        verdict."""
+        if submitted is None or submitted.token is None:
+            return
+        if submitted.scope is not None and submitted.scope != self._requirement_scope(requirement, scope):
+            await self.inputs.release(submitted.token)
+            return
+        await self._settle_input(transfer_id, submitted.token, accepted=False)
 
     async def _settle_input(self, transfer_id: int, token, *, accepted: bool, proof: AccessProof | None = None):
         transition = await self.inputs.settle(token, accepted=accepted, proof=proof)
@@ -3319,6 +3394,7 @@ class TransferEngine:
         return submitted
 
     async def _take_input(self, challenge: InputChallenge, request_id, scope):
+        scope = self._requirement_scope(challenge, scope)
         submitted = await self.inputs.take(challenge, chain=await self._lineage(challenge.transfer_id, request_id),
                                            scope=scope)
         if submitted is not None and scope is not None and challenge.reason == InputReason.SERVER_IDENTITY_REQUIRED:

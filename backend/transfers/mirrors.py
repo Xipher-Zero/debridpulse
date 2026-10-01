@@ -322,6 +322,10 @@ class EvidenceContext:
             # Accepted, then no usable evidence (a timeout, a vanished file):
             # the evidence outcome is its own fact, never a credential verdict.
             if isinstance(sample, InputRequirement):
+                if sample.authority and self._auth is not None and self._auth.owns(candidate):
+                    # Accepted by its own authority, then asked by the one the
+                    # address moved to: that authority's own match comes next.
+                    return await self._matched(executor, subject, candidate, sample, attempts - 1)
                 return sample
             submitted.discard()
             return sample
@@ -329,7 +333,7 @@ class EvidenceContext:
             # The transport definitively refused this material: it is rejected
             # for this lineage and scope and never offered again. Its next
             # requirement travels with the refusal (the neutral outcome).
-            await self._auth.settle(submitted, accepted=False, requirement=sample)
+            await self._auth.settle(submitted, accepted=False, requirement=sample, candidate=candidate)
             submitted.discard()
             if self._auth.owns(candidate):
                 return await self._matched(executor, subject, candidate, sample, attempts - 1)

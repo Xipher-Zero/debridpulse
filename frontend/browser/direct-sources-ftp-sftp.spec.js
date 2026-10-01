@@ -68,11 +68,13 @@ const CARDS = [
    ['Direct downloads from', 'SCP and SSH file URLs.']],
   ['general_rsync', '.dp-settings-provider-card--general-rsync', 'rsync',
    ['Direct downloads from', 'rsync sources.']],
+  ['general_webdav', '.dp-settings-provider-card--general-webdav', 'WebDAV',
+   ['Direct downloads from', 'WebDAV files and folders.']],
 ];
 
 /* Protocols that do not exist yet. They appear when a real provider is
  * registered through the canonical machinery, and never before. */
-const UNREGISTERED = ['WebDAV', 'Multilink'];
+const UNREGISTERED = ['Multilink'];
 
 const grid = page => page.locator('.dp-settings-general-sources .dp-settings-source-box-grid');
 
@@ -186,13 +188,15 @@ test('Network Sources renders one compact protocol box per real provider, left-f
   await page.goto('/'); await openSettings(page);
   await assertProtocolBoxes(page);
   await assertCapacityLanes(page, 1440);
-  // Two real members at the wide viewport leave trailing capacity for the
-  // source providers that do not exist yet, rather than expanding to fill it.
+  // At the wide viewport every real member fits the lanes the content
+  // establishes (no wrap), and spare capacity never stretches a box to fill it.
   const wide = await grid(page).evaluate(el => ({
     capacity: getComputedStyle(el).gridTemplateColumns.split(' ').filter(Boolean).length,
     members: el.children.length,
+    widest: Math.max(...Array.from(el.children, child => child.getBoundingClientRect().width)),
   }));
-  expect(wide.capacity).toBeGreaterThan(wide.members);
+  expect(wide.capacity).toBeGreaterThanOrEqual(wide.members);
+  expect(wide.widest).toBeLessThanOrEqual(220);
   await page.locator('.dp-settings-general-sources').screenshot({path:'test-results/checkpoint-direct-sources-dark.png'});
   await page.locator('#theme-toggle').click();
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();

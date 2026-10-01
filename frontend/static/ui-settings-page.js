@@ -58,6 +58,7 @@
   const policyOf = s => s?.transfer_policy || {};
   const usenetOf = s => s?.integrations?.usenet?.options || {};
   const rsyncOf = s => s?.integrations?.rsync?.options || {};
+  const webdavOf = s => s?.integrations?.general_webdav?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
   // ``converge`` is the row that has to change because the ACCEPTED state
@@ -97,7 +98,7 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet', 'rsync']);
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet', 'rsync', 'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
     // Services
@@ -130,6 +131,9 @@
                                        commit: 'immediate'},
     rsync_connection_timeout_seconds: {scope: 'integration:rsync', option: 'connection_timeout_seconds'},
     rsync_transfer_timeout_seconds: {scope: 'integration:rsync', option: 'transfer_timeout_seconds'},
+
+    // Downloads -> WebDAV tuning
+    webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -829,8 +833,9 @@
    * of thing, and the only difference is what the mutation is scoped to. */
   /* The ONE Settings protocol identity chip.
    *
-   * Nine appearances (Network Sources, HTTP(S), (S)FTP, SCP, rsync and Usenet
-   * on Services; Network Sources, rsync and Usenet on Downloads) render this
+   * Eleven appearances (Network Sources, HTTP(S), (S)FTP, SCP, rsync, WebDAV
+   * and Usenet on Services; Network Sources, rsync, WebDAV and Usenet on
+   * Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
    * and a protocol contributes nothing but its canonical colour. */
   const PROTOCOL_GLYPHS = Object.freeze({
@@ -839,6 +844,7 @@
     general_ftp: 'arrow-up-down',
     general_scp: 'file-down',
     general_rsync: 'folder-sync',
+    general_webdav: 'cloud-sync',
     usenet: 'newspaper',
   });
 
@@ -859,6 +865,7 @@
     general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
     general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
     general_rsync: ['Direct downloads from', 'rsync sources.'],
+    general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {
@@ -1417,6 +1424,32 @@
     );
   }
 
+  /* WebDAV's one high-leverage tunable: how far below a submitted folder its
+   * files are collected. The choices are the backend's own neutral depth
+   * values (integrations.general_webdav.options.directory_depth); nothing here
+   * names how a server is asked. */
+  const WEBDAV_DIRECTORY_DEPTHS = Object.freeze([
+    ['current', 'Current directory only'],
+    ['1', '1 subdirectory level'],
+    ['2', '2 subdirectory levels'],
+    ['3', '3 subdirectory levels'],
+    ['all', 'All subdirectories'],
+  ]);
+
+  function webdavTuning(s) {
+    // One tunable, so one bounded cell and no relationship group.
+    const options = webdavOf(s);
+    return tuningCells(
+      selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',
+        WEBDAV_DIRECTORY_DEPTHS,
+        'How far below a WebDAV folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
+    ) + `
+      <p class="dp-settings-tuning-footer">
+        Every file collected from a WebDAV folder is offered in the usual file
+        selection and downloads as an ordinary file.
+      </p>`;
+  }
+
   function executorTuningCard(id, label, copy, body, protocol = '') {
     const bodyId = `dp-executor-tuning-${id}`;
     const identity = protocolIcon(protocol);
@@ -1555,6 +1588,8 @@
         directTransfersTuning(s), 'direct_sources') +
       executorTuningCard('rsync', 'rsync',
         'How DebridPulse transfers files using rsync.', rsyncTuning(s), 'general_rsync') +
+      executorTuningCard('webdav', 'WebDAV',
+        'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav') +
       executorTuningCard('usenet', 'Usenet',
         'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
