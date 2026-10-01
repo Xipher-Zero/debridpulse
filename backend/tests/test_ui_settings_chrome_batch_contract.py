@@ -141,7 +141,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
 
     assert "function groupCard(" in runtime
     assert "groupCard('Premium Services'," in sources
-    assert "usenetCard + PREMIUM_SEPARATOR + provider," in sources
+    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-provider-recovery-card" not in sources

@@ -42,7 +42,7 @@ def test_master_groups_are_renamed():
 def test_usenet_is_the_first_card_under_premium_services():
     panel = sources_panel()
     assert "groupCard('Premium Services'," in panel
-    assert "usenetCard + PREMIUM_SEPARATOR + provider," in panel
+    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard," in panel
 
 
 def test_usenet_renders_collapsed_and_only_an_accepted_enable_can_open_it():

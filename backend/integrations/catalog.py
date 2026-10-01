@@ -8,11 +8,12 @@ from providers.general_rsync.definition import definition as general_rsync
 from providers.general_http.definition import definition as general_http
 from providers.general_webdav.definition import definition as general_webdav
 from providers.multimeta.definition import definition as multimeta
+from providers.realdebrid.definition import definition as realdebrid
 from integrations.configuration import effective_integration_settings
 from integrations.usenet.definition import definition as usenet
 
-definitions = (alldebrid, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav, multimeta,
-               aria2, rsync)
+definitions = (alldebrid, realdebrid, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
+               multimeta, aria2, rsync)
 
 
 def register(registry, settings, environment, selected=definitions):

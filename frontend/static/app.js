@@ -134,6 +134,23 @@ async function confirmLocalNetwork(hosts) {
   });
 }
 
+/* The application action "open this address outside DebridPulse".
+ * DebridPulse's own window is never navigated, framed or replaced: the address
+ * opens in the operator's own browser. It is one function so a desktop host
+ * that embeds DebridPulse can hand the address to the operating system's
+ * default browser instead. Only an https address is ever opened. */
+function openExternalUrl(url) {
+  let target;
+  try {
+    target = new URL(String(url || ''));
+  } catch (_) {
+    return false;
+  }
+  if (target.protocol !== 'https:') return false;
+  window.open(target.href, '_blank', 'noopener,noreferrer');
+  return true;
+}
+
 async function api(method, path, body, timeoutMs, options) {
   const isFormData = typeof FormData !== 'undefined' && body instanceof FormData;
   // A file sent as itself: the raw body, typed by the file.

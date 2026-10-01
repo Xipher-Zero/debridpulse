@@ -96,6 +96,19 @@
   bounded. Recent Items, Downloads and Details keep the Multimeta origin while Route History shows the
   provider and engine that delivered the file. Multimeta has its own Enable control under Network Sources
   and no Transfer Method Settings card.
+- **Real-Debrid premium provider** (`realdebrid`, under Premium Services beside AllDebrid). Supported hoster
+  links, magnets and `.torrent` files resolve through a Real-Debrid account. Connecting uses Real-Debrid's own
+  authorization for open-source applications: **Connect Real-Debrid** shows a code, **Open Real-Debrid** opens
+  Real-Debrid's page in the operator's own browser (DebridPulse itself never navigates away), and the card
+  connects once the code is approved there -- no API token is typed or shown, and an expired access token is
+  renewed without reconnecting. **Test** proves the stored authorization; **Disconnect** forgets it locally even
+  when Real-Debrid cannot be reached to revoke it. Real-Debrid is off until enabled. Supported hosts and link
+  patterns come from Real-Debrid's published lists; a host that is down at Real-Debrid stays a Real-Debrid route.
+  A torrent's files are all prepared on Real-Debrid and offered through the usual file selection, which alone
+  decides what is downloaded; each file's Real-Debrid link is checked against that file's exact size and name
+  before it is used, and a torrent whose links cannot be matched to its files fails rather than guess. Torrent
+  cache presence is reported as unknown, because Real-Debrid publishes no cache fact. Additional Settings holds
+  one setting, API Calls per Minute (default 240; Real-Debrid allows at most 250).
 - **Files that list links can be added through the normal file upload.** Any file that is not a torrent,
   NZB or Metalink file, whatever its name, is read as a list of links when it is small (up to 1 MB),
   UTF-8 or UTF-16/32 text, and plainly structured: one link per line (blank lines and `#` comment lines

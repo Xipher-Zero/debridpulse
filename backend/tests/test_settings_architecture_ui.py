@@ -160,7 +160,7 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
 
     assert "function groupCard(" in runtime
     assert "groupCard('Premium Services'," in sources
-    assert "usenetCard + PREMIUM_SEPARATOR + provider," in sources
+    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources

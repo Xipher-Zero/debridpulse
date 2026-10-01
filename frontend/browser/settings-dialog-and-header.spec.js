@@ -238,9 +238,9 @@ test('header flavour copy is geometrically centred on the full card header', asy
     }
     return out;
   });
-  // The two expandable Premium Services cards. The Network Sources members are
-  // protocol boxes and have no card header to centre anything on.
-  expect(sources.length).toBe(2);
+  // The three expandable Premium Services cards. The Network Sources members
+  // are protocol boxes and have no card header to centre anything on.
+  expect(sources.length).toBe(3);
   for (const offset of sources) expect(Math.abs(offset)).toBeLessThan(1);
 });
 

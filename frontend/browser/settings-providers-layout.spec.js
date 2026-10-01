@@ -80,7 +80,7 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
 
   test('Test stays in the header rail collapsed and expanded, and the body never holds it',
     async ({page}) => {
-      await expect(page.locator('.dp-settings-additional')).not.toHaveAttribute('open', /.*/);
+      await expect(card(page).locator('.dp-settings-additional')).not.toHaveAttribute('open', /.*/);
       const collapsed = await boxOf(testButton(page));
       // Test is the header's, so the body cannot hold a copy of it in either state.
       await expect(card(page).locator(':scope > .card-body [data-action="test-alldebrid"]'))

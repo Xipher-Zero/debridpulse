@@ -271,6 +271,39 @@
   line-height: 1.5;
 }
 
+/* The Real-Debrid account connection: one centred column in every state --
+   text and buttons alike, never a two-column form and never a right-anchored
+   action. */
+#view-settings .dp-settings-realdebrid-connection {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 14px;
+  text-align: center;
+}
+
+#view-settings .dp-settings-realdebrid-connection > .dp-settings-copy {
+  margin: 0;
+}
+
+#view-settings .dp-settings-realdebrid-heading {
+  margin: 4px 0 0;
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+#view-settings .dp-settings-realdebrid-code {
+  margin: 2px 0;
+  color: var(--dp-text-primary);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  user-select: all;
+}
+
 #view-settings .dp-settings-field + .dp-settings-field,
 #view-settings .dp-settings-toggle + .dp-settings-field,
 #view-settings .dp-settings-field + .dp-settings-toggle,

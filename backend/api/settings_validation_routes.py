@@ -29,6 +29,10 @@ from integrations.definition import verification_fingerprint, verification_proof
 from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
+from providers.realdebrid import admin as realdebrid_admin
+from providers.realdebrid.definition import (
+    canonical_options as realdebrid_canonical_options, credential_material as realdebrid_credential_material,
+)
 from services.notifications import NotificationService
 from application.dependencies import get_application
 from application.service import ApplicationService
@@ -534,6 +538,126 @@ async def validate_alldebrid(payload: AllDebridValidationRequest,
         "verification": verification_proof(fingerprint),
         **_accepted(ALLDEBRID_NAMESPACE, accepted),
     }
+
+
+# --- Real-Debrid --------------------------------------------------------------
+#
+# The connection is Real-Debrid's open-source device authorization: the operator
+# approves DebridPulse on Real-Debrid's own site and no token is ever typed or
+# shown. Every write of the resulting credential goes through the one canonical
+# integration-configuration mutation, with its admission, lock and ownership
+# fence; nothing here saves configuration of its own.
+
+REALDEBRID_NAMESPACE = "realdebrid"
+
+
+def _realdebrid_enabled() -> bool:
+    entry = (get_settings().integrations or {}).get(REALDEBRID_NAMESPACE)
+    return bool(getattr(entry, "enabled", False))
+
+
+async def _write_realdebrid(application: ApplicationService, **update) -> dict:
+    from api.routes import IntegrationConfigurationUpdate, patch_integration_configuration
+    return await patch_integration_configuration(
+        REALDEBRID_NAMESPACE, IntegrationConfigurationUpdate(**update), application)
+
+
+async def _prove_realdebrid(application: ApplicationService):
+    """Prove the SAVED credential and record what that proved.
+
+    Returns ``(account facts, accepted projection, failure)``."""
+    options = realdebrid_canonical_options(get_settings())
+    fingerprint = verification_fingerprint(realdebrid_credential_material(options))
+    try:
+        account = await realdebrid_admin.verify(options)
+    except Exception as exc:
+        accepted = await _record_verification_outcome(application, REALDEBRID_NAMESPACE, fingerprint, False)
+        return {}, accepted, _safe_failure(exc)
+    accepted = await _record_verification_outcome(application, REALDEBRID_NAMESPACE, fingerprint, True)
+    return account, accepted, ""
+
+
+@router.get("/integration-status/realdebrid")
+async def get_realdebrid_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Return Real-Debrid-specific status without inferring from generic health."""
+    provider = application.engine.registry.providers.get(REALDEBRID_NAMESPACE)
+    return await realdebrid_admin.runtime_status(provider, enabled=_realdebrid_enabled())
+
+
+@router.post("/settings/validate-realdebrid")
+async def validate_realdebrid(application: ApplicationService = Depends(get_application)):
+    """The Real-Debrid Test: prove the stored authorization against /user."""
+    options = realdebrid_canonical_options(get_settings())
+    if not (options.client_id and options.client_secret and options.refresh_token):
+        raise HTTPException(400, "Real-Debrid is not connected")
+    account, accepted, failure = await _prove_realdebrid(application)
+    if failure:
+        raise HTTPException(502, failure)
+    return {"ok": True, **account, **_accepted(REALDEBRID_NAMESPACE, accepted)}
+
+
+@router.get("/integrations/realdebrid/authorization")
+async def get_realdebrid_authorization():
+    """The transient authorization in progress, if any. Never a credential."""
+    return realdebrid_admin.authorization_state()
+
+
+@router.post("/integrations/realdebrid/authorization")
+async def start_realdebrid_authorization():
+    """Begin Real-Debrid's device authorization: a code the operator enters on
+    Real-Debrid's own page, opened in their own browser."""
+    try:
+        return await realdebrid_admin.start_authorization()
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from None
+
+
+@router.post("/integrations/realdebrid/authorization/poll")
+async def poll_realdebrid_authorization(application: ApplicationService = Depends(get_application)):
+    """Advance the authorization no faster than Real-Debrid asks; once the
+    operator has approved the device, save the credential and prove it."""
+    try:
+        outcome = await realdebrid_admin.poll_authorization()
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from None
+    if not isinstance(outcome, realdebrid_admin.Authorized):
+        return outcome
+    credential = outcome.credential
+    saved = await _write_realdebrid(application, options={
+        "client_id": credential.client_id, "client_secret": credential.client_secret,
+        "refresh_token": credential.refresh_token})
+    account, accepted, _failure = await _prove_realdebrid(application)
+    projection = accepted or {key: value for key, value in saved.items() if key not in {"ok", "native"}}
+    return {"state": "connected", **account, **_accepted(REALDEBRID_NAMESPACE, projection)}
+
+
+@router.delete("/integrations/realdebrid/authorization")
+async def cancel_realdebrid_authorization():
+    """Abandon the authorization in progress; a saved connection is untouched."""
+    return await realdebrid_admin.cancel_authorization()
+
+
+@router.post("/integrations/realdebrid/disconnect")
+async def disconnect_realdebrid(application: ApplicationService = Depends(get_application)):
+    """Forget the saved Real-Debrid credential.
+
+    The local credential is cleared first, through the canonical mutation and
+    its ownership fence; only then is Real-Debrid asked, best effort, to retire
+    the access token. A refused or failed revocation never keeps a credential
+    the operator asked to forget."""
+    provider = application.engine.registry.providers.get(REALDEBRID_NAMESPACE)
+    client = getattr(provider, "client", None)
+    saved = await _write_realdebrid(application, options={},
+                                    clear_secrets=["client_id", "client_secret", "refresh_token"])
+    revoked = False
+    if client is not None and client.configured:
+        try:
+            await client.disable_access_token()
+            revoked = True
+        except Exception:
+            revoked = False
+    projection = {key: value for key, value in saved.items() if key not in {"ok", "native"}}
+    return {"ok": True, "revoked": revoked, **_accepted(REALDEBRID_NAMESPACE, projection)}
 
 
 @router.post("/settings/validate-discord")
