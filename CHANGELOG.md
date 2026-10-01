@@ -96,6 +96,15 @@
   bounded. Recent Items, Downloads and Details keep the Multimeta origin while Route History shows the
   provider and engine that delivered the file. Multimeta has its own Enable control under Network Sources
   and no Transfer Method Settings card.
+- **Files that list links can be added through the normal file upload.** Any file that is not a torrent,
+  NZB or Metalink file, whatever its name, is read as a list of links when it is small (up to 1 MB),
+  UTF-8 or UTF-16/32 text, and plainly structured: one link per line (blank lines and `#` comment lines
+  ignored); a CSV or TSV table with one `url`, `uri` or `link` column; a JSON or YAML list of links, or
+  of records with one such field; or a flat XML list of `<url>`/`<uri>`/`<link>` elements or of records
+  with one such field. Each link then goes exactly where it would from Quick Add -- links in one
+  submission, each magnet on its own -- with the same validation, the same private-network confirmation
+  and the same file selection. Nothing is added unless every link in the file is usable. A row or record
+  with more than one link, prose, HTML and binary files are refused rather than guessed at.
 - **Manifest members with several sources, format-specific claims and bounded content reads** (neutral).
   A provider's manifest member may carry further ordinary requests (`SourceEntry.alternates`), each
   fanned out as a sibling of the member, and the member's declared whole-file integrity

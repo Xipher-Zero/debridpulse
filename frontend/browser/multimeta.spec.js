@@ -35,7 +35,6 @@ test('an uploaded .meta4 file goes to the Multimeta upload, as an interactive su
       body: JSON.stringify({id: 41, name: 'release', status: 'pending'})});
   });
   await page.goto('/');
-  await expect(page.locator('#torrent-file-input')).toHaveAttribute('accept', /\.meta4/);
   await page.locator('#torrent-file-input').setInputFiles({
     name: 'release.meta4', mimeType: 'application/metalink4+xml',
     buffer: Buffer.from('<metalink xmlns="urn:ietf:params:xml:ns:metalink"/>')});

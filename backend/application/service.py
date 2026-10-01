@@ -327,16 +327,21 @@ class ApplicationService:
             self.resolution_wakeup.set()
             return await self._publish(transfer.id)
 
-    async def submit_magnet(self, magnet, *, source="manual", selection_mode="all"):
+    @staticmethod
+    def magnet_request(magnet, *, selection_mode="all") -> TransferRequest:
+        """The request one magnet submits, or ``ValueError``: the magnet
+        owner's whole admissibility rule, usable before anything is admitted."""
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
         fingerprint = extract_hash(magnet)
         if not fingerprint or urlsplit(magnet).scheme != "magnet":
             raise ValueError("A valid BitTorrent magnet is required")
         name = parse_qs(urlsplit(magnet).query).get("dn", [fingerprint])[0]
-        return await self.submit(
-            (TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint,
-                             selection_mode=selection_mode),),
-            name=name, source=source)
+        return TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint,
+                               selection_mode=selection_mode)
+
+    async def submit_magnet(self, magnet, *, source="manual", selection_mode="all"):
+        request = self.magnet_request(magnet, selection_mode=selection_mode)
+        return await self.submit((request,), name=request.name, source=source)
 
     async def submit_torrent(self, data, filename, *, source="manual_file", selection_mode="all"):
         selection_mode = file_selection.normalize_selection_mode(selection_mode)

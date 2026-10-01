@@ -14,7 +14,7 @@ import os
 import time
 from pathlib import Path
 from typing import AsyncGenerator, Literal
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
@@ -33,6 +33,7 @@ from core.config import (
 from api.legacy_settings_view import legacy_settings_projection
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
 from providers.multimeta.metalink import MAX_DESCRIPTOR_BYTES
+from transfers.requests import MAX_LINK_FILE_BYTES, link_file_entries, normalize_direct_links
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
@@ -803,14 +804,66 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
             links, selection_mode=body.get("selection_mode"),
             **({"allow_local_network": True} if body.get("allow_local_network") is True else {})))
     except LocalNetworkConfirmationRequired as exc:
-        raise HTTPException(409, {
-            "confirmation": "local_network", "hosts": list(exc.hosts),
-            "message": "This transfer connects to an address on your private network.",
-        }) from None
+        raise _local_network_confirmation(exc) from None
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:
         logger.exception("add_debrid_links failed: %s", _sanitize_error(exc))
+        raise HTTPException(502, _sanitize_error(exc))
+
+
+def _local_network_confirmation(exc: LocalNetworkConfirmationRequired) -> HTTPException:
+    return HTTPException(409, {
+        "confirmation": "local_network", "hosts": list(exc.hosts),
+        "message": "This transfer connects to an address on your private network.",
+    })
+
+
+@router.post("/links/add-file")
+async def add_link_file(
+    file: UploadFile = File(...),
+    selection_mode: str | None = Form(default=None),
+    allow_local_network: bool = Form(default=False),
+    application: ApplicationService = Depends(get_application),
+):
+    """Submit a file no structured upload owns as the links it lists.
+
+    The file is only a submission channel: once read, each link goes to the
+    owner that would take it from Quick Add -- the direct links to one
+    ``submit_links`` batch (with its private-LAN confirmation), each magnet to
+    ``submit_magnet``. Every value is validated by its owner before anything
+    is admitted, so a file with one unusable link admits nothing.
+    ``selection_mode`` and ``allow_local_network`` mean what they mean for
+    ``/links/add``."""
+    try:
+        data = await file.read(MAX_LINK_FILE_BYTES + 1)
+    finally:
+        await file.close()
+    try:
+        direct, magnets = [], []
+        for location, value in link_file_entries(data):
+            try:
+                if urlsplit(value).scheme.casefold() == "magnet":
+                    ApplicationService.magnet_request(value, selection_mode=selection_mode)
+                    magnets.append(value)
+                else:
+                    normalize_direct_links([value])
+                    direct.append(value)
+            except ValueError:
+                raise ValueError(f"{location} is not a supported link") from None
+        items = []
+        if direct:
+            items.extend((await application.submit_links(
+                direct, selection_mode=selection_mode, allow_local_network=allow_local_network))["items"])
+        for magnet in magnets:
+            items.append(await application.submit_magnet(magnet, source="manual", selection_mode=selection_mode))
+        return public_payload({"ok": True, "accepted": len(direct) + len(magnets), "items": items})
+    except LocalNetworkConfirmationRequired as exc:
+        raise _local_network_confirmation(exc) from None
+    except ValueError as exc:
+        raise HTTPException(400, _sanitize_error(exc))
+    except Exception as exc:
+        logger.exception("add_link_file failed: %s", _sanitize_error(exc))
         raise HTTPException(502, _sanitize_error(exc))
 
 

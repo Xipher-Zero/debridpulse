@@ -1,11 +1,19 @@
 """Provider-neutral request identity parsing."""
+import codecs
+import csv
 import hashlib
 import base64
 from dataclasses import dataclass
+import io
+import json
 import re
 from pathlib import PurePosixPath
 from urllib.parse import quote, urlparse, urlsplit, unquote
 from typing import Optional, List, Set
+from xml.parsers import expat
+
+import yaml
+
 from transfers.filesystem import safe_name
 
 MAX_DIRECT_LINKS_PER_BATCH = 100
@@ -252,3 +260,248 @@ def direct_link_collection_name(
 
     fallback = direct_link_filename(urls[0], 1)
     return safe_name(f"{fallback} + {total - 1} more")
+
+
+
+# A submitted file no structured upload owner claims is read here as a
+# document only: decoded as text, then recognized as one small coherent grammar
+# whose structure itself says which values are links. Whether a value is a
+# supported link stays with the submission owners -- nothing here knows a
+# scheme. A document that would yield links only by guessing -- prose, markup,
+# a table or record with two link fields, a row listing several links (an
+# equivalence nothing here may assert) -- is refused whole.
+
+# Internal safety bounds, never operator tuning. A link list is small: a
+# submission admits at most MAX_DIRECT_LINKS_PER_BATCH links.
+MAX_LINK_FILE_BYTES = 1024 * 1024
+_MAX_LINK_FILE_VALUE = 64 * 1024
+_MAX_XML_DEPTH = 3
+# The one field-name vocabulary that marks a record's link.
+_LINK_FIELDS = frozenset({"url", "uri", "link"})
+# An absolute reference's shape (RFC 3986 scheme, then anything without
+# whitespace): grammar only, never support. Two scheme characters at least, so
+# a drive letter (C:\...) is not one.
+_LINK_SHAPE = re.compile(r"[A-Za-z][A-Za-z0-9+.-]+:\S+")
+_NOT_TEXT = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+
+
+def link_file_entries(data: bytes) -> tuple[tuple[str, str], ...]:
+    """``(location, value)`` for every link one submitted file lists, in order
+    and without exact repeats. ``location`` names where the value was found
+    ("Line 4", "Entry 2") so a refusal never has to echo the value itself.
+    Raises ``ValueError`` when the file is not such a list."""
+    if not data:
+        raise ValueError("The file is empty")
+    if len(data) > MAX_LINK_FILE_BYTES:
+        raise ValueError("The file exceeds the 1 MB link file limit")
+    text = _link_file_text(bytes(data))
+    meaningful = [line.strip() for line in text.splitlines() if line.strip() and not line.strip().startswith("#")]
+    if not meaningful:
+        raise ValueError("The file contains no links")
+    first = meaningful[0]
+    if first.startswith(("[", "{")):
+        entries = _listed_entries(_json_document(text))
+    elif first.startswith("<"):
+        entries = _xml_entries(text)
+    elif first in {"-", "---"} or first.startswith("- "):
+        entries = _listed_entries(_yaml_document(text))
+    else:
+        entries = _delimited_entries(text, first)
+    values: dict[str, str] = {}
+    for location, raw in entries:
+        value = raw.strip()
+        if not value:
+            raise ValueError(f"{location} has no link")
+        if len(value) > _MAX_LINK_FILE_VALUE:
+            raise ValueError(f"{location} is too long")
+        values.setdefault(value, location)
+    if not values:
+        raise ValueError("The file contains no links")
+    if len(values) > MAX_DIRECT_LINKS_PER_BATCH:
+        raise ValueError(f"A maximum of {MAX_DIRECT_LINKS_PER_BATCH} links may be submitted at once")
+    return tuple((location, value) for value, location in values.items())
+
+
+def _link_file_text(data: bytes) -> str:
+    """Unicode text of a UTF-8/16/32 document, or refusal. UTF-16 without a
+    byte-order mark only when every code unit is unambiguous (one zero byte,
+    one non-zero byte, the same side throughout); nothing else is guessed."""
+    if data.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        encoding = "utf-32"
+    elif data.startswith(codecs.BOM_UTF8):
+        encoding = "utf-8-sig"
+    elif data.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        encoding = "utf-16"
+    elif len(data) % 2 == 0 and all(data[0::2]) and not any(data[1::2]):
+        encoding = "utf-16-le"
+    elif len(data) % 2 == 0 and all(data[1::2]) and not any(data[0::2]):
+        encoding = "utf-16-be"
+    else:
+        encoding = "utf-8"
+    try:
+        text = data.decode(encoding)
+    except UnicodeDecodeError:
+        raise ValueError("The file is not a text file") from None
+    if _NOT_TEXT.search(text):
+        raise ValueError("The file is not a text file")
+    return text
+
+
+def _link_shaped(value) -> bool:
+    return isinstance(value, str) and _LINK_SHAPE.fullmatch(value.strip()) is not None
+
+
+def _link_field(names) -> int:
+    """The position of the one link field among ``names``."""
+    found = [index for index, name in enumerate(names) if str(name).strip().casefold() in _LINK_FIELDS]
+    if not found:
+        raise ValueError("The file has no link field")
+    if len(found) > 1:
+        raise ValueError("The file has more than one link field")
+    return found[0]
+
+
+def _delimited_entries(text: str, first: str):
+    """A line list, or a CSV/TSV table whose header names its one link column.
+    Headerless rows carry exactly one link each."""
+    for number, line in enumerate(text.splitlines(), 1):
+        if len(line) > _MAX_LINK_FILE_VALUE:
+            raise ValueError(f"Line {number} is too long")
+    delimiter = "\t" if "\t" in first else ","
+    header = next(csv.reader([first], delimiter=delimiter))
+    if not any(_link_shaped(cell) for cell in header) and (
+            len(header) > 1 or header[0].strip().casefold() in _LINK_FIELDS):
+        return _table_entries(text, delimiter)
+    entries = []
+    for number, line in enumerate(text.splitlines(), 1):
+        value = line.strip()
+        if not value or value.startswith("#"):
+            continue
+        cells = value.split() if any(char.isspace() for char in value) else next(csv.reader([value]))
+        if sum(_link_shaped(cell) for cell in cells) > 1:
+            raise ValueError(f"Line {number} lists more than one link")
+        if any(char.isspace() for char in value):
+            raise ValueError(f"Line {number} is not a single link")
+        entries.append((f"Line {number}", value))
+    return entries
+
+
+def _table_entries(text: str, delimiter: str):
+    reader = csv.reader(io.StringIO(text, newline=""), delimiter=delimiter, strict=True)
+    rows = []
+    try:
+        for row in reader:
+            if any(cell.strip() for cell in row) and not row[0].lstrip().startswith("#"):
+                rows.append((reader.line_num, row))
+    except csv.Error:
+        raise ValueError(f"Line {reader.line_num} is not a well-formed table row") from None
+    if not rows:
+        raise ValueError("The file contains no links")
+    (_line, header), body = rows[0], rows[1:]
+    column = _link_field(header)
+    entries = []
+    for number, row in body:
+        if len(row) != len(header):
+            raise ValueError(f"Line {number} does not match the table header")
+        if any(_link_shaped(cell) for index, cell in enumerate(row) if index != column):
+            raise ValueError(f"Line {number} has more than one link")
+        entries.append((f"Line {number}", row[column]))
+    if not entries:
+        raise ValueError("The file contains no links")
+    return entries
+
+
+def _json_document(text: str):
+    try:
+        return json.loads(text)
+    except (ValueError, RecursionError):
+        raise ValueError("The file is not valid JSON") from None
+
+
+def _yaml_document(text: str):
+    try:
+        return yaml.safe_load(text)
+    except (yaml.YAMLError, RecursionError):
+        raise ValueError("The file is not valid YAML") from None
+
+
+def _listed_entries(document):
+    """A top-level list of links, or of records of one shape that each name
+    one link field. Nothing nested is searched."""
+    if not isinstance(document, list) or not document:
+        raise ValueError("The file is not a list of links")
+    if all(isinstance(item, str) for item in document):
+        return [(f"Entry {index}", item) for index, item in enumerate(document, 1)]
+    if not all(isinstance(item, dict) for item in document):
+        raise ValueError("The file mixes links and records")
+    names = list(document[0])
+    if any(set(item) != set(names) for item in document):
+        raise ValueError("The records in the file do not share one shape")
+    key = names[_link_field(names)]
+    entries = []
+    for index, item in enumerate(document, 1):
+        others = [value for name, value in item.items() if name != key]
+        if not isinstance(item[key], str) or any(isinstance(value, (list, dict)) for value in others):
+            raise ValueError(f"Entry {index} is not a link record")
+        if any(_link_shaped(value) for value in others):
+            raise ValueError(f"Entry {index} has more than one link")
+        entries.append((f"Entry {index}", item[key]))
+    return entries
+
+
+def _xml_entries(text: str):
+    """A root of repeated link elements, or of repeated flat records that each
+    name one link field. Parsed with no document type, no entity declaration,
+    no external entity and no namespace: a document in a declared vocabulary
+    (Metalink, XHTML, a feed) belongs to that vocabulary's owner."""
+    parser = expat.ParserCreate(encoding="utf-8", namespace_separator=" ")
+    parser.SetParamEntityParsing(expat.XML_PARAM_ENTITY_PARSING_NEVER)
+
+    def refuse(*_arguments):
+        raise ValueError("The file is not a link list")
+
+    parser.StartDoctypeDeclHandler = refuse
+    parser.EntityDeclHandler = refuse
+    parser.ExternalEntityRefHandler = refuse
+    parser.StartNamespaceDeclHandler = refuse
+    root = {"name": "", "children": [], "text": []}
+    stack = [root]
+
+    def start(name, _attributes):
+        if len(stack) > _MAX_XML_DEPTH:
+            refuse()
+        element = {"name": name, "children": [], "text": []}
+        stack[-1]["children"].append(element)
+        stack.append(element)
+
+    def characters(value):
+        stack[-1]["text"].append(value)
+
+    parser.StartElementHandler = start
+    parser.EndElementHandler = lambda _name: stack.pop()
+    parser.CharacterDataHandler = characters
+    try:
+        parser.Parse(text.encode("utf-8"), True)
+    except expat.ExpatError:
+        raise ValueError("The file is not well-formed XML") from None
+    (document,) = root["children"]
+    records = document["children"]
+    if not records or "".join(document["text"]).strip() or len({item["name"] for item in records}) != 1:
+        refuse()
+    if all(not item["children"] for item in records):
+        if records[0]["name"].casefold() not in _LINK_FIELDS:
+            refuse()
+        return [(f"Entry {index}", "".join(item["text"])) for index, item in enumerate(records, 1)]
+    names = [field["name"] for field in records[0]["children"]]
+    column = _link_field(names)
+    entries = []
+    for index, item in enumerate(records, 1):
+        fields = item["children"]
+        if ([field["name"] for field in fields] != names or "".join(item["text"]).strip()
+                or any(field["children"] for field in fields)):
+            raise ValueError(f"Entry {index} is not a link record")
+        values = ["".join(field["text"]) for field in fields]
+        if any(_link_shaped(value) for position, value in enumerate(values) if position != column):
+            raise ValueError(f"Entry {index} has more than one link")
+        entries.append((f"Entry {index}", values[column]))
+    return entries

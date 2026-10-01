@@ -1157,8 +1157,10 @@ function openTorrentFilePicker() {
   input.click();
 }
 
-/* One picker, two posting formats. The extension chooses the canonical
- * submission endpoint; the browser never learns how either is acquired. */
+/* One picker. A structured transfer file's extension chooses its canonical
+ * submission endpoint; any other file is offered as a list of links, which the
+ * server reads by its content, never its name. The browser never learns how
+ * anything is acquired. */
 const TRANSFER_UPLOADS = Object.freeze({
   '.torrent': {endpoint: '/torrents/add-file', label: 'Torrent file', interactive: true},
   '.nzb':     {endpoint: '/usenet/add-file',   label: 'NZB',          interactive: false,
@@ -1171,6 +1173,9 @@ const TRANSFER_UPLOADS = Object.freeze({
   // several offers the file selector like any other collection.
   '.meta4':   {endpoint: '/multimeta/add-file', label: 'Metalink file', interactive: true},
 });
+// Mirrors the server's link file ceiling (transfers/requests.py).
+const LINK_FILE_UPLOAD = Object.freeze(
+  {endpoint: '/links/add-file', label: 'Link file', interactive: true, maxBytes: 1024 * 1024, maxLabel: '1 MB'});
 
 function uploadKindFor(name) {
   const lower = String(name || '').toLowerCase();
@@ -1182,12 +1187,7 @@ async function uploadTransferFile(input) {
   const file = input && input.files ? input.files[0] : null;
   if (!file) return;
 
-  const kind = uploadKindFor(file.name);
-  if (!kind) {
-    toast('Choose a .torrent, .nzb or .meta4 file', 'error');
-    input.value = '';
-    return;
-  }
+  const kind = uploadKindFor(file.name) || LINK_FILE_UPLOAD;
   const maxBytes = kind.maxBytes || 16 * 1024 * 1024;
   if (file.size > maxBytes) {
     toast(`${kind.label} exceeds the ${kind.maxLabel || '16 MB'} upload limit`, 'error');
@@ -1208,7 +1208,20 @@ async function uploadTransferFile(input) {
     // scales with the file so a slow link is not mistaken for a failure,
     // never below the ordinary one.
     const timeout = Math.max(60000, Math.round(file.size / 128));
-    const res = await api('POST', kind.endpoint, form, timeout);
+    let res;
+    try {
+      res = await api('POST', kind.endpoint, form, timeout);
+    } catch (error) {
+      // The same per-submission private-LAN confirmation as Quick Add: Allow
+      // resubmits THIS file with consent; neither answer changes a setting.
+      if (error?.detail?.confirmation !== 'local_network') throw error;
+      if (!await confirmLocalNetwork(error.detail.hosts)) {
+        toast('Local network transfer not added', 'info');
+        return;
+      }
+      form.append('allow_local_network', 'true');
+      res = await api('POST', kind.endpoint, form, timeout);
+    }
     if (res && res._duplicate && res._duplicate.action === 'skip') {
       toast('Already in queue: ' + (res.name || res._duplicate.reason), 'warn');
     } else if (res && res._duplicate && res._duplicate.action === 'warn') {

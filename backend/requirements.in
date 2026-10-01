@@ -17,6 +17,9 @@ bcrypt==5.0.0
 authlib==1.7.2
 httpx==0.28.1
 joserfc==1.7.4
+# Safe YAML loading for a submitted link list (transfers/requests.py); already
+# shipped with apprise, declared here because DebridPulse imports it itself.
+pyyaml==6.0.3
 
 # --- Usenet acquisition service (SABnzbd 5.1.3) runtime closure -------------
 # The acquisition service is bundled INSIDE this image, so its Python runtime
