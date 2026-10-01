@@ -531,6 +531,33 @@ DiscoveryDepth.UNLIMITED = DiscoveryDepth(None)
 
 
 @dataclass(frozen=True)
+class DiscoveryLimits:
+    """How much enumeration a provider accepts from one discovery.
+
+    ``max_files``: the most regular files a directory may contain for the
+    listing to be a result -- one with more FAILS, it is never truncated into
+    a listing that looks complete. ``timeout_seconds``: how long the whole
+    enumeration may take before it fails as unavailable. ``None`` leaves the
+    lister's own bounds, which a provider's limit can only tighten, never
+    raise. An executor that cannot enforce a requested limit refuses the
+    discovery.
+
+    Enumeration policy only, exactly like ``DiscoveryDepth``: it never reaches
+    a candidate, execution work, retry, continuation or materialization."""
+    max_files: int | None = None
+    timeout_seconds: float | None = None
+
+    def __post_init__(self):
+        if self.max_files is not None and (
+                isinstance(self.max_files, bool) or not isinstance(self.max_files, int) or self.max_files < 1):
+            raise ValueError("A file limit is a positive number of files")
+        if self.timeout_seconds is not None and (
+                isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float))
+                or not self.timeout_seconds > 0):
+            raise ValueError("A discovery timeout is a positive number of seconds")
+
+
+@dataclass(frozen=True)
 class DiscoveryRequest:
     """A provider's request that core list ONE remote directory for it.
 
@@ -543,7 +570,9 @@ class DiscoveryRequest:
     ``depth``: how far below a directory the provider's source semantics
     select regular files (``DiscoveryDepth``). An executor that cannot
     enumerate exactly that depth refuses the discovery; it never answers with
-    a flatter or deeper listing.
+    a flatter or deeper listing. ``limits``: how many files and how much time
+    the provider accepts from that enumeration (``DiscoveryLimits``); an
+    executor that cannot enforce them refuses the discovery.
 
     ``alternate``: the SAME operator request read another way, when the
     provider's source semantics admit one (never a second candidate). Core
@@ -556,6 +585,7 @@ class DiscoveryRequest:
     accepted_input_methods: tuple[InputMethod, ...] = ()
     depth: DiscoveryDepth = DiscoveryDepth.CURRENT
     alternate: TransferRequest | None = None
+    limits: DiscoveryLimits = DiscoveryLimits()
 
 
 @dataclass(frozen=True)

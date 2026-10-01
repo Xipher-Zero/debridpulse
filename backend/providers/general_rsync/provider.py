@@ -21,7 +21,8 @@ authoritative.
 Classification is always the server's, through core-run discovery: what it
 proves a regular file becomes one ordinary candidate; what it proves a
 directory -- with or without a trailing slash, submitted directly or chosen
-in the picker alike -- is the whole tree beneath it. That tree is frozen into
+in the picker alike -- is the tree beneath it to the configured Directory
+Depth (``DiscoveryDepth``; by default the whole tree). That tree is frozen into
 the existing neutral file manifest: every regular file at its path below the
 directory, the directory's own name the transfer's root, the member set never
 re-listed on observation or retry. Symbolic links and special files are never
@@ -101,6 +102,9 @@ class GeneralRsyncProvider:
         request_types=frozenset({_DAEMON, _SSH}),
     )
 
+    def __init__(self, depth: DiscoveryDepth = DiscoveryDepth.UNLIMITED):
+        self.depth = depth
+
     def _failure(self, category: Category, *, domain=Domain.REQUEST) -> TransferError:
         return TransferError(NormalizedError(
             domain, category, Stage.RESOLUTION, retryability=Retryability.NEVER,
@@ -171,14 +175,15 @@ class GeneralRsyncProvider:
 
     async def resolve(self, request: TransferRequest) -> ResolutionResult:
         source = self._source(request)
-        # The server proves what the path is; a directory means its whole tree.
+        # The server proves what the path is; a directory is listed to the
+        # configured depth (by default its whole tree; a file ignores it).
         return ResolutionResult(ResourceState.PREPARING, discovery=DiscoveryRequest(
-            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], depth=DiscoveryDepth.UNLIMITED,
+            Endpoint(source.kind, source.address()), _ACCEPTED_INPUT[source.kind], depth=self.depth,
             alternate=self._alternate(request, source)))
 
     async def resolve_discovered(self, request: TransferRequest, discovered) -> ResolutionResult:
         """A proven regular file is one candidate; a proven directory freezes
-        every regular file of its tree into the durable resource."""
+        every regular file discovery listed into the durable resource."""
         source = self._source(request)
         if discovered.kind == RemoteObjectKind.FILE:
             if not source.segments or (source.kind == _DAEMON and len(source.segments) == 1):

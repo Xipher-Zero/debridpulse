@@ -92,6 +92,25 @@ def listed_roots(output: bytes) -> list[str]:
     return roots
 
 
+def depth_options(depth) -> tuple[str, ...]:
+    """The listing options that make rsync itself enumerate exactly the
+    neutral ``DiscoveryDepth`` below the listed directory.
+
+    ``CURRENT`` is the directory's own listing (no recursion). ``UNLIMITED``
+    is the whole tree (``-r``). A finite depth of N levels recurses with ONE
+    anchored exclude of every directory N+1 levels down: a pattern ending in
+    ``/`` matches only directories, ``*`` never crosses a ``/``, and the
+    leading ``/`` anchors it at the transfer root -- so the files of levels
+    0..N are listed and each deeper directory is excluded by the sender before
+    it is opened (rsync never descends into an excluded directory). Nothing is
+    listed for DebridPulse to discard afterwards."""
+    if depth.unlimited:
+        return ("-r",)
+    if not depth.levels:
+        return ()
+    return ("-r", "--exclude=/" + "*/" * (depth.levels + 1))
+
+
 # ── outcomes ──────────────────────────────────────────────────────────────────
 
 _ERROR_LINE = re.compile(r"@ERROR: (.+)")

@@ -221,16 +221,15 @@ def test_additional_engine_tuning_keeps_reviewed_layout_order_and_copy():
     # DP 1.0.13 consolidation: equal-width invisible lanes, one per cell of the
     # fixed set, derived from the set's own declared cardinality -- never a
     # column count written into a region's own rule.
-    assert "grid-template-columns: repeat(auto-fill, minmax(" in grid
-    assert "var(--dp-tuning-lanes)" in grid and "var(--dp-tuning-lane-min)" in grid
-    assert "max-width: var(--dp-tuning-card-max);" in css
-    # The relationship outline is drawn only where the set still holds all of
-    # its lanes, and it owns no track of its own.
+    assert "var(--dp-tuning-lanes)" in grid and "--dp-tuning-share:" in grid
+    assert "--dp-tuning-card: min(var(--dp-tuning-lane), var(--dp-tuning-card-max));" in css
+    # Each relationship is one wrapping unit whose outline is drawn exactly
+    # while that group itself is whole on one row, against the region's own
+    # width -- never a whole-set threshold.
     assert "container-type: inline-size;" in grid
-    assert "@container dp-tuning (min-width:" in css
-    assert "grid-template-columns: subgrid;" in css
+    assert "@container dp-tuning" not in css
     group = css.split("#view-settings .dp-settings-tuning-group {", 1)[1].split("}", 1)[0]
-    assert "display: contents;" in group
+    assert "outline: clamp(0px, (100cqi - var(--dp-tuning-group-min) + 1px) * 1000, 1px)" in group
 
 
 def test_advanced_tab_and_old_transfer_tuning_card_are_removed_after_migration():

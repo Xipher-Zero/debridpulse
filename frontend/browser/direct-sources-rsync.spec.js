@@ -10,9 +10,10 @@ const { test, expect } = require('@playwright/test');
  * disclosure code or persistence.
  *
  * Canonical state: this file is the ONE spec file that writes the rsync
- * executor's options (`integrations.rsync.options.*`), and it restores exactly
- * what it found. `integrations.general_rsync.enabled` has one spec owner,
- * general-sources-master.spec.js. */
+ * executor's options (`integrations.rsync.options.*`) and the rsync source's
+ * Directory Depth (`integrations.general_rsync.options.directory_depth`), and
+ * it restores exactly what it found. `integrations.general_rsync.enabled` has
+ * one spec owner, general-sources-master.spec.js. */
 
 const PROVIDER = 'general_rsync';
 const VIOLET = 'rgb(124, 58, 237)';
@@ -20,6 +21,14 @@ const TUNABLES = {
   transfer: ['rsync_partial_transfers', 'rsync_compression', 'rsync_preserve_modification_time'],
   timeouts: ['rsync_connection_timeout_seconds', 'rsync_transfer_timeout_seconds'],
 };
+// The one operator Directory Depth vocabulary, shared with WebDAV.
+const DEPTHS = [
+  ['current', 'Current directory only'],
+  ['1', '1 subdirectory level'],
+  ['2', '2 subdirectory levels'],
+  ['3', '3 subdirectory levels'],
+  ['all', 'All subdirectories'],
+];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -145,8 +154,9 @@ test('five canonical tuning cells in a 3-card and a 2-card relationship group', 
   await openTab(page, 'downloads');
   const card = page.locator('#view-settings [data-executor-tuning="rsync"]');
   await card.locator('.dp-settings-disclosure').click();
-  const grid = card.locator('.dp-settings-tuning-grid');
-  await expect(grid).toHaveCount(1);
+  // The transport set, unchanged; Directory Depth is a set of its own beneath it.
+  await expect(card.locator('.dp-settings-tuning-grid')).toHaveCount(2);
+  const grid = card.locator('.dp-settings-tuning-grid').first();
   await expect(grid).toHaveAttribute('data-tuning-lanes', '5');
   const groups = grid.locator(':scope > .dp-settings-tuning-group');
   await expect(groups).toHaveCount(2);
@@ -158,9 +168,10 @@ test('five canonical tuning cells in a 3-card and a 2-card relationship group', 
     {span: '3', keys: TUNABLES.transfer},
     {span: '2', keys: TUNABLES.timeouts},
   ]);
-  // Exactly the five tunables -- no free-form native arguments anywhere.
+  // Exactly the five transport tunables and the one discovery choice -- no
+  // free-form native arguments anywhere.
   const settings = await card.locator('[data-setting]').evaluateAll(nodes => nodes.map(node => node.dataset.setting));
-  expect(settings).toEqual([...TUNABLES.transfer, ...TUNABLES.timeouts]);
+  expect(settings).toEqual([...TUNABLES.transfer, ...TUNABLES.timeouts, 'rsync_directory_depth']);
   await expect(card.locator('textarea, input[type="text"]')).toHaveCount(0);
   const text = await card.innerText();
   expect(text.toLowerCase()).not.toContain('argument');
@@ -178,6 +189,97 @@ test('five canonical tuning cells in a 3-card and a 2-card relationship group', 
     return getComputedStyle(own).display === getComputedStyle(other).display;
   });
   expect(wrap).toBe(true);
+});
+
+test('Directory Depth stands alone, centred beneath the unchanged groups, defaulting to the whole tree',
+  async ({page}) => {
+    await isolateExternalFonts(page);
+    await openTab(page, 'downloads');
+    const card = page.locator('#view-settings [data-executor-tuning="rsync"]');
+    await card.locator('.dp-settings-disclosure').click();
+    const standalone = card.locator('.dp-settings-tuning-grid').nth(1);
+    await expect(standalone).toHaveAttribute('data-tuning-lanes', '1');
+    await expect(standalone.locator('.dp-settings-tuning-group')).toHaveCount(0);
+    const select = standalone.locator('select[data-setting="rsync_directory_depth"]');
+    await expect(select).toHaveCount(1);
+    expect(await select.locator('option').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent])))
+      .toEqual(DEPTHS);
+    // The value shown is the rsync SOURCE's own setting; its default is the
+    // whole tree every existing installation already has.
+    const live = await page.request.get('/api/settings').then(r => r.json());
+    const stored = live.integrations.general_rsync?.options?.directory_depth;
+    await expect(select).toHaveValue(stored || 'all');
+    const label = await standalone.locator('.dp-settings-field > .form-label').textContent();
+    expect(label.trim()).toBe('Directory Depth');
+    // The same bounded tuning cell its siblings use.
+    expect(await page.evaluate(() => {
+      const own = document.querySelector('[data-setting="rsync_directory_depth"]').closest('.dp-settings-field');
+      const other = document.querySelector('[data-setting="rsync_connection_timeout_seconds"]')
+        .closest('.dp-settings-field');
+      const a = getComputedStyle(own);
+      const b = getComputedStyle(other);
+      return ['borderRadius', 'backgroundColor', 'borderTopWidth', 'borderTopColor', 'paddingTop', 'rowGap']
+        .every(property => a[property] === b[property]);
+    })).toBe(true);
+    for (const width of [1920, 1440, 1024, 700, 420]) {
+      await page.setViewportSize({width, height: 1000});
+      const geometry = await card.evaluate(node => {
+        const grids = node.querySelectorAll('.dp-settings-tuning-grid');
+        const region = grids[1].getBoundingClientRect();
+        const cell = grids[1].querySelector('.dp-settings-field').getBoundingClientRect();
+        return {regionCentre: region.left + region.width / 2, cellCentre: cell.left + cell.width / 2,
+                groupsBottom: grids[0].getBoundingClientRect().bottom, cellTop: cell.top, width: cell.width,
+                overflow: node.scrollWidth - node.clientWidth};
+      });
+      // Centred in the tuning area -- never left-anchored -- and beneath the groups.
+      expect(Math.abs(geometry.cellCentre - geometry.regionCentre), `not centred at ${width}px`).toBeLessThanOrEqual(1.5);
+      expect(geometry.cellTop).toBeGreaterThan(geometry.groupsBottom);
+      expect(geometry.width).toBeLessThanOrEqual(240);
+      expect(geometry.overflow).toBeLessThanOrEqual(1);
+    }
+    // The 3+2 relationship groups are exactly what they were.
+    const groups = await card.locator('.dp-settings-tuning-grid').first().locator(':scope > .dp-settings-tuning-group')
+      .evaluateAll(nodes => nodes.map(node => node.dataset.tuningSpan));
+    expect(groups).toEqual(['3', '2']);
+    await page.setViewportSize({width: 1440, height: 1000});
+  });
+
+test.describe.serial('Directory Depth persists through the rsync source integration scope', () => {
+  let original = null;
+
+  test.beforeAll(async ({request}) => {
+    original = (await request.get('/api/settings').then(r => r.json())).integrations.general_rsync?.options || {};
+  });
+
+  test.afterAll(async ({request}) => {
+    await request.patch(`/api/integrations/${PROVIDER}/configuration`,
+      {data: {options: {directory_depth: original.directory_depth || 'all'}}});
+  });
+
+  test('a choice commits through the general_rsync scope, never the executor or a page-level save', async ({page}) => {
+    await isolateExternalFonts(page);
+    const writes = [];
+    page.on('request', request => {
+      if (['PATCH', 'PUT'].includes(request.method()) && request.url().includes('/api/')) {
+        writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      }
+    });
+    await openTab(page, 'downloads');
+    const card = page.locator('#view-settings [data-executor-tuning="rsync"]');
+    await card.locator('.dp-settings-disclosure').click();
+    const select = card.locator('select[data-setting="rsync_directory_depth"]');
+    const wanted = (original.directory_depth || 'all') === '1' ? '2' : '1';
+    const written = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && new URL(response.url()).pathname === `/api/integrations/${PROVIDER}/configuration`, {timeout: 15000});
+    await select.selectOption(wanted);
+    await select.blur();
+    const accepted = await (await written).json();
+    // Acceptance, not readback: what the server answered for this write.
+    expect(JSON.stringify(accepted)).toContain(`"directory_depth":"${wanted}"`);
+    await expect(select).toHaveValue(wanted);
+    expect(writes.filter(write => write !== `PATCH /api/integrations/${PROVIDER}/configuration`)).toEqual([]);
+    await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
+  });
 });
 
 test.describe.serial('rsync tunables persist through the canonical integration owner', () => {

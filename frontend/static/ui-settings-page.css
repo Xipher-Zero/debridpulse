@@ -636,18 +636,25 @@
 
 /* ── The ONE fixed tuning-set grammar ────────────────────────────────────
    Every fixed tuning set in Settings -- AllDebrid Additional Settings,
-   Downloads -> Network Sources, Downloads -> Usenet, Disk Space & Recovery --
-   is laid out by exactly this, and by nothing else.
+   every Transfer Method Settings card, Disk Space & Recovery -- is laid out
+   by exactly this, and by nothing else.
 
    The set declares only its own CARDINALITY (`data-tuning-lanes`, emitted by
    tuningCells()). From that, the region is divided into that many EQUAL,
    INVISIBLE lanes spanning the usable width, and a bounded card is centred in
-   each. The lane width is the larger of the set's accepted minimum and the
-   share each lane would get at full capacity, so at any width that can hold
-   the whole set there are exactly as many lanes as cells, and below it the
-   lane count drops on its own -- the cells then left-fill the rows that
-   remain, with no sparse-row centring, no column-count matrix, no viewport
-   breakpoint and nothing measured in JavaScript.
+   each: every lane's share at full capacity is the region's width less its
+   gaps, divided by the cardinality (`--dp-tuning-share`, in the region's own
+   container units). Below that capacity the lanes give up width down to their
+   accepted minimum and then the set wraps, left-filling the rows that remain
+   -- no sparse-row centring, no column-count matrix, no viewport breakpoint
+   and nothing measured in JavaScript.
+
+   A lane's minimum is a fact about ITS OWN cell: the set's accepted minimum
+   for an ordinary cell, or one selector cell for a cell that holds a selector
+   (so every value it offers reads whole). A selector lane may therefore be
+   wider than its siblings at a narrow width; no sibling inherits its
+   requirement, and nothing about the set as a whole changes because one cell
+   holds a selector.
 
    Because the lane is the layout unit and the card is merely bounded inside
    it, a card never stretches edge to edge and the per-set width difference
@@ -667,9 +674,13 @@
   /* The lane one such selector cell needs: the bound plus the cell's own
      horizontal padding (2 x 10px) and border (2 x 1px). */
   --dp-tuning-select-lane: calc(var(--dp-tuning-select-max) + 22px);
+  /* Each lane's equal share of the region at full capacity. Container units:
+     it resolves against THIS region wherever a lane or a group reads it. */
+  --dp-tuning-share: calc((100cqi - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap)) / var(--dp-tuning-lanes));
   /* What a drawn relationship LOOKS like, declared exactly once for every set
-     that has one. The three switches below only turn it on; none of them
-     states an appearance, so there is no per-section variant to drift.
+     that has one. Whether a group draws it is that group's own fact (below);
+     none of them states an appearance, so there is no per-section variant to
+     drift.
 
      The hierarchy it has to sit in: the enclosing card body draws no edge at
      all, and a tuning card draws a filled border over its own raised
@@ -677,53 +688,51 @@
      more present than the container -- it no longer reads as a rendering
      artifact -- while remaining a single unfilled line against the cards'
      border-plus-surface weight, so the cards still dominate. */
-  --dp-tuning-relation-line:
-    1px solid color-mix(in srgb, var(--dp-border-strong) 78%, transparent);
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(
-    max(var(--dp-tuning-lane-min),
-        (100% - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap)) / var(--dp-tuning-lanes)),
-    1fr));
+  --dp-tuning-relation-color: color-mix(in srgb, var(--dp-border-strong) 78%, transparent);
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   align-items: stretch;
   gap: var(--dp-tuning-gap);
   padding: 4px 0 2px;
-  /* The region's own width is what decides whether the set still holds all of
-     its lanes, so the group rules below ask THIS element -- not the viewport,
-     which knows nothing about the card it is inside. */
+  /* The region's own width is what every lane and group measures itself
+     against -- not the viewport, which knows nothing about the card it is
+     inside. */
   container-type: inline-size;
   container-name: dp-tuning;
 }
 
 /* A fixed set's lane count IS its cardinality, and its accepted minimum lane
-   is the width below which that many lanes stop being honest. Two numbers per
+   is the width below which a lane stops being honest. Two numbers per
    cardinality, and nothing else: no set names a column count of its own. */
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="1"] { --dp-tuning-lanes: 1; --dp-tuning-lane-min: 160px; }
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="2"] { --dp-tuning-lanes: 2; --dp-tuning-lane-min: 160px; }
+#view-settings .dp-settings-tuning-grid[data-tuning-lanes="3"] { --dp-tuning-lanes: 3; --dp-tuning-lane-min: 160px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"] { --dp-tuning-lanes: 4; --dp-tuning-lane-min: 200px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"] { --dp-tuning-lanes: 5; --dp-tuning-lane-min: 160px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="6"] { --dp-tuning-lanes: 6; --dp-tuning-lane-min: 140px; }
 #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"] { --dp-tuning-lanes: 7; --dp-tuning-lane-min: 120px; }
 
-/* A set that holds a selector: no lane is narrower than one selector cell, so
-   every value it offers reads whole wherever the cell lands. The lane count
-   still follows from the region's width alone; nothing is measured. */
-#view-settings .dp-settings-tuning-grid:has(select.input) { --dp-tuning-lane-min: var(--dp-tuning-select-lane); }
-
-/* A relationship between adjacent cells, and nothing more.
- *
- * By default it is not a layout box at all: its cells are the region's own
- * grid items, left-fill the lanes and carry no outline. It becomes a box only
- * at a width where the whole set still holds every one of its lanes -- see the
- * container queries below -- and even then it owns no track: `subgrid` makes
- * its members sit in the region's OWN lanes, so switching the outline on and
- * off moves nothing. */
-#view-settings .dp-settings-tuning-group {
-  display: contents;
+/* A set of one is a standalone control: its single lane is the whole region,
+   so its bounded card is centred beneath whatever set precedes it. */
+#view-settings .dp-settings-tuning-grid + .dp-settings-tuning-grid {
+  margin-top: var(--dp-tuning-gap);
 }
 
+/* The lane and the card in it.
+ *
+ * The cell IS its lane: it starts from its own minimum, grows to the equal
+ * share (never past it), and its bounded card is centred in that lane by the
+ * lane's own slack. `--dp-tuning-cell-min` is the only per-cell fact. */
 #view-settings .dp-settings-tuning-grid .dp-settings-field {
-  width: 100%;
-  max-width: var(--dp-tuning-card-max);
+  --dp-tuning-cell-min: var(--dp-tuning-lane-min);
+  --dp-tuning-lane: max(var(--dp-tuning-cell-min), var(--dp-tuning-share));
+  --dp-tuning-card: min(var(--dp-tuning-lane), var(--dp-tuning-card-max));
+  flex: 1 1 var(--dp-tuning-cell-min);
+  min-width: var(--dp-tuning-cell-min);
+  max-width: var(--dp-tuning-card);
   margin-top: 0;
-  margin-inline: auto;
+  margin-inline: calc((var(--dp-tuning-lane) - var(--dp-tuning-card)) / 2);
   box-sizing: border-box;
   border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
   border-radius: 10px;
@@ -737,6 +746,12 @@
   align-content: start;
   row-gap: 6px;
   text-align: center;
+}
+
+/* A cell that holds a selector: ITS lane is never narrower than one selector
+   cell. A requirement of this cell alone -- its siblings keep theirs. */
+#view-settings .dp-settings-tuning-grid .dp-settings-field:has(select.input) {
+  --dp-tuning-cell-min: var(--dp-tuning-select-lane);
 }
 
 /* The control is an element centred in the cell, bounded so a number field
@@ -798,88 +813,61 @@
   justify-content: center;
 }
 
-/* The relationship outline itself.
+/* A relationship between adjacent cells, and nothing more.
  *
- * `outline` rather than `border`, with an offset: it is painted OUTSIDE the
- * group's box and takes no space at all, and the box itself is a `subgrid` of
- * the region's lanes, so it introduces no track, no padding, no heading and no
- * container bulk. Turning it on and off moves nothing. The lane stays the
- * layout unit and the group stays a visual relation.
+ * The group is ONE unit of the row: it wraps as a whole, so it never starts
+ * on one row and ends on the next while the region can hold it. Its members
+ * keep their own lanes inside it (the same cells, the same minimums, the same
+ * share), and it grows by exactly as many lanes as it holds. Its own minimum
+ * is the sum of its members' -- declared from its composition
+ * (`data-tuning-span`, `data-tuning-selectors`, emitted by tuningGroup()),
+ * never measured.
  *
- * It is drawn at exactly one condition: the set still holds ALL of its lanes,
- * which is the only state in which every group is provably contiguous on one
- * row. That width is the set's own accepted minimum lane times its cardinality
- * plus its gaps -- the same two numbers declared above, nothing new -- so
- * there is one threshold per cardinality rather than a breakpoint matrix.
- * Below it the rule does not apply, the group falls back to `display:
- * contents`, and the relation is simply not drawn -- the honest answer, rather
- * than an outline split across two rows. */
-#view-settings .dp-settings-tuning-grid[data-tuning-lanes] .dp-settings-tuning-group {
-  grid-template-columns: subgrid;
+ * Only when the region is narrower than that minimum does the group split:
+ * it takes the whole row and its members wrap inside it. */
+#view-settings .dp-settings-tuning-group {
+  --dp-tuning-span: 1;
+  --dp-tuning-selectors: 0;
+  --dp-tuning-group-min: calc(
+    (var(--dp-tuning-span) - var(--dp-tuning-selectors)) * var(--dp-tuning-lane-min)
+    + var(--dp-tuning-selectors) * var(--dp-tuning-select-lane)
+    + (var(--dp-tuning-span) - 1) * var(--dp-tuning-gap));
+  --dp-tuning-group-max: calc(
+    (var(--dp-tuning-span) - var(--dp-tuning-selectors)) * max(var(--dp-tuning-lane-min), var(--dp-tuning-share))
+    + var(--dp-tuning-selectors) * max(var(--dp-tuning-select-lane), var(--dp-tuning-share))
+    + (var(--dp-tuning-span) - 1) * var(--dp-tuning-gap));
+  display: flex;
+  flex-wrap: wrap;
   align-items: stretch;
+  gap: var(--dp-tuning-gap);
+  flex: var(--dp-tuning-span) 1 min(100cqi, var(--dp-tuning-group-min));
+  min-width: min(100cqi, var(--dp-tuning-group-min));
+  max-width: var(--dp-tuning-group-max);
+  box-sizing: border-box;
   border-radius: 14px;
-  /* Declared ONCE. A withdrawn group leaves this unset, so it resolves to
-     `none` and the relation is genuinely not drawn -- not merely invisible. */
-  outline: var(--dp-tuning-relation, none);
+  /* The relationship outline itself.
+   *
+   * `outline` rather than `border`, with an offset: it is painted OUTSIDE the
+   * group's box and takes no space at all, and the group adds no track,
+   * padding, heading or container bulk, so drawing or withdrawing it moves
+   * nothing.
+   *
+   * It is drawn exactly while THIS group is whole on one row -- the region is
+   * at least the group's own minimum wide -- and its width is that predicate:
+   * 1px while it holds, 0 (not drawn at all) once the group has to split.
+   * Every other group answers the same question for itself, so a set that
+   * spans several rows keeps the outline of every group that still fits, and
+   * nothing about the set as a whole -- its row count, or whether some other
+   * cell holds a selector -- withdraws it. */
+  outline: clamp(0px, (100cqi - var(--dp-tuning-group-min) + 1px) * 1000, 1px) solid var(--dp-tuning-relation-color);
   outline-offset: 5px;
-}
-
-/* 4 lanes x 200px + 3 x 16px */
-@container dp-tuning (min-width: 848px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"]:not(:has(select.input)) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
-}
-
-/* 5 lanes x 160px + 4 x 16px */
-@container dp-tuning (min-width: 864px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"]:not(:has(select.input)) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
-}
-
-/* 7 lanes x 120px + 6 x 16px */
-@container dp-tuning (min-width: 936px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"]:not(:has(select.input)) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
-}
-
-/* The same switches for a set that holds a selector, at the width where its
-   selector lanes (236px, ``--dp-tuning-select-lane``) all fit:
-   N x 236px + (N - 1) x 16px. */
-@container dp-tuning (min-width: 992px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="4"]:has(select.input) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
-}
-
-@container dp-tuning (min-width: 1244px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="5"]:has(select.input) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
-}
-
-@container dp-tuning (min-width: 1748px) {
-  #view-settings .dp-settings-tuning-grid[data-tuning-lanes="7"]:has(select.input) .dp-settings-tuning-group {
-    display: grid;
-    grid-column: span var(--dp-tuning-span);
-    --dp-tuning-relation: var(--dp-tuning-relation-line);
-  }
 }
 
 #view-settings .dp-settings-tuning-group[data-tuning-span="2"] { --dp-tuning-span: 2; }
 #view-settings .dp-settings-tuning-group[data-tuning-span="3"] { --dp-tuning-span: 3; }
+#view-settings .dp-settings-tuning-group[data-tuning-selectors="1"] { --dp-tuning-selectors: 1; }
+#view-settings .dp-settings-tuning-group[data-tuning-selectors="2"] { --dp-tuning-selectors: 2; }
+#view-settings .dp-settings-tuning-group[data-tuning-selectors="3"] { --dp-tuning-selectors: 3; }
 
 /* The sentence that closes a tuning region belongs to the CARD, not to the
    cell collection: its own full-width row beneath the cells, centred on the

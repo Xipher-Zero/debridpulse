@@ -4,9 +4,25 @@ import hmac
 import json
 import secrets
 from dataclasses import dataclass, replace
-from typing import Callable, Optional, Protocol, runtime_checkable
+from typing import Callable, Literal, Optional, Protocol, runtime_checkable
 
 from pydantic import BaseModel, Field
+
+from transfers.models import DiscoveryDepth
+
+# THE operator Directory Depth vocabulary, for every source whose provider
+# lets the operator choose how far below a submitted folder its files are
+# collected: the folder itself, one to three levels of subfolders, or all of
+# them -- each exactly one neutral discovery depth. A provider owns its own
+# setting and default; the values and their meaning are declared once, here.
+DirectoryDepthSetting = Literal["current", "1", "2", "3", "all"]
+DIRECTORY_DEPTHS = {
+    "current": DiscoveryDepth.CURRENT,
+    "1": DiscoveryDepth.of(1),
+    "2": DiscoveryDepth.of(2),
+    "3": DiscoveryDepth.of(3),
+    "all": DiscoveryDepth.UNLIMITED,
+}
 
 
 class IntegrationSettings(BaseModel):

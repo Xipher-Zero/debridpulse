@@ -69,7 +69,7 @@ from urllib.parse import unquote, urlsplit
 import services
 from executors.process_ownership import OwnedProcess, ProcessGroupAlive, ProcessOwnership
 from executors.rsync.translation import (
-    ListingUnusable, channel_failure, listed_roots, listing_entries, literal_path, native_failure,
+    ListingUnusable, channel_failure, depth_options, listed_roots, listing_entries, literal_path, native_failure,
 )
 from services import ssh_channel
 from services.artifact_sampling import (
@@ -86,7 +86,7 @@ from transfers.input_required import (
     SubmittedInput, auth_required, server_identity_required, username_password, username_private_key,
 )
 from transfers.models import (
-    ArtifactFingerprint, ContinuationCapability, ContinuationStrategy, DiscoveredEntry, DiscoveryDepth, DiscoveryResult,
+    ArtifactFingerprint, ContinuationCapability, ContinuationStrategy, DiscoveredEntry, DiscoveryDepth, DiscoveryLimits, DiscoveryResult,
     ExecutionActivity, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest, ExecutionSnapshot,
     ExecutionState, ExecutorCapabilities, ExecutorClaim, ExecutorHealth, ExecutorRuntimeCapability,
     ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
@@ -622,10 +622,10 @@ class RsyncExecutor:
         raise TransferError(error)
 
     async def _list(self, remote: _Remote, candidate, submitted, *, segments=None, directory=False,
-                    recursive=False, stage=Stage.RESOLUTION) -> bytes:
+                    depth: DiscoveryDepth = DiscoveryDepth.CURRENT, stage=Stage.RESOLUTION) -> bytes:
         transport = await self._transport(remote, candidate, submitted, stage)
         secrets = transport.redactions
-        head = self._head("--list-only", "-8", *(["-r"] if recursive else []))
+        head = self._head("--list-only", "-8", *depth_options(depth))
         if remote.daemon and not (remote.segments if segments is None else segments):
             # A daemon sends its module list only with its message of the day.
             head.remove("--no-motd")
@@ -642,19 +642,20 @@ class RsyncExecutor:
     # ── discovery ───────────────────────────────────────────────────────────
 
     async def discover(self, subject, submitted: SubmittedInput | None = None, *,
-                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT):
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits()):
         """Read-only classification of one rsync path before any candidate
         exists, through exactly the preparation execution uses. A regular file
-        is one file; a directory is its immediate regular files (``CURRENT``),
-        or every regular file of its tree (``UNLIMITED``); a daemon's server
-        root is the tree of every root it advertises. A finite depth has no
-        rsync translation here and is refused before anything is listed. Links
-        and special files are never members and never followed. Only a
-        complete listing is a result."""
-        if not depth.unlimited and depth != DiscoveryDepth.CURRENT:
+        is one file; a directory is its regular files within the neutral
+        ``depth`` -- its immediate files (``CURRENT``), N subdirectory levels,
+        or its whole tree (``UNLIMITED``), realized by rsync's own sender-side
+        filter (``translation.depth_options``) -- and a daemon's server root is
+        that listing below every root it advertises. Links and special files
+        are never members and never followed. Only a complete listing is a
+        result. ``limits`` are not enforced here, so any is refused before
+        anything is listed."""
+        if limits != DiscoveryLimits():
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION,
                 retryability=Retryability.NEVER, integration_id=self.descriptor.id))
-        recursive = depth.unlimited
         candidate = subject.candidate
         remote = self._remote(candidate, Stage.RESOLUTION)
         try:
@@ -663,7 +664,7 @@ class RsyncExecutor:
                 entries = []
                 for root in roots:
                     entries += self._tree(await self._list(remote, candidate, submitted, segments=(root,),
-                                                           directory=True, recursive=recursive), prefix=root)
+                                                           directory=True, depth=depth), prefix=root)
                 return self._directory(entries)
             if not (remote.daemon and len(remote.segments) == 1):
                 listed = listing_entries(await self._list(remote, candidate, submitted))
@@ -676,7 +677,7 @@ class RsyncExecutor:
                     raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST,
                         Stage.RESOLUTION, retryability=Retryability.NEVER, integration_id=self.descriptor.id,
                         diagnostic="unsupported_type"))
-            output = await self._list(remote, candidate, submitted, directory=True, recursive=recursive)
+            output = await self._list(remote, candidate, submitted, directory=True, depth=depth)
             return self._directory(self._tree(output, prefix=""))
         except _Refused as refused:
             return refused.outcome

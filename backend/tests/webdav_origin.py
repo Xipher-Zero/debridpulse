@@ -8,6 +8,7 @@ any live service.
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 from urllib.parse import quote
 
@@ -36,6 +37,7 @@ class WebDavOrigin:
         self.raw: dict[str, str] = {}             # path -> verbatim 207 body
         self.extra: dict[str, list[str]] = {}     # path -> extra <response> blocks appended
         self.redirects: dict[str, str] = {}       # path -> Location (302)
+        self.delays: dict[str, float] = {}        # path -> seconds before answering a PROPFIND
         self.forbid_infinity = True               # Depth: infinity is refused, as many servers do
         self.omit_length = False
         self.runner = None
@@ -71,6 +73,8 @@ class WebDavOrigin:
     async def _propfind(self, request):
         self._record(request)
         path = request.path
+        if path in self.delays:
+            await asyncio.sleep(self.delays[path])
         # A protected server authenticates before it answers anything --
         # including where a path has moved.
         if not self._authorized(request):

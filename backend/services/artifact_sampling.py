@@ -856,7 +856,9 @@ def _listing_refusal(status: int) -> str:
 async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str = "", password: str = "",
                            credential_scope: AuthScope | None = None,
                            timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS, on_authenticated: Accepted = None,
-                           private_lan: bool = False) -> Listing | RemoteFile | Opaque | ListingRefused | AccessRequired:
+                           private_lan: bool = False, max_files: int | None = None,
+                           scan_timeout_seconds: float | None = None,
+                           ) -> Listing | RemoteFile | Opaque | ListingRefused | AccessRequired:
     """Classify one HTTP(S) path through WebDAV, read-only, and list it.
 
     Every request is one ``PROPFIND`` with ``Depth: 1`` -- the depth every
@@ -868,7 +870,12 @@ async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str
     decoded path), and every member must be an immediate child of the
     collection that listed it, so no answer can make the traversal loop. Only
     a complete listing is a result: a refused, malformed or oversized member
-    fails the whole discovery; nothing is ever truncated.
+    fails the whole discovery; nothing is ever truncated. ``max_files`` is the
+    most regular files the caller accepts -- one more fails the discovery
+    (``too_many_entries``) -- and can only tighten the neutral entry bound,
+    never raise it; ``scan_timeout_seconds`` bounds the whole enumeration (every
+    request keeps its own ``timeout_seconds`` bound too) and an enumeration
+    still running at it fails as ``timeout``.
 
     The path's own answer classifies it: a collection lists its regular files;
     anything else described is one regular file of its stated size. A server
@@ -928,12 +935,14 @@ async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str
         finally:
             response.release()
 
+    file_limit = MAX_LISTED_ENTRIES if max_files is None else min(int(max_files), MAX_LISTED_ENTRIES)
     timeout = aiohttp.ClientTimeout(total=max(5.0, float(timeout_seconds)))
     connector = aiohttp.TCPConnector(
         resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
         use_dns_cache=False)
     try:
-        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+        async with asyncio.timeout(scan_timeout_seconds), aiohttp.ClientSession(
+                timeout=timeout, connector=connector) as session:
             answered, outcome = await propfind(session, validated)
             if isinstance(outcome, int):
                 if 200 <= outcome < 300 or outcome in {405, 501}:
@@ -983,6 +992,8 @@ async def webdav_discovery(address: str, *, depth: DiscoveryDepth, username: str
                     member = relative + (path[-1],)
                     if not collection:
                         files.append(("/".join(member), max(0, size or 0)))
+                        if len(files) > file_limit:
+                            return ListingRefused("too_many_entries")
                     elif depth.descends(level) and path not in visited:
                         visited.add(path)
                         pending.append((_collection_address(base, path), path, member, level + 1, None))

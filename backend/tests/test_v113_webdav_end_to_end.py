@@ -19,7 +19,7 @@ from db.database import get_db
 from test_v113_transfer_auth_context import CountingVault, lab  # noqa: F401
 from test_v113_transport_evidence_sampling import executor_for, guard_for, loopback  # noqa: F401
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
-from transfers.models import DiscoveryDepth, ExecutorCapabilities, IntegrationDescriptor, TransferRequest, TransferState
+from transfers.models import DiscoveryDepth, DiscoveryLimits, ExecutorCapabilities, IntegrationDescriptor, TransferRequest, TransferState
 from webdav_origin import WebDavOrigin
 
 pytestmark = pytest.mark.asyncio
@@ -54,8 +54,8 @@ class HttpMemory(CountingVault):
         parts = urlsplit(candidate.endpoints[0].address)
         return f"{parts.hostname}{unquote(parts.path)}"
 
-    async def discover(self, subject, submitted=None, *, depth=DiscoveryDepth.CURRENT):
-        return await self.reader.discover(subject, submitted, depth=depth)
+    async def discover(self, subject, submitted=None, *, depth=DiscoveryDepth.CURRENT, limits=DiscoveryLimits()):
+        return await self.reader.discover(subject, submitted, depth=depth, limits=limits)
 
 
 @pytest_asyncio.fixture
@@ -146,6 +146,27 @@ async def test_a_configured_depth_reaches_subdirectories_through_the_same_select
     # Depth is enumeration policy only: no child request carries it.
     assert all("depth" not in row["payload"].casefold() and "webdav" not in row["payload"].casefold()
                for row in rows)
+
+
+async def test_a_collection_past_the_configured_maximum_fails_whole_through_core(stage):
+    """Maximum Files is the provider's discovery policy, carried by core to the
+    real reader: a larger collection fails as too large and nothing of it is
+    ever dispatched -- it is never truncated into a complete-looking manifest."""
+    repository, engine, executor, webdav, origin, now = stage
+    webdav.depth = DiscoveryDepth.UNLIMITED
+    webdav.limits = DiscoveryLimits(max_files=2, timeout_seconds=60)
+    transfer = await _submit(engine, origin.url("/dav/", scheme="webdav"))
+    await _ticks(engine, now, 6)
+    root = next(record for record in await repository.requests(transfer.id) if record.parent_id is None)
+    assert root.error is not None
+    assert (root.error.category, root.error.diagnostic) == (Category.UNSUPPORTED_REQUEST, "too_many_entries")
+    assert await _children(repository, transfer.id) == [] and executor.calls == []
+    # Within the limit, the same collection is accepted whole.
+    webdav.limits = DiscoveryLimits(max_files=3, timeout_seconds=60)
+    accepted = await _submit(engine, origin.url("/dav/", scheme="webdav"))
+    await _ticks(engine, now, repository=repository, transfer_id=accepted.id)
+    assert (await repository.get(accepted.id)).state == TransferState.COMPLETED
+    assert len(await _children(repository, accepted.id)) == 3
 
 
 # ── a single file is one ordinary candidate owned by WebDAV ───────────────────

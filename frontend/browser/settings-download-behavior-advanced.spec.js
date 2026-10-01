@@ -62,17 +62,16 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     const grid = section(page).locator('.dp-settings-tuning-grid');
     await expect(grid).toHaveAttribute('data-tuning-lanes', '4');
     // The two local-network cells are one shared tuning relation: outlined
-    // while all four lanes hold, withdrawn (no box, no outline) once the grid wraps.
+    // while THAT pair is whole on one row, withdrawn only once the pair itself
+    // has to split.
     const group = grid.locator(':scope > .dp-settings-tuning-group');
     await expect(group).toHaveCount(1);
     await expect(group).toHaveAttribute('data-tuning-span', '2');
     await expect(group.locator('[data-setting="private_lan_connections"]')).toHaveCount(1);
     await expect(group.locator('[data-setting="skip_private_lan_confirmation"]')).toHaveCount(1);
     await expect(group.locator('[data-setting="material_checkpoint_interval_seconds"]')).toHaveCount(0);
-    const wide = await group.evaluate(el => ({display: getComputedStyle(el).display,
-                                             outline: getComputedStyle(el).outlineStyle}));
-    expect(wide.display).toBe('grid');
-    expect(wide.outline).not.toBe('none');
+    const outlineOf = el => parseFloat(getComputedStyle(el).outlineWidth);
+    expect(await group.evaluate(outlineOf)).toBeGreaterThan(0);
     const cells = await grid.evaluate(el => Array.from(el.querySelectorAll('.dp-settings-field')).map(child => {
       const box = child.getBoundingClientRect();
       return {top: Math.round(box.top), left: box.left, width: box.width, text: child.textContent};
@@ -90,10 +89,19 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     const gridWidth = await grid.evaluate(el => el.getBoundingClientRect().width);
     for (const cell of cells) expect(cell.width).toBeLessThan(gridWidth * 0.9);
 
-    // Narrow: the grid wraps and the relation is simply not drawn.
+    // Narrower: the set wraps, but the pair is still whole on one row, so its
+    // relation is still drawn.
     await page.setViewportSize({width: 700, height: 1000});
-    await expect.poll(() => group.evaluate(el => getComputedStyle(el).display)).toBe('contents');
-    expect(await group.evaluate(el => getComputedStyle(el).outlineStyle)).toBe('none');
+    const pairRows = () => group.evaluate(el => new Set(Array.from(el.querySelectorAll('.dp-settings-field'),
+      cell => Math.round(cell.getBoundingClientRect().top))).size);
+    await expect.poll(pairRows).toBe(1);
+    expect(await group.evaluate(outlineOf)).toBeGreaterThan(0);
+    // A region too narrow for the pair itself: the pair splits and its
+    // relation is simply not drawn.
+    await grid.evaluate(el => { el.style.width = '300px'; });
+    await expect.poll(pairRows).toBe(2);
+    expect(await group.evaluate(outlineOf)).toBe(0);
+    await grid.evaluate(el => { el.style.width = ''; });
   });
 
 test('Local Network Connections persists immediately and gates Skip Confirmation without erasing it',

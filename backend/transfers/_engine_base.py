@@ -130,7 +130,7 @@ from transfers.requests import auth_scope, direct_link_host
 from transfers.models import (
     Artifact, ArtifactFingerprint, CancellationInitiator, Capability, CleanupAuthority, CleanupDirective, ContinuationCapability,
     ContinuationStrategy,
-    DeliveryKind, DiscoveryDepth,
+    DeliveryKind, DiscoveryDepth, DiscoveryLimits,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
     ExecutorThroughput, FingerprintKind, InputChallenge,
@@ -1639,9 +1639,11 @@ class TransferEngine:
         scope = self._input_scope(candidate)
         family = scope.family if scope is not None else ""
         # The provider's depth reaches the executor only when it is deeper than
-        # the directory itself, so a flat discovery is exactly the call it
-        # always was.
+        # the directory itself, and its limits only when it set any, so a flat
+        # unlimited discovery is exactly the call it always was.
         tree = {"depth": request.depth} if request.depth != DiscoveryDepth.CURRENT else {}
+        if request.limits != DiscoveryLimits():
+            tree["limits"] = request.limits
         try:
             for _attempt in range(EvidenceContext._MATCH_ATTEMPTS):
                 used = submitted

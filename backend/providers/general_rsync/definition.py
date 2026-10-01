@@ -1,16 +1,23 @@
 """rsync source registration and backend-owned configuration."""
 from pydantic import BaseModel
 
-from integrations.definition import IntegrationDefinition, IntegrationPresentation
+from integrations.definition import (
+    DIRECTORY_DEPTHS, DirectoryDepthSetting, IntegrationDefinition, IntegrationPresentation,
+)
 
 
 class GeneralRsyncOptions(BaseModel):
-    """The provider has no transport tuning; the executor owns native options."""
+    """The provider's own discovery policy only; the executor owns native
+    transport options and realizes the neutral depth itself."""
+
+    # How far below a submitted directory its files are collected. "all" is
+    # the whole tree -- what every rsync source has always meant.
+    directory_depth: DirectoryDepthSetting = "all"
 
 
 def build(options, environment):
     from providers.general_rsync.provider import GeneralRsyncProvider
-    return GeneralRsyncProvider()
+    return GeneralRsyncProvider(depth=DIRECTORY_DEPTHS[options.directory_depth])
 
 
 definition = IntegrationDefinition(

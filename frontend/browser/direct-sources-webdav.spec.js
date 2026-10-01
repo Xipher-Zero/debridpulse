@@ -5,14 +5,15 @@ const { test, expect } = require('@playwright/test');
  *
  * The WebDAV member is one more box rendered by the existing Network Sources
  * composer from its own published metadata, with the existing protocol chip
- * (Lucide CloudSync, Sky Blue #38BDF8). Its one tunable is one more Transfer
- * Method Settings card built by the canonical executor-tuning card, disclosure,
- * tuning grid, bordered tuning cell and closing sentence -- nothing here is
- * WebDAV-specific markup, CSS, disclosure code or persistence.
+ * (Lucide CloudSync, Sky Blue #38BDF8). Its three tunables are one more
+ * Transfer Method Settings card built by the canonical executor-tuning card,
+ * disclosure, tuning grid, relationship group, bordered tuning cells and
+ * closing sentence -- nothing here is WebDAV-specific markup, CSS, disclosure
+ * code or persistence.
  *
  * Canonical state: this file is the ONE spec file that writes
- * `integrations.general_webdav.options.directory_depth`, and it restores
- * exactly what it found. `integrations.general_webdav.enabled` has one spec
+ * `integrations.general_webdav.options.*` (directory_depth, max_files,
+ * collection_scan_timeout_seconds), and it restores exactly what it found. `integrations.general_webdav.enabled` has one spec
  * owner, general-sources-master.spec.js. */
 
 const PROVIDER = 'general_webdav';
@@ -127,7 +128,7 @@ test('the WebDAV Transfer Method card shares the identity and the canonical disc
   expect(sameChevron).toBe(true);
 });
 
-test('Directory Depth is one intelligible control in a bordered tuning cell, read whole', async ({page}) => {
+test('the three WebDAV tunables are one relationship group of bordered tuning cells, read whole', async ({page}) => {
   await isolateExternalFonts(page);
   for (const width of [1440, 1280, 1024]) {
     await page.setViewportSize({width, height: 900});
@@ -136,19 +137,40 @@ test('Directory Depth is one intelligible control in a bordered tuning cell, rea
     await card.locator('.dp-settings-disclosure').click();
     const grid = card.locator('.dp-settings-tuning-grid');
     await expect(grid).toHaveCount(1);
-    await expect(grid).toHaveAttribute('data-tuning-lanes', '1');
-    // One tunable: one bordered cell, no relationship group of one.
-    await expect(grid.locator('.dp-settings-tuning-group')).toHaveCount(0);
-    const cell = grid.locator(':scope > .dp-settings-field');
-    await expect(cell).toHaveCount(1);
+    await expect(grid).toHaveAttribute('data-tuning-lanes', '3');
+    // One relationship of exactly three cells: TITLE -> CONTROL -> HELP each.
+    const group = grid.locator(':scope > .dp-settings-tuning-group');
+    await expect(group).toHaveCount(1);
+    await expect(group).toHaveAttribute('data-tuning-span', '3');
+    expect(await group.locator(':scope > .dp-settings-field').evaluateAll(nodes => nodes.map(node => [
+      node.querySelector(':scope > .form-label').textContent.trim(),
+      node.querySelector('[data-setting]').dataset.setting,
+      !!node.querySelector(':scope > .form-hint')?.textContent.trim(),
+    ]))).toEqual([
+      ['Directory Depth', 'webdav_directory_depth', true],
+      ['Maximum Files', 'webdav_max_files', true],
+      ['Collection Scan Timeout (seconds)', 'webdav_collection_scan_timeout_seconds', true],
+    ]);
+    await expect(card.locator('[data-setting]')).toHaveCount(3);
+    const cell = group.locator(':scope > .dp-settings-field').first();
     const select = cell.locator('select[data-setting="webdav_directory_depth"]');
     await expect(select).toHaveCount(1);
-    await expect(card.locator('[data-setting]')).toHaveCount(1);
     await expect(card.locator(`label[for="${await select.getAttribute('id')}"]`)).toHaveText('Directory Depth');
+    const bounds = await card.locator('input[type="number"]').evaluateAll(nodes => nodes.map(node =>
+      [node.dataset.setting, node.min, node.max]));
+    expect(bounds).toEqual([['webdav_max_files', '1', '10000'],
+                            ['webdav_collection_scan_timeout_seconds', '0', '3600']]);
     const options = await select.locator('option').evaluateAll(nodes => nodes.map(node => [node.value, node.textContent]));
     expect(options).toEqual(DEPTHS);
     const live = await page.request.get('/api/settings').then(r => r.json());
-    await expect(select).toHaveValue(live.integrations.general_webdav.options.directory_depth || 'current');
+    const stored = live.integrations.general_webdav.options;
+    await expect(select).toHaveValue(stored.directory_depth || 'current');
+    await expect(card.locator('[data-setting="webdav_max_files"]')).toHaveValue(String(stored.max_files ?? 10000));
+    // No limit (the canonical 0, and the default) is the empty field reading
+    // "No limit" -- never a number of seconds.
+    const scan = card.locator('[data-setting="webdav_collection_scan_timeout_seconds"]');
+    await expect(scan).toHaveValue(stored.collection_scan_timeout_seconds ? String(stored.collection_scan_timeout_seconds) : '');
+    await expect(scan).toHaveAttribute('placeholder', 'No limit');
     // The cell is the canonical bordered tuning cell its peers use.
     const sameCell = await page.evaluate(() => {
       const own = document.querySelector('[data-executor-tuning="webdav"] .dp-settings-field');
@@ -181,6 +203,59 @@ test('Directory Depth is one intelligible control in a bordered tuning cell, rea
     const overflow = await card.evaluate(node => node.scrollWidth - node.clientWidth);
     expect(overflow).toBeLessThanOrEqual(1);
   }
+});
+
+test('the WebDAV relationship is outlined only while all three cells fit together', async ({page}) => {
+  await isolateExternalFonts(page);
+  await page.setViewportSize({width: 1440, height: 900});
+  await openTab(page, 'downloads');
+  const card = page.locator('#view-settings [data-executor-tuning="webdav"]');
+  await card.locator('.dp-settings-disclosure').click();
+  const grid = card.locator('.dp-settings-tuning-grid');
+  const group = grid.locator('.dp-settings-tuning-group');
+  const facts = () => group.evaluate(node => ({
+    rows: new Set(Array.from(node.querySelectorAll('.dp-settings-field'),
+      cell => Math.round(cell.getBoundingClientRect().top))).size,
+    outline: parseFloat(getComputedStyle(node).outlineWidth),
+  }));
+  expect(await facts()).toEqual({rows: 1, outline: 1});
+  // Region widths around the group's own minimum (two 160px cells, one 236px
+  // selector cell, two gaps = 588px): whole and outlined at or above it,
+  // split and NOT outlined below it -- never an outline across two rows.
+  for (const [width, whole] of [[700, true], [588, true], [587, false], [420, false]]) {
+    await grid.evaluate((node, value) => { node.style.width = `${value}px`; }, width);
+    const measured = await facts();
+    expect(measured.rows === 1, `rows at ${width}px`).toBe(whole);
+    expect(measured.outline > 0, `outline at ${width}px`).toBe(whole);
+  }
+  // The selector keeps its whole selector lane even when split.
+  const selectorCell = await grid.locator('select[data-setting="webdav_directory_depth"]')
+    .evaluate(node => node.closest('.dp-settings-field').getBoundingClientRect().width);
+  expect(selectorCell).toBeGreaterThanOrEqual(235.5);
+  await grid.evaluate(node => { node.style.width = ''; });
+});
+
+test('the WebDAV cells carry no geometry of their own', async ({page}) => {
+  await isolateExternalFonts(page);
+  await page.setViewportSize({width: 1440, height: 900});
+  await openTab(page, 'downloads');
+  for (const id of ['direct', 'webdav']) {
+    await page.locator(`[data-executor-tuning="${id}"] .dp-settings-disclosure`).click();
+  }
+  // The shared grammar, read off the rendered style: the WebDAV selector cell
+  // and File Allocation's have the same selector lane minimum; its number
+  // cells take its set's ordinary minimum, like any other 3-cell set.
+  const minimums = await page.evaluate(() => Object.fromEntries(
+    ['aria2_file_allocation', 'webdav_directory_depth', 'webdav_max_files', 'webdav_collection_scan_timeout_seconds']
+      .map(key => [key, getComputedStyle(document.querySelector(`[data-setting="${key}"]`)
+        .closest('.dp-settings-field')).minWidth])));
+  expect(minimums).toEqual({aria2_file_allocation: '236px', webdav_directory_depth: '236px',
+                            webdav_max_files: '160px', webdav_collection_scan_timeout_seconds: '160px'});
+  const groupStyle = await page.evaluate(() => ['direct', 'webdav'].map(id => {
+    const style = getComputedStyle(document.querySelector(`[data-executor-tuning="${id}"] .dp-settings-tuning-group`));
+    return [style.display, style.flexWrap, style.outlineOffset, style.borderRadius, style.outlineColor];
+  }));
+  expect(groupStyle[1]).toEqual(groupStyle[0]);
 });
 
 test('the open Directory Depth menu shows every choice whole', async ({page}) => {
@@ -260,7 +335,9 @@ test.describe.serial('Directory Depth persists through the canonical integration
   test.afterAll(async ({request}) => {
     if (!original) return;
     await request.patch(`/api/integrations/${PROVIDER}/configuration`,
-      {data: {options: {directory_depth: original.directory_depth || 'current'}}});
+      {data: {options: {directory_depth: original.directory_depth || 'current',
+                        max_files: original.max_files ?? 10000,
+                        collection_scan_timeout_seconds: original.collection_scan_timeout_seconds ?? 0}}});
   });
 
   test('a choice commits through the WebDAV integration scope, never a page-level save', async ({page}) => {
@@ -286,6 +363,48 @@ test.describe.serial('Directory Depth persists through the canonical integration
     await expect(select).toHaveValue(wanted);
     expect(writes.filter(write => write !== `PATCH /api/integrations/${PROVIDER}/configuration`)).toEqual([]);
     await expect(page.locator('#view-settings [data-action="save"]')).toHaveCount(0);
+  });
+
+  test('Maximum Files and Collection Scan Timeout commit at changed blur through the same scope', async ({page}) => {
+    await isolateExternalFonts(page);
+    const writes = [];
+    page.on('request', request => {
+      if (['PATCH', 'PUT'].includes(request.method()) && request.url().includes('/api/')) {
+        writes.push(`${request.method()} ${new URL(request.url()).pathname}`);
+      }
+    });
+    await openTab(page, 'downloads');
+    const card = page.locator('#view-settings [data-executor-tuning="webdav"]');
+    await card.locator('.dp-settings-disclosure').click();
+    for (const [key, option, wanted] of [
+      ['webdav_max_files', 'max_files', (original.max_files ?? 10000) === 250 ? 251 : 250],
+      ['webdav_collection_scan_timeout_seconds', 'collection_scan_timeout_seconds',
+       (original.collection_scan_timeout_seconds ?? 0) === 45 ? 46 : 45],
+    ]) {
+      const field = card.locator(`[data-setting="${key}"]`);
+      const written = page.waitForResponse(response => response.request().method() === 'PATCH'
+        && new URL(response.url()).pathname === `/api/integrations/${PROVIDER}/configuration`, {timeout: 15000});
+      await field.fill(String(wanted));
+      await field.blur();
+      const accepted = await (await written).json();
+      expect(accepted.options[option], key).toBe(wanted);
+      await expect(field).toHaveValue(String(wanted));
+    }
+    // Emptying the timeout is No limit: it commits the canonical 0 and the
+    // field reads "No limit" again, never "0".
+    const scan = card.locator('[data-setting="webdav_collection_scan_timeout_seconds"]');
+    const cleared = page.waitForResponse(response => response.request().method() === 'PATCH'
+      && new URL(response.url()).pathname === `/api/integrations/${PROVIDER}/configuration`, {timeout: 15000});
+    await scan.fill('');
+    await scan.blur();
+    const accepted = await (await cleared).json();
+    expect(JSON.parse((await cleared).request().postData())).toEqual(
+      {options: {collection_scan_timeout_seconds: 0}});
+    expect(accepted.options.collection_scan_timeout_seconds).toBe(0);
+    await expect(scan).toHaveValue('');
+    await expect(scan).toHaveAttribute('placeholder', 'No limit');
+    expect(await card.innerText()).not.toMatch(/\b0 seconds\b/);
+    expect(writes.filter(write => write !== `PATCH /api/integrations/${PROVIDER}/configuration`)).toEqual([]);
   });
 });
 

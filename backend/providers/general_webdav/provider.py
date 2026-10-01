@@ -23,9 +23,10 @@ The alias is request syntax, never a wire transport: everything this provider
 names is an ordinary ``http``/``https`` address. The server's own answer,
 through core-run discovery, classifies the path: a file becomes one ordinary
 candidate owned by this provider; a collection -- listed to the configured
-``DiscoveryDepth`` -- has its regular files frozen into the existing neutral
-file manifest, never re-listed on observation or retry, each member an
-ordinary ``http``/``https`` request that knows nothing of WebDAV.
+``DiscoveryDepth`` and within the configured ``DiscoveryLimits`` -- has its
+regular files frozen into the existing neutral file manifest, never re-listed
+on observation or retry, each member an ordinary ``http``/``https`` request
+that knows nothing of WebDAV.
 
 This provider opens no connection, lists nothing, holds no credential and
 decides no trust: discovery is core's, the transport belongs to execution, and
@@ -37,7 +38,7 @@ from transfers.applicability import ProviderApplicability
 from transfers.errors import Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import safe_name
 from transfers.models import (
-    Capability, DiscoveryDepth, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod,
+    Capability, DiscoveryDepth, DiscoveryLimits, DiscoveryRequest, Endpoint, FileManifest, FileManifestEntry, InputMethod,
     IntegrationDescriptor, Ownership, ProviderObservation, ProviderResource, RemoteObjectKind, ResolutionResult,
     ResourceState, SourceEntry, SourceIdentity, TransferCandidate, TransferRequest,
 )
@@ -67,8 +68,9 @@ class GeneralWebdavProvider:
         request_types=frozenset({*_ALIASES, *_PLAIN}),
     )
 
-    def __init__(self, depth: DiscoveryDepth = DiscoveryDepth.CURRENT):
+    def __init__(self, depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits()):
         self.depth = depth
+        self.limits = limits
 
     def applicability_for(self, request: TransferRequest) -> ProviderApplicability:
         """An alias is this provider's alone; a slash-terminated plain URL is
@@ -145,9 +147,10 @@ class GeneralWebdavProvider:
         address, _host = self._checked(request)
         scheme = urlsplit(address).scheme
         # The server proves what the path is; a collection is listed to the
-        # configured depth (a file ignores it).
+        # configured depth and within the configured limits (a file ignores
+        # both).
         return ResolutionResult(ResourceState.PREPARING, discovery=DiscoveryRequest(
-            Endpoint(scheme, address), _ACCEPTED_INPUT, depth=self.depth))
+            Endpoint(scheme, address), _ACCEPTED_INPUT, depth=self.depth, limits=self.limits))
 
     async def resolve_discovered(self, request: TransferRequest, discovered) -> ResolutionResult:
         """A path the server answered without WebDAV is declined for a plain

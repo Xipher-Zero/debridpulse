@@ -8,9 +8,9 @@ discovered directory, never how a protocol expresses it:
     DiscoveryDepth.UNLIMITED    every reachable subdirectory
 
 It replaces the binary ``recursive`` flag (one fact, one representation).
-rsync -- the existing whole-tree consumer -- is translated mechanically to
-UNLIMITED and must behave exactly as before; a flat discovery is still exactly
-the call it always was. Depth is enumeration policy only: it never reaches a
+rsync -- the existing whole-tree consumer -- asks for UNLIMITED by default and
+behaves exactly as before (its finite depths: test_v113_rsync_discovery_depth);
+a flat discovery is still exactly the call it always was. Depth is enumeration policy only: it never reaches a
 candidate, an executor's execution work, continuation or materialization.
 """
 from __future__ import annotations
@@ -68,7 +68,7 @@ def test_depth_never_reaches_a_candidate_or_execution_work():
         assert not any("depth" in name or "recursive" in name for name in names), model
 
 
-# ── rsync: mechanically the UNLIMITED consumer; behavior unchanged ────────────
+# ── rsync: UNLIMITED by default; behavior unchanged ──────────────────────────
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("url", ["rsync://h.example/pub/tree", "rsync://h.example/pub/tree/",
@@ -77,25 +77,6 @@ async def test_rsync_still_asks_for_the_whole_tree(url):
     from providers.general_rsync.provider import GeneralRsyncProvider
     result = await GeneralRsyncProvider().resolve(TransferRequest(url.split(":", 1)[0], url))
     assert result.discovery.depth == _depth().UNLIMITED
-
-
-@pytest.mark.asyncio
-async def test_rsync_refuses_a_finite_depth_before_any_listing(tmp_path):
-    """rsync has no finite-depth translation in this task: a bounded request
-    is refused outright rather than answered with a whole or flat tree."""
-    from executors.rsync.executor import RsyncConfiguration, RsyncExecutor
-    from transfers.errors import Category, TransferError
-    from transfers.models import ExecutionSubject
-
-    async def authorize(_handle, _action):
-        return True
-
-    executor = RsyncExecutor(RsyncConfiguration(str(tmp_path), str(tmp_path / "rt")), authorize)
-    candidate = TransferCandidate("tree", (Endpoint("rsync", "rsync://h.example/pub/tree"),),
-                                  accepted_input_methods=(InputMethod.USERNAME_PASSWORD,), request_kind="rsync")
-    with pytest.raises(TransferError) as raised:
-        await executor.discover(ExecutionSubject.of(candidate), depth=_depth().of(1))
-    assert raised.value.error.category == Category.UNSUPPORTED_CAPABILITY
 
 
 @pytest.mark.asyncio

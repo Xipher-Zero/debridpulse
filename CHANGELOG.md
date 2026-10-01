@@ -74,6 +74,22 @@
   modification times are never treated as content evidence. Recent Items, Downloads and Details keep the
   WebDAV origin while Details' Route History still shows the HTTP(S) provider and engine that delivered
   each file. Disabling WebDAV follows the Network Sources group exactly like its peers.
+- **WebDAV Maximum Files and Collection Scan Timeout.** The WebDAV Transfer Method card is now one
+  three-control relationship group of the shared tuning cards: Directory Depth, **Maximum Files** (how many
+  files one folder may hold, 1–10,000, default 10,000) and **Collection Scan Timeout** (how long finding a
+  folder's files, subfolders included, may take in total: **No limit** by default, exactly as before, or
+  10–3,600 seconds; every listing request keeps its existing 20-second timeout either way). A folder with
+  more files than the maximum fails as too large -- it is never added in part -- and the existing
+  10,000-entry listing bound still applies whatever is configured; a scan past a configured timeout fails
+  through the existing timeout failure. Both are WebDAV's own discovery policy, carried to the reader as the neutral `DiscoveryLimits` of
+  its discovery request; neither is a transfer, retry or lifecycle setting.
+- **rsync Directory Depth.** Downloads → Transfer Method Settings → rsync has a standalone **Directory
+  Depth** control, centred beneath its unchanged transfer and timeout groups, with the same choices as
+  WebDAV and **All subdirectories** by default -- exactly the whole-tree behavior every existing
+  installation has. It is the rsync source's own setting (`integrations.general_rsync`), issued as the
+  neutral discovery depth; the rsync engine realizes a finite depth with rsync's own sender-side exclude
+  of the directories below it, so deeper folders are never opened, listed or downloaded -- over an rsync
+  server and over SSH alike.
 - **Post-probe provider fallthrough** (neutral). A provider whose claim on a request is conditional
   (`ProviderApplicability.conditional`) competes first within its applicability class and may decline the
   request (`ResolutionResult.declined`) only on positive evidence from its own core-run discovery
@@ -95,9 +111,13 @@
   follows a redirect on its own): a link that redirects to a signed or CDN address now downloads, the
   sign-in goes only to its own server, a provider's own headers stay with their own origin, and a server
   a link moved to that asks for its own sign-in gets its own question.
-- **Transfer Method selectors read their values whole.** Every Transfer Method Settings selector fills its
-  cell up to one shared bound, and a settings group that holds a selector keeps its columns wide enough
-  for it -- File Allocation's values included -- wrapping onto further rows instead of cutting text.
+- **Transfer Method selectors read their values whole, and every relationship keeps its outline.** Every
+  Transfer Method Settings selector fills its cell up to one shared bound, and the cell holding it -- File
+  Allocation's included -- keeps a lane wide enough for it, while its neighbours keep their own narrower
+  lanes. A relationship group (for example Network Sources' connection, transfer-behavior and
+  local-handling groups) wraps as a whole and keeps its outline whenever that group itself fits on one row,
+  however many rows the whole set needs; only a group too wide for the card at that width splits, and only
+  its own outline withdraws.
 - **Origin provider presentation** (`origin_provider_id` / `origin_provider_name`), derived from the root
   requests' durable route truth beside the unchanged current, delivering, route-attempt and execution
   provider facts. The compact provider chip names the origin when the backend projects one.

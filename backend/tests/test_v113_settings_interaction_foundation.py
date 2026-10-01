@@ -743,29 +743,37 @@ def test_the_tuning_grid_is_the_one_fixed_set_grammar():
     """DP 1.0.13 Settings consolidation: ONE grammar for every fixed tuning set.
 
     The region is divided into equal, invisible lanes spanning the usable
-    width -- one lane per cell -- and a bounded card is centred in each. A set
-    contributes only its own CARDINALITY, so no region names a column count, a
-    breakpoint matrix or a geometry of its own, and the per-set card width
-    falls out of cardinality alone. When the set can no longer hold its lanes
-    at their accepted minimum the lane count drops and the cells left-fill the
-    rows that remain."""
+    width -- one lane per cell, each lane's share at full capacity derived from
+    the set's own CARDINALITY -- and a bounded card is centred in each. Below
+    that capacity a lane gives up width down to its own minimum and then the
+    set wraps, left-filling the rows that remain. A lane's minimum is a fact
+    about its OWN cell (a selector cell needs a selector lane); no region names
+    a column count, a breakpoint matrix or a geometry of its own."""
     owners = [p.name for p in MAINTAINED_CSS
               if "dp-settings-tuning-grid" in p.read_text(encoding="utf-8")]
     assert owners == ["ui-settings-page.css"], owners
     grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
-    assert "display: grid" in grid
-    assert "grid-template-columns: repeat(auto-fill, minmax(" in grid
-    assert "var(--dp-tuning-lane-min)" in grid and "var(--dp-tuning-lanes)" in grid
+    assert "display: flex" in grid and "flex-wrap: wrap" in grid
+    assert "justify-content: flex-start" in grid, "rows no longer left-fill"
     assert "justify-content: center" not in grid, "sparse-row centring returned"
+    assert "grid-template-columns" not in grid, "a whole-grid lane track returned"
+    assert ("--dp-tuning-share: calc((100cqi - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap)) "
+            "/ var(--dp-tuning-lanes));") in grid
     # Cardinality is declared by the SET, and nothing else varies per set.
-    for lanes in ("4", "5", "7"):
-        assert f'.dp-settings-tuning-grid[data-tuning-lanes="{lanes}"]' in SETTINGS_CSS, lanes
-    # A cell is a cell wherever it sits -- directly in a lane, or inside a
-    # relationship group -- so the rule is a descendant one.
+    for lanes in ("1", "2", "3", "4", "5", "6", "7"):
+        assert f'.dp-settings-tuning-grid[data-tuning-lanes="{lanes}"] {{ --dp-tuning-lanes: {lanes};' in SETTINGS_CSS
+    # A cell is a cell wherever it sits -- directly in the region, or inside a
+    # relationship group -- so the rule is a descendant one. The cell IS its
+    # lane: from its own minimum up to the equal share, its bounded card
+    # centred in the lane's slack.
     cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid .dp-settings-field {")
-    assert "max-width: var(--dp-tuning-card-max)" in cell, \
+    assert "--dp-tuning-lane: max(var(--dp-tuning-cell-min), var(--dp-tuning-share));" in cell
+    assert "--dp-tuning-card: min(var(--dp-tuning-lane), var(--dp-tuning-card-max));" in cell
+    assert "flex: 1 1 var(--dp-tuning-cell-min);" in cell and "min-width: var(--dp-tuning-cell-min);" in cell
+    assert "max-width: var(--dp-tuning-card);" in cell, \
         "the card is not bounded, so it stretches edge to edge in its lane"
-    assert "margin-inline: auto" in cell, "the card is not centred in its lane"
+    assert "margin-inline: calc((var(--dp-tuning-lane) - var(--dp-tuning-card)) / 2);" in cell, \
+        "the card is not centred in its lane"
     assert "justify-items: center" in cell
     assert "text-align: center" in cell
     control = rule(SETTINGS_CSS,
@@ -777,46 +785,66 @@ def test_the_tuning_grid_is_the_one_fixed_set_grammar():
     assert "alldebrid" not in grid.lower() and "alldebrid" not in cell.lower()
 
 
-def test_a_relationship_group_never_draws_a_broken_outline():
-    """DP 1.0.13: adjacent cells may carry a light shared outline, and ONLY at
-    a width where their whole span demonstrably fits one row. Below that the
-    group is not a layout box at all, so its cells wrap as ordinary cells and
-    the relationship simply is not drawn -- never split across two rows.
+def test_a_selector_is_a_requirement_of_its_own_lane_never_of_the_grid():
+    """File Allocation's values read whole because ITS lane is never narrower
+    than one selector cell. That requirement stays with the cell: no sibling
+    lane, and nothing about the set as a whole, inherits it."""
+    selector_cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid .dp-settings-field:has(select.input) {")
+    assert "--dp-tuning-cell-min: var(--dp-tuning-select-lane);" in selector_cell
+    # The only selector-presence condition in the stylesheet is that cell's own.
+    presence = re.findall(r"[^{}\n]*:has\(select[^{}]*\{", SETTINGS_CSS)
+    assert presence == ["#view-settings .dp-settings-tuning-grid .dp-settings-field:has(select.input) {"], presence
+    assert ".dp-settings-tuning-grid:has(" not in SETTINGS_CSS
+    assert ".dp-settings-tuning-group:has(" not in SETTINGS_CSS
 
-    The decision is a container query on the collection's own inline size.
+
+def test_a_relationship_group_never_draws_a_broken_outline():
+    """DP 1.0.13: adjacent cells may carry a light shared outline, drawn exactly
+    while THAT group is whole on one row. The group wraps as one unit, so it is
+    whole whenever the region can hold its own minimum -- the sum of its
+    members' lane minimums, declared from its composition. Below that it splits
+    and its outline (alone) withdraws; how many rows the set spans, or whether
+    another cell holds a selector, never decides it.
+
     Nothing measures geometry in JavaScript and nothing is re-parented."""
     group = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-group {")
-    assert "display: contents" in group, "the group is a layout box by default"
+    assert "display: contents" not in group and "subgrid" not in group
+    assert "display: flex" in group and "flex-wrap: wrap" in group
+    assert "flex: var(--dp-tuning-span) 1 min(100cqi, var(--dp-tuning-group-min));" in group
+    assert "min-width: min(100cqi, var(--dp-tuning-group-min));" in group
+    assert "max-width: var(--dp-tuning-group-max);" in group
+    assert "(var(--dp-tuning-span) - var(--dp-tuning-selectors)) * var(--dp-tuning-lane-min)" in group
+    assert "var(--dp-tuning-selectors) * var(--dp-tuning-select-lane)" in group
+    # The outline's width IS the group's own fit predicate.
+    assert ("outline: clamp(0px, (100cqi - var(--dp-tuning-group-min) + 1px) * 1000, 1px) solid "
+            "var(--dp-tuning-relation-color);") in group
+    assert "outline-offset:" in group
+    assert "border:" not in group, "an outline that takes layout space is a border"
     grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
     assert "container-type: inline-size" in grid
     assert "container-name: dp-tuning" in grid
-    # The outline takes no space, and the box it is painted on owns no track:
-    # a subgrid puts the members in the REGION's own lanes.
-    outline = rule(SETTINGS_CSS,
-                   "#view-settings .dp-settings-tuning-grid[data-tuning-lanes] .dp-settings-tuning-group {")
-    assert "grid-template-columns: subgrid" in outline
-    assert "outline:" in outline and "outline-offset:" in outline
-    assert "border:" not in outline, "an outline that takes layout space is a border"
-    # A span declares how many lanes it relates, and nothing else.
-    for span in ("2", "3"):
-        marker = f'.dp-settings-tuning-group[data-tuning-span="{span}"]'
-        assert marker in SETTINGS_CSS, span
-        rule_body = SETTINGS_CSS.split(marker + " {", 1)[1].split("}", 1)[0]
-        assert rule_body.strip() == f"--dp-tuning-span: {span};", span
-    # One threshold per CARDINALITY and lane kind -- the width at which that
-    # set still holds every one of its lanes (ordinary lanes, or the wider
-    # lanes of a set holding a selector), which is the only state in which
-    # every group is provably contiguous -- never one per column count.
-    assert SETTINGS_CSS.count("@container dp-tuning (min-width:") == 6
-    for lanes in ("4", "5", "7"):
-        assert SETTINGS_CSS.count(f'[data-tuning-lanes="{lanes}"]:not(:has(select.input)) .dp-settings-tuning-group') == 1
-        assert SETTINGS_CSS.count(f'[data-tuning-lanes="{lanes}"]:has(select.input) .dp-settings-tuning-group') == 1
-    # No owner measures a cell, a row or a group in JavaScript.
+    # No whole-set threshold remains: visibility is never a container query on
+    # the region, a selector-presence condition, or a lane count.
+    assert "@container dp-tuning" not in SETTINGS_CSS
+    assert ":not(:has(select" not in SETTINGS_CSS
+    # A group declares how many lanes it relates and how many are selectors,
+    # and nothing else.
+    for marker, name in (("data-tuning-span", "--dp-tuning-span"), ("data-tuning-selectors", "--dp-tuning-selectors")):
+        for value in (("2", "3") if marker == "data-tuning-span" else ("1", "2", "3")):
+            selector = f'.dp-settings-tuning-group[{marker}="{value}"]'
+            assert selector in SETTINGS_CSS, (marker, value)
+            body = SETTINGS_CSS.split(selector + " {", 1)[1].split("}", 1)[0]
+            assert body.strip() == f"{name}: {value};", (marker, value)
+    # The composer declares the composition from the cells it was given.
     page = SETTINGS_JS
+    composer = block(page, "function tuningGroup(")
+    assert 'data-tuning-selectors="${selectors}"' in composer
+    assert "members.filter(markup => /<select\\b/.test(markup)).length" in composer
+    # No owner measures a cell, a row or a group in JavaScript.
     for measurement in ("getBoundingClientRect", "offsetWidth", "clientWidth",
                         "getComputedStyle", "ResizeObserver"):
         assert measurement not in block(page, "function tuningCells("), measurement
-        assert measurement not in block(page, "function tuningGroup("), measurement
+        assert measurement not in composer, measurement
 
 
 # --- Items 6/9: one canonical persistence owner ----------------------------

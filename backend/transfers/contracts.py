@@ -6,7 +6,7 @@ from typing import Protocol, runtime_checkable
 from transfers.applicability import ProviderApplicability
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CleanupDirective, DiscoveryDepth, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -276,10 +276,14 @@ class RemoteDiscovery(Protocol):
     normalized ``TransferError`` for a definitive failure. The executor
     translates the neutral depth into its transport and enforces it itself; one
     that cannot enumerate exactly that depth raises ``UNSUPPORTED_CAPABILITY``
-    rather than answer with more or less."""
+    rather than answer with more or less. ``limits`` (``DiscoveryLimits``) are
+    enforced the same way: a directory past its file limit, or an enumeration
+    past its time limit, fails -- never answers with a partial listing -- and
+    an executor that cannot enforce a requested limit refuses it."""
 
     async def discover(self, subject: ExecutionSubject, submitted: SubmittedInput | None = None, *,
-                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT) -> DiscoveryResult | InputRequirement: ...
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT,
+                       limits: DiscoveryLimits = DiscoveryLimits()) -> DiscoveryResult | InputRequirement: ...
 
 
 @runtime_checkable

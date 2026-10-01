@@ -36,7 +36,7 @@ from transfers.errors import Category, Domain, NormalizedError, Retryability, St
 from transfers.input_required import SubmittedInput, auth_required, server_identity_required, username_password
 from transfers.requests import auth_scope
 from transfers.models import (
-    ArtifactFingerprint, DiscoveredEntry, DiscoveryDepth, DiscoveryResult, ExecutionActivity, RemoteObjectKind, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ArtifactFingerprint, DiscoveredEntry, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionActivity, RemoteObjectKind, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionState, ExecutionSnapshot, ExecutorCapabilities, ExecutorClaim, ExecutorHealth,
     ExecutorRuntimeCapability, ExecutorRuntimeControlResult, FingerprintKind, InputFactName, InputField,
     InputMethod, InputReason, InputRequirement, IntegrationDescriptor, MaterializationKind, MaterializationResult,
@@ -641,7 +641,7 @@ class Aria2Executor:
     }
 
     async def discover(self, subject, submitted: SubmittedInput | None = None, *,
-                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT):
+                       depth: DiscoveryDepth = DiscoveryDepth.CURRENT, limits: DiscoveryLimits = DiscoveryLimits()):
         """Read-only classification of one FTP or SFTP path before any candidate exists.
 
         The same destination validation, egress route and access decisions
@@ -651,16 +651,17 @@ class Aria2Executor:
         same-host passive route, anonymously unless a login was supplied. A
         regular file is reported as one file; a directory as its immediate
         regular files -- an FTP or SFTP tree is never listed here (any deeper
-        ``depth`` is refused). HTTP(S) is classified and listed through its own
-        collection protocol, WebDAV (``_http_discovery``), at any depth."""
+        ``depth`` is refused, and so are ``limits`` it does not enforce). HTTP(S)
+        is classified and listed through its own collection protocol, WebDAV
+        (``_http_discovery``), at any depth and within the requested limits."""
         candidate = subject.candidate
         endpoint = self._endpoint(candidate)
         if endpoint is None or InputMethod.USERNAME_PASSWORD not in candidate.accepted_input_methods:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         if endpoint.scheme in SAMPLED_FINGERPRINT_SCHEMES:
-            result = await self._http_discovery(candidate, endpoint, submitted, depth)
+            result = await self._http_discovery(candidate, endpoint, submitted, depth, limits)
             return result if isinstance(result, InputRequirement) else self._discovered(result)
-        if depth != DiscoveryDepth.CURRENT or endpoint.scheme not in {"ftp", "sftp"}:
+        if depth != DiscoveryDepth.CURRENT or limits != DiscoveryLimits() or endpoint.scheme not in {"ftp", "sftp"}:
             raise self._failure(Category.UNSUPPORTED_CAPABILITY, Stage.RESOLUTION, domain=Domain.REQUEST)
         lan = self._private_lan(candidate)
         try:
@@ -698,14 +699,16 @@ class Aria2Executor:
             )
         return self._discovered(result)
 
-    async def _http_discovery(self, candidate, endpoint, submitted: SubmittedInput | None, depth: DiscoveryDepth):
+    async def _http_discovery(self, candidate, endpoint, submitted: SubmittedInput | None, depth: DiscoveryDepth,
+                              limits: DiscoveryLimits = DiscoveryLimits()):
         """HTTP(S) classification and listing through WebDAV, read-only.
 
         The same destination validation, redirect control and private-LAN
         grant as HTTP(S) evidence (``services.artifact_sampling``): anonymous
         unless a username/password answer was supplied, and that answer is
-        sent only to the origin it was given for. The neutral ``depth`` is
-        translated and enforced by the reader, never by the server."""
+        sent only to the origin it was given for. The neutral ``depth`` and
+        ``limits`` are translated and enforced by the reader, never by the
+        server; a limit left unset keeps the reader's own bound."""
         if endpoint.headers:
             # Discovery carries no provider-issued capability of any kind.
             raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
@@ -715,8 +718,13 @@ class Aria2Executor:
             if submitted.method != InputMethod.USERNAME_PASSWORD or not username or not password:
                 raise self._failure(Category.SECURITY_POLICY_REJECTED, Stage.RESOLUTION, domain=Domain.SECURITY)
         start = self._start_address(endpoint.address, submitted)
+        bounded = {}
+        if limits.max_files is not None:
+            bounded["max_files"] = limits.max_files
+        if limits.timeout_seconds is not None:
+            bounded["scan_timeout_seconds"] = limits.timeout_seconds
         result = await webdav_discovery(
-            start, depth=depth, username=username, password=password,
+            start, depth=depth, username=username, password=password, **bounded,
             credential_scope=(submitted.scope or auth_scope(endpoint.address)) if submitted is not None else None,
             on_authenticated=_acceptance(submitted), **self._granted_at(candidate, endpoint.address, start))
         if isinstance(result, AccessRequired):

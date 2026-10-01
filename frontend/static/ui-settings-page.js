@@ -58,6 +58,7 @@
   const policyOf = s => s?.transfer_policy || {};
   const usenetOf = s => s?.integrations?.usenet?.options || {};
   const rsyncOf = s => s?.integrations?.rsync?.options || {};
+  const rsyncSourceOf = s => s?.integrations?.general_rsync?.options || {};
   const webdavOf = s => s?.integrations?.general_webdav?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
@@ -98,7 +99,8 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet', 'rsync', 'general_webdav']);
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'aria2', 'usenet', 'rsync', 'general_rsync',
+    'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
     // Services
@@ -131,9 +133,16 @@
                                        commit: 'immediate'},
     rsync_connection_timeout_seconds: {scope: 'integration:rsync', option: 'connection_timeout_seconds'},
     rsync_transfer_timeout_seconds: {scope: 'integration:rsync', option: 'transfer_timeout_seconds'},
+    // The rsync SOURCE's discovery policy: the provider's namespace, never the
+    // executor's transport tuning.
+    rsync_directory_depth: {scope: 'integration:general_rsync', option: 'directory_depth'},
 
     // Downloads -> WebDAV tuning
     webdav_directory_depth: {scope: 'integration:general_webdav', option: 'directory_depth'},
+    webdav_max_files: {scope: 'integration:general_webdav', option: 'max_files'},
+    // An empty Collection Scan Timeout IS the canonical 0: no limit.
+    webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',
+                                             option: 'collection_scan_timeout_seconds', blank: 0},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -777,7 +786,12 @@
 
   function tuningGroup(...cells) {
     const members = cells.flat();
-    return `<div class="dp-settings-tuning-group" data-tuning-span="${members.length}">${members.join('')}</div>`;
+    // A group declares its composition -- how many cells, and how many of them
+    // are selectors -- exactly as a set declares its cardinality: from the
+    // cells it was given, never measured.
+    const selectors = members.filter(markup => /<select\b/.test(markup)).length;
+    return `<div class="dp-settings-tuning-group" data-tuning-span="${members.length}"`
+      + ` data-tuning-selectors="${selectors}">${members.join('')}</div>`;
   }
 
   function tuningToggle(key, label, detail, value, options = {}) {
@@ -1383,11 +1397,28 @@
   // Download Safety and Recovery. Operator-facing labels name capabilities,
   // never daemon implementations.
 
+  /* How far below a submitted folder its files are collected -- ONE operator
+   * vocabulary for every source that offers it. The choices are the backend's
+   * own values (integrations.definition.DIRECTORY_DEPTHS); nothing here names
+   * how a server is asked. Each source's provider owns its own setting and
+   * default. */
+  const DIRECTORY_DEPTHS = Object.freeze([
+    ['current', 'Current directory only'],
+    ['1', '1 subdirectory level'],
+    ['2', '2 subdirectory levels'],
+    ['3', '3 subdirectory levels'],
+    ['all', 'All subdirectories'],
+  ]);
+
   function rsyncTuning(s) {
-    // rsync's own transport behaviour only -- the global limits and retry
-    // policy stay where they already live. Two relationships: how one file is
+    // rsync's own transport behaviour -- the global limits and retry policy
+    // stay where they already live. Two relationships: how one file is
     // transferred, and how long reaching and running a transfer may take.
+    // Beneath them, standing alone, the rsync source's one discovery choice:
+    // a set of its own, so it is centred under the groups rather than joining
+    // their row.
     const options = rsyncOf(s);
+    const source = rsyncSourceOf(s);
     return tuningCells(
       tuningGroup(
         tuningToggle(
@@ -1421,28 +1452,34 @@
           hint: 'How long a running transfer may receive no data before it stops.'
         }),
       ),
+    ) + tuningCells(
+      selectField('rsync_directory_depth', 'Directory Depth', source.directory_depth || 'all', DIRECTORY_DEPTHS,
+        'How far below an rsync folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
     );
   }
 
-  /* WebDAV's one high-leverage tunable: how far below a submitted folder its
-   * files are collected. The choices are the backend's own neutral depth
-   * values (integrations.general_webdav.options.directory_depth); nothing here
-   * names how a server is asked. */
-  const WEBDAV_DIRECTORY_DEPTHS = Object.freeze([
-    ['current', 'Current directory only'],
-    ['1', '1 subdirectory level'],
-    ['2', '2 subdirectory levels'],
-    ['3', '3 subdirectory levels'],
-    ['all', 'All subdirectories'],
-  ]);
-
   function webdavTuning(s) {
-    // One tunable, so one bounded cell and no relationship group.
+    // One relationship: the three answers to "what does DebridPulse collect
+    // from one WebDAV folder" -- how deep it looks, how many files it accepts
+    // and how long the listing may take.
     const options = webdavOf(s);
     return tuningCells(
-      selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',
-        WEBDAV_DIRECTORY_DEPTHS,
-        'How far below a WebDAV folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
+      tuningGroup(
+        selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',
+          DIRECTORY_DEPTHS,
+          'How far below a WebDAV folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
+        input('webdav_max_files', 'Maximum Files', options.max_files ?? 10000, {
+          type: 'number', min: 1, max: 10000,
+          hint: 'The most files one WebDAV folder may hold. A larger folder is not added at all rather than added in part.'
+        }),
+        // 0 is "no limit": shown as the empty field's own "No limit", never as
+        // a number of seconds (COMMIT_FIELDS ``blank``).
+        input('webdav_collection_scan_timeout_seconds', 'Collection Scan Timeout (seconds)',
+          options.collection_scan_timeout_seconds ? options.collection_scan_timeout_seconds : '', {
+          type: 'number', min: 0, max: 3600, placeholder: 'No limit',
+          hint: 'How long finding the files in a WebDAV folder and its subfolders may take in total before the folder is reported unavailable. Leave empty for no limit.'
+        }),
+      ),
     ) + `
       <p class="dp-settings-tuning-footer">
         Every file collected from a WebDAV folder is offered in the usual file
@@ -3102,6 +3139,10 @@
    * rejects it and the persistence owner rolls the control back. */
   function committedValue(key, raw) {
     const field = fieldFor(key);
+    // A control whose empty state stands for one canonical value (``blank``,
+    // e.g. a timeout's "no limit") commits exactly that value when empty.
+    const blank = COMMIT_FIELDS[key]?.blank;
+    if (blank !== undefined && String(raw ?? '').trim() === '') return blank;
     if (field && field.type === 'checkbox') return raw === true || raw === '1';
     if (!field || field.type !== 'number') return String(raw ?? '');
     const parsed = Number(String(raw).trim());
@@ -3161,6 +3202,11 @@
   /* An accepted canonical value in the SIGNATURE shape the control shows, so a
    * boolean namespace value and a checkbox agree about what "unchanged" means. */
   function acceptedValue(key, accepted, draft) {
+    // ...and that canonical value is shown as the empty control again.
+    const blank = COMMIT_FIELDS[key]?.blank;
+    if (blank !== undefined && accepted !== undefined && accepted !== null && String(accepted) === String(blank)) {
+      return '';
+    }
     if (accepted === undefined || accepted === null) return draft;
     if (typeof accepted === 'boolean') return accepted ? '1' : '0';
     return String(accepted);

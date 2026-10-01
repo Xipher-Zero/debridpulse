@@ -1,32 +1,40 @@
 """WebDAV registration and backend-owned configuration."""
-from typing import Literal
+from pydantic import BaseModel, Field, field_validator
 
-from pydantic import BaseModel
-
-from integrations.definition import IntegrationDefinition, IntegrationPresentation
-from transfers.models import DiscoveryDepth
-
-# How far below a submitted folder its files are collected: the folder itself,
-# one to three levels of subfolders, or all of them -- each exactly one neutral
-# discovery depth. A small set, because that is the useful control.
-DIRECTORY_DEPTHS = {
-    "current": DiscoveryDepth.CURRENT,
-    "1": DiscoveryDepth.of(1),
-    "2": DiscoveryDepth.of(2),
-    "3": DiscoveryDepth.of(3),
-    "all": DiscoveryDepth.UNLIMITED,
-}
+from integrations.definition import (
+    DIRECTORY_DEPTHS, DirectoryDepthSetting, IntegrationDefinition, IntegrationPresentation,
+)
+from transfers.models import DiscoveryLimits
 
 
 class GeneralWebdavOptions(BaseModel):
     """The provider's own enumeration policy; the executor owns the transport."""
 
-    directory_depth: Literal["current", "1", "2", "3", "all"] = "current"
+    # How far below a submitted folder its files are collected.
+    directory_depth: DirectoryDepthSetting = "current"
+    # The most files one collection may contain for DebridPulse to accept it;
+    # a larger one fails rather than arriving partly. The default and the
+    # ceiling are the neutral listing bound every discovery already has.
+    max_files: int = Field(default=10_000, ge=1, le=10_000)
+    # How long listing one collection, subfolders included, may take before
+    # it fails as unavailable: 0 is no limit for the scan as a whole (every
+    # listing request keeps its own bound) -- what every collection has always
+    # had -- and a nonzero value (10-3600 seconds) sets that deadline.
+    # Discovery only: never a transfer, retry or lifecycle timeout.
+    collection_scan_timeout_seconds: int = Field(default=0, ge=0, le=3600)
+
+    @field_validator("collection_scan_timeout_seconds")
+    @classmethod
+    def _no_limit_or_bounded(cls, value: int) -> int:
+        if 0 < value < 10:
+            raise ValueError("A collection scan timeout is 0 (no limit) or 10 to 3600 seconds")
+        return value
 
 
 def build(options, environment):
     from providers.general_webdav.provider import GeneralWebdavProvider
-    return GeneralWebdavProvider(depth=DIRECTORY_DEPTHS[options.directory_depth])
+    return GeneralWebdavProvider(depth=DIRECTORY_DEPTHS[options.directory_depth], limits=DiscoveryLimits(
+        max_files=options.max_files, timeout_seconds=options.collection_scan_timeout_seconds or None))
 
 
 definition = IntegrationDefinition(
