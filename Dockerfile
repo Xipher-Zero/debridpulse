@@ -31,18 +31,21 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 #
 # Post-push exact-SHA Container Security qualification (docs/
 # SUPPLY_CHAIN_POLICY.md section 4) found the pinned base digest above
-# already carries fixable HIGH/CRITICAL CVEs in four base-layer packages this
-# Dockerfile never explicitly installs (gzip CVE-2026-41992, libpcre2-8-0
+# already carries fixable HIGH/CRITICAL CVEs in base-layer packages this
+# Dockerfile never explicitly installs: gzip CVE-2026-41992, libpcre2-8-0
 # CVE-2026-86145/CVE-2026-89161, libsqlite3-0 CVE-2026-11822/CVE-2026-11824,
 # perl-base CVE-2026-13221/CVE-2026-42496/CVE-2026-8376/CVE-2026-42497/
-# CVE-2026-48962/CVE-2026-57432/CVE-2026-57433). Re-querying the registry
-# confirmed no newer manifest-list digest is published for this tag yet, so
-# this is a deliberate, NAMED, --only-upgrade of exactly those four packages
-# to whatever the current apt snapshot serves -- not a blanket upgrade of the
-# whole base layer, and not a version pin (Debian's repository is a moving
-# target regardless; see policy section 2). If a future base-digest refresh
-# already carries these fixes, this line becomes a no-op and should be
-# dropped in that same change rather than carried forward indefinitely.
+# CVE-2026-48962/CVE-2026-57432/CVE-2026-57433, and the OpenSSL family
+# (openssl, libssl3t64, openssl-provider-legacy) CVE-2026-75804/
+# CVE-2026-84782, fixed by Trixie security update 3.5.7-1~deb13u3.
+# Re-querying the registry confirmed no newer manifest-list digest is
+# published for this tag yet, so this is a deliberate, NAMED, --only-upgrade
+# of exactly those seven packages to whatever the current apt snapshot serves
+# -- not a blanket upgrade of the whole base layer, and not a version pin
+# (Debian's repository is a moving target regardless; see policy section 2).
+# If a future base-digest refresh already carries these fixes, this line
+# becomes a no-op and should be dropped in that same change rather than
+# carried forward indefinitely.
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/unrar/copyright' \
@@ -54,7 +57,10 @@ RUN printf '%s\n' \
     gzip \
     libpcre2-8-0 \
     libsqlite3-0 \
-    perl-base && \
+    perl-base \
+    openssl \
+    libssl3t64 \
+    openssl-provider-legacy && \
     apt-get install -y --no-install-recommends \
     aria2 \
     rsync \
