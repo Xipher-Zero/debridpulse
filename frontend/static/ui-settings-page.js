@@ -1292,15 +1292,16 @@
       name: 'Real-Debrid',
       configured: s => !!realDebridOf(s).client_id_configured,
       identity: account => account.username,
-      free: account => account.account_type && !account.premium,
     },
     torbox: {
       name: 'TorBox',
       configured: s => !!torBoxOf(s).api_token_configured,
       identity: account => account.email,
-      free: account => account.plan === 0,
     },
   });
+  // Whether a connected account is a standard (free, or lapsed) one: the
+  // neutral account truth the provider publishes, never its plan names.
+  const standardAccount = account => account?.account?.service_class === 'standard';
   const deviceConnections = Object.fromEntries(Object.keys(DEVICE_ACCOUNTS)
     .map(id => [id, {authorization: null, timer: null, account: null}]));
 
@@ -1327,7 +1328,7 @@
   }
 
   function deviceConnectionMarkup(id) {
-    const {name, configured, identity, free} = DEVICE_ACCOUNTS[id];
+    const {name, configured, identity} = DEVICE_ACCOUNTS[id];
     const connection = deviceConnections[id];
     const pending = connection.authorization;
     if (pending) {
@@ -1346,7 +1347,7 @@
     if (configured(state.settings)) {
       const account = connection.account || {};
       const who = identity(account);
-      const line = accountExpiry(id, account) || (free(account) ? 'Free account' : '');
+      const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
       return providerStatusLine(html(line), 'dp-settings-account-expiry')
         + accountIsland(who ? `Connected as ${html(who)}` : `Connected to ${html(name)}`, '',
           `<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-${id}">Disconnect</button>`);

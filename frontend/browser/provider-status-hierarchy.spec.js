@@ -223,7 +223,8 @@ test('each tier label is horizontally centred within the status region', async (
   // the same task.
   const geometry = await page.evaluate(until => {
     document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: [
-      {id: 'alldebrid', name: 'AllDebrid', state: 'healthy', status: {isPremium: true, premiumUntil: until}}]}}));
+      {id: 'alldebrid', name: 'AllDebrid', state: 'healthy', status: {account: {entitlement: 'ready',
+        service_class: 'premium', functional: 'usable', plan: 'Premium', expires_at: until}}}]}}));
     return Array.from(document.querySelectorAll('#provider-status-list .dp-provider-status-tier')).map(tier => {
       const label = tier.querySelector('.dp-provider-status-tier-label');
       // A block label's own box spans the tier, so the RENDERED text is measured.
@@ -265,11 +266,14 @@ test('centring the tier label does not centre the provider rows beneath it', asy
  * neutral premium-tier fact. Each case dispatches the neutral publication and
  * measures in the same task, so no background refresh can interleave. */
 const LATER = () => Math.floor(Date.now() / 1000) + 40 * 86400;
-const EXPIRY = () => new Date(Date.now() + 90 * 86400000).toISOString();
+const EXPIRY = () => Math.floor(Date.now() / 1000) + 90 * 86400;
+// The neutral account truth every account-backed status surface publishes.
+const account = (serviceClass, expiresAt, plan = 'Premium', functional = 'usable') => ({entitlement: 'ready',
+  service_class: serviceClass, functional, plan, expires_at: expiresAt});
 const adAccount = () => ({id: 'alldebrid', name: 'AllDebrid', state: 'healthy',
-  status: {isPremium: true, premiumUntil: LATER()}});
+  status: {account: account('premium', LATER())}});
 const rdAccount = () => ({id: 'realdebrid', name: 'Real-Debrid', state: 'healthy',
-  status: {premium: true, account_type: 'premium', expiration: EXPIRY()}});
+  status: {account: account('premium', EXPIRY())}});
 
 const compose = (page, entries) => page.evaluate(next => {
   document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
@@ -335,7 +339,7 @@ test('several premium accounts: one crown beside one compact line each, no date'
 
 test('no premium account beside Usenet: no row, crown, separator or Premium heading', async ({page}) => {
   await renderWith(page, entries => { delete entries.alldebrid; return entries; });
-  const none = await compose(page, [{...rdAccount(), status: {premium: false, account_type: 'free'}}]);
+  const none = await compose(page, [{...rdAccount(), status: {account: account('standard', null, 'Free')}}]);
   expect(none.visible).toBe(false);
   expect(none.separator).toBe(false);
   expect(none.blocks).toHaveLength(0);
@@ -350,3 +354,156 @@ test('no premium account and no premium tier: Provider Status flows straight to 
     expect(bare.separator).toBe(false);
     expect(bare.flow).toEqual(['Provider Status', 'Network Sources']);
   });
+
+/* DP 1.0.13 -- an ACCOUNT-tiered provider's tier, crown and colour follow its
+ * current account's neutral facts (status.account), observed live from its own
+ * status endpoint. The renderer names no provider; the endpoints are stubbed so
+ * every case is deterministic and leaves no backend state behind. */
+
+const accountTiered = () => ({
+  enabled: true, priority: 0, name: 'TorBox', kind: 'provider', configured: true,
+  presentation: {status_name: 'TorBox', premium: true, status_endpoint: '/integration-status/torbox',
+    static_status: null, display_order: 12, status_group: null, status_group_label: null,
+    status_tier: 'premium_service', status_tier_label: 'Premium Services',
+    standard_status_tier: 'general_family', standard_status_tier_label: 'Standard Services'},
+  options: {},
+});
+
+async function liveStatus(page, status) {
+  await page.unroute('**/api/integration-status/torbox').catch(() => {});
+  await page.route('**/api/integration-status/torbox', route =>
+    route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(status)}));
+}
+
+const panel = page => page.evaluate(() => {
+  const footer = document.querySelector('#sidebar .sidebar-footer');
+  const shown = node => !!node && node.getClientRects().length > 0;
+  const rows = [...document.querySelectorAll('#provider-status-list [data-provider-id], #provider-status-list [data-provider-group] .conn-row')];
+  return {
+    flow: [...footer.querySelectorAll('#premium-row, .dp-provider-status-tier-label, .dp-provider-status-row, .dp-provider-status-group-row')]
+      .filter(shown).map(node => node.id === 'premium-row' ? 'CROWN'
+        : node.classList.contains('dp-provider-status-tier-label') ? `# ${node.textContent.trim()}` : node.textContent.trim()),
+    tiers: [...document.querySelectorAll('#provider-status-list .dp-provider-status-tier')].map(tier => ({
+      id: tier.dataset.providerTier, premium: tier.hasAttribute('data-provider-tier-premium'),
+      rows: [...tier.querySelectorAll('.conn-row')].map(row => row.textContent.trim())})),
+    torbox: (() => { const row = document.querySelector('[data-provider-id="torbox"]');
+      return row ? {state: row.dataset.providerState, dot: row.querySelector('.dot').className} : null; })(),
+    names: rows.map(row => row.textContent.trim()),
+    crown: shown(document.getElementById('premium-row')) ? document.getElementById('lbl-premium').textContent : '',
+  };
+});
+
+const withAccountTiered = (keepUsenet = false) => entries => {
+  delete entries.alldebrid;
+  if (!keepUsenet) delete entries.usenet;
+  entries.torbox = accountTiered();
+  return entries;
+};
+const days = n => Math.floor(Date.now() / 1000) + n * 86400;
+
+test('a standard (free) account presents under Standard Services, green, with no crown', async ({page}) => {
+  await liveStatus(page, {state: 'healthy', account: account('standard', null, 'Free')});
+  await renderWith(page, withAccountTiered(true));
+  const shown = await panel(page);
+  expect(shown.tiers.find(tier => tier.id === 'general_family').rows).toEqual(['TorBox', 'Network Sources']);
+  expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['Usenet']);   // static tier kept
+  expect(shown.torbox).toEqual({state: 'healthy', dot: 'dot ok'});
+  expect(shown.crown).toBe('');
+  expect(shown.flow).toEqual(['Usenet', '# Standard Services', 'TorBox', 'Network Sources']);
+  expect(shown.names.filter(name => name === 'TorBox')).toHaveLength(1);
+});
+
+test('a real standard provider makes Standard Services visible even with no premium tier', async ({page}) => {
+  await liveStatus(page, {state: 'healthy', account: account('standard', null, 'Free')});
+  await renderWith(page, withAccountTiered());
+  const shown = await panel(page);
+  expect(shown.tiers.map(tier => tier.id)).toEqual(['general_family']);
+  expect(shown.flow).toEqual(['# Standard Services', 'TorBox', 'Network Sources']);
+});
+
+test('the heading still folds away when Network Sources is the sole standard content', async ({page}) => {
+  await renderWith(page, entries => { delete entries.alldebrid; delete entries.usenet; return entries; });
+  expect((await panel(page)).flow).toEqual(['Network Sources']);
+});
+
+/* Only a functionally healthy premium account contributes to the crown. */
+const crowned = (page, entries) => page.evaluate(next => {
+  document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+  const row = document.getElementById('premium-row');
+  return {visible: !!row && row.getClientRects().length > 0,
+          blocks: [...document.querySelectorAll('#lbl-premium .dp-provider-premium-account')].map(block => block.textContent)};
+}, entries);
+const premiumEntry = (id, name, state) => ({id, name, state, status: {account: account('premium', days(30))}});
+
+test('a healthy premium account is crowned', async ({page}) => {
+  await renderWith(page);
+  const shown = await crowned(page, [premiumEntry('alldebrid', 'AllDebrid', 'healthy')]);
+  expect(shown.visible).toBe(true);
+  expect(shown.blocks).toHaveLength(1);
+  expect(shown.blocks[0]).toMatch(/^AllDebrid Premium until/);
+});
+
+test('a degraded premium account is a yellow row and never crowned', async ({page}) => {
+  await liveStatus(page, {state: 'healthy', account: account('premium', days(30), 'Pro', 'degraded')});
+  await renderWith(page, withAccountTiered(true));
+  const shown = await panel(page);
+  expect(shown.torbox).toEqual({state: 'degraded', dot: 'dot warn'});
+  expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);
+  expect(shown.crown).toBe('');
+});
+
+test('mixed healthy and degraded premium accounts crown only the healthy one', async ({page}) => {
+  await renderWith(page);
+  const shown = await crowned(page, [premiumEntry('alldebrid', 'AllDebrid', 'degraded'),
+    premiumEntry('realdebrid', 'Real-Debrid', 'healthy'), premiumEntry('torbox', 'TorBox', 'degraded')]);
+  expect(shown.visible).toBe(true);
+  expect(shown.blocks).toHaveLength(1);                     // one account: the full block layout
+  expect(shown.blocks[0]).toMatch(/^Real-Debrid Premium until/);
+  const two = await crowned(page, [premiumEntry('alldebrid', 'AllDebrid', 'healthy'),
+    premiumEntry('realdebrid', 'Real-Debrid', 'degraded'), premiumEntry('torbox', 'TorBox', 'healthy')]);
+  expect(two.blocks).toEqual([expect.stringMatching(/^AllDebrid Premium \d+ days remaining$/),
+                              expect.stringMatching(/^TorBox Premium \d+ days remaining$/)]);
+});
+
+test('a connected but capability-degraded account is yellow, never red, in its current tier', async ({page}) => {
+  await liveStatus(page, {state: 'healthy', account: account('standard', null, 'Free', 'degraded')});
+  await renderWith(page, withAccountTiered(true));
+  const shown = await panel(page);
+  expect(shown.torbox).toEqual({state: 'degraded', dot: 'dot warn'});
+  expect(shown.tiers.find(tier => tier.id === 'general_family').rows[0]).toBe('TorBox');
+  expect(shown.crown).toBe('');
+});
+
+test('a connection failure stays red whatever account truth it last had', async ({page}) => {
+  await liveStatus(page, {state: 'auth_required'});
+  await renderWith(page, withAccountTiered(true));
+  expect((await panel(page)).torbox).toEqual({state: 'auth_required', dot: 'dot error'});
+});
+
+test('premium lapsing and returning moves tier and crown with no provider-specific logic', async ({page}) => {
+  await liveStatus(page, {state: 'healthy', account: account('premium', days(30), 'Pro')});
+  await renderWith(page, withAccountTiered(true));
+  let shown = await panel(page);
+  expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);
+  expect(shown.torbox.dot).toBe('dot ok');
+  expect(shown.crown).toMatch(/^TorBox Pro until \d\d\.\d\d\.\d{4}\(\d+ days remaining\)$/);
+  expect(shown.flow.slice(0, 2)).toEqual(['CROWN', '# Premium Services']);
+
+  // Premium ends while DebridPulse runs: the backend announces it, the panel re-observes.
+  await liveStatus(page, {state: 'healthy', account: account('standard', null, 'Free', 'degraded')});
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
+  await expect.poll(async () => (await panel(page)).torbox?.state).toBe('degraded');
+  shown = await panel(page);
+  expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['Usenet']);
+  expect(shown.tiers.find(tier => tier.id === 'general_family').rows).toEqual(['TorBox', 'Network Sources']);
+  expect(shown.crown).toBe('');
+  expect(shown.flow).not.toContain('# Premium Services');
+
+  // Renewed: the same composition restores tier, crown and green.
+  await liveStatus(page, {state: 'healthy', account: account('premium', days(60), 'Pro')});
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
+  await expect.poll(async () => (await panel(page)).torbox?.state).toBe('healthy');
+  shown = await panel(page);
+  expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);
+  expect(shown.crown).toMatch(/^TorBox Pro until/);
+});

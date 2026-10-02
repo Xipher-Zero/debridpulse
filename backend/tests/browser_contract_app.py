@@ -156,7 +156,8 @@ registry.register_executor(LockedHttpTransport(
     | {host: (USERNAME, PASSWORD) for host in MULTI_HOSTS},
 ))
 application.engine.registry = registry
-application.engine.canonical = HeldCanonicalOwnership(application.repository)
+application.engine.canonical = HeldCanonicalOwnership(
+    application.repository, material_present=application.engine.canonical.material_present)
 # Execution retries back off seconds, not a minute, so a bounded failover is
 # observable within one browser test (never changed through the settings API:
 # a settings change recomposes the real registry).

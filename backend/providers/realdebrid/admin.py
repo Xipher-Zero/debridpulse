@@ -12,6 +12,7 @@ import asyncio
 import time
 from dataclasses import dataclass
 
+from providers.realdebrid.account import PREMIUM, account_facts as account_record, entitlement as account_entitlement
 from providers.realdebrid.client import Credential, RealDebridService
 from providers.realdebrid.translation import INTEGRATION_ID, translate_error
 from transfers.errors import Category
@@ -139,15 +140,24 @@ async def persist_refreshed_credential(credential: Credential) -> None:
 
 # -- account truth ---------------------------------------------------------------
 
-def account_facts(user: dict) -> dict:
-    """The account facts the status surface shows. Never a token lifetime."""
+def account_facts(user: dict, *, entitlements=None, offered=PREMIUM, clock=time.time) -> dict:
+    """The account facts the status surface shows -- never a token lifetime --
+    plus the neutral ``account`` truth the same account translation gives
+    routing (``providers.realdebrid.account``). ``entitlements`` is the live
+    provider's own truth when there is one."""
     premium = user.get("premium")
+    if entitlements is None:
+        try:
+            entitlements = account_entitlement(account_record(user), offered=frozenset(offered), now=clock())
+        except ValueError:
+            entitlements = None
     return {
         "username": str(user.get("username") or ""),
         "account_type": str(user.get("type") or ""),
         "premium": user.get("type") == "premium",
         "premium_seconds": premium if isinstance(premium, int) and not isinstance(premium, bool) else 0,
         "expiration": str(user.get("expiration") or ""),
+        **({"account": entitlements.public()} if entitlements is not None else {}),
     }
 
 
@@ -181,4 +191,9 @@ async def runtime_status(provider, *, enabled: bool) -> dict:
         category = translate_error(exc, secrets=client.secrets()).category
         return {"integration": INTEGRATION_ID, "checked": True,
                 "state": "auth_required" if category in _AUTH_REQUIRED else "unhealthy"}
-    return {"integration": INTEGRATION_ID, "state": "healthy", "checked": True, **account_facts(user)}
+    # The probe's answer is account truth: the one account owner adopts it,
+    # and what this surface shows is what routing now uses.
+    owner = getattr(provider, "account", None)
+    entitlements = await owner.observe(user) if owner is not None else None
+    return {"integration": INTEGRATION_ID, "state": "healthy", "checked": True,
+            **account_facts(user, entitlements=entitlements, offered=getattr(getattr(provider, "descriptor", None), "request_types", PREMIUM))}

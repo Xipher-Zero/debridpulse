@@ -39,6 +39,11 @@ from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANS
 # attempt once a later campaign began. Both are failures, neither binds.
 _ENDED_ROUTE_STATES = frozenset({"exhausted", "released"})
 
+# The forms a retired generation's unique ``torrents.hash`` takes once it no
+# longer holds its source's active dedupe identity (``_tombstone_hash``); the
+# original logical fingerprint stays in ``source_fingerprint``.
+RETIRED_KEY_PREFIXES = ("deleted:", "retired:")
+
 
 # DP 1.0.12 recovery leveling, Section 21/22: parent lifecycle terminal states
 # where aggregation has nothing left to decide. The canonical definition now
@@ -944,7 +949,7 @@ class TransferRepository:
         raw_hash = str(row["hash"] or "")
         # A retired (deleted) transfer's active dedupe key is a tombstone; present
         # the original logical fingerprint instead.
-        display_hash = str(row.get("source_fingerprint") or "") if raw_hash.startswith("deleted:") else raw_hash
+        display_hash = str(row.get("source_fingerprint") or "") if raw_hash.startswith(RETIRED_KEY_PREFIXES) else raw_hash
         return Transfer(int(row["id"]), str(row["name"] or ""), TransferState(row["status"]),
                         display_hash, str(row["source"] or ""), int(row["priority"] or 0),
                         bool(row.get("paused_intent")), None if row["progress"] is None else float(row["progress"]),
@@ -961,7 +966,7 @@ class TransferRepository:
         """Explicit canonical read model; opaque integration context stays private."""
         async with get_db() as db:
             row = await db.fetchone("""SELECT id,
-                CASE WHEN hash LIKE 'deleted:%' THEN COALESCE(source_fingerprint,'') ELSE hash END AS hash,
+                CASE WHEN hash LIKE 'deleted:%' OR hash LIKE 'retired:%' THEN COALESCE(source_fingerprint,'') ELSE hash END AS hash,
                 name,status,size_bytes,progress,local_path,source,label,priority,
                 error_message,normalized_error,extraction_status,extraction_error,created_at,updated_at,completed_at
                 FROM torrents WHERE id=?""", (transfer_id,))
@@ -1611,9 +1616,13 @@ class TransferRepository:
         return tuple(self._transfer(row) for row in rows)
 
     @staticmethod
-    def _tombstone_hash(transfer_id: int, source_fingerprint: str) -> str:
-        """Deterministic, per-transfer, non-recursive retired dedupe key."""
-        return f"deleted:{int(transfer_id)}:{source_fingerprint}"
+    def _tombstone_hash(transfer_id: int, source_fingerprint: str, status: str = "deleted") -> str:
+        """Deterministic, per-transfer, non-recursive retired dedupe key. A
+        deleted generation keeps the ``deleted:`` form; any other terminal
+        generation an independent submission retired takes ``retired:`` --
+        its lifecycle is history, never rewritten to look deleted."""
+        prefix = "deleted" if str(status) == TransferState.DELETED else "retired"
+        return f"{prefix}:{int(transfer_id)}:{source_fingerprint}"
 
     @classmethod
     async def _retire_active_fingerprint(cls, db, row) -> None:
@@ -1623,7 +1632,7 @@ class TransferRepository:
         transfer_id = int(row["id"])
         current_hash = str(row["hash"] or "")
         original = str(row["source_fingerprint"] or current_hash)
-        if current_hash.startswith("deleted:"):
+        if current_hash.startswith(RETIRED_KEY_PREFIXES):
             if row["source_fingerprint"] is None:
                 await db.execute(
                     "UPDATE torrents SET source_fingerprint=? WHERE id=? AND source_fingerprint IS NULL",
@@ -1632,7 +1641,7 @@ class TransferRepository:
             return
         await db.execute(
             "UPDATE torrents SET source_fingerprint=COALESCE(source_fingerprint,?), hash=? WHERE id=?",
-            (original, cls._tombstone_hash(transfer_id, original), transfer_id),
+            (original, cls._tombstone_hash(transfer_id, original, str(row["status"])), transfer_id),
         )
 
     @staticmethod
@@ -1640,7 +1649,9 @@ class TransferRepository:
         """The ONE predecessor-cleanup fence predicate, evaluated inside the
         caller's transaction/session so every same-object resource creation or
         reuse decision (a fresh root's first resolution, an inventory adoption)
-        reads the same fact."""
+        reads the same fact. A predecessor is any retired generation of the
+        same logical source -- deleted, or a terminal lifecycle a later
+        independent submission retired."""
         row = await db.fetchone("SELECT source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
         fingerprint = row["source_fingerprint"] if row else None
         if not fingerprint:
@@ -1648,7 +1659,7 @@ class TransferRepository:
         blocker = await db.fetchone(
             """SELECT 1 FROM provider_resources r
                JOIN torrents t ON t.id=r.transfer_id
-               WHERE t.id != ? AND t.status='deleted' AND t.source_fingerprint=?
+               WHERE t.id != ? AND (t.hash LIKE 'deleted:%' OR t.hash LIKE 'retired:%') AND t.source_fingerprint=?
                  AND r.cleanup_authority IS NOT NULL
                  AND COALESCE(r.cleanup_abandoned, 0) = 0
                  AND r.state != 'absent'
@@ -1679,7 +1690,23 @@ class TransferRepository:
         async with get_db() as db:
             return await self._predecessor_cleanup_blocks(db, transfer_id)
 
-    async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True) -> tuple[Transfer, bool]:
+    async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True,
+                    independent=True) -> tuple[Transfer, bool]:
+        """Admit one submission under the source's active dedupe identity.
+
+        Matching live work (any non-terminal lifecycle, a failed one included:
+        operator Retry owns it) is the same work: the existing transfer is
+        returned. A terminal lifecycle (completed, consolidated, cancelled,
+        deleted) is history, never the identity of a later INDEPENDENT
+        submission: its active key is retired (``_retire_active_fingerprint``;
+        the original fingerprint stays in ``source_fingerprint``) and a new
+        lineage is admitted in the same immediate transaction, so concurrent
+        same-object submissions still converge on exactly one new generation.
+        Whether that lineage needs any acquisition is decided later by the
+        canonical material owner, never here. An observation of a resource that
+        already exists (``independent=False``: inventory) is not a submission
+        and dedupes onto whatever lifecycle holds the key -- except a deleted
+        one, which never holds it."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -1690,12 +1717,14 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("SELECT * FROM torrents WHERE hash=?", (fingerprint,))
-            if row and str(row["status"]) == "deleted":
+            if row and (str(row["status"]) == TransferState.DELETED
+                        or (independent and TransferState(row["status"]) in TERMINAL_TRANSFER_STATES)):
                 # A user-deleted transfer must never remain the active dedupe /
                 # recovery identity. A legacy deleted row (or a tombstone race)
                 # still holding the active key is retired transactionally here so
-                # this submission is a genuinely fresh lifecycle, never a silent
-                # ``retry(..., reacquire=True)`` of the deleted transfer.
+                # this submission is a genuinely fresh lifecycle. A terminal
+                # lifecycle is retired the same way for an independent
+                # submission: historical completion is not its identity.
                 await self._retire_active_fingerprint(db, row)
                 row = None
             if row:
@@ -2113,14 +2142,17 @@ class TransferRepository:
         if binding_id is None:
             # First binding for this (transfer, canonical resource). Two *live*
             # transfers may never share one native resource; a retired predecessor
-            # (deleted / cancelled / consolidated) sharing it is the ordinary
-            # delete/re-add generation case and is allowed to coexist.
+            # (deleted / cancelled / consolidated, or any generation whose active
+            # key a later submission retired) sharing it is the ordinary re-add
+            # generation case and is allowed to coexist.
             other = await db.fetchone(
-                "SELECT r.transfer_id, t.status FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id "
-                "WHERE (r.resource_key=? OR (r.resource_key IS NULL AND r.id=?)) AND r.transfer_id != ?",
+                "SELECT r.transfer_id, t.status, t.hash FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id "
+                "WHERE (r.resource_key=? OR (r.resource_key IS NULL AND r.id=?)) AND r.transfer_id != ? "
+                "AND t.status NOT IN ('deleted','cancelled','consolidated') "
+                "AND t.hash NOT LIKE 'deleted:%' AND t.hash NOT LIKE 'retired:%' LIMIT 1",
                 (resource_key, resource_key, transfer_id),
             )
-            if other and str(other["status"]) not in {"deleted", "cancelled", "consolidated"}:
+            if other:
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION))
             binding_id = cls._resource_binding_id(transfer_id, resource_key)
         existing = await db.fetchone(

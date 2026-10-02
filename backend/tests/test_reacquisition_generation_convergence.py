@@ -1,7 +1,8 @@
 """Reacquiring a terminal transfer across a semantic upgrade boundary.
 
 A completed transfer whose delivered material was removed can be legitimately
-re-submitted and deduplicated back onto the same logical transfer. Everything
+reacquired by the operator's Retry onto the same logical transfer (a later
+independent submission is a new lineage instead, never this). Everything
 about that acquisition is NEW -- a fresh provider resource, a fresh manifest,
 fresh candidates -- but the transfer still carries the child requests and
 artifacts a PREVIOUS generation established. Two durable facts made the old
@@ -126,12 +127,15 @@ def _observation(core, payload, manifest, observed_name):
     return _replace(result, observation=renamed)
 
 
-async def resubmit(core, manifest, *, renewed="box2", cycles=6, observed_name=None):
-    """The SAME logical source arriving again -- identical payload, identical
-    fingerprint -- while the provider answers with a genuinely new resource
-    carrying current manifest truth."""
+async def reacquire(core, manifest, *, renewed="box2", cycles=6, observed_name=None):
+    """The operator reacquiring the SAME logical transfer -- Retry of the
+    completed transfer -- while the provider answers with a genuinely new
+    resource carrying current manifest truth."""
     core.provider.responses.append(_observation(core, renewed, manifest, observed_name))
-    transfer = await core.engine.submit((source(),), name=SUBMITTED_NAME)
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT id FROM torrents WHERE hash=?", (FINGERPRINT,))
+    assert await core.engine.retry(int(row["id"]), reacquire=True)
+    transfer = await core.repository.get(int(row["id"]))
     for _ in range(cycles):
         core.provider.responses.append(_observation(core, renewed, manifest, observed_name))
         await core.engine.tick()
@@ -163,7 +167,7 @@ async def test_legacy_generation_reacquires_onto_current_manifest_truth(core):
     assert legacy["local_path"].endswith("Parcel/Parcel/payload.bin")
 
     await material_removed(core, first.id)
-    again = await resubmit(core, CURRENT_MANIFEST)
+    again = await reacquire(core, CURRENT_MANIFEST)
 
     # Same logical transfer, converged.
     assert again.id == first.id
@@ -202,7 +206,7 @@ async def test_reacquisition_does_not_churn_resolution_attempts(core):
     first = await acquire(core, LEGACY_MANIFEST)
     legacy_child = (await children_of(first.id))[0]
     await material_removed(core, first.id)
-    await resubmit(core, CURRENT_MANIFEST)
+    await reacquire(core, CURRENT_MANIFEST)
     assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
 
     before = next(row for row in await requests_of(first.id) if row["id"] == legacy_child["id"])["attempts"]
@@ -227,7 +231,7 @@ async def test_modern_reacquisition_keeps_its_canonical_target_untouched(core):
     child_before = (await children_of(first.id))[0]
 
     await material_removed(core, first.id)
-    again = await resubmit(core, CURRENT_MANIFEST)
+    again = await reacquire(core, CURRENT_MANIFEST)
 
     assert again.id == first.id
     assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
@@ -267,7 +271,7 @@ async def test_a_member_whose_identity_is_stable_still_follows_current_truth(cor
     assert before["local_path"].endswith("Parcel/payload.bin")
 
     await material_removed(core, first.id)
-    await resubmit(core, CURRENT_MANIFEST, renewed="box2", observed_name="Parcel Renamed")
+    await reacquire(core, CURRENT_MANIFEST, renewed="box2", observed_name="Parcel Renamed")
 
     artifacts = await artifacts_of(first.id)
     assert len(artifacts) == 1, "the same logical member, not a second row"
@@ -356,7 +360,7 @@ async def test_historical_executions_and_provenance_survive_reacquisition(core):
         "SELECT COUNT(*) AS n FROM route_attempt_provenance WHERE transfer_id=?", (first.id,))
 
     await material_removed(core, first.id)
-    await resubmit(core, CURRENT_MANIFEST)
+    await reacquire(core, CURRENT_MANIFEST)
 
     attempts = await core.repository.executions(first.id)
     assert historical_id in {item.handle.attempt_id for item in attempts}
@@ -390,7 +394,7 @@ async def test_surviving_material_is_adopted_while_only_the_missing_member_reacq
     for identity, observed in list(core.provider.resources.items()):
         core.provider.resources[identity] = ProviderObservation(observed.resource, ResourceState.ABSENT)
 
-    await resubmit(core, pair)
+    await reacquire(core, pair)
 
     after = await artifacts_of(first.id)
     assert len(after) == 2, "no member was duplicated"
@@ -432,7 +436,7 @@ async def test_partial_material_under_a_changed_coordinate_model_converges(core)
     for identity, observed in list(core.provider.resources.items()):
         core.provider.resources[identity] = ProviderObservation(observed.resource, ResourceState.ABSENT)
 
-    await resubmit(core, current_pair)
+    await reacquire(core, current_pair)
 
     assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
     after = await artifacts_of(first.id)
@@ -457,7 +461,7 @@ async def test_a_superseded_member_stops_being_recoverable_at_all(core):
     canonical actionable set the whole recovery/dispatch path reads."""
     first = await acquire(core, LEGACY_MANIFEST)
     await material_removed(core, first.id)
-    await resubmit(core, CURRENT_MANIFEST)
+    await reacquire(core, CURRENT_MANIFEST)
 
     superseded = next(row for row in await artifacts_of(first.id) if row["blocked"])
     audits_before = await rows(
@@ -481,7 +485,7 @@ async def test_a_superseded_member_never_votes_in_transfer_truth(core):
     """The retired row is readable history, excluded from the canonical set."""
     first = await acquire(core, LEGACY_MANIFEST)
     await material_removed(core, first.id)
-    await resubmit(core, CURRENT_MANIFEST)
+    await reacquire(core, CURRENT_MANIFEST)
 
     canonical = await core.repository.artifacts(first.id)
     stored = await artifacts_of(first.id)

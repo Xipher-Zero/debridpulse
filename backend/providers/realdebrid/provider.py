@@ -5,6 +5,7 @@ from dataclasses import replace
 from functools import wraps
 from urllib.parse import urlsplit
 
+from providers.realdebrid.account import refused_family
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
     AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, native_members, native_name,
@@ -76,6 +77,15 @@ class RealDebridProvider:
         # Replaced by host maintenance once it holds a snapshot.
         return self.applicability
 
+    @property
+    def entitlements(self):
+        """What the connected account may begin now, kept by its account
+        owner (``integrations.account_entitlement``) from Real-Debrid's own
+        account semantics (``providers.realdebrid.account``); ``None`` -- no
+        account dimension -- for an instance built without one."""
+        owner = getattr(self, "account", None)
+        return owner.entitlements if owner is not None else None
+
     def _secrets(self) -> tuple[str, ...]:
         return self.client.secrets()
 
@@ -142,6 +152,11 @@ class RealDebridProvider:
             resource = resource_from_native(created, ownership=Ownership.CREATED)
         except RealDebridAPIError as exc:
             if exc.error_code != _ALREADY_ACTIVE:
+                # A refusal of the torrent feature itself still fails this
+                # route the ordinary way; it only also tells the account owner.
+                family, owner = refused_family(exc, request.kind), getattr(self, "account", None)
+                if family and owner is not None:
+                    await owner.contract(family)
                 raise
             resource = await self._already_active(request, exc)
         await self._bootstrap(resource)

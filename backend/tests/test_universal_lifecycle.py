@@ -74,6 +74,13 @@ async def submit(core, payload="box", name="payload.bin"):
     return await core.engine.submit((TransferRequest("parcel", payload, name=name),))
 
 
+async def operator_reacquire(core, transfer_id):
+    """The operator's Retry of a terminal transfer -- the one path into
+    terminal-transfer reacquisition (a later submission is a new lineage)."""
+    assert await core.engine.retry(transfer_id, reacquire=True)
+    return await core.repository.get(transfer_id)
+
+
 def failure(category=Category.UNMAPPED_PROVIDER_ERROR, *, retryability=Retryability.UNKNOWN, recovery=Recovery.REQUIRE_OPERATOR, domain=Domain.PROVIDER, origin=Origin.CORE):
     return NormalizedError(domain, category, Stage.RESOLUTION, retryability, recovery, origin=origin)
 
@@ -322,7 +329,7 @@ async def test_explicit_reacquisition_revalidates_completed_history(canonical_co
     core.executor.finish(artifact.execution)
     await core.engine.tick()
     Path(artifact.target).unlink()
-    submitted = await submit(core)
+    submitted = await operator_reacquire(core, transfer.id)
     assert submitted.id == transfer.id
     await core.engine.tick()
     repaired = (await core.repository.artifacts(transfer.id))[0]
@@ -334,7 +341,7 @@ async def test_explicit_reacquisition_revalidates_completed_history(canonical_co
 async def _reacquisition_setup_blocked_at_cancel(core):
     """Shared setup for the adversarial concurrency tests below: a completed
     transfer whose payload has since disappeared, positioned so a
-    re-submission's ``_reacquire_transfer`` will call ``executor.cancel()``
+    operator reacquisition's ``_reacquire_transfer`` will call ``executor.cancel()``
     on the stale execution handle -- the exact call these tests block on to
     force a deterministic interleaving window."""
     transfer = await submit(core)
@@ -444,7 +451,7 @@ async def test_reacquisition_serializes_against_scheduler_reconciliation(canonic
     core = canonical_core
     transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_finalize(core)
 
-    reacquire_task = asyncio.create_task(submit(core))
+    reacquire_task = asyncio.create_task(operator_reacquire(core, transfer.id))
     await asyncio.wait_for(entered.wait(), timeout=1)
     queued = (await core.repository.artifacts(transfer.id))[0]
     assert queued.state == "queued"
@@ -504,7 +511,7 @@ async def test_reacquisition_serializes_against_concurrent_pause(canonical_core)
     core = canonical_core
     transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_cancel(core)
 
-    reacquire_task = asyncio.create_task(submit(core))
+    reacquire_task = asyncio.create_task(operator_reacquire(core, transfer.id))
     await asyncio.wait_for(entered.wait(), timeout=1)
 
     pause_task = asyncio.create_task(core.engine.pause(transfer.id))
@@ -565,7 +572,7 @@ async def test_reacquisition_native_observe_cannot_overlap_concurrent_pause(cano
 
     core.executor.observe = counting_observe
 
-    reacquire_task = asyncio.create_task(submit(core))
+    reacquire_task = asyncio.create_task(operator_reacquire(core, transfer.id))
     await asyncio.wait_for(entered.wait(), timeout=1)
 
     pause_task = asyncio.create_task(core.engine.pause(transfer.id))
@@ -596,7 +603,7 @@ async def test_reacquisition_serializes_against_concurrent_operator_retry(canoni
     core = canonical_core
     transfer, artifact, entered, release = await _reacquisition_setup_blocked_at_cancel(core)
 
-    reacquire_task = asyncio.create_task(submit(core))
+    reacquire_task = asyncio.create_task(operator_reacquire(core, transfer.id))
     await asyncio.wait_for(entered.wait(), timeout=1)
 
     retry_task = asyncio.create_task(core.engine.retry(transfer.id))

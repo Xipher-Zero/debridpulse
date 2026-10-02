@@ -9,40 +9,27 @@
  * account hides the row; a provider that is not healthy contributes nothing,
  * whatever it reported before.
  *
- * Interpreting a provider's account facts is the only provider-specific thing
- * here, and it stops at the expiry instant each status surface publishes. An
- * access-token lifetime is never an account fact. This is also the one
+ * Every account is read from the neutral account truth its status surface
+ * publishes; nothing here is provider-specific. An access-token lifetime is
+ * never an account fact. This is also the one
  * interpreter and wording a provider's Settings card uses for the same expiry
  * (window.DPPremiumAccount), so the two surfaces can never disagree.
  */
 (function () {
   'use strict';
 
-  // Each provider's own status payload -> its premium account ({until, tier}),
-  // or null when it has no displayable premium time.
-  const PREMIUM_ACCOUNT = Object.freeze({
-    alldebrid: status => {
-      const until = Number(status?.premiumUntil || status?.premium_until || 0);
-      return status?.isPremium && until > 0 ? {until: new Date(until * 1000), tier: 'Premium'} : null;
-    },
-    realdebrid: status => {
-      const until = status?.premium ? new Date(String(status?.expiration || '')) : null;
-      const type = String(status?.account_type || 'premium');
-      return until && !Number.isNaN(until.getTime())
-        ? {until, tier: type.charAt(0).toUpperCase() + type.slice(1)} : null;
-    },
-    // TorBox names the plan itself (Essential, Standard, Pro); its expiry is
-    // the plan's own end, never the API token's.
-    torbox: status => {
-      const until = status?.premium ? new Date(String(status?.premium_expires_at || '')) : null;
-      return until && !Number.isNaN(until.getTime())
-        ? {until, tier: String(status?.plan_name || 'Premium')} : null;
-    },
-  });
-
-  // One provider's premium account from its own status payload, or null.
-  function premiumAccount(id, status) {
-    return PREMIUM_ACCOUNT[id] ? PREMIUM_ACCOUNT[id](status) : null;
+  /* A provider's premium account, read from the NEUTRAL account truth its
+   * status surface publishes (`status.account`, the same truth routing
+   * uses): present only while the current account's service class is
+   * premium, its entitlement is resolved and its authoritative end is known.
+   * The plan's own display name is the tier word. No provider is named here,
+   * so a future account-backed provider needs nothing in this owner. */
+  function premiumAccount(_id, status) {
+    const account = status?.account;
+    if (!account || account.service_class !== 'premium' || account.entitlement !== 'ready') return null;
+    const seconds = Number(account.expires_at);
+    if (!Number.isFinite(seconds) || seconds <= 0) return null;
+    return {until: new Date(seconds * 1000), tier: String(account.plan || 'Premium')};
   }
 
   function premiumUntil(id, status) {
@@ -96,6 +83,9 @@
     const row = document.getElementById('premium-row');
     const label = document.getElementById('lbl-premium');
     if (!row || !label) return;
+    // Only a functionally healthy account shows its premium time: a degraded
+    // one (connected, but it lost capability) stays visible as a yellow row
+    // and contributes no crown entry, whatever its service class.
     const accounts = entries
       .filter(entry => entry.state === 'healthy')
       .map(entry => [entry.name, premiumAccount(entry.id, entry.status)])

@@ -5,6 +5,7 @@ from dataclasses import replace
 from functools import wraps
 from urllib.parse import urlsplit
 
+from providers.alldebrid.account import FREE_HOST, HOSTERS, refused_family
 from providers.alldebrid.client import AllDebridService, API_V4
 from services.network_safety import validate_provider_download_url
 from providers.alldebrid.translation import (
@@ -12,6 +13,7 @@ from providers.alldebrid.translation import (
     native_members, observation_from_native, resource_from_native, translate_error,
 )
 from transfers.applicability import ProviderApplicability
+from transfers.entitlement import AccountServiceClass, ProviderEntitlements
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import (
     Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
@@ -68,6 +70,31 @@ class AllDebridProvider:
         except Exception as exc:
             raise TransferError(translate_error(exc, stage=stage, secrets=self._secrets)) from None
 
+    @property
+    def entitlements(self):
+        """What the connected account may begin now, kept by its account
+        owner (``integrations.account_entitlement``) from AllDebrid's own
+        account semantics (``providers.alldebrid.account``); ``None`` -- no
+        account dimension -- for an instance built without one."""
+        owner = getattr(self, "account", None)
+        return owner.entitlements if owner is not None else None
+
+    def entitlement_for(self, request: TransferRequest) -> bool | None:
+        """The account's entitlement, narrowed per host: a non-premium
+        account may unlock only links of hosts AllDebrid types ``free``.
+        Which host a link belongs to is the host inventory's structural
+        answer; it never widens what the account is entitled to."""
+        current = self.entitlements
+        if not isinstance(current, ProviderEntitlements):
+            return True
+        admitted = current.admits(request.kind)
+        if admitted and request.kind in HOSTERS and current.service_class == AccountServiceClass.STANDARD:
+            host_type = getattr(getattr(self, "applicability_for", None), "host_type", None)
+            matched = host_type(request) if callable(host_type) else None
+            if matched is not None:
+                return matched == FREE_HOST
+        return admitted
+
     @normalized_boundary(Stage.RESOLUTION)
     async def resolve(self, request: TransferRequest) -> ResolutionResult:
         if request.kind in {"http", "https"}:
@@ -104,11 +131,21 @@ class AllDebridProvider:
                 delivery=DeliveryKind.PROVIDER_ISSUED,
             )
             return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
-        if request.kind == "magnet":
-            native = await self._call(self.client.upload_magnet, str(request.payload))
-        elif request.kind == "torrent" and isinstance(request.payload, bytes):
-            native = await self._call(self.client.upload_torrent_file, request.payload, request.name)
-        else:
+        try:
+            if request.kind == "magnet":
+                native = await self._call(self.client.upload_magnet, str(request.payload))
+            elif request.kind == "torrent" and isinstance(request.payload, bytes):
+                native = await self._call(self.client.upload_torrent_file, request.payload, request.name)
+            else:
+                native = None
+        except TransferError as exc:
+            # A refusal of the torrent feature itself still fails this route
+            # the ordinary way; it only also tells the account owner.
+            family, owner = refused_family(exc.error.native_code, request.kind), getattr(self, "account", None)
+            if family and owner is not None:
+                await owner.contract(family)
+            raise
+        if native is None:
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST,
                                                 Stage.SUBMISSION, Retryability.NEVER,
                                                 origin=Origin.USER, integration_id=self.descriptor.id))

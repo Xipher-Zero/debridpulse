@@ -48,6 +48,10 @@ async def runtime_status(provider):
     value = user.get("user", user) if isinstance(user, dict) else {}
     if not isinstance(value, dict):
         value = {}
+    # The probe's answer is account truth: the one account owner adopts it,
+    # and what this surface shows is what routing now uses.
+    owner = getattr(provider, "account", None)
+    entitlements = await owner.observe(user) if owner is not None else None
     return {
         "integration": "alldebrid",
         "state": "healthy",
@@ -55,4 +59,5 @@ async def runtime_status(provider):
         "username": str(value.get("username", "") or ""),
         "isPremium": bool(value.get("isPremium", False)),
         "premiumUntil": value.get("premiumUntil", value.get("premium_until", 0)),
+        **({"account": entitlements.public()} if entitlements is not None else {}),
     }

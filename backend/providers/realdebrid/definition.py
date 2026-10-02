@@ -45,7 +45,9 @@ def _verification_subjects(options: RealDebridOptions):
 
 
 def build(options, environment):
-    from integrations.runtime_state import ProviderRuntimeStateStore
+    from integrations.account_entitlement import AccountEntitlementMaintenance
+    from integrations.runtime_state import ProviderRuntimeStateStore, ScopedRuntimeStateStore, credential_scope
+    from providers.realdebrid.account import RealDebridAccountTranslation
     from providers.realdebrid.admin import persist_refreshed_credential
     from providers.realdebrid.client import Credential, RealDebridService
     from providers.realdebrid.host_runtime import RealDebridHostMaintenance
@@ -61,10 +63,20 @@ def build(options, environment):
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.
-    provider.lifecycle = RealDebridHostMaintenance(
+    provider.hosts = RealDebridHostMaintenance(
         provider, ProviderRuntimeStateStore(),
         notify=getattr(commands, "notify_applicability_changed", None),
         refresh_seconds=options.host_refresh_interval_hours * 3600)
+    # Account truth is the connected account's. Its scope is the device
+    # credential's client id -- the connection's ownership identity, which a
+    # refresh-token rotation keeps -- so another connection never inherits it.
+    provider.account = AccountEntitlementMaintenance(
+        provider, RealDebridAccountTranslation(client),
+        ScopedRuntimeStateStore(ProviderRuntimeStateStore(), credential_scope("realdebrid", options.client_id)),
+        integration_id="realdebrid",
+        notify=getattr(commands, "notify_applicability_changed", None),
+        notify_status=getattr(commands, "notify_status_changed", None))
+    provider.lifecycle = (provider.hosts, provider.account)
     return provider
 
 
@@ -84,5 +96,7 @@ definition = IntegrationDefinition(
         display_order=11,
         status_tier="premium_service",
         status_tier_label="Premium Services",
+        standard_status_tier="general_family",
+        standard_status_tier_label="Standard Services",
     ),
 )

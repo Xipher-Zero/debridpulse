@@ -65,9 +65,10 @@ def test_usenet_via_torbox_is_one_precise_persisted_toggle():
 
 
 def test_one_premium_owner_interprets_torbox_and_words_it_once():
-    table = PREMIUM_JS[PREMIUM_JS.index("const PREMIUM_ACCOUNT"):PREMIUM_JS.index("function premiumAccount(")]
-    assert table.count("torbox: status =>") == 1
-    assert "premium_expires_at" in table and "plan_name" in table
+    # The one premium owner reads TorBox's account exactly as every other's:
+    # from the neutral account truth, never a TorBox-keyed interpreter.
+    assert "torbox" not in PREMIUM_JS.casefold()
+    assert PREMIUM_JS.count("function premiumAccount(") == 1 and "status?.account" in PREMIUM_JS
     assert PREMIUM_JS.count("function describe(") == 1
     # The card states the shared owner's wording and tier, never its own.
     expiry = SETTINGS_JS[SETTINGS_JS.index("function accountExpiry("):SETTINGS_JS.index("function accountIsland(")]

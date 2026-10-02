@@ -42,7 +42,9 @@ def _verification_subjects(options: TorBoxOptions):
 
 
 def build(options, environment):
-    from integrations.runtime_state import ProviderRuntimeStateStore
+    from integrations.account_entitlement import AccountEntitlementMaintenance
+    from integrations.runtime_state import ProviderRuntimeStateStore, ScopedRuntimeStateStore, credential_scope
+    from providers.torbox.account import TorBoxAccountTranslation
     from providers.torbox.client import TorBoxService
     from providers.torbox.host_runtime import TorBoxHostMaintenance
     from providers.torbox.provider import TorBoxProvider
@@ -55,10 +57,19 @@ def build(options, environment):
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.
-    provider.lifecycle = TorBoxHostMaintenance(
+    provider.hosts = TorBoxHostMaintenance(
         provider, ProviderRuntimeStateStore(),
         notify=getattr(commands, "notify_applicability_changed", None),
         refresh_seconds=options.host_refresh_interval_hours * 3600)
+    # Account truth is the connected account's: scoped to its token, so a
+    # different account never inherits what this one was entitled to.
+    provider.account = AccountEntitlementMaintenance(
+        provider, TorBoxAccountTranslation(client),
+        ScopedRuntimeStateStore(ProviderRuntimeStateStore(), credential_scope("torbox", options.api_token)),
+        integration_id="torbox",
+        notify=getattr(commands, "notify_applicability_changed", None),
+        notify_status=getattr(commands, "notify_status_changed", None))
+    provider.lifecycle = (provider.hosts, provider.account)
     return provider
 
 
@@ -78,5 +89,7 @@ definition = IntegrationDefinition(
         display_order=12,
         status_tier="premium_service",
         status_tier_label="Premium Services",
+        standard_status_tier="general_family",
+        standard_status_tier_label="Standard Services",
     ),
 )

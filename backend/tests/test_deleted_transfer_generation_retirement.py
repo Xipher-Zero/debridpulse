@@ -779,24 +779,73 @@ async def test_concurrent_readd_creates_exactly_one_fresh_active_generation(repo
 
 
 # --------------------------------------------------------------------------- #
-# H. Non-deleted dedupe behavior is unchanged
+# H. Live work dedupes; a terminal lifecycle is history, never the identity
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_active_and_completed_dedupe_behavior_is_unchanged(repo):
+@pytest.mark.parametrize("status", ["pending", "processing", "downloading", "queued", "paused", "error"])
+async def test_live_work_still_dedupes_onto_the_same_transfer(repo, status):
     a, created_a = await repo.admit((_magnet(),), name="A")
     assert created_a is True
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status=? WHERE id=?", (status, a.id))
+        await db.commit()
 
     again, created_again = await repo.admit((_magnet(),), name="A-again")
     assert created_again is False and again.id == a.id
+    row = (await _torrents("WHERE id=?", (a.id,)))[0]
+    assert row["hash"] == "btih-abc"
 
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("status", ["completed", "consolidated", "cancelled"])
+async def test_a_terminal_lifecycle_is_retired_and_the_resubmission_is_a_new_lineage(repo, status):
+    a, _ = await repo.admit((_magnet(),), name="A")
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status=? WHERE id=?", (status, a.id))
+        await db.commit()
+
+    b, created = await repo.admit((_magnet(),), name="B")
+
+    assert created is True and b.id != a.id and b.state == TransferState.ACCEPTED
+    old = (await _torrents("WHERE id=?", (a.id,)))[0]
+    # A keeps its lifecycle and its discoverable logical fingerprint; only the
+    # active key moved, to a non-recursive retired form that is not "deleted".
+    assert old["status"] == status
+    assert old["hash"] == f"retired:{a.id}:btih-abc" and old["source_fingerprint"] == "btih-abc"
+    assert (await repo.get(a.id)).fingerprint == "btih-abc"
+    assert (await _torrents("WHERE id=?", (b.id,)))[0]["hash"] == "btih-abc"
+    # Deleting the retired generation later still tombstones it once.
+    await repo.delete(a.id, remote=False)
+    assert (await _torrents("WHERE id=?", (a.id,)))[0]["hash"] == f"deleted:{a.id}:btih-abc"
+
+
+@pytest.mark.asyncio
+async def test_an_inventory_observation_is_not_an_independent_submission(repo):
+    a, _ = await repo.admit((_magnet(),), name="A")
     async with database.get_db() as db:
         await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (a.id,))
         await db.commit()
-    after_complete, created_after = await repo.admit((_magnet(),), name="A-complete")
-    assert created_after is False and after_complete.id == a.id
-    row = (await _torrents("WHERE id=?", (a.id,)))[0]
-    assert row["hash"] == "btih-abc"
+
+    observed, created = await repo.admit((_magnet(),), name="seen", source="inventory", independent=False)
+
+    assert created is False and observed.id == a.id
+    assert (await _torrents("WHERE id=?", (a.id,)))[0]["hash"] == "btih-abc"
+
+
+@pytest.mark.asyncio
+async def test_concurrent_resubmissions_of_a_completed_object_create_exactly_one_new_generation(repo):
+    a, _ = await repo.admit((_magnet(),), name="A")
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (a.id,))
+        await db.commit()
+
+    results = await asyncio.gather(*(repo.admit((_magnet(),), name=f"B{i}") for i in range(6)))
+
+    ids = {transfer.id for transfer, _created in results}
+    assert len(ids) == 1 and a.id not in ids
+    assert [created for _t, created in results].count(True) == 1
+    assert [r["hash"] for r in await _torrents("ORDER BY id")] == [f"retired:{a.id}:btih-abc", "btih-abc"]
 
 
 # --------------------------------------------------------------------------- #

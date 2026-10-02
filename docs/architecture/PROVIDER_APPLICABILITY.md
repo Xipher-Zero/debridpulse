@@ -47,6 +47,45 @@ The class decision is a filter, not provider-specific priority code. Registratio
 
 If no provider survives, routing returns the canonical non-retryable `UNSUPPORTED_REQUEST` before provider resolution begins. Unsupported routing therefore creates no fake provider attempt, consumes no provider retry budget, starts no executor/aria2 work, opens no authentication interaction and performs no host refresh.
 
+## Account entitlement (DP 1.0.13)
+
+An account-backed provider (AllDebrid, Real-Debrid, TorBox, and any future one)
+has a fourth, separate dimension: what its CURRENT account may begin. It is the
+optional neutral `EntitlementSource` contract (`transfers.entitlement.ProviderEntitlements`:
+readiness, effective request classes, service class, degraded, authoritative
+expiry, display plan), narrowed per request through `RequestEntitlementSource`
+where only the provider can read the request (AllDebrid's free/premium host
+types). The registry intersects it for NEW acquisition only:
+
+- known not entitled -> the provider leaves the competition before
+  classification, exactly like an exhausted one, and no provider call is made;
+- unresolved (no current or last-known-good account truth) -> it stays in the
+  competition, and when it would be selected the decision is premature
+  (`ApplicabilityUnresolved`), so no lower or generic fallback wins while
+  account truth is merely unknown;
+- connection failed (no credential, credential refused) -> health, not
+  entitlement: the provider competes as it always did and its ordinary failure
+  takes the established path;
+- a provider without the contract (or with `entitlements = None`) behaves
+  exactly as before.
+
+A bound route, its continuation and a member of a route that already exists are
+never new acquisition (`provider_for(..., acquisition=False)`): entitlement
+never erases ownership or blocks observation and cleanup. `IntegrationDescriptor.request_types`
+stays the static implementation capability and is never mutated by account state.
+
+The one account owner per provider is `integrations.account_entitlement.AccountEntitlementMaintenance`:
+it restores last-known-good facts persisted under the credential's scope
+(`integrations.runtime_state.credential_scope`/`ScopedRuntimeStateStore`, the
+generalized scope AllDebrid's host inventory already used), refreshes on its
+own cadence, adopts facts a status probe already fetched, records a
+provider-proven definitive refusal as a durable contraction of exactly the
+refused classes (lifted when account truth changes), and derives entitlement
+at the instant it is read -- so a known expiry binds even when every refresh
+fails. Every change wakes routing (`notify_applicability_changed`) and the
+status presentation (`notify_status_changed`). Native plans, account types and
+refusal codes stay in each provider's `account.py` translation.
+
 ## Current production matrix
 
 | AllDebrid | HTTP & HTTPS | AD-supported URL | Unrelated HTTP(S) URL |

@@ -330,6 +330,36 @@
 
 ### Changed
 
+- **Adding something you already downloaded is a new transfer.** Submitting a link, magnet, torrent or
+  NZB again after its earlier transfer finished (completed, consolidated or cancelled) now creates a new
+  transfer instead of reopening the old one. If the earlier download's files are still there and intact,
+  the new transfer consolidates into them straight away with nothing downloaded again; if they are gone or
+  changed, it downloads fresh through the providers enabled now, in the usual order -- a provider that
+  handled the old transfer has no special claim, and one you have since disabled is never asked. The old
+  transfer stays as history. Adding something that is still in progress (or failed and waiting for your
+  Retry) still joins the existing transfer, and Retry on a finished transfer still downloads it again in
+  place.
+- **A transfer whose every provider failed before anything downloaded now shows as failed** instead of
+  staying pending, and stays failed after a restart.
+- **Premium providers follow your account, not just your connection.** AllDebrid, Real-Debrid and TorBox
+  now take only the work your current account can actually do: a free or expired account is not sent
+  magnets or torrents it cannot add (AllDebrid and Real-Debrid), a TorBox account takes torrents, web
+  downloads and Usenet according to its plan (web downloads still only from hosters TorBox lists as usable,
+  NZBs only with Usenet via TorBox switched on), and an AllDebrid free account only links from AllDebrid's
+  free hosts -- so that work goes to your other providers instead of failing. When a premium plan ends,
+  that takes effect at its end time even if the provider cannot be reached, and a renewal is picked up at
+  the next account check. When the provider refuses a feature because the plan does not include it, it is
+  not offered that kind of work again until the account changes; rate limits, cooldowns and full queues
+  never count as that. Until DebridPulse has seen the account once, work it might take waits for it rather
+  than going elsewhere early. Each connection's account information is kept separately, so connecting a
+  different account starts fresh.
+- **Provider Status shows the account you have now.** A premium account appears under Premium Services
+  with its crown entry; a free or expired one moves to Standard Services and leaves the crown, and comes
+  back when premium returns -- without a restart. A provider that is connected but has lost what its
+  account should be able to do (an expired plan, a refused feature, Usenet via TorBox switched on for a
+  plan without Usenet) shows yellow rather than green; connection and sign-in problems stay red. The
+  Real-Debrid and TorBox cards say "Free account" for any non-premium account, from the same account
+  information.
 - **A transfer continues through another provider once its provider is exhausted.** When the provider
   handling a source fails for good — its retries are spent, or its account, credential or service cannot
   continue without you — and another enabled provider can handle the same source, the same transfer moves

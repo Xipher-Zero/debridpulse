@@ -38,14 +38,19 @@ def test_operational_health_is_derived_from_member_observations_not_enablement()
 
 
 def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
-    # One premium-account owner interprets each provider's own account facts at
-    # its edge; the neutral status owner names no provider and no account field.
-    assert "alldebrid: status =>" in ACCOUNT and "premiumUntil" in ACCOUNT
-    assert "realdebrid: status =>" in ACCOUNT and "status?.expiration" in ACCOUNT
-    assert "Premium until" in ACCOUNT
-    assert "alldebrid.com" not in ACCOUNT.lower()
-    for provider_specific in ("alldebrid", "realdebrid", "premiumUntil", "expiration", "premium-row"):
-        assert provider_specific not in STATUS, provider_specific
+    # DP 1.0.13: the one premium-account owner reads the NEUTRAL account truth
+    # every account-backed provider's status surface publishes, so neither it
+    # nor the neutral status owner names a provider or a native account field
+    # -- a future premium provider needs neither file changed.
+    assert "status?.account" in ACCOUNT and "service_class !== 'premium'" in ACCOUNT
+    assert "Premium until" not in STATUS and "until" in ACCOUNT
+    for provider_specific in ("alldebrid", "realdebrid", "torbox"):
+        assert provider_specific not in ACCOUNT.casefold(), provider_specific
+    for native_field in ("isPremium", "status?.premiumUntil", "status?.expiration", "premium_expires_at",
+                         "plan_name", "account_type"):
+        assert native_field not in ACCOUNT, native_field
+    for provider_specific in ("alldebrid", "realdebrid", "torbox", "premiumUntil", "expiration", "premium-row"):
+        assert provider_specific not in STATUS.casefold() if provider_specific.islower() else provider_specific not in STATUS, provider_specific
     assert not (ROOT / "frontend" / "static" / "ui-alldebrid-account-status.js").exists()
 
 

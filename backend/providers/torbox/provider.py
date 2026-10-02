@@ -16,6 +16,7 @@ from functools import wraps
 import time
 from urllib.parse import urlsplit
 
+from providers.torbox.account import refused_family
 from providers.torbox.client import (
     LIST_PAGE_LIMIT, TORRENT, USENET, WEBDL, TorBoxAPIError, TorBoxService, member_address, member_source_host,
     parse_member_address,
@@ -97,6 +98,24 @@ class TorBoxProvider:
         # Replaced by host maintenance once it is attached.
         return self.applicability
 
+    @property
+    def entitlements(self):
+        """What the connected account may begin now, kept by its account
+        owner (``integrations.account_entitlement``) from TorBox's own plan
+        semantics (``providers.torbox.account``); ``None`` -- no account
+        dimension at all -- for an instance built without one."""
+        owner = getattr(self, "account", None)
+        return owner.entitlements if owner is not None else None
+
+    async def _refused(self, exc: Exception, kind: str) -> None:
+        """A creation TorBox refused because the plan excludes the feature
+        contracts exactly that family for this account; any other refusal is
+        an ordinary failure."""
+        family = refused_family(exc, kind)
+        owner = getattr(self, "account", None)
+        if family and owner is not None:
+            await owner.contract(family)
+
     async def _call(self, operation, *args, stage=Stage.RESOLUTION, **kwargs):
         try:
             return await operation(*args, **kwargs)
@@ -110,16 +129,24 @@ class TorBoxProvider:
         member = parse_member_address(request.payload) if request.kind == "https" else None
         if member is not None:
             return ResolutionResult(ResourceState.AVAILABLE, (await self._member(request, *member),))
-        if request.kind in {"http", "https"}:
-            family, native_id, ownership = WEBDL, await self.client.create_webdl(str(request.payload)), Ownership.CREATED
-        elif request.kind in {"magnet", "torrent"}:
-            family, (native_id, ownership) = TORRENT, await self._torrent(request)
-        elif request.kind == "nzb" and request.kind in self.descriptor.request_types:
-            family, native_id, ownership = USENET, await self._usenet(request), Ownership.CREATED
-        else:
-            raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST,
-                                                Stage.SUBMISSION, Retryability.NEVER,
-                                                origin=Origin.USER, integration_id=INTEGRATION_ID))
+        try:
+            if request.kind in {"http", "https"}:
+                family, native_id, ownership = (WEBDL, await self.client.create_webdl(str(request.payload)),
+                                                Ownership.CREATED)
+            elif request.kind in {"magnet", "torrent"}:
+                family, (native_id, ownership) = TORRENT, await self._torrent(request)
+            elif request.kind == "nzb" and request.kind in self.descriptor.request_types:
+                family, native_id, ownership = USENET, await self._usenet(request), Ownership.CREATED
+            else:
+                raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST,
+                                                    Stage.SUBMISSION, Retryability.NEVER,
+                                                    origin=Origin.USER, integration_id=INTEGRATION_ID))
+        except TorBoxAPIError as exc:
+            # The refusal still fails this route the ordinary way (provider
+            # exhaustion and failover are the core's); it only also tells the
+            # account owner what this plan excludes.
+            await self._refused(exc, request.kind)
+            raise
         observed = replace(await self.observe(resource(family, native_id, ownership=ownership)), request=request)
         return ResolutionResult(observed.state, observation=observed, error=observed.error)
 

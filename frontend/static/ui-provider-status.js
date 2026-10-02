@@ -48,6 +48,12 @@
           groupEnabled: gates[String(presentation.status_group || '').trim()]?.enabled !== false,
           tierId: String(presentation.status_tier || '').trim(),
           tierLabel: String(presentation.status_tier_label || '').trim(),
+          homeTierId: String(presentation.status_tier || '').trim(),
+          homeTierLabel: String(presentation.status_tier_label || '').trim(),
+          // Where an account-tiered integration belongs while its current
+          // account is of the standard service class (neutral metadata).
+          standardTierId: String(presentation.standard_status_tier || '').trim(),
+          standardTierLabel: String(presentation.standard_status_tier_label || '').trim(),
         };
       })
       .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
@@ -62,7 +68,7 @@
   const statusHost = () => document.getElementById('provider-status-list');
 
   function dotClass(state) {
-    return ({healthy:'ok', auth_required:'error', unhealthy:'error', unconfigured:'warn', unverified:'warn', unknown:'check', checking:'check', mixed:'warn', unavailable:'error', disabled:'error'})[state] || 'check';
+    return ({healthy:'ok', degraded:'warn', auth_required:'error', unhealthy:'error', unconfigured:'warn', unverified:'warn', unknown:'check', checking:'check', mixed:'warn', unavailable:'error', disabled:'error'})[state] || 'check';
   }
 
   /* Runtime health and verification are two different questions, asked in that
@@ -84,6 +90,24 @@
     if (entry.state !== 'healthy') return entry;
     if (!entry.verifiable || !entry.configured || entry.verified) return entry;
     return {...entry, state: 'unverified'};
+  }
+
+  /* An account-backed provider's CURRENT account, as its status surface
+   * publishes it in neutral terms (`status.account`): the service class
+   * decides its tier and premium standing, and a connected account that lost
+   * acquisition capability is degraded -- a warning, never offline. Without
+   * that block (an integration with no account dimension, or no account truth
+   * yet) the static presentation metadata is the whole truth. Nothing here
+   * names an integration or reads a plan. */
+  function accountAdjusted(entry) {
+    const account = entry.status?.account;
+    if (!account || typeof account !== 'object') return entry;
+    let next = entry;
+    if (account.service_class === 'standard' && entry.standardTierId && entry.standardTierLabel) {
+      next = {...next, tierId: entry.standardTierId, tierLabel: entry.standardTierLabel, premium: false};
+    }
+    if (next.state === 'healthy' && account.functional === 'degraded') next = {...next, state: 'degraded'};
+    return next;
   }
 
   /* The group's one reported state.
@@ -134,6 +158,15 @@
     // ungrouped after the tiers, exactly as before this hierarchy existed.
     const tiers = new Map();
     const untiered = [];
+    // Tier ORDER is the declared presentation order of each tier's home
+    // entries, so an account-tiered entry that moved tier for its current
+    // account never reorders the tiers themselves. A seeded tier left with no
+    // rows still renders nothing.
+    for (const entry of entries) {
+      if (entry.homeTierId && entry.homeTierLabel && !tiers.has(entry.homeTierId)) {
+        tiers.set(entry.homeTierId, {id:entry.homeTierId, label:entry.homeTierLabel, rows:[], groups:new Map()});
+      }
+    }
     const rowFor = entry =>
       `<div class="conn-row dp-provider-status-row" data-provider-id="${esc(entry.id)}" data-provider-state="${esc(entry.state)}"><div class="dot ${dotClass(entry.state)}"></div><span class="dp-provider-status-name">${esc(entry.name)}</span></div>`;
 
@@ -169,9 +202,11 @@
     // A tier with nothing to show renders nothing: no bare heading is left behind.
     // A tier that shows a premium integration says so (neutral presentation
     // metadata), so the premium account composition can decide whether its
-    // heading is needed; this owner never decides that itself.
+    // heading is needed; this owner never decides that itself. A tier whose
+    // whole content is one aggregate group (and nothing else) says that too:
+    // only such a tier may fold its heading away when no premium tier exists.
     const rendered = [...tiers.values()].filter(tier => tier.rows.length).map(tier =>
-      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"${tier.premium ? ' data-provider-tier-premium' : ''}><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
+      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"${tier.premium ? ' data-provider-tier-premium' : ''}${tier.rows.length === 1 && !tier.rows[0].entry ? ' data-provider-tier-single-group' : ''}><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
     ).concat(untiered.map(markup));
 
     host.innerHTML = rendered.length ? rendered.join('')
@@ -184,7 +219,7 @@
     if (!candidate.endpoint) return {...candidate, state:'unknown'};
     try {
       const status = await api('GET', candidate.endpoint);
-      return verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status});
+      return accountAdjusted(verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status}));
     } catch (_) {
       return {...candidate, state:'unknown'};
     }

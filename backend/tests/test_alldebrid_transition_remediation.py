@@ -10,7 +10,7 @@ import pytest
 
 from providers.alldebrid.definition import definition as alldebrid_definition
 from providers.alldebrid.provider import AllDebridProvider
-from providers.alldebrid.runtime_state import AllDebridRuntimeStateStore, credential_scope
+from integrations.runtime_state import ScopedRuntimeStateStore, credential_scope
 from transfers.engine import TransferEngine
 from transfers.models import ProviderResource, RequestRecord, TransferRequest
 from transfers.policy import TransferPolicy
@@ -66,14 +66,14 @@ def test_alldebrid_api_key_is_a_durable_connection_ownership_field():
 @pytest.mark.asyncio
 async def test_runtime_state_namespace_changes_with_credentials_without_persisting_secret():
     backing = CapturingRuntimeStore()
-    first_scope = credential_scope("credential-one")
-    second_scope = credential_scope("credential-two")
+    first_scope = credential_scope("alldebrid", "credential-one")
+    second_scope = credential_scope("alldebrid", "credential-two")
     assert first_scope != second_scope
     assert "credential-one" not in first_scope
     assert "credential-two" not in second_scope
 
-    first = AllDebridRuntimeStateStore(backing, first_scope)
-    second = AllDebridRuntimeStateStore(backing, second_scope)
+    first = ScopedRuntimeStateStore(backing, first_scope)
+    second = ScopedRuntimeStateStore(backing, second_scope)
     await first.load("alldebrid", "supported-hosts")
     await second.load("alldebrid", "supported-hosts")
 
@@ -84,6 +84,16 @@ async def test_runtime_state_namespace_changes_with_credentials_without_persisti
     assert second_key.startswith("supported-hosts:credential-v1-")
     assert "credential-one" not in first_key
     assert "credential-two" not in second_key
+
+
+def test_the_generalized_scope_keeps_alldebrid_s_established_namespace():
+    """Generalizing the credential scope must not orphan AllDebrid's persisted
+    host inventory: the token for an AllDebrid key is exactly the one the
+    retired provider-local helper produced."""
+    from hashlib import sha256
+    legacy = "credential-v1-" + sha256(b"debridpulse:alldebrid:credential:v1\0" + b"credential-one").hexdigest()
+    assert credential_scope("alldebrid", "credential-one") == legacy
+    assert credential_scope("torbox", "credential-one") != legacy
 
 
 @pytest.mark.asyncio

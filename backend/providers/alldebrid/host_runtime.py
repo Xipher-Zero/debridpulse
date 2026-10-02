@@ -120,25 +120,41 @@ class AllDebridRequestApplicability:
     def _within_domain(hostname: str, domain: str) -> bool:
         return hostname == domain or hostname.endswith("." + domain)
 
-    def __call__(self, request) -> ProviderApplicability:
+    def _matched(self, request):
+        """The one supported host whose domain and native expression match
+        ``request``, with the request's URL view; ``None`` otherwise."""
         if not self._ready:
-            return self._facts()
+            return None
         view = parse_url_applicability(request)
         if view is None or view.scheme not in {"http", "https"}:
-            return self._facts()
+            return None
         raw = request.payload if isinstance(request.payload, str) else ""
         if not raw or len(raw) > _MAX_MATCH_URL_LENGTH:
-            return self._facts()
-
+            return None
         for host, patterns in self._compiled:
             if not any(self._within_domain(view.hostname, domain) for domain in host.domains):
                 continue
             if not any(pattern.search(raw) for pattern in patterns):
                 continue
-            return self._facts((
-                HostClaim(view.hostname, HostClaimScope.EXACT, frozenset({view.scheme})),
-            ))
-        return self._facts()
+            return host, view
+        return None
+
+    def __call__(self, request) -> ProviderApplicability:
+        matched = self._matched(request)
+        if matched is None:
+            return self._facts()
+        _host, view = matched
+        return self._facts((
+            HostClaim(view.hostname, HostClaimScope.EXACT, frozenset({view.scheme})),
+        ))
+
+    def host_type(self, request) -> str | None:
+        """AllDebrid's own type (``free``/``premium``) of the host that
+        ``request`` belongs to, or ``None`` when no supported host matches.
+        Structural host truth only: what the account may do with it is
+        account entitlement's question (``providers.alldebrid.account``)."""
+        matched = self._matched(request)
+        return matched[0].service_type if matched is not None else None
 
 
 def _text(value: Any, *, field: str) -> str:

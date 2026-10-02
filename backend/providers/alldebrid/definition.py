@@ -55,6 +55,9 @@ def _verification_subjects(options: AllDebridOptions):
 
 
 def build(options, environment):
+    from integrations.account_entitlement import AccountEntitlementMaintenance
+    from integrations.runtime_state import ProviderRuntimeStateStore, ScopedRuntimeStateStore, credential_scope
+    from providers.alldebrid.account import AllDebridAccountTranslation
     from providers.alldebrid.provider import AllDebridProvider
     provider = AllDebridProvider(
         options.api_key, options.agent,
@@ -63,6 +66,16 @@ def build(options, environment):
     # URL applicability is populated from AllDebrid's persisted/native host
     # inventory. Magnet/torrent remain neutral descriptor request-type claims.
     provider.applicability = ProviderApplicability()
+    # Account truth is the connected account's, scoped to its API key, so a
+    # replaced key never inherits what the previous account was entitled to.
+    commands = getattr(environment, "commands", None)
+    provider.account = AccountEntitlementMaintenance(
+        provider, AllDebridAccountTranslation(provider.client),
+        ScopedRuntimeStateStore(ProviderRuntimeStateStore(), credential_scope("alldebrid", options.api_key)),
+        integration_id="alldebrid",
+        notify=getattr(commands, "notify_applicability_changed", None),
+        notify_status=getattr(commands, "notify_status_changed", None))
+    provider.lifecycle = provider.account
     return provider
 
 
@@ -82,5 +95,7 @@ definition = IntegrationDefinition(
         display_order=10,
         status_tier="premium_service",
         status_tier_label="Premium Services",
+        standard_status_tier="general_family",
+        standard_status_tier_label="Standard Services",
     ),
 )

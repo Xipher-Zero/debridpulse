@@ -74,8 +74,29 @@ outstanding cleanup responsibility, and its file-selection generations all stay
 scoped to that historical transfer. An existing 1.0.12 database is brought to
 this model by idempotent additive backfills in `db/database.py`
 (`_retire_and_backfill_source_fingerprints`, `_backfill_provider_resource_bindings`);
-`db/migrations/v112.py` is untouched. Completed-transfer re-acquisition and all
-other non-deleted dedupe behavior are unchanged.
+`db/migrations/v112.py` is untouched.
+
+**Historical completion is not the identity of a later submission** (DP 1.0.13).
+Live work -- any non-terminal lifecycle, a failed one included (operator Retry
+owns it) -- still dedupes onto the existing transfer. An INDEPENDENT submission
+(`submit(..., independent=True)`, every user/API submission) that finds a
+terminal lifecycle (completed, consolidated, cancelled) holding the key retires
+that key in the same immediate transaction (`retired:<transfer_id>:<source_fingerprint>`
+-- the lifecycle is untouched, never rewritten to look deleted) and admits a new
+lineage; concurrent submissions still converge on exactly one new generation. An
+inventory observation (`independent=False`) is not a submission and dedupes onto
+whatever holds the key. The new lineage inherits nothing: it competes through
+current provider truth only. Whether it needs any acquisition is decided by
+ordinary canonical equivalence: `CanonicalOwnership.equivalence_targets` shows a
+completed (ownership-frozen) artifact of another generation of the same logical
+source (`_frozen_satisfiable`) only while its material is present NOW -- the
+delivery-time re-verification (`_engine_base.TransferEngine._delivered_paths`,
+injected as `material_present`), never a completed row -- so present material is
+consolidated into with cross-transfer provenance and missing material is
+re-acquired. A retired generation coexists with its successor on one native
+resource, and its outstanding cleanup fences the successor exactly like a
+deleted predecessor's. `retry(..., reacquire=True)` is reached only by the
+operator's Retry of a completed/deleted transfer.
 
 ### Provider-resource binding generations
 
@@ -796,10 +817,9 @@ reachable in production at all — see below.
 
 `retry` now owns BOTH operator-initiated retry and terminal-transfer
 reacquisition as two internal branches of the one canonical owner:
-`reacquire=True` (the "resume tracking a transfer a duplicate submission
-found already durably COMPLETED/DELETED" case — `submit()` reaches it only
-for that specific dedupe outcome, never unconditionally, correcting an
-earlier mischaracterization) dispatches to `_reacquire_transfer`, defined on
+`reacquire=True` (the operator's Retry of a transfer already durably
+COMPLETED/DELETED — since DP 1.0.13 `submit()` never reaches it: a later
+submission of the same object is a new lineage) dispatches to `_reacquire_transfer`, defined on
 `convergence_engine.TransferEngine` itself, not inherited from below. Its
 own helper, `_renew_source_parent` (manifest-member parent re-observation on
 `RESOURCE_EXPIRED`), moved with it for the same reason: it mutates durable

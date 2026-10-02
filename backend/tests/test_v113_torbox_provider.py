@@ -153,8 +153,10 @@ async def test_device_authorization_start_pending_completion_and_expiry():
 
 async def test_account_facts_come_from_the_account_never_a_token_lifetime():
     facts = admin.account_facts({"email": "a@e.net", "plan": 2, "premium_expires_at": "2099-02-18T04:08:43Z"})
+    neutral = facts.pop("account")
     assert facts == {"email": "a@e.net", "plan": 2, "plan_name": "Pro", "premium": True,
                      "premium_expires_at": "2099-02-18T04:08:43Z"}
+    assert (neutral["service_class"], neutral["plan"], neutral["functional"]) == ("premium", "Pro", "usable")
     free = admin.account_facts({"email": "f@e.net", "plan": 0, "premium_expires_at": "2099-02-18T04:08:43Z"})
     assert (free["plan_name"], free["premium"]) == ("Free", False)
     lapsed = admin.account_facts({"plan": 1, "premium_expires_at": "2001-01-01T00:00:00Z"})

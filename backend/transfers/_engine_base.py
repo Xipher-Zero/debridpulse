@@ -26,8 +26,8 @@ regression test is not a claim this module makes.
    ``convergence_engine.TransferEngine`` -- the sole owner of every
    recovery/control decision, per CANON-001 -- also reaches into this same
    shared dict from its own ``retry()`` (both the operator-retry branch and
-   the ``reacquire=True`` terminal-transfer-reacquisition branch, the latter
-   via ``_reacquire_transfer()``, which along with pause/resume/pause_all/
+   the operator's ``reacquire=True`` terminal-transfer-reacquisition branch,
+   the latter via ``_reacquire_transfer()``, which along with pause/resume/pause_all/
    resume_all/refresh/candidate-refresh scheduling is defined ONLY on
    ``convergence_engine.TransferEngine``; no lower class defines any of
    them). It is NOT used by ``select_artifact``, ``submit`` itself, or
@@ -302,7 +302,7 @@ class TransferEngine:
                  download_root: str, policy: TransferPolicy | None = None, postprocessors=(), clock=time.time):
         self.repository = repository
         self.registry = registry
-        self.canonical = CanonicalOwnership(repository)
+        self.canonical = CanonicalOwnership(repository, material_present=self._material_present)
         self.challenges = InputChallengeStore(clock=clock, on_retired=self._question_retired)
         self.inputs = EphemeralInputBroker(clock=clock)
         self.root = str(Path(download_root).resolve())
@@ -478,7 +478,16 @@ class TransferEngine:
             return ""
         return direct_link_host(current.request.payload)
 
-    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, reacquire=True, deduplicate=True):
+    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, independent=True, deduplicate=True):
+        """Admit a submission. An independent submission of an object whose
+        earlier lifecycle is terminal is a NEW lineage (``repository.admit``):
+        it never reopens that history, inherits nothing of its routes,
+        candidates, resources or executions, and reaches the earlier material
+        only as ordinary canonical equivalence -- which satisfies it from that
+        material only while the material is currently present
+        (``CanonicalOwnership.equivalence_targets``). ``independent=False`` is
+        an observation of an existing resource (inventory), never a request
+        for new work."""
         if not requests or len(requests) > 100 or any(not isinstance(item, TransferRequest) or not item.kind or not item.payload for item in requests):
             raise TransferError(self._error(Category.INVALID_REQUEST, Stage.SUBMISSION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
         # The admission boundary: credentials a resource carries are split out
@@ -487,7 +496,8 @@ class TransferEngine:
         split = [split_user_supplied(item.payload) for item in requests]
         requests = tuple(replace(item, payload=payload) if values else item
                          for item, (payload, values) in zip(requests, split))
-        transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate)
+        transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate,
+                                                        independent=independent)
         if created and any(values for _payload, values in split):
             # An independent submission never joins another lineage's material,
             # so material is admitted only with the transfer it created.
@@ -495,10 +505,7 @@ class TransferEngine:
             for record, (_payload, values) in zip(roots, split):
                 if values:
                     await self._admit_supplied(transfer.id, record.id, record.request.payload, values)
-        if not created and reacquire and transfer.state in {TransferState.COMPLETED, TransferState.DELETED}:
-            if not await self.retry(transfer.id, reacquire=True):
-                raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION))
-        elif await self.repository.globally_paused():
+        if await self.repository.globally_paused():
             await self.repository.state(transfer.id, TransferState.PAUSED)
         # A running resolution cycle reassesses at once; it never makes a new
         # transfer wait for previously admitted work to drain.
@@ -3220,13 +3227,7 @@ class TransferEngine:
                 # itself directly rather than relying on upstream sequencing:
                 # reached with unproven material through any caller, it fails
                 # closed into the requeue/verification path below.
-                stored = (await self.repository.execution_materialization(artifact.execution.attempt_id)
-                          if artifact.execution else None)
-                paths = await asyncio.to_thread(
-                    verified_material_paths, self.root, work.materialization, stored, footprint,
-                    expected_bytes=artifact.expected_bytes,
-                    allow_empty=artifact.size_knowledge == SizeKnowledge.KNOWN_ZERO,
-                )
+                paths = await self._delivered_paths(artifact, work, footprint)
                 if paths is not None:
                     outputs.extend(paths)
                     continue
@@ -3251,6 +3252,31 @@ class TransferEngine:
             await self.repository.queue_postprocessing(transfer_id, self.postprocessors, tuple(outputs))
             return
         await self._delivered(transfer_id)
+
+    async def _delivered_paths(self, artifact: Artifact, work: ExecutionWork, footprint: ExecutionFootprint):
+        """THE delivery-time re-verification of an artifact's recorded
+        material (``transfers.filesystem.verified_material_paths``): its final
+        paths, or ``None`` when the material is gone or changed."""
+        stored = (await self.repository.execution_materialization(artifact.execution.attempt_id)
+                  if artifact.execution else None)
+        return await asyncio.to_thread(
+            verified_material_paths, self.root, work.materialization, stored, footprint,
+            expected_bytes=artifact.expected_bytes,
+            allow_empty=artifact.size_knowledge == SizeKnowledge.KNOWN_ZERO,
+        )
+
+    async def _material_present(self, artifact: Artifact) -> bool:
+        """Whether a completed artifact's material is present and unchanged
+        NOW, by the same re-verification delivery used. Anything that cannot
+        be verified -- no executor for its handle, no selection, a refused
+        plan, an unreadable path -- is not present."""
+        try:
+            executor, work, footprint = self._artifact_work(artifact)
+            if executor is None or work is None:
+                return False
+            return await self._delivered_paths(artifact, work, footprint) is not None
+        except (TransferError, OSError, ValueError):
+            return False
 
     async def _delivered(self, transfer_id):
         if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=100, verified=True):
@@ -3720,7 +3746,7 @@ class TransferEngine:
                 if item.resource.id in known:
                     await self.repository.resource_observation(known[item.resource.id], item.resource, item.state)
                 elif item.request:
-                    transfer = await self.submit((item.request,), name=item.name, source="inventory", reacquire=False)
+                    transfer = await self.submit((item.request,), name=item.name, source="inventory", independent=False)
                     # Adoption is the one binding path that never passes through a
                     # resolution attempt, so it is owned end to end by the
                     # repository transition (inventory-created imports only,

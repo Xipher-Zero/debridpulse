@@ -4,6 +4,7 @@ from __future__ import annotations
 from typing import Protocol, runtime_checkable
 
 from transfers.applicability import ProviderApplicability
+from transfers.entitlement import ProviderEntitlements
 from transfers.input_required import SubmittedInput
 from transfers.models import (
     CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
@@ -40,6 +41,28 @@ class RequestApplicabilitySource(Protocol):
     """
 
     def applicability_for(self, request: TransferRequest) -> ProviderApplicability: ...
+
+
+@runtime_checkable
+class EntitlementSource(Protocol):
+    """Optional: a provider whose current ACCOUNT decides what it may begin.
+
+    The provider's own lifecycle keeps this neutral value current from its
+    account truth (translation, refresh, last-known-good, known expiry,
+    definitive refusals); reading it performs no I/O. A provider that does not
+    implement it -- or whose value is ``None`` -- has no account entitlement
+    dimension at all: nothing is synthesized for it."""
+
+    entitlements: ProviderEntitlements | None
+
+
+@runtime_checkable
+class RequestEntitlementSource(Protocol):
+    """Optional narrowing of ``EntitlementSource`` for one request, when the
+    account's entitlement depends on request facts only the provider can read
+    (for example which of its hosts a link belongs to). ``None`` is unknown."""
+
+    def entitlement_for(self, request: TransferRequest) -> bool | None: ...
 
 
 @runtime_checkable

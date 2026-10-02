@@ -11,6 +11,7 @@ import asyncio
 import math
 import time
 from dataclasses import dataclass
+from hashlib import sha256
 
 from db.database import get_db, validate_runtime_state_schema
 
@@ -292,3 +293,63 @@ class ProviderRuntimeStateStore:
                 return max(0, int(cursor.rowcount))
         except Exception as exc:
             raise RuntimeStateStorageError("Could not purge integration runtime state") from exc
+
+
+# One explicit version for every credential scope token. Bumping it gives every
+# account-derived state a fresh namespace (nothing old is ever read again).
+_SCOPE_VERSION = "credential-v1"
+
+
+def credential_scope(integration_id: str, credential: str) -> str:
+    """An opaque, non-secret, deterministic namespace token for one
+    integration credential (or the stable account identity that issued it).
+
+    Account-derived runtime state lives under it, so a different credential --
+    a reconnect to another account, a replaced key -- reads none of the
+    previous one's last-known-good truth. The digest is domain-separated per
+    integration; only the token, never the material, is ever stored. It is
+    byte-for-byte the scope the first credential-scoped integration state was
+    persisted under, so that state keeps its namespace."""
+    integration = str(integration_id or "").strip()
+    if not integration:
+        raise ValueError("integration_id must be non-empty")
+    material = str(credential or "").encode("utf-8")
+    digest = sha256(b"debridpulse:" + integration.encode("utf-8") + b":credential:v1\0" + material).hexdigest()
+    return f"{_SCOPE_VERSION}-{digest}"
+
+
+class ScopedRuntimeStateStore:
+    """The one credential-scoped view of the neutral store: every state key an
+    integration reads or writes through it is suffixed with its scope token.
+    Opaque storage only -- payload schema stays the integration's."""
+
+    def __init__(self, store, scope: str) -> None:
+        self._store = store
+        self._scope = str(scope or "").strip()
+        if not self._scope:
+            raise ValueError("runtime-state scope must be non-empty")
+
+    @property
+    def scope(self) -> str:
+        return self._scope
+
+    def _state_key(self, state_key: str) -> str:
+        key = str(state_key or _DEFAULT_STATE_KEY).strip() or _DEFAULT_STATE_KEY
+        return f"{key}:{self._scope}"
+
+    async def load(self, integration_id: str, state_key: str = _DEFAULT_STATE_KEY):
+        return await self._store.load(integration_id, self._state_key(state_key))
+
+    async def replace(self, integration_id: str, payload, *, schema_version: str,
+                      state_key: str = _DEFAULT_STATE_KEY, observed_at=None, stale_after=None,
+                      successful_at=None, expected_generation=None):
+        return await self._store.replace(
+            integration_id,
+            payload,
+            schema_version=schema_version,
+            state_key=self._state_key(state_key),
+            observed_at=observed_at,
+            stale_after=stale_after,
+            successful_at=successful_at,
+            expected_generation=expected_generation,
+        )

@@ -1574,10 +1574,10 @@ class TransferEngine(_QualifiedTransferEngine):
         """Operator Retry is a serialized trigger adapter, not a recovery
         algorithm. ``reacquire=True`` (DP 1.0.12 canonical lifecycle/recovery/
         completion rework, CANON-001 closure, Gate 9 revision 6) is a
-        DIFFERENT, exceptional lifecycle transition -- "resume tracking a
-        transfer a duplicate submission found already COMPLETED/DELETED" --
-        not the ordinary operator-retry decision below; ``submit()`` reaches
-        it only for that specific dedupe outcome, never unconditionally. Both
+        DIFFERENT, exceptional lifecycle transition -- the operator's Retry of
+        a transfer that is already COMPLETED/DELETED -- not the ordinary
+        operator-retry decision below. A later submission of the same object
+        never reaches it: that is a new lineage (``repository.admit``). Both
         branches are owned here, by the one canonical semantic owner; see
         ``_reacquire_transfer`` for the reacquisition branch's own claim/
         fencing rationale."""
@@ -1696,14 +1696,13 @@ class TransferEngine(_QualifiedTransferEngine):
         return True
 
     async def _reacquire_transfer(self, transfer_id: int) -> bool:
-        """Resume tracking a transfer a duplicate submission found already
+        """Resume tracking a transfer the operator retried while it was
         durably COMPLETED or DELETED (DP 1.0.12 canonical lifecycle/recovery/
         completion rework, CANON-001 closure, Gate 9 revision 7: moved here
         from ``_engine_base.TransferEngine``, the sole remaining lower-layer
-        semantic method, on the grounds that ``submit()`` needed it
-        "universally" -- corrected: ``submit()`` reaches this only for the
-        specific dedupe-onto-a-terminal-transfer outcome, an exceptional
-        lifecycle transition like any other, not a neutral primitive).
+        semantic method; an exceptional lifecycle transition like any other,
+        not a neutral primitive. DP 1.0.13: ``submit()`` no longer reaches it
+        -- a later submission of the same object is a new lineage).
 
         Precondition is authoritative here, not merely assumed from the
         caller: only a transfer CURRENTLY COMPLETED or DELETED is eligible
@@ -1738,7 +1737,7 @@ class TransferEngine(_QualifiedTransferEngine):
         -- both are branches of one ``retry()`` call serialized by the SAME
         ``self._transfer_locks`` entry acquired below. The only race this
         method's own lock protects directly is therefore what remains
-        genuine: two concurrent duplicate submissions racing to reacquire
+        genuine: two concurrent operator reacquisitions racing to reacquire
         the SAME terminal transfer.
 
         This method no longer clears durable pause intent at the end (Gate 9
@@ -2314,6 +2313,16 @@ class TransferEngine(_QualifiedTransferEngine):
         dispatch_allowed=True,
     ):
         observations = observations or {}
+        if not artifacts:
+            # Nothing below gates a transfer that holds no artifact, so it
+            # reaches the base implementation's one tick-path aggregation like
+            # any other: a lineage whose every logical obligation terminally
+            # failed before it materialized anything (all of its routes
+            # exhausted, a request-global refusal) converges to its terminal
+            # state here -- on this cycle, and on the first cycle after a
+            # restart -- instead of staying ``pending`` forever.
+            await super()._process_executions(transfer_id, (), observations, dispatch_allowed=dispatch_allowed)
+            return
         for artifact in artifacts:
             candidate = self._candidate(artifact)
             # Routing eligibility and already-satisfied delivery truth are

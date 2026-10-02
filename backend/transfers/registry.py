@@ -8,13 +8,14 @@ from transfers.applicability import (
     assess_provider_applicability,
 )
 from transfers.contracts import (
-    ApplicabilitySource, CandidateRefresh, CandidateSampling, CandidateSamplingContinuation, Cleanup,
+    ApplicabilitySource, CandidateRefresh, EntitlementSource, RequestEntitlementSource, CandidateSampling, CandidateSamplingContinuation, Cleanup,
     ContinuationBoundaryDiscovery, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
     ExecutorInputRecovery, RemoteDiscovery,
     ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource,
     ResourceLookup, Manifest,
 )
+from transfers.entitlement import ProviderEntitlements
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import (
     Capability, ContinuationCapability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim,
@@ -137,6 +138,19 @@ class IntegrationRegistry:
             return provider.applicability
         return None
 
+    @staticmethod
+    def entitlement_for(provider: Provider, request: TransferRequest) -> bool | None:
+        """Whether ``provider``'s CURRENT account may begin ``request``:
+        ``True``/``False`` once its account truth is resolved, ``None`` while it
+        is unknown. A provider with no account entitlement dimension is
+        ``True`` -- its behaviour is exactly what it was."""
+        if isinstance(provider, RequestEntitlementSource):
+            return provider.entitlement_for(request)
+        entitlements = provider.entitlements if isinstance(provider, EntitlementSource) else None
+        if isinstance(entitlements, ProviderEntitlements):
+            return entitlements.admits(request.kind)
+        return True
+
     def _provider_selection(
         self,
         request: TransferRequest,
@@ -144,6 +158,7 @@ class IntegrationRegistry:
         capability: Capability = Capability.RESOLVE,
         declined: frozenset[str] = frozenset(),
         exhausted: frozenset[str] = frozenset(),
+        acquisition: bool = True,
     ):
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
@@ -151,15 +166,28 @@ class IntegrationRegistry:
         # Neither does a provider already exhausted for this request in its
         # current routing campaign: it has had its whole route, so the class
         # is judged again among the providers that remain -- a generic
-        # provider competes once no remaining specialized one claims.
-        candidates = [
-            provider for provider in self.providers.values()
-            if provider.descriptor.enabled
-            and provider.descriptor.id not in self._unhealthy
-            and provider.descriptor.id not in exhausted
-            and capability in provider.descriptor.capabilities
-            and request.kind in provider.descriptor.request_types
-        ]
+        # provider competes once no remaining specialized one claims. Nor,
+        # for new ACQUISITION, does a provider whose current account is known
+        # not to be entitled to the request: it cleanly yields exactly like an
+        # exhausted one. A provider whose entitlement is still unknown stays
+        # in the competition (``unresolved``), so no lower fallback can win
+        # merely because its account truth has not arrived yet. A member of a
+        # route that already exists is not new acquisition: entitlement never
+        # touches it.
+        entitlement = {}
+        candidates = []
+        for provider in self.providers.values():
+            if not (provider.descriptor.enabled
+                    and provider.descriptor.id not in self._unhealthy
+                    and provider.descriptor.id not in exhausted
+                    and capability in provider.descriptor.capabilities
+                    and request.kind in provider.descriptor.request_types):
+                continue
+            entitled = self.entitlement_for(provider, request) if acquisition else True
+            if entitled is False:
+                continue
+            entitlement[provider.descriptor.id] = entitled
+            candidates.append(provider)
 
         inputs = tuple(
             ProviderApplicabilityInput(
@@ -187,7 +215,9 @@ class IntegrationRegistry:
         applicable.sort(key=lambda provider: self._provider_selection_key(
             provider, request, conditional=conditional[provider.descriptor.id],
             specific=specific[provider.descriptor.id]))
-        return tuple(applicable), assessment
+        unresolved = frozenset(provider.descriptor.id for provider in applicable
+                               if entitlement[provider.descriptor.id] is None)
+        return tuple(applicable), assessment, unresolved
 
     def conditional_claim(self, provider: Provider, request: TransferRequest) -> bool:
         """Whether ``provider``'s claim on ``request`` is conditional -- the
@@ -211,9 +241,11 @@ class IntegrationRegistry:
             request.preferred_provider for request in requests
             if request.preferred_provider
         }
+        entitlement_unknown: set[str] = set()
         for request in requests:
-            providers, assessment = self._provider_selection(request)
+            providers, assessment, unknown = self._provider_selection(request)
             unresolved.update(assessment.unresolved_specialized)
+            entitlement_unknown.update(unknown)
             specialized_ids = {
                 match.provider_id for match in assessment.matches
                 if match.classification == ApplicabilityClass.SPECIALIZED
@@ -223,7 +255,7 @@ class IntegrationRegistry:
                     represented[provider.descriptor.id] = provider
 
         if represented:
-            return min(
+            owner = min(
                 represented.values(),
                 key=lambda provider: (
                     provider.descriptor.id not in preferred_ids,
@@ -231,23 +263,35 @@ class IntegrationRegistry:
                     provider.descriptor.id,
                 ),
             )
+            if owner.descriptor.id in entitlement_unknown:
+                raise ApplicabilityUnresolved((owner.descriptor.id,))
+            return owner
         if unresolved:
             raise ApplicabilityUnresolved(sorted(unresolved))
         return None
 
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE,
                            declined: frozenset[str] = frozenset(),
-                           exhausted: frozenset[str] = frozenset()) -> tuple[Provider, ...]:
-        providers, _assessment = self._provider_selection(request, capability=capability, declined=declined,
-                                                          exhausted=exhausted)
+                           exhausted: frozenset[str] = frozenset(),
+                           acquisition: bool = True) -> tuple[Provider, ...]:
+        """Every provider still in the competition for ``request``, in order --
+        including one whose account entitlement is not yet known: it remains
+        a possible owner, so the request waits for it rather than ending."""
+        providers, _assessment, _unknown = self._provider_selection(
+            request, capability=capability, declined=declined, exhausted=exhausted, acquisition=acquisition)
         return providers
 
     def provider_for(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
-                     exhausted: frozenset[str] = frozenset()) -> Provider:
+                     exhausted: frozenset[str] = frozenset(), acquisition: bool = True) -> Provider:
         """The first provider of the one established competition for
         ``request``, without the providers that positively declined it or
-        were exhausted for it in its current routing campaign."""
-        providers, assessment = self._provider_selection(request, declined=declined, exhausted=exhausted)
+        were exhausted for it in its current routing campaign. When that
+        first provider's account entitlement is still unknown the decision
+        is premature, exactly like unresolved specialized applicability."""
+        providers, assessment, unknown = self._provider_selection(
+            request, declined=declined, exhausted=exhausted, acquisition=acquisition)
+        if providers and providers[0].descriptor.id in unknown:
+            raise ApplicabilityUnresolved((providers[0].descriptor.id,))
         if not providers:
             if assessment.unresolved_specialized:
                 raise ApplicabilityUnresolved(assessment.unresolved_specialized)

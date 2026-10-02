@@ -15,7 +15,9 @@ const { test, expect } = require('@playwright/test');
 const PENDING = {state: 'pending', user_code: 'ABCD1234', verification_url: 'https://real-debrid.com/device',
                  interval: 5, expires_in: 600};
 const ACCOUNT = {username: 'alice', account_type: 'premium', premium: true, premium_seconds: 9,
-                 expiration: '2027-01-31T10:00:00.000Z'};
+                 expiration: '2027-01-31T10:00:00.000Z',
+                 account: {entitlement: 'ready', service_class: 'premium', functional: 'usable', plan: 'Premium',
+                           expires_at: Date.parse('2027-01-31T10:00:00.000Z') / 1000}};
 
 /* A successful connection comes back configured, verified AND enabled -- the
  * server's auto-enable; a disconnect leaves the operator's enable state alone. */

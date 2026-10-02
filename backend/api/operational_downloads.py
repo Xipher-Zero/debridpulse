@@ -1268,7 +1268,7 @@ async def list_operational_torrents(
         )
         SELECT
             t.id,
-            CASE WHEN t.hash LIKE 'deleted:%' THEN COALESCE(t.source_fingerprint, '') ELSE t.hash END AS hash,
+            CASE WHEN t.hash LIKE 'deleted:%' OR t.hash LIKE 'retired:%' THEN COALESCE(t.source_fingerprint, '') ELSE t.hash END AS hash,
             t.name,
             t.status,
             t.size_bytes,

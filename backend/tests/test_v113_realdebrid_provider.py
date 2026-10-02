@@ -612,9 +612,11 @@ async def test_status_is_truthful_about_disablement_configuration_and_the_accoun
     healthy = await admin.runtime_status(RealDebridProvider(FakeClient(user={
         "username": "alice", "type": "premium", "premium": 86400, "expiration": "2027-01-31T10:00:00.000Z"})),
         enabled=True)
+    neutral = healthy.pop("account")
     assert healthy == {"integration": "realdebrid", "state": "healthy", "checked": True, "username": "alice",
                        "account_type": "premium", "premium": True, "premium_seconds": 86400,
                        "expiration": "2027-01-31T10:00:00.000Z"}
+    assert (neutral["service_class"], neutral["entitlement"], neutral["functional"]) == ("premium", "ready", "usable")
     revoked = RealDebridProvider(FakeClient(user=RealDebridAPIError(None, "oauth_grant_rejected", 400)))
     assert (await admin.runtime_status(revoked, enabled=True))["state"] == "auth_required"
     free = await admin.runtime_status(RealDebridProvider(FakeClient(user={"username": "bob", "type": "free"})),
@@ -768,7 +770,7 @@ async def test_the_timeouts_reach_their_operations_and_the_refresh_interval_reac
                                        request_timeout_seconds=45, torrent_upload_timeout_seconds=600,
                                        host_refresh_interval_hours=6), SimpleNamespace())
     assert (provider.client.request_timeout.total, provider.client.upload_timeout.total) == (45, 600)
-    assert provider.lifecycle._refresh_seconds == 6 * 3600
+    assert provider.hosts._refresh_seconds == 6 * 3600
 
 
 @pytest.mark.asyncio

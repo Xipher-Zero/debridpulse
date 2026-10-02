@@ -74,7 +74,8 @@ function statusFixture(settings) {
   const ad = settings.integrations.alldebrid;
   if (!ad.enabled) return {state:'disabled', checked:false};
   if (!ad.configured) return {state:'unconfigured', checked:false};
-  return {state:'healthy', checked:true, username:'fixture', isPremium:true, premiumUntil:1893456000};
+  return {state:'healthy', checked:true, username:'fixture', isPremium:true, premiumUntil:1893456000,
+          account:{entitlement:'ready', service_class:'premium', functional:'usable', plan:'Premium', expires_at:1893456000}};
 }
 
 async function installStatefulSettings(page, initial) {

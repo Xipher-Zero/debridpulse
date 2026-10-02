@@ -32,8 +32,11 @@ def integration_surfaces(registry) -> tuple[tuple, dict, dict]:
     that namespace.
     """
     implementations = (*registry.providers.values(), *registry.executors.values())
-    lifecycle = tuple(item.lifecycle for item in implementations
-                      if isinstance(item, ManagedIntegration) and isinstance(item.lifecycle, IntegrationLifecycle))
+    # An integration may own several lifecycle components (for example its
+    # host inventory and its account truth); each is driven independently.
+    lifecycle = tuple(component for item in implementations if isinstance(item, ManagedIntegration)
+                      for component in (item.lifecycle if isinstance(item.lifecycle, tuple) else (item.lifecycle,))
+                      if isinstance(component, IntegrationLifecycle))
     admins = {item.descriptor.id: item.administration for item in implementations
               if isinstance(item, AdministeredIntegration)}
     appliers: dict[str, list] = {}
@@ -111,15 +114,15 @@ def configure(application):
         application.runtime_state = runtime_state
 
     from providers.alldebrid.host_runtime import AllDebridHostMaintenance
-    from providers.alldebrid.runtime_state import AllDebridRuntimeStateStore, credential_scope
+    from integrations.runtime_state import ScopedRuntimeStateStore, credential_scope
     alldebrid_options = settings.integrations["alldebrid"].options
-    host_scope = credential_scope(alldebrid_options.get("api_key", ""))
+    host_scope = credential_scope("alldebrid", alldebrid_options.get("api_key", ""))
     previous_scope = getattr(application, "alldebrid_host_scope", None)
     host_maintenance = getattr(application, "alldebrid_host_maintenance", None)
     initial_host_binding = host_maintenance is None or previous_scope != host_scope
     if initial_host_binding:
         host_maintenance = AllDebridHostMaintenance(
-            AllDebridRuntimeStateStore(runtime_state, host_scope)
+            ScopedRuntimeStateStore(runtime_state, host_scope)
         )
         application.alldebrid_host_maintenance = host_maintenance
         application.alldebrid_host_scope = host_scope

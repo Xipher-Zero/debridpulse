@@ -66,12 +66,17 @@ class CandidateOrigin:
 class CanonicalOwnership:
     """Canonical ownership, P1 migration, candidate provenance and consolidation."""
 
-    def __init__(self, repository, *, on_attached=None):
+    def __init__(self, repository, *, on_attached=None, material_present=None):
         self.repository = repository
         # Injected by the composition root: awaited with the source transfer id
         # only after ``attach`` has durably committed (never on a refusal or a
         # rollback), so a semantic event can only follow a real consolidation.
         self.on_attached = on_attached
+        # Injected by the engine: THE current material verification of a
+        # completed artifact (``_engine_base.TransferEngine._delivered_paths``,
+        # the delivery-time re-verification). A completed row is history; only
+        # material that is present now may satisfy anything.
+        self.material_present = material_present
         self._initialize_lock = asyncio.Lock()
         self._initialized = False
 
@@ -517,26 +522,34 @@ class CanonicalOwnership:
         Lifecycle decides what a match means (``attach``), never whether an
         owner is visible to identity proof: every live owner, plus every
         COMPLETED owner whose frozen material still owns what an equivalent
-        member of ``record``'s transfer would need -- one in the same transfer,
-        or in a transfer that is one recognized collection with it
-        (``_collection_related``). Never ``record``'s own artifact."""
+        member of ``record``'s transfer would need -- one in a transfer
+        ``_frozen_satisfiable`` relates to it (the same transfer, an earlier
+        generation of the same logical source, or one recognized collection
+        with either) AND whose material is present now (``material_present``):
+        a completed row alone never proves the payload still exists. Never
+        ``record``'s own artifact."""
         await self.initialize()
         async with get_db() as db:
+            related = await self._frozen_satisfiable(db, int(record.transfer_id))
+            marks = ",".join("?" for _ in related)
             rows = await db.fetchall(
                 f"""SELECT f.*,e.handle FROM download_files f
                     JOIN torrents t ON t.id=f.torrent_id
                     LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                    WHERE {_MATERIAL_OWNER} AND f.request_id!=? AND (({_LIVE_OWNER}) OR ({_FROZEN_OWNER} AND (
-                        f.torrent_id=? OR f.torrent_id IN (
-                            SELECT c.torrent_id FROM artifact_consolidations a
-                                JOIN download_files c ON c.id=a.canonical_artifact_id WHERE a.source_transfer_id=?
-                            UNION
-                            SELECT a.source_transfer_id FROM artifact_consolidations a
-                                JOIN download_files c ON c.id=a.canonical_artifact_id WHERE c.torrent_id=?))))
+                    WHERE {_MATERIAL_OWNER} AND f.request_id!=? AND (({_LIVE_OWNER})
+                        OR ({_FROZEN_OWNER} AND f.torrent_id IN ({marks})))
                     ORDER BY f.torrent_id,f.id""",
-                (str(record.id), int(record.transfer_id), int(record.transfer_id), int(record.transfer_id)),
+                (str(record.id), *related),
             )
-        return tuple(artifact for artifact in (self._artifact(row) for row in rows) if artifact.candidates)
+        targets = []
+        for artifact, row in ((self._artifact(row), row) for row in rows):
+            if not artifact.candidates:
+                continue
+            if row["status"] == "completed" and not (
+                    self.material_present is not None and await self.material_present(artifact)):
+                continue
+            targets.append(artifact)
+        return tuple(targets)
 
     async def retain_evidence(self, candidate_id: str, evidence: ArtifactFingerprint) -> int:
         """Durably keep the neutral content evidence that proved one canonical
@@ -600,21 +613,33 @@ class CanonicalOwnership:
         return int(row["owner"]) if row and row.get("owner") is not None else None
 
     @staticmethod
-    async def _collection_related(db, left: int, right: int) -> bool:
-        """Whether two distinct transfers are one recognized collection: a
-        member of either is durably consolidated beneath a canonical artifact
-        the other owns. Unlike ``_collection_owner`` this holds whatever the
-        transfers' lifecycle states: it is the fact that lets completed,
-        ownership-frozen material satisfy an equivalent member."""
-        if int(left) == int(right):
-            return False
-        row = await db.fetchone(
-            """SELECT 1 AS related FROM artifact_consolidations a JOIN download_files c ON c.id=a.canonical_artifact_id
-                WHERE (a.source_transfer_id=? AND c.torrent_id=?) OR (a.source_transfer_id=? AND c.torrent_id=?)
-                LIMIT 1""",
-            (int(left), int(right), int(right), int(left)),
-        )
-        return row is not None
+    async def _frozen_satisfiable(db, transfer_id: int) -> tuple[int, ...]:
+        """The transfers whose completed, ownership-frozen material may satisfy
+        an equivalent member of ``transfer_id``: the transfer itself, every
+        other generation of its logical source (same ``source_fingerprint``:
+        a terminal lifecycle a later independent submission retired, or a
+        deleted one), and every transfer that is one recognized collection with
+        any of those -- a member of either durably consolidated beneath a
+        canonical artifact the other owns. This holds whatever the transfers'
+        lifecycle states; whether the material is still present is a separate,
+        current fact (``equivalence_targets``)."""
+        lineage = {int(transfer_id)}
+        for row in await db.fetchall(
+                """SELECT p.id FROM torrents p JOIN torrents s ON s.id=?
+                    WHERE p.id!=s.id AND s.source_fingerprint IS NOT NULL AND p.source_fingerprint=s.source_fingerprint""",
+                (int(transfer_id),)):
+            lineage.add(int(row["id"]))
+        marks = ",".join("?" for _ in lineage)
+        related = set(lineage)
+        for row in await db.fetchall(
+                f"""SELECT c.torrent_id AS id FROM artifact_consolidations a JOIN download_files c ON c.id=a.canonical_artifact_id
+                    WHERE a.source_transfer_id IN ({marks})
+                    UNION
+                    SELECT a.source_transfer_id AS id FROM artifact_consolidations a
+                    JOIN download_files c ON c.id=a.canonical_artifact_id WHERE c.torrent_id IN ({marks})""",
+                (*lineage, *lineage)):
+            related.add(int(row["id"]))
+        return tuple(sorted(related))
 
     async def collection_owner(self, transfer_id: int) -> int | None:
         await self.initialize()
@@ -840,9 +865,9 @@ class CanonicalOwnership:
 
         The owner is ordinarily a live canonical artifact. The one bounded
         exception is a COMPLETED canonical artifact that is still a valid
-        equivalence target for ``record`` (``equivalence_targets``): one of the
-        same transfer, or of a transfer that is one recognized collection with
-        ``record``'s (``_collection_related``). Completed material is
+        equivalence target for ``record`` (``equivalence_targets``): one of a
+        transfer ``_frozen_satisfiable`` relates to ``record``'s, whose
+        material the caller's target selection found present. Completed material is
         ownership-frozen -- its row, candidates, status and transfer are not
         touched -- and the incoming source only becomes its contributing
         standby with provenance (binding, origin, and consolidation across
@@ -866,8 +891,7 @@ class CanonicalOwnership:
                 (current["status"] not in {"completed", "cancelled", "error", "duplicate"}
                  and current["transfer_status"] not in {"completed", "consolidated", "deleted", "cancelled", "error"})
                 or (frozen and current["transfer_status"] not in {"deleted", "cancelled"}
-                    and (int(current["torrent_id"]) == int(record.transfer_id)
-                         or await self._collection_related(db, int(current["torrent_id"]), int(record.transfer_id))))):
+                    and int(current["torrent_id"]) in await self._frozen_satisfiable(db, int(record.transfer_id)))):
                 current = None
             # The incoming request is still deciding in a live transfer -- or
             # it is a settled contributor's UNVERIFIED association to exactly

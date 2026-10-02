@@ -14,7 +14,9 @@ const { test, expect } = require('@playwright/test');
 const PENDING = {state: 'pending', user_code: 'TB1234', verification_url: 'https://torbox.app/oauth/device',
                  interval: 5, expires_in: 600};
 const ACCOUNT = {email: 'alice@example.com', plan: 2, plan_name: 'Pro', premium: true,
-                 premium_expires_at: '2027-01-31T10:00:00Z'};
+                 premium_expires_at: '2027-01-31T10:00:00Z',
+                 account: {entitlement: 'ready', service_class: 'premium', functional: 'usable', plan: 'Pro',
+                           expires_at: Date.parse('2027-01-31T10:00:00Z') / 1000}};
 
 function projection(connected) {
   return {
@@ -177,12 +179,16 @@ test('the TorBox card stays inside a phone-width viewport', async ({page}) => {
   expect(box.right).toBeLessThanOrEqual(box.viewport);
 });
 
+// The neutral account truth every account-backed status surface publishes.
+const premium = (plan, days) => ({entitlement: 'ready', service_class: 'premium', functional: 'usable', plan,
+                                  expires_at: Math.floor(Date.now() / 1000) + days * 86400});
+
 /* Provider Status: the one premium-account owner composes TorBox's healthy
  * account under the single crown; an unhealthy TorBox contributes nothing. */
 const torboxAccount = (state = 'healthy') => ({id: 'torbox', name: 'TorBox', state,
-  status: {premium: true, plan_name: 'Pro', premium_expires_at: new Date(Date.now() + 120 * 86400000).toISOString()}});
+  status: {account: premium('Pro', 120)}});
 const rdAccount = () => ({id: 'realdebrid', name: 'Real-Debrid', state: 'healthy',
-  status: {premium: true, account_type: 'premium', expiration: new Date(Date.now() + 90 * 86400000).toISOString()}});
+  status: {account: premium('Premium', 90)}});
 
 const compose = (page, entries) => page.evaluate(next => {
   document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));

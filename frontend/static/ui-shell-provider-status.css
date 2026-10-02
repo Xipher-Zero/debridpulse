@@ -116,12 +116,15 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
 /* Tier headings follow the premium account composition. With no premium
    account shown (the owner publishes the count on #premium-row only when there
    is one), a premium tier's rows stay but its "Premium Services" heading has
-   nothing to introduce; and with no premium tier at all, the remaining tier's
-   heading has nothing to be distinguished from. */
+   nothing to introduce; and with no premium tier at all, a remaining tier
+   whose only content is one aggregate group has
+   nothing to be distinguished from. A tier that holds a provider row of its
+   own -- an account-backed provider currently of the standard class --
+   keeps its heading. */
 #sidebar .sidebar-footer:has(#premium-row:not([data-premium-accounts]))
   .dp-provider-status-tier[data-provider-tier-premium] > .dp-provider-status-tier-label,
 #sidebar .sidebar-footer:has(#premium-row:not([data-premium-accounts])):not(:has(.dp-provider-status-tier[data-provider-tier-premium]))
-  .dp-provider-status-tier > .dp-provider-status-tier-label {
+  .dp-provider-status-tier[data-provider-tier-single-group] > .dp-provider-status-tier-label {
   display: none;
 }
 

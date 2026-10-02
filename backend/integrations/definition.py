@@ -174,9 +174,10 @@ class IntegrationLifecycle(Protocol):
 @runtime_checkable
 class ManagedIntegration(Protocol):
     """An integration implementation that owns a lifecycle component (for
-    example a managed daemon). Discovered generically by composition."""
+    example a managed daemon), or a tuple of independent ones. Discovered
+    generically by composition."""
 
-    lifecycle: IntegrationLifecycle
+    lifecycle: IntegrationLifecycle | tuple[IntegrationLifecycle, ...]
 
 
 @dataclass(frozen=True)
@@ -262,6 +263,13 @@ class IntegrationPresentation:
     # there is exactly one ordering authority.
     status_tier: Optional[str] = None
     status_tier_label: Optional[str] = None
+    # An ACCOUNT-tiered integration's tier is not static: its status surface
+    # publishes the current account's neutral service class, and while that
+    # class is standard the integration presents under this tier instead (and
+    # is not premium). Absent means the tier above is the whole truth: an
+    # inherently static service class.
+    standard_status_tier: Optional[str] = None
+    standard_status_tier_label: Optional[str] = None
 
     def public(self) -> dict:
         return {
@@ -274,6 +282,8 @@ class IntegrationPresentation:
             "status_group_label": self.status_group_label,
             "status_tier": self.status_tier,
             "status_tier_label": self.status_tier_label,
+            "standard_status_tier": self.standard_status_tier,
+            "standard_status_tier_label": self.standard_status_tier_label,
         }
 
 

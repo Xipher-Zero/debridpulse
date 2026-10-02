@@ -9,9 +9,10 @@ from __future__ import annotations
 
 import asyncio
 from dataclasses import dataclass
-from datetime import datetime, timezone
 import time
 
+from providers.torbox import account as plans
+from providers.torbox.account import PLAN_NAMES, instant as _instant
 from providers.torbox.client import TorBoxAPIError, TorBoxService
 from providers.torbox.translation import INTEGRATION_ID, translate_error
 from transfers.errors import Category
@@ -20,20 +21,9 @@ _AUTH_REQUIRED = frozenset({Category.CREDENTIAL_INVALID, Category.CREDENTIAL_MIS
                             Category.CREDENTIAL_EXPIRED, Category.AUTHENTICATION_FAILED})
 # TorBox states its own poll interval; never poll faster than this floor.
 _MINIMUM_POLL_SECONDS = 5
-# TorBox's documented plan numbers. A plan's capabilities are TorBox's to
-# enforce; this only names the plan the account reports.
-PLAN_NAMES = {0: "Free", 1: "Essential", 2: "Pro", 3: "Standard"}
-
-
-def _instant(value) -> float | None:
-    """A TorBox timestamp (``%Y-%m-%dT%H:%M:%SZ``, UTC) as epoch seconds."""
-    if not isinstance(value, str) or not value.strip():
-        return None
-    try:
-        parsed = datetime.fromisoformat(value.strip().replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    return (parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)).timestamp()
+# What a TorBox connection takes part in: always torrents and web downloads,
+# and NZBs only with "Usenet via TorBox".
+_FAMILIES = plans.TORRENTS | plans.WEB_DOWNLOADS
 
 
 # -- device authorization ------------------------------------------------------
@@ -134,13 +124,22 @@ async def poll_authorization(*, service: TorBoxService, clock=time.time):
 
 # -- account truth ---------------------------------------------------------------
 
-def account_facts(user: dict, *, clock=time.time) -> dict:
+def account_facts(user: dict, *, clock=time.time, entitlements=None, offered=_FAMILIES) -> dict:
     """The account facts the status surfaces show: who, which plan, and until
-    when that plan runs. Never a token lifetime."""
+    when that plan runs -- never a token lifetime -- plus the neutral
+    ``account`` truth the same plan translation gives routing
+    (``providers.torbox.account``). ``entitlements`` is the live provider's
+    own truth when there is one (definitive refusals included); otherwise it
+    is derived from these facts."""
     plan = user.get("plan")
     plan = plan if isinstance(plan, int) and not isinstance(plan, bool) else None
     expires = str(user.get("premium_expires_at") or "")
     until = _instant(expires)
+    if entitlements is None:
+        try:
+            entitlements = plans.entitlement(plans.account_facts(user), offered=frozenset(offered), now=clock())
+        except ValueError:
+            entitlements = None
     return {
         "email": str(user.get("email") or ""),
         "plan": plan,
@@ -148,6 +147,7 @@ def account_facts(user: dict, *, clock=time.time) -> dict:
         # Paid time to show only for a paid plan whose expiry is still ahead.
         "premium": bool(plan and until is not None and until > clock()),
         "premium_expires_at": expires if until is not None else "",
+        **({"account": entitlements.public()} if entitlements is not None else {}),
     }
 
 
@@ -157,7 +157,8 @@ async def verify(options) -> dict:
     client = TorBoxService(options.api_token, rate_limit_per_minute=options.rate_limit_per_minute,
                            request_timeout_seconds=options.request_timeout_seconds,
                            upload_timeout_seconds=options.upload_timeout_seconds)
-    return account_facts(await client.user())
+    offered = _FAMILIES | (plans.USENET if options.usenet_enabled else frozenset())
+    return account_facts(await client.user(), offered=offered)
 
 
 async def runtime_status(provider, *, enabled: bool) -> dict:
@@ -177,4 +178,9 @@ async def runtime_status(provider, *, enabled: bool) -> dict:
         category = translate_error(exc, secrets=client.secrets()).category
         return {"integration": INTEGRATION_ID, "checked": True,
                 "state": "auth_required" if category in _AUTH_REQUIRED else "unhealthy"}
-    return {"integration": INTEGRATION_ID, "state": "healthy", "checked": True, **account_facts(user)}
+    # The probe's answer is account truth: the one account owner adopts it,
+    # and what this surface shows is what routing now uses.
+    owner = getattr(provider, "account", None)
+    entitlements = await owner.observe(user) if owner is not None else None
+    return {"integration": INTEGRATION_ID, "state": "healthy", "checked": True,
+            **account_facts(user, entitlements=entitlements, offered=getattr(getattr(provider, "descriptor", None), "request_types", _FAMILIES))}
