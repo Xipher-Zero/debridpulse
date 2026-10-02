@@ -1929,6 +1929,15 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         );
 
+        // Neutral integration-status invalidation. Carries nothing; the
+        // provider-status owner re-observes each canonical status endpoint.
+        es.addEventListener(
+          'integration_status_changed',
+          function() {
+            document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed'));
+          }
+        );
+
         // Duplicate-consolidation notice. This module owns the one application
         // EventSource, so the event is registered here; operator-title.js owns
         // only the copy (consolidationToastCopy) and the toast presentation.

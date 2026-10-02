@@ -33,6 +33,9 @@ class _FakeApplication:
         self.execution_wakeup = asyncio.Event()
         self.execution_poll_interval = poll_interval
 
+    async def integrations_started(self):
+        return None
+
     def application_storage_permitted(self):
         # Skip the reconcile_executions() body entirely -- this test targets
         # only the wait-timeout the scheduler loop computes and passes to

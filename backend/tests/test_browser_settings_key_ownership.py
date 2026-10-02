@@ -42,6 +42,11 @@ OWNERS = {
 # backend. Enforced by ``test_an_injected_document_spec_never_reaches_the_shared_settings``;
 # their writes (if any) still count.
 INJECTED_DOCUMENT_SPECS = {"ui-fix-ws1-p2.spec.js"}
+# Spec files that run against their OWN candidate server (named by the
+# environment variable) and never address the shared backend, so nothing they
+# do to a settings key can race another file. Enforced by
+# ``test_an_own_backend_spec_never_reaches_the_shared_backend``.
+OWN_BACKEND_SPECS = {"usenet-live-provider-status.spec.js": "DP_USENET_BASE_URL"}
 
 _ID = r"[a-z0-9_]+"
 _VAR = r"[A-Za-z_$][\w$]*"
@@ -226,6 +231,8 @@ def _dependents() -> dict[str, dict[str, set[str]]]:
     """{integration id: {spec file: {"writes"/"reads"}}} across the suite."""
     found: dict[str, dict[str, set[str]]] = {}
     for path in sorted(SPEC_DIR.glob("*.spec.js")):
+        if path.name in OWN_BACKEND_SPECS:
+            continue
         writes, reads = _Spec(path.read_text(encoding="utf-8")).enabled_sites()
         if path.name in INJECTED_DOCUMENT_SPECS:
             reads = set()
@@ -260,6 +267,19 @@ def test_an_injected_document_spec_never_reaches_the_shared_settings(name):
     assert re.search(r"page\.route\(/\\/api\\/integrations\\/", code), f"{name} lets integration writes through"
     # ...and never talks to the shared backend's settings directly.
     assert not re.search(r"\brequest\.(?:get|patch|put|post)\(", code), f"{name} reads or writes live settings"
+
+
+@pytest.mark.parametrize("name", sorted(OWN_BACKEND_SPECS))
+def test_an_own_backend_spec_never_reaches_the_shared_backend(name):
+    code = _strip_comments((SPEC_DIR / name).read_text(encoding="utf-8"))
+    assert f"const BASE = process.env.{OWN_BACKEND_SPECS[name]};" in code
+    # No shared-backend fixture, and every navigation and request names BASE.
+    assert not re.search(r"\(\{[^}]*\brequest\b[^}]*\}\)", code), f"{name} takes the shared request fixture"
+    calls = list(re.finditer(r"\bpage\.(?:goto|request\.(?:get|post|put|patch|delete|fetch))\(", code))
+    assert calls, f"{name} reaches no backend at all"
+    for call in calls:
+        argument = _top_level(_balanced(code, call.end() - 1))[0]
+        assert argument.startswith("`${BASE}/"), f"{name} addresses a backend other than its own: {argument}"
 
 
 @pytest.mark.parametrize("source, writes, reads", [

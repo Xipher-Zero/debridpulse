@@ -8,6 +8,11 @@ async function isolateExternalFonts(page) {
 
 async function bootstrap(page) {
   await isolateExternalFonts(page);
+  // These cases count exactly the observations they start themselves. A live
+  // pulse legitimately re-observes Provider Status (on connect, and whenever
+  // the shared backend announces an integration status change -- which other
+  // spec files cause), so this page is kept off the pulse.
+  await page.route('**/api/events/stream', route => route.abort());
   await page.goto('/');
   await expect.poll(() => page.evaluate(() => !!window.DPProviderStatus)).toBeTruthy();
   await expect(page.locator('#provider-status-list')).toBeVisible();

@@ -152,13 +152,16 @@ class SabnzbdAdministration:
     configuration_namespace = "usenet"
 
     def __init__(self, client, options, download_root: str, runtime=None, executor=None,
-                 repository=None):
+                 repository=None, notify_status=None):
         self.client = client
         self.options = options
         self.download_root = download_root
         self.runtime = runtime
         self.executor = executor
         self.repository = repository
+        # The application's neutral live-status signal: how a runtime
+        # transition this lifecycle owns reaches Provider Status.
+        self._notify_status = notify_status
 
     # --- managed lifecycle (the generic IntegrationLifecycle seam) --------
 
@@ -212,6 +215,7 @@ class SabnzbdAdministration:
         if not await self._service_required():
             if (await self.runtime.status())["running"]:
                 await self.runtime.stop()
+                await self._status_changed()
             return
         await self._converge()
 
@@ -222,15 +226,25 @@ class SabnzbdAdministration:
         process is a no-op, so it would otherwise never recover. Configuration
         is applied whenever the service was (re)started, so enabling Usenet
         converges without a second Save or an application restart.
+
+        Both runtime transitions are announced as they happen -- found not
+        healthy, then converged -- so the operator watches the service go down
+        and come back instead of whatever was last observed.
         """
         if await self.runtime.healthy():
             return
+        await self._status_changed()
         if (await self.runtime.status())["running"]:
             await self.runtime.restart()
         else:
             await self.runtime.start()
         if await self.runtime.healthy() and self._accepts_new_work:
             await self.apply_configuration()
+        await self._status_changed()
+
+    async def _status_changed(self) -> None:
+        if self._notify_status is not None:
+            await self._notify_status()
 
     async def apply_configuration(self) -> ConfigurationApplication:
         """Push the canonical desired configuration into the native service.

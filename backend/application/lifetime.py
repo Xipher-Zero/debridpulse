@@ -2,9 +2,11 @@
 
 Process startup (``main.lifespan``) and a restore's replacement universe both
 start an application through ``start_application`` -- schema bootstrap and
-startup material reconciliation, integrations, the startup recovery pass and
-the scheduler -- so restored state is reconciled by exactly the machinery
-that reconciles any state DebridPulse starts with.
+startup material reconciliation, then integrations and the scheduler, whose
+first cycles are the startup recovery -- so restored state is reconciled by
+exactly the machinery that reconciles any state DebridPulse starts with.
+Provider and executor readiness are never part of what makes an application
+available: they converge after it is.
 
 ``restore_backup`` is the whole-state replacement: validate, quiesce and
 drain, safety backup, stage and validate, journaled swap, then a freshly
@@ -69,13 +71,20 @@ async def prepare_settings_and_migrate():
 
 
 async def start_application(application):
+    """Start one application; it is servable when this returns.
+
+    Only DebridPulse-owned core state blocks: the repository and engine with
+    startup material reconciliation, and interrupted post-processing. Every
+    integration is then begun off this path, and the scheduler started. The
+    scheduler loops that need started integrations wait for them, and their
+    first cycles -- provider inventory, pending resolution, execution
+    reconciliation, integration maintenance -- are the startup recovery, so no
+    separate recovery pass runs here. Nothing in this decision names an
+    integration.
+    """
     await application.engine.initialize()
     await application.engine.recover_postprocessing()
-    await application.start_integrations()
-    try:
-        await application.recover()
-    except Exception as exc:
-        logger.warning("Startup reconciliation deferred: %s", sanitize_exception(exc))
+    application.begin_integrations()
     await scheduler.start_scheduler(application)
 
 

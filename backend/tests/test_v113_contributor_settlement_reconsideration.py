@@ -250,8 +250,12 @@ async def test_b4_the_idle_resolution_cadence_wakes_for_the_nearest_persisted_de
             raise asyncio.CancelledError
     engine = SimpleNamespace(policy=SimpleNamespace(resource_poll_interval=3600), clock=time.time,
                              resolution_deadline=time.time() + 0.3)
+    async def integrations_started():
+        return None
+
     fake = SimpleNamespace(resolution_wakeup=asyncio.Event(), engine=engine,
-                           application_storage_permitted=lambda: True, resolve_pending=resolve_pending)
+                           application_storage_permitted=lambda: True, resolve_pending=resolve_pending,
+                           integrations_started=integrations_started)
     monkeypatch.setattr(scheduler, "application", fake)
     with pytest.raises(asyncio.CancelledError):
         await asyncio.wait_for(scheduler.sync_status_loop(), timeout=5)

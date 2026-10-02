@@ -12,6 +12,7 @@ from contextlib import asynccontextmanager
 from urllib.parse import parse_qs, urlsplit
 
 from application import dispatch_admission
+from core.logging_utils import sanitize_exception
 from services.event_bus import publish
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers import file_selection
@@ -71,11 +72,24 @@ class ApplicationService:
         self.execution_wakeup = asyncio.Event()
         self.execution_poll_interval = 1
         self.definitions = ()
+        # The one in-flight integration startup (``begin_integrations``).
+        self._integration_startup: asyncio.Task | None = None
 
     def notify_applicability_changed(self, _integration_id: str) -> None:
         """Wake canonical maintenance and route resolution after neutral fact changes."""
         self.resolution_wakeup.set()
         self.integration_wakeup.set()
+
+    async def notify_status_changed(self) -> None:
+        """Tell live presentation that an integration's runtime status changed.
+
+        Called by an integration-owned lifecycle component at a runtime
+        transition it owns (a managed service observed unhealthy, (re)started,
+        stopped). The event is an invalidation and carries nothing: the
+        integration's own status endpoint stays the one authority, and the
+        browser re-observes it rather than trusting anything sent here.
+        """
+        await publish("integration_status_changed", {})
 
     def application_storage_permitted(self) -> bool:
         capacity = self.capacity
@@ -756,16 +770,55 @@ class ApplicationService:
             self._configure(self)
 
     async def start_integrations(self, only=None):
-        """Start every integration, or -- given ``only`` -- exactly those, in
-        lifecycle order (what a refused whole-state replacement stopped)."""
-        for integration in self.lifecycle:
-            if only is None or integration in only:
+        """Start every integration, or -- given ``only`` -- exactly those
+        (what a refused whole-state replacement stopped).
+
+        Each integration converges independently: one that is slow to start
+        never delays another's start, and one whose start fails degrades that
+        integration alone -- it is logged, it stays non-ready by its own
+        canonical status, and its maintenance keeps owning it.
+        """
+        async def start(integration):
+            try:
                 await integration.start()
+            except Exception as exc:
+                logger.warning("Integration startup failed: %s", sanitize_exception(exc))
+
+        await asyncio.gather(*(start(integration) for integration in self.lifecycle
+                               if only is None or integration in only))
+
+    def begin_integrations(self) -> None:
+        """Start every integration OFF the control-plane critical path.
+
+        Provider and executor readiness are never prerequisites of serving:
+        the application lifetime owner begins this and goes on, and each
+        integration converges -- reporting its own truthful non-ready status
+        meanwhile -- while DebridPulse is already usable. This service is the
+        one creator, tracker and canceller of that work: work that needs
+        started integrations waits on ``integrations_started``, and
+        ``stop_integrations`` cancels and drains it, so it never outlives the
+        application it belongs to.
+        """
+        if self._integration_startup is None or self._integration_startup.done():
+            self._integration_startup = asyncio.create_task(self.start_integrations())
+
+    async def integrations_started(self) -> None:
+        """Return once no integration startup is in flight. Its outcome is
+        observed by ``start_integrations``; waiting here never cancels it."""
+        startup = self._integration_startup
+        if startup is not None and not startup.done():
+            await asyncio.wait((startup,))
 
     async def stop_integrations(self):
         """Stop integrations in reverse order and return the ones stopped. A
         stop that fails ends the sequence with ``IntegrationStopFailed``,
-        which names the integrations that were stopped before it."""
+        which names the integrations that were stopped before it. A startup
+        still in flight is cancelled and drained first, so no start races the
+        stops or outlives this application."""
+        startup = self._integration_startup
+        if startup is not None and not startup.done():
+            startup.cancel()
+            await asyncio.wait((startup,))
         # Clean executor shutdown is a forced material checkpoint boundary:
         # what live writers proved written becomes durable before they stop.
         try:

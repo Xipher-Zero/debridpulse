@@ -8,6 +8,7 @@ rollback, and post-restore authority through the normal startup sequence.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import sqlite3
@@ -456,9 +457,14 @@ async def test_restored_active_history_is_reconciled_by_normal_startup(served):
 
     fresh = app.state.application
     assert fresh is composed[-1]
-    # No pre-restore handle crossed: the fresh executor never saw the old job,
-    # and normal startup reconciliation (not the restore path) observed it.
+    # No pre-restore handle crossed: the fresh executor never saw the old job.
+    # The restore ran no recovery pass of its own; normal startup
+    # reconciliation -- the execution loop's first cycle once integrations
+    # have started (the scheduler is stubbed here) -- is what observes it.
     assert old_attempt.attempt_id not in fresh.test_executor.jobs
+    assert ("observe", old_attempt) not in fresh.test_executor.calls
+    await fresh.integrations_started()
+    await fresh.reconcile_executions()
     assert ("observe", old_attempt) in fresh.test_executor.calls
     assert ("start", fresh) in calls
     assert (await fresh.repository.get(transfer_id)).state != TransferState.CANCELLED
@@ -506,6 +512,43 @@ async def test_staging_failure_after_quiescence_leaves_state_unchanged(served, m
     assert not await before.repository.globally_paused()
     assert calls[-1] == ("start", before)
     assert not list(database.DB_PATH.parent.glob(".dp-restore-*"))
+
+
+async def test_restored_integration_readiness_never_holds_the_restore(served):
+    # The restored universe starts through the same lifetime owner: its core
+    # state is proven before the swap is accepted, but a restored integration
+    # that is still starting is neither a reason to wait nor to roll back.
+    app, client, composed, _calls = served
+    kept = await _submit(app, client, "kept")
+    point = (await client.post("/api/admin/backup")).json()["restore_point"]["id"]
+    await _submit(app, client, "later")
+    release, starting = asyncio.Event(), asyncio.Event()
+    compose = app.state.compose
+
+    def compose_with_a_slow_integration():
+        service = compose()
+        slow = service.lifecycle[0]
+
+        async def held_start():
+            starting.set()
+            await release.wait()
+            slow.starts += 1
+
+        slow.start = held_start
+        return service
+
+    app.state.compose = compose_with_a_slow_integration
+    response = await client.post("/api/admin/backups/restore", json={"id": point})
+
+    assert response.status_code == 200, response.text
+    restored = app.state.application
+    assert restored is composed[-1]
+    await asyncio.wait_for(starting.wait(), timeout=5)
+    assert await _ids(app) == [kept]
+    assert _counts(restored)["a"] == (0, 0)  # still converging, and not reported started
+    release.set()
+    await restored.integrations_started()
+    assert _counts(restored) == {"a": (0, 1), "b": (0, 1), "c": (0, 1)}
 
 
 async def test_failed_restored_startup_rolls_back_to_the_pre_restore_state(served, monkeypatch):

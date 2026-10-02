@@ -43,11 +43,12 @@ def test_lifespan_shutdown_is_finally_guarded():
     final = block.index("finally:", yielded)
     stopped = block.index("await stop_application(app.state.application)", final)
     assert started < guarded < yielded < final < stopped
-    # The one lifetime owner starts the scheduler last and stops it first,
-    # then stops integrations even when stopping the scheduler failed.
+    # The one lifetime owner begins integrations (off the control-plane
+    # critical path) and starts the scheduler last, and stops the scheduler
+    # first, then stops integrations even when stopping the scheduler failed.
     lifetime = (backend / "application" / "lifetime.py").read_text()
     start = lifetime.split("async def start_application", 1)[1].split("async def stop_application", 1)[0]
-    assert start.index("await application.start_integrations()") < start.index("await scheduler.start_scheduler(application)")
+    assert start.index("application.begin_integrations()") < start.index("await scheduler.start_scheduler(application)")
     stop = lifetime.split("async def stop_application", 1)[1].split("\ndef ", 1)[0]
     scheduler_stopped = stop.index("await scheduler.stop_scheduler()")
     final = stop.index("finally:", scheduler_stopped)

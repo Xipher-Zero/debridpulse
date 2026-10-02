@@ -579,6 +579,9 @@ async def test_integration_maintenance_runs_immediately_without_startup_sleep(mo
         def application_storage_permitted(self):
             return True
 
+        async def integrations_started(self):
+            return None
+
         async def maintain_integrations(self):
             self.calls += 1
 
@@ -613,6 +616,9 @@ async def test_resolution_wakeup_during_cycle_causes_prompt_rerun(monkeypatch):
 
         def application_storage_permitted(self):
             return True
+
+        async def integrations_started(self):
+            return None
 
         async def resolve_pending(self):
             self.calls += 1

@@ -299,6 +299,7 @@ async def test_scheduler_skips_db_heavy_loop_while_application_storage_unhealthy
         engine=SimpleNamespace(policy=SimpleNamespace(resource_poll_interval=1), resolution_deadline=None),
         application_storage_permitted=lambda: False,
         resolve_pending=AsyncMock(),
+        integrations_started=AsyncMock(),
     )
     monkeypatch.setattr(scheduler, "application", fake)
 

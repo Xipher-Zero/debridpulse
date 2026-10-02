@@ -235,7 +235,9 @@ def build(options: UsenetOptions, environment):
     # managed lifecycle component; composition discovers each generically.
     administration = SabnzbdAdministration(client, options, root,
                                            service_runtime.runtime, executor,
-                                           repository=environment.repository)
+                                           repository=environment.repository,
+                                           notify_status=getattr(getattr(environment, "commands", None),
+                                                                 "notify_status_changed", None))
     executor.administration = administration
     executor.lifecycle = administration
     return provider, executor

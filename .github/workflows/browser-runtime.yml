@@ -54,6 +54,9 @@ jobs:
       # The candidate image serving the real application with the test-only
       # composition backend/tests/browser_contract_app.py (INPUT_REQUIRED contract).
       DP_CONTRACT_BASE_URL: http://127.0.0.1:8084
+      # The candidate image with its own seeded Usenet configuration
+      # (usenet-live-provider-status.spec.js).
+      DP_USENET_BASE_URL: http://127.0.0.1:8085
 
     steps:
       - name: Checkout
@@ -171,6 +174,30 @@ jobs:
             sleep 1
           done
           if [ "$ready" -ne 1 ]; then docker logs dp-browser-contract || true; exit 1; fi
+          # The same candidate image on its own server for the live Provider
+          # Status contract: Usenet disabled, one news server, and that server's
+          # durable verification evidence -- all derived by the image's own
+          # canonical functions, exactly like the password-auth configuration.
+          usenet_dir="$RUNNER_TEMP/dp-browser-usenet-config"
+          mkdir -p "$usenet_dir"
+          docker run --rm --entrypoint python "$IMAGE" -c '
+          import json
+          from integrations.usenet.definition import UsenetOptions, UsenetServer, definition
+          options = UsenetOptions(servers=[UsenetServer(
+              id="live-status", host="news.live-status.invalid", username="browser",
+              password="browser-secret", connections=4)]).model_dump()
+          fingerprints = definition.verification_fingerprints(options)
+          evidence = {subject: pair[0] for subject, pair in fingerprints.items()}
+          print(json.dumps({"integrations": {"usenet": {
+              "enabled": False, "options": options, "verification": evidence}}}))
+          ' > "$usenet_dir/config.json"
+          docker run -d --name dp-browser-usenet -p "127.0.0.1:8085:8080" -v "$usenet_dir:/app/config" "$IMAGE"
+          ready=0
+          for _ in $(seq 1 90); do
+            if curl -fsS "http://127.0.0.1:8085/api/health" >/dev/null; then ready=1; break; fi
+            sleep 1
+          done
+          if [ "$ready" -ne 1 ]; then docker logs dp-browser-usenet || true; exit 1; fi
 
       - name: Install and audit locked Playwright Chromium
         working-directory: frontend/browser
@@ -389,8 +416,9 @@ jobs:
           docker logs dp-browser-open || true
           docker logs dp-browser-auth || true
           docker logs dp-browser-contract || true
+          docker logs dp-browser-usenet || true
 
       - name: Stop candidate and anchor containers
         if: always()
         run: |
-          docker rm -f dp-browser-open dp-browser-auth dp-browser-contract dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true
+          docker rm -f dp-browser-open dp-browser-auth dp-browser-contract dp-browser-usenet dp-anchor-open dp-anchor-auth >/dev/null 2>&1 || true

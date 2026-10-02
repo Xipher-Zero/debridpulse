@@ -68,6 +68,7 @@ def _application_storage_ready() -> bool:
 
 
 async def sync_status_loop():
+    await application.integrations_started()
     while True:
         application.resolution_wakeup.clear()
         if _application_storage_ready():
@@ -92,8 +93,29 @@ async def _wait_for_work(event, timeout):
         pass
 
 
+async def _reconcile_inventory() -> None:
+    try:
+        async with async_timer("scheduler.provider_inventory"):
+            result = await application.reconcile_inventory()
+        if result.get("imported") or result.get("updated"):
+            logger.info(
+                "Provider inventory: %d imported, %d reconciled from %d item(s)",
+                int(result.get("imported") or 0),
+                int(result.get("updated") or 0),
+                int(result.get("snapshot_count") or 0),
+            )
+    except Exception as e:
+        logger.error("Provider inventory sync failed: %s", sanitize_exception(e))
+
+
 async def full_sync_loop():
-    """Observe registered provider inventories without inferring absent ownership."""
+    """Observe registered provider inventories without inferring absent ownership.
+
+    The first observation, once integrations have started, is the startup
+    inventory reconciliation; the configured cadence follows it."""
+    await application.integrations_started()
+    if _application_storage_ready():
+        await _reconcile_inventory()
     cfg = get_settings()
     interval = max(1, _coerce_int_setting(getattr(cfg, "full_sync_interval_minutes", 5), 5))
     await _jitter_sleep(interval * 60)  # spread startup across the full interval
@@ -106,22 +128,12 @@ async def full_sync_loop():
         if not _application_storage_ready():
             await asyncio.sleep(max(10, interval * 60))
             continue
-        try:
-            async with async_timer("scheduler.provider_inventory"):
-                result = await application.reconcile_inventory()
-            if result.get("imported") or result.get("updated"):
-                logger.info(
-                    "Provider inventory: %d imported, %d reconciled from %d item(s)",
-                    int(result.get("imported") or 0),
-                    int(result.get("updated") or 0),
-                    int(result.get("snapshot_count") or 0),
-                )
-        except Exception as e:
-            logger.error("Provider inventory sync failed: %s", sanitize_exception(e))
+        await _reconcile_inventory()
         await asyncio.sleep(interval * 60)
 
 
 async def sync_download_clients_loop():
+    await application.integrations_started()
     while True:
         application.execution_wakeup.clear()
         if _application_storage_ready():
@@ -174,7 +186,9 @@ async def backup_loop():
 
 
 async def integration_maintenance_loop():
-    """Run maintenance immediately, then on neutral change signals or cadence."""
+    """Run maintenance once integrations have started, then on neutral change
+    signals or cadence."""
+    await application.integrations_started()
     while True:
         application.integration_wakeup.clear()
         if _application_storage_ready():

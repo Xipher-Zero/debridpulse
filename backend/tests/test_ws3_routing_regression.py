@@ -256,6 +256,9 @@ async def test_resolution_wakeup_set_after_cycle_is_not_lost(monkeypatch):
         def application_storage_permitted(self):
             return True
 
+        async def integrations_started(self):
+            return None
+
         async def resolve_pending(self):
             self.calls += 1
             if self.calls == 1:

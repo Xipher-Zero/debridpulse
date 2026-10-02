@@ -205,5 +205,13 @@
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
   render([], 'loading');
-  document.addEventListener('DOMContentLoaded', () => refresh().catch(() => render([], 'unknown')), {once:true});
+  const reobserve = () => refresh().catch(() => render([], 'unknown'));
+  document.addEventListener('DOMContentLoaded', reobserve, {once:true});
+  // Live truth without operator activity: the backend announces that an
+  // integration's runtime status changed, and a (re)connected pulse may have
+  // missed such announcements. Neither carries a status -- each only asks this
+  // owner to re-observe the canonical endpoints, under the same generation
+  // guard as every other refresh.
+  document.addEventListener('debridpulse:integration-status-changed', reobserve);
+  document.addEventListener('debridpulse:pulse-connected', reobserve);
 })();
