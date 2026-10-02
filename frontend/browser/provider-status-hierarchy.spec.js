@@ -219,8 +219,12 @@ test('health dots and the AllDebrid subscription row survive the hierarchy', asy
 
 test('each tier label is horizontally centred within the status region', async ({page}) => {
   await renderWith(page);
-  const geometry = await page.evaluate(() =>
-    Array.from(document.querySelectorAll('#provider-status-list .dp-provider-status-tier')).map(tier => {
+  // Headings show beneath a shown premium account; publish one and measure in
+  // the same task.
+  const geometry = await page.evaluate(until => {
+    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: [
+      {id: 'alldebrid', name: 'AllDebrid', state: 'healthy', status: {isPremium: true, premiumUntil: until}}]}}));
+    return Array.from(document.querySelectorAll('#provider-status-list .dp-provider-status-tier')).map(tier => {
       const label = tier.querySelector('.dp-provider-status-tier-label');
       // A block label's own box spans the tier, so the RENDERED text is measured.
       const range = document.createRange();
@@ -233,7 +237,8 @@ test('each tier label is horizontally centred within the status region', async (
         offset: ((text.left + text.right) / 2) - ((box.left + box.right) / 2),
         rowLeft: row ? row.getBoundingClientRect().left - box.left : null,
       };
-    }));
+    });
+  }, Math.floor(Date.now() / 1000) + 40 * 86400);
   expect(geometry.length).toBeGreaterThanOrEqual(2);
   for (const tier of geometry) {
     expect(Math.abs(tier.offset), `${tier.label} is not centred`).toBeLessThanOrEqual(1);
@@ -252,3 +257,96 @@ test('centring the tier label does not centre the provider rows beneath it', asy
   expect(spread).toBeLessThanOrEqual(1);
   expect(Math.max(...rows)).toBeLessThanOrEqual(2);
 });
+
+/* DP 1.0.13 -- Provider Status is contextual. The premium-account owner
+ * composes every displayable premium account under ONE crown (one account: the
+ * full two-line block; several: one compact line each, no date) and publishes
+ * how many it shows; the tier headings beneath follow from that and from the
+ * neutral premium-tier fact. Each case dispatches the neutral publication and
+ * measures in the same task, so no background refresh can interleave. */
+const LATER = () => Math.floor(Date.now() / 1000) + 40 * 86400;
+const EXPIRY = () => new Date(Date.now() + 90 * 86400000).toISOString();
+const adAccount = () => ({id: 'alldebrid', name: 'AllDebrid', state: 'healthy',
+  status: {isPremium: true, premiumUntil: LATER()}});
+const rdAccount = () => ({id: 'realdebrid', name: 'Real-Debrid', state: 'healthy',
+  status: {premium: true, account_type: 'premium', expiration: EXPIRY()}});
+
+const compose = (page, entries) => page.evaluate(next => {
+  document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail: {entries: next}}));
+  const footer = document.querySelector('#sidebar .sidebar-footer');
+  const row = document.getElementById('premium-row');
+  const label = document.getElementById('lbl-premium');
+  const shown = node => !!node && node.getClientRects().length > 0;
+  const blocks = [...label.querySelectorAll('.dp-provider-premium-account')];
+  const rowBox = row.getBoundingClientRect();
+  const labelBox = label.getBoundingClientRect();
+  const padBottom = parseFloat(getComputedStyle(row).paddingBottom) || 0;
+  // Everything a reader sees, top to bottom: headings, the account row, rows.
+  const flow = [...footer.querySelectorAll(
+    '.dp-provider-status-heading, #premium-row, .dp-provider-status-tier-label, '
+    + '.dp-provider-status-row, .dp-provider-status-group-row')]
+    .filter(shown)
+    .map(node => node.id === 'premium-row' ? 'PREMIUM-ACCOUNTS'
+      : node.classList.contains('dp-provider-status-tier-label') ? `# ${node.textContent.trim()}`
+        : node.textContent.trim());
+  return {
+    visible: shown(row),
+    separator: shown(row) && getComputedStyle(row).borderBottomStyle !== 'none',
+    blocks: blocks.map(block => ({compact: block.classList.contains('dp-provider-premium-account--compact'),
+                                  lines: [...block.children].map(child => child.textContent),
+                                  text: block.textContent})),
+    crowns: [row, label, ...blocks].filter(node => !['none', 'normal']
+      .includes(getComputedStyle(node, '::before').content)).map(node => node.id || node.className),
+    align: getComputedStyle(row).alignItems,
+    offset: Math.abs((labelBox.top + labelBox.bottom) / 2 - (rowBox.top + rowBox.bottom - padBottom) / 2),
+    flow,
+  };
+}, entries);
+
+test('one premium account: one crown beside the full two-line block, tiers kept', async ({page}) => {
+  await renderWith(page);
+  const one = await compose(page, [{...adAccount(), state: 'auth_required'}, rdAccount()]);
+  expect(one.visible).toBe(true);
+  expect(one.blocks).toHaveLength(1);
+  expect(one.blocks[0].compact).toBe(false);
+  expect(one.blocks[0].lines[0]).toMatch(/^Real-Debrid Premium until \d\d\.\d\d\.\d{4}$/);
+  expect(one.blocks[0].lines[1]).toMatch(/^\(\d+ days remaining\)$/);
+  expect(one.crowns).toEqual(['premium-row']);
+  expect(one.align).toBe('center');
+  expect(one.offset).toBeLessThanOrEqual(1);
+  expect(one.flow.slice(0, 3)).toEqual(['Provider Status', 'PREMIUM-ACCOUNTS', '# Premium Services']);
+  expect(one.flow).toContain('# Standard Services');
+});
+
+test('several premium accounts: one crown beside one compact line each, no date', async ({page}) => {
+  await renderWith(page);
+  const both = await compose(page, [adAccount(), rdAccount()]);
+  expect(both.visible).toBe(true);
+  expect(both.blocks.map(block => block.compact)).toEqual([true, true]);
+  expect(both.blocks[0].text).toMatch(/^AllDebrid Premium \d+ days remaining$/);
+  expect(both.blocks[1].text).toMatch(/^Real-Debrid Premium \d+ days remaining$/);
+  for (const block of both.blocks) expect(block.text).not.toMatch(/\d\d\.\d\d\.\d{4}|until/);
+  expect(both.crowns).toEqual(['premium-row']);
+  expect(both.align).toBe('center');
+  expect(both.offset).toBeLessThanOrEqual(1);
+  expect(both.flow.slice(0, 3)).toEqual(['Provider Status', 'PREMIUM-ACCOUNTS', '# Premium Services']);
+  expect(both.flow).toContain('# Standard Services');
+});
+
+test('no premium account beside Usenet: no row, crown, separator or Premium heading', async ({page}) => {
+  await renderWith(page, entries => { delete entries.alldebrid; return entries; });
+  const none = await compose(page, [{...rdAccount(), status: {premium: false, account_type: 'free'}}]);
+  expect(none.visible).toBe(false);
+  expect(none.separator).toBe(false);
+  expect(none.blocks).toHaveLength(0);
+  expect(none.flow).toEqual(['Provider Status', 'Usenet', '# Standard Services', 'Network Sources']);
+});
+
+test('no premium account and no premium tier: Provider Status flows straight to Network Sources',
+  async ({page}) => {
+    await renderWith(page, entries => { delete entries.alldebrid; delete entries.usenet; return entries; });
+    const bare = await compose(page, []);
+    expect(bare.visible).toBe(false);
+    expect(bare.separator).toBe(false);
+    expect(bare.flow).toEqual(['Provider Status', 'Network Sources']);
+  });

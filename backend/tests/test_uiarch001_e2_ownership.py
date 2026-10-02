@@ -25,15 +25,16 @@ def test_provider_status_has_one_canonical_style_owner() -> None:
 def test_activity_downloads_and_provider_markup_are_final_at_source() -> None:
     index = read("index.html")
     app = read("app.js")
-    account = read("ui-alldebrid-account-status.js")
+    account = read("ui-premium-account-status.js")
     assert '<span class="nav-label">Activity Log</span>' in index
     assert '<span class="nav-label">Event Log</span>' not in index
     assert "events:'Activity Log'" in app
     pagination = index[index.index('id="torrent-pagination"'):index.index('id="torrent-page-info"')]
     assert "border-top" not in pagination
-    assert "className = 'dp-provider-premium-until'" in account
-    assert "className = 'dp-provider-premium-days'" in account
-    assert "AllDebrid Premium until" in account
+    assert "line('dp-provider-premium-until'," in account
+    assert "line('dp-provider-premium-days'," in account
+    assert "'dp-provider-premium-account dp-provider-premium-account--compact'" in account
+    assert "Premium until" in account
     assert "days remaining" in account
     assert "dp-provider-premium-until" not in app
     assert "AllDebrid Premium until" not in app

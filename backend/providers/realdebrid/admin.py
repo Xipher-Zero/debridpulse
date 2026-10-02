@@ -158,6 +158,8 @@ async def verify(options) -> dict:
     never stand in for a grant Real-Debrid no longer honours."""
     credential = Credential(options.client_id, options.client_secret, options.refresh_token)
     client = RealDebridService(credential, rate_limit_per_minute=options.rate_limit_per_minute,
+                               request_timeout_seconds=options.request_timeout_seconds,
+                               upload_timeout_seconds=options.torrent_upload_timeout_seconds,
                                on_refresh=persist_refreshed_credential)
     return account_facts(await client.user())
 

@@ -20,6 +20,7 @@ from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
+from transfers.file_selection import ManifestInvalid, collection_member_paths
 from transfers.models import (
     CachePresence, FileManifest, FileManifestEntry, Ownership, ProviderObservation,
     ProviderResource, ResourceState, TransferProgress, TransferRequest,
@@ -160,68 +161,23 @@ class NativeMember:
     link: str = ""
 
 
-def _unwrap_collection_root(nodes: list[dict], root_name: str) -> list[dict]:
-    """Terminate AllDebrid's own collection wrapper at this boundary.
+def _leaves(nodes, prefix: tuple[str, ...]) -> list[tuple[tuple[str, ...], dict]]:
+    """Every leaf of an AllDebrid native file tree as its path segments, in tree order.
 
-    A BitTorrent multi-file torrent declares ``info.name`` as the single
-    directory every member path is stored under. AllDebrid reports that same
-    string as the magnet's authoritative ``filename`` and reports that same
-    directory as the top-level node of its file tree, so the wrapper is
-    identified by two of the provider's OWN authoritative facts and nothing
-    else: the tree has exactly one top-level node, that node is a directory
-    (it carries a child list ``e``), and its native name is exactly the
-    provider's authoritative name for this resource.
-
-    Exactly one level is ever removed, and every case these native facts
-    cannot decide leaves the tree untouched: no authoritative name (the
-    provider's ``noname`` placeholder is not one), more than one top-level
-    node, a top-level leaf (a single-file torrent, whose ``info.name`` IS the
-    file), or any inexact match. Nothing here infers a wrapper from the core
-    transfer name, from a prefix shared by every member, or from a first
-    directory merely because there is only one -- a real member directory
-    such as ``Disc 1`` is removed only when ``Disc 1`` genuinely is this
-    resource's own name, in which case it genuinely is the collection root.
-    """
-    if not root_name or len(nodes) != 1:
-        return nodes
-    only = nodes[0]
-    children = only.get("e")
-    if not isinstance(children, list):
-        return nodes
-    if str(only.get("n") or only.get("name") or "").strip() != root_name:
-        return nodes
-    return [node for node in children if isinstance(node, dict)]
-
-
-def _flatten(nodes: list[dict], prefix: str, require_link: bool) -> list[NativeMember]:
-    members: list[NativeMember] = []
-    for node in nodes:
+    A node carrying a child list ``e`` is a directory; a nameless directory
+    contributes no segment and a nameless leaf is not a member."""
+    leaves: list[tuple[tuple[str, ...], dict]] = []
+    for node in nodes or ():
         if not isinstance(node, dict):
             continue
         name = str(node.get("n") or node.get("name") or "").strip()
         children = node.get("e")
-        current = f"{prefix}/{name}".strip("/") if name else prefix
+        current = (*prefix, name) if name else prefix
         if isinstance(children, list):
-            members.extend(_flatten(children, current, require_link))
-            continue
-        if not name:
-            continue
-        link = ""
-        if require_link:
-            if "l" not in node:
-                continue
-            # The provider-issued download capability is validated here, at the
-            # one native boundary, before it can reach any consumer. A node that
-            # DOES claim a link but carries an unusable one is a malformed native
-            # payload and fails loudly, exactly as it did before this boundary had
-            # a single owner -- it is never silently dropped from the manifest.
-            link = validate_provider_download_url(node["l"], context="magnet file download link")
-        try:
-            size = max(0, int(node.get("s") or node.get("size") or 0))
-        except (TypeError, ValueError, OverflowError):
-            size = 0
-        members.append(NativeMember(name, current or name, size, link))
-    return members
+            leaves.extend(_leaves(children, current))
+        elif name:
+            leaves.append((current, node))
+    return leaves
 
 
 def native_members(nodes, *, root_name: str = "", require_link: bool = False) -> tuple[NativeMember, ...]:
@@ -233,32 +189,57 @@ def native_members(nodes, *, root_name: str = "", require_link: bool = False) ->
     systems and explicit file selection keeps reconciling
     (``transfers.file_selection.reconcile_executable_subset``).
 
+    Reading the tree is AllDebrid's; whether its top directory is the
+    collection wrapper is the neutral rule's
+    (``transfers.file_selection.collection_member_paths``), given the
+    resource's authoritative name ``root_name`` -- the torrent's ``info.name``,
+    which AllDebrid reports as the magnet's ``filename``. The rule judges EVERY
+    leaf of the tree, linked or not, so the two surfaces share one coordinate
+    system even when the executable one carries fewer members.
+
     ``require_link`` selects the capability-bearing surface: a leaf that claims
     no native download link at all is skipped, and one that claims an unusable
     link fails. With it off the native ``l`` value is never even read, so no
     capability URL can leak into the neutral early manifest. The member PATH is
     computed identically either way.
 
-    A node carrying a child list ``e`` is a directory on BOTH surfaces. The two
-    superseded flatteners disagreed here -- the executable one tested ``l``
-    first and would have called such a node a file -- and that disagreement is
-    resolved in favour of the early surface's rule, because early and executable
-    member paths must be identical for explicit selection to reconcile.
+    Raises ``ManifestInvalid`` for a member path that would escape the root.
     """
-    prepared = [node for node in (nodes or ()) if isinstance(node, dict)]
-    return tuple(_flatten(_unwrap_collection_root(prepared, root_name), "", require_link))
+    leaves = _leaves(nodes, ())
+    paths = collection_member_paths(root_name, [parts for parts, _node in leaves])
+    members: list[NativeMember] = []
+    for path, (parts, node) in zip(paths, leaves, strict=True):
+        link = ""
+        if require_link:
+            if "l" not in node:
+                continue
+            # The provider-issued download capability is validated here, at the
+            # one native boundary, before it can reach any consumer. A node that
+            # DOES claim a link but carries an unusable one is a malformed native
+            # payload and fails loudly -- it is never silently dropped.
+            link = validate_provider_download_url(node["l"], context="magnet file download link")
+        try:
+            size = max(0, int(node.get("s") or node.get("size") or 0))
+        except (TypeError, ValueError, OverflowError):
+            size = 0
+        members.append(NativeMember(parts[-1], path, size, link))
+    return tuple(members)
 
 
 def file_manifest_from_native(native: dict, *, root_name: str | None = None) -> FileManifest | None:
     """Neutral early FileManifest from a status record's file tree, or ``None``.
 
     Absent/empty tree yields ``None``: the provider reports no selectable
-    manifest until it has a complete authoritative tree. ``root_name`` defaults
-    to this same record's own authoritative name.
+    manifest until it has a complete authoritative tree. An unsafe member path
+    yields ``None`` too -- the early manifest is optional, never repaired.
+    ``root_name`` defaults to this same record's own authoritative name.
     """
     name = _native_name(native) if root_name is None else root_name
-    entries = [FileManifestEntry(member.name, member.relative_path, member.expected_bytes)
-               for member in native_members(native.get("files"), root_name=name)]
+    try:
+        members = native_members(native.get("files"), root_name=name)
+    except ManifestInvalid:
+        return None
+    entries = [FileManifestEntry(member.name, member.relative_path, member.expected_bytes) for member in members]
     return FileManifest(tuple(entries)) if entries else None
 
 
@@ -270,8 +251,12 @@ def file_manifest_from_files_response(records, native_id: str, *, root_name: str
     """
     for record in records or ():
         if isinstance(record, dict) and str(record.get("id")) == str(native_id):
+            try:
+                members = native_members(record.get("files"), root_name=root_name)
+            except ManifestInvalid:
+                return None
             entries = [FileManifestEntry(member.name, member.relative_path, member.expected_bytes)
-                       for member in native_members(record.get("files"), root_name=root_name)]
+                       for member in members]
             if entries:
                 return FileManifest(tuple(entries))
     return None

@@ -4,7 +4,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).parents[2]
 STATUS = (ROOT / "frontend" / "static" / "ui-provider-status.js").read_text()
-ACCOUNT = (ROOT / "frontend" / "static" / "ui-alldebrid-account-status.js").read_text()
+ACCOUNT = (ROOT / "frontend" / "static" / "ui-premium-account-status.js").read_text()
 # The provider card (structure, status, collapse control) belongs to the Settings owner.
 CARDS = (ROOT / "frontend" / "static" / "ui-settings-page.js").read_text()
 APP = (ROOT / "frontend" / "static" / "app.js").read_text()
@@ -38,12 +38,15 @@ def test_operational_health_is_derived_from_member_observations_not_enablement()
 
 
 def test_provider_specific_account_detail_is_isolated_from_neutral_owner():
-    assert "candidate.id === 'alldebrid'" in ACCOUNT
-    assert "premiumUntil" in ACCOUNT
-    assert "AllDebrid Premium until" in ACCOUNT
+    # One premium-account owner interprets each provider's own account facts at
+    # its edge; the neutral status owner names no provider and no account field.
+    assert "alldebrid: status =>" in ACCOUNT and "premiumUntil" in ACCOUNT
+    assert "realdebrid: status =>" in ACCOUNT and "status?.expiration" in ACCOUNT
+    assert "Premium until" in ACCOUNT
     assert "alldebrid.com" not in ACCOUNT.lower()
-    assert "alldebrid.com" not in STATUS.lower()
-    assert "candidate.id === 'alldebrid'" not in STATUS.lower()
+    for provider_specific in ("alldebrid", "realdebrid", "premiumUntil", "expiration", "premium-row"):
+        assert provider_specific not in STATUS, provider_specific
+    assert not (ROOT / "frontend" / "static" / "ui-alldebrid-account-status.js").exists()
 
 
 def test_presentation_identity_and_direct_source_group_are_provider_owned():
@@ -83,7 +86,8 @@ def test_application_shell_explicitly_loads_the_single_provider_owners():
     assert 'id="provider-status-list"' in INDEX
     assert INDEX.count('id="provider-status-list"') == 1
     assert '/ui-provider-status.js?v=4' in INDEX
-    assert '/ui-alldebrid-account-status.js?v=2' in INDEX
+    assert '/ui-premium-account-status.js?v=1' in INDEX
+    assert 'ui-alldebrid-account-status' not in INDEX
     assert 'ui-provider-cards' not in INDEX
     assert not (ROOT / "frontend" / "static" / "ui-provider-cards.js").exists()
     assert "ui-provider-state.css" not in INDEX

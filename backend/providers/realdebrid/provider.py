@@ -7,7 +7,7 @@ from urllib.parse import urlsplit
 
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
-    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, UnsafeMemberPath, native_members, native_name,
+    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, native_members, native_name,
     observation_from_native, protocol_error, resource_from_native, translate_error,
     unrestricted_matches,
 )
@@ -16,6 +16,7 @@ from transfers.applicability import ApplicabilityReadiness, ProviderApplicabilit
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Permanence, Retryability, Stage, TransferError,
 )
+from transfers.file_selection import ManifestInvalid
 from transfers.models import (
     Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
@@ -228,7 +229,7 @@ class RealDebridProvider:
             raise TransferError(protocol_error(stage, "torrent links are malformed"))
         try:
             members = native_members(native.get("files"), root_name=native_name(native))
-        except UnsafeMemberPath:
+        except ManifestInvalid:
             raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, stage,
                                                 integration_id=INTEGRATION_ID)) from None
         selected = [member for member in members if member.selected]

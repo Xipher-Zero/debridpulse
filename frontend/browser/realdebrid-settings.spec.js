@@ -5,18 +5,20 @@ const { test, expect } = require('@playwright/test');
  * Every Real-Debrid endpoint is answered here, so no account is needed and no
  * canonical state is written: this file owns no settings key. What it proves
  * is the card's own contract -- the shipped mark, a main body that is one
- * centred column in every connection state, an authorization that opens in
- * the operator's own browser and never navigates DebridPulse, and an
- * Additional Settings region that holds tuning and nothing else. */
+ * bordered Account Connection island in every connection state (what it is on
+ * the left, its action on the right) with the state's one line centred
+ * beneath it, an authorization that opens in the operator's own browser and
+ * never navigates DebridPulse, a connection that switches the provider on
+ * without a reload, and an Additional Settings region that holds the four
+ * tunables and nothing else. */
 
 const PENDING = {state: 'pending', user_code: 'ABCD1234', verification_url: 'https://real-debrid.com/device',
                  interval: 5, expires_in: 600};
 const ACCOUNT = {username: 'alice', account_type: 'premium', premium: true, premium_seconds: 9,
                  expiration: '2027-01-31T10:00:00.000Z'};
 
-/* An operator enables Real-Debrid and then connects it: accepting a projection
- * of a DISABLED provider puts its card away (renderIntegrationState), which is
- * the shared Settings rule, not this card's. */
+/* A successful connection comes back configured, verified AND enabled -- the
+ * server's auto-enable; a disconnect leaves the operator's enable state alone. */
 function projection(connected) {
   return {
     enabled: true, configured: connected, verified: connected,
@@ -63,27 +65,47 @@ async function prepare(page) {
   return {card, region: card.locator('[data-realdebrid-connection]'), calls};
 }
 
-/* Every visible text line and button of the main body sits on the body's own
- * centre line, and the body itself centres its text. */
-async function expectCentred(region) {
-  const offsets = await region.evaluate(node => {
-    const box = node.getBoundingClientRect();
-    const centre = box.left + box.width / 2;
+/* The island in this state: bordered, its copy on the left and its actions on
+ * the right, the actions centred against the island, nothing overlapping and
+ * nothing overflowing it. */
+async function expectIsland(region) {
+  const geometry = await region.evaluate(node => {
+    const island = node.querySelector('.dp-settings-realdebrid-island');
+    const copy = island.querySelector('.dp-settings-realdebrid-island-copy').getBoundingClientRect();
+    const actions = island.querySelector('.dp-settings-realdebrid-island-actions').getBoundingClientRect();
+    const box = island.getBoundingClientRect();
     return {
-      align: getComputedStyle(node).textAlign,
-      off: [...node.children].filter(child => child.getClientRects().length).map(child => {
-        const own = child.getBoundingClientRect();
-        // A paragraph spans the column; what is centred is its text.
-        const range = document.createRange();
-        range.selectNodeContents(child);
-        const content = child.tagName === 'BUTTON' ? own : range.getBoundingClientRect();
-        return Math.abs(content.left + content.width / 2 - centre);
-      }),
+      border: getComputedStyle(island).borderTopStyle,
+      heading: island.querySelector('.dp-settings-realdebrid-heading').textContent,
+      copyLeft: copy.left - box.left,
+      gap: actions.left - copy.right,
+      rightInset: box.right - actions.right,
+      centre: Math.abs((actions.top + actions.bottom) / 2 - (box.top + box.bottom) / 2),
+      overflow: island.scrollWidth - island.clientWidth,
     };
   });
-  expect(offsets.align).toBe('center');
-  expect(offsets.off.length).toBeGreaterThan(0);
-  for (const off of offsets.off) expect(off).toBeLessThan(2);
+  expect(geometry.border).toBe('solid');
+  expect(geometry.heading).toBe('Account Connection');
+  expect(geometry.copyLeft).toBeLessThan(30);
+  expect(geometry.gap).toBeGreaterThan(0);
+  expect(geometry.rightInset).toBeLessThan(30);
+  expect(geometry.centre).toBeLessThan(2);
+  expect(geometry.overflow).toBeLessThanOrEqual(0);
+}
+
+/* The state's line beneath the island, centred on it. */
+async function expectCentredBeneath(region, selector) {
+  const offset = await region.evaluate((node, beneath) => {
+    const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
+    const line = node.querySelector(beneath);
+    const range = document.createRange();
+    range.selectNodeContents(line);
+    const text = range.getBoundingClientRect();
+    return {below: line.getBoundingClientRect().top - island.bottom,
+            off: Math.abs((text.left + text.right) / 2 - (island.left + island.right) / 2)};
+  }, selector);
+  expect(offset.below).toBeGreaterThanOrEqual(0);
+  expect(offset.off).toBeLessThan(2);
 }
 
 test('the Real-Debrid card uses the shipped mark and keeps Additional Settings for tuning alone', async ({page}) => {
@@ -97,26 +119,54 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   // Real-Debrid is opt-in: unconnected and switched off until the operator says so.
   await expect(card.locator('[data-integration-enabled="realdebrid"]')).not.toBeChecked();
 
-  await expect(region.locator('[data-action="connect-realdebrid"]')).toHaveText('Connect Real-Debrid');
-  await expectCentred(region);
+  // The provider description stays left-aligned above the island.
+  await expect(card.locator('.card-body > .dp-settings-copy').first())
+    .toHaveText('Connect DebridPulse to Real-Debrid for direct links, magnets, and torrent files.');
+  await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="connect-realdebrid"]'))
+    .toHaveText('Connect Real-Debrid');
+  await expect(region.locator('[data-realdebrid-code], .dp-settings-realdebrid-waiting')).toHaveCount(0);
+  await expect(region.locator('[data-action="disconnect-realdebrid"]')).toHaveCount(0);
+  await expectIsland(region);
 
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
   await expect(tuning.locator('.dp-settings-tuning-grid')).toHaveCount(1);
-  await expect(tuning.locator('[data-setting]')).toHaveCount(1);
-  await expect(tuning.locator('[data-setting="realdebrid_rate_limit_per_minute"]')).toHaveValue('240');
+  await expect(tuning.locator('[data-setting]')).toHaveCount(4);
+  for (const [key, value, min, max] of [
+    ['realdebrid_rate_limit_per_minute', '240', '1', '250'],
+    ['realdebrid_request_timeout_seconds', '30', '5', '300'],
+    ['realdebrid_torrent_upload_timeout_seconds', '120', '30', '900'],
+    ['realdebrid_host_refresh_interval_hours', '24', '1', '168'],
+  ]) {
+    const control = tuning.locator(`[data-setting="${key}"]`);
+    await expect(control).toHaveValue(value);
+    await expect(control).toHaveAttribute('min', min);
+    await expect(control).toHaveAttribute('max', max);
+    // Field-boundary persistence through the one scoped integration owner.
+    await expect(control).toHaveAttribute('data-commit', 'changed-blur');
+    await expect(control).toHaveAttribute('data-commit-scope', 'integration:realdebrid');
+  }
   await expect(tuning.locator('button')).toHaveCount(0);
   expect(await tuning.innerText()).not.toMatch(/authori|connect|token|code/i);
 });
 
-test('authorization opens in the operator browser, polls, connects and disconnects in one centred column',
+test('authorization opens in the operator browser, polls, connects, enables and disconnects through the island',
   async ({page}) => {
-    const {region, calls} = await prepare(page);
+    const {card, region, calls} = await prepare(page);
     const before = page.url();
     await region.locator('[data-action="connect-realdebrid"]').click();
-    await expect(region.locator('.dp-settings-realdebrid-code')).toHaveText('ABCD1234');
-    await expect(region).toContainText('Waiting for authorization…');
-    await expectCentred(region);
+    const code = region.locator('.dp-settings-realdebrid-island .dp-action-field input[data-realdebrid-code]');
+    await expect(code).toHaveValue('ABCD1234');
+    await expect(code).toHaveAttribute('readonly', '');
+    await expect(region.locator('.dp-action-field [data-action="copy-realdebrid-code"]')).toHaveText('Copy');
+    // Keyboard-reachable and selectable: the code is a focusable read-only field.
+    await code.focus();
+    expect(await code.evaluate(field => { field.select(); return field.selectionEnd - field.selectionStart; })).toBe(8);
+    await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="open-realdebrid"]')).toBeVisible();
+    await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="cancel-realdebrid"]')).toBeVisible();
+    await expect(region.locator('.dp-settings-realdebrid-waiting')).toHaveText('Waiting for authorization…');
+    await expectIsland(region);
+    await expectCentredBeneath(region, '.dp-settings-realdebrid-waiting');
 
     await region.locator('[data-action="open-realdebrid"]').click();
     expect(await page.evaluate(() => window.__opened)).toEqual(
@@ -126,10 +176,16 @@ test('authorization opens in the operator browser, polls, connects and disconnec
     // The browser polls no faster than Real-Debrid asked (interval 5 s).
     expect(calls).not.toContain('POST /api/integrations/realdebrid/authorization/poll');
     await page.clock.fastForward(5000);
-    await expect(region).toContainText('Connected as alice');
-    await expect(region).toContainText('Premium · Expires 31.01.2027');
+    await expect(region.locator('.dp-settings-realdebrid-island')).toContainText('Connected as alice');
+    await expect(region.locator('.dp-settings-realdebrid-expiry')).toHaveText(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
+    await expect(region.locator('[data-realdebrid-code], .dp-settings-realdebrid-waiting')).toHaveCount(0);
+    await expect(region.locator('[data-action="connect-realdebrid"], [data-action="cancel-realdebrid"]'))
+      .toHaveCount(0);
     expect(calls).toContain('POST /api/integrations/realdebrid/authorization/poll');
-    await expectCentred(region);
+    // The accepted projection switches the provider on with no reload.
+    await expect(card.locator('[data-integration-enabled="realdebrid"]')).toBeChecked();
+    await expectIsland(region);
+    await expectCentredBeneath(region, '.dp-settings-realdebrid-expiry');
 
     await region.locator('[data-action="disconnect-realdebrid"]').click();
     await page.locator('.dp-modal-dialog [data-modal-accept]').click();

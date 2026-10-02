@@ -44,7 +44,7 @@ def test_downloads_pager_uses_canonical_material_bridge() -> None:
 def test_provider_status_has_one_neutral_centered_presentation_owner() -> None:
     shell = read_static("ui-shell-provider-status.css")
     provider = read_static("ui-provider-state.css")
-    account = read_static("ui-alldebrid-account-status.js")
+    account = read_static("ui-premium-account-status.js")
     runtime = read_static("ui-accessibility-runtime.js")
 
     assert "#sidebar .sidebar-footer::before" not in shell
@@ -63,8 +63,9 @@ def test_provider_status_has_one_neutral_centered_presentation_owner() -> None:
     assert '#premium-row[style*="display:none"]' in shell
     assert "#lbl-premium::before" in shell
     assert "content: none !important" in shell
-    assert "className = 'dp-provider-premium-until'" in account
-    assert "className = 'dp-provider-premium-days'" in account
+    assert "line('dp-provider-premium-until'," in account
+    assert "line('dp-provider-premium-days'," in account
+    assert "'dp-provider-premium-account dp-provider-premium-account--compact'" in account
     assert "normalizeProviderPremiumLabel" not in runtime
     assert "AllDebrid Premium until " not in runtime
 

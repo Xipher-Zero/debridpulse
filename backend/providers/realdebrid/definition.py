@@ -14,6 +14,12 @@ class RealDebridOptions(BaseModel):
     # Real-Debrid documents 250 requests/minute, refused ones included; the
     # default leaves headroom and the ceiling is the service's own.
     rate_limit_per_minute: int = Field(default=240, ge=1, le=SERVICE_LIMIT_PER_MINUTE)
+    # Operational allowances, never retry policy: how long one ordinary exchange
+    # and one torrent-file upload may take, and how often the supported-host
+    # lists become due for refresh.
+    request_timeout_seconds: int = Field(default=30, ge=5, le=300)
+    torrent_upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
+    host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
 
 
 def canonical_options(settings) -> RealDebridOptions:
@@ -48,6 +54,8 @@ def build(options, environment):
     credential = Credential(options.client_id, options.client_secret, options.refresh_token)
     client = RealDebridService(credential if credential.usable else None,
                                rate_limit_per_minute=options.rate_limit_per_minute,
+                               request_timeout_seconds=options.request_timeout_seconds,
+                               upload_timeout_seconds=options.torrent_upload_timeout_seconds,
                                on_refresh=persist_refreshed_credential)
     provider = RealDebridProvider(client)
     commands = getattr(environment, "commands", None)
@@ -55,7 +63,8 @@ def build(options, environment):
     # integration lifecycle seam; composition names no provider.
     provider.lifecycle = RealDebridHostMaintenance(
         provider, ProviderRuntimeStateStore(),
-        notify=getattr(commands, "notify_applicability_changed", None))
+        notify=getattr(commands, "notify_applicability_changed", None),
+        refresh_seconds=options.host_refresh_interval_hours * 3600)
     return provider
 
 

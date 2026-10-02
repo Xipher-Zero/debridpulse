@@ -84,8 +84,9 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
   letter-spacing: -.012em !important;
 }
 
-/* The provider-specific account adapter emits the complete two-line
-   subscription state directly. */
+/* The premium account owner (ui-premium-account-status.js) emits one complete
+   two-line subscription block per healthy premium account; the row's single
+   crown centres against the whole stack. */
 #sidebar .sidebar-footer #lbl-premium::before {
   content: none !important;
 }
@@ -97,6 +98,31 @@ body.light #sidebar .sidebar-footer .conn-row:has(#dot-db.error) {
 }
 #sidebar .sidebar-footer .dp-provider-premium-days {
   margin-top: 1px;
+}
+#sidebar .sidebar-footer .dp-provider-premium-account {
+  display: block !important;
+}
+#sidebar .sidebar-footer .dp-provider-premium-account + .dp-provider-premium-account {
+  margin-top: 5px;
+}
+/* Several accounts: one compact line each, stacked tightly under the crown. */
+#sidebar .sidebar-footer .dp-provider-premium-account--compact {
+  white-space: nowrap !important;
+}
+#sidebar .sidebar-footer .dp-provider-premium-account--compact + .dp-provider-premium-account--compact {
+  margin-top: 1px;
+}
+
+/* Tier headings follow the premium account composition. With no premium
+   account shown (the owner publishes the count on #premium-row only when there
+   is one), a premium tier's rows stay but its "Premium Services" heading has
+   nothing to introduce; and with no premium tier at all, the remaining tier's
+   heading has nothing to be distinguished from. */
+#sidebar .sidebar-footer:has(#premium-row:not([data-premium-accounts]))
+  .dp-provider-status-tier[data-provider-tier-premium] > .dp-provider-status-tier-label,
+#sidebar .sidebar-footer:has(#premium-row:not([data-premium-accounts])):not(:has(.dp-provider-status-tier[data-provider-tier-premium]))
+  .dp-provider-status-tier > .dp-provider-status-tier-label {
+  display: none;
 }
 
 /* Internal operational rows remain exception-only under the existing shell

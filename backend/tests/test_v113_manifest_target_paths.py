@@ -146,14 +146,14 @@ class HttpsExecutor(MemoryExecutor):
         return super().prepare(request)
 
 
-def build(tmp_path, client, *, clock=None):
+def build(tmp_path, client, *, clock=None, provider=None, member_host="alldebrid.example"):
     repository = TransferRepository()
     registry = IntegrationRegistry()
-    provider = AllDebridProvider(client=client)
-    # What AllDebrid's own supported-host runtime would publish for the member
-    # links it issues; without it no route claims the fanned-out https members.
+    provider = provider or AllDebridProvider(client=client)
+    # What the provider's own supported-host runtime would publish for the
+    # member links it issues; without it no route claims the fanned-out members.
     provider.applicability = ProviderApplicability(
-        specialized_hosts=(HostClaim("alldebrid.example", HostClaimScope.DOMAIN,
+        specialized_hosts=(HostClaim(member_host, HostClaimScope.DOMAIN,
                                      frozenset({"https"})),))
     registry.register_provider(provider)
     executor = HttpsExecutor(repository.authorize_execution)
@@ -277,6 +277,69 @@ def test_b_only_one_wrapper_level_is_ever_removed():
     manifest = observation_from_native(
         {"id": "991", "statusCode": 4, "filename": ROOT, "files": tree}).file_manifest
     assert {entry.relative_path for entry in manifest.entries} == {f"{ROOT}/track01.flac"}
+
+
+def test_b_the_wrapper_is_judged_on_every_leaf_so_both_surfaces_agree():
+    """An unlinked leaf outside the root directory keeps the root on BOTH
+    surfaces: the executable one never unwraps on its linked subset alone."""
+    tree = [{"n": ROOT, "e": [leaf("track01.flac", 10)]}, leaf("readme.txt", 5, link=False)]
+    early = [member.relative_path for member in native_members(tree, root_name=ROOT)]
+    late = [member.relative_path for member in native_members(tree, root_name=ROOT, require_link=True)]
+    assert early == [f"{ROOT}/track01.flac", "readme.txt"]
+    assert late == [f"{ROOT}/track01.flac"]
+
+
+# --------------------------------------------------------------------------- #
+# B'. The one neutral collection-member path rule (no provider knowledge)
+# --------------------------------------------------------------------------- #
+
+def test_rule_strips_exactly_one_authoritative_wrapper_and_keeps_order():
+    from transfers.file_selection import collection_member_paths
+
+    members = [("Album", "Disc 2", "b.flac"), ("Album", "Disc 1", "CD1", "a.flac"), ("Album", "Album", "c.flac")]
+    assert collection_member_paths("Album", members) == ("Disc 2/b.flac", "Disc 1/CD1/a.flac", "Album/c.flac")
+
+
+@pytest.mark.parametrize("root, members", [
+    ("", [("Album", "a.flac")]),                                  # no authoritative root
+    ("Album", [("Disc 1", "a.flac"), ("Disc 1", "b.flac")]),      # shared directory, not the root
+    ("Album", [("album", "a.flac")]),                             # a lookalike is not the root
+    ("Album", [("Album", "a.flac"), ("readme.txt",)]),            # not every member beneath it
+    # The root IS the file: its member path stays the real file name (never
+    # empty); placing it as a FILE, not a collection, is core's (test_g_*).
+    ("Album", [("Album",)]),
+    ("Album", [("Album", "a.flac"), ("Album",)]),                 # one member would be left empty
+], ids=["no-root", "shared-directory", "lookalike", "not-every-member", "root-is-the-file", "one-left-empty"])
+def test_rule_preserves_the_hierarchy_without_authoritative_wrapper_evidence(root, members):
+    from transfers.file_selection import collection_member_paths
+
+    assert collection_member_paths(root, members) == tuple("/".join(parts) for parts in members)
+
+
+@pytest.mark.parametrize("member", [(), ("Album", ""), ("Album", "."), ("Album", ".."), ("..", "x"),
+                                    ("Album", "a/b"), ("Album", "a\\b"), ("Album", None)],
+                         ids=["empty", "empty-segment", "dot", "dotdot", "leading-dotdot", "slash", "backslash",
+                              "not-a-string"])
+def test_rule_fails_closed_on_unsafe_members(member):
+    from transfers.file_selection import ManifestInvalid, collection_member_paths
+
+    with pytest.raises(ManifestInvalid):
+        collection_member_paths("Album", [("Album", "ok.flac"), member])
+
+
+def test_rule_is_the_one_owner_and_knows_no_provider():
+    import inspect
+
+    import providers.alldebrid.translation as alldebrid
+    import providers.realdebrid.translation as realdebrid
+    from transfers import file_selection
+
+    source = inspect.getsource(file_selection.collection_member_paths).casefold()
+    for native in ("alldebrid", "realdebrid", "real-debrid", "files[]", '"e"', '"n"', '"selected"', '"links"'):
+        assert native not in source
+    assert not hasattr(alldebrid, "_unwrap_collection_root")
+    for adapter in (alldebrid, realdebrid):
+        assert adapter.collection_member_paths is file_selection.collection_member_paths
 
 
 # --------------------------------------------------------------------------- #
@@ -403,15 +466,112 @@ def test_g_a_single_file_torrent_root_is_the_file_and_is_not_removed():
     assert {entry.relative_path for entry in manifest.entries} == {"payload.iso"}
 
 
-@pytest.mark.asyncio
-async def test_g_single_file_manifest_materializes_under_one_root(tmp_path, monkeypatch):
+async def whole_resource_flags(transfer_id):
+    async with database.get_db() as db:
+        rows = await db.fetchall(
+            "SELECT metadata FROM transfer_requests WHERE transfer_id=? AND parent_id IS NOT NULL", (transfer_id,))
+    from transfers import codec
+    return [codec.entry(codec.load(row["metadata"])).whole_resource for row in rows]
+
+
+async def single_file_alldebrid(tmp_path, monkeypatch, *, filename="payload.iso", tree=None):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "single.db")
     await database.init_db()
-    client = FakeAllDebridClient(filename="payload.iso", tree=[leaf("payload.iso", 4096)])
+    client = FakeAllDebridClient(filename=filename, tree=tree or [leaf("payload.iso", 4096)])
     built = build(tmp_path, client)
     await built.engine.initialize()
-    transfer = await drive(built, magnet("payload.iso"))
-    assert await targets(transfer.id) == [str(Path(built.root) / "payload.iso" / "payload.iso")]
+    return built, await drive(built, magnet(filename))
+
+
+@pytest.mark.asyncio
+async def test_g_a_single_file_torrent_is_a_file_at_the_download_root(tmp_path, monkeypatch):
+    """The live defect: the sole member IS the resource, so it is a file at
+    ``<download-root>/<filename>`` -- never ``<download-root>/<name>/<name>``.
+    The member path itself stays the real file name: no empty or ``.``
+    coordinate stands in for "no folder"."""
+    built, transfer = await single_file_alldebrid(tmp_path, monkeypatch)
+    observed = await targets(transfer.id)
+    assert observed == [str(Path(built.root) / "payload.iso")]
+    assert observed[0].count("payload.iso") == 1
+    assert await candidate_paths(transfer.id) == ["payload.iso"]
+    assert await whole_resource_flags(transfer.id) == [True]
+
+
+@pytest.mark.asyncio
+async def test_g_a_sole_member_that_is_not_the_resource_stays_in_its_collection(tmp_path, monkeypatch):
+    """A one-file collection (``Movie/movie.mkv``): the wrapper is stripped, but
+    the sole member is not the resource itself, so the collection root stays."""
+    built, transfer = await single_file_alldebrid(
+        tmp_path, monkeypatch, filename="Movie", tree=[{"n": "Movie", "e": [leaf("payload.iso", 4096)]}])
+    assert await targets(transfer.id) == [str(Path(built.root) / "Movie" / "payload.iso")]
+    assert await whole_resource_flags(transfer.id) == [False]
+
+
+@pytest.mark.asyncio
+async def test_g_a_member_named_like_its_collection_never_leaves_a_multi_file_collection(tmp_path, monkeypatch):
+    """Cardinality decides FILE vs COLLECTION on the full executable manifest:
+    a member that merely shares the resource's name, beside other members,
+    is still a collection member."""
+    built, transfer = await single_file_alldebrid(
+        tmp_path, monkeypatch, filename=ROOT,
+        tree=[{"n": ROOT, "e": [leaf(ROOT, 1024), leaf("track01.flac", 1024)]}])
+    assert set(await targets(transfer.id)) == {
+        str(Path(built.root) / ROOT / ROOT), str(Path(built.root) / ROOT / "track01.flac")}
+    assert await whole_resource_flags(transfer.id) == [False, False]
+
+
+RD_HASH = "a" * 40
+
+
+def realdebrid_engine(tmp_path, *, name, files, links, unrestrict):
+    from test_v113_realdebrid_provider import FakeClient, info
+    from providers.realdebrid.provider import RealDebridProvider
+
+    native = info(files=files, links=links, filename=name, original_filename=name)
+    client = FakeClient(add_magnet={"id": "T1", "uri": "https://api.real-debrid.com/rest/1.0/torrents/info/T1"},
+                        select_files=204, torrent_info=native, unrestrict_link=lambda link: unrestrict[link])
+    return build(tmp_path, client, provider=RealDebridProvider(client), member_host="real-debrid.com")
+
+
+@pytest.mark.asyncio
+async def test_g_realdebrid_gets_the_same_file_placement_from_the_same_core_owner(tmp_path, monkeypatch):
+    """Real-Debrid reaches the identical placement through the same neutral
+    fan-out and materialization owner -- no provider knowledge in core."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "rd-single.db")
+    await database.init_db()
+    link = "https://real-debrid.com/d/L1"
+    built = realdebrid_engine(
+        tmp_path, name="payload.iso", files=[{"id": 1, "path": "/payload.iso", "bytes": 4096, "selected": 1}],
+        links=[link],
+        unrestrict={link: {"filename": "payload.iso", "filesize": 4096, "download": "https://cdn.example/1"}})
+    await built.engine.initialize()
+    transfer = await drive(built, magnet("payload.iso", digest=RD_HASH))
+    observed = await targets(transfer.id)
+    assert observed == [str(Path(built.root) / "payload.iso")]
+    assert observed[0].count("payload.iso") == 1
+    assert await candidate_paths(transfer.id) == ["payload.iso"]
+    assert await whole_resource_flags(transfer.id) == [True]
+
+
+@pytest.mark.asyncio
+async def test_g_a_realdebrid_collection_keeps_its_root_exactly_once(tmp_path, monkeypatch):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "rd-multi.db")
+    await database.init_db()
+    links = ["https://real-debrid.com/d/L1", "https://real-debrid.com/d/L2"]
+    built = realdebrid_engine(
+        tmp_path, name=ROOT,
+        files=[{"id": 1, "path": f"/{ROOT}/Disc 1/track02.flac", "bytes": 2048, "selected": 1},
+               {"id": 2, "path": f"/{ROOT}/track01.flac", "bytes": 1024, "selected": 1}],
+        links=links,
+        unrestrict={links[0]: {"filename": "track02.flac", "filesize": 2048, "download": "https://cdn.example/2"},
+                    links[1]: {"filename": "track01.flac", "filesize": 1024, "download": "https://cdn.example/1"}})
+    await built.engine.initialize()
+    transfer = await drive(built, magnet(ROOT, digest=RD_HASH))
+    observed = await targets(transfer.id)
+    assert set(observed) == {str(Path(built.root) / ROOT / "Disc 1" / "track02.flac"),
+                             str(Path(built.root) / ROOT / "track01.flac")}
+    for path in observed:
+        assert Path(path).relative_to(built.root).parts.count(ROOT) == 1
 
 
 # --------------------------------------------------------------------------- #
@@ -428,19 +588,24 @@ async def test_h_two_nested_levels_survive_beneath_one_root(ad):
 # I. Path safety and capability validation are unchanged
 # --------------------------------------------------------------------------- #
 
-def test_i_core_still_refuses_a_traversing_member_path():
-    """Path safety stays where it already is -- at the core boundary. Unwrapping
-    the collection root neither adds nor removes any containment rule."""
+def test_i_a_traversing_member_path_fails_closed_at_the_member_rule_and_at_core():
+    """The neutral member-path rule refuses a traversing member outright -- it
+    is never repaired into an executable path -- and core's own containment
+    rules still refuse the same path independently."""
     from transfers import file_selection as fs
     from transfers.filesystem import destination
 
     tree = [{"n": ROOT, "e": [leaf("../escape.bin", 10)]}]
-    member = next(iter(native_members(tree, root_name=ROOT)))
-    assert member.relative_path == "../escape.bin"
-    with pytest.raises(TransferError):
-        destination("/tmp", member.relative_path)
     with pytest.raises(fs.ManifestInvalid):
-        fs.normalize_relative_path(member.relative_path)
+        native_members(tree, root_name=ROOT)
+    with pytest.raises(fs.ManifestInvalid):
+        native_members(tree, root_name=ROOT, require_link=True)
+    assert observation_from_native(
+        {"id": "991", "statusCode": 4, "filename": ROOT, "files": tree}).file_manifest is None
+    with pytest.raises(TransferError):
+        destination("/tmp", "../escape.bin")
+    with pytest.raises(fs.ManifestInvalid):
+        fs.normalize_relative_path("../escape.bin")
 
 
 def test_i_a_non_public_native_link_is_still_refused_before_materialization():

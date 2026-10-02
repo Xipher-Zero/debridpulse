@@ -29,8 +29,13 @@ OAUTH = "https://api.real-debrid.com/oauth/v2"
 OPEN_SOURCE_CLIENT_ID = "X245A4XAIBGVM"
 DEVICE_GRANT = "http://oauth.net/grant_type/device/1.0"
 
-TIMEOUT = aiohttp.ClientTimeout(total=30)
-UPLOAD_TIMEOUT = aiohttp.ClientTimeout(total=120)
+# Operator-tunable (integrations.realdebrid.options): the total time one
+# ordinary Real-Debrid exchange -- REST, OAuth or the public host lists -- may
+# take, and the longer allowance for uploading torrent metainfo. A timeout is
+# a failure core recovers from; it never causes a retry here.
+DEFAULT_REQUEST_TIMEOUT_SECONDS = 30
+DEFAULT_UPLOAD_TIMEOUT_SECONDS = 120
+TIMEOUT = aiohttp.ClientTimeout(total=DEFAULT_REQUEST_TIMEOUT_SECONDS)
 # A native response is decoded only up to this size: a complete 5000-entry
 # torrent page is far smaller, so anything larger is malformed, not data.
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
@@ -133,10 +138,14 @@ def _object(value: Any, what: str) -> dict:
 
 class RealDebridService:
     def __init__(self, credential: Credential | None = None, *, rate_limit_per_minute: int = 240,
+                 request_timeout_seconds: float = DEFAULT_REQUEST_TIMEOUT_SECONDS,
+                 upload_timeout_seconds: float = DEFAULT_UPLOAD_TIMEOUT_SECONDS,
                  rate_limiter=None, transport: Transport | None = None,
                  on_refresh: Callable[[Credential], Awaitable[None]] | None = None,
                  clock: Callable[[], float] = time.time):
         self.credential = credential
+        self.request_timeout = aiohttp.ClientTimeout(total=float(request_timeout_seconds))
+        self.upload_timeout = aiohttp.ClientTimeout(total=float(upload_timeout_seconds))
         self._rate_limiter = rate_limiter or SlidingWindowRateLimiter(rate_limit_per_minute)
         self._transport = transport or aiohttp_transport
         self._on_refresh = on_refresh
@@ -156,9 +165,9 @@ class RealDebridService:
             values += [self.credential.client_secret, self.credential.refresh_token]
         return tuple(value for value in values if value)
 
-    async def _send(self, method, url, **kwargs) -> RawResponse:
+    async def _send(self, method, url, *, timeout=None, **kwargs) -> RawResponse:
         await self._rate_limiter.acquire()
-        return await self._transport(method, url, **kwargs)
+        return await self._transport(method, url, timeout=timeout or self.request_timeout, **kwargs)
 
     # -- OAuth2 device flow ----------------------------------------------------
 
@@ -246,7 +255,7 @@ class RealDebridService:
             return self._access_token
 
     async def _authorized(self, method: str, path: str, *, params=None, data=None,
-                          timeout=TIMEOUT) -> RawResponse:
+                          timeout=None) -> RawResponse:
         token = self._access_token
         if not token or self._clock() >= self._access_expires_at:
             token = await self._refresh(token)
@@ -280,7 +289,7 @@ class RealDebridService:
 
     async def add_torrent(self, metainfo: bytes) -> dict:
         return _object(_decode(await self._authorized("PUT", "torrents/addTorrent", data=bytes(metainfo),
-                                                      timeout=UPLOAD_TIMEOUT)), "torrent creation")
+                                                      timeout=self.upload_timeout)), "torrent creation")
 
     async def select_files(self, native_id: str, files: str = "all") -> int:
         """Select files of a torrent; 204 selected it, 202 says it already was."""

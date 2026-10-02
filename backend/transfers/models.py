@@ -688,6 +688,12 @@ class SourceEntry:
     ``integrity``: whole-member integrity the provider declares; core stamps it
     onto every candidate resolved for the member, as it does
     ``expected_bytes``, so evidence and final verification use it.
+    ``whole_resource``: core-owned, never set by a provider. Core stamps it at
+    fan-out when the executable manifest's one and only member is the resource
+    itself -- its member path is exactly the resource's authoritative name, as
+    a single-file torrent's is. Such a member is a FILE, not a collection
+    member, so materialization places it at ``<download-root>/<name>`` instead
+    of beneath a collection folder of the same name.
     """
     name: str
     expected_bytes: int
@@ -695,6 +701,7 @@ class SourceEntry:
     request: TransferRequest = field(repr=False)
     alternates: tuple[TransferRequest, ...] = field(default=(), repr=False)
     integrity: tuple[IntegrityMetadata, ...] = ()
+    whole_resource: bool = False
 
 
 @dataclass(frozen=True)

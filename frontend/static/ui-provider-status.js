@@ -153,8 +153,10 @@
           rows.push(group);
         }
         group.entries.push(entry);
+        if (bucket && entry.premium) bucket.premium = true;
       } else if (entry.enabled && entry.state !== 'disabled') {
         rows.push({entry});
+        if (bucket && entry.premium) bucket.premium = true;
       }
     }
 
@@ -165,8 +167,11 @@
     };
 
     // A tier with nothing to show renders nothing: no bare heading is left behind.
+    // A tier that shows a premium integration says so (neutral presentation
+    // metadata), so the premium account composition can decide whether its
+    // heading is needed; this owner never decides that itself.
     const rendered = [...tiers.values()].filter(tier => tier.rows.length).map(tier =>
-      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
+      `<div class="dp-provider-status-tier" data-provider-tier="${esc(tier.id)}"${tier.premium ? ' data-provider-tier-premium' : ''}><div class="dp-provider-status-tier-label">${esc(tier.label)}</div>${tier.rows.map(markup).join('')}</div>`
     ).concat(untiered.map(markup));
 
     host.innerHTML = rendered.length ? rendered.join('')

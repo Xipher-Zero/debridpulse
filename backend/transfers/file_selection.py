@@ -197,6 +197,39 @@ def normalize_relative_path(value: str) -> str:
     return normalized
 
 
+def collection_member_paths(root_name: str, members) -> tuple[str, ...]:
+    """THE collection-member path rule: each member's path INSIDE the root.
+
+    ``members`` is every member of one provider resource as the path segments
+    the provider's own native shape gave it, in native order; the result is one
+    POSIX relative path per member, in that same order -- an ordinal is never
+    moved, so a provider that pairs members with links by position still can.
+    Materialization applies the durable collection root exactly once, so a
+    member path must never contain it.
+
+    Exactly one top-level wrapper is removed, and only on authoritative
+    evidence: ``root_name`` is the resource's authoritative collection name,
+    EVERY member's first segment is exactly that name, and every member keeps
+    at least one segment after it. A directory merely shared by every member,
+    a lone top-level directory, a matching basename or a lookalike name proves
+    nothing and stays. Nesting is preserved; an inner directory of the same
+    name is member hierarchy and stays.
+
+    Fails closed with :class:`ManifestInvalid` on a member with no segments or
+    any empty, ``.``, ``..`` or separator-bearing segment: an unsafe native path
+    is never repaired into an executable one.
+    """
+    paths = []
+    for member in members:
+        parts = tuple(member)
+        if not parts or any(not isinstance(part, str) or part in {"", ".", ".."} or "/" in part or "\\" in part
+                            for part in parts):
+            raise ManifestInvalid("unsafe_path")
+        paths.append(parts)
+    wrapped = bool(root_name) and bool(paths) and all(len(parts) > 1 and parts[0] == root_name for parts in paths)
+    return tuple("/".join(parts[1:] if wrapped else parts) for parts in paths)
+
+
 @dataclass(frozen=True)
 class CanonicalEntry:
     entry_id: str

@@ -42,7 +42,7 @@ class Transport:
 
     async def __call__(self, method, url, *, headers=None, params=None, data=None, timeout=None):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}),
-                           "params": dict(params or {}), "data": data})
+                           "params": dict(params or {}), "data": data, "timeout": timeout})
         status, payload, *extra = self.script[(method, url)].pop(0)
         body = payload if isinstance(payload, bytes) else (b"" if payload is None else json.dumps(payload).encode())
         return RawResponse(status, extra[0] if extra else {}, body)
@@ -637,10 +637,10 @@ def test_an_unconnected_provider_never_participates():
 class _Stored:
     """One in-memory saved configuration behind every settings read and write."""
 
-    def __init__(self, **options):
+    def __init__(self, enabled=True, **options):
         from core.config import AppSettings
         from integrations.definition import IntegrationSettings
-        self.cfg = AppSettings(integrations={"realdebrid": IntegrationSettings(enabled=True, options=options)})
+        self.cfg = AppSettings(integrations={"realdebrid": IntegrationSettings(enabled=enabled, options=options)})
 
     def read(self):
         return self.cfg.model_copy(deep=True)
@@ -687,16 +687,88 @@ async def test_an_approved_device_is_saved_proven_and_never_echoed_to_the_browse
     from unittest.mock import AsyncMock, patch
     from api import settings_validation_routes as routes
 
-    stored = _Stored()
+    stored = _Stored(enabled=False)
     granted = admin.Authorized(Credential("bound", "the-secret", "the-refresh"))
     with _settings_owner(stored), \
             patch.object(routes.realdebrid_admin, "poll_authorization", AsyncMock(return_value=granted)), \
             patch.object(routes.realdebrid_admin, "verify", AsyncMock(return_value=ACCOUNT)):
         result = await routes.poll_realdebrid_authorization(application=_application())
     assert result["state"] == "connected" and result["username"] == "alice"
-    assert result["integration"]["configured"] is True and result["integration"]["verified"] is True
+    # Connecting a proven account is the decision to use it: configured,
+    # verified and enabled, in canonical state and in the returned projection.
+    projection = result["integration"]
+    assert (projection["configured"], projection["verified"], projection["enabled"]) == (True, True, True)
+    assert stored.cfg.integrations["realdebrid"].enabled is True
     assert "the-secret" not in json.dumps(result) and "the-refresh" not in json.dumps(result)
     assert stored.cfg.integrations["realdebrid"].options["refresh_token"] == "the-refresh"
+
+
+@pytest.mark.asyncio
+async def test_an_unproven_connection_or_a_pending_one_never_enables():
+    from unittest.mock import AsyncMock, patch
+    from api import settings_validation_routes as routes
+
+    stored = _Stored(enabled=False)
+    granted = admin.Authorized(Credential("bound", "the-secret", "the-refresh"))
+    with _settings_owner(stored), \
+            patch.object(routes.realdebrid_admin, "poll_authorization", AsyncMock(return_value=granted)), \
+            patch.object(routes.realdebrid_admin, "verify", AsyncMock(side_effect=RealDebridAPIError(8, "bad_token", 401))):
+        result = await routes.poll_realdebrid_authorization(application=_application())
+    assert (result["integration"]["configured"], result["integration"]["verified"],
+            result["integration"]["enabled"]) == (True, False, False)
+    assert stored.cfg.integrations["realdebrid"].enabled is False
+    pending = _Stored(enabled=False)
+    with _settings_owner(pending), \
+            patch.object(routes.realdebrid_admin, "poll_authorization", AsyncMock(return_value={"state": "pending"})):
+        assert (await routes.poll_realdebrid_authorization(application=_application())) == {"state": "pending"}
+    assert pending.cfg.integrations["realdebrid"].enabled is False
+    assert pending.cfg.integrations["realdebrid"].options == {}
+
+
+@pytest.mark.asyncio
+async def test_a_test_of_an_intentionally_disabled_account_never_enables_it():
+    from unittest.mock import AsyncMock, patch
+    from api import settings_validation_routes as routes
+
+    stored = _Stored(enabled=False, client_id="bound", client_secret="the-secret", refresh_token="the-refresh")
+    with _settings_owner(stored), patch.object(routes.realdebrid_admin, "verify", AsyncMock(return_value=ACCOUNT)):
+        result = await routes.validate_realdebrid(application=_application())
+    assert result["integration"]["verified"] is True and result["integration"]["enabled"] is False
+    assert stored.cfg.integrations["realdebrid"].enabled is False
+
+
+def test_the_operator_tunables_have_their_defaults_and_bounds():
+    defaults = RealDebridOptions()
+    assert (defaults.rate_limit_per_minute, defaults.request_timeout_seconds,
+            defaults.torrent_upload_timeout_seconds, defaults.host_refresh_interval_hours) == (240, 30, 120, 24)
+    for field, low, high in (("rate_limit_per_minute", 1, 250), ("request_timeout_seconds", 5, 300),
+                             ("torrent_upload_timeout_seconds", 30, 900), ("host_refresh_interval_hours", 1, 168)):
+        RealDebridOptions(**{field: low}), RealDebridOptions(**{field: high})
+        for bad in (low - 1, high + 1):
+            with pytest.raises(ValueError):
+                RealDebridOptions(**{field: bad})
+
+
+@pytest.mark.asyncio
+async def test_the_timeouts_reach_their_operations_and_the_refresh_interval_reaches_maintenance():
+    from types import SimpleNamespace
+    from providers.realdebrid.definition import build
+    client, transport = service({
+        ("POST", f"{OAUTH}/token"): [TOKEN],
+        ("GET", f"{API}/user"): [(200, {"username": "alice"})],
+        ("PUT", f"{API}/torrents/addTorrent"): [(201, {"id": "T1"})],
+    })
+    tuned = RealDebridService(CREDENTIAL, rate_limiter=NoLimit(), transport=transport,
+                              request_timeout_seconds=45, upload_timeout_seconds=600)
+    await tuned.user()
+    await tuned.add_torrent(b"d4:infod4:name1:xee")
+    assert {call["url"].rsplit("/", 1)[-1]: call["timeout"].total for call in transport.calls} == {
+        "token": 45, "user": 45, "addTorrent": 600}
+    provider = build(RealDebridOptions(client_id="bound", client_secret="s", refresh_token="r",
+                                       request_timeout_seconds=45, torrent_upload_timeout_seconds=600,
+                                       host_refresh_interval_hours=6), SimpleNamespace())
+    assert (provider.client.request_timeout.total, provider.client.upload_timeout.total) == (45, 600)
+    assert provider.lifecycle._refresh_seconds == 6 * 3600
 
 
 @pytest.mark.asyncio
@@ -721,3 +793,24 @@ async def test_disconnect_forgets_the_credential_even_when_revocation_fails(revo
     assert order == [""]                       # the local credential was gone before revocation was asked
     assert result["revoked"] is (revocation is None)
     assert result["integration"]["configured"] is False
+
+
+def test_the_wrapper_is_the_neutral_rule_and_real_hierarchy_survives_it():
+    """Real-Debrid reads ``files[]``; the wrapper decision is the neutral
+    member-path rule's. A shared first directory that is not the torrent's
+    name stays, a same-named inner directory stays, and native order holds."""
+    from providers.realdebrid import translation
+    from transfers import file_selection
+
+    assert not hasattr(translation, "UnsafeMemberPath")
+    shared = [{"path": "/Disc 1/b.flac", "bytes": 2, "selected": 1},
+              {"path": "/Disc 1/a.flac", "bytes": 1, "selected": 1}]
+    assert [member.relative_path for member in translation.native_members(shared, root_name="Root")] == [
+        "Disc 1/b.flac", "Disc 1/a.flac"]
+    nested = [{"path": "/Root/Root/CD1/x.flac", "bytes": 1, "selected": 1}]
+    assert [member.relative_path for member in translation.native_members(nested, root_name="Root")] == [
+        "Root/CD1/x.flac"]
+    single = [{"path": "/Root", "bytes": 1, "selected": 1}]
+    assert [member.relative_path for member in translation.native_members(single, root_name="Root")] == ["Root"]
+    with pytest.raises(file_selection.ManifestInvalid):
+        translation.native_members([{"path": "/Root//x.bin", "bytes": 1, "selected": 1}], root_name="Root")

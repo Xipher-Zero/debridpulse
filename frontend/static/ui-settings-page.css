@@ -271,37 +271,96 @@
   line-height: 1.5;
 }
 
-/* The Real-Debrid account connection: one centred column in every state --
-   text and buttons alike, never a two-column form and never a right-anchored
-   action. */
+/* The Real-Debrid account connection: one bordered Account Connection island
+   in the card body -- title and helper (and, while connecting, the code) on
+   the left, the state's action on the right, centred against the island --
+   with the state's one line beneath it, centred. The island border is the
+   same material the Backup Folder island uses. */
 #view-settings .dp-settings-realdebrid-connection {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
   margin: 0 0 14px;
-  text-align: center;
 }
 
-#view-settings .dp-settings-realdebrid-connection > .dp-settings-copy {
+#view-settings .dp-settings-realdebrid-island {
+  box-sizing: border-box;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px 18px;
+  min-width: 0;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 14px 18px;
+}
+
+#view-settings .dp-settings-realdebrid-island-copy {
+  display: flex;
+  flex: 1 1 260px;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-realdebrid-island-copy > .dp-settings-copy {
   margin: 0;
 }
 
+#view-settings .dp-settings-realdebrid-island-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
 #view-settings .dp-settings-realdebrid-heading {
-  margin: 4px 0 0;
+  margin: 0;
   color: var(--dp-text-primary);
   font-size: 12px;
   font-weight: 600;
 }
 
+/* Bounded by the island, never wider than it: the code never forces a
+   horizontal scroll. */
+#view-settings .dp-settings-realdebrid-island .dp-action-field {
+  width: min(100%, 280px);
+  margin-top: 6px;
+}
+
 #view-settings .dp-settings-realdebrid-code {
-  margin: 2px 0;
-  color: var(--dp-text-primary);
+  min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 22px;
+  font-size: 16px;
   font-weight: 700;
-  letter-spacing: .18em;
-  user-select: all;
+  letter-spacing: .14em;
+}
+
+#view-settings .dp-settings-realdebrid-waiting,
+#view-settings .dp-settings-realdebrid-expiry {
+  margin: 14px 0 0;
+  color: var(--dp-text-primary);
+  text-align: center;
+}
+
+#view-settings .dp-settings-realdebrid-waiting {
+  font-size: 18px;
+  font-weight: 600;
+  animation: dp-settings-realdebrid-waiting 2.4s ease-in-out infinite;
+}
+
+#view-settings .dp-settings-realdebrid-expiry {
+  font-size: 12px;
+}
+
+@keyframes dp-settings-realdebrid-waiting {
+  0%, 100% { opacity: 1; }
+  50% { opacity: .45; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-settings .dp-settings-realdebrid-waiting {
+    animation: none;
+  }
 }
 
 #view-settings .dp-settings-field + .dp-settings-field,

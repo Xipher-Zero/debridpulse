@@ -23,6 +23,7 @@ from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
+from transfers.file_selection import collection_member_paths
 from transfers.models import (
     CachePresence, FileManifest, FileManifestEntry, Ownership, ProviderObservation,
     ProviderResource, ResourceState, TransferProgress, TransferRequest,
@@ -180,10 +181,6 @@ def resource_from_native(native: dict, *, ownership: Ownership = Ownership.OBSER
 # core applies the durable transfer root exactly once when it materializes.
 
 
-class UnsafeMemberPath(ValueError):
-    """A native member path that cannot be expressed safely inside the root."""
-
-
 @dataclass(frozen=True)
 class NativeMember:
     """One Real-Debrid torrent file, already collection-root-relative."""
@@ -197,11 +194,8 @@ def _segments(path: object) -> list[str]:
     text = str(path or "").replace("\\", "/")
     # Real-Debrid reports every path from the torrent's own root with a leading
     # separator ("/Season 1/e01.mkv"); that separator is a convention, not a
-    # directory. Any other empty, current- or parent-directory segment is unsafe.
-    parts = text[1:].split("/") if text.startswith("/") else text.split("/")
-    if not parts or any(part in {"", ".", ".."} for part in parts):
-        raise UnsafeMemberPath("unsafe member path")
-    return parts
+    # directory. Every other segment is judged by the neutral member-path rule.
+    return text[1:].split("/") if text.startswith("/") else text.split("/")
 
 
 def native_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
@@ -212,13 +206,13 @@ def native_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
     function alone, so the two can never drift onto different coordinate
     systems and explicit file selection keeps reconciling.
 
-    The collection wrapper is removed only when the provider's own facts say it
-    is one: EVERY member path starts with a directory named exactly the
-    torrent's authoritative name ``root_name`` and lies beneath it. One level,
-    never inferred from a merely shared prefix. Order is never changed -- the
-    executable manifest pairs ``links[]`` by native selected-file ordinal.
+    Reading ``files[]`` is Real-Debrid's; whether a first directory is the
+    collection wrapper is the neutral rule's
+    (``transfers.file_selection.collection_member_paths``), given the torrent's
+    authoritative name ``root_name``. Order is never changed -- the executable
+    manifest pairs ``links[]`` by native selected-file ordinal.
 
-    Raises ``UnsafeMemberPath`` for any path that would escape the root and
+    Raises ``ManifestInvalid`` for any path that would escape the root and
     ``ValueError``/``TypeError`` for a malformed native record.
     """
     if not isinstance(files, list):
@@ -231,13 +225,9 @@ def native_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
         if not isinstance(size, int) or isinstance(size, bool) or size < 0:
             raise ValueError("file size must be a non-negative integer")
         records.append((_segments(record.get("path")), size, record.get("selected") == 1))
-    wrapped = bool(root_name) and bool(records) and all(
-        len(parts) > 1 and parts[0] == root_name for parts, _size, _selected in records)
-    members = []
-    for parts, size, selected in records:
-        inner = parts[1:] if wrapped else parts
-        members.append(NativeMember(inner[-1], "/".join(inner), size, selected))
-    return tuple(members)
+    paths = collection_member_paths(root_name, [parts for parts, _size, _selected in records])
+    return tuple(NativeMember(path.rsplit("/", 1)[-1], path, size, selected)
+                 for path, (_parts, size, selected) in zip(paths, records, strict=True))
 
 
 def file_manifest_from_native(native: dict, *, root_name: str | None = None) -> FileManifest | None:
@@ -250,7 +240,7 @@ def file_manifest_from_native(native: dict, *, root_name: str | None = None) -> 
     name = native_name(native) if root_name is None else root_name
     try:
         members = native_members(files, root_name=name)
-    except (UnsafeMemberPath, TypeError, ValueError):
+    except (TypeError, ValueError):
         return None
     return FileManifest(tuple(FileManifestEntry(member.name, member.relative_path, member.expected_bytes)
                               for member in members))

@@ -138,7 +138,10 @@ def entry(value: dict | None) -> SourceEntry | None:
         return None
     return SourceEntry(value["name"], value["expected_bytes"], value["relative_path"], request(value["request"]),
                        tuple(request(item) for item in value.get("alternates") or ()),
-                       tuple(IntegrityMetadata(**item) for item in value.get("integrity") or ()))
+                       tuple(IntegrityMetadata(**item) for item in value.get("integrity") or ()),
+                       # A row written before the fact existed is a collection
+                       # member, exactly as it was placed then.
+                       bool(value.get("whole_resource", False)))
 
 
 def error(value: str | None) -> NormalizedError | None:

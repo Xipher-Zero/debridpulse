@@ -108,6 +108,9 @@
     alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'},
     alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
     realdebrid_rate_limit_per_minute: {scope: 'integration:realdebrid', option: 'rate_limit_per_minute'},
+    realdebrid_request_timeout_seconds: {scope: 'integration:realdebrid', option: 'request_timeout_seconds'},
+    realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
+    realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
     poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
     upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
     upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
@@ -1258,45 +1261,58 @@
    * credential through the canonical integration mutation.
    *
    * One markup owner renders the region in every state, so the card and every
-   * later convergence render the same thing. Everything in it is centred. */
+   * later convergence render the same thing: one bordered Account Connection
+   * island -- what the connection is on the left, its action on the right --
+   * and, beneath it, the one line that state has to say (the wait while the
+   * operator authorizes, or the account's own premium expiry). */
   const realDebridConnection = {authorization: null, timer: null, account: null};
 
-  function realDebridExpiry(value) {
-    const date = new Date(String(value || ''));
-    if (Number.isNaN(date.getTime())) return '';
-    const dd = String(date.getDate()).padStart(2, '0');
-    const mm = String(date.getMonth() + 1).padStart(2, '0');
-    return `${dd}.${mm}.${date.getFullYear()}`;
+  // The account's premium expiry, interpreted and worded by the one premium
+  // account owner from Real-Debrid's own account facts -- never a token lifetime.
+  function realDebridExpiry(account) {
+    const owner = window.DPPremiumAccount;
+    const until = owner?.until('realdebrid', account);
+    if (!until) return '';
+    const text = owner.describe(until);
+    return `${text.until} ${text.days}`;
+  }
+
+  function realDebridIsland(helper, body, actions) {
+    return `
+      <div class="dp-settings-realdebrid-island">
+        <div class="dp-settings-realdebrid-island-copy">
+          <p class="dp-settings-realdebrid-heading">Account Connection</p>
+          <p class="dp-settings-copy">${helper}</p>${body}
+        </div>
+        <div class="dp-settings-realdebrid-island-actions">${actions}</div>
+      </div>`;
   }
 
   function realDebridConnectionMarkup() {
     const pending = realDebridConnection.authorization;
     if (pending) {
-      return `
-        <p class="dp-settings-realdebrid-heading">Account Connection</p>
-        <p class="dp-settings-copy">Authorize DebridPulse with Real-Debrid.</p>
-        <p class="dp-settings-realdebrid-code" aria-label="Authorization code">${html(pending.user_code)}</p>
-        <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
-        <p class="dp-settings-copy" role="status">Waiting for authorization…</p>
-        <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`;
+      // The code is a reading, not a setting: read-only and never enrolled in
+      // persistence, but selectable and reachable by keyboard.
+      const code = embeddedActionField(
+        `<input class="input dp-settings-realdebrid-code" type="text" readonly value="${html(pending.user_code)}" `
+          + 'aria-label="Real-Debrid authorization code" data-realdebrid-code autocomplete="off" spellcheck="false">',
+        '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-realdebrid-code" '
+          + 'aria-label="Copy the Real-Debrid authorization code">Copy</button>');
+      return realDebridIsland('Enter this code on Real-Debrid to authorize DebridPulse.', code, `
+          <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`)
+        + '<p class="dp-settings-realdebrid-waiting" role="status">Waiting for authorization…</p>';
     }
     if (realDebridOf(state.settings).client_id_configured) {
       const account = realDebridConnection.account || {};
-      const expiry = realDebridExpiry(account.expiration);
-      const plan = account.premium
-        ? `Premium${expiry ? ` · Expires ${expiry}` : ''}`
-        : (account.account_type ? 'Free account' : '');
-      return `
-        <p class="dp-settings-realdebrid-heading">Account Connection</p>
-        <p class="dp-settings-copy">${account.username ? `Connected as ${html(account.username)}` : 'Connected to Real-Debrid'}</p>
-        ${plan ? `<p class="dp-settings-copy">${html(plan)}</p>` : ''}
-        <button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>`;
+      const identity = account.username ? `Connected as ${html(account.username)}` : 'Connected to Real-Debrid';
+      const expiry = realDebridExpiry(account) || (account.account_type && !account.premium ? 'Free account' : '');
+      return realDebridIsland(identity, '',
+        '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>')
+        + (expiry ? `<p class="dp-settings-realdebrid-expiry">${html(expiry)}</p>` : '');
     }
-    return `
-        <p class="dp-settings-copy">Connect DebridPulse to Real-Debrid for direct links, magnets, and torrent files.</p>
-        <p class="dp-settings-realdebrid-heading">Account Connection</p>
-        <p class="dp-settings-copy">Connect your Real-Debrid account to continue.</p>
-        <button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>`;
+    return realDebridIsland('Connect your Real-Debrid account to continue.', '',
+      '<button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>');
   }
 
   function renderRealDebridConnection() {
@@ -1370,6 +1386,23 @@
       // The server-side attempt expires on its own; nothing here depends on it.
     }
     renderRealDebridConnection();
+  }
+
+  async function copyRealDebridCode() {
+    const field = root()?.querySelector('[data-realdebrid-code]');
+    const code = realDebridConnection.authorization?.user_code;
+    if (!field || !code) return;
+    try {
+      if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+      await navigator.clipboard.writeText(code);
+      notify('Authorization code copied', 'success');
+      return;
+    } catch (_) {
+      // Fall through: the code stays selected for a manual copy.
+    }
+    field.focus();
+    field.select();
+    notify('Select and copy the authorization code manually', 'info');
   }
 
   async function disconnectRealDebrid(button) {
@@ -1482,6 +1515,7 @@
     // it on, exactly as its definition declares.
     const realDebrid = integrations.realdebrid || {enabled: false};
     const realDebridCard = providerCard('realdebrid', 'Real-Debrid', `
+      <p class="dp-settings-copy">Connect DebridPulse to Real-Debrid for direct links, magnets, and torrent files.</p>
       <div class="dp-settings-realdebrid-connection" data-realdebrid-connection>${realDebridConnectionMarkup()}</div>
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
@@ -1490,6 +1524,18 @@
             input('realdebrid_rate_limit_per_minute', 'API Calls per Minute', realDebridOf(s).rate_limit_per_minute ?? 240, {
               type: 'number', min: 1, max: 250,
               hint: 'Limits how many requests DebridPulse sends to Real-Debrid each minute. Real-Debrid allows at most 250.'
+            }),
+            input('realdebrid_request_timeout_seconds', 'Request Timeout (seconds)', realDebridOf(s).request_timeout_seconds ?? 30, {
+              type: 'number', min: 5, max: 300,
+              hint: 'How long DebridPulse waits for an ordinary Real-Debrid API answer before treating the request as failed.'
+            }),
+            input('realdebrid_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', realDebridOf(s).torrent_upload_timeout_seconds ?? 120, {
+              type: 'number', min: 30, max: 900,
+              hint: 'How long DebridPulse waits while uploading a torrent file to Real-Debrid.'
+            }),
+            input('realdebrid_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', realDebridOf(s).host_refresh_interval_hours ?? 24, {
+              type: 'number', min: 1, max: 168,
+              hint: 'How often DebridPulse refreshes the list of hosts Real-Debrid supports.'
             }),
           )}
         </div>
@@ -3279,6 +3325,7 @@
       else if (action === 'test-realdebrid') testRealDebrid(button);
       else if (action === 'connect-realdebrid') connectRealDebrid(button);
       else if (action === 'open-realdebrid') openExternalUrl(realDebridConnection.authorization?.verification_url);
+      else if (action === 'copy-realdebrid-code') copyRealDebridCode();
       else if (action === 'cancel-realdebrid') cancelRealDebrid(button);
       else if (action === 'disconnect-realdebrid') disconnectRealDebrid(button);
       else if (action === 'test-usenet') testUsenet(button);

@@ -2208,9 +2208,12 @@ class TransferEngine:
     @staticmethod
     def _materialization_relative(record: RequestRecord, candidate: TransferCandidate, transfer) -> str:
         """The download-root-relative coordinate of ``record``'s member: a
-        collection child lives under its transfer's folder."""
+        collection member lives under its transfer's folder. The one member
+        that IS its whole resource (``SourceEntry.whole_resource``) is a file,
+        not a collection of one, so it has no folder; it is otherwise still a
+        manifest child (its alternates still contend for one target)."""
         relative = candidate.relative_path or candidate.name
-        if record.parent_id:
+        if record.parent_id and not (record.entry is not None and record.entry.whole_resource):
             relative = str(Path(safe_name(transfer.name)) / relative)
         return relative
 

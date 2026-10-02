@@ -562,6 +562,14 @@ async def _write_realdebrid(application: ApplicationService, **update) -> dict:
         REALDEBRID_NAMESPACE, IntegrationConfigurationUpdate(**update), application)
 
 
+def _device_service():
+    """The client the device authorization uses: no credential yet, the
+    operator's configured request timeout."""
+    from providers.realdebrid.client import RealDebridService
+    options = realdebrid_canonical_options(get_settings())
+    return RealDebridService(request_timeout_seconds=options.request_timeout_seconds)
+
+
 async def _prove_realdebrid(application: ApplicationService):
     """Prove the SAVED credential and record what that proved.
 
@@ -607,7 +615,7 @@ async def start_realdebrid_authorization():
     """Begin Real-Debrid's device authorization: a code the operator enters on
     Real-Debrid's own page, opened in their own browser."""
     try:
-        return await realdebrid_admin.start_authorization()
+        return await realdebrid_admin.start_authorization(service=_device_service())
     except Exception as exc:
         raise HTTPException(502, _safe_failure(exc)) from None
 
@@ -615,9 +623,17 @@ async def start_realdebrid_authorization():
 @router.post("/integrations/realdebrid/authorization/poll")
 async def poll_realdebrid_authorization(application: ApplicationService = Depends(get_application)):
     """Advance the authorization no faster than Real-Debrid asks; once the
-    operator has approved the device, save the credential and prove it."""
+    operator has approved the device, save the credential, prove it and --
+    only when the proof succeeds -- enable Real-Debrid.
+
+    Connecting an account is the operator's decision to use it, so a proven
+    new (or replacement) account is configured, verified and enabled as one
+    act, each step through the canonical integration mutation, and the
+    projection returned is canonical state after all three. An unproven
+    account keeps whatever participation the provider already had; a later
+    Test never enables anything."""
     try:
-        outcome = await realdebrid_admin.poll_authorization()
+        outcome = await realdebrid_admin.poll_authorization(service=_device_service())
     except Exception as exc:
         raise HTTPException(502, _safe_failure(exc)) from None
     if not isinstance(outcome, realdebrid_admin.Authorized):
@@ -626,7 +642,10 @@ async def poll_realdebrid_authorization(application: ApplicationService = Depend
     saved = await _write_realdebrid(application, options={
         "client_id": credential.client_id, "client_secret": credential.client_secret,
         "refresh_token": credential.refresh_token})
-    account, accepted, _failure = await _prove_realdebrid(application)
+    account, accepted, failure = await _prove_realdebrid(application)
+    if not failure:
+        saved = await _write_realdebrid(application, enabled=True)
+        accepted = None
     projection = accepted or {key: value for key, value in saved.items() if key not in {"ok", "native"}}
     return {"state": "connected", **account, **_accepted(REALDEBRID_NAMESPACE, projection)}
 

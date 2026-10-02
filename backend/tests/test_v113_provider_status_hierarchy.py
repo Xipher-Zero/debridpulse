@@ -168,7 +168,7 @@ def test_the_tier_heading_has_material_in_the_provider_status_css_owner():
 
 
 def test_the_alldebrid_subscription_row_is_not_part_of_this_list():
-    """It is sibling shell markup owned by ui-alldebrid-account-status.js."""
+    """It is sibling shell markup owned by ui-premium-account-status.js."""
     index = (STATIC / "index.html").read_text(encoding="utf-8")
     shell = index[index.index('<div class="dp-provider-status-heading">'):
                   index.index('<span id="lbl-db">')]

@@ -275,6 +275,14 @@ class TransferEngine(_RecoveryTransferEngine):
                         domain=Domain.RESOLUTION,
                         retryability=Retryability.BACKOFF,
                     ))
+                # FILE vs COLLECTION, decided once on the FULL executable
+                # manifest: a manifest whose one and only member is the
+                # resource itself (its member path IS the resource's
+                # authoritative name -- a single-file torrent) is a file, not a
+                # collection of one, so it gets no collection folder of its own
+                # name. Neutral facts only; no provider is consulted.
+                if len(entries) == 1 and observation.name and entries[0].relative_path == observation.name:
+                    entries = (replace(entries[0], whole_resource=True),)
                 paths = [
                     str(_engine_base.destination(self.root, entry.relative_path)).casefold()
                     for entry in entries
