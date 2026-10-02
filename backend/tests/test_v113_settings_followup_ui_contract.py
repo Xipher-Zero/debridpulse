@@ -211,7 +211,7 @@ def test_the_alldebrid_test_action_exists_exactly_once_and_there_is_no_footer():
     # The control's MARKUP is declared once, by the shared provider-level Test
     # grammar; the panel names the action it asks that grammar for.
     assert SETTINGS.count("providerTestAction('test-alldebrid')") == 1
-    assert SETTINGS.count('data-action="${html(action)}"') == 1
+    assert SETTINGS.count('${attribute}="${html(action)}"') == 1
     # The Settings footer it was relocated out of no longer exists at all, so
     # nothing can be routed back into one.
     assert "dp-settings-master-footer" not in SETTINGS

@@ -46,6 +46,20 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     const chevron = section(page).locator('.dp-settings-disclosure');
     await expect(chevron).toHaveAttribute('aria-expanded', 'false');
     await expect(section(page).locator('.dp-settings-subsection-body')).toBeHidden();
+    // Island -> ordinary section spacing -> Advanced Settings: no empty band
+    // above the header and no divider beneath it.
+    const flow = await card(page).evaluate(node => {
+      const island = node.querySelector('.dp-settings-download-engine-row');
+      const subsection = node.querySelector('.dp-settings-subsection');
+      const header = subsection.querySelector('.dp-settings-subsection-header');
+      return {adjacent: island.nextElementSibling === subsection,
+              gap: subsection.getBoundingClientRect().top - island.getBoundingClientRect().bottom,
+              divider: parseFloat(getComputedStyle(header).borderBottomWidth)};
+    });
+    expect(flow.adjacent).toBe(true);
+    expect(flow.gap).toBeGreaterThan(0);
+    expect(flow.gap).toBeLessThanOrEqual(16);
+    expect(flow.divider).toBe(0);
 
     const adjacency = await section(page).locator('.dp-settings-subsection-header').evaluate(header => {
       const title = header.querySelector('.dp-settings-subsection-title').getBoundingClientRect();
@@ -103,6 +117,23 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     expect(await group.evaluate(outlineOf)).toBe(0);
     await grid.evaluate(el => { el.style.width = ''; });
   });
+
+test('every top-level Downloads card keeps the one sibling-card gap, group card included', async ({page}) => {
+  await openDownloads(page);
+  const gaps = await page.locator('.dp-settings-panel[data-panel="downloads"]').evaluate(panel => {
+    const cards = Array.from(panel.children);
+    return cards.slice(1).map((next, index) => ({
+      pair: `${cards[index].className} -> ${next.className}`,
+      gap: next.getBoundingClientRect().top - cards[index].getBoundingClientRect().bottom,
+    }));
+  });
+  expect(gaps.length).toBeGreaterThanOrEqual(3);
+  // Transfer Method Settings (a group card) -> Disk Space & Recovery included.
+  expect(gaps.some(entry => /dp-executor-tuning-group/.test(entry.pair.split(' -> ')[0])
+    && /dp-settings-download-recovery-card/.test(entry.pair.split(' -> ')[1]))).toBe(true);
+  for (const entry of gaps) expect(Math.abs(entry.gap - gaps[0].gap), entry.pair).toBeLessThanOrEqual(0.5);
+  expect(gaps[0].gap).toBeGreaterThan(0);
+});
 
 test('Local Network Connections persists immediately and gates Skip Confirmation without erasing it',
   async ({page}) => {

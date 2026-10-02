@@ -1004,9 +1004,11 @@
    *
    * The grammar is the CARD's, not any one provider's: one declaration, one
    * appearance, one place, for every provider that has something to prove. */
-  function providerTestAction(action) {
+  // `attribute` names the owner that handles the action: the page's own
+  // data-action by default, or a collection owner's (a Usenet server's Test).
+  function providerTestAction(action, attribute = 'data-action') {
     return `
-          <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" data-action="${html(action)}">
+          <button class="btn btn-ghost btn-sm dp-settings-provider-test" type="button" ${attribute}="${html(action)}">
             <span class="dp-settings-action-chip" aria-hidden="true">
               <img class="dp-settings-action-glyph" src="/icons/lucide/flask-conical.svg" alt="">
             </span>
@@ -1220,9 +1222,8 @@
             </div>
             <p class="dp-usenet-advanced-hint">Articles per Request asks this server for several articles without waiting for each reply; Server Timeout is how long to wait for it to answer.</p>
           </div>
-          <div class="dp-usenet-actions">
-            <button type="button" class="btn btn-ghost btn-sm" data-usenet-action="test">Test</button>
-            <button type="button" class="btn btn-ghost btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
+          <div class="dp-usenet-actions">${providerTestAction('test', 'data-usenet-action')}
+            <button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">Remove</button>
           </div>
           ${usenetEnableControl(server.enabled !== false)}
         </div>
@@ -1262,10 +1263,6 @@
     return `<p class="dp-settings-provider-status-line" role="status">${status}</p>`;
   }
 
-  // The blank row beneath the Account Connection island: the same height as
-  // the status row above it, so the island has even room on both sides.
-  const PROVIDER_STATUS_SPACER = '<div class="dp-settings-provider-status-line" aria-hidden="true"></div>';
-
   /* The Real-Debrid account connection: the card's main body.
    *
    * Real-Debrid's own device authorization -- the operator approves
@@ -1281,8 +1278,7 @@
    * wait while the operator authorizes, the account's own premium expiry once
    * connected), then one compact, centred, bordered Account Connection island
    * (the Extraction island's geometry) holding what the connection is and the
-   * controls that act on it side by side, then a blank row of the same height
-   * so the island has even room above and below. */
+   * controls that act on it side by side. */
   const realDebridConnection = {authorization: null, timer: null, account: null};
 
   // The account's premium expiry, interpreted and worded by the one premium
@@ -1319,8 +1315,7 @@
       return providerStatusLine('Waiting for authorization…', 'dp-settings-realdebrid-waiting')
         + realDebridIsland('Authorize DebridPulse with Real-Debrid.', '', `${code}
           <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`)
-        + PROVIDER_STATUS_SPACER;
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`);
     }
     if (realDebridOf(state.settings).client_id_configured) {
       const account = realDebridConnection.account || {};
@@ -1328,13 +1323,11 @@
       const expiry = realDebridExpiry(account) || (account.account_type && !account.premium ? 'Free account' : '');
       return providerStatusLine(html(expiry), 'dp-settings-realdebrid-expiry')
         + realDebridIsland(identity, '',
-          '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>')
-        + PROVIDER_STATUS_SPACER;
+          '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>');
     }
     return providerStatusLine()
       + realDebridIsland('Connect your Real-Debrid account to continue.', '',
-      '<button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>')
-      + PROVIDER_STATUS_SPACER;
+      '<button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>');
   }
 
   function renderRealDebridConnection() {
@@ -1643,8 +1636,9 @@
           </div>
         </div>
         <div class="card-body" data-dp-executor-work-body>
-          <div class="dp-executor-work-context">
-            This is an advanced recovery surface. Use Downloads for normal management, and these controls only for troubleshooting or recovery.
+          <div class="dp-settings-caution dp-executor-work-context">
+            <b>This is an advanced recovery surface.</b>
+            <span>Use Downloads for normal management. These controls are only for troubleshooting or recovery.</span>
           </div>
           <div class="dp-executor-work-control-row">
             <div class="dp-executor-work-metrics" aria-label="Executor work totals">

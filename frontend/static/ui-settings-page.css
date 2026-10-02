@@ -128,10 +128,17 @@
 
 #view-settings .dp-settings-card {
   width: 100%;
+}
+
+/* The ONE sibling-card gap of a Settings panel: every top-level card, a group
+   card included, keeps the same distance from the card beneath it. */
+#view-settings .dp-settings-card,
+#view-settings .dp-settings-group-card {
   margin: 0 0 12px;
 }
 
-#view-settings .dp-settings-card:last-child {
+#view-settings .dp-settings-card:last-child,
+#view-settings .dp-settings-group-card:last-child {
   margin-bottom: 0;
 }
 
@@ -344,8 +351,7 @@
   letter-spacing: .14em;
 }
 
-/* A provider card's reserved status row (and the blank row of the same height
-   beneath the Account Connection island): exactly one line of the row's own
+/* A provider card's reserved status row: exactly one line of the row's own
    12px copy, a FIXED height whether it is blank or carries a status, so no
    card changes height when its status does. The status inside is centred on
    both axes. */
@@ -359,23 +365,6 @@
   font-size: 12px;
   line-height: 1.5;
   text-align: center;
-}
-
-/* The blank row beneath the Account Connection island. Above the island sit
-   the card body's own top padding, the status row and its margin; this row
-   and its margin mirror the last two, and its margin also carries the body's
-   padding, so the separator below the island is exactly as far from it as the
-   card header above is. */
-#view-settings .dp-settings-realdebrid-island + .dp-settings-provider-status-line {
-  margin-bottom: calc(14px + var(--dp-card-padding));
-}
-
-/* Below 700px the shell sets every .card-body to 8px vertical padding
-   (ui-universal-language.css); the mirror follows it. */
-@media (max-width: 700px) {
-  #view-settings .dp-settings-realdebrid-island + .dp-settings-provider-status-line {
-    margin-bottom: calc(14px + 8px);
-  }
 }
 
 /* The premium expiry is ordinary card copy -- the size and colour of the
@@ -559,15 +548,13 @@
    rebalance them. */
 #view-settings .dp-settings-subsection {
   min-width: 0;
-  margin-top: 26px;
+  margin-top: 14px;
 }
 
 #view-settings .dp-settings-subsection-header {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--dp-divider);
 }
 
 #view-settings .dp-settings-subsection-title {
@@ -736,13 +723,12 @@
 
    The disclosure is now the WHOLE of the provider card's secondary row: the
    provider-level action moved to the card's header rail, so there is no action
-   group to share a row with and no band beneath the options. The seam that
-   separated that row from the credential above it therefore belongs to the
-   disclosure itself. */
+   group to share a row with and no band beneath the options. The ordinary
+   section spacing above it belongs to the disclosure itself; the island above
+   already bounds the credential, so no rule is drawn. */
 #view-settings .dp-settings-additional {
   min-width: 0;
   margin-top: 14px;
-  border-top: 1px solid var(--dp-divider);
 }
 
 #view-settings .dp-settings-additional > summary {
@@ -1297,9 +1283,6 @@
   line-height: 1.35;
 }
 #view-settings .dp-settings-header-subtitle::after { content: none !important; }
-
-/* Roadmap Item 10: Services. */
-#view-settings .dp-settings-source-group + .dp-settings-source-group { margin-top:12px; }
 
 /* A mild grouping rule inside one group card, between the reserved Usenet
    member and the debrid providers beneath it. Inset and partial width, within

@@ -736,6 +736,8 @@ test('Remove is confirmation-gated and names the server', async ({page}) => {
   const card = cardFor(page, id);
   const seen = writes(page);
 
+  await expect(removeButton(card)).toHaveClass(/\bbtn-danger\b/);
+  await expect(card.locator('[data-usenet-action="test"]')).toHaveClass(/\bdp-settings-provider-test\b/);
   await removeButton(card).click();
   await expect(dangerDialog(page)).toBeVisible();
   await expect(dangerDialog(page).locator('.dp-modal-title'))
@@ -1596,6 +1598,18 @@ test.describe('Usenet server cards populate a viewport-capacity grid', () => {
     expect(two.rows.reduce((n, r) => n + r.count, 0)).toBe(3);
   });
 
+  test('the Add tile is exactly as tall as the populated cards in its row', async ({page}) => {
+    await addServer(page, {host: 'news.one.example.com'});
+    const heights = await collection(page).evaluate(host => {
+      const box = el => el.getBoundingClientRect();
+      const tile = box(host.querySelector('[data-usenet-action="add"]'));
+      return Array.from(host.querySelectorAll('[data-usenet-server-id]'), card => box(card))
+        .filter(card => Math.abs(card.top - tile.top) < 1).map(card => card.height - tile.height);
+    });
+    expect(heights.length, 'the tile does not share a row with a server card').toBeGreaterThan(0);
+    for (const difference of heights) expect(Math.abs(difference)).toBeLessThanOrEqual(0.5);
+  });
+
   test('capacity drops on its own as the viewport narrows, and never below one',
     async ({page}) => {
       await addServer(page, {host: 'news.one.example.com'});
@@ -1662,6 +1676,13 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     await expect(card.locator('[data-usenet-action="test"]')).toHaveCount(1);
     await expect(card.locator('[data-usenet-action="remove"]')).toHaveCount(1);
     await expect(card.locator('[data-usenet-action="save"]')).toHaveCount(0);
+    // Remove deletes the whole server: the canonical destructive action. Test
+    // is the one canonical Settings Test control, flask chip included.
+    await expect(card.locator('[data-usenet-action="remove"]')).toHaveClass(/\bbtn-danger\b/);
+    const testAction = card.locator('[data-usenet-action="test"]');
+    await expect(testAction).toHaveClass(/\bdp-settings-provider-test\b/);
+    await expect(testAction.locator('.dp-settings-action-chip .dp-settings-action-glyph'))
+      .toHaveAttribute('src', /\/icons\/lucide\/flask-conical\.svg/);
     await card.locator('[data-usenet-advanced-toggle]').click();
     await expect(card.locator('.dp-usenet-advanced-body')).toBeVisible();
     await expect(card.locator('[data-usenet-action="test"]')).toHaveCount(1);

@@ -190,9 +190,36 @@ def test_priority_helper_text_matches_characterized_semantics():
 def test_server_actions_are_test_remove_and_a_confirmed_clear():
     """DP 1.0.13: there is no Save. Entering or replacing a credential commits
     on changed blur; erasing one is an explicit confirmed Clear."""
-    for action in ("test", "remove", "clear-password"):
+    for action in ("remove", "clear-password"):
         assert f'data-usenet-action="{action}"' in SETTINGS
+    # Test is the canonical Settings Test control, addressed to this owner.
+    assert "providerTestAction('test', 'data-usenet-action')" in SETTINGS
     assert 'data-usenet-action="save"' not in SETTINGS
+
+
+def test_server_test_and_remove_use_the_canonical_settings_actions():
+    """DP 1.0.13 cleanup: Remove deletes the whole server, so it is the
+    canonical destructive action; Test is the one canonical Test control (chip +
+    flask glyph). The blank card the behaviour owner creates says the same."""
+    remove = '<button type="button" class="btn btn-danger btn-sm dp-usenet-remove" data-usenet-action="remove">'
+    assert remove in SETTINGS and remove in SERVERS
+    assert "btn-ghost btn-sm dp-usenet-remove" not in SETTINGS + SERVERS
+    blank_test = SERVERS[SERVERS.index('data-usenet-action="test"') - 80:SERVERS.index('data-usenet-action="test"') + 400]
+    for part in ('class="btn btn-ghost btn-sm dp-settings-provider-test"', 'class="dp-settings-action-chip"',
+                 'src="/icons/lucide/flask-conical.svg"'):
+        assert part in blank_test, part
+    # No second Test style: the Usenet stylesheet states nothing about either.
+    css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
+    for selector in ("dp-settings-provider-test", "dp-settings-action-chip", "dp-usenet-remove", "btn-danger"):
+        assert selector not in css, selector
+
+
+def test_add_tile_fills_its_grid_row_without_stretching_the_server_cards():
+    css = (STATIC / "ui-settings-usenet-servers.css").read_text(encoding="utf-8")
+    grid = css[css.index(".dp-usenet-servers {"):]
+    assert "align-items: start" in grid[:grid.index("}")]
+    tile = css[css.index(".dp-usenet-add {\n  align-self"):]
+    assert "align-self: stretch" in tile[:tile.index("}")]
 
 
 def test_display_name_derives_from_host_and_honours_an_override():

@@ -126,6 +126,13 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
     const head = await boxOf(summary(page));
     const details = await boxOf(card(page).locator('.dp-settings-additional'));
     expect(details.bottom - head.bottom).toBeLessThanOrEqual(2);
+    // Key island -> ordinary section spacing -> Additional Settings: no
+    // separator drawn above the disclosure.
+    const island = await boxOf(card(page).locator('.dp-settings-alldebrid-key-row'));
+    expect(details.top - island.bottom).toBeGreaterThan(0);
+    expect(details.top - island.bottom).toBeLessThanOrEqual(16);
+    expect(await card(page).locator('.dp-settings-additional').evaluate(el =>
+      parseFloat(getComputedStyle(el).borderTopWidth))).toBe(0);
   });
 
   test('expanded: exactly five compact tuning cells, each still bound to its setting',

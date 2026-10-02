@@ -305,8 +305,11 @@
 }
 
 /* The Add tile matches a populated card's footprint and centres its
- * plus + label as one group, vertically and horizontally. */
+ * plus + label as one group, vertically and horizontally. Unlike a server card
+ * it fills its grid row, so it is exactly as tall as the cards beside it; the
+ * minimum is only its own footprint when it starts a row of its own. */
 .dp-usenet-add {
+  align-self: stretch;
   display: flex;
   align-items: center;
   justify-content: center;

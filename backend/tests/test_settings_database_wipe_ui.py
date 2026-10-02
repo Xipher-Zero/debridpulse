@@ -305,3 +305,21 @@ def test_the_shared_toggle_composer_declares_its_commit_class():
     js = source(RUNTIME)
     composer = js.split("  function toggle(key, label, detail, value, extraClass = '') {", 1)[1].split("\n  }", 1)[0]
     assert "${commitAttributes(key)}" in composer
+
+
+def test_download_engine_activity_reuses_the_database_reset_caution():
+    """DP 1.0.13 cleanup: the Download Engine Activity warning IS the Database
+    Reset caution -- same class, same two-line hierarchy -- and its own rule
+    states only placement, never a second warning material."""
+    js = source(RUNTIME)
+    work = js[js.index("  function executorWorkCard() {"):js.index("  // --- Downloads ---")]
+    assert ('<div class="dp-settings-caution dp-executor-work-context">\n'
+            '            <b>This is an advanced recovery surface.</b>\n'
+            '            <span>Use Downloads for normal management. These controls are only for '
+            'troubleshooting or recovery.</span>\n'
+            '          </div>') in work
+    assert "Use Downloads for normal management, and these controls" not in js
+    css = source(STATIC / "ui-settings-executor-work.css")
+    context = css.split("#view-settings .dp-executor-work-context {", 1)[1].split("}", 1)[0]
+    for material in ("border", "background", "color", "font", "padding", "radius"):
+        assert material not in context, material

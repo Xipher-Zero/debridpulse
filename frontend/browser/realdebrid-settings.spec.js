@@ -112,11 +112,8 @@ async function reservedRow(card, region) {
     const text = range.getBoundingClientRect();
     return {
       reserved: line.classList.contains('dp-settings-provider-status-line'),
-      spacer: (() => {
-        const below = node.querySelector('.dp-settings-realdebrid-island').nextElementSibling;
-        return !!below && below.classList.contains('dp-settings-provider-status-line') && !below.textContent
-          && Math.abs(below.getBoundingClientRect().height - box.height) < 0.5;
-      })(),
+      // The island ends the region: no blank row beneath it.
+      last: node.lastElementChild.classList.contains('dp-settings-realdebrid-island'),
       text: line.textContent,
       above: island.top - box.bottom,
       height: box.height,
@@ -124,19 +121,21 @@ async function reservedRow(card, region) {
     };
   });
   expect(row.reserved).toBe(true);
-  expect(row.spacer).toBe(true);
+  expect(row.last).toBe(true);
   expect(row.above).toBeGreaterThanOrEqual(0);
   expect(row.height).toBeGreaterThan(0);
   expect(row.off).toBeLessThan(2);
-  // The island sits exactly as far below the card header as it sits above
-  // the separator (the Additional Settings border).
-  const balance = await card.evaluate(node => {
-    const header = node.querySelector(':scope > .card-header').getBoundingClientRect();
+  // Island -> ordinary section spacing -> Additional Settings: no separator
+  // drawn above the disclosure and no balancing band between them.
+  const below = await card.evaluate(node => {
     const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
-    const separator = node.querySelector('.dp-settings-additional').getBoundingClientRect();
-    return Math.abs((island.top - header.bottom) - (separator.top - island.bottom));
+    const additional = node.querySelector('.dp-settings-additional');
+    return {gap: additional.getBoundingClientRect().top - island.bottom,
+            border: parseFloat(getComputedStyle(additional).borderTopWidth)};
   });
-  expect(balance).toBeLessThan(1);
+  expect(below.border).toBe(0);
+  expect(below.gap).toBeGreaterThan(0);
+  expect(below.gap).toBeLessThanOrEqual(16);
   return {...row, card: (await card.boundingBox()).height};
 }
 

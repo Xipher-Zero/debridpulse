@@ -315,3 +315,21 @@ def test_alldebrid_test_action_uses_flaskconical_glyph_glow_and_apply_label() ->
     assert "<path" in raw
     assert 'stroke="#B866F5"' in raw
     assert ".btn-primary" not in chrome
+
+
+def test_provider_additional_settings_has_no_separator_and_real_debrid_no_spacer_row() -> None:
+    """DP 1.0.13 cleanup: island -> ordinary section spacing -> Additional
+    Settings. No divider above the disclosure, and no blank row under the
+    Real-Debrid Account Connection island that only balanced against it."""
+    page = read(PAGE)
+    additional = page.split("#view-settings .dp-settings-additional {", 1)[1].split("}", 1)[0]
+    assert "margin-top: 14px" in additional
+    assert "border" not in additional
+    assert ".dp-settings-realdebrid-island + .dp-settings-provider-status-line" not in page
+    runtime = read(RUNTIME)
+    assert "PROVIDER_STATUS_SPACER" not in runtime
+    assert '<div class="dp-settings-provider-status-line" aria-hidden="true"></div>' not in runtime
+    # The real contextual status row stays: one per connection state.
+    connection = runtime[runtime.index("function realDebridConnectionMarkup()"):
+                         runtime.index("function renderRealDebridConnection()")]
+    assert connection.count("return providerStatusLine(") == 3

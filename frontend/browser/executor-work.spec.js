@@ -96,9 +96,12 @@ test('two unrelated executors render from one neutral payload', async ({page}) =
   await expect(card(page)).toContainText('Download Engine Activity');
   await expect(card(page)).toContainText(
     'View current download engine jobs and intervene when something is stuck.');
-  await expect(card(page)).toContainText(
-    'This is an advanced recovery surface. Use Downloads for normal management, '
-    + 'and these controls only for troubleshooting or recovery.');
+  // Two lines in the Database Reset caution's own hierarchy: what the surface
+  // is, then when to use it.
+  const warning = card(page).locator('.dp-settings-caution.dp-executor-work-context');
+  await expect(warning.locator(':scope > b')).toHaveText('This is an advanced recovery surface.');
+  await expect(warning.locator(':scope > span')).toHaveText(
+    'Use Downloads for normal management. These controls are only for troubleshooting or recovery.');
   expect((await card(page).innerText()).toLowerCase()).not.toContain('executor');
 
   // Each row states which executor holds it, from the projection's own

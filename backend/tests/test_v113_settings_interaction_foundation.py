@@ -1333,7 +1333,8 @@ def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
 
 def test_one_test_and_one_remove_per_card_rendered_once():
     for label, markup in SERVER_CARDS:
-        assert markup.count('data-usenet-action="test"') == 1, label
+        assert (markup.count('data-usenet-action="test"')
+                + markup.count("providerTestAction('test', 'data-usenet-action')")) == 1, label
         assert markup.count('data-usenet-action="remove"') == 1, label
     # And the behaviour owner never clones or relocates them.
     for banned in ("cloneNode", "insertBefore(actions", "appendChild(actions",

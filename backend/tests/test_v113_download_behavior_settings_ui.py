@@ -93,3 +93,27 @@ def test_policy_owner_defaults_and_bounds():
     for key in ("material_checkpoint_interval_seconds", "graceful_stop_timeout_seconds"):
         bounds = {type(item).__name__: item for item in fields[key].metadata}
         assert bounds["Ge"].ge == 1 and bounds["Le"].le == 60
+
+
+def test_subsection_has_ordinary_spacing_and_no_divider():
+    """DP 1.0.13 cleanup: island -> ordinary section spacing -> Advanced
+    Settings, through the one canonical subsection owner: no empty band above
+    the header and no divider beneath it."""
+    section = CSS[CSS.index("#view-settings .dp-settings-subsection {"):]
+    assert "margin-top: 14px" in section[:section.index("}")]
+    header = CSS[CSS.index("#view-settings .dp-settings-subsection-header {"):]
+    header = header[:header.index("}")]
+    assert "border" not in header and "padding-bottom" not in header
+    assert "download-engine-card .dp-settings-subsection" not in CSS
+
+
+def test_group_cards_share_the_one_sibling_card_gap():
+    """Transfer Method Settings is a group card; it keeps the same 12px gap from
+    Disk Space & Recovery as every other top-level Settings card, from the one
+    gap owner rather than a margin on either card."""
+    owner = CSS[CSS.index("#view-settings .dp-settings-card,\n#view-settings .dp-settings-group-card {"):]
+    assert "margin: 0 0 12px" in owner[:owner.index("}")]
+    assert "#view-settings .dp-settings-group-card:last-child {" in CSS
+    assert ".dp-settings-source-group + .dp-settings-source-group" not in CSS
+    for card in ("dp-settings-download-recovery-card", "dp-executor-tuning-group"):
+        assert not re.search(rf"\.{card}\s*\{{[^}}]*(margin|padding-bottom)", CSS), card

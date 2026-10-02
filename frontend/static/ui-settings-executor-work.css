@@ -53,25 +53,13 @@
   gap: 14px;
 }
 
-/* The break-glass guidance line.
-   Noticeable rather than decorative -- a bounded, restrained notice the eye
-   lands on before the controls beneath it -- and deliberately NEUTRAL: nothing
-   here is wrong, so it is not a warning banner and carries no alarm colour. */
-/* Break-glass guidance, in the Settings operator-attention language.
-   Gold is "this surface is exceptional, know what you are doing"; red stays
-   reserved for destructive acts. The callout carries the warning, not the
-   card: tinting the whole card would make an advanced surface look broken. */
+/* Break-glass guidance: the ONE Settings caution (.dp-settings-caution, the
+   Database Reset Controls warning) supplies all of its material -- what the
+   surface is, then when to use it. This states only where the callout sits in
+   this card: bounded and centred, spaced by the body's own gap. */
 #view-settings .dp-executor-work-context {
   width: min(100%, 900px);
   margin: 0 auto;
-  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 55%, var(--dp-border-default));
-  border-radius: 10px;
-  padding: 10px 16px;
-  background: var(--dp-state-caution-bg);
-  color: var(--dp-state-caution);
-  font-size: 12px;
-  font-weight: 650;
-  line-height: 1.5;
   text-align: center;
 }
 
