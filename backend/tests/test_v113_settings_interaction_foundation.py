@@ -686,7 +686,7 @@ def test_the_test_action_lives_in_the_header_and_not_in_the_body():
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     assert panel.count("providerTestAction('test-alldebrid')") == 1
     assert "headerAction: providerTest" in panel
-    body = panel[panel.index("dp-settings-copy"):panel.index("`, allDebrid, {")]
+    body = panel[panel.index("providerCard('alldebrid', 'AllDebrid', `"):panel.index("`, allDebrid, {")]
     assert "test-alldebrid" not in body, "Test is still rendered in the card body"
     # The retired footer machinery is gone, not merely unused.
     assert "dp-settings-provider-actions" not in SETTINGS_JS

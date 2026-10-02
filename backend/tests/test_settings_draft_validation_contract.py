@@ -110,7 +110,6 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
     sources = section(runtime, "const ALLDEBRID_KEY_PLACEHOLDER", "function downloadsPanel")
 
     expected = (
-        "Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.",
         # Entry/replacement is changed-blur and removal is an explicit action
         # behind the canonical confirmation, so neither sentence mentions a Save
         # any more, and the removal names exactly what it erases.
@@ -122,6 +121,9 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         "How many times DebridPulse retries a failed provider upload before giving up. Set to 0 to disable retries.",
         "How long DebridPulse waits between failed upload attempts. Set to 0 to retry immediately.",
     )
+    # The provider cards' top body row is reserved and blank: no descriptions.
+    assert "Connect DebridPulse to AllDebrid" not in runtime
+    assert "Add the news servers DebridPulse should download from." not in runtime
     for text in expected:
         assert text in sources
 

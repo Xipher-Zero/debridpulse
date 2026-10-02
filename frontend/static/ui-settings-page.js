@@ -1244,11 +1244,19 @@
     // Usenet acquisition runs inside DebridPulse, so there is no service
     // address or key to configure -- only the news servers to acquire from.
     return `
-      <p class="dp-settings-copy">Add the news servers DebridPulse should download from.</p>
+      ${providerStatusLine()}
       <div class="dp-usenet-servers" data-usenet-collection>
         ${servers.map(usenetServerCard).join('')}
         ${usenetAddTile()}
       </div>`;
+  }
+
+  /* Every provider card's reserved top body row: one line of the card's own
+   * copy, always present and always the same height whether or not it says
+   * anything, so a card never grows or shrinks because its status did. A
+   * provider with nothing to report leaves it blank. */
+  function providerStatusLine(content = '', className = '') {
+    return `<p class="dp-settings-provider-status-line${className ? ` ${className}` : ''}" role="status">${content}</p>`;
   }
 
   /* The Real-Debrid account connection: the card's main body.
@@ -1261,11 +1269,12 @@
    * credential through the canonical integration mutation.
    *
    * One markup owner renders the region in every state, so the card and every
-   * later convergence render the same thing: one compact, centred, bordered
-   * Account Connection island (the Extraction island's geometry) holding what
-   * the connection is and the controls that act on it side by side, and,
-   * beneath it, the one line that state has to say (the wait while the
-   * operator authorizes, or the account's own premium expiry). */
+   * later convergence render the same thing: the card's reserved top row
+   * carrying the one line the state has to say (blank while disconnected, the
+   * wait while the operator authorizes, the account's own premium expiry once
+   * connected), then one compact, centred, bordered Account Connection island
+   * (the Extraction island's geometry) holding what the connection is and the
+   * controls that act on it side by side. */
   const realDebridConnection = {authorization: null, timer: null, account: null};
 
   // The account's premium expiry, interpreted and worded by the one premium
@@ -1299,20 +1308,21 @@
           + 'aria-label="Real-Debrid authorization code" data-realdebrid-code autocomplete="off" spellcheck="false">',
         '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-realdebrid-code" '
           + 'aria-label="Copy the Real-Debrid authorization code">Copy</button>');
-      return realDebridIsland('Authorize DebridPulse with Real-Debrid.', '', `${code}
+      return providerStatusLine('Waiting for authorization…', 'dp-settings-realdebrid-waiting')
+        + realDebridIsland('Authorize DebridPulse with Real-Debrid.', '', `${code}
           <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`)
-        + '<p class="dp-settings-realdebrid-waiting" role="status">Waiting for authorization…</p>';
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`);
     }
     if (realDebridOf(state.settings).client_id_configured) {
       const account = realDebridConnection.account || {};
       const identity = account.username ? `Connected as ${html(account.username)}` : 'Connected to Real-Debrid';
       const expiry = realDebridExpiry(account) || (account.account_type && !account.premium ? 'Free account' : '');
-      return realDebridIsland(identity, '',
-        '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>')
-        + (expiry ? `<p class="dp-settings-realdebrid-expiry">${html(expiry)}</p>` : '');
+      return providerStatusLine(html(expiry), 'dp-settings-realdebrid-expiry')
+        + realDebridIsland(identity, '',
+          '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>');
     }
-    return realDebridIsland('Connect your Real-Debrid account to continue.', '',
+    return providerStatusLine()
+      + realDebridIsland('Connect your Real-Debrid account to continue.', '',
       '<button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>');
   }
 
@@ -1473,7 +1483,7 @@
       </span>`;
     const providerTest = providerTestAction('test-alldebrid');
     const provider = providerCard('alldebrid', 'AllDebrid', `
-      <p class="dp-settings-copy">Connect DebridPulse to AllDebrid for direct links, magnets, and torrent files.</p>
+      ${providerStatusLine()}
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
@@ -1516,7 +1526,6 @@
     // it on, exactly as its definition declares.
     const realDebrid = integrations.realdebrid || {enabled: false};
     const realDebridCard = providerCard('realdebrid', 'Real-Debrid', `
-      <p class="dp-settings-copy">Connect DebridPulse to Real-Debrid for direct links, magnets, and torrent files.</p>
       <div class="dp-settings-realdebrid-connection" data-realdebrid-connection>${realDebridConnectionMarkup()}</div>
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>

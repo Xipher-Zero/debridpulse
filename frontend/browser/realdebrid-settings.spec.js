@@ -99,19 +99,30 @@ async function expectIsland(region) {
   expect(geometry.overflow).toBeLessThanOrEqual(0);
 }
 
-/* The state's line beneath the island, centred on it. */
-async function expectCentredBeneath(region, selector) {
-  const offset = await region.evaluate((node, beneath) => {
+/* The card's reserved top row: the region's first line, directly above the
+ * island, centred on it, and one line tall whatever it says. Returns its text
+ * and the card's height so a caller can prove the card never changes size. */
+async function reservedRow(card, region) {
+  const row = await region.evaluate(node => {
+    const line = node.firstElementChild;
     const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
-    const line = node.querySelector(beneath);
+    const box = line.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(line);
     const text = range.getBoundingClientRect();
-    return {below: line.getBoundingClientRect().top - island.bottom,
-            off: Math.abs((text.left + text.right) / 2 - (island.left + island.right) / 2)};
-  }, selector);
-  expect(offset.below).toBeGreaterThanOrEqual(0);
-  expect(offset.off).toBeLessThan(2);
+    return {
+      reserved: line.classList.contains('dp-settings-provider-status-line'),
+      text: line.textContent,
+      above: island.top - box.bottom,
+      height: box.height,
+      off: line.textContent ? Math.abs((text.left + text.right) / 2 - (island.left + island.right) / 2) : 0,
+    };
+  });
+  expect(row.reserved).toBe(true);
+  expect(row.above).toBeGreaterThanOrEqual(0);
+  expect(row.height).toBeGreaterThan(0);
+  expect(row.off).toBeLessThan(2);
+  return {...row, card: (await card.boundingBox()).height};
 }
 
 test('the Real-Debrid card uses the shipped mark and keeps Additional Settings for tuning alone', async ({page}) => {
@@ -125,9 +136,10 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   // Real-Debrid is opt-in: unconnected and switched off until the operator says so.
   await expect(card.locator('[data-integration-enabled="realdebrid"]')).not.toBeChecked();
 
-  // The provider description stays left-aligned above the island.
-  await expect(card.locator('.card-body > .dp-settings-copy').first())
-    .toHaveText('Connect DebridPulse to Real-Debrid for direct links, magnets, and torrent files.');
+  // No provider description: the card's reserved top row is there, and blank.
+  await expect(card.locator('.card-body .dp-settings-copy', {hasText: 'Connect DebridPulse to'})).toHaveCount(0);
+  const blank = await reservedRow(card, region);
+  expect(blank.text).toBe('');
   await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="connect-realdebrid"]'))
     .toHaveText('Connect Real-Debrid');
   await expect(region.locator('[data-realdebrid-code], .dp-settings-realdebrid-waiting')).toHaveCount(0);
@@ -160,6 +172,7 @@ test('authorization opens in the operator browser, polls, connects, enables and 
   async ({page}) => {
     const {card, region, calls} = await prepare(page);
     const before = page.url();
+    const disconnected = await reservedRow(card, region);
     await region.locator('[data-action="connect-realdebrid"]').click();
     const code = region.locator('.dp-settings-realdebrid-island-actions .dp-action-field input[data-realdebrid-code]');
     await expect(code).toHaveValue('ABCD1234');
@@ -172,7 +185,11 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="cancel-realdebrid"]')).toBeVisible();
     await expect(region.locator('.dp-settings-realdebrid-waiting')).toHaveText('Waiting for authorization…');
     await expectIsland(region);
-    await expectCentredBeneath(region, '.dp-settings-realdebrid-waiting');
+    // The wait is the reserved row's text: same row, same card height.
+    const connecting = await reservedRow(card, region);
+    expect(connecting.text).toBe('Waiting for authorization…');
+    expect(connecting.height).toBeCloseTo(disconnected.height, 0);
+    expect(connecting.card).toBeCloseTo(disconnected.card, 0);
 
     await region.locator('[data-action="open-realdebrid"]').click();
     expect(await page.evaluate(() => window.__opened)).toEqual(
@@ -191,7 +208,10 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     // The accepted projection switches the provider on with no reload.
     await expect(card.locator('[data-integration-enabled="realdebrid"]')).toBeChecked();
     await expectIsland(region);
-    await expectCentredBeneath(region, '.dp-settings-realdebrid-expiry');
+    const connected = await reservedRow(card, region);
+    expect(connected.text).toMatch(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
+    expect(connected.height).toBeCloseTo(disconnected.height, 0);
+    expect(connected.card).toBeCloseTo(disconnected.card, 0);
 
     await region.locator('[data-action="disconnect-realdebrid"]').click();
     await page.locator('.dp-modal-dialog [data-modal-accept]').click();

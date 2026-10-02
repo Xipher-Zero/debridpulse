@@ -275,8 +275,8 @@
    in the card body, the same island the Extraction behaviour group is --
    content-bounded, CENTRED, never stretched across spare width -- holding the
    title/helper and the state's controls side by side, wrapping into rows only
-   when the card is too narrow for them. The state's one line sits beneath it,
-   centred. */
+   when the card is too narrow for them. The state's one line is the card's
+   reserved top row above it. */
 #view-settings .dp-settings-realdebrid-connection {
   margin: 0 0 14px;
 }
@@ -309,6 +309,9 @@
   margin: 0;
 }
 
+/* The controls reserve one field's height in every state -- the code field
+   is the tallest thing any state shows -- so the island, and the card, keep
+   one height as the connection moves between states. */
 #view-settings .dp-settings-realdebrid-island-actions {
   display: flex;
   flex: 0 1 auto;
@@ -317,6 +320,7 @@
   justify-content: center;
   gap: 8px;
   min-width: 0;
+  min-height: var(--dp-input-height);
 }
 
 #view-settings .dp-settings-realdebrid-heading {
@@ -340,21 +344,21 @@
   letter-spacing: .14em;
 }
 
-#view-settings .dp-settings-realdebrid-waiting,
-#view-settings .dp-settings-realdebrid-expiry {
-  margin: 14px 0 0;
+/* Every provider card's reserved top body row: exactly one line of the card's
+   copy, present and the same height whether it is blank or carries a status,
+   so no card changes height when its status does. */
+#view-settings .dp-settings-provider-status-line {
+  min-height: 1.5em;
+  margin: 0 0 14px;
   color: var(--dp-text-primary);
+  font-size: 12px;
+  line-height: 1.5;
   text-align: center;
 }
 
 #view-settings .dp-settings-realdebrid-waiting {
-  font-size: 18px;
   font-weight: 600;
   animation: dp-settings-realdebrid-waiting 2.4s ease-in-out infinite;
-}
-
-#view-settings .dp-settings-realdebrid-expiry {
-  font-size: 12px;
 }
 
 @keyframes dp-settings-realdebrid-waiting {
