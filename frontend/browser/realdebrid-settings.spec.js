@@ -71,16 +71,16 @@ async function prepare(page) {
  * against the island, nothing overlapping and nothing overflowing. */
 async function expectIsland(region) {
   const geometry = await region.evaluate(node => {
-    const island = node.querySelector('.dp-settings-realdebrid-island');
-    const copy = island.querySelector('.dp-settings-realdebrid-island-copy').getBoundingClientRect();
-    const actions = island.querySelector('.dp-settings-realdebrid-island-actions').getBoundingClientRect();
+    const island = node.querySelector('.dp-settings-account-island');
+    const copy = island.querySelector('.dp-settings-account-island-copy').getBoundingClientRect();
+    const actions = island.querySelector('.dp-settings-account-island-actions').getBoundingClientRect();
     const box = island.getBoundingClientRect();
     const body = node.getBoundingClientRect();
     return {
       compact: box.width < body.width - 40,
       centred: Math.abs((box.left - body.left) - (body.right - box.right)),
       border: getComputedStyle(island).borderTopStyle,
-      heading: island.querySelector('.dp-settings-realdebrid-heading').textContent,
+      heading: island.querySelector('.dp-settings-account-heading').textContent,
       copyLeft: copy.left - box.left,
       gap: actions.left - copy.right,
       rightInset: box.right - actions.right,
@@ -105,7 +105,7 @@ async function expectIsland(region) {
 async function reservedRow(card, region) {
   const row = await region.evaluate(node => {
     const line = node.firstElementChild;
-    const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
+    const island = node.querySelector('.dp-settings-account-island').getBoundingClientRect();
     const box = line.getBoundingClientRect();
     const range = document.createRange();
     range.selectNodeContents(line);
@@ -113,7 +113,7 @@ async function reservedRow(card, region) {
     return {
       reserved: line.classList.contains('dp-settings-provider-status-line'),
       // The island ends the region: no blank row beneath it.
-      last: node.lastElementChild.classList.contains('dp-settings-realdebrid-island'),
+      last: node.lastElementChild.classList.contains('dp-settings-account-island'),
       text: line.textContent,
       above: island.top - box.bottom,
       height: box.height,
@@ -128,7 +128,7 @@ async function reservedRow(card, region) {
   // Island -> ordinary section spacing -> Additional Settings: no separator
   // drawn above the disclosure and no balancing band between them.
   const below = await card.evaluate(node => {
-    const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
+    const island = node.querySelector('.dp-settings-account-island').getBoundingClientRect();
     const additional = node.querySelector('.dp-settings-additional');
     return {gap: additional.getBoundingClientRect().top - island.bottom,
             border: parseFloat(getComputedStyle(additional).borderTopWidth)};
@@ -154,9 +154,9 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   await expect(card.locator('.card-body .dp-settings-copy', {hasText: 'Connect DebridPulse to'})).toHaveCount(0);
   const blank = await reservedRow(card, region);
   expect(blank.text).toBe('');
-  await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="connect-realdebrid"]'))
+  await expect(region.locator('.dp-settings-account-island-actions [data-action="connect-realdebrid"]'))
     .toHaveText('Connect Real-Debrid');
-  await expect(region.locator('[data-realdebrid-code], .dp-settings-realdebrid-waiting')).toHaveCount(0);
+  await expect(region.locator('[data-realdebrid-code], .dp-settings-account-waiting')).toHaveCount(0);
   await expect(region.locator('[data-action="disconnect-realdebrid"]')).toHaveCount(0);
   await expectIsland(region);
 
@@ -188,22 +188,22 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     const before = page.url();
     const disconnected = await reservedRow(card, region);
     await region.locator('[data-action="connect-realdebrid"]').click();
-    const code = region.locator('.dp-settings-realdebrid-island-actions .dp-action-field input[data-realdebrid-code]');
+    const code = region.locator('.dp-settings-account-island-actions .dp-action-field input[data-realdebrid-code]');
     await expect(code).toHaveValue('ABCD1234');
     await expect(code).toHaveAttribute('readonly', '');
     await expect(region.locator('.dp-action-field [data-action="copy-realdebrid-code"]')).toHaveText('Copy');
     // Keyboard-reachable and selectable: the code is a focusable read-only field.
     await code.focus();
     expect(await code.evaluate(field => { field.select(); return field.selectionEnd - field.selectionStart; })).toBe(8);
-    await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="open-realdebrid"]')).toBeVisible();
-    await expect(region.locator('.dp-settings-realdebrid-island-actions [data-action="cancel-realdebrid"]')).toBeVisible();
-    await expect(region.locator('.dp-settings-realdebrid-waiting')).toHaveText('Waiting for authorization…');
+    await expect(region.locator('.dp-settings-account-island-actions [data-action="open-realdebrid"]')).toBeVisible();
+    await expect(region.locator('.dp-settings-account-island-actions [data-action="cancel-realdebrid"]')).toBeVisible();
+    await expect(region.locator('.dp-settings-account-waiting')).toHaveText('Waiting for authorization…');
     await expectIsland(region);
     // The wait is the reserved row's text: same row, same card height.
     const connecting = await reservedRow(card, region);
     expect(connecting.text).toBe('Waiting for authorization…');
     // Larger than the row's own line, and still inside the row's height.
-    const wait = await region.locator('.dp-settings-realdebrid-waiting').evaluate(node => ({
+    const wait = await region.locator('.dp-settings-account-waiting').evaluate(node => ({
       size: parseFloat(getComputedStyle(node).fontSize),
       row: parseFloat(getComputedStyle(node.parentElement).fontSize),
       inside: node.getBoundingClientRect().height <= node.parentElement.getBoundingClientRect().height + 0.5,
@@ -221,9 +221,9 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     // The browser polls no faster than Real-Debrid asked (interval 5 s).
     expect(calls).not.toContain('POST /api/integrations/realdebrid/authorization/poll');
     await page.clock.fastForward(5000);
-    await expect(region.locator('.dp-settings-realdebrid-island')).toContainText('Connected as alice');
-    await expect(region.locator('.dp-settings-realdebrid-expiry')).toHaveText(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
-    await expect(region.locator('[data-realdebrid-code], .dp-settings-realdebrid-waiting')).toHaveCount(0);
+    await expect(region.locator('.dp-settings-account-island')).toContainText('Connected as alice');
+    await expect(region.locator('.dp-settings-account-expiry')).toHaveText(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
+    await expect(region.locator('[data-realdebrid-code], .dp-settings-account-waiting')).toHaveCount(0);
     await expect(region.locator('[data-action="connect-realdebrid"], [data-action="cancel-realdebrid"]'))
       .toHaveCount(0);
     expect(calls).toContain('POST /api/integrations/realdebrid/authorization/poll');
@@ -233,8 +233,8 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     const connected = await reservedRow(card, region);
     // Only the wait is emphasised: the expiry is ordinary card copy.
     const sizes = await card.evaluate(node => ({
-      expiry: parseFloat(getComputedStyle(node.querySelector('.dp-settings-realdebrid-expiry')).fontSize),
-      copy: parseFloat(getComputedStyle(node.querySelector('.dp-settings-realdebrid-island-copy > .dp-settings-copy')).fontSize),
+      expiry: parseFloat(getComputedStyle(node.querySelector('.dp-settings-account-expiry')).fontSize),
+      copy: parseFloat(getComputedStyle(node.querySelector('.dp-settings-account-island-copy > .dp-settings-copy')).fontSize),
     }));
     expect(sizes.expiry).toBe(sizes.copy);
     expect(connected.text).toMatch(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);

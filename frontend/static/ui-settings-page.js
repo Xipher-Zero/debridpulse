@@ -56,6 +56,7 @@
   const aria2Of = s => s?.integrations?.aria2?.options || {};
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
   const realDebridOf = s => s?.integrations?.realdebrid?.options || {};
+  const torBoxOf = s => s?.integrations?.torbox?.options || {};
   const policyOf = s => s?.transfer_policy || {};
   const usenetOf = s => s?.integrations?.usenet?.options || {};
   const rsyncOf = s => s?.integrations?.rsync?.options || {};
@@ -100,7 +101,7 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'realdebrid', 'aria2', 'usenet', 'rsync', 'general_rsync',
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
     'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
@@ -111,6 +112,11 @@
     realdebrid_request_timeout_seconds: {scope: 'integration:realdebrid', option: 'request_timeout_seconds'},
     realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
     realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
+    torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'},
+    torbox_rate_limit_per_minute: {scope: 'integration:torbox', option: 'rate_limit_per_minute'},
+    torbox_request_timeout_seconds: {scope: 'integration:torbox', option: 'request_timeout_seconds'},
+    torbox_upload_timeout_seconds: {scope: 'integration:torbox', option: 'upload_timeout_seconds'},
+    torbox_host_refresh_interval_hours: {scope: 'integration:torbox', option: 'host_refresh_interval_hours'},
     poll_interval_seconds: {scope: 'transfer-policy', option: 'provider_poll_interval_seconds'},
     upload_fail_retry_count: {scope: 'transfer-policy', option: 'resolution_retry_count'},
     upload_fail_retry_delay_minutes: {scope: 'transfer-policy', option: 'resolution_retry_delay_minutes'},
@@ -1263,149 +1269,173 @@
     return `<p class="dp-settings-provider-status-line" role="status">${status}</p>`;
   }
 
-  /* The Real-Debrid account connection: the card's main body.
+  /* The premium-provider account connection: the card's main body, for every
+   * provider that connects through its own device authorization.
    *
-   * Real-Debrid's own device authorization -- the operator approves
-   * DebridPulse on Real-Debrid's site, opened in their own browser, and types
-   * nothing here. The browser holds only what it shows: the code to enter and
-   * where to enter it. The device code, client secret and tokens stay on the
-   * server, which polls no faster than Real-Debrid asks and saves the
-   * credential through the canonical integration mutation.
+   * The operator approves DebridPulse on the provider's own site, opened in
+   * their own browser, and types nothing here. The browser holds only what it
+   * shows: the code to enter and where to enter it. The device code and every
+   * credential stay on the server, which polls no faster than the provider
+   * asks and saves the credential through the canonical integration mutation.
    *
-   * One markup owner renders the region in every state, so the card and every
-   * later convergence render the same thing: the card's reserved top row
-   * carrying the one line the state has to say (blank while disconnected, the
-   * wait while the operator authorizes, the account's own premium expiry once
-   * connected), then one compact, centred, bordered Account Connection island
-   * (the Extraction island's geometry) holding what the connection is and the
-   * controls that act on it side by side. */
-  const realDebridConnection = {authorization: null, timer: null, account: null};
+   * One markup owner renders the region in every state, for every such
+   * provider, so the cards and every later convergence render the same thing:
+   * the card's reserved top row carrying the one line the state has to say
+   * (blank while disconnected, the wait while the operator authorizes, the
+   * account's own premium expiry once connected), then one compact, centred,
+   * bordered Account Connection island (the Extraction island's geometry)
+   * holding what the connection is and the controls that act on it side by
+   * side. A provider's entry says only what differs: its name, whether a
+   * credential is saved, and how its account names itself. */
+  const DEVICE_ACCOUNTS = Object.freeze({
+    realdebrid: {
+      name: 'Real-Debrid',
+      configured: s => !!realDebridOf(s).client_id_configured,
+      identity: account => account.username,
+      free: account => account.account_type && !account.premium,
+    },
+    torbox: {
+      name: 'TorBox',
+      configured: s => !!torBoxOf(s).api_token_configured,
+      identity: account => account.email,
+      free: account => account.plan === 0,
+    },
+  });
+  const deviceConnections = Object.fromEntries(Object.keys(DEVICE_ACCOUNTS)
+    .map(id => [id, {authorization: null, timer: null, account: null}]));
 
   // The account's premium expiry, interpreted and worded by the one premium
-  // account owner from Real-Debrid's own account facts -- never a token lifetime.
-  function realDebridExpiry(account) {
+  // account owner from the provider's own account facts -- never a token
+  // lifetime -- so this line and Provider Status always read the same.
+  function accountExpiry(id, account) {
     const owner = window.DPPremiumAccount;
-    const until = owner?.until('realdebrid', account);
-    if (!until) return '';
-    const text = owner.describe(until);
+    const premium = owner?.account(id, account);
+    if (!premium) return '';
+    const text = owner.describe(premium.until, premium.tier);
     return `${text.until} ${text.days}`;
   }
 
-  function realDebridIsland(helper, body, actions) {
+  function accountIsland(helper, body, actions) {
     return `
-      <div class="dp-settings-realdebrid-island">
-        <div class="dp-settings-realdebrid-island-copy">
-          <p class="dp-settings-realdebrid-heading">Account Connection</p>
+      <div class="dp-settings-account-island">
+        <div class="dp-settings-account-island-copy">
+          <p class="dp-settings-account-heading">Account Connection</p>
           <p class="dp-settings-copy">${helper}</p>${body}
         </div>
-        <div class="dp-settings-realdebrid-island-actions">${actions}</div>
+        <div class="dp-settings-account-island-actions">${actions}</div>
       </div>`;
   }
 
-  function realDebridConnectionMarkup() {
-    const pending = realDebridConnection.authorization;
+  function deviceConnectionMarkup(id) {
+    const {name, configured, identity, free} = DEVICE_ACCOUNTS[id];
+    const connection = deviceConnections[id];
+    const pending = connection.authorization;
     if (pending) {
       // The code is a reading, not a setting: read-only and never enrolled in
       // persistence, but selectable and reachable by keyboard.
       const code = embeddedActionField(
-        `<input class="input dp-settings-realdebrid-code" type="text" readonly value="${html(pending.user_code)}" `
-          + 'aria-label="Real-Debrid authorization code" data-realdebrid-code autocomplete="off" spellcheck="false">',
-        '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-realdebrid-code" '
-          + 'aria-label="Copy the Real-Debrid authorization code">Copy</button>');
-      return providerStatusLine('Waiting for authorization…', 'dp-settings-realdebrid-waiting')
-        + realDebridIsland('Authorize DebridPulse with Real-Debrid.', '', `${code}
-          <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`);
+        `<input class="input dp-settings-account-code" type="text" readonly value="${html(pending.user_code)}" `
+          + `aria-label="${html(name)} authorization code" data-${id}-code autocomplete="off" spellcheck="false">`,
+        `<button class="btn btn-ghost btn-sm" type="button" data-action="copy-${id}-code" `
+          + `aria-label="Copy the ${html(name)} authorization code">Copy</button>`);
+      return providerStatusLine('Waiting for authorization…', 'dp-settings-account-waiting')
+        + accountIsland(`Authorize DebridPulse with ${html(name)}.`, '', `${code}
+          <button type="button" class="btn btn-primary btn-sm" data-action="open-${id}">Open ${html(name)}</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-${id}">Cancel</button>`);
     }
-    if (realDebridOf(state.settings).client_id_configured) {
-      const account = realDebridConnection.account || {};
-      const identity = account.username ? `Connected as ${html(account.username)}` : 'Connected to Real-Debrid';
-      const expiry = realDebridExpiry(account) || (account.account_type && !account.premium ? 'Free account' : '');
-      return providerStatusLine(html(expiry), 'dp-settings-realdebrid-expiry')
-        + realDebridIsland(identity, '',
-          '<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-realdebrid">Disconnect</button>');
+    if (configured(state.settings)) {
+      const account = connection.account || {};
+      const who = identity(account);
+      const line = accountExpiry(id, account) || (free(account) ? 'Free account' : '');
+      return providerStatusLine(html(line), 'dp-settings-account-expiry')
+        + accountIsland(who ? `Connected as ${html(who)}` : `Connected to ${html(name)}`, '',
+          `<button type="button" class="btn btn-danger btn-sm" data-action="disconnect-${id}">Disconnect</button>`);
     }
     return providerStatusLine()
-      + realDebridIsland('Connect your Real-Debrid account to continue.', '',
-      '<button type="button" class="btn btn-primary btn-sm" data-action="connect-realdebrid">Connect Real-Debrid</button>');
+      + accountIsland(`Connect your ${html(name)} account to continue.`, '',
+      `<button type="button" class="btn btn-primary btn-sm" data-action="connect-${id}">Connect ${html(name)}</button>`);
   }
 
-  function renderRealDebridConnection() {
-    const region = root()?.querySelector('[data-realdebrid-connection]');
-    if (region) region.innerHTML = realDebridConnectionMarkup();
+  function renderDeviceConnection(id) {
+    const region = root()?.querySelector(`[data-${id}-connection]`);
+    if (region) region.innerHTML = deviceConnectionMarkup(id);
   }
 
-  function stopRealDebridPolling() {
-    if (realDebridConnection.timer) clearTimeout(realDebridConnection.timer);
-    realDebridConnection.timer = null;
+  function stopDevicePolling(id) {
+    const connection = deviceConnections[id];
+    if (connection.timer) clearTimeout(connection.timer);
+    connection.timer = null;
   }
 
-  function scheduleRealDebridPoll() {
-    stopRealDebridPolling();
-    const pending = realDebridConnection.authorization;
+  function scheduleDevicePoll(id) {
+    stopDevicePolling(id);
+    const pending = deviceConnections[id].authorization;
     if (!pending) return;
     const seconds = Math.max(5, Number(pending.interval) || 5);
-    realDebridConnection.timer = setTimeout(pollRealDebridAuthorization, seconds * 1000);
+    deviceConnections[id].timer = setTimeout(() => pollDeviceAuthorization(id), seconds * 1000);
   }
 
-  async function connectRealDebrid(button) {
+  async function connectDeviceAccount(id, button) {
     setBusy(button, true, 'Connecting…');
     try {
-      realDebridConnection.authorization = await request('POST', '/integrations/realdebrid/authorization', undefined, 20000);
+      deviceConnections[id].authorization = await request('POST', `/integrations/${id}/authorization`, undefined, 20000);
       setBusy(button, false);
-      renderRealDebridConnection();
-      scheduleRealDebridPoll();
+      renderDeviceConnection(id);
+      scheduleDevicePoll(id);
       return;
     } catch (error) {
-      notify(`Real-Debrid: ${error.message}`, 'error');
+      notify(`${DEVICE_ACCOUNTS[id].name}: ${error.message}`, 'error');
     }
     setBusy(button, false);
   }
 
-  async function pollRealDebridAuthorization() {
-    realDebridConnection.timer = null;
-    if (!realDebridConnection.authorization) return;
+  async function pollDeviceAuthorization(id) {
+    const connection = deviceConnections[id];
+    const {name, identity} = DEVICE_ACCOUNTS[id];
+    connection.timer = null;
+    if (!connection.authorization) return;
     let result;
     try {
-      result = await request('POST', '/integrations/realdebrid/authorization/poll', undefined, 30000);
+      result = await request('POST', `/integrations/${id}/authorization/poll`, undefined, 30000);
     } catch (error) {
       // A failed poll is not a failed authorization: the code stays valid
       // until it expires, so the next poll simply tries again.
-      scheduleRealDebridPoll();
+      scheduleDevicePoll(id);
       return;
     }
-    if (!realDebridConnection.authorization) return;
+    if (!connection.authorization) return;
     if (result?.state === 'pending') {
-      realDebridConnection.authorization = result;
-      scheduleRealDebridPoll();
+      connection.authorization = result;
+      scheduleDevicePoll(id);
       return;
     }
-    realDebridConnection.authorization = null;
+    connection.authorization = null;
     if (result?.state === 'connected') {
-      realDebridConnection.account = result;
+      connection.account = result;
       publishAccepted(result);
-      notify(`Real-Debrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
+      const who = identity(result);
+      notify(`${name} connected${who ? ` as ${who}` : ''}`, 'success');
     } else if (result?.state === 'expired') {
-      notify('The Real-Debrid authorization code expired. Connect again to get a new one.', 'warn');
+      notify(`The ${name} authorization code expired. Connect again to get a new one.`, 'warn');
     }
-    renderRealDebridConnection();
+    renderDeviceConnection(id);
   }
 
-  async function cancelRealDebrid(button) {
-    stopRealDebridPolling();
-    realDebridConnection.authorization = null;
+  async function cancelDeviceAuthorization(id, button) {
+    stopDevicePolling(id);
+    deviceConnections[id].authorization = null;
     setBusy(button, true, 'Cancelling…');
     try {
-      await request('DELETE', '/integrations/realdebrid/authorization', undefined, 15000);
+      await request('DELETE', `/integrations/${id}/authorization`, undefined, 15000);
     } catch (_) {
       // The server-side attempt expires on its own; nothing here depends on it.
     }
-    renderRealDebridConnection();
+    renderDeviceConnection(id);
   }
 
-  async function copyRealDebridCode() {
-    const field = root()?.querySelector('[data-realdebrid-code]');
-    const code = realDebridConnection.authorization?.user_code;
+  async function copyDeviceCode(id) {
+    const field = root()?.querySelector(`[data-${id}-code]`);
+    const code = deviceConnections[id].authorization?.user_code;
     if (!field || !code) return;
     try {
       if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
@@ -1420,23 +1450,24 @@
     notify('Select and copy the authorization code manually', 'info');
   }
 
-  async function disconnectRealDebrid(button) {
+  async function disconnectDeviceAccount(id, button) {
+    const {name} = DEVICE_ACCOUNTS[id];
     const confirmed = await window.DPSettingsModal.confirm({
       tone: 'danger',
-      title: 'Disconnect Real-Debrid?',
-      message: 'DebridPulse will forget its Real-Debrid authorization. Real-Debrid cannot be used '
+      title: `Disconnect ${name}?`,
+      message: `DebridPulse will forget its ${name} authorization. ${name} cannot be used `
         + 'again until you connect it again.',
-      confirmLabel: 'Disconnect Real-Debrid',
+      confirmLabel: `Disconnect ${name}`,
     });
     if (!confirmed) return;
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Disconnecting…');
     try {
-      const result = await request('POST', '/integrations/realdebrid/disconnect', undefined, 20000);
-      realDebridConnection.account = null;
+      const result = await request('POST', `/integrations/${id}/disconnect`, undefined, 20000);
+      deviceConnections[id].account = null;
       publishAccepted(result);
-      renderRealDebridConnection();
-      notify('Real-Debrid disconnected', 'success');
+      renderDeviceConnection(id);
+      notify(`${name} disconnected`, 'success');
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -1444,31 +1475,51 @@
     setBusy(button, false);
   }
 
-  async function testRealDebrid(button) {
+  async function testDeviceAccount(id, button) {
+    const {name, identity} = DEVICE_ACCOUNTS[id];
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Testing…');
     try {
-      const result = await request('POST', '/settings/validate-realdebrid', undefined, 20000);
-      realDebridConnection.account = result;
+      const result = await request('POST', `/settings/validate-${id}`, undefined, 20000);
+      deviceConnections[id].account = result;
       publishAccepted(result);
-      if (!realDebridConnection.authorization) renderRealDebridConnection();
-      notify(`Real-Debrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
+      if (!deviceConnections[id].authorization) renderDeviceConnection(id);
+      const who = identity(result);
+      notify(`${name} connected${who ? ` as ${who}` : ''}`, 'success');
     } catch (error) {
-      notify(`Real-Debrid: ${error.message}`, 'error');
+      notify(`${name}: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);
     }
   }
 
-  // The account line shows what the provider-status owner established; this
-  // card never probes Real-Debrid on its own. A disabled provider is not
+  // A device-account control's action names its provider:
+  // ``<verb>-<provider>`` (``copy-<provider>-code`` for the code).
+  function deviceAccountAction(action, button) {
+    for (const id of Object.keys(DEVICE_ACCOUNTS)) {
+      if (action === `test-${id}`) testDeviceAccount(id, button);
+      else if (action === `connect-${id}`) connectDeviceAccount(id, button);
+      else if (action === `open-${id}`) openExternalUrl(deviceConnections[id].authorization?.verification_url);
+      else if (action === `copy-${id}-code`) copyDeviceCode(id);
+      else if (action === `cancel-${id}`) cancelDeviceAuthorization(id, button);
+      else if (action === `disconnect-${id}`) disconnectDeviceAccount(id, button);
+      else continue;
+      return true;
+    }
+    return false;
+  }
+
+  // The account line shows what the provider-status owner established; a
+  // card never probes its provider on its own. A disabled provider is not
   // probed at all, so it neither confirms nor retracts the last known account.
   document.addEventListener('debridpulse:provider-status', event => {
-    const status = (event.detail?.entries || []).find(candidate => candidate.id === 'realdebrid')?.status;
-    if (status?.state === 'healthy') realDebridConnection.account = status;
-    else if (['auth_required', 'unconfigured'].includes(status?.state)) realDebridConnection.account = null;
-    else return;
-    if (!realDebridConnection.authorization) renderRealDebridConnection();
+    for (const id of Object.keys(DEVICE_ACCOUNTS)) {
+      const status = (event.detail?.entries || []).find(candidate => candidate.id === id)?.status;
+      if (status?.state === 'healthy') deviceConnections[id].account = status;
+      else if (['auth_required', 'unconfigured'].includes(status?.state)) deviceConnections[id].account = null;
+      else continue;
+      if (!deviceConnections[id].authorization) renderDeviceConnection(id);
+    }
   });
 
   /* A mild grouping rule between the reserved Usenet card and the debrid
@@ -1529,7 +1580,7 @@
     // it on, exactly as its definition declares.
     const realDebrid = integrations.realdebrid || {enabled: false};
     const realDebridCard = providerCard('realdebrid', 'Real-Debrid', `
-      <div class="dp-settings-realdebrid-connection" data-realdebrid-connection>${realDebridConnectionMarkup()}</div>
+      <div class="dp-settings-account-connection" data-realdebrid-connection>${deviceConnectionMarkup('realdebrid')}</div>
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
@@ -1564,6 +1615,48 @@
       headerAction: providerTestAction('test-realdebrid'),
     });
 
+    // Absent means OFF: TorBox participates only once an operator turns it on,
+    // exactly as its definition declares.
+    const torBox = integrations.torbox || {enabled: false};
+    const torBoxCard = providerCard('torbox', 'TorBox', `
+      <div class="dp-settings-account-connection" data-torbox-connection>${deviceConnectionMarkup('torbox')}</div>
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          ${tuningCells(
+            tuningToggle('torbox_usenet_enabled', 'Usenet via TorBox',
+              'Let TorBox process NZB downloads remotely. Native Usenet stays available whenever it is set up.',
+              torBoxOf(s).usenet_enabled === true),
+            input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
+              type: 'number', min: 1, max: 300,
+              hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'
+            }),
+            input('torbox_request_timeout_seconds', 'Request Timeout (seconds)', torBoxOf(s).request_timeout_seconds ?? 30, {
+              type: 'number', min: 5, max: 300,
+              hint: 'How long DebridPulse waits for an ordinary TorBox API answer before treating the request as failed.'
+            }),
+            input('torbox_upload_timeout_seconds', 'Upload Timeout (seconds)', torBoxOf(s).upload_timeout_seconds ?? 120, {
+              type: 'number', min: 30, max: 900,
+              hint: 'How long DebridPulse waits while uploading a torrent or NZB file to TorBox.'
+            }),
+            input('torbox_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', torBoxOf(s).host_refresh_interval_hours ?? 24, {
+              type: 'number', min: 1, max: 168,
+              hint: 'How often DebridPulse refreshes the list of hosts TorBox supports.'
+            }),
+          )}
+        </div>
+      </details>
+`, torBox, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--torbox',
+      titlePrefix: `
+      <span class="dp-settings-provider-chip dp-settings-provider-chip--torbox" aria-hidden="true">
+        <img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt="">
+      </span>`,
+      displayName: 'TorBox',
+      headerCopy: 'Resolve supported links, torrents and NZBs through your TorBox account.',
+      headerAction: providerTestAction('test-torbox'),
+    });
+
     // Absent means OFF for Usenet: it participates only once an operator turns
     // it on. Without this, providerCard's "absent == enabled" default would
     // render the toggle checked and a Save would persist enabled: true.
@@ -1582,7 +1675,7 @@
     // they most often add first, and the panel reads debrid-then-Usenet. One is
     // never derived from the other.
     const premiumServices = groupCard('Premium Services',
-      usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard, {
+      usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard + torBoxCard, {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
     // Group identity, label and gate all come from metadata the members
@@ -3336,12 +3429,7 @@
       if (!button) return;
       const action = button.dataset.action;
       if (action === 'test-alldebrid') testConnection('alldebrid', button);
-      else if (action === 'test-realdebrid') testRealDebrid(button);
-      else if (action === 'connect-realdebrid') connectRealDebrid(button);
-      else if (action === 'open-realdebrid') openExternalUrl(realDebridConnection.authorization?.verification_url);
-      else if (action === 'copy-realdebrid-code') copyRealDebridCode();
-      else if (action === 'cancel-realdebrid') cancelRealDebrid(button);
-      else if (action === 'disconnect-realdebrid') disconnectRealDebrid(button);
+      else if (deviceAccountAction(action, button)) return;
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
       else if (action === 'clear-archive-passwords') clearArchivePasswords(button);

@@ -158,7 +158,7 @@ def test_the_premium_tier_reserves_its_last_position_for_usenet():
     """
     premium = {d.id: d.presentation.display_order for d in definitions
                if d.presentation.status_tier == PREMIUM_SERVICE}
-    assert set(premium) == {"alldebrid", "realdebrid", "usenet"}
+    assert set(premium) == {"alldebrid", "realdebrid", "torbox", "usenet"}
     ordinary = [order for identity, order in premium.items() if identity != "usenet"]
     assert max(ordinary) < DEFAULT_ORDER
     assert DEFAULT_ORDER < premium["usenet"], \
@@ -301,7 +301,7 @@ def test_usenet_stays_first_in_settings_premium_services():
     the operator configures Usenet first, and the panel reports it last."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     assert "usenetCard + " in panel
-    assert panel.index("usenetCard +") < panel.index("+ provider + realDebridCard,")
+    assert panel.index("usenetCard +") < panel.index("+ provider + realDebridCard + torBoxCard,")
 
 
 def test_an_inset_separator_groups_usenet_apart_from_the_debrid_providers():
@@ -674,8 +674,9 @@ def test_the_header_action_slot_is_neutral_and_optional():
     assert "alldebrid" not in card.lower(), "the generic card names a provider"
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     # Exactly the cards that HAVE a provider-level action ask for the slot:
-    # AllDebrid, Real-Debrid and Usenet. The Network Sources group card does not.
-    assert panel.count("headerAction:") == 3, \
+    # AllDebrid, Real-Debrid, TorBox and Usenet. The Network Sources group card
+    # does not.
+    assert panel.count("headerAction:") == 4, \
         "the rail was applied to a card that did not ask for it"
 
 

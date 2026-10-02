@@ -9,10 +9,11 @@ from providers.general_http.definition import definition as general_http
 from providers.general_webdav.definition import definition as general_webdav
 from providers.multimeta.definition import definition as multimeta
 from providers.realdebrid.definition import definition as realdebrid
+from providers.torbox.definition import definition as torbox
 from integrations.configuration import effective_integration_settings
 from integrations.usenet.definition import definition as usenet
 
-definitions = (alldebrid, realdebrid, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
+definitions = (alldebrid, realdebrid, torbox, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
                multimeta, aria2, rsync)
 
 

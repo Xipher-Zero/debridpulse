@@ -219,7 +219,7 @@ def test_every_current_toggle_of_this_class_uses_the_shared_path():
     path shared -- so the invariant is the one control owner, not one card
     composer."""
     cards = re.findall(r"providerCard\('([a-z_]+)'", SETTINGS_JS)
-    assert sorted(cards) == ["alldebrid", "realdebrid", "usenet"]
+    assert sorted(cards) == ["alldebrid", "realdebrid", "torbox", "usenet"]
     assert "sourceProtocolBox(" in SETTINGS_JS
     # One toggle owner: its definition plus the two composers that render it.
     assert SETTINGS_JS.count("integrationHeaderToggle(") == 3

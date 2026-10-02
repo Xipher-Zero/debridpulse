@@ -96,6 +96,19 @@
   bounded. Recent Items, Downloads and Details keep the Multimeta origin while Route History shows the
   provider and engine that delivered the file. Multimeta has its own Enable control under Network Sources
   and no Transfer Method Settings card.
+- **TorBox premium provider** (`torbox`, under Premium Services beside AllDebrid and Real-Debrid). Connect
+  TorBox from its card the same way as Real-Debrid: DebridPulse shows a code to enter on TorBox's own
+  site, opened in your browser, and never asks for or shows a token; a proven connection switches TorBox
+  on, and Test checks the saved connection. Provider Status and the card show your plan and how long it
+  runs, in the same words as AllDebrid and Real-Debrid. TorBox handles magnets and torrent files, links
+  from the hosts TorBox currently lists as usable (any other link, including one for a host TorBox
+  reports as unavailable, is left to the other providers; a web download shows the hoster it came from), and — with
+  **Usenet via TorBox** switched on in its Additional Settings — NZBs, whether uploaded or added by link.
+  TorBox always downloads a whole torrent; DebridPulse's own file selection still decides which files you
+  get. When TorBox fails for good on an NZB and your own Usenet servers are set up, the same transfer
+  continues there; turning Usenet via TorBox on never turns your Usenet servers off. Additional Settings
+  also hold API Calls per Minute (240, at most 300), the request and upload timeouts, and the supported-
+  host refresh interval.
 - **Real-Debrid premium provider** (`realdebrid`, under Premium Services beside AllDebrid). Supported hoster
   links, magnets and `.torrent` files resolve through a Real-Debrid account. Connecting uses Real-Debrid's own
   authorization for open-source applications: **Connect Real-Debrid** shows a code, **Open Real-Debrid** opens

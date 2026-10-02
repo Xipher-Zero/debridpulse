@@ -541,7 +541,8 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
 /* DP 1.0.13 provider-card corrections -- the AllDebrid credential is ONE
  * compact, centred, bordered control island (title/hint, field and Remove side
  * by side, about 65% of the body), and neither AllDebrid nor Usenet keeps a
- * blank status row above its content. Only Real-Debrid has a status to show. */
+ * blank status row above its content. Only the device-authorized accounts
+ * (Real-Debrid, TorBox) have a status to show. */
 test('the AllDebrid credential is one compact centred island and no blank row sits above it', async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');

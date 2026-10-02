@@ -141,7 +141,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
 
     assert "function groupCard(" in runtime
     assert "groupCard('Premium Services'," in sources
-    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard," in sources
+    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard + torBoxCard," in sources
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-provider-recovery-card" not in sources
@@ -325,11 +325,11 @@ def test_provider_additional_settings_has_no_separator_and_real_debrid_no_spacer
     additional = page.split("#view-settings .dp-settings-additional {", 1)[1].split("}", 1)[0]
     assert "margin-top: 14px" in additional
     assert "border" not in additional
-    assert ".dp-settings-realdebrid-island + .dp-settings-provider-status-line" not in page
+    assert ".dp-settings-account-island + .dp-settings-provider-status-line" not in page
     runtime = read(RUNTIME)
     assert "PROVIDER_STATUS_SPACER" not in runtime
     assert '<div class="dp-settings-provider-status-line" aria-hidden="true"></div>' not in runtime
     # The real contextual status row stays: one per connection state.
-    connection = runtime[runtime.index("function realDebridConnectionMarkup()"):
-                         runtime.index("function renderRealDebridConnection()")]
+    connection = runtime[runtime.index("function deviceConnectionMarkup(id)"):
+                         runtime.index("function renderDeviceConnection(id)")]
     assert connection.count("return providerStatusLine(") == 3

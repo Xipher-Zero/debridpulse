@@ -278,17 +278,18 @@
   line-height: 1.5;
 }
 
-/* The Real-Debrid account connection: one compact Account Connection island
+/* A premium provider's account connection (Real-Debrid, TorBox): one compact
+   Account Connection island
    in the card body, the same island the Extraction behaviour group is --
    content-bounded, CENTRED, never stretched across spare width -- holding the
    title/helper and the state's controls side by side, wrapping into rows only
    when the card is too narrow for them. The state's one line is the card's
    reserved top row above it. */
-#view-settings .dp-settings-realdebrid-connection {
+#view-settings .dp-settings-account-connection {
   margin: 0 0 14px;
 }
 
-#view-settings .dp-settings-realdebrid-island {
+#view-settings .dp-settings-account-island {
   box-sizing: border-box;
   display: flex;
   flex-wrap: wrap;
@@ -303,7 +304,7 @@
   padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-realdebrid-island-copy {
+#view-settings .dp-settings-account-island-copy {
   display: flex;
   flex: 0 1 auto;
   flex-direction: column;
@@ -312,14 +313,14 @@
   max-width: 300px;
 }
 
-#view-settings .dp-settings-realdebrid-island-copy > .dp-settings-copy {
+#view-settings .dp-settings-account-island-copy > .dp-settings-copy {
   margin: 0;
 }
 
 /* The controls reserve one field's height in every state -- the code field
    is the tallest thing any state shows -- so the island, and the card, keep
    one height as the connection moves between states. */
-#view-settings .dp-settings-realdebrid-island-actions {
+#view-settings .dp-settings-account-island-actions {
   display: flex;
   flex: 0 1 auto;
   flex-wrap: wrap;
@@ -330,7 +331,7 @@
   min-height: var(--dp-input-height);
 }
 
-#view-settings .dp-settings-realdebrid-heading {
+#view-settings .dp-settings-account-heading {
   margin: 0;
   color: var(--dp-text-primary);
   font-size: 12px;
@@ -339,11 +340,11 @@
 
 /* Sized for an eight-character code and its Copy, never wider than the
    island: the code never forces a horizontal scroll. */
-#view-settings .dp-settings-realdebrid-island .dp-action-field {
+#view-settings .dp-settings-account-island .dp-action-field {
   width: min(100%, 220px);
 }
 
-#view-settings .dp-settings-realdebrid-code {
+#view-settings .dp-settings-account-code {
   min-width: 0;
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 16px;
@@ -370,27 +371,27 @@
 /* The premium expiry is ordinary card copy -- the size and colour of the
    island's own helper line -- inside the row's fixed height. Only the wait
    below is emphasised. */
-#view-settings .dp-settings-realdebrid-expiry {
+#view-settings .dp-settings-account-expiry {
   color: var(--dp-text-muted);
   font-size: 11px;
 }
 
 /* Larger than the row's own line, set solid (line-height 1) so it still sits
    inside the row's fixed height. */
-#view-settings .dp-settings-realdebrid-waiting {
+#view-settings .dp-settings-account-waiting {
   font-size: 16px;
   font-weight: 600;
   line-height: 1;
-  animation: dp-settings-realdebrid-waiting 2.4s ease-in-out infinite;
+  animation: dp-settings-account-waiting 2.4s ease-in-out infinite;
 }
 
-@keyframes dp-settings-realdebrid-waiting {
+@keyframes dp-settings-account-waiting {
   0%, 100% { opacity: 1; }
   50% { opacity: .45; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  #view-settings .dp-settings-realdebrid-waiting {
+  #view-settings .dp-settings-account-waiting {
     animation: none;
   }
 }

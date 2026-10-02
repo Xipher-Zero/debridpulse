@@ -31,6 +31,13 @@
       return until && !Number.isNaN(until.getTime())
         ? {until, tier: type.charAt(0).toUpperCase() + type.slice(1)} : null;
     },
+    // TorBox names the plan itself (Essential, Standard, Pro); its expiry is
+    // the plan's own end, never the API token's.
+    torbox: status => {
+      const until = status?.premium ? new Date(String(status?.premium_expires_at || '')) : null;
+      return until && !Number.isNaN(until.getTime())
+        ? {until, tier: String(status?.plan_name || 'Premium')} : null;
+    },
   });
 
   // One provider's premium account from its own status payload, or null.
@@ -102,8 +109,9 @@
     else delete row.dataset.premiumAccounts;
   }
 
-  // A provider's own Settings card states the same expiry the same way.
-  window.DPPremiumAccount = Object.freeze({until: premiumUntil, describe});
+  // A provider's own Settings card states the same expiry -- and the same
+  // tier -- the same way.
+  window.DPPremiumAccount = Object.freeze({until: premiumUntil, account: premiumAccount, describe});
 
   document.addEventListener('debridpulse:provider-status', event => {
     render(event.detail?.entries || []);

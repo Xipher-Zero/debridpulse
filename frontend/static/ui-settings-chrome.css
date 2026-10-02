@@ -245,6 +245,40 @@ body.light #view-settings .dp-settings-provider-chip--realdebrid {
   object-fit: contain;
 }
 
+/* TorBox's identity block: the same chip grammar, in the teal and green of
+   TorBox's own mark. The mark itself is used as shipped. */
+#view-settings .dp-settings-provider-chip--torbox {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid #34ba90;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #00262b 0%, #00444d 52%, #0b5f58 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(190,240,220,.30),
+    inset 0 -1px 0 rgba(0,30,34,.34),
+    0 1px 3px rgba(0,0,0,.18);
+}
+
+body.light #view-settings .dp-settings-provider-chip--torbox {
+  border-color: #2fa682;
+  background: linear-gradient(145deg, #d2f1e6 0%, #a9e2cf 54%, #7fcfb4 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(245,255,250,.68),
+    inset 0 -1px 0 rgba(0,68,77,.22),
+    0 1px 3px rgba(0,50,50,.16);
+}
+
+#view-settings .dp-settings-provider-logo--torbox {
+  width: 26px;
+  height: 26px;
+  display: block;
+  object-fit: contain;
+}
+
 /* The provider-test control uses the same chip-before-copy grammar as tabs,
    and remains a secondary action within its card's header rail. The treatment
    belongs to the CONTROL, so every provider-level Test renders identically and

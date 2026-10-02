@@ -33,6 +33,10 @@ from providers.realdebrid import admin as realdebrid_admin
 from providers.realdebrid.definition import (
     canonical_options as realdebrid_canonical_options, credential_material as realdebrid_credential_material,
 )
+from providers.torbox import admin as torbox_admin
+from providers.torbox.definition import (
+    canonical_options as torbox_canonical_options, credential_material as torbox_credential_material,
+)
 from services.notifications import NotificationService
 from application.dependencies import get_application
 from application.service import ApplicationService
@@ -677,6 +681,121 @@ async def disconnect_realdebrid(application: ApplicationService = Depends(get_ap
             revoked = False
     projection = {key: value for key, value in saved.items() if key not in {"ok", "native"}}
     return {"ok": True, "revoked": revoked, **_accepted(REALDEBRID_NAMESPACE, projection)}
+
+
+# --- TorBox -------------------------------------------------------------------
+#
+# The connection is TorBox's device authorization: the operator approves
+# DebridPulse on TorBox's own site and no token is ever typed or shown. Every
+# write of the resulting token goes through the one canonical
+# integration-configuration mutation, exactly as for Real-Debrid.
+
+TORBOX_NAMESPACE = "torbox"
+
+
+def _torbox_enabled() -> bool:
+    entry = (get_settings().integrations or {}).get(TORBOX_NAMESPACE)
+    return bool(getattr(entry, "enabled", False))
+
+
+async def _write_torbox(application: ApplicationService, **update) -> dict:
+    from api.routes import IntegrationConfigurationUpdate, patch_integration_configuration
+    return await patch_integration_configuration(
+        TORBOX_NAMESPACE, IntegrationConfigurationUpdate(**update), application)
+
+
+def _torbox_device_service():
+    """The client the device authorization uses: no credential yet, the
+    operator's configured request timeout."""
+    from providers.torbox.client import TorBoxService
+    options = torbox_canonical_options(get_settings())
+    return TorBoxService(request_timeout_seconds=options.request_timeout_seconds)
+
+
+async def _prove_torbox(application: ApplicationService):
+    """Prove the SAVED token and record what that proved.
+
+    Returns ``(account facts, accepted projection, failure)``."""
+    options = torbox_canonical_options(get_settings())
+    fingerprint = verification_fingerprint(torbox_credential_material(options))
+    try:
+        account = await torbox_admin.verify(options)
+    except Exception as exc:
+        accepted = await _record_verification_outcome(application, TORBOX_NAMESPACE, fingerprint, False)
+        return {}, accepted, _safe_failure(exc)
+    accepted = await _record_verification_outcome(application, TORBOX_NAMESPACE, fingerprint, True)
+    return account, accepted, ""
+
+
+@router.get("/integration-status/torbox")
+async def get_torbox_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Return TorBox-specific status without inferring from generic health."""
+    provider = application.engine.registry.providers.get(TORBOX_NAMESPACE)
+    return await torbox_admin.runtime_status(provider, enabled=_torbox_enabled())
+
+
+@router.post("/settings/validate-torbox")
+async def validate_torbox(application: ApplicationService = Depends(get_application)):
+    """The TorBox Test: prove the saved token against the account."""
+    if not torbox_canonical_options(get_settings()).api_token:
+        raise HTTPException(400, "TorBox is not connected")
+    account, accepted, failure = await _prove_torbox(application)
+    if failure:
+        raise HTTPException(502, failure)
+    return {"ok": True, **account, **_accepted(TORBOX_NAMESPACE, accepted)}
+
+
+@router.get("/integrations/torbox/authorization")
+async def get_torbox_authorization():
+    """The transient authorization in progress, if any. Never a credential."""
+    return torbox_admin.authorization_state()
+
+
+@router.post("/integrations/torbox/authorization")
+async def start_torbox_authorization():
+    """Begin TorBox's device authorization: a code the operator enters on
+    TorBox's own page, opened in their own browser."""
+    try:
+        return await torbox_admin.start_authorization(service=_torbox_device_service())
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from None
+
+
+@router.post("/integrations/torbox/authorization/poll")
+async def poll_torbox_authorization(application: ApplicationService = Depends(get_application)):
+    """Advance the authorization no faster than TorBox asks; once the operator
+    has approved the device, save the token, prove it and -- only when the
+    proof succeeds -- enable TorBox, exactly as a Real-Debrid connection does.
+    A later Test never enables anything."""
+    try:
+        outcome = await torbox_admin.poll_authorization(service=_torbox_device_service())
+    except Exception as exc:
+        raise HTTPException(502, _safe_failure(exc)) from None
+    if not isinstance(outcome, torbox_admin.Authorized):
+        return outcome
+    saved = await _write_torbox(application, options={"api_token": outcome.token})
+    account, accepted, failure = await _prove_torbox(application)
+    if not failure:
+        saved = await _write_torbox(application, enabled=True)
+        accepted = None
+    projection = accepted or {key: value for key, value in saved.items() if key not in {"ok", "native"}}
+    return {"state": "connected", **account, **_accepted(TORBOX_NAMESPACE, projection)}
+
+
+@router.delete("/integrations/torbox/authorization")
+async def cancel_torbox_authorization():
+    """Abandon the authorization in progress; a saved connection is untouched."""
+    return await torbox_admin.cancel_authorization()
+
+
+@router.post("/integrations/torbox/disconnect")
+async def disconnect_torbox(application: ApplicationService = Depends(get_application)):
+    """Forget the saved TorBox token, through the canonical mutation and its
+    ownership fence. TorBox offers no API for a third party to revoke a
+    device token; the operator can reset it on TorBox's own site."""
+    saved = await _write_torbox(application, options={}, clear_secrets=["api_token"])
+    projection = {key: value for key, value in saved.items() if key not in {"ok", "native"}}
+    return {"ok": True, **_accepted(TORBOX_NAMESPACE, projection)}
 
 
 @router.post("/settings/validate-discord")
