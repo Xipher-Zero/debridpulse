@@ -65,16 +65,20 @@ async function prepare(page) {
   return {card, region: card.locator('[data-realdebrid-connection]'), calls};
 }
 
-/* The island in this state: bordered, its copy on the left and its actions on
- * the right, the actions centred against the island, nothing overlapping and
- * nothing overflowing it. */
+/* The island in this state: the Extraction island's geometry -- bordered,
+ * content-bounded and centred in the card body (never stretched across spare
+ * width) -- with its copy and its controls side by side, the controls centred
+ * against the island, nothing overlapping and nothing overflowing. */
 async function expectIsland(region) {
   const geometry = await region.evaluate(node => {
     const island = node.querySelector('.dp-settings-realdebrid-island');
     const copy = island.querySelector('.dp-settings-realdebrid-island-copy').getBoundingClientRect();
     const actions = island.querySelector('.dp-settings-realdebrid-island-actions').getBoundingClientRect();
     const box = island.getBoundingClientRect();
+    const body = node.getBoundingClientRect();
     return {
+      compact: box.width < body.width - 40,
+      centred: Math.abs((box.left - body.left) - (body.right - box.right)),
       border: getComputedStyle(island).borderTopStyle,
       heading: island.querySelector('.dp-settings-realdebrid-heading').textContent,
       copyLeft: copy.left - box.left,
@@ -85,6 +89,8 @@ async function expectIsland(region) {
     };
   });
   expect(geometry.border).toBe('solid');
+  expect(geometry.compact).toBe(true);
+  expect(geometry.centred).toBeLessThan(2);
   expect(geometry.heading).toBe('Account Connection');
   expect(geometry.copyLeft).toBeLessThan(30);
   expect(geometry.gap).toBeGreaterThan(0);
@@ -155,7 +161,7 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     const {card, region, calls} = await prepare(page);
     const before = page.url();
     await region.locator('[data-action="connect-realdebrid"]').click();
-    const code = region.locator('.dp-settings-realdebrid-island .dp-action-field input[data-realdebrid-code]');
+    const code = region.locator('.dp-settings-realdebrid-island-actions .dp-action-field input[data-realdebrid-code]');
     await expect(code).toHaveValue('ABCD1234');
     await expect(code).toHaveAttribute('readonly', '');
     await expect(region.locator('.dp-action-field [data-action="copy-realdebrid-code"]')).toHaveText('Copy');

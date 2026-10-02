@@ -1261,9 +1261,10 @@
    * credential through the canonical integration mutation.
    *
    * One markup owner renders the region in every state, so the card and every
-   * later convergence render the same thing: one bordered Account Connection
-   * island -- what the connection is on the left, its action on the right --
-   * and, beneath it, the one line that state has to say (the wait while the
+   * later convergence render the same thing: one compact, centred, bordered
+   * Account Connection island (the Extraction island's geometry) holding what
+   * the connection is and the controls that act on it side by side, and,
+   * beneath it, the one line that state has to say (the wait while the
    * operator authorizes, or the account's own premium expiry). */
   const realDebridConnection = {authorization: null, timer: null, account: null};
 
@@ -1298,7 +1299,7 @@
           + 'aria-label="Real-Debrid authorization code" data-realdebrid-code autocomplete="off" spellcheck="false">',
         '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-realdebrid-code" '
           + 'aria-label="Copy the Real-Debrid authorization code">Copy</button>');
-      return realDebridIsland('Enter this code on Real-Debrid to authorize DebridPulse.', code, `
+      return realDebridIsland('Authorize DebridPulse with Real-Debrid.', '', `${code}
           <button type="button" class="btn btn-primary btn-sm" data-action="open-realdebrid">Open Real-Debrid</button>
           <button type="button" class="btn btn-ghost btn-sm" data-action="cancel-realdebrid">Cancel</button>`)
         + '<p class="dp-settings-realdebrid-waiting" role="status">Waiting for authorization…</p>';

@@ -271,11 +271,12 @@
   line-height: 1.5;
 }
 
-/* The Real-Debrid account connection: one bordered Account Connection island
-   in the card body -- title and helper (and, while connecting, the code) on
-   the left, the state's action on the right, centred against the island --
-   with the state's one line beneath it, centred. The island border is the
-   same material the Backup Folder island uses. */
+/* The Real-Debrid account connection: one compact Account Connection island
+   in the card body, the same island the Extraction behaviour group is --
+   content-bounded, CENTRED, never stretched across spare width -- holding the
+   title/helper and the state's controls side by side, wrapping into rows only
+   when the card is too narrow for them. The state's one line sits beneath it,
+   centred. */
 #view-settings .dp-settings-realdebrid-connection {
   margin: 0 0 14px;
 }
@@ -285,20 +286,23 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px 18px;
-  min-width: 0;
+  justify-content: center;
+  gap: 18px 44px;
+  width: max-content;
+  max-width: min(100%, 880px);
+  margin-inline: auto;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 14px 18px;
+  padding: 16px 22px 17px;
 }
 
 #view-settings .dp-settings-realdebrid-island-copy {
   display: flex;
-  flex: 1 1 260px;
+  flex: 0 1 auto;
   flex-direction: column;
   gap: 4px;
   min-width: 0;
+  max-width: 300px;
 }
 
 #view-settings .dp-settings-realdebrid-island-copy > .dp-settings-copy {
@@ -307,10 +311,12 @@
 
 #view-settings .dp-settings-realdebrid-island-actions {
   display: flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
   flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 8px;
+  min-width: 0;
 }
 
 #view-settings .dp-settings-realdebrid-heading {
@@ -320,11 +326,10 @@
   font-weight: 600;
 }
 
-/* Bounded by the island, never wider than it: the code never forces a
-   horizontal scroll. */
+/* Sized for an eight-character code and its Copy, never wider than the
+   island: the code never forces a horizontal scroll. */
 #view-settings .dp-settings-realdebrid-island .dp-action-field {
-  width: min(100%, 280px);
-  margin-top: 6px;
+  width: min(100%, 220px);
 }
 
 #view-settings .dp-settings-realdebrid-code {
