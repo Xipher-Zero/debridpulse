@@ -297,6 +297,7 @@ def _credential(options: dict) -> tuple[str, str]:
 
 # ── 1. RED regression: the exact-endpoint credential cannot carry FTP data ────
 
+@pytest.mark.real_runtime
 async def test_real_aria2_passive_ftp_fails_under_an_exact_endpoint_credential(tmp_path) -> None:
     origin = await FtpOrigin({"/pub/file.bin": b"ftp-payload"}).start()
     seen: list = []
@@ -328,6 +329,7 @@ async def test_exact_endpoint_credential_gets_407_on_a_second_port() -> None:
 
 # ── 2. GREEN: same-host scope carries control + passive data ─────────────────
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("anonymous", [True, False])
 async def test_real_aria2_passive_ftp_transfers_through_the_same_host_scope(tmp_path, anonymous) -> None:
     origin = await FtpOrigin({"/pub/file.bin": b"ftp-payload"}, users={"dp": "pw"}, anonymous=anonymous).start()
@@ -411,6 +413,7 @@ async def test_same_host_data_connect_still_rejects_non_public_resolution(answer
         await guard.stop()
 
 
+@pytest.mark.real_runtime
 async def test_same_host_rebinding_between_control_and_data_is_rejected(tmp_path) -> None:
     """The control CONNECT resolves public; the data CONNECT rebinds private."""
     origin = await FtpOrigin({"/pub/file.bin": b"ftp-payload"}).start()
@@ -625,6 +628,7 @@ async def test_existing_in_process_consumers_still_report_a_silent_destination_a
         await guard.stop()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("scheme", ["http", "https", "ftp", "sftp"])
 async def test_aria2_reports_a_guard_timeout_or_refusal_exactly_like_a_policy_refusal(tmp_path, scheme) -> None:
     """The guard's distinct answers (502 refused, 504 timed out) never change

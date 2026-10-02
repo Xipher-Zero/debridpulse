@@ -156,6 +156,7 @@ async def _runtime(tmp_path, monkeypatch, *, aria2=False, active=4, aria2_split=
 
 # ── FILE and COLLECTION ──────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_a_daemon_file_and_a_nested_tree_complete_through_the_real_engine(tmp_path, monkeypatch):
     source = tmp_path / "srv"
     write_tree(source, {"movie.bin": BODY[:5 * MIB], "Album/cover.jpg": b"cover",
@@ -189,6 +190,7 @@ async def test_a_daemon_file_and_a_nested_tree_complete_through_the_real_engine(
         daemon.stop()
 
 
+@pytest.mark.real_runtime
 async def test_rsync_over_ssh_asks_identity_once_then_completes_with_rsync_provenance(tmp_path, monkeypatch):
     origin = await RsyncSshOrigin(tmp_path / "ssh", credentials=(USER, PASSWORD)).start()
     write_tree(origin.root / "files", {"movie.bin": BODY[:3 * MIB]})
@@ -233,6 +235,7 @@ async def test_rsync_over_ssh_asks_identity_once_then_completes_with_rsync_prove
         await origin.close()
 
 
+@pytest.mark.real_runtime
 async def test_a_credential_in_an_rsync_link_is_split_at_admission_and_never_stored(tmp_path, monkeypatch):
     write_tree(tmp_path / "priv", {"secret.bin": BODY[:MIB]})
     daemon = RsyncDaemon(tmp_path / "daemon", {"priv": {"path": tmp_path / "priv", "auth": (USER, PASSWORD)}}).start()
@@ -256,6 +259,7 @@ async def test_a_credential_in_an_rsync_link_is_split_at_admission_and_never_sto
         daemon.stop()
 
 
+@pytest.mark.real_runtime
 async def test_an_encrypted_openssh_key_answers_the_challenge_and_is_never_stored_or_logged(
         tmp_path, monkeypatch, caplog):
     import asyncssh
@@ -296,6 +300,7 @@ async def test_an_encrypted_openssh_key_answers_the_challenge_and_is_never_store
 
 # ── Pause / Resume ───────────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_a_wrong_passphrase_returns_to_the_challenge_and_never_downgrades_to_a_password(
         tmp_path, monkeypatch, caplog):
     import asyncssh
@@ -345,6 +350,7 @@ async def test_a_wrong_passphrase_returns_to_the_challenge_and_never_downgrades_
         await origin.close()
 
 
+@pytest.mark.real_runtime
 async def test_pause_stops_acquisition_and_resume_continues_from_dp_material(tmp_path, monkeypatch):
     daemon = RsyncDaemon(tmp_path / "daemon", {"pub": {"path": tmp_path / "srv"}}, bwlimit=2048)
     write_tree(tmp_path / "srv", {"movie.bin": BODY})
@@ -393,6 +399,7 @@ async def test_pause_stops_acquisition_and_resume_continues_from_dp_material(tmp
 
 # ── Switching and cross-executor continuation ────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_operator_switch_between_equivalent_rsync_sources_continues_portably(tmp_path, monkeypatch):
     write_tree(tmp_path / "a-srv", {"movie.bin": BODY})
     write_tree(tmp_path / "b-srv", {"movie.bin": BODY})
@@ -429,6 +436,7 @@ async def test_operator_switch_between_equivalent_rsync_sources_continues_portab
         b.stop()
 
 
+@pytest.mark.real_runtime
 async def test_http_aria2_partial_continues_under_rsync_and_rsync_material_continues_under_aria2(
         tmp_path, monkeypatch):
     """The strongest acceptance proof, and its reverse, on one artifact: which
@@ -521,6 +529,7 @@ async def _collection_under_limit(tmp_path, monkeypatch, parts, limit, *, bwlimi
         daemon.stop()
 
 
+@pytest.mark.real_runtime
 async def test_a_daemon_connection_limit_below_dp_concurrency_never_becomes_a_false_failure(tmp_path, monkeypatch):
     """Four executions admitted by DebridPulse against a one-connection module:
     the daemon refuses the excess outright (characterized: it never queues),
@@ -536,6 +545,7 @@ async def test_a_daemon_connection_limit_below_dp_concurrency_never_becomes_a_fa
     assert held == []
 
 
+@pytest.mark.real_runtime
 async def test_duplicate_proof_under_a_connection_limit_waits_instead_of_becoming_a_hold(tmp_path, monkeypatch):
     """Same-size siblings need a duplicate proof, which samples both members
     at once; a refusal for capacity is no proof attempt, so it never spends the
@@ -568,6 +578,7 @@ async def test_a_private_lan_source_is_refused_without_the_operators_policy(tmp_
         await runtime.close()
 
 
+@pytest.mark.real_runtime
 async def test_equal_size_siblings_on_a_one_connection_daemon_are_proven_and_acquired(tmp_path, monkeypatch):
     """The duplicate proof of two members of one server never needs that server
     to admit two connections at once: under ``max connections = 1`` equal-size
@@ -577,6 +588,7 @@ async def test_equal_size_siblings_on_a_one_connection_daemon_are_proven_and_acq
     assert held == []
 
 
+@pytest.mark.real_runtime
 async def test_two_routes_of_one_file_on_a_one_connection_daemon_converge(tmp_path, monkeypatch):
     """Two spellings of one file on ONE daemon must be proven the same from
     material evidence; that proof never needs the one-connection daemon to

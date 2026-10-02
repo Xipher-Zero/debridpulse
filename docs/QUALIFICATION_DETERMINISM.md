@@ -324,7 +324,47 @@ surviving region. Focus is never parked on `<body>` and a detached control is ne
 The WS2-P1 tests no longer park the owner's list reads to avoid the defect; dedicated
 tests let a refresh land while the dialog is open and assert the restored target.
 
-## 11. Reproducing locally
+## 11. Test layers, ownership and the blocking budget
+
+The `Tests` workflow is **one job definition** whose matrix runs the backend suite in two
+layers, each collected test exactly once:
+
+- **Contract layer** (`-m "not real_runtime"`): every deterministic test -- routing, lifecycle,
+  continuation, recovery, consolidation, provenance, fencing, persistence, parsers, neutral
+  provider/executor contracts, API and presentation. It needs no external executable.
+- **Runtime layer** (`-m real_runtime`): every test that drives a real external executable --
+  rsync, aria2c, the openssl CLI. It runs against the product's supported runtime: rsync is the
+  pinned, digest-verified release the shipped image carries (never the runner's own, and never a
+  relaxed product minimum), rsync's default ports are bindable, and the prerequisites are
+  asserted before any test runs. A runtime test proves that a concrete adapter implements the
+  neutral contract; a universal invariant belongs in the contract layer.
+
+Each layer is partitioned by module path across independent runners (`DP_TEST_SHARD=k/n`,
+`backend/tests/conftest.py`): a fixed partition, so a layer's shards together run each of its
+tests exactly once, and no two shards share a process, port, file or database.
+
+A test that needs an executable carries the `real_runtime` marker; nothing else selects it.
+Every layer ends with an accounting step (tests, summed and wall time, slowest cases); **a skip
+in any layer fails it**, because every layer runs in the environment its tests require -- a skip
+would be coverage that silently did not run.
+
+`Browser Runtime` runs its suite once the same way: Playwright `--shard=k/n` across independent
+runners, each serving its own candidate containers. `fullyParallel` is off, so a spec file never
+splits: the files of one shard share one backend exactly as before, and no two shards share any.
+
+**Milestone manifests are records, not owners.** A milestone qualification list
+(`post_audit_qualification.txt`, `two_provider_checkpoint_qualification.txt`) is evidence of what
+was run when that milestone qualified. It does not become another forever-running blocking layer:
+every test it names is part of the maintained suite and runs there once. A future regression
+belongs in the canonical invariant owner, not in a new list. (`ws3p1_adversarial_qualification.txt`
+remains the input of the separate, non-required `WS3 Adversarial` workflow.)
+
+**Budget.** The normal blocking path completes within **20 minutes** wall-clock. The workflow's
+job timeout sits slightly above it to stop a severe regression; it is never raised to hide
+slowness. Growth is answered by moving universal behavior to the contract layer, merging tests
+that prove one invariant, or adding a contract shard -- never by skipping, retrying or relaxing.
+
+## 12. Reproducing locally
 
 Build the candidate image (`docker build` or `podman build`), start the open and
 password-authenticated containers exactly as `browser-runtime.yml` does (choose free ports and

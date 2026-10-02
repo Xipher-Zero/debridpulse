@@ -158,6 +158,7 @@ async def _terminal(engine: TransferEngine, repository: TransferRepository, tran
     raise AssertionError("Stage 5 auth-boundary transfer did not settle")
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("status", [403, 404, 503])
 async def test_http_failures_do_not_become_authentication_challenges(tmp_path, monkeypatch, status):
     server, port, state = await _start_origin(status)
@@ -178,6 +179,7 @@ async def test_http_failures_do_not_become_authentication_challenges(tmp_path, m
         await server.wait_closed()
 
 
+@pytest.mark.real_runtime
 async def test_html_login_form_is_ordinary_content_not_browser_auth_discovery(tmp_path, monkeypatch):
     body = (
         b"<!doctype html><title>Sign in</title>"

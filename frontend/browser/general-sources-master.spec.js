@@ -263,13 +263,24 @@ test('the master toggle persists on change, with no page-level save', async ({pa
 });
 
 test('every Services enable control is immediate', async ({page}) => {
+  // The expected controls are whatever the server publishes as Services
+  // members -- every integration that declares a status tier -- plus the group
+  // gates they declare, so a newly registered integration is covered by
+  // existing, and one whose control is missing (or a control nothing
+  // publishes) fails.
+  const {integrations} = await canonical(page);
+  const members = Object.entries(integrations).filter(([, entry]) => entry?.presentation?.status_tier)
+    .map(([identity]) => identity);
+  const groups = [...new Set(Object.values(integrations).map(entry => entry?.presentation?.status_group)
+    .filter(Boolean))];
+  expect(groups).toContain(GROUP);
   await openSources(page);
   const controls = await page.$$eval(
     '.dp-settings-panel[data-panel="sources"] [data-integration-enabled], ' +
     '.dp-settings-panel[data-panel="sources"] [data-integration-group-enabled]',
     nodes => nodes.map(n => n.dataset.integrationEnabled || n.dataset.integrationGroupEnabled));
-  expect(new Set(controls)).toEqual(new Set(['alldebrid', 'usenet', 'general_http', 'general_ftp', 'general_scp',
-    'general_rsync', 'general_webdav', 'multimeta', GROUP]));
+  expect(controls.length).toBe(new Set(controls).size);
+  expect(new Set(controls)).toEqual(new Set([...members, ...groups]));
 });
 
 /* The suite's designated NEUTRAL whole-settings probe.

@@ -237,6 +237,7 @@ async def _build_runtime(tmp_path, monkeypatch) -> _Runtime:
     return _Runtime(repository, engine, proc, service, downloads, server)
 
 
+@pytest.mark.real_runtime
 async def test_ten_identical_mirrors_converge_within_one_transfer(tmp_path, monkeypatch):
     """DP 1.0.12 corrective Sections 4.1/4.2/4.3/9/21 Example A (real
     runtime, corrected topology).
@@ -309,6 +310,7 @@ async def test_ten_identical_mirrors_converge_within_one_transfer(tmp_path, monk
         await runtime.close()
 
 
+@pytest.mark.real_runtime
 async def test_later_separate_transfer_cross_transfer_consolidates_into_canonical(tmp_path, monkeypatch):
     """DP 1.0.12 corrective Sections 4.4/21 Example C (real runtime): a
     LATER, genuinely separately admitted Quick Add -- its own distinct
@@ -379,6 +381,7 @@ async def test_later_separate_transfer_cross_transfer_consolidates_into_canonica
         await runtime.close()
 
 
+@pytest.mark.real_runtime
 async def test_same_filename_different_content_siblings_do_not_converge_within_one_transfer(tmp_path, monkeypatch):
     """Section 4.3/12.4/21 (corrected topology): identical logical filename,
     genuinely different payloads, submitted as SIBLING requests of the same
@@ -428,6 +431,7 @@ async def test_same_filename_different_content_siblings_do_not_converge_within_o
         await runtime.close()
 
 
+@pytest.mark.real_runtime
 async def test_real_aria2_zero_byte_success_never_completes_or_delivers(tmp_path, monkeypatch):
     """DP 1.0.12 canonical lifecycle/recovery/completion rework, Section 11
     real-runtime proof: two genuinely different-content siblings of one
@@ -518,6 +522,7 @@ async def _durable_tables_mentioning(needle: str) -> list[str]:
     return tables_with_hits
 
 
+@pytest.mark.real_runtime
 async def test_transfer_286_unresolved_alternate_never_gets_a_writer_and_does_not_poison_parent(tmp_path, monkeypatch):
     """Production transfer 286, end to end through the REAL runtime: one
     transfer, ten sibling General HTTP requests for the same logical file --
@@ -2258,6 +2263,7 @@ async def test_completion_preserves_consolidation_and_hides_dead_switch_controls
     assert all(row["switch_eligible"] is False for row in candidate_rows)  # no dead interactive controls.
 
 
+@pytest.mark.real_runtime
 async def test_transfer_291_exhausted_incomplete_representation_bootstrap_progresses_with_one_verified_writer(
     tmp_path, monkeypatch,
 ):

@@ -545,6 +545,7 @@ async def _terminal(executor, handle):
         await asyncio.sleep(min(0.05, remaining))
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_real_aria2_anonymous_ftp_transfers_through_the_executor(tmp_path, monkeypatch) -> None:
     from test_v113_egress_guard_route_scope import FtpOrigin
@@ -565,6 +566,7 @@ async def test_real_aria2_anonymous_ftp_transfers_through_the_executor(tmp_path,
         await origin.close()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_real_aria2_protected_ftp_challenges_then_continues_with_a_fresh_login(tmp_path, monkeypatch) -> None:
     from test_v113_egress_guard_route_scope import FtpOrigin
@@ -607,6 +609,7 @@ async def test_real_aria2_protected_ftp_challenges_then_continues_with_a_fresh_l
 PAYLOAD = b"line1\nline2\r\nline3\n\x00\xff\n"
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 @pytest.mark.parametrize("daemon_globals", [("--ftp-pasv=false",), ("--ftp-type=ascii",), ("--ftp-pasv=false", "--ftp-type=ascii")])
 async def test_real_aria2_owned_ftp_job_stays_passive_and_binary_under_hostile_daemon_globals(tmp_path, monkeypatch, daemon_globals) -> None:
@@ -631,6 +634,7 @@ async def test_real_aria2_owned_ftp_job_stays_passive_and_binary_under_hostile_d
         await origin.close()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_the_test_origin_really_rewrites_ascii_transfers(tmp_path) -> None:
     """Oracle check: without the per-job pin, a hostile ascii daemon alters bytes."""

@@ -273,23 +273,25 @@ that exact digest.
   wheel for the interpreter.
 - `frontend/browser/node_modules/`, `test-results/`, `playwright-report/` are git-ignored.
 
-### The three curated qualification manifests (`backend/tests/*.txt`)
+### Test layers and the milestone manifests (`docs/QUALIFICATION_DETERMINISM.md` §11)
 
-Plain-text lists of pytest targets (one per line; `#`/blank lines stripped; `::node_id`
-selectors allowed). CI feeds them to pytest via
-`mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/<file>.txt)`.
+`tests.yml` runs the backend suite once, as two layers of one matrix job: the **contract
+layer** (`-m "not real_runtime"`, deterministic, no executables) and the **runtime layer**
+(`-m real_runtime`: tests that drive real rsync / aria2c / openssl, against a pinned,
+digest-verified rsync 3.4.1 — the product minimum is >= 3.4.0 — with ports 873/22 bindable).
+Each layer is partitioned by module path across 3 runners via `DP_TEST_SHARD=k/n`
+(`tests/conftest.py`).
+A test needing an executable carries `real_runtime`; any skip fails its layer. Blocking budget:
+20 min wall-clock.
 
-| File | ~cases | Purpose | Run by |
-|---|---|---|---|
-| `post_audit_qualification.txt` | 13 | Frozen v1.0.12 post-audit "six-finding" gate (ROUTE/CORE/STATE/DB/UIARCH). Header says "changes to the qualified tree require qualification from zero." | `tests.yml` |
-| `two_provider_checkpoint_qualification.txt` | 32 | Broad two-provider (AllDebrid + General HTTP) regression gate — routing, applicability, provenance, consolidation, settings, license policy. | `tests.yml` |
-| `ws3p1_adversarial_qualification.txt` | 9 | Consolidation-boundary adversarial gate (provider-neutral, deterministic). | `ws3-adversarial.yml` only |
+`post_audit_qualification.txt` and `two_provider_checkpoint_qualification.txt` are
+**historical records** of what qualified v1.0.12 — not executed; every test they name runs once
+in the maintained suite. New regressions go into the canonical invariant owner, never into a
+new list. `ws3p1_adversarial_qualification.txt` is still the input of the separate, non-required
+`ws3-adversarial.yml`.
 
-**When editing code covered by a manifest, keep the manifest and its tests consistent** —
-CI runs the manifest as a distinct gated step. Contract tests that read source files as
-strings (`test_settings_*`, `test_ui_*`) will break on refactors and must be updated in
-the same change; some are inside `post_audit_qualification.txt` and `two_provider_…txt`
-(frozen), so a manifest-covered contract change should be deliberate.
+Contract tests that read source files as strings (`test_settings_*`, `test_ui_*`) break on
+refactors and must be updated in the same change.
 
 ### 6a. Qualification determinism (read `docs/QUALIFICATION_DETERMINISM.md`)
 
@@ -323,8 +325,8 @@ All gate on: `main`, `1.0.11`, `1.0.12`, `staging/**`, some `audit/**`, plus `v*
 
 | Workflow | What it does |
 |---|---|
-| **tests.yml** (`Tests`) | Job `test`: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; `ruff check … --select F821,F822,F823` (undefined names) over the backend packages; run `post_audit_qualification.txt`, then `two_provider_checkpoint_qualification.txt`, then full `pytest tests/` exactly once (junit XML captured), then the classifier decides the gate (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv); `python -m compileall -q .`; `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Installs `aria2`+`openssl` for downloader regression tests. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
-| **browser-runtime.yml** (`Browser Runtime`) | Builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`). Uploads traces, classification evidence + `checkpoint-*.png`. |
+| **tests.yml** (`Tests`) | One matrix job `test` (contract 1/3–3/3 + runtime 1/3–3/3), each entry: resolves + publishes `QUALIFICATION_ANCHOR_SHA` (checkout `fetch-depth: 0`); Python 3.12; runs its layer of `pytest tests/` exactly once (junit XML + `--durations`), then the classifier decides the entry (bounded isolated candidate + anchor runs of only the failing node ids, anchor in its own venv), then an accounting step (counts, timings, slowest cases; any skip fails). Runtime entries install `aria2`+`openssl` and build pinned rsync 3.4.1. Contract shard 1 also runs `ruff check … --select F821,F822,F823`, `python -m compileall -q .` and `node --check` on every `frontend/static/*.js` + `playwright.config.js` + `*.spec.js`. Job `security` (needs `test`): `pip-audit -r requirements.txt` + `bandit -r . --exclude ./tests --severity-level high --confidence-level high`. |
+| **browser-runtime.yml** (`Browser Runtime`) | Matrix of 3 runners (`--shard=k/n` by whole spec file, `PW_SHARD`); each builds the real candidate image; runs two containers (open + password-auth, config generated via the image's own `auth.passwords.hash_password`); waits on `/api/health`; `npm ci --ignore-scripts` + `npm audit --audit-level=high` + `playwright install chromium`; runs the Playwright suite exactly once (`retries: 0`, JSON + line reporters); on failure the classifier drives bounded failing-case runs on a fresh candidate pair and on the anchor's own image/specs (ports 8082/8083); inventory must reconcile (`discovered == running == passed + failed`). Uploads traces, classification evidence + `checkpoint-*.png`. |
 | **codeql.yml** (`CodeQL`) | `security-and-quality` queries for `python`, `javascript-typescript`, `actions`. Weekly cron (Thu 20:17 UTC). |
 | **fork-image.yml** (`Fork Image`) | Build (`linux/amd64`) + extensive smoke test (OCI labels, Debian Trixie, `7zip`/`7zip-rar`/`aria2`/`gosu` present, RAR codec registered, 7z round-trip, license files, health version). The `publish` job runs **on any `push` event** (`if: github.event_name == 'push' || …`) — so a push to `1.0.12` publishes. It builds `linux/amd64,linux/arm64` and pushes a **write-once `sha-<full-sha>` tag only** (an existing valid candidate for that SHA is reused, never overwritten; a revision mismatch fails closed; runs for one SHA are serialized) to `ghcr.io/xipher-zero/debridpulse` with `provenance: mode=max` + SBOM, then verifies the published digest/annotations converged. (The `workflow_dispatch` `publish_sha` path is separately restricted to `main`/`feature/`/`fix/`/`chore/`.) |
 | **container-security.yml** (`Container Security`) | Never rebuilds. Waits for the exact `sha-<full-sha>` digest, resolves per-arch child digests, runs **Trivy** twice per arch (report all MEDIUM+, then fail on fixable HIGH/CRITICAL), writes + signs a `container-security/v1` attestation to the registry. Weekly cron (Tue 19:31 UTC). |

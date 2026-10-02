@@ -53,7 +53,7 @@ the lock file and `licenses/python-runtime.json`.
 | markdown | 3.10.3 | BSD-3-Clause |
 | more-itertools | 11.1.0 | MIT |
 | multidict | 6.7.1 | Apache-2.0 |
-| oauthlib | 3.3.1 | BSD-3-Clause |
+| oauthlib | 4.0.0 | BSD-3-Clause |
 | orjson | 3.11.9 | MPL-2.0 AND (Apache-2.0 OR MIT) |
 | portend | 3.2.1 | MIT |
 | prometheus-client | 0.26.0 | Apache-2.0 AND BSD-2-Clause |

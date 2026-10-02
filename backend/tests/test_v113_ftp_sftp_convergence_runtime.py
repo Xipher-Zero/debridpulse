@@ -40,7 +40,7 @@ from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 from transfers.models import ExecutionSubject
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 SAMPLE = 64 * 1024
 PAYLOAD = (hashlib.sha256(b"transfer-312-payload-x").digest() * (10 * SAMPLE // 32 + 1))[:10 * SAMPLE + 5]

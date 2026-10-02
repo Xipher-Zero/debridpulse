@@ -91,6 +91,7 @@ def test_the_smallest_native_expression_of_each_neutral_depth():
 
 # ── the real daemon ──────────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 @pytest.mark.parametrize("depth", list(EXPECTED), ids=["current", "1", "2", "3", "all"])
 async def test_each_depth_lists_exactly_its_levels(tmp_path, daemon, spawned, depth):  # noqa: F811
@@ -109,6 +110,7 @@ async def test_each_depth_lists_exactly_its_levels(tmp_path, daemon, spawned, de
     assert [item for item in listing if item == "-r" or item.startswith("--exclude")] == expected_options
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 @pytest.mark.skipif(os.geteuid() == 0, reason="a root sender reads an unreadable directory")
 async def test_deeper_directories_are_pruned_by_the_rsync_invocation_not_discarded(tmp_path, daemon):
@@ -125,6 +127,7 @@ async def test_deeper_directories_are_pruned_by_the_rsync_invocation_not_discard
         await executor.discover(subject, depth=DiscoveryDepth.UNLIMITED)
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_a_daemon_root_applies_the_depth_below_every_named_root(tmp_path, daemon):
     origin, guard = daemon
@@ -134,6 +137,7 @@ async def test_a_daemon_root_applies_the_depth_below_every_named_root(tmp_path, 
     assert _paths(root) == {"other/o.bin", "other/deep/o2.bin", "pub/tree/r.bin"}
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_a_file_ignores_the_depth(tmp_path, daemon):
     origin, guard = daemon
@@ -154,6 +158,7 @@ async def test_limits_rsync_does_not_enforce_are_refused(tmp_path):
 
 # ── rsync over SSH: the same neutral depth, the same native filter ───────────
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_rsync_over_ssh_realizes_the_same_depth(tmp_path, spawned):  # noqa: F811
     origin = await RsyncSshOrigin(tmp_path / "ssh", credentials=(USER, PASSWORD)).start()
@@ -208,6 +213,7 @@ async def test_the_provider_issues_its_configured_depth_on_both_readings(url):
         assert (await provider.resolve(result.discovery.alternate)).discovery.depth == DiscoveryDepth.of(2)
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_default_rsync_behavior_is_unchanged(tmp_path, daemon, spawned):  # noqa: F811
     """The minimum regression: an installation that never touches the setting

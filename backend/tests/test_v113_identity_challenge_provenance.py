@@ -25,7 +25,7 @@ from rsync_origins import RsyncSshOrigin, write_tree
 from test_v113_rsync_runtime import PASSWORD, USER, _runtime
 from transfers.models import TransferRequest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 
 async def _two_roots_asking_at_once(tmp_path, monkeypatch):

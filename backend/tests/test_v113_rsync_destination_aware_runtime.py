@@ -31,7 +31,7 @@ from transfers.filesystem import flush_payload
 from transfers.manual_failover import manual_candidate_failover, preview_candidate_switch
 from transfers.models import ContinuationStrategy, TransferRequest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 MIB = 1 << 20
 
 

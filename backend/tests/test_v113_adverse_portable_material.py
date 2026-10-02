@@ -168,6 +168,7 @@ async def _settle(executor, handle, timeout=60):
     raise AssertionError("aria2 job never settled")
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_a_fresh_aria2_job_imports_sparse_dp_material_over_http_byte_exact(aria2_daemon):
     from execution_requests import file_request
@@ -199,6 +200,7 @@ async def test_a_fresh_aria2_job_imports_sparse_dp_material_over_http_byte_exact
         server.close()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_a_sparse_import_whose_retained_ranges_are_not_physically_present_fails_closed(aria2_daemon):
     from execution_requests import file_request
@@ -218,6 +220,7 @@ async def test_a_sparse_import_whose_retained_ranges_are_not_physically_present_
     assert not Path(str(target) + ".aria2").exists()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_a_fresh_aria2_job_imports_sparse_dp_material_over_sftp(aria2_daemon, tmp_path):
     from execution_requests import file_request
@@ -257,6 +260,7 @@ async def test_a_fresh_aria2_job_imports_sparse_dp_material_over_sftp(aria2_daem
 
 # ── the real round trip: HTTP (sparse aria2) -> rsync -> HTTP ───────────────
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_http_rsync_http_round_trip_keeps_every_dp_valid_range_and_switches_in_seconds(tmp_path, monkeypatch):
     from test_v113_rsync_destination_aware_runtime import _switched_to_rsync

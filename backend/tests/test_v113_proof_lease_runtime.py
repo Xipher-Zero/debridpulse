@@ -26,7 +26,7 @@ from test_v113_ftp_sftp_convergence_runtime import PASSWORD, PAYLOAD, USER, _ari
 from test_v113_transport_evidence_sampling import SftpOrigin
 from transfers.models import TransferRequest, TransferState
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 
 def _root(tmp_path):

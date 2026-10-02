@@ -33,7 +33,7 @@ from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 MIB = 1 << 20
 BODY = b"".join(hashlib.sha256(str(index).encode()).digest() for index in range(24 * MIB // 32))
 

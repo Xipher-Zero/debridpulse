@@ -308,7 +308,13 @@ async def test_discovery_acceptance_retires_the_provider_question_while_the_list
         await asyncio.wait_for(login.holding.wait(), timeout=10)
         assert await _until(_cleared(engine, transfer.id)), "question open while the listing ran"
         assert "auth_accepted" in await _facts(transfer.id)
-        assert (await repository.get(transfer.id)).state != TransferState.INPUT_REQUIRED
+
+        async def left_input_required():
+            return (await repository.get(transfer.id)).state != TransferState.INPUT_REQUIRED
+        # Retiring the question and re-aggregating the transfer are two steps of
+        # one acceptance. The invariant is that both happen while the listing is
+        # still held -- not that a single read lands after the second.
+        assert await _until(left_input_required), "the transfer still waits for input while its listing runs"
         # The request is being resolved -- never released for a second resolution.
         (record,) = await repository.requests(transfer.id)
         assert record.state == "resolving"
@@ -499,6 +505,7 @@ async def test_proven_access_lives_exactly_as_long_as_a_transfer_that_holds_the_
 
 # ── Defect A at the real transports: the verdict is reported at the handshake ─
 
+@pytest.mark.real_runtime
 async def test_rsync_over_ssh_reports_acceptance_before_the_remote_command_runs(tmp_path, monkeypatch):
     import asyncssh
     import executors.rsync.executor as rsync_module

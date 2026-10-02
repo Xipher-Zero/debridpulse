@@ -325,6 +325,7 @@ async def test_guarded_options_override_daemon_global_proxy_bypasses() -> None:
         await guard.stop()
 
 
+@pytest.mark.real_runtime
 async def test_dns_rebinding_public_preflight_private_at_connect_is_blocked(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -365,6 +366,7 @@ async def test_dns_rebinding_public_preflight_private_at_connect_is_blocked(
         await target.wait_closed()
 
 
+@pytest.mark.real_runtime
 async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -404,6 +406,7 @@ async def test_guarded_actual_http_connection_succeeds_and_keeps_hostname(
         await target.wait_closed()
 
 
+@pytest.mark.real_runtime
 async def test_guarded_https_preserves_original_hostname_and_tls_sni(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -470,6 +473,7 @@ async def test_literal_private_connection_target_is_blocked() -> None:
         await guard._approved_endpoints("127.0.0.1", 80)
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize(
     ("content_type", "name", "body"),
     [
@@ -563,6 +567,7 @@ async def _guard_connect_authorities(
     return seen
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("scheme,port", [("ftp", 21), ("sftp", 22)])
 async def test_real_aria2_tunnels_the_new_transports_through_the_guard(
     tmp_path: Path, monkeypatch, scheme: str, port: int
@@ -572,6 +577,7 @@ async def test_real_aria2_tunnels_the_new_transports_through_the_guard(
     assert seen == [("delivery.test", port)]
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("scheme,port", [("http", 80), ("https", 443)])
 async def test_real_aria2_still_tunnels_http_transports_through_the_guard(
     tmp_path: Path, monkeypatch, scheme: str, port: int
@@ -581,6 +587,7 @@ async def test_real_aria2_still_tunnels_http_transports_through_the_guard(
     assert seen == [("delivery.test", port)]
 
 
+@pytest.mark.real_runtime
 @pytest.mark.parametrize("preference", ["--ftp-proxy", "--http-proxy", "--https-proxy"])
 async def test_a_shared_daemon_per_protocol_proxy_cannot_route_around_the_guard(
     tmp_path: Path, monkeypatch, preference: str

@@ -160,6 +160,7 @@ async def test_declared_capabilities_are_exactly_the_characterized_ones(tmp_path
     assert off.capabilities.continuation == frozenset({ContinuationCapability.FULL_RESTART})
 
 
+@pytest.mark.real_runtime
 async def test_health_reports_a_missing_binary_and_an_unsupported_version(tmp_path):
     missing = _executor(tmp_path, guard_for(), binary="dp-no-such-rsync-binary")
     health = await missing.health()
@@ -175,6 +176,7 @@ async def test_health_reports_a_missing_binary_and_an_unsupported_version(tmp_pa
 
 # ── 2. discovery ─────────────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_discovery_classifies_files_trees_links_and_missing_paths(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -201,6 +203,7 @@ async def test_discovery_classifies_files_trees_links_and_missing_paths(tmp_path
         assert raised.value.error.category == category
 
 
+@pytest.mark.real_runtime
 async def test_a_daemon_root_is_the_tree_of_every_advertised_named_root(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -213,6 +216,7 @@ async def test_a_daemon_root_is_the_tree_of_every_advertised_named_root(tmp_path
     assert not any("link" in path for path in paths)
 
 
+@pytest.mark.real_runtime
 async def test_listed_paths_are_literal_never_patterns(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -231,6 +235,7 @@ async def test_listed_paths_are_literal_never_patterns(tmp_path, daemon):
 
 # ── 3. FILE execution through the neutral contract ───────────────────────────
 
+@pytest.mark.real_runtime
 async def test_a_daemon_file_completes_with_direct_argv_and_no_destructive_option(tmp_path, daemon, spawned):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -271,6 +276,7 @@ def _core_authority(executor, *, paused=False, started=()):
     return asked
 
 
+@pytest.mark.real_runtime
 async def test_input_continues_the_same_challenged_attempt_under_resume_authority(tmp_path, daemon):
     """The executor-challenge loop (rsync+ssh after a switch): the answered
     attempt is no longer unstarted, so its continuation must use ``resume``
@@ -300,6 +306,7 @@ async def test_input_continues_the_same_challenged_attempt_under_resume_authorit
     assert "resume" in asked
 
 
+@pytest.mark.real_runtime
 async def test_input_continues_a_challenged_attempt_after_a_restart(tmp_path, daemon):
     origin, guard = daemon
     first = _executor(tmp_path, guard)
@@ -320,6 +327,7 @@ async def test_input_continues_a_challenged_attempt_after_a_restart(tmp_path, da
     assert "resume" in asked
 
 
+@pytest.mark.real_runtime
 async def test_daemon_credentials_never_reach_argv_environment_or_diagnostics(tmp_path, daemon, spawned):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -344,6 +352,7 @@ async def test_daemon_credentials_never_reach_argv_environment_or_diagnostics(tm
     assert PASSWORD not in json.dumps([str(failed.error), str(wrong.error)])
 
 
+@pytest.mark.real_runtime
 async def test_exit_zero_is_never_completion_without_a_regular_target_of_the_source_length(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -362,6 +371,7 @@ async def test_exit_zero_is_never_completion_without_a_regular_target_of_the_sou
     assert not target.exists() or target.stat().st_size == 0
 
 
+@pytest.mark.real_runtime
 async def test_local_destination_containment(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -378,6 +388,7 @@ async def test_local_destination_containment(tmp_path, daemon):
 
 # ── 4. tunables ──────────────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_modification_time_and_compression_follow_their_settings(tmp_path, daemon, spawned):
     origin, guard = daemon
     source = tmp_path / "srv" / "pub" / "payload.bin"
@@ -395,6 +406,7 @@ async def test_modification_time_and_compression_follow_their_settings(tmp_path,
         assert ("--times" in argv) is preserve and ("--compress" in argv) is compress
 
 
+@pytest.mark.real_runtime
 async def test_partial_transfers_off_keeps_the_target_empty_until_completion(tmp_path, daemon):
     origin, guard = daemon
     slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=512).start()
@@ -420,6 +432,7 @@ async def test_partial_transfers_off_keeps_the_target_empty_until_completion(tmp
         slow.stop()
 
 
+@pytest.mark.real_runtime
 async def test_the_connection_timeout_bounds_reaching_the_source_not_the_transfer(tmp_path, daemon):
     _origin, guard = daemon
     # A server that accepts the connection and never speaks the protocol.
@@ -444,6 +457,7 @@ async def test_the_connection_timeout_bounds_reaching_the_source_not_the_transfe
 
 # ── 5. remote capacity ───────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_a_full_module_is_an_immediate_remote_capacity_fact_never_a_stall(tmp_path, daemon):
     origin, guard = daemon
     # Another client holds the module's only slot.
@@ -482,6 +496,7 @@ async def test_a_full_module_is_an_immediate_remote_capacity_fact_never_a_stall(
         holder.wait()
 
 
+@pytest.mark.real_runtime
 async def test_evidence_waits_out_the_release_of_the_session_before_it_and_still_reports_a_full_server(
         tmp_path, daemon):
     """Each evidence window is its own daemon session, and a one-connection
@@ -537,6 +552,7 @@ async def test_evidence_waits_out_the_release_of_the_session_before_it_and_still
         end(holder)
 
 
+@pytest.mark.real_runtime
 async def test_each_daemon_answer_is_classified_for_the_interpretation_owner(tmp_path, daemon):
     """What the server said decides whether another reading of the same source
     may be tried: only its own positive absence (an unknown module, a missing
@@ -589,6 +605,7 @@ def _plan(candidate, boundary: int, size: int, strategy=ContinuationStrategy.CON
                             ((boundary, size),), size, "test")
 
 
+@pytest.mark.real_runtime
 async def test_rsync_continues_exactly_at_the_authorized_boundary_and_never_rewrites_it(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -609,6 +626,7 @@ async def test_rsync_continues_exactly_at_the_authorized_boundary_and_never_rewr
     assert target.read_bytes() == bytes(retained) + PAYLOAD[boundary:]
 
 
+@pytest.mark.real_runtime
 async def test_unknown_destination_bytes_are_never_promoted_by_rsync_quick_check(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -626,6 +644,7 @@ async def test_unknown_destination_bytes_are_never_promoted_by_rsync_quick_check
     assert done.state == ExecutionState.SUCCEEDED and target.read_bytes() == PAYLOAD
 
 
+@pytest.mark.real_runtime
 async def test_a_plan_whose_retained_prefix_is_missing_fails_closed(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -671,6 +690,7 @@ def _argv(monkeypatch):
     return seen
 
 
+@pytest.mark.real_runtime
 async def test_a_destination_aware_plan_reads_the_untouched_target_as_its_basis(tmp_path, daemon, monkeypatch):
     origin, guard = daemon
     slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=512).start()
@@ -705,6 +725,7 @@ async def test_a_destination_aware_plan_reads_the_untouched_target_as_its_basis(
         slow.stop()
 
 
+@pytest.mark.real_runtime
 async def test_an_interrupted_destination_aware_writer_leaves_the_target_exactly_as_it_was(tmp_path, daemon):
     origin, guard = daemon
     slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=256).start()
@@ -726,6 +747,7 @@ async def test_an_interrupted_destination_aware_writer_leaves_the_target_exactly
         slow.stop()
 
 
+@pytest.mark.real_runtime
 async def test_a_destination_aware_plan_whose_retained_ranges_are_missing_fails_closed(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -741,6 +763,7 @@ async def test_a_destination_aware_plan_whose_retained_ranges_are_missing_fails_
 
 # ── 7. process ownership ─────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_one_attempt_owns_one_group_across_restart_and_cancel_is_observed_truth(tmp_path, daemon):
     origin, guard = daemon
     slow = RsyncDaemon(tmp_path / "slow-daemon", {"pub": {"path": tmp_path / "srv" / "pub"}}, bwlimit=256).start()
@@ -771,6 +794,7 @@ async def test_one_attempt_owns_one_group_across_restart_and_cancel_is_observed_
         slow.stop()
 
 
+@pytest.mark.real_runtime
 async def test_cancel_of_a_finished_writer_reports_what_it_observed(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -788,6 +812,7 @@ async def test_cancel_of_a_finished_writer_reports_what_it_observed(tmp_path, da
 
 # ── 8. evidence ──────────────────────────────────────────────────────────────
 
+@pytest.mark.real_runtime
 async def test_rsync_evidence_is_the_same_neutral_sample_every_transport_produces(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)
@@ -821,6 +846,7 @@ async def ssh_origin(tmp_path):
     await guard.stop()
 
 
+@pytest.mark.real_runtime
 async def test_ssh_identity_is_confirmed_before_any_credential_and_then_enforced(tmp_path, ssh_origin, spawned):
     origin, guard, _key = ssh_origin
     executor = _executor(tmp_path, guard)
@@ -849,6 +875,7 @@ async def test_ssh_identity_is_confirmed_before_any_credential_and_then_enforced
         assert PASSWORD not in blob and "wrong-sentinel" not in blob and "RSYNC_PROXY" not in env
 
 
+@pytest.mark.real_runtime
 async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh_origin, spawned):
     origin, guard, key = ssh_origin
     executor = _executor(tmp_path, guard)
@@ -901,6 +928,7 @@ async def test_ssh_file_tree_and_key_login_through_the_one_channel(tmp_path, ssh
     assert (home.kind, home.expected_bytes) == (RemoteObjectKind.FILE, 9)
 
 
+@pytest.mark.real_runtime
 async def test_a_server_without_rsync_is_a_definitive_protocol_failure(tmp_path):
     origin = await RsyncSshOrigin(tmp_path / "ssh", credentials=(USER, PASSWORD), remote_rsync=False).start()
     guard = guard_for()
@@ -917,6 +945,7 @@ async def test_a_server_without_rsync_is_a_definitive_protocol_failure(tmp_path)
         await guard.stop()
 
 
+@pytest.mark.real_runtime
 async def test_success_states_exactly_the_one_file_it_was_authorized_to_produce(tmp_path, daemon):
     origin, guard = daemon
     executor = _executor(tmp_path, guard)

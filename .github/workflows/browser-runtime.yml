@@ -30,10 +30,24 @@ permissions:
   contents: read
 
 jobs:
+  # The suite runs once, split by spec file across independent runners
+  # (Playwright --shard; fullyParallel is off, so a file never splits). Each
+  # shard serves its own candidate containers, so no two shards share a backend,
+  # and within a shard the files share one exactly as before
+  # (docs/QUALIFICATION_DETERMINISM.md section 11).
   browser-runtime:
+    name: browser-runtime ${{ matrix.shard }}
     runs-on: ubuntu-latest
+    # The blocking budget is 20 minutes; this only stops a severe regression.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: ['1/3', '2/3', '3/3']
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PW_SHARD: ${{ matrix.shard }}
+      SHARD_ID: shard-${{ strategy.job-index }}
       IMAGE: debridpulse-browser:${{ github.sha }}
       DP_BASE_URL: http://127.0.0.1:8080
       DP_AUTH_BASE_URL: http://127.0.0.1:8081
@@ -91,7 +105,7 @@ jobs:
       - name: Upload qualification metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-qualification-metadata-${{ github.sha }}
+          name: browser-qualification-metadata-${{ github.sha }}-${{ env.SHARD_ID }}
           path: ${{ runner.temp }}/qualification/qualification-metadata.json
           if-no-files-found: error
           retention-days: 14
@@ -173,13 +187,13 @@ jobs:
           set -uo pipefail
           full="$RUNNER_TEMP/qualification/candidate/full"
           mkdir -p "$full"
-          NO_COLOR=1 npx playwright test --config=playwright.config.js --list 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
+          NO_COLOR=1 npx playwright test --config=playwright.config.js --list --shard="$PW_SHARD" 2>&1 | tee "$RUNNER_TEMP/playwright-list.log"
           discovered="$(sed -nE 's/.*Total: ([0-9]+) tests? in .*/\1/p' "$RUNNER_TEMP/playwright-list.log" | tail -n1)"
 
           # The full suite runs exactly once. Its exit status is evidence, not the gate:
           # the classification step decides, so evidence is always generated first.
           set +e
-          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --shard="$PW_SHARD" --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
           test_status=${PIPESTATUS[0]}
           set -e
           echo "$test_status" > "$full/exit_code.txt"
@@ -191,7 +205,7 @@ jobs:
           passed="$(sed -nE 's/^[[:space:]]*([0-9]+) passed.*/\1/p' "$RUNNER_TEMP/playwright.log" | tail -n1)"
           printf 'discovered=%s\nrunning=%s\npassed=%s\n' "$discovered" "$running" "$passed" | tee "$RUNNER_TEMP/playwright-counts.txt"
           {
-            echo '### Browser Runtime qualification inventory'
+            echo "### Browser Runtime qualification inventory (shard $PW_SHARD)"
             echo
             cat "$RUNNER_TEMP/playwright-counts.txt"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -338,7 +352,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-qualification-${{ github.sha }}
+          name: browser-qualification-${{ github.sha }}-${{ env.SHARD_ID }}
           path: |
             ${{ runner.temp }}/playwright-list.log
             ${{ runner.temp }}/playwright.log
@@ -351,7 +365,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: browser-classification-${{ github.sha }}
+          name: browser-classification-${{ github.sha }}-${{ env.SHARD_ID }}
           path: |
             ${{ runner.temp }}/qualification/candidate
             ${{ runner.temp }}/qualification/anchor
@@ -364,7 +378,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: two-provider-visual-verification-${{ github.sha }}
+          name: two-provider-visual-verification-${{ github.sha }}-${{ env.SHARD_ID }}
           path: frontend/browser/test-results/checkpoint-*.png
           if-no-files-found: warn
           retention-days: 14

@@ -186,6 +186,6 @@ FTP, SCP, SFTP/SSH, rsync, additional providers/executors/dependencies, and rich
 
 ## Consolidation result
 
-The current ownership audit found these production layers to be distinct canonical owners rather than staged duplicate implementations. No correct Universal Transfer lifecycle layer is rewritten merely for stylistic simplification. Superseded roadmap-transition wording is removed from current-state documentation, and the permanent `two_provider_checkpoint_qualification.txt` manifest composes canonical lower-level regression owners with cross-slice architecture/documentation tests instead of duplicating implementation logic.
+The current ownership audit found these production layers to be distinct canonical owners rather than staged duplicate implementations. No correct Universal Transfer lifecycle layer is rewritten merely for stylistic simplification. Superseded roadmap-transition wording is removed from current-state documentation, and the `two_provider_checkpoint_qualification.txt` manifest (now a historical record, not executed by CI) composes canonical lower-level regression owners with cross-slice architecture/documentation tests instead of duplicating implementation logic.
 
 This checkpoint does not introduce production AllDebrid→HTTP runtime-failure fallback, provider priority UI, manual routing override, saved credentials, or another transport/provider. The eventual full Stage 17/18 consolidation, dependency/license audit, and release qualification remain required after deferred provider/protocol work is implemented.

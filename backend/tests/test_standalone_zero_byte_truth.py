@@ -150,6 +150,7 @@ class _DownloadRootWatcher:
 # RED-F1 — standalone real-runtime pathological zero
 # --------------------------------------------------------------------------- #
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_standalone_pathological_zero_is_never_published_as_canonical_material(tmp_path, monkeypatch):
     """One transfer, one request, one pathological zero-byte endpoint.
@@ -257,6 +258,7 @@ async def test_standalone_pathological_zero_is_never_published_as_canonical_mate
         await runtime.close()
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_standalone_unknown_size_positive_http_still_completes(tmp_path, monkeypatch):
     """G-F6 control: closing the zero gap must not make unknown-size HTTP unsupported.

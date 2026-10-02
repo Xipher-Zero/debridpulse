@@ -28,7 +28,7 @@ from test_v113_rsync_runtime import MIB, USER, _runtime
 from transfers.errors import Category
 from transfers.models import TransferRequest, TransferState
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 HOST = "rsync-both.test"
 DAEMON_PORT, SSH_PORT = 873, 22
 

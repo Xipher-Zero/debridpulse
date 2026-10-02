@@ -1,5 +1,7 @@
-# Permanent focused post-audit v1.0.12 six-finding qualification gate.
-# Frozen-candidate push marker: changes to the qualified tree require qualification from zero.
+# Historical record: the post-audit v1.0.12 six-finding qualification set.
+# It is not executed by CI. Every test it names runs once in the maintained suite
+# (docs/QUALIFICATION_DETERMINISM.md section 11: milestone manifests are records,
+# not owners); a future regression belongs in the canonical invariant owner.
 # ROUTE-001 + CORE-001
 tests/test_audit_remediation_group_a.py
 # STATE-001 + STATE-002 + STATE-003 + ROUTE-002

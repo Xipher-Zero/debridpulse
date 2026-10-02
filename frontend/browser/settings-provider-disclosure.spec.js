@@ -17,11 +17,18 @@ const { test, expect } = require('@playwright/test');
  */
 
 /* Provider cards: closed on arrival, and a navigation-local choice about one
- * is never restored. */
-const EXPANDABLE = [
-  ['.dp-settings-provider-card--alldebrid', 'AllDebrid'],
-  ['.dp-settings-provider-card--usenet', 'Usenet'],
-];
+ * is never restored. The expandable cards are every Premium Services member the
+ * server publishes, so a newly registered provider is covered by existing. */
+const PREMIUM_TIER = 'premium_service';
+
+async function expandable(page) {
+  const {integrations} = await page.request.get('/api/settings').then(r => r.json());
+  const premium = Object.entries(integrations)
+    .filter(([, entry]) => entry?.presentation?.status_tier === PREMIUM_TIER);
+  expect(premium.length, 'no Premium Services member is published').toBeGreaterThan(0);
+  return premium.map(([identity, entry]) =>
+    [identity, `.dp-settings-provider-card--${identity}`, entry.presentation.status_name || identity]);
+}
 
 /* DP 1.0.13: the Network Sources group declares a starting state of its own --
  * it is what an operator arriving at Services most often needs to see -- and
@@ -58,19 +65,19 @@ async function disclosureState(page, selector) {
   }, selector);
 }
 
-/* `integrations.usenet.enabled` belongs to usenet-server-cards.spec.js alone
- * and `integrations.alldebrid.enabled` to settings-providers-persistence.spec.js
- * alone (spec files share one backend and run concurrently). This spec only
- * needs both providers SHOWN enabled, so the page is served the live settings
- * document with those facts prepared -- nothing is written to a shared key. */
+/* Each provider's `enabled` key belongs to one other spec file alone (spec
+ * files share one backend and run concurrently). This spec only needs every
+ * Premium Services member SHOWN enabled, so the page is served the live
+ * settings document with those facts prepared -- nothing is written to a
+ * shared key. */
 async function serveProvidersEnabled(page) {
   await page.route(url => url.pathname === '/api/settings', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
     const live = await response.json();
-    const usenet = {...live.integrations.usenet, enabled: true};
-    const alldebrid = {...live.integrations.alldebrid, enabled: true};
-    await route.fulfill({response, json: {...live, integrations: {...live.integrations, usenet, alldebrid}}});
+    const integrations = Object.fromEntries(Object.entries(live.integrations).map(([identity, entry]) =>
+      [identity, entry?.presentation?.status_tier === PREMIUM_TIER ? {...entry, enabled: true} : entry]));
+    await route.fulfill({response, json: {...live, integrations}});
   });
 }
 
@@ -83,13 +90,14 @@ test('every expandable Services card is collapsed on navigation', async ({page})
   // provider is not thereby an expanded one.
   await serveProvidersEnabled(page);
 
+  const cards = await expandable(page);
   await page.goto('/');
   await openSources(page);
-  for (const provider of ['alldebrid', 'usenet']) {
+  for (const [provider] of cards) {
     await expect(page.locator(`[data-integration-enabled="${provider}"]`)).toBeChecked();
   }
 
-  for (const [selector, label] of EXPANDABLE) {
+  for (const [, selector, label] of cards) {
     const state = await disclosureState(page, selector);
     expect(state.missing, `${label} has no canonical disclosure`).toBeFalsy();
     expect(state.expanded, `${label} opened itself on navigation`).toBe(false);
@@ -127,10 +135,11 @@ test('Network Sources starts expanded and respects a later manual collapse', asy
 });
 
 test('the disclosure still opens and closes each card, and never persists', async ({page}) => {
+  const cards = await expandable(page);
   await page.goto('/');
   await openSources(page);
 
-  for (const [selector, label] of EXPANDABLE) {
+  for (const [, selector, label] of cards) {
     const button = page.locator(`${selector} .dp-settings-disclosure`);
     await button.click();
     expect((await disclosureState(page, selector)).expanded, `${label} did not open`).toBe(true);
@@ -141,21 +150,22 @@ test('the disclosure still opens and closes each card, and never persists', asyn
 
   // Open everything, then leave and come back: a navigation-local choice is
   // not durable state and must not be restored.
-  for (const [selector] of EXPANDABLE) {
+  for (const [, selector] of cards) {
     await page.locator(`${selector} .dp-settings-disclosure`).click();
   }
   await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
   await openSources(page);
-  for (const [selector, label] of EXPANDABLE) {
+  for (const [, selector, label] of cards) {
     expect((await disclosureState(page, selector)).expanded,
       `${label} remembered an expansion across navigation`).toBe(false);
   }
 });
 
 test('there is exactly one disclosure control per expandable card', async ({page}) => {
+  const cards = await expandable(page);
   await page.goto('/');
   await openSources(page);
-  for (const [selector, label] of EXPANDABLE) {
+  for (const [, selector, label] of cards) {
     await expect(page.locator(`${selector} > .card-header .dp-settings-disclosure`),
       `${label} does not carry exactly one canonical disclosure in its header`).toHaveCount(1);
   }

@@ -36,7 +36,7 @@ All paths below are under `backend/tests/` unless explicitly stated otherwise.
 
 ## Current focused qualification
 
-`backend/tests/two_provider_checkpoint_qualification.txt` is the permanent focused manifest for this checkpoint. It preserves every canonical test path from the qualified Item 11 manifest and adds the canonical runtime architecture, neutral input/auth architecture, current checkpoint documentation, and license-policy owners. The manifest composes production-path tests; it does not create a parallel mock implementation. The 1.0.12 corrective slices deliberately extend it with the four `test_file_selection_*` modules and `test_deleted_transfer_generation_retirement.py`.
+`backend/tests/two_provider_checkpoint_qualification.txt` records the focused manifest this checkpoint qualified with; since DP 1.0.13 it is a record, not executed by CI -- every test it names runs once in the maintained suite (`docs/QUALIFICATION_DETERMINISM.md` section 11). It preserves every canonical test path from the qualified Item 11 manifest and adds the canonical runtime architecture, neutral input/auth architecture, current checkpoint documentation, and license-policy owners. The manifest composes production-path tests; it does not create a parallel mock implementation. The 1.0.12 corrective slices deliberately extend it with the four `test_file_selection_*` modules and `test_deleted_transfer_generation_retirement.py`.
 
 The full pytest suite remains authoritative beyond the focused slice. Browser Runtime, static/compile, dependency/security, CodeQL, container runtime/security, OCI identity, SBOM/provenance, and immutable image publication remain separate required gates on the same exact checkpoint SHA.
 

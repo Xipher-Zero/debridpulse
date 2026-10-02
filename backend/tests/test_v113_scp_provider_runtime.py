@@ -21,7 +21,7 @@ from transfers.models import TransferState
 from test_v113_transport_evidence_sampling import SftpOrigin
 from transfers.models import TransferRequest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 
 def _origin_root(tmp_path, name):

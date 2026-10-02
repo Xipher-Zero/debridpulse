@@ -238,6 +238,7 @@ def _free_port():
         return probe.getsockname()[1]
 
 
+@pytest.mark.real_runtime
 @pytest.mark.asyncio
 @pytest.mark.skipif(shutil.which("aria2c") is None, reason="the packaged aria2c binary is required")
 async def test_obsolete_persisted_values_never_redirect_the_dp_owned_daemon(tmp_path, monkeypatch):

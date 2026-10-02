@@ -20,7 +20,7 @@ from test_v113_scp_provider_runtime import _durable_text
 from test_v113_transport_evidence_sampling import SftpOrigin
 from transfers.models import TransferRequest
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 MEMBERS = {"one.iso": PAYLOAD, "two.iso": PAYLOAD[::-1], "three.iso": PAYLOAD[:4096]}
 FTP_FILES = {f"/pub/iso/{name}": body for name, body in MEMBERS.items()} | {"/pub/iso/nested/deep.iso": b"deep"}

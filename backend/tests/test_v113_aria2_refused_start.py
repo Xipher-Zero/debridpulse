@@ -67,6 +67,7 @@ def _executor(tmp_path, client, monkeypatch):
 
 # ── the executor boundary, against the real daemon ──────────────────────────
 
+@pytest.mark.real_runtime
 async def test_a_real_daemon_refusal_of_add_uri_is_a_definitive_failed_start(tmp_path, monkeypatch):
     proc, service = await _start_aria2(tmp_path)
     try:
@@ -89,6 +90,7 @@ async def test_a_real_daemon_refusal_of_add_uri_is_a_definitive_failed_start(tmp
         await proc.wait()
 
 
+@pytest.mark.real_runtime
 async def test_the_client_types_only_the_daemons_own_error_answer_as_a_refusal(tmp_path):
     proc, service = await _start_aria2(tmp_path)
     try:

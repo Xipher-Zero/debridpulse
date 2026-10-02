@@ -29,7 +29,7 @@ from test_v113_continuation_runtime import BODY, start_origin
 from test_v113_rsync_runtime import MIB, _runtime
 from transfers.models import TransferRequest, TransferState
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 WINDOW = 2.0
 # One relayed chunk per budget, sampling granularity and the executors' own
 # write buffering: a measured window may exceed the ceiling by at most this.

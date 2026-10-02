@@ -22,7 +22,7 @@ from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
 
-pytestmark = pytest.mark.asyncio
+pytestmark = [pytest.mark.asyncio, pytest.mark.real_runtime]
 
 
 def _answer(address: str, port: int) -> tuple:

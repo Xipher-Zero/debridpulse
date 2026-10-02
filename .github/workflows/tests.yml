@@ -31,10 +31,37 @@ permissions:
   contents: read
 
 jobs:
+  # One job definition, one full-suite invocation, one layer shard per matrix
+  # entry (docs/QUALIFICATION_DETERMINISM.md section 11). The contract layer is
+  # every deterministic test; the runtime layer is every test that drives a real
+  # executable, against the product's supported runtime. Each layer is
+  # partitioned by module path across independent runners, so each collected
+  # test runs in exactly one entry and no two entries share a machine.
   test:
+    name: ${{ matrix.layer }} ${{ matrix.shard }}
     runs-on: ubuntu-latest
+    # The blocking budget is 20 minutes; this only stops a severe regression.
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {layer: contract, shard: 1/3, select: not real_runtime, static: true}
+          - {layer: contract, shard: 2/3, select: not real_runtime, static: false}
+          - {layer: contract, shard: 3/3, select: not real_runtime, static: false}
+          - {layer: runtime, shard: 1/3, select: real_runtime, static: false}
+          - {layer: runtime, shard: 2/3, select: real_runtime, static: false}
+          - {layer: runtime, shard: 3/3, select: real_runtime, static: false}
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+      PYTEST_LAYER: ${{ matrix.select }}
+      DP_TEST_SHARD: ${{ matrix.shard }}
+      LAYER_ID: ${{ matrix.layer }}-${{ strategy.job-index }}
+      # The product's rsync executor requires rsync >= 3.4.0. The runtime layer
+      # builds exactly the supported release the shipped image carries,
+      # verified against its published digest, rather than the runner's own.
+      RSYNC_VERSION: 3.4.1
+      RSYNC_SHA256: 2924bcb3a1ed8b551fc101f740b9f0fe0a202b115027647cf69850d65fd88c52
 
     steps:
       - name: Checkout
@@ -91,17 +118,53 @@ jobs:
       - name: Upload qualification metadata
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: tests-qualification-metadata-${{ github.sha }}
+          name: tests-qualification-metadata-${{ github.sha }}-${{ env.LAYER_ID }}
           path: ${{ runner.temp }}/qualification/qualification-metadata.json
           if-no-files-found: error
           retention-days: 14
 
-      - name: Install downloader regression dependencies
+      - name: Provide the supported runtime (runtime layer)
+        if: matrix.layer == 'runtime'
         run: |
+          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends aria2 openssl
-          aria2c --version
+          src="$RUNNER_TEMP/rsync-src"; prefix="$RUNNER_TEMP/rsync"
+          mkdir -p "$src"
+          curl -sSfL -o "$src/rsync.tar.gz" "https://download.samba.org/pub/rsync/src/rsync-$RSYNC_VERSION.tar.gz"
+          echo "$RSYNC_SHA256  $src/rsync.tar.gz" | sha256sum -c -
+          tar -xzf "$src/rsync.tar.gz" -C "$src"
+          (cd "$src/rsync-$RSYNC_VERSION" && ./configure --prefix="$prefix" --disable-md2man --disable-xxhash \
+             --disable-zstd --disable-lz4 --disable-openssl --with-included-popt --with-included-zlib > /dev/null \
+           && make -j"$(nproc)" > /dev/null && make install > /dev/null)
+          echo "$prefix/bin" >> "$GITHUB_PATH"
+          # rsync's own default ports (873 daemon, 22 SSH) are part of what the
+          # runtime layer proves; loopback binding of them needs no root, and the
+          # hosted runner's own SSH server must not hold 22 (the next step proves
+          # both ports are free before any test runs).
+          sudo sysctl -w net.ipv4.ip_unprivileged_port_start=22
+          sudo systemctl stop ssh.socket ssh.service || true
+
+      - name: Assert the runtime layer prerequisites
+        if: matrix.layer == 'runtime'
+        run: |
+          set -euo pipefail
+          test "$(command -v rsync)" = "$RUNNER_TEMP/rsync/bin/rsync"
+          rsync --version | head -1 | grep -q "rsync  version $RSYNC_VERSION "
+          aria2c --version | head -1
           openssl version
+          python3 - <<'PY'
+          import socket
+
+          def bind(port):
+              probe = socket.socket()
+              probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+              probe.bind(("127.0.0.1", port))
+              probe.close()
+
+          list(map(bind, (873, 22)))
+          print("loopback 873 and 22 bindable")
+          PY
 
       - name: Install dependencies
         run: |
@@ -109,43 +172,12 @@ jobs:
           pip install -r requirements-dev.txt -r requirements-qa.txt
 
       - name: Check undefined Python names
+        if: matrix.static
         run: |
           cd backend
           ruff check api application auth core db executors integrations postprocessors providers services transfers main.py --select F821,F822,F823
 
-      - name: Run v1.0.12 post-audit six-finding qualification
-        run: |
-          set -o pipefail
-          cd backend
-          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/post_audit_qualification.txt)
-          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/post-audit.log"
-
-      - name: Upload post-audit qualification output
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: post-audit-qualification-${{ github.sha }}
-          path: ${{ runner.temp }}/post-audit.log
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Run v1.0.12 two-provider canonical qualification
-        run: |
-          set -o pipefail
-          cd backend
-          mapfile -t cases < <(grep -Ev '^[[:space:]]*(#|$)' tests/two_provider_checkpoint_qualification.txt)
-          python -m pytest "${cases[@]}" -v --tb=short 2>&1 | tee "$RUNNER_TEMP/two-provider.log"
-
-      - name: Upload two-provider qualification output
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: two-provider-qualification-${{ github.sha }}
-          path: ${{ runner.temp }}/two-provider.log
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Run all tests
+      - name: Run this layer of the suite
         id: full_pytest
         run: |
           set -uo pipefail
@@ -153,9 +185,11 @@ jobs:
           mkdir -p "$full"
           cd backend
           set +e
-          python -m pytest tests/ -v --tb=short -o junit_family=xunit1 --junitxml="$full/results.xml" 2>&1 | tee "$RUNNER_TEMP/pytest.log"
+          started=$(date +%s)
+          python -m pytest tests/ -m "$PYTEST_LAYER" -v --tb=short --durations=25 -o junit_family=xunit1 --junitxml="$full/results.xml" 2>&1 | tee "$RUNNER_TEMP/pytest.log"
           status=${PIPESTATUS[0]}
           set -e
+          echo $(( $(date +%s) - started )) > "$full/elapsed_seconds.txt"
           echo "$status" > "$full/exit_code.txt"
           cp "$RUNNER_TEMP/pytest.log" "$full/pytest.log"
           echo "full pytest run exited with status $status; the classification step decides the gate"
@@ -257,7 +291,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pytest-qualification-${{ github.sha }}
+          name: pytest-qualification-${{ github.sha }}-${{ env.LAYER_ID }}
           path: ${{ runner.temp }}/pytest.log
           if-no-files-found: error
           retention-days: 14
@@ -266,7 +300,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: pytest-classification-${{ github.sha }}
+          name: pytest-classification-${{ github.sha }}-${{ env.LAYER_ID }}
           path: |
             ${{ runner.temp }}/qualification/candidate
             ${{ runner.temp }}/qualification/anchor
@@ -275,13 +309,39 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
+      - name: Account for this layer
+        if: always()
+        run: |
+          python3 - "$RUNNER_TEMP/qualification/candidate/full" <<'PY' | tee -a "$GITHUB_STEP_SUMMARY"
+          import os, sys, xml.etree.ElementTree as ET
+          from pathlib import Path
+          full = Path(sys.argv[1])
+          cases = list(ET.parse(full / "results.xml").getroot().iter("testcase"))
+          skipped = [case for case in cases if case.find("skipped") is not None]
+          elapsed = (full / "elapsed_seconds.txt").read_text().strip()
+          print(f"### Layer {os.environ['LAYER_ID']} ({os.environ['PYTEST_LAYER']})")
+          print(f"- tests: {len(cases)}; skipped: {len(skipped)}; summed test time: "
+                f"{sum(float(case.get('time', 0)) for case in cases):.0f}s; layer wall time: {elapsed}s")
+          slowest = sorted(cases, key=lambda case: -float(case.get("time", 0)))[:15]
+          print("- slowest:")
+          print("\n".join(f"  - {float(case.get('time', 0)):.1f}s {case.get('classname')}::{case.get('name')}"
+                          for case in slowest))
+          print("\n".join(f"  - SKIPPED {case.get('classname')}::{case.get('name')}: "
+                          f"{case.find('skipped').get('message')}" for case in skipped))
+          # A skip here is coverage that silently did not run: every layer
+          # runs in the environment its tests require, so none may skip.
+          sys.exit(1 if skipped else 0)
+          PY
+
       - name: Check Python syntax
+        if: matrix.static
         run: |
           cd backend
           python -m compileall -q .
           echo "All Python modules compile"
 
       - name: Check frontend JavaScript syntax
+        if: matrix.static
         run: |
           find frontend/static -maxdepth 1 -name '*.js' -print0 | sort -z | xargs -0 -n1 node --check
           node --check frontend/browser/playwright.config.js

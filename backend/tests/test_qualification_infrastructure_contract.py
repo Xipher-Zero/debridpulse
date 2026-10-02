@@ -273,7 +273,73 @@ def test_no_automatic_full_suite_rerun_loops() -> None:
     for depth, line in pytest_lines:
         if line in [l for _d, l in full]:
             continue
-        assert '"${cases[@]}"' in line or (depth > 0 and '"$nodeid"' in line), f"unexpected pytest invocation: {line}"
+        assert depth > 0 and '"$nodeid"' in line, f"unexpected pytest invocation: {line}"
+
+
+def test_the_suite_runs_once_as_two_layers_and_milestone_manifests_are_never_executed() -> None:
+    """docs/QUALIFICATION_DETERMINISM.md section 11: one job definition, one full-suite
+    invocation selecting one layer per matrix entry, each test in exactly one entry."""
+    raw = TESTS_WORKFLOW.read_text(encoding="utf-8")
+    assert "qualification.txt" not in raw and '"${cases[@]}"' not in raw and "mapfile" not in raw
+    job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
+    assert job["timeout-minutes"] == 25  # the 20-minute budget's severe-regression stop
+    entries = job["strategy"]["matrix"]["include"]
+    assert job["strategy"]["fail-fast"] is False
+    contract = [entry for entry in entries if entry["layer"] == "contract"]
+    runtime = [entry for entry in entries if entry["layer"] == "runtime"]
+    assert {entry["select"] for entry in contract} == {"not real_runtime"}
+    assert {entry["select"] for entry in runtime} == {"real_runtime"}
+    for layer in (contract, runtime):
+        shards = sorted(entry["shard"] for entry in layer)
+        assert shards == [f"{index}/{len(layer)}" for index in range(1, len(layer) + 1)]
+    assert sum(1 for entry in entries if entry["static"]) == 1
+    assert job["env"]["PYTEST_LAYER"] == "${{ matrix.select }}"
+    assert job["env"]["DP_TEST_SHARD"] == "${{ matrix.shard }}"
+    assert re.search(r'-m pytest tests/ -m "\$PYTEST_LAYER" .*--durations=', _runs(TESTS_WORKFLOW))
+
+
+def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None:
+    job = _workflow(BROWSER_WORKFLOW)["jobs"]["browser-runtime"]
+    assert job["timeout-minutes"] == 25 and job["strategy"]["fail-fast"] is False
+    shards = job["strategy"]["matrix"]["shard"]
+    assert shards == [f"{index}/{len(shards)}" for index in range(1, len(shards) + 1)]
+    assert job["env"]["PW_SHARD"] == "${{ matrix.shard }}"
+    text = _runs(BROWSER_WORKFLOW)
+    assert '--list --shard="$PW_SHARD"' in text and 'npm test -- --shard="$PW_SHARD"' in text
+    # A spec file never splits across shards: one file shares one backend, as before.
+    config = (ROOT / "frontend" / "browser" / "playwright.config.js").read_text(encoding="utf-8")
+    assert re.search(r"fullyParallel\s*:\s*false", config)
+
+
+def test_the_runtime_layer_runs_against_the_supported_rsync_and_nothing_skips() -> None:
+    from executors.rsync.executor import MINIMUM_VERSION
+    job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
+    version = tuple(int(part) for part in job["env"]["RSYNC_VERSION"].split("."))
+    assert version >= MINIMUM_VERSION  # the CI runtime meets the product minimum, never the reverse
+    assert re.fullmatch(r"[0-9a-f]{64}", job["env"]["RSYNC_SHA256"])
+    steps = {step["name"]: step for step in _steps(TESTS_WORKFLOW)}
+    provide = steps["Provide the supported runtime (runtime layer)"]
+    assert provide["if"] == "matrix.layer == 'runtime'"
+    assert 'sha256sum -c -' in provide["run"] and "net.ipv4.ip_unprivileged_port_start=22" in provide["run"]
+    assert "systemctl stop ssh.socket ssh.service" in provide["run"]
+    asserted = steps["Assert the runtime layer prerequisites"]["run"]
+    assert 'rsync --version | head -1 | grep -q "rsync  version $RSYNC_VERSION "' in asserted
+    assert "(873, 22)" in asserted and "bind(" in asserted
+    account = steps["Account for this layer"]
+    assert account["if"] == "always()" and "sys.exit(1 if skipped else 0)" in account["run"]
+
+
+def test_the_contract_layer_partition_runs_every_module_exactly_once() -> None:
+    from conftest import parse_shard, shard_of
+    modules = sorted(path.relative_to(ROOT / "backend").as_posix()
+                     for path in (ROOT / "backend" / "tests").glob("test_*.py"))
+    for shards in (1, 2, 3, 5):
+        owners = {module: [k for k in range(1, shards + 1) if shard_of(module, shards) == k] for module in modules}
+        assert all(len(owner) == 1 for owner in owners.values())
+    assert parse_shard("") is None and parse_shard("2/3") == (2, 3)
+    for bad in ("0/3", "4/3"):
+        with pytest.raises(pytest.UsageError):
+            parse_shard(bad)
 
 
 def test_every_workflow_loop_is_bounded_by_the_classifier_budget() -> None:
