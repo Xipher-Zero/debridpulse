@@ -530,3 +530,47 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
     await page.setViewportSize({width: 1440, height: 1000});
   });
 });
+
+/* DP 1.0.13 provider-card corrections -- the AllDebrid credential is ONE
+ * compact, centred, bordered control island (title/hint, field and Remove side
+ * by side, about 65% of the body), and neither AllDebrid nor Usenet keeps a
+ * blank status row above its content. Only Real-Debrid has a status to show. */
+test('the AllDebrid credential is one compact centred island and no blank row sits above it', async ({page}) => {
+  await isolateExternalFonts(page);
+  await page.goto('/');
+  await openSources(page);
+  for (const id of ['alldebrid', 'usenet']) {
+    const card = page.locator(`.dp-settings-provider-card--${id}`);
+    const disclosure = card.locator('.dp-settings-disclosure');
+    if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+    await expect(card.locator('.dp-settings-provider-status-line')).toHaveCount(0);
+  }
+  const row = page.locator('.dp-settings-provider-card--alldebrid .dp-settings-alldebrid-key-row');
+  await expect(row.locator('.form-hint')).toHaveText('Enter an API key to connect your AllDebrid account.');
+  await expect(row.locator('[data-action="clear-alldebrid-key"]')).toHaveText('Remove API Key');
+  const geometry = await row.evaluate(island => {
+    const box = island.getBoundingClientRect();
+    const body = island.parentElement.getBoundingClientRect();
+    const parts = ['.dp-settings-inline-field-info', '.dp-settings-inline-field-control', '.dp-settings-inline-field-action']
+      .map(selector => island.querySelector(selector).getBoundingClientRect());
+    return {
+      border: getComputedStyle(island).borderTopStyle,
+      share: box.width / body.width,
+      centred: Math.abs((box.left - body.left) - (body.right - box.right)),
+      // Side by side, in order, inside the island, on one centre line.
+      ordered: parts.every((part, index) => index === 0 || part.left >= parts[index - 1].right),
+      inside: parts.every(part => part.left >= box.left && part.right <= box.right),
+      centreLine: Math.max(...parts.map(part => (part.top + part.bottom) / 2))
+        - Math.min(...parts.map(part => (part.top + part.bottom) / 2)),
+      firstChild: island.parentElement.firstElementChild === island,
+    };
+  });
+  expect(geometry.border).toBe('solid');
+  expect(geometry.share).toBeGreaterThan(0.6);
+  expect(geometry.share).toBeLessThan(0.7);
+  expect(geometry.centred).toBeLessThan(2);
+  expect(geometry.ordered).toBe(true);
+  expect(geometry.inside).toBe(true);
+  expect(geometry.centreLine).toBeLessThan(2);
+  expect(geometry.firstChild).toBe(true);
+});

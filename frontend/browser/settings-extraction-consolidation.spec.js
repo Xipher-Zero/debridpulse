@@ -406,6 +406,8 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
     await openSettings(page, 'sources');
     await page.locator('.dp-settings-provider-card--alldebrid .dp-settings-disclosure').click();
     await expect(page.locator('.dp-settings-alldebrid-key-row')).toBeVisible();
+    await expect(page.locator('.dp-settings-alldebrid-key-row .form-hint'))
+      .toHaveText('API key configured for your AllDebrid account.');
 
     const measured = await page.evaluate(() => {
       const row = document.querySelector('.dp-settings-alldebrid-key-row');
@@ -418,7 +420,10 @@ test('the AllDebrid credential row is the inline grammar, with its status inside
       const style = getComputedStyle(badge);
       const contentRight = rect(input).right - parseFloat(getComputedStyle(input).paddingRight);
       return {
-        height: rect(row).height,
+        // The row is a bordered, padded island; what must stay one compact
+        // line is what it holds.
+        height: rect(row).height - ['paddingTop', 'paddingBottom', 'borderTopWidth', 'borderBottomWidth']
+          .reduce((sum, edge) => sum + parseFloat(getComputedStyle(row)[edge]), 0),
         stacked: rect(row.querySelector('.form-hint')).top
           >= rect(row.querySelector('.form-label')).bottom - 1,
         inputCentred: midY(rect(input)) - midY(info),

@@ -344,11 +344,16 @@
   letter-spacing: .14em;
 }
 
-/* Every provider card's reserved top body row: exactly one line of the card's
-   copy, present and the same height whether it is blank or carries a status,
-   so no card changes height when its status does. */
+/* A provider card's reserved status row (and the blank row of the same height
+   beneath the Account Connection island): exactly one line of the row's own
+   12px copy, a FIXED height whether it is blank or carries a status, so no
+   card changes height when its status does. The status inside is centred on
+   both axes. */
 #view-settings .dp-settings-provider-status-line {
-  min-height: 1.5em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 1.5em;
   margin: 0 0 14px;
   color: var(--dp-text-primary);
   font-size: 12px;
@@ -356,8 +361,37 @@
   text-align: center;
 }
 
+/* The blank row beneath the Account Connection island. Above the island sit
+   the card body's own top padding, the status row and its margin; this row
+   and its margin mirror the last two, and its margin also carries the body's
+   padding, so the separator below the island is exactly as far from it as the
+   card header above is. */
+#view-settings .dp-settings-realdebrid-island + .dp-settings-provider-status-line {
+  margin-bottom: calc(14px + var(--dp-card-padding));
+}
+
+/* Below 700px the shell sets every .card-body to 8px vertical padding
+   (ui-universal-language.css); the mirror follows it. */
+@media (max-width: 700px) {
+  #view-settings .dp-settings-realdebrid-island + .dp-settings-provider-status-line {
+    margin-bottom: calc(14px + 8px);
+  }
+}
+
+/* The premium expiry is ordinary card copy -- the size and colour of the
+   island's own helper line -- inside the row's fixed height. Only the wait
+   below is emphasised. */
+#view-settings .dp-settings-realdebrid-expiry {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+}
+
+/* Larger than the row's own line, set solid (line-height 1) so it still sits
+   inside the row's fixed height. */
 #view-settings .dp-settings-realdebrid-waiting {
+  font-size: 16px;
   font-weight: 600;
+  line-height: 1;
   animation: dp-settings-realdebrid-waiting 2.4s ease-in-out infinite;
 }
 
@@ -627,13 +661,26 @@
   min-width: 0;
 }
 
-/* The AllDebrid credential row.
-   The informational stack takes what it needs, the field is the flexible
-   element between it and the destructive action, and all three peers share one
-   centre line -- the inline grammar above, with no geometry of its own. */
+/* The AllDebrid credential row: ONE compact, centred Settings control island
+   -- the Backup Folder island's material and its deliberate share of the card
+   body -- holding the title/hint, the field and the removal side by side at
+   the ordinary Settings spacing. The field takes what the island has left,
+   never the card's width. */
+#view-settings .dp-settings-alldebrid-key-row {
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 18px;
+  width: 65%;
+  max-width: 100%;
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
 #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
-  max-width: 340px;
+  max-width: 240px;
 }
 
 #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-control {
@@ -1178,6 +1225,7 @@
   /* Stacked: the informational block, the field and the action each take the
      full width, in that order. The status stays inside the field. */
   #view-settings .dp-settings-alldebrid-key-row {
+    width: 100%;
     align-items: stretch;
     flex-direction: column;
     gap: 10px;

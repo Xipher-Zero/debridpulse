@@ -169,13 +169,16 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     # nothing else, and no card-local confirmation representation survives.
     assert "Clear stored API Key" not in runtime
     assert 'data-action="clear-alldebrid-key"' in runtime
-    assert "Clear Stored API Key" in runtime
+    assert "Remove API Key" in runtime
+    assert "Clear Stored API Key" not in runtime
     assert "Confirm removal of the stored API key" not in runtime
     assert "data-alldebrid-clear-confirm" not in runtime
     # The generic secretField() helper still uses that phrasing for the other
     # secrets; the AllDebrid row has always stated its own.
     assert "configured — blank keeps current value" not in key_helper
-    assert "Leave this field blank to keep the current key." in runtime
+    assert "Enter an API key to connect your AllDebrid account." in runtime
+    assert "API key configured for your AllDebrid account." in runtime
+    assert "Leave this field blank to keep the current key." not in runtime
     assert "api_key: valueOf('alldebrid_api_key')" in runtime
 
     assert '<details class="dp-settings-additional">' in sources

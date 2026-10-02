@@ -1196,7 +1196,7 @@ def test_the_clear_group_is_one_explicit_destructive_action():
     # there is anything stored to erase, so the row never reflows.
     assert "configured ? '' : ' disabled'" in action
     assert 'type="checkbox"' not in action
-    assert "Clear Stored API Key" in group
+    assert "Remove API Key" in group
     assert 'type="checkbox"' not in group
     assert "<label" not in group
     assert "data-alldebrid-clear-confirm" not in SETTINGS_JS

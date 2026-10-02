@@ -113,8 +113,9 @@ def test_sources_copy_is_operator_facing_and_additional_fields_have_explanations
         # Entry/replacement is changed-blur and removal is an explicit action
         # behind the canonical confirmation, so neither sentence mentions a Save
         # any more, and the removal names exactly what it erases.
-        "Enter a new API key to replace the stored key. Leave this field blank to keep the current key.",
-        "Clear Stored API Key",
+        "Enter an API key to connect your AllDebrid account.",
+        "API key configured for your AllDebrid account.",
+        "Remove API Key",
         "Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.",
         "How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.",
         "How often DebridPulse performs a complete reconciliation with AllDebrid. Set to 0 to disable scheduled full syncs.",

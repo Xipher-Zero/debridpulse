@@ -419,7 +419,7 @@ test('Clear is the explicit red action, and it asks the canonical confirmation',
   await preconfigure(page);
   // No card-local gate survives: the action is available, and the dialog asks.
   await expect(clearButton(page)).toBeEnabled();
-  await expect(clearButton(page)).toHaveText('Clear Stored API Key');
+  await expect(clearButton(page)).toHaveText('Remove API Key');
   await expect(clearButton(page)).toHaveClass(/btn-danger/);
   await expect(page.locator('[data-alldebrid-clear-confirm]')).toHaveCount(0);
 

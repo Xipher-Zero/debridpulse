@@ -112,6 +112,11 @@ async function reservedRow(card, region) {
     const text = range.getBoundingClientRect();
     return {
       reserved: line.classList.contains('dp-settings-provider-status-line'),
+      spacer: (() => {
+        const below = node.querySelector('.dp-settings-realdebrid-island').nextElementSibling;
+        return !!below && below.classList.contains('dp-settings-provider-status-line') && !below.textContent
+          && Math.abs(below.getBoundingClientRect().height - box.height) < 0.5;
+      })(),
       text: line.textContent,
       above: island.top - box.bottom,
       height: box.height,
@@ -119,9 +124,19 @@ async function reservedRow(card, region) {
     };
   });
   expect(row.reserved).toBe(true);
+  expect(row.spacer).toBe(true);
   expect(row.above).toBeGreaterThanOrEqual(0);
   expect(row.height).toBeGreaterThan(0);
   expect(row.off).toBeLessThan(2);
+  // The island sits exactly as far below the card header as it sits above
+  // the separator (the Additional Settings border).
+  const balance = await card.evaluate(node => {
+    const header = node.querySelector(':scope > .card-header').getBoundingClientRect();
+    const island = node.querySelector('.dp-settings-realdebrid-island').getBoundingClientRect();
+    const separator = node.querySelector('.dp-settings-additional').getBoundingClientRect();
+    return Math.abs((island.top - header.bottom) - (separator.top - island.bottom));
+  });
+  expect(balance).toBeLessThan(1);
   return {...row, card: (await card.boundingBox()).height};
 }
 
@@ -188,6 +203,14 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     // The wait is the reserved row's text: same row, same card height.
     const connecting = await reservedRow(card, region);
     expect(connecting.text).toBe('Waiting for authorization…');
+    // Larger than the row's own line, and still inside the row's height.
+    const wait = await region.locator('.dp-settings-realdebrid-waiting').evaluate(node => ({
+      size: parseFloat(getComputedStyle(node).fontSize),
+      row: parseFloat(getComputedStyle(node.parentElement).fontSize),
+      inside: node.getBoundingClientRect().height <= node.parentElement.getBoundingClientRect().height + 0.5,
+    }));
+    expect(wait.size).toBeGreaterThan(wait.row);
+    expect(wait.inside).toBe(true);
     expect(connecting.height).toBeCloseTo(disconnected.height, 0);
     expect(connecting.card).toBeCloseTo(disconnected.card, 0);
 
@@ -209,6 +232,12 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     await expect(card.locator('[data-integration-enabled="realdebrid"]')).toBeChecked();
     await expectIsland(region);
     const connected = await reservedRow(card, region);
+    // Only the wait is emphasised: the expiry is ordinary card copy.
+    const sizes = await card.evaluate(node => ({
+      expiry: parseFloat(getComputedStyle(node.querySelector('.dp-settings-realdebrid-expiry')).fontSize),
+      copy: parseFloat(getComputedStyle(node.querySelector('.dp-settings-realdebrid-island-copy > .dp-settings-copy')).fontSize),
+    }));
+    expect(sizes.expiry).toBe(sizes.copy);
     expect(connected.text).toMatch(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
     expect(connected.height).toBeCloseTo(disconnected.height, 0);
     expect(connected.card).toBeCloseTo(disconnected.card, 0);
