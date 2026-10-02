@@ -306,6 +306,15 @@
   filled; otherwise it shows which one is missing and sends nothing. **Continue** still proceeds with a
   deliberately partial credential set.
 
+- **Add an NZB by its link** (`POST /api/usenet/add-link` with `{"url": "https://…"}`). DebridPulse
+  fetches the posting itself — through the same safety checks as every other connection, redirects
+  included, so a link that leads to a private address is refused unless Local Network Connections allows
+  it — and adds it exactly as if the `.nzb` file had been uploaded. The posting is read as it arrives,
+  never held in memory whole, and must be a valid NZB: a page, an error answer, an oversized file or a
+  cancelled fetch adds nothing and leaves nothing behind. A link's query (an indexer's API key or signed
+  address) is sent as given and never stored; a link with a username or password in it is refused. An
+  ordinary link added through Quick Add is still an ordinary link, whatever its name.
+
 ### Changed
 
 - **A transfer continues through another provider once its provider is exhausted.** When the provider

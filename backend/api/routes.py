@@ -745,6 +745,27 @@ async def add_usenet_file(
         await file.close()
 
 
+@router.post("/usenet/add-link")
+async def add_usenet_link(body: dict, application: ApplicationService = Depends(get_application)):
+    """Add the NZB an HTTP(S) link names -- the explicit counterpart of
+    ``/usenet/add-file`` for a posting that is published as a link.
+
+    Explicit intent is the whole point: an ordinary link submitted through
+    ``/links/add`` stays an ordinary link, whatever it looks like. The
+    application fetches and validates the posting and admits the same
+    canonical NZB request an upload becomes; a refusal is the normalized
+    submission error. ``allow_local_network`` answers THIS submission's
+    private-LAN confirmation only, exactly as for ``/links/add``."""
+    url = body.get("url")
+    if not isinstance(url, str) or not url.strip():
+        raise HTTPException(400, "An NZB link is required")
+    try:
+        return public_payload(await application.submit_nzb_link(
+            url, **({"allow_local_network": True} if body.get("allow_local_network") is True else {})))
+    except LocalNetworkConfirmationRequired as exc:
+        raise _local_network_confirmation(exc) from None
+
+
 @router.post("/multimeta/add-file")
 async def add_multimeta_file(
     file: UploadFile = File(...),

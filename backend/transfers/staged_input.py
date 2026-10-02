@@ -112,6 +112,13 @@ class StagedInputStore:
     def root(self) -> Path:
         return self._root
 
+    @property
+    def max_bytes(self) -> int:
+        """The one ceiling every staged input is held to, so a producer can
+        refuse an input it is told up front is larger; the writer still
+        enforces it on the bytes it actually receives."""
+        return self._max_bytes
+
     # --- location -------------------------------------------------------
 
     def _path(self, identity: str) -> Path:

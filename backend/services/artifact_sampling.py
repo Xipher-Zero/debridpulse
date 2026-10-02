@@ -1082,19 +1082,99 @@ async def http_content(address: str, *, max_bytes: int, username: str = "", pass
             finally:
                 response.release()
             return RemoteFile(len(body), location=answered if answered != validated else "", content=bytes(body))
-    except asyncio.TimeoutError:
-        return ListingRefused("timeout")
-    except network_safety.DestinationLookupError:
-        return ListingRefused("dns_failure")
-    except network_safety.UnsafeDestinationError:
-        return ListingRefused("destination_rejected")
-    except aiohttp.ClientSSLError:
-        return ListingRefused("tls_failure")
-    except aiohttp.ClientConnectorError as exc:
+    except _TRANSPORT_FAILURES as exc:
+        return ListingRefused(_transport_reason(exc))
+
+
+# What an in-process HTTP(S) read reports when its transport fails: one
+# vocabulary for every reader of this owner.
+_TRANSPORT_FAILURES = (asyncio.TimeoutError, network_safety.DestinationLookupError,
+                       network_safety.UnsafeDestinationError, aiohttp.ClientError, OSError, ValueError)
+
+
+def _transport_reason(exc: BaseException) -> str:
+    if isinstance(exc, asyncio.TimeoutError):
+        return "timeout"
+    if isinstance(exc, network_safety.DestinationLookupError):
+        return "dns_failure"
+    if isinstance(exc, network_safety.UnsafeDestinationError):
+        return "destination_rejected"
+    if isinstance(exc, aiohttp.ClientSSLError):
+        return "tls_failure"
+    if isinstance(exc, aiohttp.ClientConnectorError):
         refused = isinstance(getattr(exc, "os_error", None), ConnectionRefusedError)
-        return ListingRefused("connection_refused" if refused else "connection_failed")
-    except (aiohttp.ClientError, OSError, ValueError):
-        return ListingRefused("connection_failed")
+        return "connection_refused" if refused else "connection_failed"
+    return "connection_failed"
+
+
+class HttpReadRefused(Exception):
+    """``http_body`` could not deliver the resource: ``reason`` in this
+    owner's transport vocabulary, ``status`` the HTTP answer when there was
+    one."""
+
+    def __init__(self, reason: str, status: int = 0):
+        super().__init__(reason)
+        self.reason = reason
+        self.status = int(status or 0)
+
+
+BODY_CHUNK_BYTES = 1024 * 1024
+
+
+async def http_body(address: str, *, max_bytes: int, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+                    private_lan: bool = False, chunk_bytes: int = BODY_CHUNK_BYTES):
+    """Stream the complete body of one HTTP(S) resource, read-only, chunk by
+    chunk: an async iterator for a durable writer to consume as it arrives.
+
+    The streaming sibling of ``http_content`` -- one ``GET`` through the one
+    guarded request owner (``_guarded_request``), so every hop's destination
+    and every redirect target are decided exactly as for every other read,
+    and a capability the address itself carries (its query) is sent exactly
+    as given. It carries no credential of its own. Nothing is
+    accumulated: the body may be far larger than any buffer. ``timeout_seconds``
+    bounds connecting and every wait for more data, not the whole read, which
+    is as long as the body. A declared length above ``max_bytes`` is refused
+    before any byte is delivered; the consumer enforces the bound on the bytes
+    it actually receives. Content type is never consulted: what the bytes are
+    is the consumer's question. Any failure raises ``HttpReadRefused``."""
+    if urlsplit(str(address or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
+        raise HttpReadRefused("unsupported_scheme")
+    try:
+        validated = await network_safety.validate_resolved_public_destination(address, **_granted(private_lan))
+    except (network_safety.DestinationLookupError, network_safety.UnsafeDestinationError) as exc:
+        raise HttpReadRefused(_transport_reason(exc)) from None
+    granted_host = _origin(validated)[1] if private_lan else ""
+    wait = max(5.0, float(timeout_seconds))
+    timeout = aiohttp.ClientTimeout(total=None, connect=wait, sock_read=wait)
+    connector = aiohttp.TCPConnector(
+        resolver=network_safety.PublicDestinationResolver(**({"private_lan_host": granted_host} if granted_host else {})),
+        use_dns_cache=False)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout, connector=connector) as session:
+            response, reason, _answered = await _guarded_request(
+                session, validated, {}, private_lan=bool(granted_host))
+            if response is None:
+                raise HttpReadRefused(reason or "redirect")
+            try:
+                if response.status == 401:
+                    raise HttpReadRefused("authentication_required", response.status)
+                if not 200 <= response.status < 300:
+                    raise HttpReadRefused(_listing_refusal(response.status), response.status)
+                try:
+                    declared = int(response.headers.get("Content-Length") or 0)
+                except (TypeError, ValueError):
+                    declared = 0
+                if declared > max_bytes:
+                    raise HttpReadRefused("too_large", response.status)
+                while True:
+                    chunk = await response.content.read(max(1, int(chunk_bytes)))
+                    if not chunk:
+                        return
+                    yield chunk
+            finally:
+                response.release()
+    except _TRANSPORT_FAILURES as exc:
+        raise HttpReadRefused(_transport_reason(exc)) from None
 
 
 # ── HTTP(S) download location ──────────────────────────────────────────────

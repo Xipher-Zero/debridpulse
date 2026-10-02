@@ -8,8 +8,9 @@ from __future__ import annotations
 import asyncio
 import errno
 import logging
-from contextlib import asynccontextmanager
-from urllib.parse import parse_qs, urlsplit
+from contextlib import aclosing, asynccontextmanager
+from pathlib import PurePosixPath
+from urllib.parse import parse_qs, unquote, urlsplit
 
 from application import dispatch_admission
 from core.logging_utils import sanitize_exception
@@ -17,7 +18,10 @@ from services.event_bus import publish
 from services.maintenance_gate import ApplicationMaintenanceGate
 from transfers import file_selection
 from transfers.contracts import Manifest
-from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.errors import (
+    Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin, Retryability, Stage, TransferError,
+)
+from transfers.filesystem import safe_name
 from transfers.models import TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
@@ -32,6 +36,45 @@ from transfers.storage import StorageDomain
 
 
 logger = logging.getLogger("debridpulse.application")
+
+# What fetching an NZB link can fail with, in the one in-process HTTP owner's
+# vocabulary (services.artifact_sampling), as the submission failure it is:
+# (domain, category, retryability, origin, HTTP status). No provider has been
+# selected when any of these occur, so none is named.
+_NZB_LINK_FAILURES = {
+    "unsupported_scheme": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER, 400),
+    "destination_rejected": (Domain.SECURITY, Category.DESTINATION_BLOCKED, Retryability.NEVER, Origin.SECURITY_POLICY,
+                             400),
+    "too_large": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER, 413),
+    "dns_failure": (Domain.NETWORK, Category.DNS_FAILURE, Retryability.BACKOFF, Origin.REMOTE_SOURCE, 502),
+    "connection_refused": (Domain.NETWORK, Category.CONNECTION_REFUSED, Retryability.BACKOFF, Origin.REMOTE_SOURCE,
+                           502),
+    "connection_failed": (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF, Origin.REMOTE_SOURCE, 502),
+    "tls_failure": (Domain.NETWORK, Category.TLS_FAILURE, Retryability.NEVER, Origin.REMOTE_SOURCE, 502),
+    "timeout": (Domain.NETWORK, Category.READ_TIMEOUT, Retryability.BACKOFF, Origin.REMOTE_SOURCE, 504),
+    "redirect": (Domain.NETWORK, Category.PROTOCOL_ERROR, Retryability.NEVER, Origin.REMOTE_SOURCE, 502),
+    "authentication_required": (Domain.RESOLUTION, Category.AUTHENTICATION_FAILED, Retryability.AFTER_REAUTH,
+                                Origin.REMOTE_SOURCE, 502),
+    "permission_denied": (Domain.RESOLUTION, Category.AUTHORIZATION_FAILED, Retryability.AFTER_RESOURCE_CHANGE,
+                          Origin.REMOTE_SOURCE, 502),
+    "not_found": (Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Retryability.NEVER, Origin.REMOTE_SOURCE, 502),
+    "rate_limited": (Domain.RESOLUTION, Category.RATE_LIMITED, Retryability.BACKOFF, Origin.REMOTE_SOURCE, 502),
+    "server_error": (Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF,
+                     Origin.REMOTE_SOURCE, 502),
+}
+_NZB_LINK_UNAVAILABLE = (Domain.RESOLUTION, Category.SOURCE_UNAVAILABLE, Retryability.NEVER, Origin.REMOTE_SOURCE, 502)
+
+
+def _submission_failure(domain, category, retryability, origin, status, diagnostic: object = "") -> TransferError:
+    """A normalized submission failure carrying the HTTP status the API
+    answers it with. Never names an integration."""
+    failure = TransferError(NormalizedError(
+        domain, category, Stage.SUBMISSION, retryability, origin=origin, diagnostic=str(diagnostic or ""),
+        confidence=Confidence.HIGH, evidence_basis=EvidenceBasis.STRUCTURED))
+    failure.status_code = status
+    return failure
+
+
 class LocalNetworkConfirmationRequired(Exception):
     """A submission names private-LAN hosts and the operator has not allowed
     this submission to reach them yet. Nothing was admitted."""
@@ -396,6 +439,79 @@ class ApplicationService:
         return await self.submit(
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
             name=name, source=source)
+
+    async def submit_nzb_link(self, url, *, source="direct_link", allow_local_network=False):
+        """Admit the NZB an explicitly submitted link names, as the SAME
+        canonical ``nzb`` request an uploaded NZB becomes.
+
+        The link is how the posting reaches DebridPulse, never a request kind:
+        it is fetched here, before any provider is chosen, so no provider,
+        executor or route ever sees it. One guarded read
+        (``artifact_sampling.http_body``: every hop and redirect target judged
+        by the one network-safety owner; the link's query, which an indexer
+        uses as its capability, sent as given) streams straight into the one
+        staged-input owner -- never held whole, never a side file -- under its
+        one ceiling. The existing NZB reader then decides whether the staged
+        bytes are a posting, and names it; extension, MIME type and status say
+        nothing about that. Anything refused is discarded before admission and
+        fails with a normalized submission error; nothing is admitted unless it
+        is valid.
+        """
+        from providers.usenet.nzb import InvalidNzb, read
+        from services.artifact_sampling import HttpReadRefused, http_body
+
+        try:
+            address = normalize_direct_links([url])[0]
+        except ValueError as exc:
+            raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER,
+                                      400, exc) from None
+        if self.staged_input is None:
+            raise _submission_failure(Domain.LOCAL_RESOURCE, Category.PATH_UNAVAILABLE, Retryability.BACKOFF,
+                                      Origin.LOCAL_SYSTEM, 503, "durable input storage is unavailable")
+        parts = urlsplit(address)
+        if parts.username is not None or parts.password is not None:
+            # A credential written into the link is USER_SUPPLIED material,
+            # which only the transfer admission boundary may take over; this
+            # fetch happens before any transfer exists, so it is refused.
+            raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER,
+                                      400, "an NZB link cannot carry a username or password")
+        consented = await self._local_network_consent([address], allow_local_network=allow_local_network)
+        # The fallback name comes from the link's path alone: its query may be
+        # an indexer's key, and a name is persisted.
+        request_name = safe_name(unquote(PurePosixPath(parts.path).name)) or "usenet-download.nzb"
+        try:
+            async with aclosing(http_body(
+                    address, max_bytes=self.staged_input.max_bytes,
+                    private_lan=direct_link_host(address) in consented)) as body:
+                payload = await self.staged_input.stage(body)
+        except HttpReadRefused as exc:
+            raise _submission_failure(*_NZB_LINK_FAILURES.get(exc.reason, _NZB_LINK_UNAVAILABLE),
+                                      exc.reason) from None
+        except StagedInputError as exc:
+            raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER,
+                                      400, exc) from None
+        except OSError as exc:
+            raise _submission_failure(Domain.LOCAL_RESOURCE, Category.LOCAL_IO_FAILURE, Retryability.BACKOFF,
+                                      Origin.LOCAL_SYSTEM, 507, exc) from None
+
+        def validated():
+            with self.staged_input.opened(payload) as stream:
+                return read(stream, fallback_name=request_name)
+
+        try:
+            manifest = await asyncio.to_thread(validated)
+        except BaseException as exc:
+            # Refused (or abandoned) before anything could own it.
+            self.staged_input.discard(payload)
+            if isinstance(exc, (InvalidNzb, StagedInputError)):
+                raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER,
+                                          Origin.USER, 400, exc) from None
+            raise
+        # From here on the payload is admitted exactly as an uploaded one is,
+        # and reclaimed by the same owner (``reclaim_staged_input``) if
+        # admission never completes.
+        name = safe_name(manifest.name) or request_name.rsplit(".", 1)[0] or "usenet-download"
+        return await self.submit((TransferRequest("nzb", payload, name=request_name),), name=name, source=source)
 
     async def submit_meta4(self, data, filename, *, source="manual_file", selection_mode="all"):
         """Admit one uploaded Metalink4 descriptor through the canonical
