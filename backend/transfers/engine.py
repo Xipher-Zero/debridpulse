@@ -149,7 +149,8 @@ class TransferEngine(_RecoveryTransferEngine):
             provider = (
                 self.registry.provider_for_bound_route(bound_provider_id, record.resolvable)
                 if bound_provider_id else self.registry.provider_for(
-                    record.resolvable, declined=await self.repository.declined_route_providers(record.id))
+                    record.resolvable, declined=await self.repository.declined_route_providers(record.id),
+                    exhausted=await self.repository.exhausted_route_providers(record.id))
             )
             async with self._resolution_slot():
                 if not await self._live(record.transfer_id, admission=True):

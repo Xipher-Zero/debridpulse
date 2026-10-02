@@ -143,14 +143,20 @@ class IntegrationRegistry:
         *,
         capability: Capability = Capability.RESOLVE,
         declined: frozenset[str] = frozenset(),
+        exhausted: frozenset[str] = frozenset(),
     ):
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
         # participate in applicability class or readiness construction.
+        # Neither does a provider already exhausted for this request in its
+        # current routing campaign: it has had its whole route, so the class
+        # is judged again among the providers that remain -- a generic
+        # provider competes once no remaining specialized one claims.
         candidates = [
             provider for provider in self.providers.values()
             if provider.descriptor.enabled
             and provider.descriptor.id not in self._unhealthy
+            and provider.descriptor.id not in exhausted
             and capability in provider.descriptor.capabilities
             and request.kind in provider.descriptor.request_types
         ]
@@ -230,14 +236,18 @@ class IntegrationRegistry:
         return None
 
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE,
-                           declined: frozenset[str] = frozenset()) -> tuple[Provider, ...]:
-        providers, _assessment = self._provider_selection(request, capability=capability, declined=declined)
+                           declined: frozenset[str] = frozenset(),
+                           exhausted: frozenset[str] = frozenset()) -> tuple[Provider, ...]:
+        providers, _assessment = self._provider_selection(request, capability=capability, declined=declined,
+                                                          exhausted=exhausted)
         return providers
 
-    def provider_for(self, request: TransferRequest, *, declined: frozenset[str] = frozenset()) -> Provider:
+    def provider_for(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
+                     exhausted: frozenset[str] = frozenset()) -> Provider:
         """The first provider of the one established competition for
-        ``request``, without the providers that positively declined it."""
-        providers, assessment = self._provider_selection(request, declined=declined)
+        ``request``, without the providers that positively declined it or
+        were exhausted for it in its current routing campaign."""
+        providers, assessment = self._provider_selection(request, declined=declined, exhausted=exhausted)
         if not providers:
             if assessment.unresolved_specialized:
                 raise ApplicabilityUnresolved(assessment.unresolved_specialized)

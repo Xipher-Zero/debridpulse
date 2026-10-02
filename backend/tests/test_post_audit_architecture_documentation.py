@@ -10,7 +10,8 @@ def read(path: str) -> str:
 def test_retry_and_provenance_docs_preserve_post_audit_contract() -> None:
     doc = read("docs/ROUTE_PROVIDER_PROVENANCE.md")
     assert "ordinary resolution retry and re-resolution remain bound to that selected provider" in doc
-    assert "Automatic cross-provider production failover is deferred" in doc
+    assert "Ordinary retry is not cross-provider failover" in doc
+    assert "Provider failover after exhaustion" in doc
     assert "never reconstructed later from the submitted URL" in doc
 
 

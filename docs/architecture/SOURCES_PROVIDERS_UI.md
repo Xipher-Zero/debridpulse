@@ -13,7 +13,7 @@ Roadmap Item 10 is a presentation/configuration layer over the qualified provide
 
 ## Transfer lists
 
-Recent Activity and Downloads display a compact provider chip. Active transfers use `current_provider_id` from the latest durable route attempt. Completed transfers use `delivering_provider_id` from verified artifact delivery. Pending and legacy-unknown records are represented neutrally.
+Recent Activity and Downloads display a compact provider chip. Active transfers use `current_provider_id`, the provider of the most recent live durable route (`transfers._repository_base.current_route_provider`): a route ended by provider exhaustion, or released by a later campaign, is nobody's, so a transfer whose every route ended has none. Completed transfers use `delivering_provider_id` from verified artifact delivery. Pending and legacy-unknown records are represented neutrally.
 
 Provider identity is separate from transfer status and executor identity. `aria2` remains advanced execution detail.
 

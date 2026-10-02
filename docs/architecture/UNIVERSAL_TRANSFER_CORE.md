@@ -515,7 +515,7 @@ Provider/resolution attempts and executor attempts now have durable provider-neu
 
 ### Provider selection and retry
 
-The universal core owns provider identity for a route attempt. Initial routing may select among eligible providers, but once selected, ordinary resolution retry and re-resolution stay bound to that provider. Adapter output may omit provider identity and be stamped by the core; contradictory provider identity is rejected before persistence. Ordinary retry never silently becomes cross-provider failover. Broad automatic production failover remains deferred to an explicit future route-transition policy.
+The universal core owns provider identity for a route attempt. Initial routing may select among eligible providers, but once selected, ordinary resolution retry and re-resolution stay bound to that provider. Adapter output may omit provider identity and be stamped by the core; contradictory provider identity is rejected before persistence. Ordinary retry never silently becomes cross-provider failover. The one explicit route transition is provider failover after exhaustion: once policy exhausts the bound provider (`TransferPolicy.retry_resolution` -> `TRY_ALTERNATE_PROVIDER`), the same logical request continues through the next provider of the canonical competition, the exhausted provider excluded for the current routing campaign (`docs/ROUTE_PROVIDER_PROVENANCE.md`).
 
 ### Cancellation serialization
 

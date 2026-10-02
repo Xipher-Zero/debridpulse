@@ -28,7 +28,8 @@ from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    active_execution_percentage, active_execution_progress_sql, canonical_artifact_membership_sql,
+    _ENDED_ROUTE_STATES, active_execution_percentage, active_execution_progress_sql,
+    canonical_artifact_membership_sql,
 )
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
@@ -68,6 +69,9 @@ router = APIRouter()
 _SWITCHABLE_STATES_SQL = ", ".join(
     f"'{state}'" for state in sorted(_SWITCHABLE_ARTIFACT_STATES)
 )
+# Route-attempt states that end a route, from their one owner
+# (transfers._repository_base._ENDED_ROUTE_STATES): never a current provider.
+_ENDED_ROUTE_STATES_SQL = ", ".join(f"'{state}'" for state in sorted(_ENDED_ROUTE_STATES))
 
 # The one canonical actionable-artifact filter (DP 1.0.12 recovery leveling,
 # Section 7), shared with transfers._repository_base.TransferRepository.artifacts()
@@ -640,6 +644,55 @@ async def list_operational_torrents(
                   ON a.id = p.resolution_attempt_id
                 JOIN page
                   ON page.id = p.transfer_id
+            )
+            WHERE row_number = 1
+        ),
+        -- The current provider: the provider of the most recent LIVE route
+        -- (each request's latest attempt not declined, by a provider that
+        -- did not decline that request; an ended route is nobody's) -- the
+        -- same derivation as transfers._repository_base.current_route_provider.
+        declined_attempt AS (
+            SELECT DISTINCT d.request_id, d.provider_id
+            FROM resolution_attempts d
+            JOIN transfer_requests r
+              ON r.id = d.request_id
+            JOIN page
+              ON page.id = r.transfer_id
+            WHERE d.state = 'declined'
+        ),
+        current_route AS (
+            SELECT transfer_id, provider_id
+            FROM (
+                SELECT
+                    request_route.transfer_id,
+                    request_route.provider_id,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY request_route.transfer_id
+                        ORDER BY request_route.ordinal DESC
+                    ) AS row_number
+                FROM (
+                    SELECT
+                        p.transfer_id,
+                        p.ordinal,
+                        a.provider_id,
+                        a.state,
+                        ROW_NUMBER() OVER (
+                            PARTITION BY p.request_id
+                            ORDER BY p.ordinal DESC
+                        ) AS request_rank
+                    FROM route_attempt_provenance p
+                    JOIN resolution_attempts a
+                      ON a.id = p.resolution_attempt_id
+                    JOIN page
+                      ON page.id = p.transfer_id
+                    LEFT JOIN declined_attempt
+                      ON declined_attempt.request_id = p.request_id
+                     AND declined_attempt.provider_id = a.provider_id
+                    WHERE a.provider_id IS NOT NULL AND a.provider_id != ''
+                      AND declined_attempt.request_id IS NULL
+                ) request_route
+                WHERE request_route.request_rank = 1
+                  AND request_route.state NOT IN ({_ENDED_ROUTE_STATES_SQL})
             )
             WHERE row_number = 1
         ),
@@ -1235,7 +1288,7 @@ async def list_operational_torrents(
                 ELSE COALESCE(group_remaining_counts.remaining_count, 0)
             END AS group_remaining_count,
             group_member_filenames.filenames AS _group_member_filenames,
-            latest_route.provider_id AS current_provider_id,
+            current_route.provider_id AS current_provider_id,
             CASE
                 WHEN COALESCE(delivery.provider_count, 0) = 1
                 THEN delivery.provider_id
@@ -1285,6 +1338,8 @@ async def list_operational_torrents(
           ON page_active_execution.transfer_id = t.id
         LEFT JOIN latest_route
           ON latest_route.transfer_id = t.id
+        LEFT JOIN current_route
+          ON current_route.transfer_id = t.id
         LEFT JOIN delivery
           ON delivery.transfer_id = t.id
         LEFT JOIN origin

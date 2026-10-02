@@ -346,10 +346,15 @@ async def test_unsupported_route_has_no_provider_or_executor_side_effects(
 
 
 @pytest.mark.asyncio
-async def test_selected_specialized_provider_failure_does_not_fall_back_to_generic(
+async def test_selected_specialized_provider_exhaustion_hands_off_to_generic(
     tmp_path,
     monkeypatch,
 ):
+    """A selected specialized provider's provider-final failure exhausts it;
+    the SAME request then continues through the eligible generic provider
+    (provider failover after exhaustion). Ordinary retry never does this:
+    tests/test_v113_provider_exhaustion_failover.py proves the budget comes
+    first."""
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "provider-failure.sqlite3")
     await database.init_db()
 
@@ -375,15 +380,13 @@ async def test_selected_specialized_provider_failure_does_not_fall_back_to_gener
         ),
     ))
     await engine.tick()
+    await engine.tick()
 
     request = (await repository.requests(transfer.id))[0]
     assert len(specialized.calls) == 1
-    assert generic.calls == 0
-    assert request.attempts == 1
-    assert request.error is not None
-    assert request.error.domain == Domain.PROVIDER
-    assert request.error.category == Category.PROVIDER_UNAVAILABLE
-    assert request.error.category != Category.UNSUPPORTED_REQUEST
+    assert generic.calls == 1
+    assert await repository.exhausted_route_providers(request.id) == frozenset({"alpha"})
+    assert await repository.bound_route_provider(request.id) == generic.descriptor.id
 
 
 def test_magnet_and_torrent_keep_static_request_type_routing():

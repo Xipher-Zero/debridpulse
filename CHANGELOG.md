@@ -308,6 +308,16 @@
 
 ### Changed
 
+- **A transfer continues through another provider once its provider is exhausted.** When the provider
+  handling a source fails for good — its retries are spent, or its account, credential or service cannot
+  continue without you — and another enabled provider can handle the same source, the same transfer moves
+  on to that provider instead of failing: in the usual provider order, with specialized providers still
+  ahead of general ones. DebridPulse cleans up the remote item it owned at the exhausted provider, as it
+  does when it replaces one, and Route History shows the switch and its reason. The last provider tried is
+  treated the same way. An exhausted provider is not used again for that transfer until you retry it, and
+  a failure no provider can change (an invalid link or file, content found to be invalid, a source that is
+  gone, a safety refusal) still fails the transfer. Disabling a provider still stops its transfers rather
+  than moving them. Retry starts a fresh attempt that may use every provider again.
 - **Resetting the database no longer asks you to pause first.** After you type WIPE, DebridPulse pauses
   processing itself, stops every running download — including a paused download whose transfer was still
   held open — through the same drain Restore uses (they stay paused, not cancelled), creates the safety

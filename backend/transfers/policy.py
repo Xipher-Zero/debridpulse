@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, replace
 from enum import StrEnum
 
-from transfers.errors import Category, Domain, NormalizedError, Permanence, Recovery, Retryability, Stage
+from transfers.errors import Category, Domain, NormalizedError, Origin, Permanence, Recovery, Retryability, Stage
 from transfers.models import TransferState
 
 
@@ -138,6 +138,35 @@ def alternate_interpretation_progresses(error: NormalizedError) -> bool:
     failure stay with the reading that produced them."""
     return interpretation_absent(error) or (
         error.domain == Domain.NETWORK and error.category == Category.CONNECTION_TIMEOUT)
+
+# Facts about the request, its source or its content, whoever reported them: a
+# malformed or invalid input, content proven invalid, or a source that is gone,
+# unavailable or expired is the same through every provider.
+_REQUEST_GLOBAL_CATEGORIES = frozenset({
+    Category.INVALID_REQUEST, Category.CONTENT_INVALID, Category.SOURCE_NOT_FOUND, Category.SOURCE_UNAVAILABLE,
+    Category.SOURCE_TEMPORARILY_UNAVAILABLE, Category.SOURCE_EXPIRED,
+})
+# Who the emitter says a failure is about, when that is not the provider.
+_REQUEST_GLOBAL_ORIGINS = frozenset({Origin.USER, Origin.REMOTE_SOURCE, Origin.SECURITY_POLICY, Origin.LOCAL_SYSTEM})
+
+
+def provider_attributable(error: NormalizedError) -> bool:
+    """A failure of the provider ITSELF -- its service, account, credential,
+    capability or protocol, or the network path to it -- never of the request,
+    its source or its content.
+
+    Only such a failure can exhaust one provider while another may still
+    satisfy the same request. Source facts, request facts, security and
+    integrity verdicts, local and lifecycle faults are the request's own: no
+    other provider changes them. Read from the emitter's own normalized facts
+    -- domain, category and origin -- never from a message: a provider-domain
+    failure the emitter attributed to the source, the user or a policy is the
+    request's, and a network failure counts only when attributed to the
+    provider."""
+    if error.category in _REQUEST_GLOBAL_CATEGORIES or error.origin in _REQUEST_GLOBAL_ORIGINS:
+        return False
+    return error.domain == Domain.PROVIDER or (error.domain == Domain.NETWORK and error.origin == Origin.PROVIDER)
+
 
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
@@ -329,10 +358,23 @@ class TransferPolicy:
         return compatibility_error(error)
 
     def retry_resolution(self, error, attempts, now):
+        """The request-resolution retry decision, and THE provider-exhaustion
+        decision.
+
+        The bound provider's own retry budget always comes first. Once it is
+        spent -- or the error says this provider cannot continue without an
+        operator -- a provider-attributable failure (``provider_attributable``)
+        has exhausted that provider: ``TRY_ALTERNATE_PROVIDER``, with no retry
+        of it. That is a fact about the provider alone; whether another
+        provider can take the request over is routing's question, never part
+        of this one. Anything else stays the request's own failure."""
         policy = replace(self,
             max_attempts=self.max_attempts if self.resolution_max_attempts is None else self.resolution_max_attempts,
             retry_delay=self.retry_delay if self.resolution_retry_delay is None else self.resolution_retry_delay)
-        return policy.retry(error, attempts, now, can_refresh=True)
+        decision = policy.retry(error, attempts, now, can_refresh=True)
+        if decision.retry_at is None and provider_attributable(error):
+            return RetryDecision(Recovery.TRY_ALTERNATE_PROVIDER)
+        return decision
 
     def _delay(self, error: NormalizedError, failures: int) -> float:
         delay = 0.0 if error.retryability == Retryability.IMMEDIATE else min(

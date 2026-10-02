@@ -283,9 +283,12 @@ async def test_terminal_sibling_releases_weak_barrier_without_hanging(cohort_pai
     await cohort_pair.engine._resolve(records[0])
 
     original_resolve = cohort_pair.b.resolve
+    # A failure of the source itself is terminal through every provider. (A
+    # provider-final failure is not: with another provider registered it now
+    # exhausts only that provider and the sibling continues elsewhere.)
     terminal = NormalizedError(
-        Domain.PROVIDER,
-        Category.PROVIDER_UNAVAILABLE,
+        Domain.RESOLUTION,
+        Category.SOURCE_NOT_FOUND,
         Stage.RESOLUTION,
         Retryability.NEVER,
         Recovery.FAIL,

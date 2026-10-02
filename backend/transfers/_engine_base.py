@@ -1423,6 +1423,25 @@ class TransferEngine:
     async def _request_failure(self, record: RequestRecord, error: NormalizedError, *, attempts=None, waiting=False):
         count = record.attempts + int(waiting) if attempts is None else attempts
         decision = self.policy.retry_resolution(error, count, self.clock())
+        if decision.action == Recovery.TRY_ALTERNATE_PROVIDER:
+            # The bound provider had its whole route and is exhausted -- whether
+            # or not any other provider remains. Its route ends and its owned
+            # resource is cleaned up by the one cleanup cadence. When another
+            # provider of the one canonical competition remains, the same
+            # logical request continues through it, the exhausted provider
+            # excluded for this routing campaign; otherwise the request fails
+            # here, truthfully, with every provider tried exhausted. No
+            # provider chooses its successor.
+            route = await self._exhaustible_route(record)
+            if route is not None and await self.repository.exhaust_route(
+                    record.id, route[0], error, continues=route[1]):
+                await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
+                await self._cleanup_pending()
+                if route[1]:
+                    self._resolution_opportunity(record.transfer_id)
+                else:
+                    await self.canonical.settle(record.transfer_id)
+                return
         retry_state = "waiting" if waiting and decision.action != Recovery.RERESOLVE else "pending"
         await self.repository.request_failure(record.id, error, decision.retry_at, retry_state=retry_state, consume_attempt=waiting)
         await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
@@ -1431,6 +1450,27 @@ class TransferEngine:
             # whether its submission cohort already proved which artifact it
             # is (a failed contribution) and whether the transfer is settled.
             await self.canonical.settle(record.transfer_id)
+
+    async def _exhaustible_route(self, record: RequestRecord) -> tuple[str, bool] | None:
+        """The provider whose route of this root request an exhaustion ends,
+        and whether another provider remains eligible for the SAME request
+        under the canonical competition -- routing facts only; whether the
+        provider is exhausted is the policy's decision alone.
+
+        ``None`` when nothing can be exhausted: a member request's route
+        belongs to the route that decomposed it, and administrative
+        disablement of the bound provider is an explicit hard stop for
+        admitted work, never exhaustion."""
+        if record.parent_id is not None:
+            return None
+        provider_id = await self.repository.bound_route_provider(record.id)
+        provider = self.registry.providers.get(provider_id) if provider_id else None
+        if provider is None or not provider.descriptor.enabled:
+            return None
+        remaining = self.registry.eligible_providers(
+            record.resolvable, declined=await self.repository.declined_route_providers(record.id),
+            exhausted=await self.repository.exhausted_route_providers(record.id) | {provider_id})
+        return provider_id, bool(remaining)
 
     async def _resolve(self, record: RequestRecord):
         raise NotImplementedError("_resolve is implemented by transfers.engine.TransferEngine")
