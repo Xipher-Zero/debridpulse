@@ -1342,6 +1342,19 @@ class TransferRepository(_QualifiedTransferRepository):
             (transfer_id,),
         )
 
+    @staticmethod
+    async def _current_root_generation(db, transfer_id: int, request_id: str):
+        """One root request's current selection generation: the newest of ITS
+        generations. A re-resolution of that root onto a new provider resource
+        creates a strictly newer one; another root's generation -- a sibling
+        resolving later or still preparing -- is never a re-resolution of it.
+        """
+        return await db.fetchone(
+            """SELECT * FROM transfer_file_selections WHERE transfer_id=? AND request_id=?
+               ORDER BY created_at DESC, id DESC LIMIT 1""",
+            (transfer_id, request_id),
+        )
+
     @classmethod
     async def _selection_by_manifest(cls, db, transfer_id: int, manifest_id: str):
         """Resolve the CURRENT selection generation only if it observed this
@@ -1925,8 +1938,8 @@ class TransferRepository(_QualifiedTransferRepository):
         yet been durably committed (``manifest_committed_at IS NULL`` --
         pending decision, still-open decision hold, or a not-yet-durable
         commit race). Returns ``STALE`` when the artifact's request is bound
-        to a selection generation that is no longer this transfer's current
-        one -- a later re-resolution onto a new provider resource
+        to a selection generation that is no longer its root's current
+        one -- a later re-resolution of that root onto a new provider resource
         (specification section 3.1, acceptance test D) superseded it, so any
         executable work already materialized under it must not dispatch or
         resume; the caller retires it through existing canonical machinery
@@ -1976,7 +1989,9 @@ class TransferRepository(_QualifiedTransferRepository):
                 return MaterializationAdmission(
                     MaterializationAdmissionKind.HOLD, authority_generation=generation["id"],
                 )
-            current = await self._current_generation(db, artifact.transfer_id)
+            # Superseded only by a newer generation of the SAME root: each root
+            # of a transfer owns its own generations.
+            current = await self._current_root_generation(db, artifact.transfer_id, generation["request_id"])
             if current is not None and str(current["id"]) != str(generation["id"]):
                 return MaterializationAdmission(
                     MaterializationAdmissionKind.STALE, authority_generation=current["id"],
