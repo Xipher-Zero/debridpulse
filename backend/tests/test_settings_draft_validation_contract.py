@@ -186,7 +186,11 @@ def test_transient_validation_routes_never_persist_candidate_secrets() -> None:
     # and never anything assembled from a request.
     recorder = validation[validation.index("async def _record_verification_outcome("):]
     recorder = recorder[:recorder.index("\ndef _persist_evidence")]
-    assert "record_verification_outcome(load_settings(), definition, fingerprint, ok)" in recorder
+    # The saved configuration is loaded once, under the write lock, and both
+    # the saved-subject check and the evidence owner read that one value.
+    assert recorder.count("settings = load_settings()") == 1
+    assert recorder.count("settings =") == 1
+    assert "record_verification_outcome(settings, definition, fingerprint, ok)" in recorder
     assert "_persist_evidence(updated)" in recorder
     assert "payload" not in recorder and "api_key" not in recorder
 
