@@ -198,7 +198,8 @@ class EvidenceContext:
     fingerprint it acquired is kept (``borrowed``), for the canonical evidence
     owner to retain."""
 
-    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven", "_supplied", "_borrowed", "_auth")
+    __slots__ = ("_fingerprints", "_inputs", "_requirements", "_proven", "_supplied", "_borrowed", "_auth",
+                 "_material")
 
     # Bounded: each rejected material is excluded from the next match.
     _MATCH_ATTEMPTS = 3
@@ -211,10 +212,32 @@ class EvidenceContext:
         self._supplied = {}
         self._borrowed = {}
         self._auth = None
+        self._material = {}
 
     def bind(self, auth) -> None:
         """Bind the deciding request's authentication-input matcher."""
         self._auth = auth
+
+    async def material(self, candidate):
+        """``candidate`` itself, or -- when its durable form holds only the
+        fact of transient execution material -- that material issued in memory
+        for THIS decision by the bound engine (``None`` when nothing can issue
+        it). Issued once per decision, like a fingerprint; never persisted and
+        never carried to another decision."""
+        if not _unread(candidate):
+            return candidate
+        if self._auth is None:
+            return None
+        key = str(candidate.id)
+        if key not in self._material:
+            try:
+                self._material[key] = (await self._auth.material(candidate), None)
+            except Exception as exc:
+                self._material[key] = (None, exc)
+        material, error = self._material[key]
+        if error is not None:
+            raise error
+        return material
 
     async def fingerprint(self, executor, candidate):
         key = (str(candidate.id), max(0, int(candidate.expected_bytes or 0)))
@@ -222,7 +245,16 @@ class EvidenceContext:
             submitted = self._inputs.pop(key[0], None)
             subject = ExecutionSubject.of(candidate)
             try:
-                if submitted is not None and executor.capabilities.transient_input:
+                if any(endpoint.transient for endpoint in candidate.endpoints):
+                    # Provider-issued transient material: no operator input
+                    # applies to it, so a requirement proves nothing and is
+                    # never asked -- no question ever carries its address.
+                    if submitted is not None:
+                        submitted.discard()
+                    sample = await executor.fingerprint(subject)
+                    if isinstance(sample, InputRequirement):
+                        sample = None
+                elif submitted is not None and executor.capabilities.transient_input:
                     sample = await self._with_input(executor, subject, candidate, submitted, self._MATCH_ATTEMPTS)
                 else:
                     if submitted is not None:
@@ -395,6 +427,20 @@ def _retained(candidate, sample):
     return sample
 
 
+def _unread(candidate) -> bool:
+    """Whether ``candidate`` holds only the durable fact of transient execution
+    material: nothing a sample could read until it is issued again."""
+    return any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints)
+
+
+async def _material(candidate, context: EvidenceContext | None):
+    """What a sample of ``candidate`` reads: itself, or its transient material
+    issued in memory for the deciding context; ``None`` when unreadable."""
+    if context is not None:
+        return await context.material(candidate)
+    return None if _unread(candidate) else candidate
+
+
 async def _fingerprint(executor, candidate, context: EvidenceContext | None):
     if context is None:
         return _retained(candidate, await executor.fingerprint(ExecutionSubject.of(candidate)))
@@ -405,9 +451,10 @@ def _sampler(candidate, registry):
     """The core-selected claimant for the candidate's pre-materialization
     subject -- the SAME router dispatch uses -- when it declares neutral
     candidate sampling; ``None`` otherwise. Never a scheme or name lookup."""
-    if any(endpoint.transient for endpoint in candidate.endpoints):
-        # Transient execution material is never in durable hand, so there is
-        # nothing a proof could read: no sampling capability, never a hold.
+    if _unread(candidate):
+        # Transient execution material is never in durable hand: until it is
+        # issued again (``_material``) there is nothing a proof could read --
+        # no sampling capability, never a hold.
         return None
     executor = registry.executor_for_subject(ExecutionSubject.of(candidate))
     return executor if executor is not None and executor.capabilities.candidate_sampling else None
@@ -624,7 +671,11 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
     try:
         # Sampling executors are selected by the one subject-claim router
         # (``registry.executor_for_subject``) used for dispatch.
-        first, second = _sampler(left, registry), _sampler(right, registry)
+        # Transient material is issued in memory for this decision only; what
+        # it proves is decided below exactly as for any other sample.
+        left_read, right_read = await _material(left, context), await _material(right, context)
+        first = _sampler(left_read, registry) if left_read is not None else None
+        second = _sampler(right_read, registry) if right_read is not None else None
         if first is None or second is None:
             return _diagnose(left, right, _unavailable("sampler_unsupported"))
         if _source_key(left) == _source_key(right):
@@ -633,10 +684,11 @@ async def shared_evidence(left, right, registry, context: EvidenceContext | None
             # two at once, or a one-connection source refuses the second read
             # on every retry and the proof never decides. Independent sources
             # are still sampled concurrently.
-            a = await _fingerprint(first, left, context)
-            b = await _fingerprint(second, right, context)
+            a = await _fingerprint(first, left_read, context)
+            b = await _fingerprint(second, right_read, context)
         else:
-            a, b = await asyncio.gather(_fingerprint(first, left, context), _fingerprint(second, right, context))
+            a, b = await asyncio.gather(_fingerprint(first, left_read, context),
+                                        _fingerprint(second, right_read, context))
         # A sampler returning None has no proof capability for this candidate.
         # Temporary acquisition failures must cross the contract explicitly as
         # UNAVAILABLE with a retryable reason such as timeout/dns_failure.
@@ -706,10 +758,11 @@ async def self_evidence(candidate, registry, context: EvidenceContext | None = N
     """
     try:
         # The one subject-claim router (``registry.executor_for_subject``).
-        executor = _sampler(candidate, registry)
+        readable = await _material(candidate, context)
+        executor = _sampler(readable, registry) if readable is not None else None
         if executor is None:
             return _unavailable("sampler_unsupported")
-        sample = await _fingerprint(executor, candidate, context)
+        sample = await _fingerprint(executor, readable, context)
         if sample is None:
             return _unavailable("sampler_unsupported")
         if isinstance(sample, InputRequirement):

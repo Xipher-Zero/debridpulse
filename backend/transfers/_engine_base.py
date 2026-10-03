@@ -286,6 +286,18 @@ class _EvidenceAuth:
             await self.engine.challenges.record(self.transfer_id, "proof_lease_used", scope.family)
         return lease
 
+    async def material(self, candidate):
+        """In-memory, sampleable execution material for a candidate whose
+        durable form holds only the fact of transient material -- issued from
+        its durable refresh identity by the one boundary that issues it for
+        execution (``_issued_material``), never stored. ``None`` when nothing
+        can issue it: no refresh identity, or a provider without the neutral
+        refresh contract."""
+        provider = self.engine.registry.providers.get(candidate.provider_id)
+        if candidate.refresh_request is None or not isinstance(provider, CandidateRefresh):
+            return None
+        return await self.engine._issued_material(candidate, candidate.refresh_request)
+
     async def end_proof_lease(self, submitted, *, rejected: bool):
         transition = await self.engine.inputs.end_proof_lease(submitted, rejected=rejected)
         if transition is not None:
@@ -2788,17 +2800,31 @@ class TransferEngine:
         the durable form. Any other candidate is returned unchanged."""
         if not any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints):
             return candidate
-        expired = self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
-                              retryability=Retryability.AFTER_RERESOLUTION)
-        provider = self.registry.providers.get(candidate.provider_id)
         record = next((item for item in await self.repository.requests(artifact.transfer_id)
                        if item.id == artifact.request_id), None)
-        if not isinstance(provider, CandidateRefresh) or record is None:
+        if record is None:
+            raise TransferError(self._candidate_expired())
+        return await self._issued_material(candidate, record.resolvable, lan_host=await self._consented_lan_host(record))
+
+    def _candidate_expired(self) -> NormalizedError:
+        return self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                           retryability=Retryability.AFTER_RERESOLUTION)
+
+    async def _issued_material(self, candidate: TransferCandidate, request: TransferRequest, *,
+                               lan_host: str = "") -> TransferCandidate:
+        """``candidate`` with fresh transient execution material issued by its
+        bound provider's refresh contract for ``request``, validated exactly as
+        any provider output is -- for an execution (``_executable_candidate``)
+        or for one evidence decision's bounded sample (``_EvidenceAuth``).
+        In memory only; the caller never persists what this returns."""
+        expired = self._candidate_expired()
+        provider = self.registry.providers.get(candidate.provider_id)
+        if not isinstance(provider, CandidateRefresh):
             raise TransferError(expired)
         try:
             result = self._authoritative_provider_result(
-                provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=record.resolvable)),
-                request_kind=record.resolvable.kind, lan_host=await self._consented_lan_host(record))
+                provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=request)),
+                request_kind=request.kind, lan_host=lan_host)
         except TransferError:
             raise
         except Exception as exc:
