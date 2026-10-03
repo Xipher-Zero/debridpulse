@@ -1,10 +1,14 @@
 """TorBox account semantics: native plans in, neutral entitlement out.
 
-TorBox's own plan documentation (support.torbox.app, "Account Restrictions"):
+What each TorBox plan exposes to DebridPulse:
 
-* Free (plan 0): torrents only -- limited (one download per 24 hours, ten per
-  month, 10 GB each, no private torrents) but available; no web downloads, no
-  Usenet.
+* Free (plan 0): nothing DebridPulse can use. TorBox's public plan material
+  ("Account Restrictions") describes limited Free torrent use, but the API
+  operation DebridPulse creates torrents with refused an ordinary public
+  Ubuntu torrent on a Free account with ``PLAN_RESTRICTED_FEATURE`` ("API
+  feature not available on your plan"). DebridPulse follows what it can
+  actually consume, so a Free account exposes no acquisition family: it stays
+  connected, standard and degraded, and claims no new work.
 * Essential (1) and Standard (3): torrents and web downloads; no Usenet.
 * Pro (2): torrents, web downloads and Usenet.
 
@@ -16,7 +20,9 @@ Limits (``ACTIVE_LIMIT``, ``COOLDOWN_LIMIT``, ``MONTHLY_LIMIT``,
 ``DOWNLOAD_TOO_LARGE``) are ordinary retry/failover conditions and never change
 entitlement. ``PLAN_RESTRICTED_FEATURE`` -- "restricted to users of higher
 plans" -- is the one definitive refusal: it contracts exactly the acquisition
-family whose creation it refused, for this account only.
+family whose creation it refused, for this account only. It stays the guard
+against plan/API drift (a paid plan's live API refusing what its baseline
+says it includes).
 """
 from __future__ import annotations
 
@@ -37,9 +43,9 @@ FREE_PLAN = 0
 TORRENTS = frozenset({"magnet", "torrent"})
 WEB_DOWNLOADS = frozenset({"http", "https"})
 USENET = frozenset({"nzb"})
-# What each plan may begin, per TorBox's own plan documentation.
+# What each plan may begin through the API DebridPulse uses (see above).
 PLAN_ENTITLEMENT = {
-    0: TORRENTS,
+    0: frozenset(),
     1: TORRENTS | WEB_DOWNLOADS,
     3: TORRENTS | WEB_DOWNLOADS,
     2: TORRENTS | WEB_DOWNLOADS | USENET,

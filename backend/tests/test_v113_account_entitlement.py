@@ -337,14 +337,14 @@ TB_OFFERED = frozenset({"magnet", "torrent", "http", "https"})
 
 
 @pytest.mark.parametrize("plan, until, usenet, service, kinds, degraded, label", [
-    (0, None, False, "standard", {"magnet", "torrent"}, False, "Free"),        # Free still has torrents
+    (0, None, False, "standard", set(), True, "Free"),                         # Free: nothing DP can use
     (1, LATER, False, "premium", TB_OFFERED, False, "Essential"),
     (3, LATER, False, "premium", TB_OFFERED, False, "Standard"),
     (2, LATER, False, "premium", TB_OFFERED, False, "Pro"),
     (2, LATER, True, "premium", TB_OFFERED | {"nzb"}, False, "Pro"),
     (1, LATER, True, "premium", TB_OFFERED, True, "Essential"),                # Usenet toggle, plan lacks it
-    (0, None, True, "standard", {"magnet", "torrent"}, True, "Free"),
-    (2, EARLIER, False, "standard", {"magnet", "torrent"}, True, "Free"),      # lapsed paid plan
+    (0, None, True, "standard", set(), True, "Free"),
+    (2, EARLIER, False, "standard", set(), True, "Free"),                      # lapsed paid plan
 ])
 async def test_torbox_plans_translate_to_neutral_entitlement(plan, until, usenet, service, kinds, degraded, label):
     offered = TB_OFFERED | ({"nzb"} if usenet else set())
@@ -378,20 +378,45 @@ def torbox_with_account(client, store, *, usenet=False, clock=lambda: NOW):
     return provider
 
 
-async def test_torbox_free_plan_refusal_contracts_torrents_for_that_account_and_routing_yields():
+@pytest.mark.parametrize("request_value", [
+    MAGNET_REQUEST,
+    TransferRequest("torrent", b"d4:infod4:name4:showee", "show.torrent"),
+    TransferRequest("https", "https://hoster.example/f/1"),
+    TransferRequest("http", "http://hoster.example/f/1"),
+    TransferRequest("nzb", "staged", "show.nzb"),
+])
+async def test_a_torbox_free_account_claims_nothing_and_another_provider_wins(request_value):
     client = FakeClient()
     client.user = lambda: _answer({"plan": 0, "premium_expires_at": None})
+    provider = torbox_with_account(client, Store(), usenet=True)
+    await TorBoxHostMaintenance(provider, Store(), clock=lambda: NOW).maintain()
+    await provider.account.maintain()
+    assert provider.entitlements.request_types == frozenset()
+    assert IntegrationRegistry.entitlement_for(provider, request_value) is False
+    other = Lab("beta", kinds=(request_value.kind,), priority=-10)
+    other.applicability = ProviderApplicability(generic_schemes=frozenset({"http", "https"}))
+    routes = registry(provider, other)
+    assert routes.provider_for(request_value) is other
+    assert provider not in routes.eligible_providers(request_value)
+    assert [call for call in client.calls if call[0].startswith("create")] == []
+    # Still connected: a bound TorBox route keeps its owner, and nothing is offline.
+    assert routes.provider_for_bound_route("torbox", request_value) is provider
+
+
+async def test_a_paid_plan_refusal_contracts_only_its_family_and_routing_yields():
+    client = FakeClient()
+    client.user = lambda: _answer({"plan": 1, "premium_expires_at": "2099-01-01T00:00:00Z"})
     store = Store()
     provider = torbox_with_account(client, store)
     await provider.account.maintain()
     lower = Lab("beta", kinds=("magnet",), priority=-10)
     routes = registry(provider, lower)
-    assert routes.provider_for(MAGNET_REQUEST) is provider       # docs: Free may add torrents
+    assert routes.provider_for(MAGNET_REQUEST) is provider
 
     client.refusal = TorBoxAPIError("PLAN_RESTRICTED_FEATURE", "higher plans only", 403)
     with pytest.raises(TransferError):
         await provider.resolve(MAGNET_REQUEST)
-    assert provider.entitlements.request_types == frozenset()
+    assert provider.entitlements.request_types == {"http", "https"}    # only the refused family
     assert provider.entitlements.degraded
     assert routes.provider_for(MAGNET_REQUEST) is lower           # no known-impossible claim again
 
@@ -567,7 +592,7 @@ async def test_unknown_entitlement_holds_the_request_until_truth_says_it_yields(
 async def test_a_definitive_refusal_contracts_while_gap_a_fails_over_the_same_request(tmp_path, monkeypatch):
     from test_v113_provider_exhaustion_failover import RouteLab, drive, root, routes
     client = FakeClient()
-    client.user = lambda: _answer({"plan": 0, "premium_expires_at": None})
+    client.user = lambda: _answer({"plan": 3, "premium_expires_at": "2099-01-01T00:00:00Z"})
     provider = torbox_with_account(client, Store())
     await provider.account.maintain()
     lower = RouteLab("beta-route", kinds=("magnet",), priority=-10)
@@ -580,7 +605,7 @@ async def test_a_definitive_refusal_contracts_while_gap_a_fails_over_the_same_re
     record = await root(repository, transfer.id)
     assert [(item["provider_id"], item["resolution_state"]) for item in await routes(repository, transfer.id)][:2] == [
         ("torbox", "exhausted"), ("beta-route", "succeeded")]
-    assert provider.entitlements.request_types == frozenset()
+    assert provider.entitlements.request_types == {"http", "https"}
     assert await repository.exhausted_route_providers(record.id) == frozenset({"torbox"})
 
     calls = len(client.calls)
@@ -595,8 +620,8 @@ async def test_a_definitive_refusal_contracts_while_gap_a_fails_over_the_same_re
 
 @pytest.mark.parametrize("answer, refused, service, functional", [
     ({"email": "a@e.net", "plan": 2, "premium_expires_at": "2099-01-01T00:00:00Z"}, False, "premium", "usable"),
-    ({"email": "f@e.net", "plan": 0, "premium_expires_at": None}, False, "standard", "usable"),
-    ({"email": "f@e.net", "plan": 0, "premium_expires_at": None}, True, "standard", "degraded"),
+    ({"email": "f@e.net", "plan": 0, "premium_expires_at": None}, False, "standard", "degraded"),
+    ({"email": "e@e.net", "plan": 1, "premium_expires_at": "2099-01-01T00:00:00Z"}, True, "premium", "degraded"),
     ({"email": "l@e.net", "plan": 1, "premium_expires_at": "2001-01-01T00:00:00Z"}, False, "standard", "degraded"),
 ])
 async def test_torbox_status_carries_the_same_neutral_account_truth_routing_uses(answer, refused, service, functional):
