@@ -1488,7 +1488,8 @@ class TransferEngine:
             return None
         remaining = self.registry.eligible_providers(
             record.resolvable, declined=await self.repository.declined_route_providers(record.id),
-            exhausted=await self.repository.exhausted_route_providers(record.id) | {provider_id})
+            exhausted=await self.repository.exhausted_route_providers(record.id) | {provider_id},
+            generic_closed=await self.repository.collection_route_provider(record.transfer_id) is not None)
         return provider_id, bool(remaining)
 
     async def _resolve(self, record: RequestRecord):

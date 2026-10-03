@@ -206,7 +206,10 @@ class TransferEngine(_RecoveryTransferEngine):
             exhausted=await self.repository.exhausted_route_providers(record.id),
             # A member continues the route that decomposed it: it is
             # never new acquisition, so account entitlement never gates it.
-            acquisition=record.parent_id is None)
+            acquisition=record.parent_id is None,
+            # A collection a specialized route owns never reopens generic
+            # competition for any of its requests.
+            generic_closed=await self.repository.collection_route_provider(record.transfer_id) is not None)
 
     async def _cached_alternative(self, record, provider):
         """The first alternative of ``record``'s explicit group, in submitted

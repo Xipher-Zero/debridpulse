@@ -737,6 +737,10 @@ async def test_a_torbox_failure_reaches_native_usenet_through_neutral_failover(t
         ("torbox", "exhausted"), ("usenet", "succeeded")]
     assert (await repository.get(transfer.id)).id == transfer.id
     assert await repository.exhausted_route_providers(root.id) == frozenset({"torbox"})
+    # The neutral handoff to native Usenet is untouched by collection generic
+    # closure: no generic route is ever involved and the request is not pinned.
+    assert {item["provider_id"] for item in routes} == {"torbox", "usenet"}
+    assert await repository.bound_route_provider(root.id) == "usenet"
     # Owned TorBox remote object cleaned up through the one cleanup cadence.
     assert ("delete", USENET, str(created["id"])) in torbox.client.calls
 

@@ -159,6 +159,7 @@ class IntegrationRegistry:
         declined: frozenset[str] = frozenset(),
         exhausted: frozenset[str] = frozenset(),
         acquisition: bool = True,
+        generic_closed: bool = False,
     ):
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
@@ -173,7 +174,11 @@ class IntegrationRegistry:
         # in the competition (``unresolved``), so no lower fallback can win
         # merely because its account truth has not arrived yet. A member of a
         # route that already exists is not new acquisition: entitlement never
-        # touches it.
+        # touches it. A request whose collection an authoritative specialized
+        # route already owns (``generic_closed``) has had generic competition
+        # closed by that ownership: its re-selection (after an exhaustion or a
+        # decline) judges only the specialized claimants that remain, never
+        # reopens a generic one.
         entitlement = {}
         candidates = []
         for provider in self.providers.values():
@@ -199,8 +204,10 @@ class IntegrationRegistry:
             for provider in candidates
         )
         assessment = assess_provider_applicability(request, inputs)
-        conditional = {match.provider_id: match.conditional for match in assessment.matches}
-        specific = {match.provider_id: match.specific for match in assessment.matches}
+        matches = tuple(match for match in assessment.matches
+                        if not (generic_closed and match.classification == ApplicabilityClass.GENERIC))
+        conditional = {match.provider_id: match.conditional for match in matches}
+        specific = {match.provider_id: match.specific for match in matches}
 
         # The classifier returns only one selectable class: SPECIALIZED when an
         # authoritative specialized match exists, otherwise GENERIC/STATIC.
@@ -273,23 +280,26 @@ class IntegrationRegistry:
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE,
                            declined: frozenset[str] = frozenset(),
                            exhausted: frozenset[str] = frozenset(),
-                           acquisition: bool = True) -> tuple[Provider, ...]:
+                           acquisition: bool = True, generic_closed: bool = False) -> tuple[Provider, ...]:
         """Every provider still in the competition for ``request``, in order --
         including one whose account entitlement is not yet known: it remains
         a possible owner, so the request waits for it rather than ending."""
         providers, _assessment, _unknown = self._provider_selection(
-            request, capability=capability, declined=declined, exhausted=exhausted, acquisition=acquisition)
+            request, capability=capability, declined=declined, exhausted=exhausted, acquisition=acquisition,
+            generic_closed=generic_closed)
         return providers
 
     def provider_for(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
-                     exhausted: frozenset[str] = frozenset(), acquisition: bool = True) -> Provider:
+                     exhausted: frozenset[str] = frozenset(), acquisition: bool = True,
+                     generic_closed: bool = False) -> Provider:
         """The first provider of the one established competition for
         ``request``, without the providers that positively declined it or
         were exhausted for it in its current routing campaign. When that
         first provider's account entitlement is still unknown the decision
         is premature, exactly like unresolved specialized applicability."""
         providers, assessment, unknown = self._provider_selection(
-            request, declined=declined, exhausted=exhausted, acquisition=acquisition)
+            request, declined=declined, exhausted=exhausted, acquisition=acquisition,
+            generic_closed=generic_closed)
         if providers and providers[0].descriptor.id in unknown:
             raise ApplicabilityUnresolved((providers[0].descriptor.id,))
         if not providers:
