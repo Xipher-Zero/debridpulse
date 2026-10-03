@@ -16,6 +16,7 @@ https://api.torbox.app/openapi.json
 """
 from __future__ import annotations
 
+import hashlib
 import json
 from dataclasses import dataclass
 from typing import Any, Awaitable, Callable, Mapping
@@ -56,6 +57,18 @@ FAMILIES: Mapping[str, Family] = {
     WEBDL: Family("webdl", "webdl/controlwebdownload", "webdl_id", "web_id", "webdownload_id"),
     USENET: Family("usenet", "usenet/controlusenetdownload", "usenet_id", "usenet_id", "usenetdownload_id"),
 }
+
+
+# TorBox's refusal of an ``add_only_if_cached`` creation whose source it does
+# not hold: nothing was added.
+NOT_CACHED = "DOWNLOAD_NOT_CACHED"
+
+
+def webdl_cache_key(link: str) -> str:
+    """TorBox's web-download cache key for ``link``: the MD5 of the link as
+    submitted. It identifies an ADDRESS TorBox has fetched before -- never the
+    content behind it, so it is never integrity evidence."""
+    return hashlib.md5(str(link).encode("utf-8"), usedforsecurity=False).hexdigest()
 
 
 class TorBoxAPIError(Exception):
@@ -300,9 +313,45 @@ class TorBoxService:
         return self._created(TORRENT, _envelope(await self._send(
             "POST", "torrents/createtorrent", data=form, timeout=timeout)))
 
-    async def create_webdl(self, link: str) -> str:
-        return self._created(WEBDL, _envelope(await self._send(
-            "POST", "webdl/createwebdownload", data={"link": link})))
+    async def create_webdl(self, link: str, *, cached_only: bool = False) -> str | None:
+        """Create a web download. ``cached_only`` asks TorBox to add it only
+        if it already holds the source (``add_only_if_cached``) -- no hoster
+        acquisition at all; ``None`` then means it did not, and added nothing."""
+        form = {"link": link}
+        if cached_only:
+            form["add_only_if_cached"] = "true"
+        try:
+            native = _envelope(await self._send("POST", "webdl/createwebdownload", data=form))
+        except TorBoxAPIError as exc:
+            if cached_only and exc.error.upper() == NOT_CACHED:
+                return None
+            raise
+        return self._created(WEBDL, native)
+
+    async def webdl_cached(self, links: tuple[str, ...]) -> dict[str, dict]:
+        """TorBox's cached web-download entries (``name``/``size``/``files``)
+        for ``links``, keyed by link; a link it does not hold is absent. One
+        batched read that creates nothing."""
+        keys = {webdl_cache_key(link): link for link in links}
+        if not keys:
+            return {}
+        native = _envelope(await self._send(
+            "POST", "webdl/checkcached", params={"format": "object", "list_files": "true"},
+            headers={"Content-Type": "application/json"}, data=json.dumps({"hashes": list(keys)})))
+        if native is None:
+            return {}
+        if not isinstance(native, dict):
+            raise TorBoxProtocolError("TorBox returned an unexpected cache answer")
+        found = {}
+        for key, entry in native.items():
+            if entry is None:
+                continue
+            if not isinstance(entry, dict):
+                raise TorBoxProtocolError("TorBox returned an unexpected cache entry")
+            link = keys.get(str(key).casefold())
+            if link is not None:
+                found[link] = entry
+        return found
 
     async def create_usenet(self, posting, *, name: str) -> str:
         """Submit one NZB posting as a file. ``posting`` is bytes or a binary

@@ -478,7 +478,8 @@ class TransferEngine:
             return ""
         return direct_link_host(current.request.payload)
 
-    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, independent=True, deduplicate=True):
+    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, independent=True, deduplicate=True,
+                     alternative_groups: tuple[int | None, ...] | None = None):
         """Admit a submission. An independent submission of an object whose
         earlier lifecycle is terminal is a NEW lineage (``repository.admit``):
         it never reopens that history, inherits nothing of its routes,
@@ -490,6 +491,11 @@ class TransferEngine:
         for new work."""
         if not requests or len(requests) > 100 or any(not isinstance(item, TransferRequest) or not item.kind or not item.payload for item in requests):
             raise TransferError(self._error(Category.INVALID_REQUEST, Stage.SUBMISSION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
+        # ``alternative_groups``: one entry per request, the explicit
+        # alternative-source group it belongs to (``None`` for an ordinary
+        # request) -- see ``TransferRepository.admit``.
+        if alternative_groups is not None and len(alternative_groups) != len(requests):
+            raise TransferError(self._error(Category.INVALID_REQUEST, Stage.SUBMISSION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
         # The admission boundary: credentials a resource carries are split out
         # as USER_SUPPLIED material before anything is persisted, so only the
         # sanitized resource is ever durable.
@@ -497,7 +503,8 @@ class TransferEngine:
         requests = tuple(replace(item, payload=payload) if values else item
                          for item, (payload, values) in zip(requests, split))
         transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate,
-                                                        independent=independent)
+                                                        independent=independent,
+                                                        **({"alternative_groups": alternative_groups} if alternative_groups else {}))
         if created and any(values for _payload, values in split):
             # An independent submission never joins another lineage's material,
             # so material is admitted only with the transfer it created.
@@ -1450,7 +1457,12 @@ class TransferEngine:
                     await self.canonical.settle(record.transfer_id)
                 return
         retry_state = "waiting" if waiting and decision.action != Recovery.RERESOLVE else "pending"
-        await self.repository.request_failure(record.id, error, decision.retry_at, retry_state=retry_state, consume_attempt=waiting)
+        # A root's terminal failure under this policy is its own: in an
+        # explicit alternative-source group it hands the group to the next
+        # alternative (``request_failure``), whose routes and budget are its
+        # own -- nothing about this root exhausts it.
+        await self.repository.request_failure(record.id, error, decision.retry_at, retry_state=retry_state,
+                                              consume_attempt=waiting, advance_alternative=True)
         await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
         if decision.retry_at is None:
             # A source that failed for good: the canonical owner decides

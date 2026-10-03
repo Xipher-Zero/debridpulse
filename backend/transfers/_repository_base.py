@@ -1691,7 +1691,7 @@ class TransferRepository:
             return await self._predecessor_cleanup_blocks(db, transfer_id)
 
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True,
-                    independent=True) -> tuple[Transfer, bool]:
+                    independent=True, alternative_groups: tuple[int | None, ...] | None = None) -> tuple[Transfer, bool]:
         """Admit one submission under the source's active dedupe identity.
 
         Matching live work (any non-terminal lifecycle, a failed one included:
@@ -1706,7 +1706,14 @@ class TransferRepository:
         canonical material owner, never here. An observation of a resource that
         already exists (``independent=False``: inventory) is not a submission
         and dedupes onto whatever lifecycle holds the key -- except a deleted
-        one, which never holds it."""
+        one, which never holds it.
+
+        ``alternative_groups`` (one entry per request, ``None`` = ordinary)
+        names the explicit alternative-source group of each root. A group's
+        first request in submitted order is admitted ``pending``; every other
+        member is admitted dormant -- ``skipped``, the existing "not selected
+        for acquisition" state no cohort, canonical or lifecycle owner treats
+        as material -- until ``_admit_next_alternative`` selects it."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -1735,7 +1742,16 @@ class TransferRepository:
                     VALUES(?,?,'pending',?,?,'',?)""", (fingerprint, name, source, priority, fingerprint))
                 created = True
             existing = await db.fetchone("SELECT id FROM transfer_requests WHERE transfer_id=? LIMIT 1", (transfer_id,))
-            if not existing:
+            if not existing and alternative_groups:
+                selected: set[int] = set()
+                for ordinal, (request, group) in enumerate(zip(requests, alternative_groups, strict=True)):
+                    state = "skipped" if group is not None and group in selected else "pending"
+                    if group is not None:
+                        selected.add(group)
+                    await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state,alternative_group) "
+                                     "VALUES(?,?,?,?,?,?)",
+                                     (new_identity(), transfer_id, ordinal, codec.dump(request), state, group))
+            elif not existing:
                 for ordinal, request in enumerate(requests):
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload) VALUES(?,?,?,?)",
                                      (new_identity(), transfer_id, ordinal, codec.dump(request)))
@@ -1917,7 +1933,8 @@ class TransferRepository:
         return tuple(RequestRecord(row["id"], transfer_id, codec.request(codec.load(row["payload"])), row["state"],
                                    row["parent_id"], codec.resource(codec.load(row["resource"])), row["attempts"],
                                    row["retry_at"], codec.error(row["error"]), codec.entry(codec.load(row["metadata"])),
-                                   codec.optional_request(codec.load(row["interpretation"]))) for row in rows)
+                                   codec.optional_request(codec.load(row["interpretation"])),
+                                   row["alternative_group"]) for row in rows)
 
     async def failed_unverified_target(self, request_id: str) -> int | None:
         """The shared ``failed_unverified_target`` reader for callers without
@@ -2041,6 +2058,7 @@ class TransferRepository:
             else:
                 await db.execute("UPDATE transfer_requests SET state='failed',resource=NULL,retry_at=0,error=? "
                                  "WHERE id=?", (error_blob, request_id))
+                await self._admit_next_alternative(db, request_id)
             await db.commit()
         return True
 
@@ -2080,6 +2098,117 @@ class TransferRepository:
                              "attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
             await db.commit()
         return "declined"
+
+    # -- explicit alternative-source groups -----------------------------------
+    #
+    # Roots of one transfer sharing ``alternative_group`` are the operator's
+    # alternate sources for ONE logical member, preferred in ``ordinal``
+    # order. At most one of them is ever selected (any state but ``skipped``
+    # and ``failed``); the others are dormant ``skipped`` roots, which no
+    # cohort, canonical or lifecycle owner counts as material and no
+    # scheduler pass resolves. Selection moves only by the transitions below,
+    # each inside the caller's one immediate transaction, so concurrent passes
+    # and restarts see exactly one selected alternative. A dormant root never
+    # attempted after its group was satisfied simply stays ``skipped`` with no
+    # attempt: no failure or evidence is ever recorded for it.
+
+    @staticmethod
+    async def _alternatives(db, request_id: str):
+        """``(group members in submitted order, live)`` for the explicit group
+        of root ``request_id``; ``((), False)`` for an ordinary request."""
+        row = await db.fetchone(
+            """SELECT r.transfer_id,r.alternative_group,t.status FROM transfer_requests r
+               JOIN torrents t ON t.id=r.transfer_id
+               WHERE r.id=? AND r.parent_id IS NULL AND r.alternative_group IS NOT NULL""", (request_id,))
+        if not row:
+            return (), False
+        members = await db.fetchall(
+            """SELECT r.id,r.state,r.attempts,
+                      EXISTS(SELECT 1 FROM download_files f WHERE f.request_id=r.id) AS materialized
+               FROM transfer_requests r WHERE r.transfer_id=? AND r.parent_id IS NULL AND r.alternative_group=?
+               ORDER BY r.ordinal""", (row["transfer_id"], row["alternative_group"]))
+        return tuple(members), row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}
+
+    @classmethod
+    async def _admit_next_alternative(cls, db, request_id: str) -> None:
+        """Hand the group of ``request_id`` -- which just stopped being its
+        selected alternative -- to the first dormant alternative in submitted
+        order. Nothing while another member still holds the group (it is
+        active, or it satisfied the member) or when none is left: the group
+        then settles as its members did."""
+        members, live = await cls._alternatives(db, request_id)
+        if not live or any(item["state"] not in {"skipped", "failed"} for item in members):
+            return
+        following = next((item for item in members if item["state"] == "skipped" and not item["materialized"]), None)
+        if following is not None:
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL "
+                             "WHERE id=? AND state='skipped'", (following["id"],))
+
+    async def select_alternative(self, request_id: str, chosen_id: str) -> bool:
+        """Move a group's selection from its never-attempted selected root
+        ``request_id`` to the never-attempted dormant alternative
+        ``chosen_id`` -- cache-first preference, decided by core before
+        either was resolved. ``False``, changing nothing, unless both are
+        still exactly that."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            members, live = await self._alternatives(db, request_id)
+            current = {item["id"]: item for item in members}
+            selected, chosen = current.get(request_id), current.get(chosen_id)
+            if (not live or selected is None or chosen is None or selected["state"] != "pending"
+                    or selected["attempts"] or chosen["state"] != "skipped" or chosen["attempts"]
+                    or chosen["materialized"]):
+                await db.rollback()
+                return False
+            await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0 WHERE id=?", (request_id,))
+            await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL WHERE id=?", (chosen_id,))
+            await db.commit()
+        return True
+
+    async def defer_alternative(self, attempt: ResolutionAttempt, error: NormalizedError) -> bool:
+        """A cached-only resolution of a selected alternative found its source
+        no longer cached and created nothing: the attempt records that, the
+        alternative returns to dormancy (its attempt kept as history, so it is
+        never again preferred as cached) and the group passes to its first
+        dormant alternative in submitted order. ``False`` when the request is
+        no longer this live resolution."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            members, live = await self._alternatives(db, attempt.request_id)
+            current = next((item for item in members if item["id"] == attempt.request_id), None)
+            if not live or current is None or current["state"] != "resolving":
+                await db.rollback()
+                return False
+            error_blob = codec.dump(error)
+            await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP "
+                             "WHERE id=? AND state='started'", (error_blob, attempt.id))
+            await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP "
+                             "WHERE resolution_attempt_id=?", (attempt.id,))
+            await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0,error=NULL WHERE id=?",
+                             (attempt.request_id,))
+            await self._admit_next_alternative(db, attempt.request_id)
+            await db.commit()
+        return True
+
+    @staticmethod
+    async def _settle_alternative_selection(db, transfer_id: int) -> None:
+        """After an operator/recovery requeue: every explicit group of the
+        transfer keeps at most one selected alternative. A group whose member
+        is active or satisfied the member keeps it, and anything requeued
+        beside it returns to dormancy; otherwise the first requeued member in
+        submitted order is selected."""
+        groups = await db.fetchall(
+            """SELECT DISTINCT alternative_group FROM transfer_requests
+               WHERE transfer_id=? AND parent_id IS NULL AND alternative_group IS NOT NULL""", (transfer_id,))
+        for group in groups:
+            members = await db.fetchall(
+                """SELECT id,state FROM transfer_requests WHERE transfer_id=? AND parent_id IS NULL
+                   AND alternative_group=? ORDER BY ordinal""", (transfer_id, group["alternative_group"]))
+            pending = [item["id"] for item in members if item["state"] == "pending"]
+            held = any(item["state"] not in {"pending", "skipped", "failed"} for item in members)
+            for request_id in pending[0 if held else 1:]:
+                await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0 WHERE id=? AND state='pending'",
+                                 (request_id,))
 
     async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
         identity = new_identity()
@@ -2216,7 +2345,14 @@ class TransferRepository:
                              (codec.dump(interpretation), request_id))
             await db.commit()
 
-    async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending", consume_attempt=False) -> None:
+    async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending",
+                              consume_attempt=False, advance_alternative=False) -> None:
+        """``advance_alternative``: the failure owner's decided terminal
+        failure (``TransferEngine._request_failure``) of an explicit group's
+        root hands the group to its next alternative in the SAME transaction
+        (``_admit_next_alternative``). Never for an interrupted resolution
+        reconciled at startup: whether its remote creation happened is
+        unknown, so no other alternative may begin."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             error_blob = codec.dump(error)
@@ -2227,6 +2363,8 @@ class TransferRepository:
             await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
                 AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
+            if retry_at is None and advance_alternative:
+                await self._admit_next_alternative(db, request_id)
             await db.commit()
 
     async def manifest(self, record: RequestRecord, entries: tuple[SourceEntry, ...], *, selection_id: str | None = None) -> None:
@@ -3603,6 +3741,7 @@ class TransferRepository:
                                  params)
             await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,"
                              f"attempts=CASE WHEN ? THEN 0 ELSE attempts END WHERE {live}", (reset_budget, *params))
+            await self._settle_alternative_selection(db, transfer_id)
             await db.commit()
 
     async def renew_parent(self, record, retry_at, *, reset_budget=False):

@@ -589,14 +589,33 @@ class ApplicationService:
         # siblings and cross-transfer contributors uniformly. A later,
         # genuinely separately admitted transfer proven equivalent still
         # converges through the same cross-transfer path, unaffected by this.
+        #
+        # An item given as a tuple is ONE logical member with explicit
+        # alternate sources, in the operator's order of preference (a Quick
+        # Add row of TAB-separated links): its roots share one durable
+        # alternative group, which core admits one source at a time. A plain
+        # link -- the only thing a link file or an API list of links carries
+        # -- is an ordinary root, exactly as before. Grouping is submission
+        # intent, never equivalence evidence.
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
-        urls = normalize_direct_links(links)
+        groups = None
+        if any(isinstance(item, tuple) for item in links):
+            rows = [item if isinstance(item, tuple) else (item,) for item in links]
+            urls = normalize_direct_links([url for row in rows for url in row])
+            if len(urls) != sum(len(row) for row in rows):
+                raise ValueError("A link may be listed in only one row")
+            groups = tuple(group if len(row) > 1 else None
+                           for group, row in enumerate(rows, 1) for _url in row)
+            members = [row[0] for row in rows]
+        else:
+            urls = members = normalize_direct_links(links)
         consented = await self._local_network_consent(urls, allow_local_network=allow_local_network)
         requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index),
                                          selection_mode=selection_mode,
                                          local_network_consent=direct_link_host(url) in consented)
                          for index, url in enumerate(urls, 1))
-        item = await self.submit(requests, name=direct_link_collection_name([], urls), source="direct_link", deduplicate=False)
+        item = await self.submit(requests, name=direct_link_collection_name([], members), source="direct_link",
+                                 deduplicate=False, **({"alternative_groups": groups} if groups else {}))
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
 

@@ -188,6 +188,38 @@ def normalize_direct_links(values: List[str]) -> List[str]:
     return normalized
 
 
+# The ordinary multi-link text surface's one grouping delimiter: within one
+# row, TAB separates alternate sources for ONE item; a new row is another item.
+# Spaces are never a delimiter.
+ALTERNATIVE_SOURCE_DELIMITER = "\t"
+
+
+def direct_link_rows(values: List[str]) -> List[tuple[str, ...]]:
+    """The rows of one text submission, each the ordered alternate sources the
+    operator declared for one item -- left to right, empty cells (trailing or
+    repeated TABs) dropped and a link repeated within its row kept once. An
+    identical row repeated is one row, exactly as a repeated line is one link.
+    A link in two different rows would make it an alternative of two items:
+    that is refused, never guessed. Links themselves are validated by
+    ``normalize_direct_links``, unchanged."""
+    rows: List[tuple[str, ...]] = []
+    owner: dict[str, tuple[str, ...]] = {}
+    for raw in values or []:
+        cells: List[str] = []
+        for cell in str(raw or "").split(ALTERNATIVE_SOURCE_DELIMITER):
+            cell = cell.strip()
+            if cell and cell not in cells:
+                cells.append(cell)
+        row = tuple(cells)
+        if not row or row in rows:
+            continue
+        if any(owner.get(cell, row) != row for cell in row):
+            raise ValueError("A link may be listed in only one row")
+        owner.update((cell, row) for cell in row)
+        rows.append(row)
+    return rows
+
+
 
 def direct_link_filename(url: str, fallback_index: int = 1) -> str:
     """Return a safe initial filename for a direct-link transaction."""

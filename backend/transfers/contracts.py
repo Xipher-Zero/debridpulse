@@ -7,7 +7,7 @@ from transfers.applicability import ProviderApplicability
 from transfers.entitlement import ProviderEntitlements
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -63,6 +63,27 @@ class RequestEntitlementSource(Protocol):
     (for example which of its hosts a link belongs to). ``None`` is unknown."""
 
     def entitlement_for(self, request: TransferRequest) -> bool | None: ...
+
+
+@runtime_checkable
+class CachedResolution(Protocol):
+    """Optional: a provider whose ordinary ``resolve`` may begin productive
+    remote acquisition, and that can also resolve WITHOUT beginning any.
+
+    ``cache_presence`` states, for each request in order, whether the provider
+    already holds it so that resolving it needs no new acquisition -- a pure
+    read that creates nothing (``UNKNOWN`` when it cannot tell).
+    ``resolve_cached`` resolves a request exactly as ``resolve`` would only
+    when doing so begins no productive acquisition; ``None`` means it is not
+    held now and nothing was created.
+
+    Core asks only while choosing which alternative of an explicit
+    alternative-source group to resolve first; ``resolve`` remains the one
+    productive resolution, used once core has admitted that alternative."""
+
+    async def cache_presence(self, requests: tuple[TransferRequest, ...]) -> tuple[CachePresence, ...]: ...
+
+    async def resolve_cached(self, request: TransferRequest) -> ResolutionResult | None: ...
 
 
 @runtime_checkable

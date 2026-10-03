@@ -1188,6 +1188,10 @@ class RequestRecord:
     # established (``DiscoveryRequest.alternate``); ``request`` stays exactly
     # what the operator submitted.
     interpretation: TransferRequest | None = None
+    # The explicit alternative-source group this root belongs to
+    # (``transfer_requests.alternative_group``); ``None`` for every ordinary
+    # request.
+    alternative_group: int | None = None
 
     @property
     def resolvable(self) -> TransferRequest:

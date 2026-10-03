@@ -859,6 +859,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # ``payload`` always stays what the operator submitted. Additive and
         # nullable: NULL means the request is resolved as submitted.
         'interpretation': 'TEXT',
+        # The operator's explicit alternative-source group of a ROOT request:
+        # roots of one transfer sharing a value are alternative sources for
+        # ONE logical member, preferred in ``ordinal`` order (one Quick Add
+        # row of TAB-separated links). Submission intent only -- never
+        # equivalence evidence. Additive and nullable: NULL is an ordinary,
+        # ungrouped request; no backfill.
+        'alternative_group': 'INTEGER',
     },
     'provider_resources': {
         'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',

@@ -273,6 +273,8 @@ class FakeClient:
         self.next_id = 100
         self.refusal = None
         self.hoster_list = [{"domains": ["hoster.example"], "status": True}]
+        # Links TorBox's web-download cache holds (``webdl_cached``); empty: nothing cached.
+        self.cache = set()
 
     @property
     def configured(self):
@@ -292,7 +294,18 @@ class FakeClient:
         self.calls.append(("create_torrent", magnet or metainfo))
         return self._created(TORRENT, torrent(state="downloading"))
 
-    async def create_webdl(self, link):
+    async def webdl_cached(self, links):
+        self.calls.append(("webdl_cached", tuple(links)))
+        return {link: {"name": "file.bin", "size": 9, "files": []} for link in links if link in self.cache}
+
+    async def create_webdl(self, link, *, cached_only=False):
+        if cached_only:
+            self.calls.append(("create_webdl_cached", link))
+            if link not in self.cache:
+                return None
+            return self._created(WEBDL, {"name": "file.bin", "size": 9, "download_state": "cached",
+                                         "download_present": True, "files": [{"id": 0, "name": "file.bin", "size": 9}],
+                                         "original_url": link})
         self.calls.append(("create_webdl", link))
         return self._created(WEBDL, {"name": "file.bin", "size": 9, "download_state": "downloading",
                                      "download_present": False, "files": [], "original_url": link})
@@ -742,3 +755,148 @@ async def test_definition_and_registration_contract():
     assert "nzb" in built.descriptor.request_types and built.descriptor.enabled
     plain = SimpleNamespace(options={"api_token": TOKEN}, enabled=True, priority=0)
     assert "nzb" not in definition.build(plain, SimpleNamespace()).descriptor.request_types
+
+
+# -- web-download cache first -------------------------------------------------------
+#
+# TorBox's cache answer is a safe pre-acquisition fact; a cached link is added
+# only with ``add_only_if_cached`` (no hoster acquisition), an uncached link is
+# created only by an ordinary resolution, and nothing is ever queued as a
+# stand-in for "not authorized yet": an unauthorized miss has NO remote object.
+
+HOSTER = "https://hoster.example/f/1"
+
+
+async def test_the_cache_is_read_by_url_key_in_one_batched_call_that_creates_nothing():
+    import hashlib
+    other = "https://hoster.example/f/2"
+    hit = hashlib.md5(HOSTER.encode()).hexdigest()
+    client, transport = service({("POST", "webdl/checkcached"): [
+        ok({hit: {"name": "file.bin", "size": 9, "hash": hit, "files": [{"id": 0, "name": "file.bin", "size": 9}]}}),
+        ok(None),
+    ]})
+    found = await client.webdl_cached((HOSTER, other))
+    assert list(found) == [HOSTER] and found[HOSTER]["files"][0]["name"] == "file.bin"
+    call = transport.calls[0]
+    assert call["params"] == {"format": "object", "list_files": "true"}
+    assert json.loads(call["data"]) == {"hashes": [hit, hashlib.md5(other.encode()).hexdigest()]}
+    assert await client.webdl_cached((other,)) == {}  # TorBox answers an all-miss with no data
+    assert [item["url"].removeprefix(API + "/") for item in transport.calls] == ["webdl/checkcached"] * 2
+
+
+@pytest.mark.parametrize("answer", [ok(["not", "an", "object"]), ok({"k": "not an entry"})])
+async def test_a_malformed_cache_answer_is_a_protocol_failure(answer):
+    from providers.torbox.client import TorBoxProtocolError, webdl_cache_key
+    if isinstance(answer[1]["data"], dict):
+        answer[1]["data"] = {webdl_cache_key(HOSTER): "not an entry"}
+    client, _ = service({("POST", "webdl/checkcached"): [answer]})
+    with pytest.raises(TorBoxProtocolError):
+        await client.webdl_cached((HOSTER,))
+
+
+async def test_a_failed_cache_check_fails_resolution_and_creates_nothing():
+    client = FakeClient()
+
+    async def failing(links):
+        raise TorBoxAPIError("UNKNOWN_ERROR", "Failed to retrieve web download cache status.", 500)
+
+    client.webdl_cached = failing
+    provider = TorBoxProvider(client)
+    with pytest.raises(TransferError):
+        await provider.resolve(TransferRequest("https", HOSTER, "file.bin"))
+    assert client.objects[WEBDL] == {}
+    with pytest.raises(TransferError):
+        await provider.cache_presence((TransferRequest("https", HOSTER, "file.bin"),))
+
+
+async def test_cached_only_creation_shape_and_its_not_cached_answer():
+    client, transport = service({("POST", "webdl/createwebdownload"): [
+        ok({"webdownload_id": 4}),
+        refused("DOWNLOAD_NOT_CACHED", detail="not found in cache"),
+        refused("UNSUPPORTED_SITE"),
+    ]})
+    assert await client.create_webdl(HOSTER, cached_only=True) == "4"
+    assert transport.calls[0]["data"] == {"link": HOSTER, "add_only_if_cached": "true"}
+    assert await client.create_webdl(HOSTER, cached_only=True) is None  # nothing was added
+    with pytest.raises(TorBoxAPIError):
+        await client.create_webdl(HOSTER, cached_only=True)  # any other refusal is a refusal
+    assert all("as_queued" not in (call["data"] or {}) for call in transport.calls)
+
+
+async def test_a_cached_link_is_added_only_from_the_cache_and_a_miss_creates_it_ordinarily():
+    client = FakeClient()
+    client.cache.add(HOSTER)
+    provider = TorBoxProvider(client)
+    cached = await provider.resolve(TransferRequest("https", HOSTER, "file.bin"))
+    assert [call[0] for call in client.calls if call[0] != "item"] == ["webdl_cached", "create_webdl_cached"]
+    assert cached.observation.resource.ownership == Ownership.CREATED
+    client.calls.clear()
+    await provider.resolve(TransferRequest("https", "https://hoster.example/f/2", "file.bin"))
+    assert [call[0] for call in client.calls if call[0] != "item"] == ["webdl_cached", "create_webdl"]
+
+
+async def test_a_stale_cache_answer_never_falls_through_to_productive_creation():
+    client = FakeClient()
+    client.cache.add(HOSTER)
+    real = client.create_webdl
+
+    async def gone(link, *, cached_only=False):
+        client.cache.discard(link)  # evicted between the check and the add
+        return await real(link, cached_only=cached_only)
+
+    client.create_webdl = gone
+    provider = TorBoxProvider(client)
+    with pytest.raises(TransferError) as failure:
+        await provider.resolve(TransferRequest("https", HOSTER, "file.bin"))
+    assert failure.value.error.retryability == Retryability.BACKOFF
+    assert "create_webdl" not in [call[0] for call in client.calls]
+    assert client.objects[WEBDL] == {}
+
+
+async def test_presence_and_cached_resolution_without_authorization_create_no_remote_object():
+    client = FakeClient()
+    client.cache.add(HOSTER)
+    provider = TorBoxProvider(client)
+    miss = TransferRequest("https", "https://hoster.example/f/2", "file.bin")
+    member = TransferRequest("https", member_address(WEBDL, "5", "0"), "file.bin")
+    presence = await provider.cache_presence((TransferRequest("https", HOSTER), miss, member,
+                                              TransferRequest("magnet", MAGNET)))
+    assert [item.value for item in presence] == ["hit", "miss", "unknown", "unknown"]
+    assert [call[0] for call in client.calls] == ["webdl_cached"]  # one batched read
+    # DP authorization absent: a miss is resolved from the cache only -- and
+    # there is then NO remote object at all, not a queued or placeholder one.
+    assert await provider.resolve_cached(miss) is None
+    assert client.objects[WEBDL] == {}
+    assert "create_webdl" not in [call[0] for call in client.calls]
+    held = await provider.resolve_cached(TransferRequest("https", HOSTER, "file.bin"))
+    assert held.observation.resource.ownership == Ownership.CREATED and len(client.objects[WEBDL]) == 1
+
+
+async def test_a_cache_key_is_never_integrity_evidence():
+    client = FakeClient()
+    client.cache.add(HOSTER)
+    provider = TorBoxProvider(client)
+    root = await provider.resolve_cached(TransferRequest("https", HOSTER, "file.bin"))
+    native_id = identity(root.observation.resource)[1]
+    entries = await provider.manifest(root.observation.resource)
+    assert all(entry.integrity == () for entry in entries)
+    member = (await provider.resolve(entries[0].request)).candidates[0]
+    assert member.integrity == () and member.content_evidence is None
+    assert native_id and root.observation.fingerprint == ""
+
+
+async def test_cleanup_of_a_cache_created_object_is_owned_and_an_observed_one_is_retained():
+    client = FakeClient()
+    client.cache.add(HOSTER)
+    provider = TorBoxProvider(client)
+    root = await provider.resolve_cached(TransferRequest("https", HOSTER, "file.bin"))
+    owned = await provider.cleanup(CleanupDirective(root.observation.resource, CleanupAuthority.OWNED))
+    assert owned.kind == OutcomeKind.SUCCESS and ("delete", WEBDL, identity(root.observation.resource)[1]) in client.calls
+    observed = replace_ownership(root.observation.resource, Ownership.OBSERVED)
+    retained = await provider.cleanup(CleanupDirective(observed, CleanupAuthority.OWNED))
+    assert retained.kind == OutcomeKind.SKIPPED
+
+
+def replace_ownership(resource_value, ownership):
+    from dataclasses import replace as _replace
+    return _replace(resource_value, ownership=ownership)

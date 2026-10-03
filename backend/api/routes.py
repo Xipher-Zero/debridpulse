@@ -33,7 +33,9 @@ from core.config import (
 from api.legacy_settings_view import legacy_settings_projection
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
 from providers.multimeta.metalink import MAX_DESCRIPTOR_BYTES
-from transfers.requests import MAX_LINK_FILE_BYTES, link_file_entries, normalize_direct_links
+from transfers.requests import (
+    ALTERNATIVE_SOURCE_DELIMITER, MAX_LINK_FILE_BYTES, direct_link_rows, link_file_entries, normalize_direct_links,
+)
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
@@ -817,6 +819,12 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
     else:
         raise HTTPException(400, "links must be a list or newline-separated string")
     try:
+        # A row of TAB-separated links is ONE item with explicit alternate
+        # sources (this text surface's grammar only -- a link file is read by
+        # its own grammar and never grouped). Text without a TAB is submitted
+        # exactly as before.
+        if any(ALTERNATIVE_SOURCE_DELIMITER in value for value in links):
+            links = [row if len(row) > 1 else row[0] for row in direct_link_rows(links)]
         # Explicit per-submission intent: the browser opts in; an omitted field
         # keeps the ALL default. Never inferred from the source or client.
         # ``allow_local_network`` is the operator's answer to THIS submission's

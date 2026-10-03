@@ -20,13 +20,13 @@ from transfers._repository_base import manifest_child_identity, manifest_member_
 from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
-from transfers.contracts import Manifest, ResourceLookup
+from transfers.contracts import CachedResolution, Manifest, ResourceLookup
 from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.policy import recovery_action
 from transfers.models import (
-    CleanupAuthority, Ownership, ResolutionResult, ResourceState,
+    CachePresence, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
 
 
@@ -145,16 +145,18 @@ class TransferEngine(_RecoveryTransferEngine):
                             domain=Domain.CLEANUP,
                         ))
 
-            bound_provider_id = await self.repository.bound_route_provider(record.id)
-            provider = (
-                self.registry.provider_for_bound_route(bound_provider_id, record.resolvable)
-                if bound_provider_id else self.registry.provider_for(
-                    record.resolvable, declined=await self.repository.declined_route_providers(record.id),
-                    exhausted=await self.repository.exhausted_route_providers(record.id),
-                    # A member continues the route that decomposed it: it is
-                    # never new acquisition, so account entitlement never gates it.
-                    acquisition=record.parent_id is None)
-            )
+            provider = await self._route_provider(record)
+            cached = False
+            if record.alternative_group is not None and record.parent_id is None and not record.attempts:
+                # The selected alternative of an explicit group, never yet
+                # resolved: an alternative the provider already holds is
+                # preferred over acquiring this one, without creating anything.
+                chosen = await self._cached_alternative(record, provider)
+                if chosen is not None and chosen.id != record.id:
+                    if await self.repository.select_alternative(record.id, chosen.id):
+                        self._resolution_opportunity(record.transfer_id)
+                        return
+                cached = chosen is not None and chosen.id == record.id
             async with self._resolution_slot():
                 if not await self._live(record.transfer_id, admission=True):
                     return
@@ -163,7 +165,16 @@ class TransferEngine(_RecoveryTransferEngine):
                 )
                 if attempt is None:
                     return
-                result = await provider.resolve(record.resolvable)
+                result = await (provider.resolve_cached(record.resolvable) if cached
+                                else provider.resolve(record.resolvable))
+            if cached and result is None:
+                # Held when asked, no longer held now: nothing was created, and
+                # the group continues from its first dormant alternative.
+                if await self.repository.defer_alternative(attempt, self._error(
+                        Category.RESOLUTION_TEMPORARILY_FAILED, Stage.RESOLUTION,
+                        domain=Domain.RESOLUTION, retryability=Retryability.BACKOFF)):
+                    self._resolution_opportunity(record.transfer_id)
+                return
             await self._apply_resolution(record, attempt, provider, result)
         except ApplicabilityUnresolved:
             return
@@ -183,6 +194,48 @@ class TransferEngine(_RecoveryTransferEngine):
             await self._request_failure(
                 record, error, attempts=record.attempts + (1 if attempt else 0),
             )
+
+    async def _route_provider(self, record):
+        """The provider this request's resolution belongs to: its bound route,
+        else the first of the one canonical competition."""
+        bound_provider_id = await self.repository.bound_route_provider(record.id)
+        if bound_provider_id:
+            return self.registry.provider_for_bound_route(bound_provider_id, record.resolvable)
+        return self.registry.provider_for(
+            record.resolvable, declined=await self.repository.declined_route_providers(record.id),
+            exhausted=await self.repository.exhausted_route_providers(record.id),
+            # A member continues the route that decomposed it: it is
+            # never new acquisition, so account entitlement never gates it.
+            acquisition=record.parent_id is None)
+
+    async def _cached_alternative(self, record, provider):
+        """The first alternative of ``record``'s explicit group, in submitted
+        order, that ``provider`` -- the route of ``record`` and of every
+        alternative asked about -- already holds; ``None`` when none is, or
+        the provider cannot say. Only ``record`` itself and never-attempted
+        dormant alternatives are asked; nothing is created by asking."""
+        if not isinstance(provider, CachedResolution):
+            return None
+        asked = []
+        for item in await self.repository.requests(record.transfer_id):
+            if item.parent_id is not None or item.alternative_group != record.alternative_group:
+                continue
+            if item.id != record.id:
+                if item.state != "skipped" or item.attempts:
+                    continue
+                try:
+                    if await self._route_provider(item) is not provider:
+                        continue
+                except (ApplicabilityUnresolved, TransferError):
+                    continue
+            asked.append(item)
+        try:
+            presence = await provider.cache_presence(tuple(item.resolvable for item in asked))
+        except Exception:
+            return None
+        if len(presence) != len(asked):
+            return None
+        return next((item for item, fact in zip(asked, presence) if fact == CachePresence.HIT), None)
 
     async def _observe_resource(self, record):
         provider = None

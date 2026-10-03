@@ -1281,14 +1281,18 @@ function classifyDashboardEntries(raw) {
   const direct = [];
   const magnets = [];
   const invalid = [];
+  const directLink = /^(?:https?|s?ftp|scp|ssh|rsync(?:\+ssh)?|(?:web)?davs?):\/\/\S+$/i;
   String(raw || '').split(/\r?\n/).forEach((rawValue, index) => {
-    const value = rawValue.trim();
+    // A pasted row of TAB-separated links is ONE item with alternate
+    // sources, kept intact for the backend; empty cells are dropped.
+    const cells = [...new Set(rawValue.split('\t').map(cell => cell.trim()).filter(Boolean))];
+    const value = cells.join('\t');
     if (!value || seen.has(value)) return;
     seen.add(value);
     const entry = {value, line: index + 1};
     // Direct-source transports; the backend admission owner remains the authority.
-    if (/^(?:https?|s?ftp|scp|ssh|rsync(?:\+ssh)?|(?:web)?davs?):\/\/\S+$/i.test(value)) direct.push(entry);
-    else if (/^magnet:\?/i.test(value)) magnets.push(entry);
+    if (cells.every(cell => directLink.test(cell))) direct.push(entry);
+    else if (cells.length === 1 && /^magnet:\?/i.test(value)) magnets.push(entry);
     else invalid.push(entry);
   });
   return {direct, magnets, invalid};

@@ -32,7 +32,7 @@ from transfers.errors import (
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry, SourceIdentity, TransferCandidate,
     TransferOutcome, TransferRequest,
@@ -131,8 +131,7 @@ class TorBoxProvider:
             return ResolutionResult(ResourceState.AVAILABLE, (await self._member(request, *member),))
         try:
             if request.kind in {"http", "https"}:
-                family, native_id, ownership = (WEBDL, await self.client.create_webdl(str(request.payload)),
-                                                Ownership.CREATED)
+                family, native_id, ownership = WEBDL, await self._webdl(str(request.payload)), Ownership.CREATED
             elif request.kind in {"magnet", "torrent"}:
                 family, (native_id, ownership) = TORRENT, await self._torrent(request)
             elif request.kind == "nzb" and request.kind in self.descriptor.request_types:
@@ -148,6 +147,58 @@ class TorBoxProvider:
             await self._refused(exc, request.kind)
             raise
         observed = replace(await self.observe(resource(family, native_id, ownership=ownership)), request=request)
+        return ResolutionResult(observed.state, observation=observed, error=observed.error)
+
+    async def _webdl(self, link: str) -> str:
+        """Create the web download for ``link`` -- from TorBox's cache when it
+        holds the link (``add_only_if_cached``: no hoster acquisition at all),
+        otherwise as an ordinary download. A link the cache answered for but
+        no longer holds is a retryable failure, never a silent productive
+        creation: the next resolution asks the cache again."""
+        if link not in await self.client.webdl_cached((link,)):
+            return await self.client.create_webdl(link)
+        native_id = await self.client.create_webdl(link, cached_only=True)
+        if native_id is None:
+            raise TransferError(NormalizedError(Domain.RESOLUTION, Category.RESOLUTION_TEMPORARILY_FAILED,
+                                                Stage.RESOLUTION, Retryability.BACKOFF, origin=Origin.PROVIDER,
+                                                integration_id=INTEGRATION_ID))
+        return native_id
+
+    @staticmethod
+    def _webdl_link(request: TransferRequest) -> str | None:
+        """The hoster link a root web-download request submits, if it is one."""
+        if request.kind not in {"http", "https"} or parse_member_address(request.payload) is not None:
+            return None
+        return str(request.payload)
+
+    @normalized_boundary(Stage.RESOLUTION)
+    async def cache_presence(self, requests: tuple[TransferRequest, ...]) -> tuple[CachePresence, ...]:
+        """Whether TorBox's web-download cache holds each request's link, in
+        one batched read that creates nothing. Only a root web-download
+        request has a cache answer; anything else is ``UNKNOWN``. A cached
+        entry says the address was fetched before -- never what it holds."""
+        links = [self._webdl_link(request) for request in requests]
+        cached = await self._call(self.client.webdl_cached, tuple({link for link in links if link}))
+        return tuple(CachePresence.UNKNOWN if link is None else
+                     CachePresence.HIT if link in cached else CachePresence.MISS for link in links)
+
+    @normalized_boundary(Stage.RESOLUTION)
+    async def resolve_cached(self, request: TransferRequest) -> ResolutionResult | None:
+        """``resolve`` for a root web-download request only from TorBox's cache
+        (``add_only_if_cached``); ``None`` -- nothing created -- when TorBox
+        does not hold it now, and for anything that is not such a request."""
+        link = self._webdl_link(request)
+        if link is None:
+            return None
+        try:
+            native_id = await self.client.create_webdl(link, cached_only=True)
+        except TorBoxAPIError as exc:
+            await self._refused(exc, request.kind)
+            raise
+        if native_id is None:
+            return None
+        observed = replace(await self.observe(resource(WEBDL, native_id, ownership=Ownership.CREATED)),
+                           request=request)
         return ResolutionResult(observed.state, observation=observed, error=observed.error)
 
     async def _torrent(self, request: TransferRequest) -> tuple[str, Ownership]:
