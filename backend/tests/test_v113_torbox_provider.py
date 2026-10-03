@@ -439,15 +439,25 @@ async def test_the_source_host_field_is_strict_and_web_download_only():
         assert parse_member_address(other) is None and member_source_host(other) is None
 
 
-async def test_material_carrying_the_account_token_is_refused():
+async def test_material_carrying_the_account_token_is_transient_execution_material():
+    """Transfer 478: TorBox's requestdl may issue a link that embeds the account
+    token. That is not a protocol violation -- it is execution material, which
+    is transient: usable now, never durable."""
+    from transfers import codec
     client = FakeClient()
 
-    async def leaking(family, native_id, file_id):
+    async def tokenized(family, native_id, file_id):
         return f"https://store-1.tb-cdn.st/dld/x?token={TOKEN}"
-    client.requestdl = leaking
-    with pytest.raises(TransferError) as caught:
-        await TorBoxProvider(client).resolve(TransferRequest("https", member_address(TORRENT, "1", "0"), "x"))
-    assert TOKEN not in json.dumps(caught.value.error.as_dict(diagnostics=True), default=str)
+    client.requestdl = tokenized
+    member = TransferRequest("https", member_address(TORRENT, "1", "0"), "x")
+    [candidate] = (await TorBoxProvider(client).resolve(member)).candidates
+    [endpoint] = candidate.endpoints
+    assert endpoint.transient and TOKEN in endpoint.address          # usable by the executor now
+    durable = codec.dump(candidate)
+    assert TOKEN not in durable and "tb-cdn" not in durable          # never durable
+    restored = codec.candidate(codec.load(durable))
+    assert restored.endpoints[0].transient and restored.endpoints[0].address == ""
+    assert restored.refresh_request == member and TOKEN not in json.dumps(codec.load(durable)["refresh_request"])
 
 
 async def test_material_still_crosses_network_safety():

@@ -20,6 +20,11 @@ from transfers.models import (
 def _value(value):
     if isinstance(value, SubmittedInput):
         raise TypeError("Transient input cannot be persisted")
+    if isinstance(value, Endpoint) and value.transient:
+        # The ONE persistence rule for transient execution material: only the
+        # fact that the endpoint exists and must be regenerated is durable --
+        # never its address or headers, whatever row or summary it is part of.
+        return {"scheme": value.scheme, "address": "", "headers": {}, "transient": True}
     if isinstance(value, NormalizedError):
         return _value(value.as_dict(diagnostics=True))
     if isinstance(value, Enum):

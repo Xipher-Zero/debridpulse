@@ -259,17 +259,18 @@ class TorBoxProvider:
         hoster known it names no source rather than TorBox. A torrent's or
         NZB's member keeps TorBox's address as its source: their logical
         source is the root request's own protocol."""
+        # TorBox may embed the account's API token in the link it issues: the
+        # link is therefore transient execution material -- never durable,
+        # never observable, regenerated for each execution by ``refresh`` --
+        # and only the member address above is durable truth.
         link = await self.client.requestdl(family, native_id, file_id)
-        if self.client.token and self.client.token in link:
-            # The account credential itself is never execution material.
-            raise TransferError(protocol_error(Stage.CANDIDATE_PREPARATION, "download link carries the API token"))
         try:
             endpoint = validate_provider_download_url(link, context="TorBox download link")
         except Exception as exc:
             raise TransferError(translate_error(exc, stage=Stage.CANDIDATE_PREPARATION,
                                                 secrets=self.client.secrets())) from None
         return TransferCandidate(
-            request.name or "download", (Endpoint(urlsplit(endpoint).scheme, endpoint),), 0,
+            request.name or "download", (Endpoint(urlsplit(endpoint).scheme, endpoint, transient=True),), 0,
             provider_id=INTEGRATION_ID, refresh_request=request,
             expires_at=float(self._clock()) + _LINK_LIFETIME_SECONDS,
             source_identity=self._member_source(request, family),

@@ -342,6 +342,12 @@ class Endpoint:
     scheme: str
     address: str = field(repr=False)
     headers: Mapping[str, str] = field(default_factory=dict, repr=False)
+    # Execution material only: a provider-issued capability (for example a
+    # link that embeds the account credential) valid for one execution. It is
+    # never durable -- persistence keeps only the fact (``codec``) -- and the
+    # bound provider's ordinary refresh regenerates it from the candidate's
+    # durable refresh identity immediately before each execution.
+    transient: bool = False
 
 
 @dataclass(frozen=True)

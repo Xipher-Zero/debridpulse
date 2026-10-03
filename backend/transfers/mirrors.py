@@ -405,6 +405,10 @@ def _sampler(candidate, registry):
     """The core-selected claimant for the candidate's pre-materialization
     subject -- the SAME router dispatch uses -- when it declares neutral
     candidate sampling; ``None`` otherwise. Never a scheme or name lookup."""
+    if any(endpoint.transient for endpoint in candidate.endpoints):
+        # Transient execution material is never in durable hand, so there is
+        # nothing a proof could read: no sampling capability, never a hold.
+        return None
     executor = registry.executor_for_subject(ExecutionSubject.of(candidate))
     return executor if executor is not None and executor.capabilities.candidate_sampling else None
 

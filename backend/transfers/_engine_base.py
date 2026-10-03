@@ -107,7 +107,7 @@ import time
 from weakref import WeakValueDictionary
 
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
+from transfers.contracts import CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
 from transfers import codec
 from transfers.errors import (
     Category, Domain, NormalizedError, Recovery, Retryability, Stage,
@@ -2640,6 +2640,15 @@ class TransferEngine:
                     retryability=Retryability.AFTER_RERESOLUTION)
                 await self._schedule_refresh(artifact, error)
                 return
+            try:
+                executable = await self._executable_candidate(artifact, candidate)
+            except TransferError as exc:
+                # Fresh material could not be issued now: the ordinary
+                # candidate refresh/recovery path owns the retry.
+                await self._schedule_refresh(artifact, exc.error)
+                return
+            if executable is not candidate:
+                work = self._work(artifact, executable, attempt_id)
             request = ExecutionRequest(work, attempt_id, continuation=plan)
             prepared = executor.prepare(request)
             if isinstance(prepared, InputRequirement):
@@ -2751,6 +2760,44 @@ class TransferEngine:
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.QUEUE)
             await self.repository.artifact_state(artifact.id, "error", error=error)
+
+    async def _executable_candidate(self, artifact: Artifact, candidate: TransferCandidate) -> TransferCandidate:
+        """THE transient execution-material boundary.
+
+        A candidate whose endpoint is transient execution material carries, in
+        durable state, only the fact (``codec``): its address never was and
+        never will be stored. Immediately before an execution the bound
+        provider's ordinary refresh contract regenerates it from the
+        candidate's durable refresh identity -- validated exactly as any
+        provider output is (``_authoritative_provider_result``) -- and the
+        fresh material lives only in this execution's in-memory request. The
+        durable artifact, its candidates and the prepared execution row keep
+        the durable form. Any other candidate is returned unchanged."""
+        if not any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints):
+            return candidate
+        expired = self._error(Category.CANDIDATE_EXPIRED, Stage.CANDIDATE_PREPARATION, domain=Domain.RESOLUTION,
+                              retryability=Retryability.AFTER_RERESOLUTION)
+        provider = self.registry.providers.get(candidate.provider_id)
+        record = next((item for item in await self.repository.requests(artifact.transfer_id)
+                       if item.id == artifact.request_id), None)
+        if not isinstance(provider, CandidateRefresh) or record is None:
+            raise TransferError(expired)
+        try:
+            result = self._authoritative_provider_result(
+                provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=record.resolvable)),
+                request_kind=record.resolvable.kind, lan_host=await self._consented_lan_host(record))
+        except TransferError:
+            raise
+        except Exception as exc:
+            raise TransferError(unknown_failure(exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
+                                                stage=Stage.CANDIDATE_PREPARATION)) from None
+        if result.error:
+            raise TransferError(result.error)
+        fresh = result.candidates[0] if result.candidates else None
+        if (fresh is None or not fresh.endpoints or not all(endpoint.address for endpoint in fresh.endpoints)
+                or (fresh.expires_at is not None and fresh.expires_at <= self.clock())):
+            raise TransferError(expired)
+        return replace(candidate, endpoints=fresh.endpoints, expires_at=fresh.expires_at)
 
     def _record_admission(self, observed: ExecutionObservation) -> None:
         """This engine natively admitted ``observed``'s attempt: the executor
