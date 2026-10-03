@@ -1915,6 +1915,7 @@ async def patch_integration_configuration(
             previous = get_settings()
             current = load_settings()
             existing = current.integrations.get(integration_id)
+            was_enabled = bool(getattr(previous.integrations.get(integration_id), "enabled", False))
             existing_options = existing.options if isinstance(existing, IntegrationSettings) else {}
             merged_options = {**existing_options, **body.options}
             try:
@@ -1976,6 +1977,13 @@ async def patch_integration_configuration(
     # admission this request still holds. Neutral: it names no integration and
     # applies to every namespace.
     application.notify_applicability_changed(integration_id)
+    if entry.enabled and not was_enabled:
+        # Re-enabling brings the integration back into service on CURRENT
+        # upstream account truth: one explicit refresh of the rebuilt live
+        # owner, whatever its last-known-good freshness. Neutral (a no-op for
+        # an integration without account truth); a failed check keeps the
+        # operator's Enable and the owner's last-known-good.
+        await application.refresh_account_entitlement(integration_id)
     from integrations.configuration import public_integrations
     public = public_integrations(clean, application.definitions).get(integration_id, {})
     # A save whose native application failed is reported truthfully: the

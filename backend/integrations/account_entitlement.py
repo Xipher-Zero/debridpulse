@@ -14,6 +14,10 @@ independent of any browser status poll:
 * a failed refresh keeps the last-known-good facts -- but entitlement is
   DERIVED from them at the instant it is read, so a known expiry is binding:
   nothing premium survives its authoritative end because a refresh failed;
+* an explicit operator act (a Test of the saved account, re-enabling the
+  integration) fetches account truth NOW (``refresh_now``): passive freshness
+  and background retry backoff never suppress it, and it changes nothing
+  about enablement or credentials;
 * a provider-proven definitive refusal contracts exactly the refused request
   classes for this account (``contract``) until account truth changes;
 * every change of the derived truth wakes routing and the status presentation
@@ -39,7 +43,10 @@ from transfers.entitlement import CONNECTION_FAILED_ENTITLEMENTS, UNRESOLVED_ENT
 logger = logging.getLogger("integrations.account")
 
 STATE_KEY = "account"
-ACCOUNT_REFRESH_SECONDS = 60 * 60
+# Background freshness: account truth is a low-frequency control-plane fact,
+# so an external plan change reaches routing within about five minutes. A known
+# expiry never waits for this -- entitlement is derived at the instant it is read.
+ACCOUNT_REFRESH_SECONDS = 5 * 60
 ACCOUNT_RETRY_SECONDS = 5 * 60
 _MAX_PAYLOAD_BYTES = 64 * 1024
 
@@ -148,6 +155,23 @@ class AccountEntitlementMaintenance:
         # all: this cadence is what tells routing and presentation about it.
         await self._announce()
 
+    async def refresh_now(self) -> ProviderEntitlements:
+        """Fetch authoritative account truth now -- the explicit operator mode.
+
+        Bypasses passive freshness (a still-fresh last-known-good) and the
+        background retry delay, because the operator asked DebridPulse to check
+        now; works while the integration is administratively disabled, because
+        reading account truth is proof, not participation. Persistence,
+        derivation, contraction and announcement are exactly the ordinary
+        refresh's. A failure keeps the last-known-good facts and schedules the
+        ordinary background retry -- it never becomes a tight retry loop."""
+        async with self._lock:
+            await self._ensure_loaded(explicit=True)
+            if self._translation.configured():
+                await self._refresh(float(self._clock()))
+        await self._announce()
+        return self.entitlements
+
     async def observe(self, native: Any) -> ProviderEntitlements:
         """Adopt account facts another path already fetched (a status probe).
         Malformed facts change nothing."""
@@ -181,8 +205,10 @@ class AccountEntitlementMaintenance:
 
     # -- persistence -----------------------------------------------------------------
 
-    async def _ensure_loaded(self) -> None:
-        if self._loaded or not self._provider.descriptor.enabled:
+    async def _ensure_loaded(self, *, explicit: bool = False) -> None:
+        # Passive paths never read state for an integration that does not
+        # participate; an explicit operator refresh may.
+        if self._loaded or not (explicit or self._provider.descriptor.enabled):
             return
         self._loaded = True
         try:

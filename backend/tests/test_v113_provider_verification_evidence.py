@@ -295,6 +295,7 @@ def _application():
         apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=AsyncMock(),
         notify_applicability_changed=lambda _identity: None,
+        refresh_account_entitlement=AsyncMock(return_value=False),
     )
 
 

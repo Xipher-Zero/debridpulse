@@ -319,6 +319,18 @@ def accept_verification(settings, definition, proofs):
         definition.id: entry.model_copy(update={"verification": evidence})}})
 
 
+def saved_subjects(settings, definition, fingerprint: str) -> tuple[str, ...]:
+    """The subjects of the CURRENT SAVED configuration that ``fingerprint``
+    describes -- empty for anything else (an unsaved draft). The one matching
+    rule a Test is judged by."""
+    entry = (settings.integrations or {}).get(definition.id)
+    if not isinstance(entry, IntegrationSettings):
+        return ()
+    return tuple(subject for subject, (current, _required)
+                 in definition.verification_fingerprints(entry.options).items()
+                 if current == fingerprint)
+
+
 def record_verification_outcome(settings, definition, fingerprint: str, ok: bool):
     """Commit or retire evidence for a subject of the CURRENT SAVED configuration.
 
@@ -340,14 +352,10 @@ def record_verification_outcome(settings, definition, fingerprint: str, ok: bool
         # it, a Save could replay a pre-failure proof and restore Verified for a
         # configuration this server has just proven broken.
         supersede_verification_proofs(fingerprint)
-    entry = (settings.integrations or {}).get(definition.id)
-    if not isinstance(entry, IntegrationSettings):
-        return None
-    matched = [subject for subject, (current, _required)
-               in definition.verification_fingerprints(entry.options).items()
-               if current == fingerprint]
+    matched = saved_subjects(settings, definition, fingerprint)
     if not matched:
         return None
+    entry = settings.integrations[definition.id]
     evidence = dict(entry.verification or {})
     for subject in matched:
         if ok:

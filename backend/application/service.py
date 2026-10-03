@@ -127,6 +127,29 @@ class ApplicationService:
         self.resolution_wakeup.set()
         self.integration_wakeup.set()
 
+    async def refresh_account_entitlement(self, integration_id: str) -> bool:
+        """Explicit operator refresh of one integration's account truth.
+
+        Integration-neutral: every account-truth component the registered
+        implementation owns (``integrations.definition.AccountRefresh``) fetches
+        now, whatever its passive freshness says; an integration without one is
+        a no-op. Never changes enablement or credentials, and a failed fetch is
+        the owner's own last-known-good business -- it never fails the caller's
+        operation. True when at least one component refreshed."""
+        from integrations.definition import AccountRefresh, lifecycle_components
+        registry = self.engine.registry
+        implementation = registry.providers.get(integration_id) or registry.executors.get(integration_id)
+        refreshed = False
+        for component in lifecycle_components(implementation):
+            if not isinstance(component, AccountRefresh):
+                continue
+            try:
+                await component.refresh_now()
+                refreshed = True
+            except Exception as exc:
+                logger.warning("Account refresh failed for %s: %s", integration_id, sanitize_exception(exc))
+        return refreshed
+
     async def notify_status_changed(self) -> None:
         """Tell live presentation that an integration's runtime status changed.
 

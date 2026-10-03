@@ -9,8 +9,8 @@ from integrations.catalog import definitions, register
 from integrations.configuration import normalize_settings
 from services.downloader_egress_guard import downloader_egress_guard
 from integrations.definition import (
-    AdministeredIntegration, ConfigurableIntegration, IntegrationEnvironment, IntegrationLifecycle,
-    ManagedIntegration,
+    AdministeredIntegration, ConfigurableIntegration, IntegrationEnvironment, ManagedIntegration,
+    lifecycle_components,
 )
 from integrations.runtime_state import ProviderRuntimeStateStore
 from transfers.convergence_engine import TransferEngine
@@ -35,8 +35,7 @@ def integration_surfaces(registry) -> tuple[tuple, dict, dict]:
     # An integration may own several lifecycle components (for example its
     # host inventory and its account truth); each is driven independently.
     lifecycle = tuple(component for item in implementations if isinstance(item, ManagedIntegration)
-                      for component in (item.lifecycle if isinstance(item.lifecycle, tuple) else (item.lifecycle,))
-                      if isinstance(component, IntegrationLifecycle))
+                      for component in lifecycle_components(item))
     admins = {item.descriptor.id: item.administration for item in implementations
               if isinstance(item, AdministeredIntegration)}
     appliers: dict[str, list] = {}

@@ -172,6 +172,22 @@ class IntegrationLifecycle(Protocol):
 
 
 @runtime_checkable
+class AccountRefresh(Protocol):
+    """A lifecycle component that owns account truth and can fetch it on
+    explicit operator request (``integrations.account_entitlement``). Optional:
+    an integration without one has nothing to refresh."""
+
+    async def refresh_now(self) -> object: ...
+
+
+def lifecycle_components(implementation) -> tuple:
+    """Every lifecycle component one registered implementation owns."""
+    lifecycle = getattr(implementation, "lifecycle", None)
+    components = lifecycle if isinstance(lifecycle, tuple) else (lifecycle,)
+    return tuple(component for component in components if isinstance(component, IntegrationLifecycle))
+
+
+@runtime_checkable
 class ManagedIntegration(Protocol):
     """An integration implementation that owns a lifecycle component (for
     example a managed daemon), or a tuple of independent ones. Discovered

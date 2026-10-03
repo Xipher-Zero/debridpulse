@@ -582,3 +582,48 @@ test('the AllDebrid credential is one compact centred island and no blank row si
   expect(geometry.centreLine).toBeLessThan(2);
   expect(geometry.firstChild).toBe(true);
 });
+
+/* DP 1.0.13 -- a provider card whose body ENDS in its closed Additional Settings
+ * disclosure ends there: no generic card-body padding band beneath the summary
+ * row. Open, the tuning content keeps the ordinary bottom padding. One shared
+ * structural rule; the cards below are only the current members of the grammar. */
+for (const viewport of [{name: 'desktop', width: 1280, height: 900}, {name: 'phone', width: 390, height: 844}]) {
+test(`no blank band follows a closed terminal Additional Settings disclosure (${viewport.name})`, async ({page}) => {
+  await isolateExternalFonts(page);
+  await page.goto('/');
+  await openSources(page);
+  const ids = ['alldebrid', 'realdebrid', 'torbox'];
+  // Reach Services and expand the cards through the desktop layout, then
+  // measure at the case's viewport (the phone-width card sizing rule is in
+  // force for the phone case).
+  for (const id of ids) {
+    const disclosure = page.locator(`.dp-settings-provider-card--${id} .dp-settings-disclosure`);
+    if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  }
+  await page.setViewportSize({width: viewport.width, height: viewport.height});
+  expect(await page.evaluate(() => matchMedia('(max-width: 700px)').matches)).toBe(viewport.width <= 700);
+  for (const id of ids) {
+    const card = page.locator(`.dp-settings-provider-card--${id}`);
+    const body = card.locator(':scope > .card-body');
+    await expect(body).toBeVisible();
+    const gap = () => body.evaluate(el => {
+      const details = el.querySelector(':scope > .dp-settings-additional');
+      return {last: el.lastElementChild === details,
+              band: el.getBoundingClientRect().bottom - details.getBoundingClientRect().bottom,
+              left: parseFloat(getComputedStyle(el).paddingLeft), top: parseFloat(getComputedStyle(el).paddingTop)};
+    });
+    const closed = await gap();
+    expect(closed.last).toBe(true);
+    expect(closed.band).toBeLessThanOrEqual(1);
+    expect(closed.left).toBeGreaterThan(0);                  // horizontal/top geometry kept
+    expect(closed.top).toBeGreaterThan(0);
+    const summary = card.locator('.dp-settings-additional > summary');
+    await summary.scrollIntoViewIfNeeded();
+    await summary.click();
+    await expect(card.locator('.dp-settings-additional-body')).toBeVisible();
+    const open = await gap();
+    expect(open.band).toBeGreaterThan(4);                    // open content keeps its breathing room
+    await summary.click();
+  }
+});
+}

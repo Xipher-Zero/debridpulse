@@ -769,6 +769,18 @@
   padding: 2px 0 4px;
 }
 
+/* A provider card whose configuration ENDS in its closed Additional Settings
+   disclosure ends there: the 42px summary row is the card's last geometry, so
+   the generic card-body bottom padding is not stacked beneath it as a second
+   blank band. Open, the tuning content keeps the ordinary bottom padding.
+   Structural, shared by every provider card of this grammar; left, right and
+   top padding stay. It holds at every viewport, so it must also outrank the
+   phone-width card sizing rule (`.card-body { padding: ... !important }` in
+   ui-universal-language.css), which sets bottom padding the same way. */
+#view-settings .dp-settings-card > .card-body:has(> .dp-settings-additional:last-child:not([open])) {
+  padding-bottom: 0 !important;
+}
+
 /* ── The ONE fixed tuning-set grammar ────────────────────────────────────
    Every fixed tuning set in Settings -- AllDebrid Additional Settings,
    every Transfer Method Settings card, Disk Space & Recovery -- is laid out

@@ -406,17 +406,26 @@ async def _record_verification_outcome(application: ApplicationService, integrat
     means nothing changed and there is nothing to publish.
     """
     from core.config import config_write_lock, load_settings
-    from integrations.configuration import public_integrations, record_verification_outcome
+    from integrations.configuration import public_integrations, record_verification_outcome, saved_subjects
 
     definition = next((item for item in application.definitions if item.id == integration_id), None)
     if definition is None:
         return None
     async with config_write_lock():
-        updated = record_verification_outcome(load_settings(), definition, fingerprint, ok)
-        if updated is None:
-            return None
-        _persist_evidence(updated)
-        return public_integrations(updated, application.definitions).get(integration_id)
+        settings = load_settings()
+        saved = bool(saved_subjects(settings, definition, fingerprint))
+        updated = record_verification_outcome(settings, definition, fingerprint, ok)
+        if updated is not None:
+            _persist_evidence(updated)
+    if ok and saved:
+        # A successful Test of the SAVED account is the operator asking to
+        # check now: the live account-truth owner refreshes, enabled or not,
+        # and nothing about enablement changes. A draft's Test matches no saved
+        # subject and touches no live truth.
+        await application.refresh_account_entitlement(integration_id)
+    if updated is None:
+        return None
+    return public_integrations(updated, application.definitions).get(integration_id)
 
 
 def _persist_evidence(updated) -> None:
