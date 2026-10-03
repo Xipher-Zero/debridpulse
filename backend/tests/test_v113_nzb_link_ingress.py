@@ -21,6 +21,7 @@ from fastapi import HTTPException
 import db.database as database
 import services.network_safety as safety
 from application.service import ApplicationService
+from providers.usenet.nzb import read as read_nzb
 from providers.usenet.provider import UsenetProvider
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, Stage, TransferError
@@ -161,7 +162,7 @@ async def build(tmp_path, monkeypatch, *, max_bytes=None, policy=None):
     engine = TransferEngine(repository, registry, download_root=str(tmp_path / "downloads"),
                             policy=policy or TransferPolicy(), clock=lambda: 1000.0)
     await engine.initialize()
-    return ApplicationService(engine, staged_input=store), store, repository, provider
+    return ApplicationService(engine, staged_input=store, nzb_reader=read_nzb), store, repository, provider
 
 
 async def roots(repository):

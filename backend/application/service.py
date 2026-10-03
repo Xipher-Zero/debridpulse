@@ -93,8 +93,12 @@ class IntegrationStopFailed(RuntimeError):
 
 class ApplicationService:
     def __init__(self, engine, *, configure=None, lifecycle=(), admins=None, capacity=None,
-                 staged_input=None):
+                 staged_input=None, nzb_reader=None):
         self.engine = engine
+        # The one NZB reader, injected by the composition root (the only place
+        # a concrete integration is named): ``reader(stream, fallback_name=)``
+        # names a valid posting and raises ``ValueError`` for anything else.
+        self.nzb_reader = nzb_reader
         # The one owner of durable, large submitted request input. Held here
         # because it is an application resource, not a provider's or an
         # executor's: the edge stages into it, both of them only read from it,
@@ -457,7 +461,6 @@ class ApplicationService:
         fails with a normalized submission error; nothing is admitted unless it
         is valid.
         """
-        from providers.usenet.nzb import InvalidNzb, read
         from services.artifact_sampling import HttpReadRefused, http_body
 
         try:
@@ -465,7 +468,7 @@ class ApplicationService:
         except ValueError as exc:
             raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER,
                                       400, exc) from None
-        if self.staged_input is None:
+        if self.staged_input is None or self.nzb_reader is None:
             raise _submission_failure(Domain.LOCAL_RESOURCE, Category.PATH_UNAVAILABLE, Retryability.BACKOFF,
                                       Origin.LOCAL_SYSTEM, 503, "durable input storage is unavailable")
         parts = urlsplit(address)
@@ -496,14 +499,14 @@ class ApplicationService:
 
         def validated():
             with self.staged_input.opened(payload) as stream:
-                return read(stream, fallback_name=request_name)
+                return self.nzb_reader(stream, fallback_name=request_name)
 
         try:
             manifest = await asyncio.to_thread(validated)
         except BaseException as exc:
             # Refused (or abandoned) before anything could own it.
             self.staged_input.discard(payload)
-            if isinstance(exc, (InvalidNzb, StagedInputError)):
+            if isinstance(exc, (ValueError, StagedInputError)):
                 raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER,
                                           Origin.USER, 400, exc) from None
             raise

@@ -20,6 +20,7 @@ import db.database as database
 from providers.torbox import admin
 from providers.torbox.client import TorBoxAPIError, USENET
 from providers.torbox.definition import definition
+from providers.usenet.nzb import read as read_nzb
 from transfers.staged_input import StagedInputStore
 
 pytestmark = pytest.mark.asyncio
@@ -180,7 +181,7 @@ async def test_an_uploaded_and_a_linked_nzb_reach_the_same_torbox_path(tmp_path,
         engine = TransferEngine(TransferRepository(), registry, download_root=str(tmp_path / "downloads"),
                                 policy=TransferPolicy(), clock=lambda: 1000.0)
         await engine.initialize()
-        service = ApplicationService(engine, staged_input=staged)
+        service = ApplicationService(engine, staged_input=staged, nzb_reader=read_nzb)
 
         async def chunks():
             yield NZB

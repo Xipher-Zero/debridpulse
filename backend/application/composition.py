@@ -149,8 +149,10 @@ def compose():
     # The canonical owner announces a committed attachment through an injected
     # callback; nothing wraps or proxies it.
     engine.canonical.on_attached = consolidation_events.stage
+    from providers.usenet.nzb import read as read_nzb
     service = ApplicationService(engine, configure=configure,
-                                 staged_input=StagedInputStore(staged_input_root(settings)))
+                                 staged_input=StagedInputStore(staged_input_root(settings)),
+                                 nzb_reader=read_nzb)
     service.consolidation_events = consolidation_events
     configure(service)
     return service
