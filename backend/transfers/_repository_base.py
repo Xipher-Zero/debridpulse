@@ -176,16 +176,22 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
     ``reconstruction_only`` keeps the DESTINATION_AWARE writers alone (what a
     source switch abandons). ``transfer_scope`` is a SQL predicate over
     ``f.torrent_id``; one row per transfer: ``transfer_id``,
-    ``execution_completed``, ``execution_total``."""
+    ``execution_completed``, ``execution_total``.
+
+    The capability test is an anti-join, never a per-row subquery: the left
+    join matches only an ``export_material_ranges`` element of a writer that
+    is not DESTINATION_AWARE, so every counted writer keeps exactly one row (no
+    SUM is multiplied) and a writer declaring it, however often, is excluded."""
     destination_aware = f"json_extract(e.continuation, '$.strategy') = '{ContinuationStrategy.DESTINATION_AWARE.value}'"
+    exporter_join = "" if reconstruction_only else f"""
+        LEFT JOIN json_each(e.continuation, '$.capabilities') c
+          ON NOT ({destination_aware}) AND c.value = '{ContinuationCapability.EXPORT_MATERIAL_RANGES.value}'"""
     not_yet_material = destination_aware if reconstruction_only else f"""({destination_aware}
-              OR (json_type(e.continuation, '$.capabilities') = 'array'
-                  AND NOT EXISTS (SELECT 1 FROM json_each(e.continuation, '$.capabilities') c
-                                  WHERE c.value = '{ContinuationCapability.EXPORT_MATERIAL_RANGES.value}')))"""
+              OR (json_type(e.continuation, '$.capabilities') = 'array' AND c.key IS NULL))"""
     return f"""SELECT f.torrent_id AS transfer_id,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total
-        FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id
+        FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id{exporter_join}
         WHERE e.state = 'running' AND e.authorized = 1
           AND {not_yet_material}
           AND ({transfer_scope})

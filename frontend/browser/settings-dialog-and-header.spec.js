@@ -240,8 +240,8 @@ test('header flavour copy is geometrically centred on the full card header', asy
   });
   // The three expandable Premium Services cards. The Network Sources members
   // are protocol boxes and have no card header to centre anything on.
-  // AllDebrid, Real-Debrid, TorBox and Usenet.
-  expect(sources.length).toBe(4);
+  // AllDebrid, Debrid-Link, Real-Debrid, TorBox and Usenet.
+  expect(sources.length).toBe(5);
   for (const offset of sources) expect(Math.abs(offset)).toBeLessThan(1);
 });
 

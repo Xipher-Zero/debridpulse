@@ -814,9 +814,10 @@
 
   function apiKeyAccountLine(id) {
     const account = apiKeyAccounts[id];
-    if (!account || !API_KEY_ACCOUNTS[id].configured(state.settings)) return providerStatusLine();
+    if (!account || !API_KEY_ACCOUNTS[id].configured(state.settings)) return '';
     const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
-    return providerStatusLine(html(line), 'dp-settings-account-expiry');
+    // Nothing to state renders nothing: no blank row above the key island.
+    return line ? providerStatusLine(html(line), 'dp-settings-account-expiry') : '';
   }
 
   function renderApiKeyAccount(id) {

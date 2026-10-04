@@ -160,7 +160,11 @@ def test_sources_panel_uses_source_type_master_group_before_provider_cards():
 
     assert "function groupCard(" in runtime
     assert "groupCard('Premium Services'," in sources
-    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard + torBoxCard," in sources
+    # One Services order owner (premiumServiceOrder) composes every premium card.
+    assert "premiumServiceOrder([" in sources
+    for card in ("['usenet', usenetCard]", "['alldebrid', provider]", "['debridlink', debridLinkCard]",
+                 "['realdebrid', realDebridCard]", "['torbox', torBoxCard]"):
+        assert card in sources, card
     assert "provider + recovery" not in sources
     assert "const recovery =" not in sources
     assert "dp-settings-source-group dp-settings-debrid-services" in sources
@@ -306,12 +310,13 @@ def test_no_whole_settings_serializer_exists_to_write_a_canonical_namespace():
     # that carries only its own removal through the canonical single-field
     # write.
     assert "clearSecrets" not in runtime
-    # Two clear paths, each an explicit destructive action naming exactly what
-    # it erases: the whole-settings writer's parameter, and the scoped
-    # integration-credential clear. Neither is collected from the page.
-    assert runtime.count("clear_secrets") == 2
+    # Explicit destructive actions only, each naming exactly what it erases:
+    # the whole-settings writer's parameter, and the scoped integration
+    # API-key clear (AllDebrid's own, and the API-key account owner's).
+    # None is collected from the page.
+    assert runtime.count("clear_secrets") == 3
     assert "clear_secrets: clears" in runtime
-    assert "clear_secrets: ['api_key']" in runtime
+    assert runtime.count("clear_secrets: ['api_key']") == 2
 
 
 def test_settings_page_reads_only_canonical_namespaces():

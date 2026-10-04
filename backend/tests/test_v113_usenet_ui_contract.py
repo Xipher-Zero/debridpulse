@@ -42,7 +42,9 @@ def test_master_groups_are_renamed():
 def test_usenet_is_the_first_card_under_premium_services():
     panel = sources_panel()
     assert "groupCard('Premium Services'," in panel
-    assert "usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard + torBoxCard," in panel
+    # The one Services order owner puts the service family (Usenet) first;
+    # test_v113_debridlink_presentation runs it on the real catalogue.
+    assert "premiumServiceOrder([" in panel and "['usenet', usenetCard]" in panel
 
 
 def test_usenet_renders_collapsed_and_only_an_accepted_enable_can_open_it():
