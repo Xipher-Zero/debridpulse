@@ -142,7 +142,7 @@ digest (§3) already fixes the base filesystem candidate, and an unbounded
 upgrade would reintroduce exactly the kind of undeclared drift this policy
 exists to make explicit.
 
-Security freshness for the apt-installed layer (`aria2`, `curl`, `gosu`,
+Security freshness for the apt-installed layer (`aria2` -- see §4a --, `curl`, `gosu`,
 `zstd`, `7zip`, `7zip-rar`) is enforced by:
 
 - deliberate, periodic base-image digest refresh (§3), which picks up
@@ -171,6 +171,49 @@ Trivy flagged, not a reversion to blanket upgrade and not a version pin
 (Debian's repository remains a moving target regardless — §2). Drop that
 line once a base-digest refresh (§3) already carries the fix, rather than
 accumulating named-package upgrades indefinitely.
+
+## 4a. Explicitly patched Debian package: aria2
+
+`aria2` (and the `libaria2-0` library it is built around) is the one
+runtime package the image does not take from the archive as built. It is
+still Debian's package, rebuilt from Debian's own source with exactly one
+repo-owned patch, so dpkg, the SBOM and vulnerability scanning keep seeing
+it as Debian's `aria2`:
+
+- **Source:** Debian source package `aria2` at the version named by the
+  Dockerfile's `ARIA2_SOURCE_VERSION` (`1.37.0+debian-3`, the version Trixie
+  serves for the pinned base), fetched with `apt-get source` from the same
+  signed Debian repository configuration the base image uses. apt verifies
+  the `.dsc`, orig and debian tarballs against the signed Sources index; no
+  upstream tarball, Git branch or vendored source tree is involved.
+- **Patch:** `packaging/aria2/connect-tunnel-exact-read.patch` (DEP-3
+  header), appended to the package's own `debian/patches/series` after
+  Debian's patches. aria2 1.37.0 read a CONNECT response with one buffered
+  `recv` and discarded every byte after its header, so a server-first
+  tunnelled protocol -- an FTP greeting, an SSH banner -- that arrived in the
+  same read was lost and the transfer timed out. The patch reads a tunnel's
+  response no further than its header; ordinary HTTP responses are read
+  exactly as before.
+- **Version:** the rebuilt packages carry the local suffix named by
+  `ARIA2_PACKAGE_VERSION` (`1.37.0+debian-3+dp1`), which sorts after the
+  archive version it derives from, so version-based advisories still
+  resolve against it. The runtime stage asserts both installed versions.
+- **Build isolation:** the package is built with `dpkg-buildpackage` in the
+  Dockerfile's separate `aria2-build` stage (same pinned base digest). Only
+  the two `.deb` files are copied into the runtime stage; no compiler, build
+  dependency or source tree reaches the runtime image. The runtime stage
+  installs them in its single apt transaction, so their runtime
+  dependencies resolve from the Debian archive exactly as the archive
+  package's would.
+- **Licensing:** aria2 is GPL-2.0-or-later; the rebuilt package ships
+  Debian's own `copyright` file, and the patch is published in this
+  repository alongside the rest of the corresponding source
+  (`SOURCE_OFFER.md`).
+- **Refresh:** when Trixie publishes a newer aria2 source (a security
+  update), bump `ARIA2_SOURCE_VERSION` and the `+dpN` package version in
+  the same change, confirm the patch still applies, and requalify the new
+  image digest (§6). Drop the rebuild entirely once the archive package
+  carries an equivalent fix.
 
 ## 5. Python dependency lock and hash refresh procedure
 

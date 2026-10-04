@@ -184,7 +184,12 @@ def test_container_runtime_declares_trixie_and_rar_codec_notices():
     # DP 1.0.12 leveling remediation (DEP-001): the base image is now pinned
     # by verified manifest digest (docs/SUPPLY_CHAIN_POLICY.md), so the tag
     # is followed by "@sha256:..." rather than ending the line outright.
-    assert re.match(r"^FROM python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}\n", dockerfile)
+    # The runtime stage is the pinned Trixie base; the patched-aria2 build
+    # stage before it (``AS aria2-build``) is pinned to the same digest.
+    stages = re.findall(r"^FROM (\S+)(?: AS (\S+))?$", dockerfile, re.M)
+    assert stages and all(re.fullmatch(r"python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}", image)
+                          for image, _alias in stages)
+    assert stages[-1][1] == "" and len({image for image, _alias in stages}) == 1
     assert "Components: main non-free" in dockerfile
     assert "    7zip" in dockerfile
     assert "    7zip-rar" in dockerfile

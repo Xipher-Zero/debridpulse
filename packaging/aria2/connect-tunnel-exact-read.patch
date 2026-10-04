@@ -1,0 +1,139 @@
+Description: Read a CONNECT response no further than its header
+ HttpConnection::receiveResponse() fills its receive buffer with one recv()
+ and drains only the response header. A tunnel's next command (FTP
+ negotiation, SFTP negotiation, an FTP data connection) is constructed from
+ the socket alone, so any bytes of the tunnelled protocol that arrived in
+ the same read as the CONNECT response -- a server-first FTP greeting or SSH
+ banner -- were silently discarded, and the transfer then timed out waiting
+ for them. A CONNECT response is now read byte by byte until its header is
+ complete, leaving every following byte on the socket for whatever reads the
+ tunnel next. Ordinary HTTP responses are read exactly as before.
+Author: DebridPulse <https://github.com/Xipher-Zero/debridpulse>
+Forwarded: no
+Last-Update: 2026-10-03
+---
+--- a/src/SocketRecvBuffer.h
++++ b/src/SocketRecvBuffer.h
+@@ -50,9 +50,10 @@
+ public:
+   SocketRecvBuffer(std::shared_ptr<SocketCore> socket);
+   ~SocketRecvBuffer();
+-  // Reads data from socket as much as capacity allows. Returns the
+-  // number of bytes read.
+-  ssize_t recv();
++  // Reads data from socket as much as capacity allows, but no more
++  // than max bytes when max is nonzero. Returns the number of bytes
++  // read.
++  ssize_t recv(size_t max = 0);
+   // Truncates the contents of buffer to 0.
+   void truncateBuffer();
+   // Drains first n bytes of data from buffer.  It is an programmer's
+--- a/src/SocketRecvBuffer.cc
++++ b/src/SocketRecvBuffer.cc
+@@ -49,13 +49,16 @@
+ 
+ SocketRecvBuffer::~SocketRecvBuffer() = default;
+ 
+-ssize_t SocketRecvBuffer::recv()
++ssize_t SocketRecvBuffer::recv(size_t max)
+ {
+   size_t n = std::end(buf_) - last_;
+   if (n == 0) {
+     A2_LOG_DEBUG("Buffer full");
+     return 0;
+   }
++  if (max != 0 && max < n) {
++    n = max;
++  }
+   socket_->readData(last_, n);
+   last_ += n;
+   return n;
+--- a/src/HttpConnection.h
++++ b/src/HttpConnection.h
+@@ -119,9 +119,15 @@
+    * You should continue to call this method until whole response header is
+    * received and this method returns non-null HttpResponseHandle object.
+    *
++   * When tunnel is true the response answers a CONNECT request: it is
++   * read byte by byte, so no byte after its header is taken from the
++   * socket. The tunnelled protocol may speak first (an FTP greeting,
++   * an SSH banner) and its bytes stay on the socket for whatever reads
++   * the tunnel next.
++   *
+    * @return HttpResponse or 0 if whole response header is not received
+    */
+-  std::unique_ptr<HttpResponse> receiveResponse();
++  std::unique_ptr<HttpResponse> receiveResponse(bool tunnel = false);
+ 
+   bool isIssued(const std::shared_ptr<Segment>& segment) const;
+ 
+--- a/src/HttpConnection.cc
++++ b/src/HttpConnection.cc
+@@ -145,21 +145,40 @@
+   sendRequest(std::move(httpRequest), std::move(req));
+ }
+ 
+-std::unique_ptr<HttpResponse> HttpConnection::receiveResponse()
++std::unique_ptr<HttpResponse> HttpConnection::receiveResponse(bool tunnel)
+ {
+   if (outstandingHttpRequests_.empty()) {
+     throw DL_ABORT_EX(EX_NO_HTTP_REQUEST_ENTRY_FOUND);
+   }
+-  if (socketRecvBuffer_->bufferEmpty()) {
++  const auto& proc = outstandingHttpRequests_.front()->getHttpHeaderProcessor();
++  if (tunnel) {
++    // Never read past the header of a CONNECT response: whatever
++    // follows it belongs to the tunnelled protocol.
++    while (true) {
++      if (socketRecvBuffer_->bufferEmpty()) {
++        if (socketRecvBuffer_->recv(1) == 0) {
++          if (!socket_->wantRead() && !socket_->wantWrite()) {
++            throw DL_RETRY_EX(EX_GOT_EOF);
++          }
++          return nullptr;
++        }
++      }
++      if (proc->parse(socketRecvBuffer_->getBuffer(),
++                      socketRecvBuffer_->getBufferLength())) {
++        break;
++      }
++      socketRecvBuffer_->drain(proc->getLastBytesProcessed());
++    }
++  }
++  else if (socketRecvBuffer_->bufferEmpty()) {
+     if (socketRecvBuffer_->recv() == 0 && !socket_->wantRead() &&
+         !socket_->wantWrite()) {
+       throw DL_RETRY_EX(EX_GOT_EOF);
+     }
+   }
+ 
+-  const auto& proc = outstandingHttpRequests_.front()->getHttpHeaderProcessor();
+-  if (proc->parse(socketRecvBuffer_->getBuffer(),
+-                  socketRecvBuffer_->getBufferLength())) {
++  if (tunnel || proc->parse(socketRecvBuffer_->getBuffer(),
++                            socketRecvBuffer_->getBufferLength())) {
+     A2_LOG_INFO(fmt(MSG_RECEIVE_RESPONSE, cuid_,
+                     eraseConfidentialInfo(proc->getHeaderString()).c_str()));
+     auto result = proc->getResult();
+--- a/src/AbstractProxyResponseCommand.cc
++++ b/src/AbstractProxyResponseCommand.cc
+@@ -65,7 +65,7 @@
+ bool AbstractProxyResponseCommand::executeInternal()
+ {
+   std::shared_ptr<HttpResponse> httpResponse =
+-      httpConnection_->receiveResponse();
++      httpConnection_->receiveResponse(true);
+   if (!httpResponse) {
+     // the server has not responded our request yet.
+     addCommandSelf();
+--- a/src/FtpNegotiationCommand.cc
++++ b/src/FtpNegotiationCommand.cc
+@@ -805,7 +805,7 @@
+ 
+ bool FtpNegotiationCommand::recvTunnelResponse()
+ {
+-  std::shared_ptr<HttpResponse> httpResponse = http_->receiveResponse();
++  std::shared_ptr<HttpResponse> httpResponse = http_->receiveResponse(true);
+   if (!httpResponse) {
+     return false;
+   }

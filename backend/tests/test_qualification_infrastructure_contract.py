@@ -329,6 +329,26 @@ def test_the_runtime_layer_runs_against_the_supported_rsync_and_nothing_skips() 
     assert account["if"] == "always()" and "sys.exit(1 if skipped else 0)" in account["run"]
 
 
+def test_the_runtime_layer_runs_aria2_rebuilt_with_the_image_s_one_patch() -> None:
+    """The runtime layer exercises the same fixed CONNECT handling the image
+    ships: the runner's own aria2 source rebuilt with the ONE repo-owned patch
+    the Dockerfile applies to Debian's, asserted installed before any test."""
+    patch = "packaging/aria2/connect-tunnel-exact-read.patch"
+    assert (ROOT / patch).is_file() and patch in (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    steps = {step["name"]: step for step in _steps(TESTS_WORKFLOW)}
+    provide = steps["Provide the supported runtime (runtime layer)"]["run"]
+    assert f"$GITHUB_WORKSPACE/{patch}" in provide
+    assert "apt-get source --only-source aria2" in provide and "dpkg-buildpackage" in provide
+    assert "+dp1" in provide and "ARIA2_PATCHED_VERSION" in provide
+    assert not re.search(r"apt-get install[^\n]*\baria2\b(?!_)", provide)  # never the archive's own binary
+    workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
+    assert "receiveResponse" not in workflow  # the patch body lives only in its file
+    asserted = steps["Assert the runtime layer prerequisites"]["run"]
+    for package in ("aria2", "libaria2-0"):
+        expected = "test \"$(dpkg-query -W -f='${Version}' " + package + ")\" = \"$ARIA2_PATCHED_VERSION\""
+        assert expected in asserted
+
+
 def test_the_contract_layer_partition_runs_every_module_exactly_once() -> None:
     from conftest import parse_shard, shard_of
     modules = sorted(path.relative_to(ROOT / "backend").as_posix()
