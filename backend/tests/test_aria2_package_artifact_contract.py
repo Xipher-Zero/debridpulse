@@ -72,10 +72,11 @@ def test_the_artifact_is_built_natively_per_architecture_and_published_write_onc
         assert "push-by-digest=true" in build["with"]["outputs"]
         assert build["with"]["provenance"] == "mode=max" and build["with"]["sbom"] is True
     existing = next(step for step in jobs["identity"]["steps"] if step.get("id") == "existing")["run"]
-    # A refused check is never read as absence, and a published version is
-    # never rebuilt from different inputs.
-    assert "denied|unauthorized|forbidden" in existing
+    # A published version is never rebuilt from different inputs, and the
+    # publish job re-checks with its write credentials before creating the tag.
     assert "io.debridpulse.aria2.inputs" in existing and "bump ARIA2_PACKAGE_VERSION" in existing
+    create = next(step for step in jobs["publish"]["steps"] if "imagetools create" in step.get("run", ""))["run"]
+    assert create.index("refusing to overwrite") < create.index("imagetools create")
     assert jobs["publish"]["if"] == "github.event_name != 'pull_request' && needs.identity.outputs.exists != 'true'"
     assert set(workflow["on"]["push"]["paths"]) == {"packaging/aria2/**", ".github/workflows/aria2-package.yml"}
     assert all(re.search(r"@[0-9a-f]{40}", line) for line in re.findall(r"uses: \S+", text))

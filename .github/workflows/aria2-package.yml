@@ -57,7 +57,7 @@ jobs:
         run: |
           set -euo pipefail
           version="$(sed -n 's/^ARG ARIA2_PACKAGE_VERSION=//p' packaging/aria2/Dockerfile | sort -u)"
-          if [[ ! "$version" =~ ^[0-9][0-9A-Za-z.~-]*\+dp[0-9]+$ ]]; then
+          if [[ ! "$version" =~ ^[0-9][0-9A-Za-z.~+-]*\+dp[0-9]+$ ]]; then
             echo "packaging/aria2/Dockerfile must declare exactly one ARIA2_PACKAGE_VERSION ending +dpN; got: ${version:-<none>}"
             exit 1
           fi
@@ -86,13 +86,12 @@ jobs:
         run: |
           set -euo pipefail
           if ! raw="$(docker buildx imagetools inspect --raw "$REF" 2>&1)"; then
-            # Fail closed on anything but a definite absence: a refused check
-            # must never be read as "absent" and let a tag be pushed over.
-            if grep -qiE 'denied|unauthorized|forbidden' <<< "$raw"; then
-              echo "Registry refused the existence check for $REF: $raw"
-              exit 1
-            fi
-            if grep -qiE 'not found|manifest unknown|no such manifest|name unknown' <<< "$raw"; then
+            # GHCR answers DENIED for a package that does not exist yet. That is
+            # never a licence to push over an existing tag: a token that cannot
+            # read a package cannot write it either, and the publish job checks
+            # again, with its write credentials, immediately before creating
+            # the tag.
+            if grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$raw"; then
               echo "No package image $REF yet; it will be published once"
               echo "exists=false" >> "$GITHUB_OUTPUT"
               exit 0
@@ -214,6 +213,13 @@ jobs:
           for digest in "$AMD64" "$ARM64"; do
             [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "invalid child digest: ${digest:-<empty>}"; exit 1; }
           done
+          # Write-once: never create over a tag that exists by now.
+          if existing="$(docker buildx imagetools inspect "$REF" 2>&1)"; then
+            echo "$REF already exists; refusing to overwrite it: $existing"
+            exit 1
+          fi
+          grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$existing" || {
+            echo "Unable to determine whether $REF exists; refusing to publish: $existing"; exit 1; }
           docker buildx imagetools create -t "$REF" \
             --annotation "index:org.opencontainers.image.title=DebridPulse aria2 packages" \
             --annotation "index:org.opencontainers.image.version=$VERSION" \
