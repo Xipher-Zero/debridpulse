@@ -96,7 +96,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 4
+    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 5
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])

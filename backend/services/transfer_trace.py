@@ -55,7 +55,13 @@ VALID frontier reconciled against what the payload on disk shows now (length,
 physical identity, holes). Continuation plans ride on the exported
 ``execution_attempts.continuation`` column and material decisions (rollback,
 invalidation, forced checkpoints, writer retirement and how it stopped) on
-``application_events`` of kind ``material_audit``.
+``application_events`` of kind ``material_audit``. 5 is a strict superset of
+4: ``route_attempt_provenance.routing_decision`` carries the canonical
+selector's decision that started each root route attempt -- one neutral
+disposition per provider it considered -- and
+``transfer_requests.routing_decision`` the decision of a root request that is
+held or that nothing could take. Rows recorded before either column existed
+have none; nothing is reconstructed for them.
 """
 from __future__ import annotations
 
@@ -83,7 +89,9 @@ TRACE_FORMAT = "debridpulse.transfer-trace"
 # runtime_context, and metadata.process; build_revision is populated.
 # 3: adds the bounded consolidation component (scope 'component',
 # metadata.closure.component, metadata.component_transfer_ids).
-TRACE_FORMAT_VERSION = 4
+# 4: artifact_material_state rows and per-target material observations.
+# 5: routing decisions on route attempts and held/unroutable root requests.
+TRACE_FORMAT_VERSION = 5
 # Bounds of the consolidation component (``_component``); hitting one is
 # declared in metadata.closure.component, never silent.
 COMPONENT_MAX_TRANSFERS = 32

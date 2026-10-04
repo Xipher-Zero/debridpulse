@@ -95,7 +95,9 @@
   /* An account-backed provider's CURRENT account, as its status surface
    * publishes it in neutral terms (`status.account`): the service class
    * decides its tier and premium standing, and a connected account that lost
-   * acquisition capability is degraded -- a warning, never offline. Without
+   * acquisition capability, or can acquire nothing through this provider, is
+   * degraded -- a warning, never offline; one whose usefulness is not yet
+   * known is unknown, never healthy. Without
    * that block (an integration with no account dimension, or no account truth
    * yet) the static presentation metadata is the whole truth. Nothing here
    * names an integration or reads a plan. */
@@ -107,6 +109,8 @@
       next = {...next, tierId: entry.standardTierId, tierLabel: entry.standardTierLabel, premium: false};
     }
     if (next.state === 'healthy' && account.functional === 'degraded') next = {...next, state: 'degraded'};
+    // Whether the account can acquire anything is not yet known: never green.
+    if (next.state === 'healthy' && account.functional === 'unresolved') next = {...next, state: 'unknown'};
     return next;
   }
 

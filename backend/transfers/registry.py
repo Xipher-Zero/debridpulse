@@ -1,6 +1,11 @@
 """Integration discovery and capability routing, independent of concrete plugins."""
 from __future__ import annotations
 
+from dataclasses import dataclass, replace
+from enum import StrEnum
+import json
+import logging
+
 from transfers.applicability import (
     ApplicabilityClass,
     ApplicabilityUnresolved,
@@ -56,6 +61,77 @@ RUNTIME_CAPABILITY = {
 def declared_runtime_capabilities(capabilities: ExecutorCapabilities) -> frozenset[ExecutorRuntimeCapability]:
     """The runtime capabilities an executor may ever report available."""
     return frozenset(value for name, value in RUNTIME_CAPABILITY.items() if getattr(capabilities, name))
+
+
+logger = logging.getLogger(__name__)
+
+
+class RoutingDisposition(StrEnum):
+    """Why one provider the selector considered did or did not take a request:
+    the facts ``_provider_selection`` itself consumed, in its own order."""
+    SELECTED = "selected"
+    APPLICABLE_NOT_SELECTED = "applicable_not_selected"
+    ENTITLEMENT_UNRESOLVED = "entitlement_unresolved"
+    NOT_ENTITLED = "not_entitled"
+    DISABLED = "disabled"
+    UNHEALTHY = "unhealthy"
+    EXHAUSTED = "exhausted"
+    DECLINED = "declined"
+    NOT_APPLICABLE = "not_applicable"
+    APPLICABILITY_UNRESOLVED = "applicability_unresolved"
+    HELD_BY_SPECIALIZED_AUTHORITY = "held_by_specialized_authority"
+
+
+class RoutingOutcome(StrEnum):
+    SELECTED = "selected"
+    # Premature: unresolved specialized applicability or the first claimant's
+    # unknown account entitlement (``ApplicabilityUnresolved``).
+    HELD = "held"
+    UNSUPPORTED = "unsupported"
+
+
+@dataclass(frozen=True)
+class ProviderDisposition:
+    provider_id: str
+    disposition: RoutingDisposition
+    classification: ApplicabilityClass | None = None
+
+
+@dataclass(frozen=True)
+class RoutingDecision:
+    """One decision of the canonical selector, recorded as it was made: a
+    neutral disposition per provider it considered (a provider that does not
+    offer the request's class takes no part and is not listed). Bounded by
+    the registered providers; never a provider-native or account fact."""
+    outcome: RoutingOutcome
+    providers: tuple[ProviderDisposition, ...]
+
+    def encode(self) -> str:
+        return json.dumps({"v": 1, "outcome": self.outcome.value, "providers": [
+            {"provider_id": item.provider_id, "disposition": item.disposition.value,
+             **({"class": item.classification.value} if item.classification else {})}
+            for item in self.providers]}, separators=(",", ":"))
+
+
+@dataclass(frozen=True)
+class ProviderRoute:
+    """The first provider of the canonical competition for one request, or
+    why there is none, with the decision that produced it (``None`` for a
+    bound route, which is never re-decided, or when it could not be
+    recorded)."""
+    provider: Provider | None
+    decision: RoutingDecision | None = None
+    unresolved: tuple[str, ...] = ()
+
+    def require(self) -> Provider:
+        if self.provider is not None:
+            return self.provider
+        if self.unresolved:
+            raise ApplicabilityUnresolved(self.unresolved)
+        raise TransferError(NormalizedError(
+            Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION,
+            retryability=Retryability.NEVER,
+        ))
 
 
 class IntegrationRegistry:
@@ -160,7 +236,11 @@ class IntegrationRegistry:
         exhausted: frozenset[str] = frozenset(),
         acquisition: bool = True,
         generic_closed: bool = False,
+        dispositions: dict | None = None,
     ):
+        # ``dispositions``, when given, receives every provider this decision
+        # removed before classification and why -- the values it computes
+        # below anyway, never by asking any provider again.
         # Existing health semantics are a routing precondition: disabled,
         # unhealthy, incapable, or request-type-incompatible providers never
         # participate in applicability class or readiness construction.
@@ -187,9 +267,17 @@ class IntegrationRegistry:
                     and provider.descriptor.id not in exhausted
                     and capability in provider.descriptor.capabilities
                     and request.kind in provider.descriptor.request_types):
+                if (dispositions is not None and capability in provider.descriptor.capabilities
+                        and request.kind in provider.descriptor.request_types):
+                    dispositions[provider.descriptor.id] = (
+                        RoutingDisposition.DISABLED if not provider.descriptor.enabled
+                        else RoutingDisposition.UNHEALTHY if provider.descriptor.id in self._unhealthy
+                        else RoutingDisposition.EXHAUSTED)
                 continue
             entitled = self.entitlement_for(provider, request) if acquisition else True
             if entitled is False:
+                if dispositions is not None:
+                    dispositions[provider.descriptor.id] = RoutingDisposition.NOT_ENTITLED
                 continue
             entitlement[provider.descriptor.id] = entitled
             candidates.append(provider)
@@ -231,6 +319,45 @@ class IntegrationRegistry:
         only kind of claim a provider may decline after its probe."""
         facts = self._applicability_for(provider, request)
         return bool(getattr(facts, "conditional", False))
+
+    def _decision(self, request, route, providers, assessment, unknown, removed, declined,
+                  generic_closed) -> RoutingDecision:
+        """Describe the decision ``_provider_selection`` just made, from its
+        own results: the providers it removed before classification, the
+        classifier's assessment, and the ordered competition. Pure -- no
+        provider is asked anything."""
+        classified = {match.provider_id: match.classification for match in assessment.matches}
+        competing = {provider_id for provider_id, classification in classified.items()
+                     if not (generic_closed and classification == ApplicabilityClass.GENERIC)}
+        held = set(assessment.held_generic) | (set(classified) - competing)
+        found = dict(removed)
+        for provider in self.providers.values():
+            provider_id = provider.descriptor.id
+            if (provider_id in found or Capability.RESOLVE not in provider.descriptor.capabilities
+                    or request.kind not in provider.descriptor.request_types):
+                continue
+            found[provider_id] = (
+                (RoutingDisposition.DECLINED, classified[provider_id])
+                if provider_id in competing and provider_id in declined
+                else RoutingDisposition.HELD_BY_SPECIALIZED_AUTHORITY if provider_id in held
+                else RoutingDisposition.APPLICABILITY_UNRESOLVED if provider_id in assessment.unresolved_specialized
+                else RoutingDisposition.NOT_APPLICABLE)
+        for index, provider in enumerate(providers):
+            provider_id = provider.descriptor.id
+            found[provider_id] = (
+                RoutingDisposition.ENTITLEMENT_UNRESOLVED if provider_id in unknown
+                else RoutingDisposition.SELECTED if index == 0
+                else RoutingDisposition.APPLICABLE_NOT_SELECTED, classified[provider_id])
+        outcome = (RoutingOutcome.SELECTED if route.provider is not None
+                   else RoutingOutcome.HELD if route.unresolved else RoutingOutcome.UNSUPPORTED)
+        # The competition in its own order, then everyone else by identity.
+        order = {provider.descriptor.id: index for index, provider in enumerate(providers)}
+        entries = []
+        for provider_id in sorted(found, key=lambda item: (order.get(item, len(order)), item)):
+            value = found[provider_id]
+            disposition, classification = value if isinstance(value, tuple) else (value, None)
+            entries.append(ProviderDisposition(provider_id, disposition, classification))
+        return RoutingDecision(outcome, tuple(entries))
 
     def collection_provider_for(self, requests: tuple[TransferRequest, ...]) -> Provider | None:
         """Select one specialized route owner for a logical request collection.
@@ -297,19 +424,37 @@ class IntegrationRegistry:
         were exhausted for it in its current routing campaign. When that
         first provider's account entitlement is still unknown the decision
         is premature, exactly like unresolved specialized applicability."""
+        return self._route(request, declined=declined, exhausted=exhausted, acquisition=acquisition,
+                           generic_closed=generic_closed).require()
+
+    def provider_route(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
+                       exhausted: frozenset[str] = frozenset(), acquisition: bool = True,
+                       generic_closed: bool = False) -> ProviderRoute:
+        """``provider_for``'s one decision, not raised: its provider (or why
+        there is none) and the routing decision that produced it."""
+        return self._route(request, declined=declined, exhausted=exhausted, acquisition=acquisition,
+                           generic_closed=generic_closed, record=True)
+
+    def _route(self, request: TransferRequest, *, declined, exhausted, acquisition, generic_closed,
+               record: bool = False) -> ProviderRoute:
+        dispositions = {} if record else None
         providers, assessment, unknown = self._provider_selection(
             request, declined=declined, exhausted=exhausted, acquisition=acquisition,
-            generic_closed=generic_closed)
+            generic_closed=generic_closed, dispositions=dispositions)
         if providers and providers[0].descriptor.id in unknown:
-            raise ApplicabilityUnresolved((providers[0].descriptor.id,))
-        if not providers:
-            if assessment.unresolved_specialized:
-                raise ApplicabilityUnresolved(assessment.unresolved_specialized)
-            raise TransferError(NormalizedError(
-                Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION,
-                retryability=Retryability.NEVER,
-            ))
-        return providers[0]
+            route = ProviderRoute(None, unresolved=(providers[0].descriptor.id,))
+        elif not providers:
+            route = ProviderRoute(None, unresolved=tuple(assessment.unresolved_specialized))
+        else:
+            route = ProviderRoute(providers[0])
+        if dispositions is None:
+            return route
+        try:
+            return replace(route, decision=self._decision(request, route, providers, assessment, unknown,
+                                                          dispositions, declined, generic_closed))
+        except Exception as exc:  # visibility must never change the decision
+            logger.debug("routing decision could not be described: %s", type(exc).__name__)
+            return route
 
     def _provider_for_bound_owner(self, provider_id: str, request: TransferRequest, *, require_health: bool) -> Provider:
         provider = self.providers.get(provider_id)

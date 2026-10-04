@@ -109,7 +109,14 @@ class DebridLinkProvider:
         account semantics (``providers.debridlink.account``); ``None`` -- no
         account dimension -- for an instance built without one."""
         owner = getattr(self, "account", None)
-        return owner.entitlements if owner is not None else None
+        current = owner.entitlements if owner is not None else None
+        if isinstance(current, ProviderEntitlements) and current.service_class == AccountServiceClass.STANDARD:
+            # The same per-hoster narrowing ``entitlement_for`` applies, stated
+            # for the account as a whole: what a free account can still use.
+            surface = getattr(getattr(self, "applicability_for", None), "free_surface", None)
+            if callable(surface):
+                current = current.with_surface(HOSTERS, surface())
+        return current
 
     def entitlement_for(self, request: TransferRequest) -> bool | None:
         """The account's entitlement, narrowed per hoster: a standard (free)

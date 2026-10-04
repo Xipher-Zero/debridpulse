@@ -68,7 +68,7 @@ test('Downloads keeps verified progress primary and shows the reconstruction as 
   const row = cell(page, 9701);
   await expect(row.locator('.prog-pct')).toHaveText('31% verified');
   await expect(row.locator('.prog-fill')).toHaveAttribute('style', /width:31%/);
-  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('reconstructing 67.0%');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 67.0%');
   await expect(await lane(row)).toHaveAttribute('aria-valuenow', '67');
   const plain = cell(page, 9702);
   await expect(plain.locator('.prog-pct')).toHaveText('40%');
@@ -78,7 +78,7 @@ test('Downloads keeps verified progress primary and shows the reconstruction as 
   // A live progress-only event moves the activity; the verified figure holds.
   await event(page, [{id: 9701, status: 'downloading', progress: 31, active_execution_progress: 88, status_changed: false}]);
   await expect(row.locator('.prog-pct')).toHaveText('31% verified');
-  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('reconstructing 88.0%');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 88.0%');
   expect(errors).toEqual([]);
 });
 
@@ -106,7 +106,7 @@ test('the reconstruction is a distinct quantified lane that visibly moves', asyn
   await expect(activity).toHaveAttribute('role', 'progressbar');
   await expect(activity).toHaveAttribute('aria-valuenow', '40');
   await expect(activity.locator('.prog-lane-fill')).toHaveAttribute('style', /width:40%/);
-  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('reconstructing 40.0%');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 40.0%');
   // The lane is visibly distinct from the verified bar: its own box, below it, thinner.
   const boxes = await page.evaluate(() => {
     const cell = document.querySelector('#t-tbody tr[data-torrent-id="9712"] [data-role="transfer-progress"]');
@@ -119,7 +119,7 @@ test('the reconstruction is a distinct quantified lane that visibly moves', asyn
   expect(boxes.secondary.height).toBeLessThan(boxes.verified.height);
   // A sub-percent advance on a large reconstruction is visible.
   await event(page, [{id: 9712, status: 'downloading', progress: 95, active_execution_progress: 40.3, status_changed: false}]);
-  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('reconstructing 40.3%');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 40.3%');
   await expect(activity.locator('.prog-lane-fill')).toHaveAttribute('style', /width:40.3%/);
 });
 
@@ -178,7 +178,7 @@ test('Recent Activity shows the same two truths', async ({ page }) => {
   await page.evaluate(async () => { await loadRecent(); });
   const row = page.locator('#dash-tbody tr[data-torrent-id="9703"]');
   await expect(row.locator('[data-role="transfer-progress"] .prog-pct')).toHaveText('31% verified');
-  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('reconstructing 67.0%');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 67.0%');
   await expect(row.locator('[data-role="execution-progress-lane"]')).toHaveAttribute('aria-valuenow', '67');
   await expect(row.locator('.dash-row-bar-fill')).toHaveAttribute('style', /width:31%/);
   expect(errors).toEqual([]);

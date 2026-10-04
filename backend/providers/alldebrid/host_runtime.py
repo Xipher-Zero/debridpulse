@@ -105,6 +105,11 @@ class AllDebridRequestApplicability:
             (host, tuple(_compile_provider_pattern(pattern) for pattern in host.regexps))
             for host in (() if snapshot is None else snapshot.hosts)
         )
+        # Every host of a snapshot is typed ``free`` or ``premium`` (an untyped
+        # or unknown type refuses the whole snapshot), so its free surface is
+        # authoritative; without a snapshot it is unknown.
+        self._free_surface = None if snapshot is None else any(
+            host.service_type == "free" for host in snapshot.hosts)
 
     def _facts(self, claims=()) -> ProviderApplicability:
         return ProviderApplicability(
@@ -155,6 +160,12 @@ class AllDebridRequestApplicability:
         account entitlement's question (``providers.alldebrid.account``)."""
         matched = self._matched(request)
         return matched[0].service_type if matched is not None else None
+
+    def free_surface(self) -> bool | None:
+        """Whether a non-premium account has any host to use: a host typed
+        ``free`` exists, none does, or ``None`` without host truth.
+        Structural host truth only, like ``host_type``."""
+        return self._free_surface
 
 
 def _text(value: Any, *, field: str) -> str:

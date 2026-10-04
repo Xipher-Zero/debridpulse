@@ -25,8 +25,8 @@ from transfers.errors import Category, Domain, NormalizedError, Stage, TransferE
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
-    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, CleanupAuthority, ContinuationPlan, ContinuationStrategy,
-    DeliveryKind, ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationResult,
+    BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, CleanupAuthority, ContinuationCapability, ContinuationPlan,
+    ContinuationStrategy, DeliveryKind, ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationResult,
     OutcomeKind, Ownership, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
@@ -161,21 +161,33 @@ class AggregateLifecycleOutcome:
     artifacts: tuple
 
 
-def active_execution_progress_sql(transfer_scope: str) -> str:
+def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: bool = False) -> str:
     """THE one read of in-flight execution progress that is not DP material.
 
-    A current, authorized, running writer admitted under a DESTINATION_AWARE
-    plan builds its replacement away from the canonical destination, so what
-    its executor reports is execution activity only: durable completion stays
-    DP-valid material (``torrents.progress``) and never moves with it.
-    ``transfer_scope`` is a SQL predicate over ``f.torrent_id``; one row per
-    transfer: ``transfer_id``, ``execution_completed``, ``execution_total``."""
+    A current, authorized, running writer's executor progress is execution
+    activity only -- durable completion stays DP-valid material
+    (``torrents.progress``) and never moves with it -- when its durable
+    continuation plan says none of that work is DP material yet: it was
+    admitted under a DESTINATION_AWARE plan (it builds its replacement away
+    from the canonical destination), or the continuation capabilities it was
+    admitted with cannot export material ranges, the only way in-flight work
+    ever becomes DP material before completion. A writer that exports them is
+    checkpointed into canonical progress, so it has no second lane.
+    ``reconstruction_only`` keeps the DESTINATION_AWARE writers alone (what a
+    source switch abandons). ``transfer_scope`` is a SQL predicate over
+    ``f.torrent_id``; one row per transfer: ``transfer_id``,
+    ``execution_completed``, ``execution_total``."""
+    destination_aware = f"json_extract(e.continuation, '$.strategy') = '{ContinuationStrategy.DESTINATION_AWARE.value}'"
+    not_yet_material = destination_aware if reconstruction_only else f"""({destination_aware}
+              OR (json_type(e.continuation, '$.capabilities') = 'array'
+                  AND NOT EXISTS (SELECT 1 FROM json_each(e.continuation, '$.capabilities') c
+                                  WHERE c.value = '{ContinuationCapability.EXPORT_MATERIAL_RANGES.value}')))"""
     return f"""SELECT f.torrent_id AS transfer_id,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total
         FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id
         WHERE e.state = 'running' AND e.authorized = 1
-          AND json_extract(e.continuation, '$.strategy') = '{ContinuationStrategy.DESTINATION_AWARE.value}'
+          AND {not_yet_material}
           AND ({transfer_scope})
         GROUP BY f.torrent_id"""
 
@@ -909,7 +921,8 @@ class TransferRepository:
                 await db.execute("UPDATE route_attempt_provenance SET outcome='completed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (route_attempt_id,))
 
     @classmethod
-    async def _begin_route_provenance(cls, db, attempt_id, transfer_id, request_id, provider_id, *, operation):
+    async def _begin_route_provenance(cls, db, attempt_id, transfer_id, request_id, provider_id, *, operation,
+                                      routing_decision: str | None = None):
         previous = await db.fetchone("""SELECT a.id,a.provider_id,a.error,p.ordinal,p.outcome
             FROM resolution_attempts a JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
             WHERE a.request_id=? AND a.id!=? ORDER BY p.ordinal DESC LIMIT 1""", (request_id, attempt_id))
@@ -939,8 +952,9 @@ class TransferRepository:
                 await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (previous_id,))
         await db.execute("""INSERT INTO route_attempt_provenance(
             resolution_attempt_id,transfer_id,request_id,ordinal,operation,previous_attempt_id,transition_kind,transition_reason,
-            candidate_summary,outcome,history_quality) VALUES(?,?,?,?,?,?,?,?,?,'started','recorded')""",
-            (attempt_id, transfer_id, request_id, ordinal, operation, previous_id, transition_kind, transition_reason, codec.dump([])))
+            candidate_summary,outcome,history_quality,routing_decision) VALUES(?,?,?,?,?,?,?,?,?,'started','recorded',?)""",
+            (attempt_id, transfer_id, request_id, ordinal, operation, previous_id, transition_kind, transition_reason, codec.dump([]),
+             routing_decision))
 
     @staticmethod
     def _transfer(row) -> Transfer | None:
@@ -2210,7 +2224,12 @@ class TransferRepository:
                 await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0 WHERE id=? AND state='pending'",
                                  (request_id,))
 
-    async def begin_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
+    async def begin_resolution(self, request_id: str, provider_id: str, *,
+                               routing_decision: str | None = None) -> ResolutionAttempt | None:
+        """``routing_decision``: the canonical selector's encoded decision that
+        chose ``provider_id`` (``transfers.registry.RoutingDecision``), kept
+        with this route attempt as historical causality; it replaces any hold
+        the request recorded while it waited (``record_route_decision``)."""
         identity = new_identity()
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -2219,11 +2238,22 @@ class TransferRepository:
                 AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(p.paused,0)=0""", (request_id,))
             if not row:
                 return None
-            await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1 WHERE id=?", (request_id,))
+            await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1,routing_decision=NULL WHERE id=?",
+                             (request_id,))
             await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')", (identity, request_id, provider_id))
-            await self._begin_route_provenance(db, identity, row["transfer_id"], request_id, provider_id, operation="resolve")
+            await self._begin_route_provenance(db, identity, row["transfer_id"], request_id, provider_id, operation="resolve",
+                                               routing_decision=routing_decision)
             await db.commit()
         return ResolutionAttempt(identity, request_id, provider_id, "started")
+
+    async def record_route_decision(self, request_id: str, routing_decision: str) -> None:
+        """Record why a pending root request's routing started no attempt (the
+        canonical selector held it, or nothing can take it). Visibility only:
+        nothing reads it back to decide anything."""
+        async with get_db() as db:
+            await db.execute("UPDATE transfer_requests SET routing_decision=? WHERE id=? AND state='pending'",
+                             (routing_decision, request_id))
+            await db.commit()
 
     @staticmethod
     def _resource_binding_id(transfer_id: int, resource_key: str) -> str:
@@ -3035,7 +3065,8 @@ class TransferRepository:
         DESTINATION_AWARE plan (``active_execution_progress_sql``): unverified
         executor work, never DP material, that a switch away abandons."""
         async with get_db() as db:
-            row = await db.fetchone(active_execution_progress_sql("f.id = ?"), (int(artifact_id),))
+            row = await db.fetchone(active_execution_progress_sql("f.id = ?", reconstruction_only=True),
+                                    (int(artifact_id),))
         return max(0, int((row or {}).get("execution_completed") or 0))
 
     async def material_writer_stale(self, handle: ExecutionHandle) -> bool:

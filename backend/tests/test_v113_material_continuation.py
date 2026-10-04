@@ -477,7 +477,7 @@ async def test_real_rollback_lowers_progress_by_exactly_the_discarded_material_a
     assert rollback["strategy"] == "contiguous_from_offset"
 
     trace = await transfer_trace.build(transfer.id, SimpleNamespace(engine=ctx.engine, repository=ctx.repository))
-    assert trace["metadata"]["trace_format_version"] == 4
+    assert trace["metadata"]["trace_format_version"] >= 4  # material export (format 4) present
     rows = trace["data"]["artifact_material_state"]
     assert rows and rows[0]["row"]["writer_generation"] == 2
     target = next(item for item in trace["observations"]["filesystem"]["targets"] if item["artifact_id"] == artifact.id)

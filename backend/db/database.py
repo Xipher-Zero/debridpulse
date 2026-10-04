@@ -866,6 +866,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # equivalence evidence. Additive and nullable: NULL is an ordinary,
         # ungrouped request; no backfill.
         'alternative_group': 'INTEGER',
+        # Why a ROOT request's routing started no route attempt: the canonical
+        # selector's encoded decision (``transfers.registry.RoutingDecision``)
+        # while it is held or after nothing could take it; cleared when a
+        # route attempt begins (that attempt carries its own decision).
+        # Visibility only, never read to decide anything. Additive and
+        # nullable: no historical decision is ever fabricated.
+        'routing_decision': 'TEXT',
     },
     'provider_resources': {
         'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0',
@@ -890,6 +897,11 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'cleanup_claim_until': 'REAL NOT NULL DEFAULT 0',
     },
     'resolution_attempts': {'result': 'TEXT'},
+    # The canonical selector's decision that started this route attempt: one
+    # neutral disposition per provider it considered (historical causality,
+    # bounded by the registered providers). Additive and nullable: an attempt
+    # recorded before this column, a refresh, or a member route has none.
+    'route_attempt_provenance': {'routing_decision': 'TEXT'},
     'execution_attempts': {
         'candidate': 'TEXT', 'progress_at': 'REAL', 'cleanup_state': 'TEXT', 'cleanup_attempts': 'INTEGER NOT NULL DEFAULT 0', 'cleanup_retry_at': 'REAL NOT NULL DEFAULT 0', 'cleanup_error': 'TEXT',
         # Execution-owned target authority, recorded once at final execution
@@ -971,7 +983,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
-    'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
+    'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'routing_decision', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
     'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},
     'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
@@ -985,7 +997,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_requests': {
         'attempts', 'error', 'id', 'metadata', 'ordinal', 'parent_id', 'payload', 'resource', 'retry_at', 'state',
         'transfer_id', 'equivalence_retry_count', 'equivalence_reason', 'equivalence_disposition',
-        'equivalence_target_artifact_id',
+        'equivalence_target_artifact_id', 'routing_decision',
     },
     'artifact_recovery_state': {
         'artifact_id', 'transfer_id', 'version', 'recovery_epoch', 'progress_anchor',

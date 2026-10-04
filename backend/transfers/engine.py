@@ -14,6 +14,7 @@ failures (via ``policy.compatibility``) before lifecycle policy consumes them.
 from __future__ import annotations
 
 from dataclasses import replace
+import logging
 
 from transfers import _engine_base, file_selection as fs
 from transfers._repository_base import manifest_child_identity, manifest_member_requests
@@ -25,9 +26,12 @@ from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.policy import recovery_action
+from transfers.registry import ProviderRoute
 from transfers.models import (
     CachePresence, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class TransferEngine(_RecoveryTransferEngine):
@@ -145,7 +149,9 @@ class TransferEngine(_RecoveryTransferEngine):
                             domain=Domain.CLEANUP,
                         ))
 
-            provider = await self._route_provider(record)
+            route = await self._route(record)
+            await self._record_route_hold(record, route)
+            provider = route.require()
             cached = False
             if record.alternative_group is not None and record.parent_id is None and not record.attempts:
                 # The selected alternative of an explicit group, never yet
@@ -161,7 +167,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 if not await self._live(record.transfer_id, admission=True):
                     return
                 attempt = await self.repository.begin_resolution(
-                    record.id, provider.descriptor.id,
+                    record.id, provider.descriptor.id, routing_decision=self._route_evidence(record, route),
                 )
                 if attempt is None:
                     return
@@ -198,10 +204,15 @@ class TransferEngine(_RecoveryTransferEngine):
     async def _route_provider(self, record):
         """The provider this request's resolution belongs to: its bound route,
         else the first of the one canonical competition."""
+        return (await self._route(record)).require()
+
+    async def _route(self, record) -> ProviderRoute:
+        """``_route_provider``'s one decision with the routing decision that
+        made it (none for a bound route: it is never decided again)."""
         bound_provider_id = await self.repository.bound_route_provider(record.id)
         if bound_provider_id:
-            return self.registry.provider_for_bound_route(bound_provider_id, record.resolvable)
-        return self.registry.provider_for(
+            return ProviderRoute(self.registry.provider_for_bound_route(bound_provider_id, record.resolvable))
+        return self.registry.provider_route(
             record.resolvable, declined=await self.repository.declined_route_providers(record.id),
             exhausted=await self.repository.exhausted_route_providers(record.id),
             # A member continues the route that decomposed it: it is
@@ -210,6 +221,40 @@ class TransferEngine(_RecoveryTransferEngine):
             # A collection a specialized route owns never reopens generic
             # competition for any of its requests.
             generic_closed=await self.repository.collection_route_provider(record.transfer_id) is not None)
+
+    @staticmethod
+    def _route_evidence(record, route: ProviderRoute) -> str | None:
+        """The decision a ROOT request's route attempt records, encoded; a
+        member's route belongs to the route that decomposed it. Visibility
+        only: an encoding failure records nothing and changes nothing."""
+        if record.parent_id is not None or route.decision is None:
+            return None
+        try:
+            return route.decision.encode()
+        except Exception as exc:
+            logger.debug("routing decision not recorded request=%s: %s", record.id, type(exc).__name__)
+            return None
+
+    async def _record_route_hold(self, record, route: ProviderRoute) -> None:
+        """A root decision that starts no route attempt -- held, or nothing
+        can take the request -- is recorded on the request. An unchanged hold
+        is written once, not every cycle. A recording failure is contained:
+        it never changes what routing does next."""
+        holds = getattr(self, "_route_holds", None)
+        if holds is None:
+            holds = self._route_holds = {}
+        if route.provider is not None:
+            holds.pop(record.id, None)
+            return
+        encoded = self._route_evidence(record, route)
+        if encoded is None or holds.get(record.id) == encoded:
+            return
+        try:
+            await self.repository.record_route_decision(record.id, encoded)
+        except Exception as exc:
+            logger.debug("routing hold not recorded request=%s: %s", record.id, type(exc).__name__)
+            return
+        holds[record.id] = encoded
 
     async def _cached_alternative(self, record, provider):
         """The first alternative of ``record``'s explicit group, in submitted

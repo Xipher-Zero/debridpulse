@@ -545,8 +545,11 @@ def _with_account(native):
 
 async def test_the_host_catalogue_keeps_only_an_explicit_true_isfree():
     snapshot = parse_native_host_snapshot(FREE_HOSTS)
+    # Kept as stated; a malformed flag is unknown, and only true is free.
     assert {hoster.domains[0]: hoster.free for hoster in snapshot.hosters} == {
-        "free.example": True, "hoster.example": False, "unsaid.example": False}
+        "free.example": True, "hoster.example": False, "unsaid.example": None}
+    applicability = DebridLinkRequestApplicability(snapshot)
+    assert applicability.host_free(TransferRequest("https", "https://unsaid.example/f/1")) is False
     assert decode_host_snapshot(encode_host_snapshot(snapshot)) == snapshot
     client, transport = service({("GET", "downloader/hosts"): [ok([])]})
     await client.hosts()

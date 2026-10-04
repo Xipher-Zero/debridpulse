@@ -18,7 +18,7 @@ translation. Nothing here, and nothing that consumes it, knows a plan name.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Iterable
 
@@ -51,7 +51,14 @@ class ProviderEntitlements:
     enabled optional family the account is not entitled to) -- never that a
     narrower plan lacks what it never included. ``expires_at`` is the
     authoritative instant (UTC epoch seconds) the current service class ends,
-    when the provider knows one. ``plan`` is display text only."""
+    when the provider knows one. ``plan`` is display text only.
+
+    ``surface_empty`` / ``surface_unknown`` are the entitled request classes
+    whose account-usable acquisition surface the provider's own
+    applicability narrows to authoritatively nothing / to an unknown size (a
+    standard account limited to the hosts its service marks free). They are
+    presentation facts only: routing never reads them, and a class in
+    neither keeps its entitlement as its usefulness (``with_surface``)."""
 
     readiness: EntitlementReadiness = EntitlementReadiness.UNRESOLVED
     request_types: frozenset[str] = frozenset()
@@ -59,6 +66,37 @@ class ProviderEntitlements:
     degraded: bool = False
     expires_at: float | None = None
     plan: str = field(default="", compare=True)
+    surface_empty: frozenset[str] = frozenset()
+    surface_unknown: frozenset[str] = frozenset()
+
+    def with_surface(self, kinds: Iterable[str], available: bool | None) -> "ProviderEntitlements":
+        """This truth with the account-usable surface of ``kinds`` stated:
+        ``True`` (at least one usable source) changes nothing, ``False`` is
+        authoritatively empty, ``None`` is unknown. Only resolved entitled
+        classes take a surface; routing truth is untouched."""
+        kinds = frozenset(kinds) & self.request_types
+        if available is True or not kinds or self.readiness != EntitlementReadiness.READY:
+            return self
+        if available is False:
+            return replace(self, surface_empty=self.surface_empty | kinds, surface_unknown=self.surface_unknown - kinds)
+        return replace(self, surface_unknown=self.surface_unknown | (kinds - self.surface_empty))
+
+    @property
+    def functional(self) -> str:
+        """``usable`` while any entitled class can still acquire something;
+        ``degraded`` when expected capability is lost or every entitled class
+        is authoritatively empty; ``unresolved`` when none is known usable
+        and some are unknown -- never zero, never usable. Account truth that
+        is not READY (none yet, or none because the connection fails, which
+        health reports) says nothing about usefulness: ``unresolved``."""
+        if self.readiness != EntitlementReadiness.READY:
+            return "unresolved"
+        if self.degraded:
+            return "degraded"
+        narrowed = self.surface_empty | self.surface_unknown
+        if not narrowed or self.request_types - narrowed:
+            return "usable"
+        return "unresolved" if self.request_types & self.surface_unknown else "degraded"
 
     def admits(self, kind: str) -> bool | None:
         """``True``/``False`` for a resolved account; ``None`` while unknown;
@@ -74,7 +112,7 @@ class ProviderEntitlements:
         return {
             "entitlement": self.readiness.value,
             "service_class": self.service_class.value if self.service_class else None,
-            "functional": "degraded" if self.degraded else "usable",
+            "functional": self.functional,
             "request_types": sorted(self.request_types),
             "plan": self.plan,
             "expires_at": self.expires_at,

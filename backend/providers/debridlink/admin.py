@@ -67,7 +67,10 @@ async def runtime_status(provider, *, enabled: bool) -> dict:
     # The probe's answer is account truth: the one account owner adopts it,
     # and what this surface shows is what routing now uses.
     owner = getattr(provider, "account", None)
-    entitlements = await owner.observe(native) if owner is not None else None
+    if owner is not None:
+        await owner.observe(native)
+    # The provider's own truth: that account, narrowed by what it can use.
+    entitlements = provider.entitlements if owner is not None else None
     return {"integration": INTEGRATION_ID, "state": "healthy", "checked": True,
             **account_facts(native, entitlements=entitlements,
                             offered=getattr(getattr(provider, "descriptor", None), "request_types", _FAMILIES))}

@@ -511,8 +511,8 @@ function transferDisplayStatus(t) {
   const projected = String(t && t.presentation_status || '').trim().toLowerCase();
   return projected || (t && t.status) || '';
 }
-// ``activePct``: in-flight execution activity that is not yet DP material (a
-// destination-aware reconstruction); shown beside, never as, completion.
+// ``activePct``: in-flight execution activity on the current source that is
+// not yet DP material, from any executor; shown beside, never as, completion.
 function progress(pct, status, activePct) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
@@ -536,21 +536,22 @@ function progress(pct, status, activePct) {
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
     : '';
   // Two truths, never one number: the bar and percentage above are DP-valid
-  // material; in-flight execution activity that is not yet material (a
-  // destination-aware reconstruction, from any executor) gets its own thinner
-  // lane and label beneath, and the verified figure says so.
+  // material; in-flight execution activity that is not yet material (from
+  // any executor) gets its own thinner lane and label beneath, and the
+  // verified figure says so.
   const activeRaw = activePct === null || activePct === undefined ? NaN : Number(activePct);
-  const reconstructing = active && Number.isFinite(activeRaw);
+  const inFlight = active && Number.isFinite(activeRaw);
   const label = done ? '100%' : (unknown ? '—' : (showStripe ? '…'
-    : actual.toFixed(0) + '%' + (reconstructing ? ' verified' : '')));
-  const activeValue = reconstructing ? Number(Math.min(Math.max(activeRaw, 0), 100).toFixed(1)) : 0;
-  const lane = reconstructing
+    : actual.toFixed(0) + '%' + (inFlight ? ' verified' : '')));
+  const activeValue = inFlight ? Number(Math.min(Math.max(activeRaw, 0), 100).toFixed(1)) : 0;
+  const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
+  const lane = inFlight
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
-      ' aria-valuenow="' + activeValue + '" aria-label="Reconstructing on the current source, not yet verified">' +
+      ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
-  const activityLabel = reconstructing
-    ? '<span class="prog-activity" data-role="execution-progress" title="In progress on the current source; counts once verified">reconstructing ' +
+  const activityLabel = inFlight
+    ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">in progress ' +
       activeValue.toFixed(1) + '%</span>'
     : '';
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
@@ -1651,7 +1652,7 @@ async function showDetail(id) {
         <div><div class="dk">Progress</div><div class="dv">${t.progress == null
           ? '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '')
           : Number(t.progress).toFixed(1) + '%'}${t.active_execution_progress == null
-          ? '' : ' · reconstructing ' + Number(t.active_execution_progress).toFixed(1) + '%'}</div></div>
+          ? '' : ' · in progress ' + Number(t.active_execution_progress).toFixed(1) + '% (not yet verified)'}</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>

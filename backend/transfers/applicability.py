@@ -103,10 +103,16 @@ class ApplicabilityMatch:
 
 @dataclass(frozen=True)
 class ApplicabilityAssessment:
-    """One authoritative classification result plus unresolved specialized owners."""
+    """One authoritative classification result plus unresolved specialized owners.
+
+    ``held_generic``: the generic claimants this classification did not
+    select because a specialized match or unresolved specialized readiness
+    holds the request -- a fact of the classification itself, so a routing
+    trace can state it without classifying again."""
 
     matches: tuple[ApplicabilityMatch, ...] = ()
     unresolved_specialized: tuple[str, ...] = ()
+    held_generic: tuple[str, ...] = ()
 
 
 class ApplicabilityUnresolved(Exception):
@@ -298,10 +304,11 @@ def assess_provider_applicability(
     # An authoritative specialized match can proceed through the established
     # same-class policy. Otherwise any unresolved specialized competitor makes
     # generic fallback (or terminal unsupported) premature.
+    held_generic = tuple(match.provider_id for match in generic)
     if specialized:
-        return ApplicabilityAssessment(tuple(specialized), tuple(unresolved_specialized))
+        return ApplicabilityAssessment(tuple(specialized), tuple(unresolved_specialized), held_generic)
     if unresolved_specialized:
-        return ApplicabilityAssessment((), tuple(unresolved_specialized))
+        return ApplicabilityAssessment((), tuple(unresolved_specialized), held_generic)
     return ApplicabilityAssessment(tuple(generic))
 
 

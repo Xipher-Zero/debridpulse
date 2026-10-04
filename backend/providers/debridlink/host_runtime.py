@@ -18,7 +18,11 @@ must not hand it to a generic provider. Claims are positive inventory only.
 Each hoster also keeps Debrid-Link's ``isFree`` -- whether a free account may
 use it. It never decides whether a link is Debrid-Link's; the provider's
 ``entitlement_for`` reads it (``host_free``) to narrow what a free account may
-begin. Only a JSON ``true`` is free: a missing or malformed flag is not.
+begin. Only a JSON ``true`` is free: a missing or malformed flag is not. The
+flag is kept as Debrid-Link stated it -- ``true``, ``false``, or unknown when
+it is missing or malformed -- so the free account's usable surface
+(``free_surface``) is authoritatively empty only when every hoster says
+``false``; routing reads only an explicit ``true`` either way.
 
 The neutral runtime-state store persists only opaque bytes; the neutral
 applicability classifier receives only canonical host claims.
@@ -26,7 +30,7 @@ applicability classifier receives only canonical host claims.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from ipaddress import ip_address
 import json
 import logging
@@ -64,6 +68,8 @@ _MAX_TOTAL_PATTERN_BYTES = 1024 * 1024
 _MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024
 _MAX_MATCH_URL_LENGTH = 8192
 _DNS_LABEL_RE = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$", re.ASCII)
+# A persisted snapshot that keeps ``isFree`` exactly as Debrid-Link stated it.
+_STATED_FREE = "stated"
 # Debrid-Link's own address: claimed whatever the catalogue says, because the
 # member addresses a torrent decomposes into point at it.
 _OWN_CLAIM = HostClaim(API_HOST, HostClaimScope.EXACT, frozenset({"https"}))
@@ -77,7 +83,8 @@ class DebridLinkHostSnapshotError(ValueError):
 class Hoster:
     domains: tuple[str, ...]
     patterns: tuple[str, ...]
-    free: bool = False
+    # Debrid-Link's ``isFree`` as stated: ``None`` when missing or malformed.
+    free: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -166,14 +173,15 @@ def parse_native_host_snapshot(hosters: Any) -> DebridLinkHostSnapshot:
         pattern_bytes += sum(len(item.encode("utf-8")) for item in patterns)
         if domain_count > _MAX_DOMAINS or pattern_count > _MAX_PATTERNS or pattern_bytes > _MAX_TOTAL_PATTERN_BYTES:
             raise DebridLinkHostSnapshotError("host inventory is too large")
-        usable.append(Hoster(normalized, tuple(patterns), record.get("isFree") is True))
+        free = record.get("isFree")
+        usable.append(Hoster(normalized, tuple(patterns), free if isinstance(free, bool) else None))
     if not usable:
         raise DebridLinkHostSnapshotError("hoster list has no usable hoster")
     return DebridLinkHostSnapshot(tuple(sorted(usable, key=lambda hoster: hoster.domains)))
 
 
 def encode_host_snapshot(snapshot: DebridLinkHostSnapshot) -> bytes:
-    payload = json.dumps({"source": snapshot.source,
+    payload = json.dumps({"source": snapshot.source, "free": _STATED_FREE,
                           "hosters": [{"domains": list(hoster.domains), "regexs": list(hoster.patterns),
                                        "isFree": hoster.free} for hoster in snapshot.hosters]},
                          sort_keys=True, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
@@ -195,6 +203,12 @@ def decode_host_snapshot(payload: bytes) -> DebridLinkHostSnapshot:
     snapshot = parse_native_host_snapshot(hosters)
     if len(snapshot.hosters) != len(hosters if isinstance(hosters, list) else ()):
         raise DebridLinkHostSnapshotError("host snapshot hosters are corrupt")
+    if document.get("free") != _STATED_FREE:
+        # Written before the flag was kept as stated: its ``false`` may have
+        # been a missing or malformed native flag, so it proves nothing.
+        snapshot = DebridLinkHostSnapshot(tuple(
+            replace(hoster, free=None) if hoster.free is False else hoster for hoster in snapshot.hosters),
+            snapshot.source)
     return snapshot
 
 
@@ -218,6 +232,8 @@ class DebridLinkRequestApplicability:
         self._snapshot = snapshot
         self._hosters = () if snapshot is None else tuple(
             (hoster, tuple(compile_pattern(item) for item in hoster.patterns)) for hoster in snapshot.hosters)
+        flags = {hoster.free for hoster in (() if snapshot is None else snapshot.hosters)}
+        self._free_surface = True if True in flags else (False if flags == {False} else None)
 
     def _facts(self, claims=(), *, ready: bool | None = None) -> ProviderApplicability:
         resolved = self._snapshot is not None if ready is None else ready
@@ -259,7 +275,14 @@ class DebridLinkRequestApplicability:
         Structural host truth only: what the account may do with it is
         account entitlement's question (``providers.debridlink.account``)."""
         matched = self._matched(request)
-        return matched[0].free if matched is not None else None
+        return matched[0].free is True if matched is not None else None
+
+    def free_surface(self) -> bool | None:
+        """Whether a free account has any hoster to use: ``True`` when a
+        hoster says ``isFree`` true, ``False`` only when every hoster says
+        false, ``None`` without a catalogue or when the flags leave it
+        unknown. Structural host truth only, like ``host_free``."""
+        return self._free_surface
 
 
 class DebridLinkHostMaintenance:
