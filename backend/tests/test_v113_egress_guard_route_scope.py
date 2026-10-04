@@ -260,7 +260,7 @@ def _guard(seen: list | None = None, *, public=("127.0.0.1",), answers=None) -> 
 
 
 _COMMON = {
-    "allow-overwrite": "true", "auto-file-renaming": "false", "follow-torrent": "false",
+    "allow-overwrite": "true", "auto-file-renaming": "false",
     "follow-metalink": "false", "max-tries": "1", "no-netrc": "true", "ftp-reuse-connection": "false",
 }
 

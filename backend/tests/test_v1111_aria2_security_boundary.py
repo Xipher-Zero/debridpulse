@@ -302,7 +302,8 @@ async def test_canonical_job_options_disable_metadata_following(tmp_path, monkey
     executor = Aria2Executor(None, Aria2Configuration(str(tmp_path)), AsyncMock(return_value=True), egress=guard)
     request = file_request(TransferCandidate("payload.bin", (Endpoint("https", "https://example.test/file"),)), str(tmp_path / "payload.bin"), new_identity())
     _uri, options = await executor._options(request, executor.prepare(request))
-    assert options["follow-torrent"] == "false"
+    # Compiled out (no BitTorrent): never named, or the daemon would refuse it.
+    assert "follow-torrent" not in options
     assert options["follow-metalink"] == "false"
     assert options["max-http-redirection"] == "0"
     assert options["max-tries"] == "1"

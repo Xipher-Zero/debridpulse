@@ -231,9 +231,15 @@ jobs:
           raw="$(docker buildx imagetools inspect --raw "$REF")"
           test "$(jq -r '.annotations["io.debridpulse.aria2.inputs"]' <<< "$raw")" = "$INPUTS"
           test "$(jq -r '.annotations["org.opencontainers.image.version"]' <<< "$raw")" = "$VERSION"
+          # Each build pushed an INDEX (its image plus its provenance
+          # attestation); the published index lists the per-architecture IMAGE
+          # inside each one, so compare against that image, not the index.
           for pair in "amd64 $AMD64" "arm64 $ARM64"; do
             set -- $pair
-            test "$(jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0]' <<< "$raw")" = "$2"
+            built="$(docker buildx imagetools inspect --raw "$IMAGE_NAME@$2" \
+              | jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0] // empty')"
+            [[ "$built" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "no linux/$1 image inside $2"; exit 1; }
+            test "$(jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0]' <<< "$raw")" = "$built"
           done
           digest="$(docker buildx imagetools inspect "$REF" | awk '/^Digest:/ {print $2; exit}')"
           {

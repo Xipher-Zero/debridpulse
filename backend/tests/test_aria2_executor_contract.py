@@ -123,7 +123,8 @@ async def test_start_preserves_connection_guard_and_metadata_safety(execution):
     options = execution.daemon.calls[0][1][1]
     assert options["gid"] == execution.handle.native["gid"]
     assert options["all-proxy"] == "http://guard:8888"
-    assert options["follow-torrent"] == options["follow-metalink"] == "false"
+    assert options["follow-metalink"] == "false"
+    assert "follow-torrent" not in options  # compiled out (no BitTorrent)
     assert options["max-http-redirection"] == "0"
     assert options["check-certificate"] == "true"
     assert options["auto-file-renaming"] == "false"

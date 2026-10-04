@@ -172,6 +172,12 @@ jobs:
           echo "Checking required Debian packages"
           docker exec "$container_name" dpkg-query -W 7zip 7zip-rar aria2 gosu
 
+          # The aria2 package boundary (docs/SUPPLY_CHAIN_POLICY.md 4a): the
+          # installed packages' exact version and compiled feature set -- no
+          # BitTorrent and no BitTorrent option; HTTPS, SFTP and Metalink.
+          echo "Checking the qualified aria2 feature set"
+          docker exec "$container_name" sh -c 'bash /usr/share/debridpulse/aria2/verify-features.sh "$(cat /usr/share/debridpulse/aria2/VERSION)"'
+
           echo "Checking 7zip-rar notices"
           docker exec "$container_name" test -f /usr/share/doc/7zip-rar/copyright
           docker exec "$container_name" test -f /usr/share/doc/7zip-rar/unRarLicense.txt

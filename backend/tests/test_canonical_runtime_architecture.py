@@ -142,7 +142,7 @@ def test_native_client_has_no_duplicate_retry_or_adoption_owner():
 
 _ARIA2_NATIVE_KEYS = (
     "min-split-size", "max-connection-per-server", "disk-cache", "file-allocation",
-    "max-overall-download-limit", "max-overall-upload-limit", "max-concurrent-downloads",
+    "max-overall-download-limit", "max-concurrent-downloads",
     "lowest-speed-limit",
 )
 # transfers/mirrors.py's own EvidenceKind member name legitimately contains

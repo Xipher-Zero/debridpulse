@@ -329,24 +329,30 @@ def test_the_runtime_layer_runs_against_the_supported_rsync_and_nothing_skips() 
     assert account["if"] == "always()" and "sys.exit(1 if skipped else 0)" in account["run"]
 
 
-def test_the_runtime_layer_runs_aria2_rebuilt_with_the_image_s_one_patch() -> None:
-    """The runtime layer exercises the same fixed CONNECT handling the image
-    ships: the runner's own aria2 source rebuilt with the ONE repo-owned patch
-    the Dockerfile applies to Debian's, asserted installed before any test."""
-    patch = "packaging/aria2/connect-tunnel-exact-read.patch"
-    assert (ROOT / patch).is_file() and patch in (ROOT / "Dockerfile").read_text(encoding="utf-8")
+def test_the_runtime_layer_runs_aria2_built_by_the_package_image_s_one_script() -> None:
+    """The runtime layer exercises the aria2 DebridPulse ships: the runner's own
+    aria2 source rebuilt by the ONE build script the package image uses (the
+    CONNECT exact-read patch, BitTorrent compiled out, +dp2), qualified by the
+    same feature verifier before any test runs."""
+    script = "packaging/aria2/build-package.sh"
+    verifier = "packaging/aria2/verify-features.sh"
+    assert (ROOT / script).is_file() and (ROOT / verifier).is_file()
     steps = {step["name"]: step for step in _steps(TESTS_WORKFLOW)}
     provide = steps["Provide the supported runtime (runtime layer)"]["run"]
-    assert f"$GITHUB_WORKSPACE/{patch}" in provide
-    assert "apt-get source --only-source aria2" in provide and "dpkg-buildpackage" in provide
-    assert "+dp1" in provide and "ARIA2_PATCHED_VERSION" in provide
-    assert not re.search(r"apt-get install[^\n]*\baria2\b(?!_)", provide)  # never the archive's own binary
+    assert f'bash "$GITHUB_WORKSPACE/{script}"' in provide
+    assert "ARIA2_PATCHED_VERSION" in provide
+    # Never the archive's own binary: no bare aria2/libaria2-0 package argument.
+    assert not re.search(r"apt-get install[^\n]*\s(aria2|libaria2-0)(\s|$)", provide, re.M)
+    assert '"$RUNNER_TEMP"/aria2/packages/*.deb' in provide
     workflow = (ROOT / ".github" / "workflows" / "tests.yml").read_text(encoding="utf-8")
-    assert "receiveResponse" not in workflow  # the patch body lives only in its file
+    # The patch set, the configuration and the version suffix live only in
+    # packaging/aria2/: the workflow restates none of them.
+    for owned in ("receiveResponse", "connect-tunnel-exact-read.patch", "--disable-bittorrent",
+                  "dpkg-buildpackage", "debian/patches/series"):
+        assert owned not in workflow
     asserted = steps["Assert the runtime layer prerequisites"]["run"]
-    for package in ("aria2", "libaria2-0"):
-        expected = "test \"$(dpkg-query -W -f='${Version}' " + package + ")\" = \"$ARIA2_PATCHED_VERSION\""
-        assert expected in asserted
+    assert "*+dp2) ;;" in asserted
+    assert f'bash "$GITHUB_WORKSPACE/{verifier}" "$ARIA2_PATCHED_VERSION"' in asserted
 
 
 def test_the_contract_layer_partition_runs_every_module_exactly_once() -> None:

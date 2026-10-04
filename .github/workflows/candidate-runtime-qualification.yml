@@ -218,6 +218,7 @@ jobs:
           '
 
           docker exec "$container" dpkg-query -W 7zip 7zip-rar aria2 gosu
+          docker exec "$container" sh -c 'bash /usr/share/debridpulse/aria2/verify-features.sh "$(cat /usr/share/debridpulse/aria2/VERSION)"'
           docker exec "$container" sh -c '7z i | grep -qi rar'
           docker exec --user 99:100 "$container" sh -c '
             set -eu

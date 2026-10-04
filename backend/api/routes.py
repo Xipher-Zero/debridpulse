@@ -1617,7 +1617,6 @@ async def aria2_get_global_options( application: ApplicationService = Depends(ge
         return {
             "ok": True,
             "max_download_speed": int(opts.get("max-overall-download-limit") or 0),
-            "max_upload_speed":   int(opts.get("max-overall-upload-limit")   or 0),
             "max_concurrent_downloads": int(
                 application.engine.policy.max_active_executions
             ),
@@ -1637,19 +1636,17 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
     applies or persists either value; this route holds no independent
     native-apply or persistence logic for them (Gate 9 revision-4 rejection
     finding 5: two implementations were previously able to change the same
-    underlying state). ``max_upload_speed`` has no canonical neutral surface
-    (specification section 4.4: not a release-driving UI requirement for
-    1.0.12) and is applied/persisted narrowly below rather than reintroducing
-    a second copy of either canonical pipeline.
+    underlying state). There is no ``max_upload_speed``: DebridPulse's aria2
+    is compiled without BitTorrent and never uploads.
 
-    Accepts: max_download_speed (bytes/s, 0=unlimited), max_upload_speed,
+    Accepts: max_download_speed (bytes/s, 0=unlimited) and
     max_concurrent_downloads. The UI has migrated to the neutral routes and
     sends at most one of these per request; no external dependency requires
     combined multi-field requests to keep working atomically.
     """
     async with application.application_operation():
         requested = set(body)
-        if not requested & {"max_download_speed", "max_upload_speed", "max_concurrent_downloads"}:
+        if not requested & {"max_download_speed", "max_concurrent_downloads"}:
             raise HTTPException(400, "No valid options provided")
 
         applied: dict = {}
@@ -1661,26 +1658,6 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
                 )
                 last_apply_error = result.get("last_apply_error")
                 applied["max-overall-download-limit"] = str(result["configured"]["max_download_bytes_per_second"])
-
-            if "max_upload_speed" in body:
-                val = int(body["max_upload_speed"])
-                # Upload bandwidth has no neutral surface (specification
-                # section 4.4), so it is an aria2-owned option. It is written
-                # only through the canonical scoped integration surface -- this
-                # compatibility edge holds no persistence logic of its own --
-                # and the native apply is then attempted so a failure is still
-                # reported truthfully.
-                await patch_integration_configuration(
-                    "aria2", IntegrationConfigurationUpdate(options={"max_upload_limit": val}),
-                    application=application,
-                )
-                try:
-                    await application.integration_admin("aria2").change_global_options(
-                        {"max-overall-upload-limit": str(val)},
-                    )
-                except Exception as exc:
-                    last_apply_error = _sanitize_error(exc)
-                applied["max-overall-upload-limit"] = str(val)
 
             if "max_concurrent_downloads" in body:
                 try:

@@ -9,7 +9,6 @@ class _FakeAria2Admin:
     async def get_global_options(self):
         return {
             "max-overall-download-limit": "0",
-            "max-overall-upload-limit": "0",
             "max-concurrent-downloads": "99",
         }
 
@@ -32,6 +31,6 @@ async def test_topbar_concurrency_projection_uses_universal_scheduler_limit():
 
     result = await routes.aria2_get_global_options(application=application)
 
-    assert set(result) == {"ok", "max_download_speed", "max_upload_speed", "max_concurrent_downloads", "raw"}
+    assert set(result) == {"ok", "max_download_speed", "max_concurrent_downloads", "raw"}
     assert result["max_concurrent_downloads"] == 7
     assert result["raw"]["max-concurrent-downloads"] == "99"

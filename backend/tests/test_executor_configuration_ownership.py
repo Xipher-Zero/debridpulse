@@ -43,7 +43,7 @@ def aria2_global_options(cfg):
 CURRENT_ARIA2_OPTIONS = frozenset({
     "operation_timeout_seconds", "split", "min_split_size", "max_connection_per_server",
     "continue_downloads", "disk_cache", "file_allocation", "lowest_speed_limit",
-    "waiting_window", "stopped_window", "max_upload_limit",
+    "waiting_window", "stopped_window",
     "auto_start", "log_file", "log_max_mb", "log_backups", "session_file",
     "purge_interval_minutes", "max_download_result", "keep_unfinished_download_result",
     "deep_sync_interval_minutes", "restart_interval_hours",
@@ -96,7 +96,9 @@ def test_legacy_flat_fields_migrate_into_canonical_integration_namespace():
     assert options["disk_cache"] == "128M"
     assert options["file_allocation"] == "none"
     assert options["lowest_speed_limit"] == "10K"
-    assert options["max_upload_limit"] == 1_000_000
+    # Retired with BitTorrent (DebridPulse's aria2 never uploads): a legacy
+    # upload limit is accepted on load and dropped, never migrated.
+    assert "max_upload_limit" not in options
     assert options["purge_interval_minutes"] == 15
     assert options["max_download_result"] == 200
     assert options["keep_unfinished_download_result"] is True
@@ -159,7 +161,9 @@ def test_aria2_global_options_sources_native_tuning_from_canonical_namespace():
     assert "max-overall-download-limit" not in options
     assert options["max-download-result"] == "77"
     assert options["keep-unfinished-download-result"] == "true"
-    assert options["max-overall-upload-limit"] == "555"
+    # A stored, retired upload limit never reaches the BitTorrent-less daemon,
+    # which would refuse to start on the unknown option.
+    assert "max-overall-upload-limit" not in options
 
 
 def test_aria2_global_options_falls_back_to_typed_defaults_when_namespace_absent():

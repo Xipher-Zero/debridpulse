@@ -86,7 +86,7 @@ def test_legacy_config_round_trips_through_load_save_and_reload(config_path):
     assert (aria2["split"], aria2["min_split_size"], aria2["max_connection_per_server"]) == (32, "20M", 16)
     assert aria2["continue_downloads"] is False and aria2["file_allocation"] == "none"
     assert aria2["disk_cache"] == "128M" and aria2["lowest_speed_limit"] == "10K"
-    assert aria2["max_upload_limit"] == 500000
+    assert "max_upload_limit" not in aria2  # retired with BitTorrent; never migrated
     assert aria2["max_download_result"] == 200 and aria2["restart_interval_hours"] == 12
     alldebrid = migrated.integrations["alldebrid"].options
     assert alldebrid["api_key"] == "ad-private-key-12345"

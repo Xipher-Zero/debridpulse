@@ -880,7 +880,7 @@ class Aria2Executor:
         options = {
             "gid": self._handle_gid(handle), "dir": str(target.parent), "out": target.name,
             "allow-overwrite": "true", "auto-file-renaming": "false",
-            "follow-torrent": "false", "follow-metalink": "false",
+            "follow-metalink": "false",
             "max-http-redirection": "0", "check-certificate": "true",
             "max-tries": "1", "no-netrc": "true", "http-auth-challenge": "true",
             "http-user": "", "http-passwd": "",

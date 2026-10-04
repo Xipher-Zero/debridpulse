@@ -176,44 +176,100 @@ accumulating named-package upgrades indefinitely.
 
 `aria2` (and the `libaria2-0` library it is built around) is the one
 runtime package the image does not take from the archive as built. It is
-still Debian's package, rebuilt from Debian's own source with exactly one
-repo-owned patch, so dpkg, the SBOM and vulnerability scanning keep seeing
-it as Debian's `aria2`:
+still Debian's package, rebuilt from Debian's own source with exactly two
+repo-owned changes, so dpkg, the SBOM and vulnerability scanning keep seeing
+it as Debian's `aria2`. It is its own immutable supply-chain artifact, with
+one explicit chain:
 
-- **Source:** Debian source package `aria2` at the version named by the
-  Dockerfile's `ARIA2_SOURCE_VERSION` (`1.37.0+debian-3`, the version Trixie
-  serves for the pinned base), fetched with `apt-get source` from the same
-  signed Debian repository configuration the base image uses. apt verifies
-  the `.dsc`, orig and debian tarballs against the signed Sources index; no
-  upstream tarball, Git branch or vendored source tree is involved.
-- **Patch:** `packaging/aria2/connect-tunnel-exact-read.patch` (DEP-3
-  header), appended to the package's own `debian/patches/series` after
-  Debian's patches. aria2 1.37.0 read a CONNECT response with one buffered
-  `recv` and discarded every byte after its header, so a server-first
-  tunnelled protocol -- an FTP greeting, an SSH banner -- that arrived in the
-  same read was lost and the transfer timed out. The patch reads a tunnel's
-  response no further than its header; ordinary HTTP responses are read
-  exactly as before.
-- **Version:** the rebuilt packages carry the local suffix named by
-  `ARIA2_PACKAGE_VERSION` (`1.37.0+debian-3+dp1`), which sorts after the
-  archive version it derives from, so version-based advisories still
-  resolve against it. The runtime stage asserts both installed versions.
-- **Build isolation:** the package is built with `dpkg-buildpackage` in the
-  Dockerfile's separate `aria2-build` stage (same pinned base digest). Only
-  the two `.deb` files are copied into the runtime stage; no compiler, build
-  dependency or source tree reaches the runtime image. The runtime stage
-  installs them in its single apt transaction, so their runtime
-  dependencies resolve from the Debian archive exactly as the archive
-  package's would.
+```
+packaging/aria2/  (Debian source version, patch, build configuration, base)
+        |  aria2 Package workflow: native amd64 + arm64 builds, qualified
+        v
+ghcr.io/xipher-zero/debridpulse-aria2@sha256:<multi-arch manifest digest>
+        |  application Dockerfile: FROM ...@sha256 AS aria2-packages
+        v
+DebridPulse image digest  (Fork Image -> Container Security -> Candidate
+                           Runtime Qualification -> Release Promotion)
+```
+
+- **Source:** Debian source package `aria2` at the version named by
+  `ARIA2_SOURCE_VERSION` in `packaging/aria2/Dockerfile` (`1.37.0+debian-3`,
+  the version Trixie serves for the pinned base), fetched with
+  `apt-get source` from the same signed Debian repository configuration the
+  base image uses. apt verifies the `.dsc`, orig and debian tarballs against
+  the signed Sources index; no upstream tarball, Git branch or vendored
+  source tree is involved.
+- **Changes (exactly two, both in `packaging/aria2/`):**
+  - `connect-tunnel-exact-read.patch` (DEP-3 header), appended to the
+    package's own `debian/patches/series` after Debian's patches. aria2
+    1.37.0 read a CONNECT response with one buffered `recv` and discarded
+    every byte after its header, so a server-first tunnelled protocol -- an
+    FTP greeting, an SSH banner -- that arrived in the same read was lost
+    and the transfer timed out. The patch reads a tunnel's response no
+    further than its header; ordinary HTTP responses are read exactly as
+    before.
+  - `disable-bittorrent.rules.patch`, applied to Debian's `debian/rules`
+    with fuzz 0: aria2 is configured `--disable-bittorrent`. DebridPulse
+    resolves magnets and `.torrent` files through providers; its aria2
+    executor fetches only HTTP(S), FTP and SFTP and is never a BitTorrent
+    client. Upstream's switch removes the BitTorrent implementation (peer
+    wire, trackers, DHT, PEX, LPD, seeding) and every BitTorrent option,
+    including the upload limit; Metalink and every other feature are left
+    exactly as Debian configures them.
+- **One build script:** `packaging/aria2/build-package.sh` owns the patch
+  set, the configuration and the `+dpN` suffix. The package image and the
+  hosted runtime test layer (`tests.yml`, which rebuilds the runner
+  distribution's own aria2 source the same way) both run it; neither
+  restates any of it.
+- **Version:** the rebuilt packages carry `ARIA2_PACKAGE_VERSION`
+  (`1.37.0+debian-3+dp2`; `+dp1` was the CONNECT patch alone), which sorts
+  after the archive version it derives from, so version-based advisories
+  still resolve against it.
+- **Qualification (one verifier):** `packaging/aria2/verify-features.sh`
+  checks the INSTALLED packages, from the binary's own feature report
+  rather than the build command: the exact package version, BitTorrent not
+  an enabled feature and no BitTorrent option defined, and HTTPS, SFTP and
+  Metalink enabled. It runs in the package build, in the application
+  image build, in the Fork Image smoke test, in Candidate Runtime
+  Qualification (both architectures) and in the hosted runtime test layer.
+  The real-runtime suite additionally proves the daemon options DebridPulse
+  passes start the binary, every BitTorrent input (magnet, `.torrent`,
+  `aria2.addTorrent`) is refused, and the CONNECT same-read FTP greeting and
+  SSH banner cases pass.
+- **Artifact:** `packaging/aria2/Dockerfile` builds the packages on the
+  pinned Trixie base and publishes a `scratch` package carrier -- not an
+  aria2 runtime -- holding `/packages/` (the two `.deb` files), `/source/`
+  (Debian's source package as fetched plus both DebridPulse patches: the
+  complete corresponding source of the shipped binaries), `/VERSION`,
+  `/SHA256SUMS`, `/aria2c-version.txt` and `/verify-features.sh`. The aria2
+  Package workflow builds it natively on `ubuntu-24.04` and
+  `ubuntu-24.04-arm` (no emulation) with provenance and SBOM, and publishes
+  the multi-arch manifest write-once as
+  `ghcr.io/xipher-zero/debridpulse-aria2:<version with + as ->`, annotated
+  with a hash of every tracked file under `packaging/aria2/`. A published
+  version is never rebuilt: changed inputs without a version bump fail
+  closed, and the publish job refuses to create over an existing tag.
+- **Consumption:** the application Dockerfile names the artifact by its
+  manifest DIGEST, never its tag, copies only the two packages, `VERSION`
+  and the verifier (to `/usr/share/debridpulse/aria2/`), installs the
+  packages in its single apt transaction -- so their runtime dependencies
+  resolve from the Debian archive exactly as the archive package's would --
+  and runs the verifier. No compiler, build dependency or aria2 source tree
+  reaches the application image, and application builds never compile
+  aria2.
 - **Licensing:** aria2 is GPL-2.0-or-later; the rebuilt package ships
-  Debian's own `copyright` file, and the patch is published in this
-  repository alongside the rest of the corresponding source
-  (`SOURCE_OFFER.md`).
+  Debian's own `copyright` file, and the artifact carries the complete
+  corresponding source beside the binaries, which is also published in
+  this repository and Debian's archive (`SOURCE_OFFER.md`).
 - **Refresh:** when Trixie publishes a newer aria2 source (a security
-  update), bump `ARIA2_SOURCE_VERSION` and the `+dpN` package version in
-  the same change, confirm the patch still applies, and requalify the new
-  image digest (§6). Drop the rebuild entirely once the archive package
-  carries an equivalent fix.
+  update), or the patch set, configuration or base changes, bump
+  `ARIA2_SOURCE_VERSION` and/or the `+dpN` package version in
+  `packaging/aria2/` in the same change, confirm both patches still apply,
+  let the aria2 Package workflow publish the new artifact, pin its new
+  digest in the application Dockerfile, and requalify the new image digest
+  (§6). Drop the rebuild entirely once the archive package carries an
+  equivalent CONNECT fix and DebridPulse no longer needs BitTorrent removed
+  at build time.
 
 ## 5. Python dependency lock and hash refresh procedure
 

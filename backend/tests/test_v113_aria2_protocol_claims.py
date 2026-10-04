@@ -123,7 +123,8 @@ async def test_metadata_following_stays_disabled_for_every_claimed_scheme(
     executor = _executor(tmp_path)
     request = file_request(_candidate(scheme), str(tmp_path / "payload.bin"), new_identity())
     _address, options = await executor._options(request, executor.prepare(request))
-    assert options["follow-torrent"] == "false"
+    # Compiled out (no BitTorrent): never named, or the daemon would refuse it.
+    assert "follow-torrent" not in options
     assert options["follow-metalink"] == "false"
     assert options["no-netrc"] == "true"
     assert options["max-tries"] == "1"

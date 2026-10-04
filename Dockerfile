@@ -1,31 +1,11 @@
-# aria2 is Debian's own package rebuilt from its own source with one
-# repo-owned patch (docs/SUPPLY_CHAIN_POLICY.md section 4a): aria2 1.37.0 read
-# a CONNECT response with one buffered recv and discarded every byte after its
-# header, so a server-first tunnelled protocol (an FTP greeting, an SSH banner)
-# arriving in the same read was lost and the transfer timed out.
-# packaging/aria2/connect-tunnel-exact-read.patch reads that response no
-# further than its header. Only the two resulting packages leave this stage:
-# no compiler, build dependency or source tree reaches the runtime image.
-FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS aria2-build
-ARG ARIA2_SOURCE_VERSION=1.37.0+debian-3
-ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp1
-COPY packaging/aria2/connect-tunnel-exact-read.patch /build/
-RUN set -eux; \
-    sed -ri 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/debian.sources; \
-    apt-get update; \
-    apt-get install -y --no-install-recommends dpkg-dev build-essential fakeroot; \
-    apt-get build-dep -y --no-install-recommends "aria2=${ARIA2_SOURCE_VERSION}"; \
-    cd /build; \
-    apt-get source --only-source "aria2=${ARIA2_SOURCE_VERSION}"; \
-    cd "aria2-${ARIA2_SOURCE_VERSION%-*}"; \
-    cp /build/connect-tunnel-exact-read.patch debian/patches/; \
-    echo connect-tunnel-exact-read.patch >> debian/patches/series; \
-    { printf 'aria2 (%s) trixie; urgency=medium\n\n  * DebridPulse: read a CONNECT response no further than its header\n    (debian/patches/connect-tunnel-exact-read.patch).\n\n -- DebridPulse <noreply@github.com>  %s\n\n' \
-        "${ARIA2_PACKAGE_VERSION}" "$(date -R -u -d @0)"; cat debian/changelog; } > debian/changelog.new; \
-    mv debian/changelog.new debian/changelog; \
-    DEB_BUILD_OPTIONS="nocheck parallel=$(nproc)" dpkg-buildpackage -b -uc -us; \
-    mkdir /out; \
-    cp "../aria2_${ARIA2_PACKAGE_VERSION}_"*.deb "../libaria2-0_${ARIA2_PACKAGE_VERSION}_"*.deb /out/
+# aria2 is DebridPulse's own qualified package artifact (docs/SUPPLY_CHAIN_POLICY.md
+# section 4a): Debian's aria2 1.37.0+debian-3 rebuilt by packaging/aria2/ with
+# the CONNECT exact-read patch and BitTorrent compiled out, built once per
+# architecture by the aria2 Package workflow and consumed here by its immutable
+# multi-arch manifest DIGEST (tag 1.37.0-debian-3-dp2 is only a human alias).
+# This build never compiles aria2; only the two packages, their version and the
+# one feature verifier are taken from it.
+FROM ghcr.io/xipher-zero/debridpulse-aria2@sha256:3734be43479c98b54419f821509a8fe142eb2a7fae0812ca7ccc79fda1cb44e5 AS aria2-packages
 
 FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
@@ -76,11 +56,15 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # becomes a no-op and should be dropped in that same change rather than
 # carried forward indefinitely.
 #
-# aria2 and libaria2-0 are the patched Debian packages built above, installed
-# in this same apt transaction so their ordinary runtime dependencies resolve
-# from the Debian archive exactly as the archive package's would.
-ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp1
-COPY --from=aria2-build /out/ /tmp/aria2/
+# aria2 and libaria2-0 are the qualified packages of the aria2-packages stage,
+# installed in this same apt transaction so their ordinary runtime dependencies
+# resolve from the Debian archive exactly as the archive package's would. The
+# artifact's own verifier then checks the installed packages' exact version and
+# compiled feature set (no BitTorrent; HTTPS, SFTP, Metalink), and stays in the
+# image so image qualification runs the same check.
+ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp2
+COPY --from=aria2-packages /packages/ /tmp/aria2/
+COPY --from=aria2-packages /VERSION /verify-features.sh /usr/share/debridpulse/aria2/
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/unrar/copyright' \
@@ -107,8 +91,8 @@ RUN printf '%s\n' \
     unrar \
     7zip \
     7zip-rar && \
-    test "$(dpkg-query -W -f='${Version}' aria2)" = "${ARIA2_PACKAGE_VERSION}" && \
-    test "$(dpkg-query -W -f='${Version}' libaria2-0)" = "${ARIA2_PACKAGE_VERSION}" && \
+    test "$(cat /usr/share/debridpulse/aria2/VERSION)" = "${ARIA2_PACKAGE_VERSION}" && \
+    bash /usr/share/debridpulse/aria2/verify-features.sh "${ARIA2_PACKAGE_VERSION}" && \
     rm -rf /var/lib/apt/lists/* /tmp/aria2
 
 # Python deps. DP 1.0.12 leveling remediation (DEP-001): requirements.txt is

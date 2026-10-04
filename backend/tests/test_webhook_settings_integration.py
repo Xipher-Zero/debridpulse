@@ -170,46 +170,22 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         # admission is its only owner.
         fake_aria2.apply_memory_tuning.assert_not_awaited()
 
-    async def test_aria2_global_options_upload_speed_persists_before_native_apply_and_reconfigures(self):
-        """Gate 9 revision-5 rejection finding 3: the legacy upload-speed
-        compatibility path must migrate the desired value into canonical
-        ``integrations.aria2.max_upload_limit`` (not just the legacy flat
-        field) AND call ``application.configure()`` so the injected
-        ``Aria2RuntimeConfiguration`` snapshot ``Aria2Administration.apply_memory_tuning()``
-        consumes is refreshed -- otherwise the next unrelated tuning
-        apply/restart would silently revert a live native change back to a
-        stale injected value."""
-        saved = {}
-        current = routes.AppSettings()
+    async def test_aria2_global_options_refuses_the_retired_upload_speed(self):
+        """DebridPulse's aria2 is compiled without BitTorrent and never uploads,
+        so the legacy edge has no upload speed: a request naming only it is
+        refused, and nothing is persisted or sent to aria2."""
         fake_aria2 = SimpleNamespace(change_global_options=AsyncMock())
         application = SimpleNamespace(
-            integration_admin=lambda _: fake_aria2, apply_integration_configuration=AsyncMock(return_value=None), definitions=(aria2_definition,),
-            notify_applicability_changed=lambda _identity: None,
-            application_operation=lambda: _fake_db_context(None), configure=MagicMock(),
-            reconcile_executions=AsyncMock(), validate_configuration=AsyncMock(),
+            integration_admin=lambda _: fake_aria2, application_operation=lambda: _fake_db_context(None),
+            configure=MagicMock(),
         )
-        fake_aria2.apply_memory_tuning = AsyncMock()
-
-        def fake_save(cfg):
-            saved["cfg"] = cfg
-
-        def fake_apply(cfg):
-            saved["applied"] = cfg
-
-        with patch("api.routes.get_settings", return_value=current), \
-             patch("api.routes.load_settings", return_value=current), \
-             patch("api.routes.save_settings", side_effect=fake_save), \
-             patch("api.routes.apply_settings", side_effect=fake_apply), \
-             patch("api.routes.get_application", return_value=application), \
-             patch("api.routes.aria2_runtime.ensure_started", AsyncMock()):
-            result = await routes.aria2_set_global_options({"max_upload_speed": 750_000}, application=application)
-
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["applied"]["max-overall-upload-limit"], "750000")
-        # Canonical integration namespace received the migrated value.
-        self.assertEqual(saved["cfg"].integrations["aria2"].options["max_upload_limit"], 750_000)
-        fake_aria2.change_global_options.assert_awaited_once_with({"max-overall-upload-limit": "750000"})
-        application.configure.assert_called_once()
+        with patch("api.routes.save_settings") as save, \
+             self.assertRaises(routes.HTTPException) as refused:
+            await routes.aria2_set_global_options({"max_upload_speed": 750_000}, application=application)
+        self.assertEqual(refused.exception.status_code, 400)
+        save.assert_not_called()
+        fake_aria2.change_global_options.assert_not_awaited()
+        application.configure.assert_not_called()
 
     async def test_aria2_global_options_concurrency_change_touches_no_executor_administration(self):
         """Gate 9 revision-6 rejection finding 3 required this legacy edge to

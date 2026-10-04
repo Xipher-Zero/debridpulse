@@ -25,8 +25,9 @@ class Aria2Options(BaseModel):
     # belongs to this executor-owned schema, not universal core -- there is
     # no field-by-field justification for leaving any of them on
     # `AppSettings` as an authority. Bounds mirror `core.config_validator`'s
-    # `numeric_bounds` for the equivalent legacy flat field.
-    max_upload_limit: int = Field(default=0, ge=0)
+    # `numeric_bounds` for the equivalent legacy flat field. (There is no
+    # upload limit: DebridPulse's aria2 is compiled without BitTorrent, so it
+    # never uploads; a stored ``max_upload_limit`` is an unknown key and ignored.)
     auto_start: bool = True
     log_file: str = "/app/data/aria2/aria2.log"
     log_max_mb: int = Field(default=25, ge=1, le=1024)

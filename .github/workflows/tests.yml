@@ -128,32 +128,23 @@ jobs:
         run: |
           set -euo pipefail
           # aria2 is the runner distribution's own aria2 source package rebuilt
-          # with the SAME repo-owned patch the image applies to Debian's
-          # (packaging/aria2/connect-tunnel-exact-read.patch; docs/
-          # SUPPLY_CHAIN_POLICY.md section 4a), so the runtime layer exercises
-          # the fixed CONNECT handling; the published image's own +dp1 package
-          # is qualified separately by Candidate Runtime Qualification.
+          # by the ONE build script the published package image uses
+          # (packaging/aria2/build-package.sh; docs/SUPPLY_CHAIN_POLICY.md
+          # section 4a): the same CONNECT exact-read patch, BitTorrent compiled
+          # out and the same +dp2 suffix, so the runtime layer exercises the
+          # binary DebridPulse ships; the published image's own packages are
+          # qualified separately by Candidate Runtime Qualification.
           for sources in /etc/apt/sources.list.d/*.sources; do
             if [ -e "$sources" ]; then sudo sed -ri 's/^Types: deb$/Types: deb deb-src/' "$sources"; fi
           done
           if [ -e /etc/apt/sources.list ]; then sudo sed -ri 's/^# ?deb-src /deb-src /' /etc/apt/sources.list; fi
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot
+          sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot patch
           sudo apt-get build-dep -y --no-install-recommends aria2
-          aria2_src="$RUNNER_TEMP/aria2-src"; mkdir -p "$aria2_src"
-          (cd "$aria2_src" && apt-get source --only-source aria2 > /dev/null)
-          aria2_tree="$(find "$aria2_src" -mindepth 1 -maxdepth 1 -type d -name 'aria2-*' | head -1)"
-          aria2_version="$(cd "$aria2_tree" && dpkg-parsechangelog -SVersion)+dp1"
-          mkdir -p "$aria2_tree/debian/patches"
-          cp "$GITHUB_WORKSPACE/packaging/aria2/connect-tunnel-exact-read.patch" "$aria2_tree/debian/patches/"
-          echo connect-tunnel-exact-read.patch >> "$aria2_tree/debian/patches/series"
-          (cd "$aria2_tree" \
-           && { printf 'aria2 (%s) %s; urgency=medium\n\n  * DebridPulse: read a CONNECT response no further than its header.\n\n -- DebridPulse <noreply@github.com>  %s\n\n' \
-                  "$aria2_version" "$(dpkg-parsechangelog -SDistribution)" "$(date -R -u -d @0)"; cat debian/changelog; } > debian/changelog.new \
-           && mv debian/changelog.new debian/changelog \
-           && DEB_BUILD_OPTIONS="nocheck parallel=$(nproc)" dpkg-buildpackage -b -uc -us > /dev/null)
-          sudo apt-get install -y --no-install-recommends \
-            "$aria2_src/aria2_${aria2_version}_"*.deb "$aria2_src/libaria2-0_${aria2_version}_"*.deb
+          bash "$GITHUB_WORKSPACE/packaging/aria2/build-package.sh" "$RUNNER_TEMP/aria2-src" "$RUNNER_TEMP/aria2" > "$RUNNER_TEMP/aria2-build.log" 2>&1 \
+            || { tail -60 "$RUNNER_TEMP/aria2-build.log"; exit 1; }
+          aria2_version="$(cat "$RUNNER_TEMP/aria2/VERSION")"
+          sudo apt-get install -y --no-install-recommends "$RUNNER_TEMP"/aria2/packages/*.deb
           echo "ARIA2_PATCHED_VERSION=$aria2_version" >> "$GITHUB_ENV"
           src="$RUNNER_TEMP/rsync-src"; prefix="$RUNNER_TEMP/rsync"
           mkdir -p "$src"
@@ -177,11 +168,9 @@ jobs:
           set -euo pipefail
           test "$(command -v rsync)" = "$RUNNER_TEMP/rsync/bin/rsync"
           rsync --version | head -1 | grep -q "rsync  version $RSYNC_VERSION "
-          case "$ARIA2_PATCHED_VERSION" in *+dp1) ;; *) exit 1 ;; esac
-          test "$(dpkg-query -W -f='${Version}' aria2)" = "$ARIA2_PATCHED_VERSION"
-          test "$(dpkg-query -W -f='${Version}' libaria2-0)" = "$ARIA2_PATCHED_VERSION"
+          case "$ARIA2_PATCHED_VERSION" in *+dp2) ;; *) exit 1 ;; esac
           test "$(command -v aria2c)" = /usr/bin/aria2c
-          aria2c --version | head -1
+          bash "$GITHUB_WORKSPACE/packaging/aria2/verify-features.sh" "$ARIA2_PATCHED_VERSION"
           openssl version
           python3 - <<'PY'
           import socket

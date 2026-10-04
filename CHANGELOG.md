@@ -330,6 +330,16 @@
 
 ### Changed
 
+- **aria2 is a separately built, digest-pinned package, compiled without BitTorrent.** The image now
+  installs DebridPulse's aria2 `1.37.0+debian-3+dp2` from its own package image
+  (`ghcr.io/xipher-zero/debridpulse-aria2`, consumed by multi-arch manifest digest) instead of compiling
+  aria2 in every image build, which removes the hour-long emulated arm64 compile from each push. It is
+  still Debian's aria2 source with the CONNECT exact-read fix, now also configured `--disable-bittorrent`:
+  magnets and `.torrent` files keep resolving through providers exactly as before, while aria2 itself can
+  no longer act as a BitTorrent client. HTTP, HTTPS, FTP, SFTP, Metalink and continuation are unchanged.
+  The package is built natively per architecture, published write-once with provenance, SBOM and its
+  corresponding source, and its feature set (no BitTorrent; HTTPS, SFTP and Metalink present) is checked
+  from the installed binary in every build and qualification stage (docs/SUPPLY_CHAIN_POLICY.md 4a).
 - **Adding something you already downloaded is a new transfer.** Submitting a link, magnet, torrent or
   NZB again after its earlier transfer finished (completed, consolidated or cancelled) now creates a new
   transfer instead of reopening the old one. If the earlier download's files are still there and intact,
@@ -467,6 +477,13 @@
 
 ### Removed
 
+- **The aria2 upload limit and every BitTorrent option.** With BitTorrent compiled out, aria2 never
+  uploads, so the aria2 `max_upload_limit` option and the legacy `max_upload_speed` field of
+  `GET`/`POST /api/aria2/global-options` are gone (a request naming only `max_upload_speed` is refused).
+  A stored `max_upload_limit` (or a pre-canonical `aria2_max_upload_limit`) is ignored on load and
+  dropped on the next save. DebridPulse no longer passes `follow-torrent`, `enable-dht`, `enable-dht6`,
+  `enable-peer-exchange`, `bt-enable-lpd` or `max-overall-upload-limit` to aria2: the binary no longer
+  has them and would refuse to start with them.
 - **External aria2 support.** aria2 has one topology: DebridPulse starts, configures and stops its
   bundled daemon, which listens on loopback only. The Download Engine mode selector, the RPC URL, RPC
   secret and remote download path settings, the draft aria2 connection test

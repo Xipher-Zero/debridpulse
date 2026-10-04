@@ -71,17 +71,14 @@ def build_aria2_global_options(options, *, include_safety: bool = False) -> Dict
         "file-allocation": str(options.file_allocation or "falloc"),
         "continue": "true" if bool(options.continue_downloads) else "false",
         "lowest-speed-limit": str(options.lowest_speed_limit or "0"),
-        "max-overall-upload-limit":   str(int(options.max_upload_limit or 0)),
     }
     if include_safety:
-        options_dict.update({
-            "follow-torrent": "false",
-            "follow-metalink": "false",
-            "enable-dht": "false",
-            "enable-dht6": "false",
-            "enable-peer-exchange": "false",
-            "bt-enable-lpd": "false",
-        })
+        # DebridPulse's aria2 is compiled without BitTorrent
+        # (docs/SUPPLY_CHAIN_POLICY.md section 4a), so it has no torrent, DHT,
+        # peer-exchange, LPD or upload option to switch off -- naming one
+        # makes the daemon refuse to start. A Metalink it fetches is a file,
+        # never a download plan.
+        options_dict["follow-metalink"] = "false"
     return options_dict
 
 
