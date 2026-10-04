@@ -1,0 +1,24 @@
+Description: Compile aria2 without BitTorrent
+ DebridPulse resolves magnets and .torrent files through providers; its aria2
+ executor fetches only HTTP(S), FTP and SFTP and never acts as a BitTorrent
+ client. Upstream's --disable-bittorrent removes the BitTorrent implementation
+ (peer wire, trackers, DHT, PEX, LPD, seeding and every BitTorrent option)
+ from the binary instead of merely switching it off at runtime. Metalink and
+ every other feature are left exactly as Debian configures them.
+ Applied to Debian's own debian/rules with fuzz 0 by build-package.sh.
+Author: DebridPulse <https://github.com/Xipher-Zero/debridpulse>
+Forwarded: not-needed
+Last-Update: 2026-10-04
+---
+--- a/debian/rules
++++ b/debian/rules
+@@ -12,7 +12,8 @@
+ 		--with-gnutls \
+ 		--without-openssl \
+ 		--with-ca-bundle=/etc/ssl/certs/ca-certificates.crt \
+-		--enable-libaria2
++		--enable-libaria2 \
++		--disable-bittorrent
+ 
+ override_dh_auto_install:
+ 	dh_auto_install
