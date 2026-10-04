@@ -554,8 +554,19 @@ test('the AllDebrid credential is one compact centred island and no blank row si
     await expect(card.locator('.dp-settings-provider-status-line')).toHaveCount(0);
   }
   const row = page.locator('.dp-settings-provider-card--alldebrid .dp-settings-alldebrid-key-row');
-  await expect(row.locator('.form-hint')).toHaveText('Enter an API key to connect your AllDebrid account.');
+  // The stored AllDebrid key belongs to settings-providers-persistence.spec.js,
+  // which runs concurrently on this one backend, so this file never assumes
+  // whether a key is stored: the island's geometry is the same in either state,
+  // and its hint must be the contextual copy for the state the island itself
+  // shows (read in one snapshot, so a concurrent re-render cannot split them).
   await expect(row.locator('[data-action="clear-alldebrid-key"]')).toHaveText('Remove API Key');
+  const keyState = await row.evaluate(island => ({
+    hint: island.querySelector('.form-hint').textContent.trim(),
+    configured: !island.querySelector('[data-action="clear-alldebrid-key"]').disabled,
+  }));
+  expect(keyState.hint).toBe(keyState.configured
+    ? 'API key configured for your AllDebrid account.'
+    : 'Enter an API key to connect your AllDebrid account.');
   const geometry = await row.evaluate(island => {
     const box = island.getBoundingClientRect();
     const body = island.parentElement.getBoundingClientRect();
