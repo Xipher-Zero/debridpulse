@@ -29,6 +29,10 @@ from integrations.definition import verification_fingerprint, verification_proof
 from providers.alldebrid.admin import runtime_status as alldebrid_runtime_status
 from providers.alldebrid.client import AllDebridService
 from providers.alldebrid.definition import canonical_options as alldebrid_canonical_options
+from providers.debridlink import admin as debridlink_admin
+from providers.debridlink.definition import (
+    canonical_options as debridlink_canonical_options, credential_material as debridlink_credential_material,
+)
 from providers.realdebrid import admin as realdebrid_admin
 from providers.realdebrid.definition import (
     canonical_options as realdebrid_canonical_options, credential_material as realdebrid_credential_material,
@@ -80,6 +84,10 @@ _LEGAL_DOCUMENTS = {
 class AllDebridValidationRequest(BaseModel):
     api_key: str = Field(default="", max_length=4096)
     clear_api_key: bool = False
+
+
+class DebridLinkValidationRequest(BaseModel):
+    api_key: str = Field(default="", max_length=4096)
 
 
 class DirectoryCapacity(BaseModel):
@@ -805,6 +813,51 @@ async def disconnect_torbox(application: ApplicationService = Depends(get_applic
     saved = await _write_torbox(application, options={}, clear_secrets=["api_token"])
     projection = {key: value for key, value in saved.items() if key not in {"ok", "native"}}
     return {"ok": True, **_accepted(TORBOX_NAMESPACE, projection)}
+
+
+# --- Debrid-Link ---------------------------------------------------------------
+#
+# The connection is the operator's own Debrid-Link API key, written and erased
+# through the canonical integration-configuration mutation like AllDebrid's. Its
+# Test exercises the key the operator is looking at -- the draft in the field,
+# or the saved one -- and records the outcome only when that IS the saved key.
+
+DEBRIDLINK_NAMESPACE = "debridlink"
+
+
+def _debridlink_enabled() -> bool:
+    entry = (get_settings().integrations or {}).get(DEBRIDLINK_NAMESPACE)
+    return bool(getattr(entry, "enabled", False))
+
+
+@router.get("/integration-status/debridlink")
+async def get_debridlink_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Return Debrid-Link-specific status without inferring from generic health."""
+    provider = application.engine.registry.providers.get(DEBRIDLINK_NAMESPACE)
+    return await debridlink_admin.runtime_status(provider, enabled=_debridlink_enabled())
+
+
+@router.post("/settings/validate-debridlink")
+async def validate_debridlink(payload: DebridLinkValidationRequest,
+                              application: ApplicationService = Depends(get_application)):
+    """The Debrid-Link Test: prove the entered (or saved) key against the
+    account. It enables nothing and creates nothing on Debrid-Link."""
+    options = debridlink_canonical_options(get_settings())
+    api_key = payload.api_key.strip() or str(options.api_key or "").strip()
+    if not api_key:
+        raise HTTPException(400, "No API key configured or entered")
+    # Exactly what this request authenticates with, in the shape the
+    # Debrid-Link definition declares as its verification material.
+    fingerprint = verification_fingerprint(debridlink_credential_material(options.model_copy(
+        update={"api_key": api_key})))
+    try:
+        account = await debridlink_admin.verify(api_key, options)
+    except Exception as exc:
+        await _record_verification_outcome(application, DEBRIDLINK_NAMESPACE, fingerprint, False)
+        raise HTTPException(502, _safe_failure(exc)) from exc
+    accepted = await _record_verification_outcome(application, DEBRIDLINK_NAMESPACE, fingerprint, True)
+    return {"ok": True, **account, "verification": verification_proof(fingerprint),
+            **_accepted(DEBRIDLINK_NAMESPACE, accepted)}
 
 
 @router.post("/settings/validate-discord")

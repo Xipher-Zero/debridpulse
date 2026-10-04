@@ -697,6 +697,43 @@
   padding-right: calc(var(--dp-key-status-reserve) + 20px);
 }
 
+/* The Debrid-Link credential row: the AllDebrid row's island, exactly. */
+#view-settings .dp-settings-debridlink-key-row {
+  box-sizing: border-box;
+  justify-content: center;
+  gap: 18px;
+  width: 65%;
+  max-width: 100%;
+  margin-inline: auto;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 16px 22px 17px;
+}
+
+#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info {
+  flex: 0 1 auto;
+  max-width: 240px;
+}
+
+#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-control {
+  flex: 1 1 auto;
+  position: relative;
+}
+
+#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .input {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#view-settings .dp-settings-debridlink-key-row.is-configured {
+  --dp-key-status-reserve: 88px;
+}
+
+#view-settings .dp-settings-debridlink-key-row.is-configured .dp-settings-inline-field-control > .input {
+  padding-right: calc(var(--dp-key-status-reserve) + 20px);
+}
+
 /* A status the field carries -- never a control, and never mistakable for
    credential text. It takes no pointer events and no selection, so it cannot
    be clicked, dragged across, focused, or caught by a caret; the field's own
@@ -1231,6 +1268,17 @@
   }
 
   #view-settings .dp-settings-alldebrid-key-row > .dp-settings-inline-field-info {
+    max-width: none;
+  }
+
+  #view-settings .dp-settings-debridlink-key-row {
+    width: 100%;
+    align-items: stretch;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  #view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info {
     max-width: none;
   }
 

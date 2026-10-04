@@ -158,9 +158,11 @@ def test_the_premium_tier_reserves_its_last_position_for_usenet():
     """
     premium = {d.id: d.presentation.display_order for d in definitions
                if d.presentation.status_tier == PREMIUM_SERVICE}
-    assert set(premium) == {"alldebrid", "realdebrid", "torbox", "usenet"}
+    assert set(premium) == {"alldebrid", "debridlink", "realdebrid", "torbox", "usenet"}
     ordinary = [order for identity, order in premium.items() if identity != "usenet"]
-    assert max(ordinary) < DEFAULT_ORDER
+    assert max(ordinary) <= DEFAULT_ORDER
+    # Debrid-Link is that integration: it declares no order and lands before Usenet.
+    assert premium["debridlink"] == DEFAULT_ORDER
     assert DEFAULT_ORDER < premium["usenet"], \
         "a future default-order premium entry would sort AFTER the reserved Usenet tail"
     standard = [d.presentation.display_order for d in definitions
@@ -300,13 +302,15 @@ def test_usenet_stays_first_in_settings_premium_services():
     """Settings order is intentionally INDEPENDENT of Provider Status order:
     the operator configures Usenet first, and the panel reports it last."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "usenetCard + " in panel
-    assert panel.index("usenetCard +") < panel.index("+ provider + realDebridCard + torBoxCard,")
+    # The one Services order owner puts the service family (Usenet) first and
+    # the named providers after it (test_v113_debridlink_presentation runs it).
+    assert "premiumServiceOrder([" in panel
+    assert "families.map(card => card.markup).join('') + " in panel
 
 
 def test_an_inset_separator_groups_usenet_apart_from_the_debrid_providers():
     panel = block(SETTINGS_JS, "function sourcesPanel(")
-    assert "usenetCard + PREMIUM_SEPARATOR + provider" in panel
+    assert "(families.length && providers.length ? PREMIUM_SEPARATOR : '')" in panel
     separator = block(SETTINGS_JS, "const PREMIUM_SEPARATOR")
     assert "dp-settings-group-separator" in separator
     rule_text = rule(SETTINGS_CSS, "#view-settings .dp-settings-group-separator {")
@@ -674,9 +678,9 @@ def test_the_header_action_slot_is_neutral_and_optional():
     assert "alldebrid" not in card.lower(), "the generic card names a provider"
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     # Exactly the cards that HAVE a provider-level action ask for the slot:
-    # AllDebrid, Real-Debrid, TorBox and Usenet. The Network Sources group card
-    # does not.
-    assert panel.count("headerAction:") == 4, \
+    # AllDebrid, Debrid-Link, Real-Debrid, TorBox and Usenet. The Network
+    # Sources group card does not.
+    assert panel.count("headerAction:") == 5, \
         "the rail was applied to a card that did not ask for it"
 
 

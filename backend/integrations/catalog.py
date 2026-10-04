@@ -2,6 +2,7 @@
 from executors.aria2.definition import definition as aria2
 from executors.rsync.definition import definition as rsync
 from providers.alldebrid.definition import definition as alldebrid
+from providers.debridlink.definition import definition as debridlink
 from providers.general_ftp.definition import definition as general_ftp
 from providers.general_scp.definition import definition as general_scp
 from providers.general_rsync.definition import definition as general_rsync
@@ -13,7 +14,7 @@ from providers.torbox.definition import definition as torbox
 from integrations.configuration import effective_integration_settings
 from integrations.usenet.definition import definition as usenet
 
-definitions = (alldebrid, realdebrid, torbox, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
+definitions = (alldebrid, debridlink, realdebrid, torbox, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
                multimeta, aria2, rsync)
 
 

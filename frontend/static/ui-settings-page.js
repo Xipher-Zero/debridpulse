@@ -55,6 +55,7 @@
   // imply a flat settings field.
   const aria2Of = s => s?.integrations?.aria2?.options || {};
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
+  const debridLinkOf = s => s?.integrations?.debridlink?.options || {};
   const realDebridOf = s => s?.integrations?.realdebrid?.options || {};
   const torBoxOf = s => s?.integrations?.torbox?.options || {};
   const policyOf = s => s?.transfer_policy || {};
@@ -69,6 +70,8 @@
   const INTEGRATION_SECRET_CONTROLS = Object.freeze({
     alldebrid_api_key: {integration: 'alldebrid', option: 'api_key',
                         converge: dispatched => renderAllDebridCredential(dispatched)},
+    debridlink_api_key: {integration: 'debridlink', option: 'api_key',
+                         converge: dispatched => renderApiKeyCredential('debridlink', dispatched)},
   });
 
   /* EVERY editable Settings control, and the field boundary each commits at.
@@ -101,13 +104,17 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'debridlink', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
     'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
     // Services
     alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'},
     alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
+    debridlink_api_key: {scope: 'integration:debridlink', option: 'api_key'},
+    debridlink_request_timeout_seconds: {scope: 'integration:debridlink', option: 'request_timeout_seconds'},
+    debridlink_torrent_upload_timeout_seconds: {scope: 'integration:debridlink', option: 'torrent_upload_timeout_seconds'},
+    debridlink_host_refresh_interval_hours: {scope: 'integration:debridlink', option: 'host_refresh_interval_hours'},
     realdebrid_rate_limit_per_minute: {scope: 'integration:realdebrid', option: 'rate_limit_per_minute'},
     realdebrid_request_timeout_seconds: {scope: 'integration:realdebrid', option: 'request_timeout_seconds'},
     realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
@@ -763,6 +770,125 @@
       after: configured ? ALLDEBRID_KEY_PRESENT : '',
       action: ALLDEBRID_KEY_CLEAR(configured),
     });
+  }
+
+  /* An API-key account credential row, for a premium provider whose account
+   * connects by a key the operator pastes (Debrid-Link). It is the AllDebrid
+   * row's grammar exactly -- the same inline field, in-field "Key present"
+   * status, always-present destructive Remove action, changed-blur commit
+   * through the integration's own scope and one canonical confirmation for
+   * removal -- declared per provider here rather than once per provider. The
+   * account line above the field is the neutral premium-account wording
+   * (window.DPPremiumAccount), fed by the provider-status owner. */
+  const API_KEY_ACCOUNTS = Object.freeze({
+    debridlink: {name: 'Debrid-Link', configured: s => !!debridLinkOf(s).api_key_configured},
+  });
+
+  const apiKeyPlaceholder = (id, configured) =>
+    configured ? CONFIGURED_SECRET_MASK : `Your ${API_KEY_ACCOUNTS[id].name} API key`;
+
+  const apiKeyHint = (id, configured) => configured
+    ? `API key configured for your ${API_KEY_ACCOUNTS[id].name} account.`
+    : `Enter an API key to connect your ${API_KEY_ACCOUNTS[id].name} account.`;
+
+  const apiKeyClear = (id, configured) => `
+            <button type="button" class="btn btn-danger btn-sm" data-action="clear-${id}-key"
+                    aria-label="Remove the stored ${html(API_KEY_ACCOUNTS[id].name)} API key"${configured ? '' : ' disabled'}>Remove API Key</button>`;
+
+  function apiKeyField(id, configured) {
+    return input(`${id}_api_key`, 'API Key', '', {
+      type: 'password',
+      autocomplete: 'off',
+      placeholder: apiKeyPlaceholder(id, configured),
+      hint: apiKeyHint(id, configured),
+      inline: true,
+      className: `dp-settings-${id}-key-row ${configured ? 'is-configured' : ''}`,
+      after: configured ? ALLDEBRID_KEY_PRESENT : '',
+      action: apiKeyClear(id, configured),
+    });
+  }
+
+  // The connected account as the provider-status owner established it: the
+  // neutral premium wording, or "Free account" for a standard one.
+  const apiKeyAccounts = Object.fromEntries(Object.keys(API_KEY_ACCOUNTS).map(id => [id, null]));
+
+  function apiKeyAccountLine(id) {
+    const account = apiKeyAccounts[id];
+    if (!account || !API_KEY_ACCOUNTS[id].configured(state.settings)) return providerStatusLine();
+    const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
+    return providerStatusLine(html(line), 'dp-settings-account-expiry');
+  }
+
+  function renderApiKeyAccount(id) {
+    const region = root()?.querySelector(`[data-${id}-account]`);
+    if (region) region.innerHTML = apiKeyAccountLine(id);
+  }
+
+  document.addEventListener('debridpulse:provider-status', event => {
+    for (const id of Object.keys(API_KEY_ACCOUNTS)) {
+      const status = (event.detail?.entries || []).find(candidate => candidate.id === id)?.status;
+      if (status?.state === 'healthy') apiKeyAccounts[id] = status;
+      else if (['auth_required', 'unconfigured', 'disabled'].includes(status?.state)) apiKeyAccounts[id] = null;
+      else continue;
+      renderApiKeyAccount(id);
+    }
+  });
+
+  /* Converge an API-key row on ACCEPTED canonical state; the input element is
+   * never replaced (see renderAllDebridCredential). */
+  function renderApiKeyCredential(id, dispatched) {
+    const card = root()?.querySelector(`.dp-settings-provider-card--${id}`);
+    const row = card?.querySelector(`.dp-settings-${id}-key-row`);
+    if (!card || !row) return;
+    const configured = API_KEY_ACCOUNTS[id].configured(state.settings);
+    const field = fieldFor(`${id}_api_key`);
+    if (field) {
+      if (String(field.value ?? '') === String(dispatched ?? '')) field.value = '';
+      field.placeholder = apiKeyPlaceholder(id, configured);
+    }
+    row.classList.toggle('is-configured', configured);
+    const hint = row.querySelector('.dp-settings-inline-field-info > .form-hint');
+    if (hint) hint.textContent = apiKeyHint(id, configured);
+    const control = row.querySelector('.dp-settings-inline-field-control');
+    const present = control?.querySelector('.dp-settings-key-present');
+    if (configured && control && !present) control.insertAdjacentHTML('beforeend', ALLDEBRID_KEY_PRESENT);
+    else if (!configured && present) present.remove();
+    const clear = row.querySelector(`[data-action="clear-${id}-key"]`);
+    if (clear) clear.disabled = !configured;
+    renderApiKeyAccount(id);
+    renderIntegrationState(card, id);
+  }
+
+  /* Erasing a stored API key: the same destructive act, confirmation and
+   * canonical mutation as erasing the AllDebrid key (clearAllDebridKey). */
+  async function clearApiKey(id, button) {
+    const {name} = API_KEY_ACCOUNTS[id];
+    const card = root()?.querySelector(`.dp-settings-provider-card--${id}`);
+    if (!card) return;
+    const confirmed = await window.DPSettingsModal.confirm({
+      tone: 'danger',
+      title: `Clear ${name} API key?`,
+      message: `The stored ${name} API key will be removed. ${name} cannot be used `
+        + 'again until a key is configured.',
+      confirmLabel: `Clear ${name} API Key`,
+    });
+    if (!confirmed) return;
+    await window.DPSettingsPersistence.settle(root());
+    setBusy(button, true, 'Clearing…');
+    try {
+      const result = await request('PATCH', `/integrations/${id}/configuration`,
+        {options: {}, clear_secrets: ['api_key']}, 15000);
+      adoptIntegration(id, result);
+      setBusy(button, false);
+      apiKeyAccounts[id] = null;
+      renderApiKeyCredential(id, '');
+      notify(`${name} API key cleared`, 'success');
+      try { window.DPProviderStatus?.refresh(); } catch (_) {}
+      return;
+    } catch (error) {
+      notify(error.message, 'error');
+    }
+    setBusy(button, false);
   }
 
   /* The ONE fixed tuning-set collection.
@@ -1529,6 +1655,26 @@
    * category. Its whole treatment is one rule in ui-settings-page.css. */
   const PREMIUM_SEPARATOR = '<div class="dp-settings-group-separator" role="presentation"></div>';
 
+  /* The Premium Services cards, in this surface's own order: the generic
+   * service family first, then every named provider alphabetically by its
+   * display name. Which is which is neutral presentation metadata the
+   * integrations already publish: a named account provider declares the
+   * standard tier its account falls to (`standard_status_tier`), while a
+   * service family's tier is inherently static and declares none. Nothing
+   * here names an integration, so a future named provider sorts into place by
+   * its name alone. This order is deliberately INDEPENDENT of the Provider
+   * Status panel's, which keeps its own `display_order`; neither is routing
+   * priority, and one is never derived from the other. */
+  function premiumServiceOrder(cards) {
+    const named = card => !!card.presentation.standard_status_tier;
+    const label = card => String(card.presentation.status_name || card.id);
+    return {
+      families: cards.filter(card => !named(card)),
+      providers: cards.filter(named).sort((left, right) =>
+        label(left).localeCompare(label(right), 'en', {sensitivity: 'base'}) || left.id.localeCompare(right.id)),
+    };
+  }
+
   function sourcesPanel(s) {
     const integrations = s.integrations || {};
     const allDebrid = integrations.alldebrid || {};
@@ -1670,13 +1816,49 @@
       headerAction: providerTestAction('test-usenet'),
     });
 
-    // Usenet is the first card under Premium Services, above the debrid
-    // providers. This order is deliberately INDEPENDENT of the Provider Status
-    // panel's, which reports Usenet last: the operator configures the service
-    // they most often add first, and the panel reads debrid-then-Usenet. One is
-    // never derived from the other.
+    // Absent means OFF: Debrid-Link participates only once an operator turns
+    // it on, exactly as its definition declares.
+    const debridLink = integrations.debridlink || {enabled: false};
+    const debridLinkCard = providerCard('debridlink', 'Debrid-Link', `
+      <div data-debridlink-account>${apiKeyAccountLine('debridlink')}</div>
+      ${apiKeyField('debridlink', API_KEY_ACCOUNTS.debridlink.configured(s))}
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          ${tuningCells(
+            input('debridlink_request_timeout_seconds', 'Request Timeout (seconds)', debridLinkOf(s).request_timeout_seconds ?? 30, {
+              type: 'number', min: 5, max: 300,
+              hint: 'How long DebridPulse waits for an ordinary Debrid-Link API answer before treating the request as failed.'
+            }),
+            input('debridlink_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', debridLinkOf(s).torrent_upload_timeout_seconds ?? 120, {
+              type: 'number', min: 30, max: 900,
+              hint: 'How long DebridPulse waits while uploading a torrent file to Debrid-Link.'
+            }),
+            input('debridlink_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', debridLinkOf(s).host_refresh_interval_hours ?? 24, {
+              type: 'number', min: 1, max: 168,
+              hint: 'How often DebridPulse refreshes the list of hosts Debrid-Link supports.'
+            }),
+          )}
+        </div>
+      </details>
+`, debridLink, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--debridlink',
+      titlePrefix: `
+      <span class="dp-settings-provider-chip dp-settings-provider-chip--debridlink" aria-hidden="true">
+        <span class="dp-settings-provider-monogram dp-settings-provider-monogram--debridlink">DL</span>
+      </span>`,
+      displayName: 'Debrid-Link',
+      headerCopy: 'Resolve supported links and torrents through your Debrid-Link account.',
+      headerAction: providerTestAction('test-debridlink'),
+    });
+
+    const {families, providers} = premiumServiceOrder([
+      ['usenet', usenetCard], ['alldebrid', provider], ['debridlink', debridLinkCard],
+      ['realdebrid', realDebridCard], ['torbox', torBoxCard],
+    ].map(([id, markup]) => ({id, markup, presentation: integrations[id]?.presentation || {}})));
     const premiumServices = groupCard('Premium Services',
-      usenetCard + PREMIUM_SEPARATOR + provider + realDebridCard + torBoxCard, {
+      families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
+        + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
     });
     // Group identity, label and gate all come from metadata the members
@@ -3430,6 +3612,8 @@
       if (!button) return;
       const action = button.dataset.action;
       if (action === 'test-alldebrid') testConnection('alldebrid', button);
+      else if (action === 'test-debridlink') testConnection('debridlink', button);
+      else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);
       else if (deviceAccountAction(action, button)) return;
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
@@ -3867,6 +4051,7 @@
       // settle above, ordinarily nothing -- and never a removal.
       return {api_key: valueOf('alldebrid_api_key')};
     }
+    if (kind === 'debridlink') return {api_key: valueOf('debridlink_api_key')};
     throw new Error(`Unsupported connection test: ${kind}`);
   }
 
@@ -3876,20 +4061,21 @@
     await window.DPSettingsPersistence.settle(root());
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
+      debridlink: '/settings/validate-debridlink',
     };
-    const labels = {alldebrid: 'AllDebrid'};
+    const labels = {alldebrid: 'AllDebrid', debridlink: 'Debrid-Link'};
     setBusy(button, true, 'Testing…');
     try {
       const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);
-      rememberTestedDraft('alldebrid', result.verification);
+      rememberTestedDraft(kind, result.verification);
       // A Test of exactly the SAVED configuration establishes durable
       // verification, so the header must stop saying Unverified about a
       // configuration this action just proved. Published through the one
       // acceptance seam, like every other accepted canonical change.
       publishAccepted(result);
-      notify(`AllDebrid connected${result.username ? ` as ${result.username}` : ''}`, 'success');
+      notify(`${labels[kind]} connected${result.username ? ` as ${result.username}` : ''}`, 'success');
     } catch (error) {
-      forgetTestedDrafts('alldebrid');
+      forgetTestedDrafts(kind);
       notify(`${labels[kind]}: ${error.message}`, 'error');
     } finally {
       setBusy(button, false);

@@ -150,6 +150,7 @@ class RequestBodyLimitMiddleware:
         elif path in {
             "/api/settings",
             "/api/settings/validate-alldebrid",
+            "/api/settings/validate-debridlink",
             "/api/settings/validate-discord",
             "/api/auth/config",
             "/api/auth/oidc/verify-config",
