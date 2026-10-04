@@ -32,24 +32,6 @@ async function primaryTextColor(page) {
     return color;
   });
 }
-function integrationInput(page, identity) {
-  return page.locator(`[data-integration-enabled="${identity}"]`);
-}
-function integrationControl(page, identity) {
-  return page.locator(`label[for="dp-settings-integration-${identity}-enabled"]`);
-}
-async function setIntegrationChecked(page, identity, value) {
-  const input = integrationInput(page, identity);
-  if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
-  await expect(input).toBeChecked({checked:value});
-}
-/* Participation is IMMEDIATE: each Enable committed itself through its own
- * scoped mutation as it was clicked, and generic Apply no longer exists. This
- * only makes sure the group this spec operates is still open before the next
- * interaction, through the same canonical disclosure. */
-async function settleSettings(page) {
-  await revealGeneralSources(page);
-}
 function listFixture(overrides = {}) {
   return {
     id:901, name:'Stage 10 fixture', status:'completed', progress:100, size_bytes:1024,
@@ -71,7 +53,7 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
   // centred lines it presents.
   await expect(httpCard).toContainText('Direct downloads from');
   await expect(httpCard).toContainText('HTTP and HTTPS URLs.');
-  await expect(integrationControl(page, 'general_http')).toBeVisible();
+  await expect(httpCard.locator('.dp-settings-integration-header-enable')).toBeVisible();
   await expect(httpCard.locator('input')).toHaveCount(1);
   for (const text of ['User Agent','Timeout','Retry','Proxy']) await expect(httpCard).not.toContainText(text);
   const headerCopy = await page.locator('.dp-settings-header-copy').boundingBox();
@@ -87,25 +69,9 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
 });
 
 // AllDebrid's Enable round-trip is proven by settings-providers-persistence.spec.js,
-// the ONE owner of `integrations.alldebrid.enabled` (spec files share one backend).
-test('the HTTP(S) enable control round-trips through the running backend and survives reload', async ({ page }) => {
-  await isolateExternalFonts(page); await page.goto('/');
-  const original = await page.request.get('/api/settings').then(response => response.json());
-  const originalHttp = original.integrations.general_http.enabled;
-  await openSettings(page);
-  const httpEnabled = async () =>
-    (await page.request.get('/api/settings').then(r => r.json())).integrations.general_http.enabled;
-
-  await setIntegrationChecked(page, 'general_http', !originalHttp);
-  await settleSettings(page);
-  await expect.poll(httpEnabled).toBe(!originalHttp);
-  await page.reload(); await openSettings(page);
-  await expect(integrationInput(page, 'general_http')).toBeChecked({checked:!originalHttp});
-
-  await setIntegrationChecked(page, 'general_http', originalHttp);
-  await settleSettings(page);
-  await expect.poll(httpEnabled).toBe(originalHttp);
-});
+// the ONE owner of `integrations.alldebrid.enabled`, and the HTTP(S) Enable's
+// round-trip and reload by general-sources-master.spec.js, the ONE owner of
+// `integrations.general_http.enabled` (spec files share one backend).
 
 test('Recent Activity shows final provider and neutral legacy unknown without URL inference', async ({ page }) => {
   await isolateExternalFonts(page);
@@ -318,7 +284,7 @@ test('provider controls remain readable in light theme and narrow layout', async
   await expect.poll(() => page.evaluate(() => document.body.classList.contains('light'))).toBeTruthy();
   await page.setViewportSize({width:680,height:900});
   const httpCard = page.locator('.dp-settings-provider-card--general-http'); await expect(httpCard).toBeVisible();
-  await expect(integrationControl(page, 'general_http')).toBeVisible();
+  await expect(httpCard.locator('.dp-settings-integration-header-enable')).toBeVisible();
   const box = await httpCard.boundingBox(); expect(box.width).toBeLessThanOrEqual(680);
   await page.screenshot({path:'test-results/checkpoint-settings-light-narrow.png', fullPage:true});
 });

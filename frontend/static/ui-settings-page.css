@@ -284,9 +284,10 @@
    content-bounded, CENTRED, never stretched across spare width -- holding the
    title/helper and the state's controls side by side, wrapping into rows only
    when the card is too narrow for them. The state's one line is the card's
-   reserved top row above it. */
+   reserved top row above it. The island ends the region: what follows it owns
+   its own spacing (.dp-settings-additional). */
 #view-settings .dp-settings-account-connection {
-  margin: 0 0 14px;
+  margin: 0;
 }
 
 #view-settings .dp-settings-account-island {
@@ -761,12 +762,13 @@
 
    The disclosure is now the WHOLE of the provider card's secondary row: the
    provider-level action moved to the card's header rail, so there is no action
-   group to share a row with and no band beneath the options. The ordinary
-   section spacing above it belongs to the disclosure itself; the island above
-   already bounds the credential, so no rule is drawn. */
+   group to share a row with and no band beneath the options. It follows the
+   primary island directly: its own 42px summary row is the separation, so no
+   spacer band precedes it, and the island above already bounds the credential,
+   so no rule is drawn. One rule for every provider card of this grammar. */
 #view-settings .dp-settings-additional {
   min-width: 0;
-  margin-top: 14px;
+  margin-top: 0;
 }
 
 #view-settings .dp-settings-additional > summary {

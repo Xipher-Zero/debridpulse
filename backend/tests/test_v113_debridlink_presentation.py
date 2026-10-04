@@ -90,9 +90,10 @@ def test_the_premium_owner_names_no_provider():
 
 
 def test_provider_status_order_is_unchanged_and_debridlink_takes_the_default_slot():
-    """Provider Status orders by ``display_order`` alone (ui-provider-status.js).
-    The existing premium entries keep their declared order and Usenet its
-    reserved tail; Debrid-Link declares nothing and takes the default."""
+    """The declared presentation metadata is unchanged: the existing premium
+    entries keep their declared order and Usenet its reserved tail; Debrid-Link
+    declares nothing and takes the default. (Provider Status reads the named
+    providers among them alphabetically -- test_v113_provider_status_hierarchy.)"""
     premium = sorted((item.presentation.display_order, item.id) for item in definitions
                      if item.presentation.status_tier == "premium_service")
     assert premium == [(10, "alldebrid"), (11, "realdebrid"), (12, "torbox"), (100, "debridlink"), (900, "usenet")]
@@ -149,3 +150,18 @@ def test_the_debridlink_card_uses_the_existing_settings_machinery():
     # Its account line is the one neutral premium wording, never its own.
     assert "accountExpiry(id, account)" in SETTINGS_JS[SETTINGS_JS.index("function apiKeyAccountLine"):][:400]
     assert "rate_limit" not in SETTINGS_JS[SETTINGS_JS.index("const debridLinkCard"):][:2500]
+
+
+def test_alldebrid_states_its_account_through_the_same_line_and_owner():
+    # AllDebrid joins the one account-line registry; its credential owner is unchanged.
+    lines = SETTINGS_JS[SETTINGS_JS.index("const API_KEY_ACCOUNT_LINES"):][:200]
+    assert "alldebrid:" in lines and "debridlink:" in lines
+    card = SETTINGS_JS[SETTINGS_JS.index("providerCard('alldebrid', 'AllDebrid'"):][:300]
+    assert "<div data-alldebrid-account>${apiKeyAccountLine('alldebrid')}</div>" in card
+    assert "INTEGRATION_SECRET_CONTROLS" in SETTINGS_JS and "renderAllDebridCredential(dispatched)" in SETTINGS_JS
+    # One interpreter: the neutral account facts through DPPremiumAccount, never
+    # AllDebrid's native premium fields or a second date formatter.
+    for native in ("isPremium", "premiumUntil", "premium_until"):
+        assert native not in SETTINGS_JS
+    assert SETTINGS_JS.count("owner.describe(") == 1
+    assert "getFullYear" not in SETTINGS_JS

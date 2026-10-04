@@ -126,11 +126,10 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
     const head = await boxOf(summary(page));
     const details = await boxOf(card(page).locator('.dp-settings-additional'));
     expect(details.bottom - head.bottom).toBeLessThanOrEqual(2);
-    // Key island -> ordinary section spacing -> Additional Settings: no
-    // separator drawn above the disclosure.
+    // Key island -> Additional Settings directly, the summary row's own height
+    // being the separation: no spacer band and no separator above the disclosure.
     const island = await boxOf(card(page).locator('.dp-settings-alldebrid-key-row'));
-    expect(details.top - island.bottom).toBeGreaterThan(0);
-    expect(details.top - island.bottom).toBeLessThanOrEqual(16);
+    expect(Math.abs(details.top - island.bottom)).toBeLessThanOrEqual(1);
     expect(await card(page).locator('.dp-settings-additional').evaluate(el =>
       parseFloat(getComputedStyle(el).borderTopWidth))).toBe(0);
   });
@@ -541,8 +540,9 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
 /* DP 1.0.13 provider-card corrections -- the AllDebrid credential is ONE
  * compact, centred, bordered control island (title/hint, field and Remove side
  * by side, about 65% of the body), and neither AllDebrid nor Usenet keeps a
- * blank status row above its content. Only the device-authorized accounts
- * (Real-Debrid, TorBox) have a status to show. */
+ * blank status row above its content: AllDebrid's account region (the shared
+ * account line, alldebrid-account-summary.spec.js) renders nothing while there
+ * is no account to state, which is the case on this backend. */
 test('the AllDebrid credential is one compact centred island and no blank row sits above it', async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');
@@ -581,7 +581,11 @@ test('the AllDebrid credential is one compact centred island and no blank row si
       inside: parts.every(part => part.left >= box.left && part.right <= box.right),
       centreLine: Math.max(...parts.map(part => (part.top + part.bottom) / 2))
         - Math.min(...parts.map(part => (part.top + part.bottom) / 2)),
-      firstChild: island.parentElement.firstElementChild === island,
+      // Only the account region precedes the island, and with nothing to
+      // state it is empty and takes no height.
+      above: [...island.parentElement.children].slice(0, [...island.parentElement.children].indexOf(island))
+        .map(node => ({account: node.matches('[data-alldebrid-account]'), children: node.childElementCount,
+                       height: node.getBoundingClientRect().height})),
     };
   });
   expect(geometry.border).toBe('solid');
@@ -591,19 +595,21 @@ test('the AllDebrid credential is one compact centred island and no blank row si
   expect(geometry.ordered).toBe(true);
   expect(geometry.inside).toBe(true);
   expect(geometry.centreLine).toBeLessThan(2);
-  expect(geometry.firstChild).toBe(true);
+  expect(geometry.above).toEqual([{account: true, children: 0, height: 0}]);
 });
 
 /* DP 1.0.13 -- a provider card whose body ENDS in its closed Additional Settings
  * disclosure ends there: no generic card-body padding band beneath the summary
- * row. Open, the tuning content keeps the ordinary bottom padding. One shared
- * structural rule; the cards below are only the current members of the grammar. */
+ * row. Open, the tuning content keeps the ordinary bottom padding. Above it, the
+ * disclosure follows the card's primary island directly, its own 42px summary
+ * row being the separation: no spacer band. One shared structural rule; the
+ * cards below are only the current members of the grammar. */
 for (const viewport of [{name: 'desktop', width: 1280, height: 900}, {name: 'phone', width: 390, height: 844}]) {
 test(`no blank band follows a closed terminal Additional Settings disclosure (${viewport.name})`, async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');
   await openSources(page);
-  const ids = ['alldebrid', 'realdebrid', 'torbox'];
+  const ids = ['alldebrid', 'debridlink', 'realdebrid', 'torbox'];
   // Reach Services and expand the cards through the desktop layout, then
   // measure at the case's viewport (the phone-width card sizing rule is in
   // force for the phone case).
@@ -619,13 +625,19 @@ test(`no blank band follows a closed terminal Additional Settings disclosure (${
     await expect(body).toBeVisible();
     const gap = () => body.evaluate(el => {
       const details = el.querySelector(':scope > .dp-settings-additional');
+      const top = details.getBoundingClientRect().top;
       return {last: el.lastElementChild === details,
               band: el.getBoundingClientRect().bottom - details.getBoundingClientRect().bottom,
+              // The primary island (or the region it ends) directly above.
+              follows: top - details.previousElementSibling.getBoundingClientRect().bottom,
+              row: details.querySelector(':scope > summary').getBoundingClientRect().height,
               left: parseFloat(getComputedStyle(el).paddingLeft), top: parseFloat(getComputedStyle(el).paddingTop)};
     });
     const closed = await gap();
     expect(closed.last).toBe(true);
     expect(closed.band).toBeLessThanOrEqual(1);
+    expect(Math.abs(closed.follows), `${id}: a spacer band precedes Additional Settings`).toBeLessThanOrEqual(1);
+    expect(closed.row).toBeGreaterThanOrEqual(42);           // the disclosure target is the separation
     expect(closed.left).toBeGreaterThan(0);                  // horizontal/top geometry kept
     expect(closed.top).toBeGreaterThan(0);
     const summary = card.locator('.dp-settings-additional > summary');
@@ -634,6 +646,7 @@ test(`no blank band follows a closed terminal Additional Settings disclosure (${
     await expect(card.locator('.dp-settings-additional-body')).toBeVisible();
     const open = await gap();
     expect(open.band).toBeGreaterThan(4);                    // open content keeps its breathing room
+    expect(Math.abs(open.follows)).toBeLessThanOrEqual(1);
     await summary.click();
   }
 });

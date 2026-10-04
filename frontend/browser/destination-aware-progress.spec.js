@@ -183,3 +183,113 @@ test('Recent Activity shows the same two truths', async ({ page }) => {
   await expect(row.locator('.dash-row-bar-fill')).toHaveAttribute('style', /width:31%/);
   expect(errors).toEqual([]);
 });
+
+// --- Progress presentation priority -----------------------------------------
+// The renderer chooses visual priority among the two backend facts; it never
+// creates a third. Every case below drives the one shared renderer.
+
+const primary = row => row.locator('.prog-fill');
+
+// A2: the observed SAB-shaped row -- no verified percentage, a trustworthy
+// in-flight one -- leads with that percentage instead of an indeterminate stripe.
+test('active-only execution progress is the primary bar, worded as not yet verified', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [item(9720, null, 94.6)]);
+  const row = cell(page, 9720);
+  await expect(row.locator('.prog-pct')).toHaveText('94.6% in progress');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(primary(row)).toHaveAttribute('style', /^width:94\.6%$/);
+  await expect(primary(row)).toHaveAttribute('data-progress-basis', 'execution');
+  await expect(primary(row)).not.toHaveClass(/done/);
+  // One claim of the value, not three: no secondary lane or label repeats it.
+  await expect(await lane(row)).toHaveCount(0);
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveCount(0);
+});
+
+// A1 and A5: a verified percentage keeps the primary bar, whatever the
+// execution reports -- the two totals are never compared.
+test('a verified percentage stays primary beside any execution value', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [item(9721, 63, null), item(9722, 41, 76), item(9723, 80, 12), item(9724, 41, 41)]);
+  await expect(cell(page, 9721).locator('.prog-pct')).toHaveText('63%');
+  await expect(await lane(cell(page, 9721))).toHaveCount(0);
+  for (const [id, verified, active] of [[9722, 41, 76], [9723, 80, 12], [9724, 41, 41]]) {
+    const row = cell(page, id);
+    await expect(row.locator('.prog-pct')).toHaveText(`${verified}% verified`);
+    await expect(primary(row)).toHaveAttribute('style', new RegExp(`^width:${verified}%$`));
+    await expect(primary(row)).not.toHaveAttribute('data-progress-basis', /.*/);
+    await expect(row.locator('[data-role="execution-progress"]')).toHaveText(`in progress ${active}.0%`);
+    await expect(row.locator('[data-role="execution-unverified"]')).toHaveCount(0);
+  }
+});
+
+// A7: a lingering execution value on a row that is not running is stale.
+test('a non-running row never promotes or shows a stale execution value', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const stale = (id, status, progress) => ({...item(id, progress, 67), status, presentation_status: status,
+    presentation_badge_status: status});
+  await downloads(page, [stale(9725, 'paused', 31), stale(9726, 'error', 31), stale(9727, 'cancelled', 31),
+                         stale(9728, 'paused', null), stale(9729, 'queued', null)]);
+  for (const id of [9725, 9726, 9727, 9728, 9729]) {
+    const row = cell(page, id);
+    await expect(row).not.toContainText('in progress');
+    await expect(row.locator('[data-role="execution-unverified"], [data-role="execution-progress"]')).toHaveCount(0);
+    await expect(primary(row)).not.toHaveAttribute('data-progress-basis', /.*/);
+  }
+  for (const id of [9725, 9726, 9727]) await expect(cell(page, id).locator('.prog-pct')).toHaveText('31%');
+  for (const id of [9728, 9729]) await expect(cell(page, id).locator('.prog-pct')).toHaveText('—');
+});
+
+// A8: a replaced execution may move the dominant bar backward -- only
+// verified material is durable, so nothing smooths it.
+test('execution replacement may move the primary bar backward', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [item(9730, null, 67)]);
+  const row = cell(page, 9730);
+  await expect(row.locator('.prog-pct')).toHaveText('67.0% in progress');
+  await event(page, [{id: 9730, status: 'downloading', progress: null, active_execution_progress: 5, status_changed: false}]);
+  await expect(row.locator('.prog-pct')).toHaveText('5.0% in progress');
+  await expect(primary(row)).toHaveAttribute('style', /^width:5%$/);
+  // With verified material the replacement only moves the secondary lane.
+  await event(page, [{id: 9730, status: 'downloading', progress: 31, active_execution_progress: 67, status_changed: false}]);
+  await expect(row.locator('.prog-pct')).toHaveText('31% verified');
+  await event(page, [{id: 9730, status: 'downloading', progress: 31, active_execution_progress: 5, status_changed: false}]);
+  await expect(row.locator('.prog-pct')).toHaveText('31% verified');
+  await expect(row.locator('[data-role="execution-progress"]')).toHaveText('in progress 5.0%');
+});
+
+// A9 and A11: a full execution is not completion; nothing known is not 0%.
+test('a full execution on a running row is never Done, and no fact is never 0%', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [item(9731, null, 100), item(9732, null, null)]);
+  const full = cell(page, 9731);
+  await expect(full.locator('.prog-pct')).toHaveText('100.0% in progress');
+  await expect(primary(full)).not.toHaveClass(/done/);
+  await expect(full).not.toContainText(/Done|Completed|100% verified/);
+  const none = cell(page, 9732);
+  await expect(none.locator('.prog-pct')).toHaveText('—');
+  await expect(none).not.toContainText('0%');
+  await expect(primary(none)).toHaveAttribute('style', /repeating-linear-gradient/);
+});
+
+test('Recent Activity and Details follow the same priority', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const errors = observeRuntime(page);
+  const running = item(9733, null, 94.6);
+  const paused = {...item(9734, 31, 67), status: 'paused', presentation_status: 'paused', presentation_badge_status: 'paused'};
+  await listed(page, [running, paused]);
+  await page.route(url => /^\/api\/torrents\/973[34]$/.test(url.pathname), route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify(new URL(route.request().url()).pathname.endsWith('9733') ? running : paused)}));
+  await page.goto('/');
+  await page.evaluate(async () => { await loadRecent(); });
+  const recent = page.locator('#dash-tbody tr[data-torrent-id="9733"] [data-role="transfer-progress"]');
+  await expect(recent.locator('.prog-pct')).toHaveText('94.6% in progress');
+  await expect(recent.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await page.evaluate(() => showDetail(9733));
+  const detail = page.locator('#modal-body .dk', {hasText: /^Progress$/}).locator('..').locator('.dv');
+  await expect(detail).toHaveText('in progress 94.6% (not yet verified)');
+  await page.evaluate(() => showDetail(9734));
+  await expect(detail).toHaveText('31.0%');
+  expect(errors).toEqual([]);
+});

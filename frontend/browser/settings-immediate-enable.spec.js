@@ -1,17 +1,17 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 work item A -- every Services Enable toggle is an
- * IMMEDIATE canonical operational control against the REAL backend. The
- * visible toggle can never report ON while canonical state is OFF.
+/* DP 1.0.13 work item A -- Settings commit boundaries against the REAL backend.
  *
- * Usenet's toggle is proven the same way in usenet-server-cards.spec.js, the
- * ONE spec file that owns `integrations.usenet.enabled`, and AllDebrid's in
- * settings-providers-persistence.spec.js, the ONE owner of
- * `integrations.alldebrid.enabled`: spec files share one backend and run
- * concurrently, so a second file flipping or asserting either key races the
- * file whose cards need that provider ON. */
-
-const TOGGLES = ['general_http', 'general_ftp'];
+ * Every Services Enable toggle is an IMMEDIATE canonical operational control,
+ * and each is proven in the ONE spec file that owns its key: Usenet's in
+ * usenet-server-cards.spec.js, AllDebrid's in
+ * settings-providers-persistence.spec.js, and every Network Sources member's
+ * -- HTTP(S) and (S)FTP included, with the refused-write and visible-state
+ * cases -- in general-sources-master.spec.js. Spec files share one backend and
+ * run concurrently, so a second file flipping or asserting any of those keys
+ * races the file that owns it; this file writes none of them. What it proves
+ * is the other half of the contract: an ordinary field commits at its own
+ * boundary. */
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -25,68 +25,10 @@ async function openSources(page) {
   await expect(page.locator('.dp-settings-panel[data-panel="sources"]')).toBeVisible();
 }
 
-const persisted = async (page, id) =>
-  (await page.request.get('/api/settings').then(r => r.json())).integrations[id]?.enabled;
-
-/* Services cards arrive COLLAPSED: expansion is local presentation
- * state, never a projection of enabled/configured/verified state. A General
- * Sources member toggle lives inside that group's body, so operating one means
- * opening the card first -- exactly what the operator does, through the one
- * canonical disclosure. The master's own toggle is in the header and is always
- * reachable. */
-async function reveal(page, id) {
-  const label = page.locator(`label[for="dp-settings-integration-${id}-enabled"]`);
-  if (await label.isVisible()) return;
-  const disclosure = page.locator('.dp-settings-general-sources .dp-settings-disclosure');
-  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
-  await expect(label).toBeVisible();
-}
-
-/** Click the toggle the way an operator does: on its label. */
-async function flip(page, id) {
-  await reveal(page, id);
-  await page.locator(`label[for="dp-settings-integration-${id}-enabled"]`).click();
-}
-
 test.beforeEach(async ({page}) => {
   await isolateExternalFonts(page);
   await page.goto('/');
   await openSources(page);
-});
-
-for (const id of TOGGLES) {
-  test(`${id} persists canonical enabled state immediately, without any page-level save`, async ({page}) => {
-    const toggle = page.locator(`[data-integration-enabled="${id}"]`);
-    const before = await persisted(page, id);
-    await flip(page, id);
-    await expect.poll(() => persisted(page, id)).toBe(!before);
-    await expect(toggle).toBeChecked({checked: !before});
-
-    // And back again, still with no page-level save.
-    await flip(page, id);
-    await expect.poll(() => persisted(page, id)).toBe(!!before);
-    await expect(toggle).toBeChecked({checked: !!before});
-  });
-}
-
-test('a failed enable mutation restores the committed state and reports it', async ({page}) => {
-  const before = await persisted(page, 'general_http');
-  await page.route(url => /\/api\/integrations\/general_http\/configuration$/.test(url.pathname),
-    route => route.fulfill({status: 502, contentType: 'application/json',
-      body: JSON.stringify({detail: 'integration configuration rejected'})}));
-  await flip(page, 'general_http');
-  // The visible control returns to committed truth, and the error is surfaced.
-  await expect(page.locator('[data-integration-enabled="general_http"]'))
-    .toBeChecked({checked: !!before});
-  await expect(page.locator('#toasts .toast')).toContainText(/reject|error|fail/i);
-  expect(await persisted(page, 'general_http')).toBe(before);
-});
-
-test('the visible toggle never reports ON while canonical state is OFF', async ({page}) => {
-  for (const id of TOGGLES) {
-    const visible = await page.locator(`[data-integration-enabled="${id}"]`).isChecked();
-    expect(visible).toBe((await persisted(page, id)) !== false);
-  }
 });
 
 test('an ordinary settings field commits at its OWN boundary, not on every keystroke',

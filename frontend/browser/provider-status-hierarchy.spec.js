@@ -507,3 +507,82 @@ test('premium lapsing and returning moves tier and crown with no provider-specif
   expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);
   expect(shown.crown).toMatch(/^TorBox Pro until/);
 });
+
+// --- Premium Services order --------------------------------------------------
+/* The shipped premium metadata, through the REAL refresh path (candidate
+ * sort, observation, tier placement and the crown's composition). Named
+ * account providers -- those declaring the standard tier their account falls
+ * to -- read alphabetically; the Usenet service family declares none and keeps
+ * its reserved place after them. Settings orders the same cards the other way
+ * round (Usenet first), in its own owner. */
+
+const named = (id, name, order) => ({
+  enabled: true, priority: 0, name, kind: 'provider', configured: true, verified: true,
+  presentation: {status_name: name, premium: true, status_endpoint: `/integration-status/${id}`,
+    static_status: null, ...(order === undefined ? {} : {display_order: order}),
+    status_group: null, status_group_label: null,
+    status_tier: 'premium_service', status_tier_label: 'Premium Services',
+    standard_status_tier: 'general_family', standard_status_tier_label: 'Standard Services'},
+  options: {},
+});
+
+const SHIPPED = () => {
+  const entries = clone(INTEGRATIONS);
+  // Each named provider's shipped display_order (Debrid-Link declares none).
+  entries.alldebrid = named('alldebrid', 'AllDebrid', 10);
+  entries.realdebrid = named('realdebrid', 'Real-Debrid', 11);
+  entries.torbox = named('torbox', 'TorBox', 12);
+  entries.debridlink = named('debridlink', 'Debrid-Link', 100);
+  return entries;
+};
+
+const FINITE = Date.parse('2027-06-01T00:00:00Z') / 1000;
+const premiumStatus = {state: 'healthy', account: {entitlement: 'ready', service_class: 'premium',
+  functional: 'usable', plan: 'Premium', request_types: [], expires_at: FINITE}};
+const freeStatus = {state: 'healthy', account: {entitlement: 'ready', service_class: 'standard',
+  functional: 'usable', plan: 'Free', request_types: [], expires_at: null}};
+
+async function renderShipped(page, entries, statuses = {}) {
+  await page.route(url => url.pathname.startsWith('/api/integration-status/'), route => {
+    const id = new URL(route.request().url()).pathname.split('/').pop();
+    return route.fulfill({status: 200, contentType: 'application/json',
+                          body: JSON.stringify(statuses[id] || premiumStatus)});
+  });
+  await page.evaluate(next => { settingsData = {...(settingsData || {}), integrations: next}; }, entries);
+  await page.evaluate(() => window.DPProviderStatus.refresh());
+}
+
+const rowsOf = async (page, tierId) => ((await tiers(page)).find(tier => tier.id === tierId)?.rows || [])
+  .map(row => row.replace(/\s+/g, ' ').trim());
+const crown = page => page.locator('#lbl-premium .dp-provider-premium-account').allTextContents();
+
+test('Premium Services lists the named providers alphabetically, then Usenet', async ({page}) => {
+  await renderShipped(page, SHIPPED());
+  expect(await rowsOf(page, 'premium_service'))
+    .toEqual(['AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'Usenet']);
+});
+
+test('the crown lists several premium accounts alphabetically, and never Usenet', async ({page}) => {
+  await renderShipped(page, SHIPPED());
+  const lines = await crown(page);
+  expect(lines.map(line => line.replace(/ Premium \d+ days remaining$/, '')))
+    .toEqual(['AllDebrid', 'Debrid-Link', 'Real-Debrid', 'TorBox']);
+  for (const line of lines) expect(line).toMatch(/ Premium \d+ days remaining$/);
+});
+
+test('an account that falls to Standard leaves Premium, which stays in order', async ({page}) => {
+  await renderShipped(page, SHIPPED(), {debridlink: freeStatus});
+  expect(await rowsOf(page, 'premium_service')).toEqual(['AllDebrid', 'Real-Debrid', 'TorBox', 'Usenet']);
+  expect(await rowsOf(page, 'general_family')).toEqual(['Debrid-Link', 'Network Sources']);
+  expect((await crown(page)).map(line => line.split(' Premium ')[0])).toEqual(['AllDebrid', 'Real-Debrid', 'TorBox']);
+});
+
+test('a future named provider sorts into place by its name alone', async ({page}) => {
+  const entries = SHIPPED();
+  // Declares no display_order and no place: only a name and its standard tier.
+  entries.zz_future = named('zz_future', 'Crate-Debrid');
+  entries.aa_future = named('aa_future', 'Zebra Premium', 5);
+  await renderShipped(page, entries);
+  expect(await rowsOf(page, 'premium_service'))
+    .toEqual(['AllDebrid', 'Crate-Debrid', 'Debrid-Link', 'Real-Debrid', 'TorBox', 'Zebra Premium', 'Usenet']);
+});

@@ -42,20 +42,7 @@ async function revealNetworkSources(page) {
   await expect(group.locator('.dp-settings-provider-card--general-http')).toBeVisible();
 }
 
-const integrationInput = (page, identity) => page.locator(`[data-integration-enabled="${identity}"]`);
 const integrationControl = (page, identity) => page.locator(`label[for="dp-settings-integration-${identity}-enabled"]`);
-async function setIntegrationChecked(page, identity, value) {
-  const input = integrationInput(page, identity);
-  if ((await input.isChecked()) !== value) await integrationControl(page, identity).click();
-  await expect(input).toBeChecked({checked:value});
-}
-/* Participation is IMMEDIATE: each Enable committed itself through its own
- * scoped mutation as it was clicked, and generic Apply no longer exists. This
- * only makes sure the group this spec operates is still open before the next
- * interaction, through the same canonical disclosure. */
-async function settleSettings(page) {
-  await revealNetworkSources(page);
-}
 
 /* The real registered members, with the labels their own integrations
  * publish and the two lines each box presents. */
@@ -257,34 +244,9 @@ test('only the really registered Network Source providers render, with their own
       ({identity: id, label: entry.presentation.status_name})));
   });
 
-test('HTTP(S) and (S)FTP toggles persist independently and never touch aria2', async ({ page }) => {
-  await isolateExternalFonts(page); await page.goto('/');
-  const original = await page.request.get('/api/settings').then(response => response.json());
-  const originalHttp = original.integrations.general_http.enabled;
-  const originalFtp = original.integrations.general_ftp.enabled;
-  const originalAria2 = original.integrations.aria2.enabled;
-  const read = async () => {
-    const s = await page.request.get('/api/settings').then(r => r.json());
-    return [s.integrations.general_http.enabled, s.integrations.general_ftp.enabled, s.integrations.aria2.enabled];
-  };
-  await openSettings(page);
-  try {
-    for (const [http, ftp] of [[true, false], [false, true], [true, true]]) {
-      await setIntegrationChecked(page, 'general_http', http);
-      await setIntegrationChecked(page, 'general_ftp', ftp);
-      await settleSettings(page);
-      await expect.poll(read).toEqual([http, ftp, originalAria2]);
-      await page.reload(); await openSettings(page);
-      await expect(integrationInput(page, 'general_http')).toBeChecked({checked:http});
-      await expect(integrationInput(page, 'general_ftp')).toBeChecked({checked:ftp});
-    }
-  } finally {
-    await setIntegrationChecked(page, 'general_http', originalHttp);
-    await setIntegrationChecked(page, 'general_ftp', originalFtp);
-    await settleSettings(page);
-    await expect.poll(read).toEqual([originalHttp, originalFtp, originalAria2]);
-  }
-});
+// The HTTP(S)/(S)FTP independence proof lives in general-sources-master.spec.js,
+// the ONE owner of `integrations.general_http.enabled` (spec files share one
+// backend and run concurrently).
 
 const PASSWORD_METHOD = {method:'username_password', fields:[{name:'username', required:true}, {name:'password', required:true}]};
 const FINGERPRINT = '208c2653f8ed2c0d7b62d69b304e8016e4151f60';

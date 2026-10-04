@@ -174,3 +174,19 @@ def test_the_alldebrid_subscription_row_is_not_part_of_this_list():
                   index.index('<span id="lbl-db">')]
     assert shell.index('id="premium-row"') < shell.index('id="provider-status-list"')
     assert "premium-row" not in STATUS_JS
+
+
+def test_the_premium_order_is_neutral_metadata_never_an_identity_list():
+    """Named account providers (those declaring ``standard_status_tier``) read
+    alphabetically inside their tier; a service family keeps ``display_order``.
+    No integration id and no fixed provider list appears in the status owner."""
+    from integrations.catalog import definitions
+    candidates = STATUS_JS[STATUS_JS.index("function candidates(settings)"):]
+    candidates = candidates[:candidates.index("\n  function esc(")]
+    assert "entry.standardTierId ? blocks.get(entry.homeTierId) : entry.order" in candidates
+    assert "localeCompare(b.name" in candidates
+    lowered = STATUS_JS.casefold()
+    for definition in definitions:
+        assert f"'{definition.id}'" not in lowered and f'"{definition.id}"' not in lowered, definition.id
+    for name in ("alldebrid", "debrid-link", "real-debrid", "torbox", "usenet"):
+        assert name not in lowered, name

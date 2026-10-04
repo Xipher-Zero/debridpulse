@@ -14,8 +14,8 @@ touches the shared key.
 The analysis is static and deliberately conservative: a write or live-read
 site whose integration id is a template variable counts for every id the file
 can feed into that variable (a ``for ... of`` array, a named array, the keys of
-an object iterated with ``Object.entries``/``Object.keys``, or a string literal
-passed to the helper that contains the site). Over-approximation can only
+an object iterated with ``Object.entries``/``Object.keys``, a string literal
+passed to the helper that contains the site, or a string constant it names). Over-approximation can only
 report a file as a dependent, never hide one.
 """
 from __future__ import annotations
@@ -35,6 +35,11 @@ OWNERS = {
     # state; its own cases run serially, so its Enable round-trip cannot race
     # them. Three files used to flip this key concurrently.
     "alldebrid": "settings-providers-persistence.spec.js",
+    # The Network Sources master file, whose aggregate and member cases need
+    # every member's live state; four other files used to flip HTTP(S), and
+    # one more raced it on (S)FTP.
+    "general_http": "general-sources-master.spec.js",
+    "general_ftp": "general-sources-master.spec.js",
 }
 
 # Spec files that serve EVERY settings document they render themselves: their
@@ -176,6 +181,9 @@ class _Spec:
         if depth > 4:
             return set()
         values = set()
+        for match in re.finditer(r"\b(?:const|let)\s+" + re.escape(name) + r"\s*=\s*(['\"`])(" + _ID + r")\1",
+                                 self.code):
+            values.add(match.group(2))
         loop = r"for\s*\(\s*(?:const|let)\s+(?:\[\s*)?" + re.escape(name) + r"\b[^;]*?\bof\s+"
         for match in re.finditer(loop, self.code):
             start = match.end()
@@ -227,10 +235,10 @@ class _Spec:
         return writes, reads
 
 
-def _dependents() -> dict[str, dict[str, set[str]]]:
+def _dependents(spec_dir: Path = SPEC_DIR) -> dict[str, dict[str, set[str]]]:
     """{integration id: {spec file: {"writes"/"reads"}}} across the suite."""
     found: dict[str, dict[str, set[str]]] = {}
-    for path in sorted(SPEC_DIR.glob("*.spec.js")):
+    for path in sorted(spec_dir.glob("*.spec.js")):
         if path.name in OWN_BACKEND_SPECS:
             continue
         writes, reads = _Spec(path.read_text(encoding="utf-8")).enabled_sites()
@@ -243,16 +251,34 @@ def _dependents() -> dict[str, dict[str, set[str]]]:
     return found
 
 
-@pytest.mark.parametrize("identity", sorted(OWNERS))
-def test_a_guarded_integration_enabled_key_has_exactly_one_owning_spec_file(identity):
+def _assert_one_owner(identity: str, dependents: dict[str, set[str]]) -> None:
     owner = OWNERS[identity]
-    dependents = _dependents().get(identity, {})
     assert owner in dependents and "writes" in dependents[owner], (
         f"{owner} no longer owns integrations.{identity}.enabled; move the ownership, do not drop it")
     assert set(dependents) == {owner}, (
         f"integrations.{identity}.enabled is mutated or asserted live by more than one spec file: "
         f"{ {name: sorted(kinds) for name, kinds in sorted(dependents.items())} }. Spec files share one "
         f"backend and run concurrently; only {owner} may touch it, others render an injected settings document")
+
+
+@pytest.mark.parametrize("identity", sorted(OWNERS))
+def test_a_guarded_integration_enabled_key_has_exactly_one_owning_spec_file(identity):
+    _assert_one_owner(identity, _dependents().get(identity, {}))
+
+
+@pytest.mark.parametrize("identity", ["general_http", "general_ftp"])
+@pytest.mark.parametrize("intruder", [
+    "await page.locator('label[for=\"dp-settings-integration-{id}-enabled\"]').click();",
+    "const PROVIDER = '{id}';\n"
+    "await request.patch(`/api/integrations/${{PROVIDER}}/configuration`, {{data: {{enabled: false}}}});",
+])
+def test_a_second_writer_of_a_guarded_key_is_named(tmp_path, identity, intruder):
+    owner = OWNERS[identity]
+    (tmp_path / owner).write_text((SPEC_DIR / owner).read_text(encoding="utf-8"), encoding="utf-8")
+    _assert_one_owner(identity, _dependents(tmp_path)[identity])
+    (tmp_path / "intruder.spec.js").write_text(intruder.format(id=identity), encoding="utf-8")
+    with pytest.raises(AssertionError, match=r"'intruder\.spec\.js': \['writes'\]"):
+        _assert_one_owner(identity, _dependents(tmp_path)[identity])
 
 
 @pytest.mark.parametrize("name", sorted(INJECTED_DOCUMENT_SPECS))
@@ -298,6 +324,10 @@ def test_an_own_backend_spec_never_reaches_the_shared_backend(name):
     ("const persisted = async (page, id) => (await get()).integrations[id]?.enabled;\n"
      "await persisted(page, 'usenet');", set(), {"usenet"}),
     ("expect(settings.integrations.usenet.enabled).toBe(true);", set(), {"usenet"}),
+    # A string constant named in the scoped path is the id it carries.
+    ("const PROVIDER = 'general_http';\n"
+     "await request.patch(`/api/integrations/${PROVIDER}/configuration`, {data: {enabled: true}});",
+     {"general_http"}, set()),
     # Naming an id elsewhere (an expected set of rendered controls) feeds no site.
     ("const label = id => `label[for=\"dp-settings-integration-${id}-enabled\"]`;\nlabel('general_http');\n"
      "expect(new Set(controls)).toEqual(new Set(['usenet']));", {"general_http"}, set()),

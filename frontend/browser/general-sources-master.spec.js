@@ -7,11 +7,13 @@ const { test, expect } = require('@playwright/test');
  * stored preference, in either direction, and the group's Provider Status row
  * never disappears.
  *
- * This file is the ONE spec file that writes `integrations.general_scp.enabled`,
- * `integrations.general_rsync.enabled`, `integrations.general_webdav.enabled`
- * and `integrations.multimeta.enabled` (spec files share one backend and run
- * concurrently); SCP, rsync, WebDAV and Multimeta move with (S)FTP in every
- * case below, so "every child" really is every Network Sources member.
+ * This file is the ONE spec file that writes `integrations.general_http.enabled`,
+ * `integrations.general_scp.enabled`, `integrations.general_rsync.enabled`,
+ * `integrations.general_webdav.enabled` and `integrations.multimeta.enabled`
+ * (spec files share one backend and run concurrently); SCP, rsync, WebDAV and
+ * Multimeta move with (S)FTP in every case below, so "every child" really is
+ * every Network Sources member. The HTTP(S) Enable's persistence, reload and
+ * independence proofs live here for that reason.
  */
 
 const GROUP = 'direct_sources';
@@ -307,6 +309,65 @@ async function writeTheWholeSettingsDocument(page) {
   await probe.blur();
   await written;
 }
+
+/** Operate one member toggle to `value` through the operator's control. */
+async function setChild(page, id, value) {
+  await reveal(page, id);
+  const input = page.locator(`[data-integration-enabled="${id}"]`);
+  if ((await input.isChecked()) !== value) await childTrack(page, id).click();
+  await expect(input).toBeChecked({checked: value});
+}
+
+test('HTTP(S) and (S)FTP toggles persist independently, survive reload and never touch aria2',
+  async ({page}) => {
+    const aria2 = (await canonical(page)).integrations.aria2.enabled;
+    const read = async () => {
+      const s = await canonical(page);
+      return [s.integrations.general_http.enabled, s.integrations.general_ftp.enabled, s.integrations.aria2.enabled];
+    };
+    await openSources(page);
+    for (const [http, ftp] of [[true, false], [false, true], [true, true]]) {
+      await setChild(page, 'general_http', http);
+      await setChild(page, 'general_ftp', ftp);
+      await expect.poll(read).toEqual([http, ftp, aria2]);
+      // A fresh page renders both toggles from canonical state.
+      await openSources(page);
+      await reveal(page, 'general_http');
+      await expect(page.locator('[data-integration-enabled="general_http"]')).toBeChecked({checked: http});
+      await expect(page.locator('[data-integration-enabled="general_ftp"]')).toBeChecked({checked: ftp});
+    }
+  });
+
+test('a failed member enable mutation restores the committed state and reports it', async ({page}) => {
+  /* The refused write is answered here and never reaches the backend, so the
+   * proof is the request the page sent and the state it returns to -- the
+   * state it last committed. */
+  await openSources(page);
+  await reveal(page, 'general_ftp');
+  const toggle = page.locator('[data-integration-enabled="general_ftp"]');
+  const before = await toggle.isChecked();
+  const sent = [];
+  await page.route(url => /\/api\/integrations\/general_ftp\/configuration$/.test(url.pathname),
+    route => {
+      sent.push(route.request().postDataJSON());
+      return route.fulfill({status: 502, contentType: 'application/json',
+        body: JSON.stringify({detail: 'integration configuration rejected'})});
+    });
+  await flipChild(page, 'general_ftp');
+  // The visible control returns to committed truth, and the error is surfaced.
+  await expect(page.locator('#toasts .toast')).toContainText(/reject|error|fail/i);
+  expect(sent).toEqual([{enabled: !before}]);
+  await expect(toggle).toBeChecked({checked: before});
+});
+
+test('no visible member toggle reports ON while canonical state is OFF', async ({page}) => {
+  await openSources(page);
+  const {integrations} = await canonical(page);
+  for (const id of CHILDREN) {
+    expect(await page.locator(`[data-integration-enabled="${id}"]`).isChecked(), id)
+      .toBe(integrations[id].enabled !== false);
+  }
+});
 
 test('a later whole-settings write cannot replay a stale master or child value', async ({page}) => {
   await setChildren(page, true, true);

@@ -10,6 +10,7 @@ becomes DP material before completion). No executor identity decides it.
 from __future__ import annotations
 
 import inspect
+import re
 import json
 from dataclasses import replace
 from types import SimpleNamespace
@@ -194,8 +195,15 @@ def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
     app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
     renderer = app[app.index("function progress(pct, status, activePct)"):]
     renderer = renderer[:renderer.index("\n}\n")]
-    details = app[app.index("t.active_execution_progress == null"):][:200]
-    for source in (renderer, details):
+    details = app[app.index("function dpDetailProgress(t)"):]
+    details = details[:details.index("\n}\n")]
+    predicate = app[app.index("function inFlightExecutionPercent(status, activePct)"):]
+    predicate = predicate[:predicate.index("\n}\n")]
+    # One active-state predicate gates both presentations.
+    assert "inFlightExecutionPercent(state, activePct)" in renderer
+    assert "inFlightExecutionPercent(transferDisplayStatus(t), t.active_execution_progress)" in details
+    assert "!== 'downloading'" in predicate
+    for source in (renderer, details, predicate):
         lowered = source.casefold()
         assert "reconstruct" not in lowered
         for name in ("sabnzbd", "rsync", "destination_aware", "strategy"):
@@ -204,3 +212,10 @@ def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
     # The lane stays secondary and explicit about what it is not.
     assert "not yet verified as DebridPulse material" in renderer
     assert "' verified'" in renderer                     # the canonical number keeps its meaning
+    # Active-only promotion: the execution value leads only with no verified
+    # percentage beside it, and the two percentages are never compared.
+    assert "const activeOnly = inFlight && unknown;" in renderer
+    assert "% in progress'" in renderer and ">not yet verified</span>" in renderer
+    assert not re.search(r"activeValue\s*[<>]=?\s*actual|actual\s*[<>]=?\s*activeValue", renderer)
+    for smoothing in ("highest", "high_water", "highWater", "floor", "max_seen", "maxSeen"):
+        assert smoothing not in renderer

@@ -507,9 +507,29 @@ function badge(s, detail) {
 // list and detail payload carries it. The raw lifecycle status is only what a
 // caller that fabricated a payload without a projection can fall back to --
 // no status is derived here from extraction or source-failure fields.
+// The Details progress line: the list's rule in words -- verified material
+// first; current execution activity, only while the row is running, leads
+// only when there is no verified percentage, and is never completion.
+function dpDetailProgress(t) {
+  const active = inFlightExecutionPercent(transferDisplayStatus(t), t.active_execution_progress);
+  const execution = active === null ? '' : 'in progress ' + active.toFixed(1) + '% (not yet verified)';
+  if (t.progress == null) {
+    return execution || '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '');
+  }
+  return Number(t.progress).toFixed(1) + '%' + (execution ? ' · ' + execution : '');
+}
 function transferDisplayStatus(t) {
   const projected = String(t && t.presentation_status || '').trim().toLowerCase();
   return projected || (t && t.status) || '';
+}
+// The one active-execution predicate every progress presentation shares:
+// in-flight execution activity counts only while the row is actively running,
+// anywhere else a lingering value is stale and never shown. The percentage, or
+// null when there is none to trust.
+function inFlightExecutionPercent(status, activePct) {
+  if (String(status || '').toLowerCase() !== 'downloading') return null;
+  const raw = activePct === null || activePct === undefined ? NaN : Number(activePct);
+  return Number.isFinite(raw) ? Number(Math.min(Math.max(raw, 0), 100).toFixed(1)) : null;
 }
 // ``activePct``: in-flight execution activity on the current source that is
 // not yet DP material, from any executor; shown beside, never as, completion.
@@ -522,8 +542,17 @@ function progress(pct, status, activePct) {
   const unknown = !done && (pct === null || pct === undefined);
   const raw = Number(pct);
   const actual = done ? 100 : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
-  const showStripe = active && (unknown || actual === 0);
-  const visual = actual;
+  const activeValue = inFlightExecutionPercent(state, activePct);
+  const inFlight = activeValue !== null;
+  // With no verified percentage beside it, current execution activity is the
+  // most useful truthful progress, so it is the primary bar -- worded as not
+  // yet verified, and never completion. Beside a verified percentage it stays
+  // secondary: nothing proves the two share a denominator, so they are never
+  // compared, and only verified material is durable across a replaced
+  // execution (no high-water mark).
+  const activeOnly = inFlight && unknown;
+  const showStripe = active && !activeOnly && (unknown || actual === 0);
+  const visual = activeOnly ? activeValue : actual;
   let fillStyle = showStripe
     ? 'width:100%;opacity:.35;background:repeating-linear-gradient(90deg,var(--accent) 0,var(--accent) 8px,transparent 8px,transparent 16px)'
     : 'width:' + visual + '%';
@@ -534,26 +563,25 @@ function progress(pct, status, activePct) {
   const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
   const attrs = failed
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
-    : '';
+    : (activeOnly ? ' data-progress-basis="execution"' : '');
   // Two truths, never one number: the bar and percentage above are DP-valid
   // material; in-flight execution activity that is not yet material (from
   // any executor) gets its own thinner lane and label beneath, and the
   // verified figure says so.
-  const activeRaw = activePct === null || activePct === undefined ? NaN : Number(activePct);
-  const inFlight = active && Number.isFinite(activeRaw);
-  const label = done ? '100%' : (unknown ? '—' : (showStripe ? '…'
-    : actual.toFixed(0) + '%' + (inFlight ? ' verified' : '')));
-  const activeValue = inFlight ? Number(Math.min(Math.max(activeRaw, 0), 100).toFixed(1)) : 0;
+  const label = done ? '100%' : (activeOnly ? activeValue.toFixed(1) + '% in progress' : (unknown ? '—'
+    : (showStripe ? '…' : actual.toFixed(0) + '%' + (inFlight ? ' verified' : ''))));
   const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
-  const lane = inFlight
+  const lane = inFlight && !activeOnly
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
       ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
-  const activityLabel = inFlight
-    ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">in progress ' +
-      activeValue.toFixed(1) + '%</span>'
-    : '';
+  const activityLabel = activeOnly
+    ? '<span class="prog-activity" data-role="execution-unverified" title="' + inFlightTitle + '">not yet verified</span>'
+    : (inFlight
+      ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">in progress ' +
+        activeValue.toFixed(1) + '%</span>'
+      : '');
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
          lane + '<span class="prog-pct">' + label + '</span>' + activityLabel;
 }
@@ -1649,10 +1677,7 @@ async function showDetail(id) {
       <div class="detail-grid">
         <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
         <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
-        <div><div class="dk">Progress</div><div class="dv">${t.progress == null
-          ? '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '')
-          : Number(t.progress).toFixed(1) + '%'}${t.active_execution_progress == null
-          ? '' : ' · in progress ' + Number(t.active_execution_progress).toFixed(1) + '% (not yet verified)'}</div></div>
+        <div><div class="dk">Progress</div><div class="dv">${dpDetailProgress(t)}</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>

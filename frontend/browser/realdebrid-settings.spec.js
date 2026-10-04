@@ -127,17 +127,18 @@ async function reservedRow(card, region) {
   expect(row.above).toBeGreaterThanOrEqual(0);
   expect(row.height).toBeGreaterThan(0);
   expect(row.off).toBeLessThan(2);
-  // Island -> ordinary section spacing -> Additional Settings: no separator
-  // drawn above the disclosure and no balancing band between them.
+  // Island -> Additional Settings: no separator drawn above the disclosure and
+  // no spacer or balancing band between them.
   const below = await card.evaluate(node => {
     const island = node.querySelector('.dp-settings-account-island').getBoundingClientRect();
     const additional = node.querySelector('.dp-settings-additional');
     return {gap: additional.getBoundingClientRect().top - island.bottom,
             border: parseFloat(getComputedStyle(additional).borderTopWidth)};
   });
+  // The disclosure follows the island directly: its own summary row is the
+  // separation (the shared grammar, settings-providers-layout.spec.js).
   expect(below.border).toBe(0);
-  expect(below.gap).toBeGreaterThan(0);
-  expect(below.gap).toBeLessThanOrEqual(16);
+  expect(Math.abs(below.gap)).toBeLessThanOrEqual(1);
   return {...row, card: (await card.boundingBox()).height};
 }
 

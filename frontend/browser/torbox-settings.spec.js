@@ -103,9 +103,10 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
     return {gap: additional.getBoundingClientRect().top - island.bottom,
             border: parseFloat(getComputedStyle(additional).borderTopWidth)};
   });
+  // The disclosure follows the island directly: its own summary row is the
+  // separation (the shared grammar, settings-providers-layout.spec.js).
   expect(below.border).toBe(0);
-  expect(below.gap).toBeGreaterThan(0);
-  expect(below.gap).toBeLessThanOrEqual(16);
+  expect(Math.abs(below.gap)).toBeLessThanOrEqual(1);
 
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');

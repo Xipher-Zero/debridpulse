@@ -22,7 +22,7 @@
     // the entries below already carry. Absent means open, so a panel served by
     // an older backend behaves exactly as it did.
     const gates = settings?.integration_groups || {};
-    return Object.entries(integrations)
+    const entries = Object.entries(integrations)
       // A paired provider+executor integration (one canonical enable state)
       // still presents as one provider family in this panel.
       .filter(([, integration]) => (integration.kind === 'provider' || integration.kind === 'provider_executor')
@@ -55,8 +55,23 @@
           standardTierId: String(presentation.standard_status_tier || '').trim(),
           standardTierLabel: String(presentation.standard_status_tier_label || '').trim(),
         };
-      })
-      .sort((a, b) => a.order - b.order || a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+      });
+    /* `display_order` places tiers and service families. The NAMED account
+     * providers of one tier -- those declaring the standard tier their
+     * account falls to, the same neutral fact Settings reads -- are one block,
+     * alphabetical by display name, at the position of the block's first
+     * declared entry; a service family (which declares no standard tier) keeps
+     * its own place, so a family reserved after them stays after them. No
+     * integration is named here, so a future named provider sorts into place
+     * by its name alone. Presentation only: never routing priority. */
+    const blocks = new Map();
+    for (const entry of entries) {
+      if (!entry.standardTierId) continue;
+      blocks.set(entry.homeTierId, Math.min(blocks.get(entry.homeTierId) ?? Infinity, entry.order));
+    }
+    const position = entry => entry.standardTierId ? blocks.get(entry.homeTierId) : entry.order;
+    return entries.sort((a, b) => position(a) - position(b)
+      || a.name.localeCompare(b.name, 'en', {sensitivity: 'base'}) || a.id.localeCompare(b.id));
   }
 
   function esc(value) {

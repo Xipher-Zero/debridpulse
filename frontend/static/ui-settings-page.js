@@ -808,13 +808,22 @@
     });
   }
 
+  /* Every API-key account card that states its connected account above the
+   * key island, and whether a key is stored for it. Account PRESENTATION only:
+   * each provider keeps its own credential owner (AllDebrid's predates the
+   * generic row above), and nothing here interprets an account. */
+  const API_KEY_ACCOUNT_LINES = Object.freeze({
+    alldebrid: s => !!allDebridOf(s).api_key_configured,
+    debridlink: API_KEY_ACCOUNTS.debridlink.configured,
+  });
+
   // The connected account as the provider-status owner established it: the
   // neutral premium wording, or "Free account" for a standard one.
-  const apiKeyAccounts = Object.fromEntries(Object.keys(API_KEY_ACCOUNTS).map(id => [id, null]));
+  const apiKeyAccounts = Object.fromEntries(Object.keys(API_KEY_ACCOUNT_LINES).map(id => [id, null]));
 
   function apiKeyAccountLine(id) {
     const account = apiKeyAccounts[id];
-    if (!account || !API_KEY_ACCOUNTS[id].configured(state.settings)) return '';
+    if (!account || !API_KEY_ACCOUNT_LINES[id](state.settings)) return '';
     const line = accountExpiry(id, account) || (standardAccount(account) ? 'Free account' : '');
     // Nothing to state renders nothing: no blank row above the key island.
     return line ? providerStatusLine(html(line), 'dp-settings-account-expiry') : '';
@@ -825,8 +834,17 @@
     if (region) region.innerHTML = apiKeyAccountLine(id);
   }
 
+  /* A stored key changed (replaced or removed): the account it described is no
+   * longer known, so its line is withdrawn until provider status states the
+   * account the CURRENT key belongs to. */
+  function forgetApiKeyAccount(id) {
+    if (!(id in apiKeyAccounts)) return;
+    apiKeyAccounts[id] = null;
+    renderApiKeyAccount(id);
+  }
+
   document.addEventListener('debridpulse:provider-status', event => {
-    for (const id of Object.keys(API_KEY_ACCOUNTS)) {
+    for (const id of Object.keys(API_KEY_ACCOUNT_LINES)) {
       const status = (event.detail?.entries || []).find(candidate => candidate.id === id)?.status;
       if (status?.state === 'healthy') apiKeyAccounts[id] = status;
       else if (['auth_required', 'unconfigured', 'disabled'].includes(status?.state)) apiKeyAccounts[id] = null;
@@ -881,7 +899,7 @@
         {options: {}, clear_secrets: ['api_key']}, 15000);
       adoptIntegration(id, result);
       setBusy(button, false);
-      apiKeyAccounts[id] = null;
+      forgetApiKeyAccount(id);
       renderApiKeyCredential(id, '');
       notify(`${name} API key cleared`, 'success');
       try { window.DPProviderStatus?.refresh(); } catch (_) {}
@@ -1686,6 +1704,7 @@
       </span>`;
     const providerTest = providerTestAction('test-alldebrid');
     const provider = providerCard('alldebrid', 'AllDebrid', `
+      <div data-alldebrid-account>${apiKeyAccountLine('alldebrid')}</div>
       ${allDebridApiKeyField(!!allDebridOf(s).api_key_configured)}
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
@@ -3740,6 +3759,10 @@
         // field to that presentation. Verification needs no step here: the
         // stored evidence simply stops describing the saved configuration.
         if (typeof secret.converge === 'function') secret.converge(draft);
+        // A replaced key may belong to another account: withdraw the line the
+        // previous key's account produced and ask for the current one.
+        forgetApiKeyAccount(identity);
+        try { window.DPProviderStatus?.refresh(); } catch (_) {}
         return '';
       },
     });
@@ -3945,6 +3968,7 @@
     const clear = row.querySelector('[data-action="clear-alldebrid-key"]');
     if (clear) clear.disabled = !configured;
 
+    renderApiKeyAccount('alldebrid');
     renderIntegrationState(card, 'alldebrid');
   }
 
@@ -3981,6 +4005,7 @@
       // be the LAST word: with no key stored the action must end up disabled,
       // not resurrected by the spinner being taken off it.
       setBusy(button, false);
+      forgetApiKeyAccount('alldebrid');
       renderAllDebridCredential('');
       notify('AllDebrid API key cleared', 'success');
       try { window.DPProviderStatus?.refresh(); } catch (_) {}
