@@ -867,6 +867,16 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # Original logical source fingerprint, retained as durable provenance even
         # after Delete retires the active unique ``hash`` dedupe key.
         'source_fingerprint': 'TEXT',
+        # The collection folder a decomposed transfer's members live under,
+        # frozen in the transaction of its first committed fan-out. The display
+        # ``name`` may keep converging on a provider's report; this never
+        # follows it, so no later rebind can relocate a logical target. NULL
+        # until the first fan-out (and for a transfer that never decomposes).
+        'collection_root': 'TEXT',
+        # 1 when the upgrade found existing member targets that do not imply
+        # one collection folder: nothing is guessed or moved, and the
+        # transfer's members hold until an operator resolves it.
+        'collection_root_conflict': 'INTEGER NOT NULL DEFAULT 0',
     },
     'transfer_requests': {
         'metadata': 'TEXT',
@@ -979,7 +989,37 @@ TRANSFER_REPOSITORY_COLUMNS = {
     # row is left NULL, which is exactly the correct "resource not yet observed
     # AVAILABLE under the corrected engine" value — the next ordinary AVAILABLE
     # observation anchors it. There is no data backfill (§14 / §14a).
-    'transfer_file_selections': {'available_at': 'REAL'},
+    'transfer_file_selections': {
+        'available_at': 'REAL',
+        # A decomposition generation exists for EVERY binding of a manifest
+        # root; ``interactive`` says whether this one is also an operator file
+        # selection (0: decided ALL at creation, never offered). Every row that
+        # predates universal generations was created by interactive selection.
+        'interactive': 'INTEGER NOT NULL DEFAULT 1',
+        # The root's immediate committed generation when this one opened (NULL:
+        # none, or no single determinable one). The only generation an explicit
+        # selection or an established decomposition is ever carried from.
+        'predecessor_id': 'TEXT',
+        # ``proven``: this generation's members are exactly the established
+        # decomposition (or it is the first); only a proven, committed
+        # generation is runnable. ``held``: continuity could not be proven --
+        # nothing was superseded, moved or started. NULL while undecided.
+        'continuity': 'TEXT',
+        'continuity_reason': 'TEXT',
+        # COMPATIBILITY LINEAGE, not a historical-version claim: 1 only on a
+        # generation the 3a0 upgrade found governing a decomposition persisted
+        # before decomposition-generation authority existed. It does NOT say
+        # the decomposition predates any particular coordinate correction or
+        # that its paths are wrong -- that history is not durably recoverable.
+        # Such a decomposition may cross into the 3a0 model by ONE compatibility
+        # reconstruction, on a terminal reacquisition; no successor ever has it.
+        'legacy_established': 'INTEGER NOT NULL DEFAULT 0',
+        # The terminal reacquisition that reopened completed work governed by
+        # this generation (``reacquired_at``) and, once its successor
+        # generation committed, the moment that transition was consumed.
+        'reacquired_at': 'REAL',
+        'reacquisition_consumed_at': 'REAL',
+    },
     'download_files': {
         'request_id': 'TEXT', 'candidates': 'TEXT', 'selected_candidate': 'INTEGER NOT NULL DEFAULT 0',
         'execution_attempt_id': 'TEXT', 'normalized_error': 'TEXT', 'retry_at': 'REAL NOT NULL DEFAULT 0',
@@ -1026,9 +1066,9 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
     'transfer_file_manifests': {'id', 'transfer_id', 'request_id', 'provider_resource_id', 'provider_id', 'manifest_digest', 'observed_at', 'created_at'},
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
-    'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at'},
+    'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at', 'interactive', 'predecessor_id', 'continuity', 'continuity_reason', 'legacy_established', 'reacquired_at', 'reacquisition_consumed_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
-    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint', 'collection_root', 'collection_root_conflict'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
     'transfer_requests': {
@@ -1204,6 +1244,11 @@ async def _init_db_sqlite():
         await _normalize_legacy_cleanup_claims(db)
         await _migrate_recovery_state_from_events(db)
         await _migrate_execution_identity(db)
+        from db.migrations.v113_decomposition_generations import (
+            backfill_decomposition_generations,
+        )
+
+        await backfill_decomposition_generations(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

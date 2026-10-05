@@ -52,11 +52,12 @@ async def seed_window(
             (transfer_hash, "payload", transfer_status),
         )
         request_id = f"req-{transfer_hash}"
-        await db.execute(
-            "INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state) VALUES(?,?,?,?,'resolved')",
-            (request_id, transfer_id, 0, codec.dump(request)),
-        )
         resource = ProviderResource(provider_id, {"box_ticket": transfer_hash}, Ownership.CREATED, id=resource_id)
+        # A resolved root holds its binding, exactly as ``resolution()`` leaves it.
+        await db.execute(
+            "INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state,resource) VALUES(?,?,?,?,'resolved',?)",
+            (request_id, transfer_id, 0, codec.dump(request), codec.dump(resource)),
+        )
         await db.execute(
             "INSERT INTO provider_resources(id,transfer_id,provider_id,payload,state) VALUES(?,?,?,?,'available')",
             (resource_id, transfer_id, provider_id, codec.dump(resource)),

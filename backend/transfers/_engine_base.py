@@ -1364,6 +1364,14 @@ class TransferEngine:
                                 if persist_passive:
                                     await self.repository.execution(observed)
                                 return observed
+                            # Decided again at the native boundary itself: a
+                            # rebind committed while this pass was deciding
+                            # leaves the parked job parked.
+                            if (await self.repository.materialization_authorization(current)).kind != \
+                                    MaterializationAdmissionKind.PROCEED:
+                                if persist_passive:
+                                    await self.repository.execution(observed)
+                                return observed
                             await self.repository.execution(ExecutionObservation(
                                 handle, ExecutionState.QUEUED, observed.progress, activity=observed.activity,
                             ))
@@ -2168,11 +2176,14 @@ class TransferEngine:
             # that: no lock, no conflict scan, no mutation.
             if str(destination(self.root, relative)).casefold() == str(existing.target).casefold():
                 await self.repository.materialize(record, candidates, existing.target)
-                return
-            async with self._paths_lock:
-                occupied = await self.repository.occupied_paths() - {str(existing.target).casefold()}
-                target = self._unique_target(record, relative, occupied)
-                await self.repository.materialize(record, candidates, str(target))
+            else:
+                async with self._paths_lock:
+                    occupied = await self.repository.occupied_paths() - {str(existing.target).casefold()}
+                    target = self._unique_target(record, relative, occupied)
+                    await self.repository.materialize(record, candidates, str(target))
+            # Rebuilt in place: its earlier candidates' bindings stop holding
+            # current positions (the canonical owner's one correction).
+            await self.canonical.realign_rebuilt(existing.id)
             return
 
         async def equivalent_size(other_candidates):
@@ -2289,10 +2300,19 @@ class TransferEngine:
         collection member lives under its transfer's folder. The one member
         that IS its whole resource (``SourceEntry.whole_resource``) is a file,
         not a collection of one, so it has no folder; it is otherwise still a
-        manifest child (its alternates still contend for one target)."""
+        manifest child (its alternates still contend for one target).
+
+        The folder is the one frozen at the transfer's first committed fan-out
+        (``Transfer.collection_root``), never the display name a later provider
+        observation renamed it to. Where existing placement implied no single
+        folder, none is assumed: the member is held, nothing is moved."""
         relative = candidate.relative_path or candidate.name
         if record.parent_id and not (record.entry is not None and record.entry.whole_resource):
-            relative = str(Path(safe_name(transfer.name)) / relative)
+            if transfer.collection_root_conflict:
+                raise TransferError(NormalizedError(
+                    Domain.LOCAL_RESOURCE, Category.LOCAL_PATH_CONFLICT, Stage.CANDIDATE_PREPARATION,
+                    retryability=Retryability.AFTER_RESOURCE_CHANGE))
+            relative = str(Path(transfer.collection_root or safe_name(transfer.name)) / relative)
         return relative
 
     def _unique_target(self, record: RequestRecord, relative: str, occupied: set[str]) -> Path:

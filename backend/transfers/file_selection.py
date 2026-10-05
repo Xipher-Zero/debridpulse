@@ -123,6 +123,14 @@ class DecisionReason(StrEnum):
     INHERITED = "inherited"
 
 
+class Continuity(StrEnum):
+    """Whether a decomposition generation's members are its root's
+    established decomposition. Only a ``PROVEN``, committed generation is ever
+    runnable; a ``HELD`` one changed nothing and starts nothing."""
+    PROVEN = "proven"
+    HELD = "held"
+
+
 class SelectionGate(StrEnum):
     """Whether executable child fan-out may proceed for a request."""
     WAIT_FOR_MANIFEST = "wait_for_manifest"
@@ -175,6 +183,47 @@ class SelectionUnprovable(RuntimeError):
     def __init__(self, reason: str) -> None:
         super().__init__(reason)
         self.reason = reason
+
+
+def decomposition_continuity(established: list[tuple[str, int]],
+                             authorized: tuple[SourceEntry, ...]) -> str | None:
+    """Prove a new generation's authorized members are exactly the root's
+    established logical decomposition: ``None`` when proven, else the bounded
+    reason it is not.
+
+    ``established`` is ``(relative_path, expected_bytes)`` per established
+    member. A BIJECTION is required on the normalized relative path -- the one
+    identity a member's ``uuid5(root, path)`` and its target derive from --
+    with a compatible size on every pair (equal whenever both are known, the
+    rule ``reconcile_executable_subset`` applies). A duplicate on either side,
+    a missing established member, an unexplained new member or a size
+    conflict is not the same decomposition: nothing is matched by position,
+    basename or provider, and nothing is accepted in part."""
+    def keyed(pairs, side):
+        result = {}
+        for path, size in pairs:
+            try:
+                key = normalize_relative_path(path)
+            except ManifestInvalid:
+                return None, f"{side}_path_invalid"
+            if key in result:
+                return None, f"{side}_path_duplicate"
+            result[key] = int(size or 0)
+        return result, None
+
+    old, reason = keyed(established, "established")
+    if reason:
+        return reason
+    new, reason = keyed([(entry.relative_path, entry.expected_bytes) for entry in authorized], "replacement")
+    if reason:
+        return reason
+    if old.keys() - new.keys():
+        return "established_member_missing"
+    if new.keys() - old.keys():
+        return "unexplained_member"
+    if any(old[key] > 0 and new[key] > 0 and old[key] != new[key] for key in old):
+        return "member_size_conflict"
+    return None
 
 
 def normalize_relative_path(value: str) -> str:
@@ -459,6 +508,11 @@ def file_selection_affordance(
         return "none"
     if committed_at is not None:
         # Executable child materialization already committed -- locked.
+        return "none"
+    if manifest_id is None and str(decision or "") == SelectionDecision.ALL:
+        # Decided ALL before any manifest bound (a generation that was never
+        # an operator selection, or a manifest that never came): nothing to
+        # choose, and nothing pending to wait for.
         return "none"
     if manifest_id is None:
         # A generation exists (torrent/magnet resolution in progress) but no

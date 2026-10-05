@@ -20,9 +20,19 @@ generation outrank the new one:
   existed, so a member whose coordinate moved for ANY reason kept writing to
   the coordinate an earlier generation chose.
 
-Both are generation defects, not path defects: nothing here inspects a path,
-and the cases below prove convergence for a coordinate that moves for a reason
-having nothing to do with the historical doubled-root shape.
+Both are generation defects, not path defects: nothing here inspects a path.
+
+TASK3d-3a0 keeps this convergence for exactly the decompositions it was built
+for -- ones persisted BEFORE decomposition-generation authority existed -- and
+nothing else. The 3a0 upgrade marks such a decomposition's generation as
+COMPATIBILITY LINEAGE (``legacy_established``): a pre-3a0 boundary, deliberately
+not a claim that it predates any particular coordinate correction, which is not
+durably recoverable. When that work is reacquired as terminal work, it may cross
+into the generation model ONCE by this reconstruction, under the frozen
+collection root; the crossing is consumed and never carried forward. A
+decomposition established under the current model whose replacement cannot be
+proven one-to-one holds instead (the current-model controls below), and so does
+a legacy decomposition rebound by anything but a terminal reacquisition.
 
 History is never rewritten. A superseded child keeps its row, its artifact, its
 execution attempts and all of its provenance; it stops being current work.
@@ -127,6 +137,22 @@ def _observation(core, payload, manifest, observed_name):
     return _replace(result, observation=renamed)
 
 
+async def upgraded_from_before_generations(core):
+    """The database crosses the 3a0 upgrade boundary with this transfer's
+    decomposition already persisted: the one-time upgrade marks the generation
+    governing it as compatibility lineage (``legacy_established``)."""
+    import aiosqlite
+    from db.migrations.v113_decomposition_generations import (
+        MARKER,
+        backfill_decomposition_generations,
+    )
+    async with database.get_db() as db:
+        await db.execute("DELETE FROM transfer_controls WHERE key=?", (MARKER,))
+        await db.commit()
+    async with aiosqlite.connect(database.DB_PATH) as raw:
+        await backfill_decomposition_generations(raw)
+
+
 async def reacquire(core, manifest, *, renewed="box2", cycles=6, observed_name=None):
     """The operator reacquiring the SAME logical transfer -- Retry of the
     completed transfer -- while the provider answers with a genuinely new
@@ -159,6 +185,7 @@ async def test_legacy_generation_reacquires_onto_current_manifest_truth(core):
     which is exactly the upgrade boundary.
     """
     first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
     assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
     legacy = (await artifacts_of(first.id))[0]
     legacy_child = (await children_of(first.id))[0]
@@ -204,6 +231,7 @@ async def test_reacquisition_does_not_churn_resolution_attempts(core):
     resolution attempts entirely once it is no longer current work.
     """
     first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
     legacy_child = (await children_of(first.id))[0]
     await material_removed(core, first.id)
     await reacquire(core, CURRENT_MANIFEST)
@@ -253,18 +281,11 @@ async def test_modern_reacquisition_keeps_its_canonical_target_untouched(core):
 # --- 20.7  the coordinate moves for a reason that is not a doubled root -----
 
 @pytest.mark.asyncio
-async def test_a_member_whose_identity_is_stable_still_follows_current_truth(core):
-    """The member's canonical coordinate is UNCHANGED between generations, so
-    it is the SAME logical child and the SAME artifact row -- but the provider
-    now reports the collection under a different name, which is an ordinary
-    fact core adopts, and current destination logic therefore derives a
-    different target for that unchanged member.
-
-    Nothing about this resembles a duplicated directory component, which is the
-    point: the rebuilt member follows current truth here exactly as it does for
-    the legacy shape, because the correction is about which generation owns the
-    executable coordinate and not about any path's spelling.
-    """
+async def test_a_renamed_provider_report_never_moves_a_member(core):
+    """The member's coordinate is unchanged, so it is the same logical member
+    and reacquires in place -- and although the provider now reports the
+    collection under another name (which the display name follows), the member
+    is rebuilt under the collection folder frozen at the first fan-out."""
     first = await acquire(core, CURRENT_MANIFEST)
     before = (await artifacts_of(first.id))[0]
     child_before = (await children_of(first.id))[0]
@@ -274,14 +295,13 @@ async def test_a_member_whose_identity_is_stable_still_follows_current_truth(cor
     await reacquire(core, CURRENT_MANIFEST, renewed="box2", observed_name="Parcel Renamed")
 
     artifacts = await artifacts_of(first.id)
-    assert len(artifacts) == 1, "the same logical member, not a second row"
-    assert artifacts[0]["id"] == before["id"], "the same logical member, not a new generation"
+    assert len(artifacts) == 1 and artifacts[0]["id"] == before["id"]
     assert [row["id"] for row in await children_of(first.id)] == [child_before["id"]]
-    # Rebuilt onto the coordinate current destination logic derives now, and
-    # derived through that owner rather than edited from the old string.
-    assert artifacts[0]["local_path"].endswith("Parcel Renamed/payload.bin")
-    assert artifacts[0]["local_path"] != before["local_path"]
-    assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+    assert artifacts[0]["local_path"] == before["local_path"]                 # never relocated
+    assert artifacts[0]["execution_attempt_id"] != before["execution_attempt_id"]   # it did reacquire
+    transfer = await core.repository.get(first.id)
+    assert transfer.state == TransferState.COMPLETED
+    assert (transfer.name, transfer.collection_root) == ("Parcel Renamed", "Parcel")
 
 
 # --- 20.3  live writers are never retargeted underneath themselves ----------
@@ -353,6 +373,7 @@ async def test_the_slot_is_released_once_the_writer_is_gone(core):
 @pytest.mark.asyncio
 async def test_historical_executions_and_provenance_survive_reacquisition(core):
     first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
     historical = await core.repository.executions(first.id)
     assert len(historical) == 1
     historical_id = historical[0].handle.attempt_id
@@ -428,6 +449,7 @@ async def test_partial_material_under_a_changed_coordinate_model_converges(core)
     legacy_pair = [("one.bin", "Parcel/one.bin", 4), ("two.bin", "Parcel/two.bin", 4)]
     current_pair = [("one.bin", "one.bin", 4), ("two.bin", "two.bin", 4)]
     first = await acquire(core, legacy_pair)
+    await upgraded_from_before_generations(core)
     assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
 
     before = await artifacts_of(first.id)
@@ -460,6 +482,7 @@ async def test_a_superseded_member_stops_being_recoverable_at_all(core):
     can select. Nothing caps or suppresses a loop -- the row simply leaves the
     canonical actionable set the whole recovery/dispatch path reads."""
     first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
     await material_removed(core, first.id)
     await reacquire(core, CURRENT_MANIFEST)
 
@@ -484,6 +507,7 @@ async def test_a_superseded_member_stops_being_recoverable_at_all(core):
 async def test_a_superseded_member_never_votes_in_transfer_truth(core):
     """The retired row is readable history, excluded from the canonical set."""
     first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
     await material_removed(core, first.id)
     await reacquire(core, CURRENT_MANIFEST)
 
@@ -566,7 +590,13 @@ async def test_a_reacquired_member_joins_the_current_authorized_generation(tmp_p
             "INSERT INTO download_files(torrent_id,request_id,filename,size_bytes,local_path,status) "
             "VALUES(?,?,?,?,?,'completed')",
             (seed.transfer_id, legacy_id, "payload.bin", 4, "/download/Collection/Collection/payload.bin"))
+        # Generation A governs a decomposition persisted before generation
+        # authority existed (the upgrade's compatibility lineage) ...
+        await db.execute("UPDATE transfer_file_selections SET legacy_established=1 WHERE id=?",
+                         (first.selection_id,))
         await db.commit()
+    # ... and the completed work is reopened by a terminal reacquisition.
+    await repo.record_terminal_reacquisition(seed.transfer_id, 1500.0)
 
     # A new provider resource, and generation B committing current truth.
     renewed = await rebind_resource(seed, suffix="generation-b")
@@ -597,6 +627,13 @@ async def test_a_reacquired_member_joins_the_current_authorized_generation(tmp_p
     # the dispatch and recovery paths read -- never cycling STALE forever.
     assert retired["state"] == "skipped"
     assert retired["ordinal"] > current_child["ordinal"]
+    # The crossing is ordinary current-model state from here on, and consumed.
+    (b_row,) = await rows("SELECT legacy_established,continuity,continuity_reason FROM transfer_file_selections "
+                          "WHERE id=?", (second.selection_id,))
+    assert tuple(b_row.values()) == (0, "proven", "legacy_compatibility_reconstruction")
+    (a_row,) = await rows("SELECT reacquisition_consumed_at FROM transfer_file_selections WHERE id=?",
+                          (first.selection_id,))
+    assert a_row["reacquisition_consumed_at"] is not None
     stored = await rows("SELECT id,blocked,block_reason FROM download_files WHERE request_id=?", (legacy_id,))
     assert stored[0]["blocked"] == 1 and stored[0]["block_reason"] == "superseded_generation"
     assert legacy_id not in {item.request_id for item in await repo.artifacts(seed.transfer_id)}
@@ -669,3 +706,347 @@ async def test_an_authorized_subset_is_not_mistaken_for_a_superseded_member(tmp_
         (seed.transfer_id, seed.request_id))
     assert [(row["id"], row["ordinal"], row["state"]) for row in repeated] == \
            [(row["id"], row["ordinal"], row["state"]) for row in first]
+
+
+# --- current-model controls: strict continuity (TASK3d-3a0 D1) ---------------
+
+#: A decomposition established under the CURRENT model whose replacement
+#: publishes the member at another coordinate: not the legacy fixture.
+REPLACEMENT_MANIFEST = [("payload.bin", "moved/payload.bin", 4)]
+
+@pytest.mark.asyncio
+async def test_a_current_model_reacquisition_that_moves_a_member_coordinate_holds(core):
+    """The legacy (doubled-root) generation reacquired under current manifest
+    truth publishes the member at another coordinate: continuity cannot be
+    proven, so the reacquisition holds. Nothing is superseded, retargeted,
+    deleted or started -- driven only through the lifecycle."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+    legacy = (await artifacts_of(first.id))[0]
+    legacy_child = (await children_of(first.id))[0]
+
+    await material_removed(core, first.id)
+    again = await reacquire(core, REPLACEMENT_MANIFEST)
+
+    assert again.id == first.id
+    assert (await core.repository.get(first.id)).state != TransferState.COMPLETED
+    (generation,) = await rows(
+        "SELECT continuity,continuity_reason,manifest_committed_at FROM transfer_file_selections "
+        "WHERE transfer_id=? ORDER BY created_at DESC, id DESC LIMIT 1", (first.id,))
+    assert (generation["continuity"], generation["continuity_reason"]) == ("held", "established_member_missing")
+    assert generation["manifest_committed_at"] is None
+    # Every member, artifact and writer stays where it was: the one artifact
+    # keeps its row and coordinate and is never superseded (its material is
+    # gone, which the Retry already recorded before any generation opened).
+    (artifact,) = await artifacts_of(first.id)
+    assert (artifact["id"], artifact["local_path"], artifact["blocked"]) == (legacy["id"], legacy["local_path"], 0)
+    assert [row["id"] for row in await children_of(first.id)] == [legacy_child["id"]]
+    assert (await children_of(first.id))[0]["state"] != "skipped"
+    assert len(await core.repository.executions(first.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_held_reacquisition_does_not_churn(core):
+    """Holding is a stable state, not a loop: the held generation is not
+    reopened, no member consumes resolution attempts, and nothing is
+    manufactured while it holds."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    legacy_child = (await children_of(first.id))[0]
+    await material_removed(core, first.id)
+    await reacquire(core, REPLACEMENT_MANIFEST)
+
+    async def generations():
+        return await rows("SELECT id FROM transfer_file_selections WHERE transfer_id=?", (first.id,))
+
+    before = next(row for row in await requests_of(first.id) if row["id"] == legacy_child["id"])["attempts"]
+    held = await generations()
+    for _ in range(8):
+        core.provider.responses.append(_observation(core, "box2", REPLACEMENT_MANIFEST, None))
+        await core.engine.tick()
+        core.clock.advance(30)
+    after = next(row for row in await requests_of(first.id) if row["id"] == legacy_child["id"])["attempts"]
+    assert after == before
+    assert await generations() == held
+    assert len(await artifacts_of(first.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_historical_executions_and_provenance_survive_a_held_reacquisition(core):
+    first = await acquire(core, CURRENT_MANIFEST)
+    historical = await core.repository.executions(first.id)
+    assert len(historical) == 1
+    historical_id = historical[0].handle.attempt_id
+    provenance_before = await rows(
+        "SELECT COUNT(*) AS n FROM route_attempt_provenance WHERE transfer_id=?", (first.id,))
+
+    await material_removed(core, first.id)
+    await reacquire(core, REPLACEMENT_MANIFEST)
+
+    attempts = await core.repository.executions(first.id)
+    assert [item.handle.attempt_id for item in attempts] == [historical_id], "a held generation starts no writer"
+    rows_ = await rows("SELECT id,authorized,state FROM execution_attempts WHERE id=?", (historical_id,))
+    assert rows_[0]["authorized"] == 0, "a historical attempt must never be reauthorized"
+    provenance_after = await rows(
+        "SELECT COUNT(*) AS n FROM route_attempt_provenance WHERE transfer_id=?", (first.id,))
+    assert provenance_after[0]["n"] >= provenance_before[0]["n"]
+    assert len(await children_of(first.id)) == 1
+
+
+@pytest.mark.asyncio
+async def test_material_under_a_changed_coordinate_model_is_held_in_place(core):
+    """Every member's coordinate moved, so continuity cannot be proven: the
+    surviving completed file stays exactly where it is, as current (not
+    superseded) work, and nothing re-downloads it under another coordinate."""
+    current_pair = [("one.bin", "one.bin", 4), ("two.bin", "two.bin", 4)]
+    moved_pair = [("one.bin", "moved/one.bin", 4), ("two.bin", "moved/two.bin", 4)]
+    first = await acquire(core, current_pair)
+    assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+
+    before = await artifacts_of(first.id)
+    kept, removed = before[0], before[1]
+    Path(removed["local_path"]).unlink()
+    for identity, observed in list(core.provider.resources.items()):
+        core.provider.resources[identity] = ProviderObservation(observed.resource, ResourceState.ABSENT)
+
+    await reacquire(core, moved_pair)
+
+    assert (await core.repository.get(first.id)).state != TransferState.COMPLETED
+    after = await artifacts_of(first.id)
+    assert [(row["id"], row["local_path"], row["blocked"]) for row in after] == [
+        (row["id"], row["local_path"], 0) for row in before]          # no row moved, blocked or added
+    assert next(row for row in after if row["id"] == kept["id"]) == kept   # the surviving file's row is untouched
+    assert Path(kept["local_path"]).exists()
+    assert len(await core.repository.executions(first.id)) == 2         # only the two original writers
+
+
+@pytest.mark.asyncio
+async def test_a_held_reacquisition_generates_no_recovery_work(core):
+    """A held generation is not a loop: no member is superseded, nothing leaves
+    or joins the canonical set, and recovery stays quiet while it holds."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    await material_removed(core, first.id)
+    await reacquire(core, REPLACEMENT_MANIFEST)
+    canonical_before = {item.id for item in await core.repository.artifacts(first.id)}
+    audits_before = await rows(
+        "SELECT COUNT(*) AS n FROM application_events WHERE transfer_id=? AND kind='recovery_audit'",
+        (first.id,))
+
+    for _ in range(10):
+        await core.engine.tick()
+        core.clock.advance(60)
+
+    assert {item.id for item in await core.repository.artifacts(first.id)} == canonical_before
+    audits_after = await rows(
+        "SELECT COUNT(*) AS n FROM application_events WHERE transfer_id=? AND kind='recovery_audit'",
+        (first.id,))
+    assert audits_after[0]["n"] == audits_before[0]["n"]
+
+
+@pytest.mark.asyncio
+async def test_a_held_reacquisition_supersedes_nothing(core):
+    """Every stored row is still current canonical work: nothing was retired."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    await material_removed(core, first.id)
+    await reacquire(core, REPLACEMENT_MANIFEST)
+
+    canonical = await core.repository.artifacts(first.id)
+    stored = await artifacts_of(first.id)
+    assert len(stored) == 1 and [item.id for item in canonical] == [stored[0]["id"]]
+    assert not stored[0]["blocked"]
+
+
+@pytest.mark.asyncio
+async def test_a_current_model_generation_that_moves_a_member_is_held_before_anything_changes(tmp_path, monkeypatch):
+    """Repository level: generation A commits and fans out a member; the root
+    rebinds and generation B publishes that member under another coordinate.
+    B cannot be committed: it is recorded ``held`` with the bounded reason,
+    authorizes nothing, and A's member is neither superseded nor moved -- and,
+    its binding no longer current, it is not runnable either."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "authority.db")
+    await database.init_db()
+    from file_selection_support import executable, rebind_resource, seed_window
+    from transfers.models import MaterializationAdmissionKind
+    from transfers.repository import TransferRepository as PlainRepository
+
+    repo = PlainRepository()
+    seed = await seed_window(transfer_hash="g" * 40)
+    await repo.begin_file_selection_window(
+        seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
+        initially_available=True, now=1000.0)
+    first = await repo.commit_selected_manifest(seed.record, executable(("payload.bin", "payload.bin", 4)),
+                                                now=1000.0)
+    await repo.manifest(seed.record, first, selection_id=first.selection_id)
+    (legacy,) = await rows("SELECT id,state,ordinal FROM transfer_requests WHERE transfer_id=? AND parent_id=?",
+                           (seed.transfer_id, seed.request_id))
+
+    renewed = await rebind_resource(seed, suffix="generation-b")
+    await repo.begin_file_selection_window(
+        seed.request_id, seed.transfer_id, renewed.provider_resource_id, seed.provider_id,
+        initially_available=True, now=2000.0)
+    second = await repo.commit_selected_manifest(renewed.record, executable(("payload.bin", "moved/payload.bin", 4)),
+                                                 now=2000.0)
+
+    assert tuple(second) == () and second.held == "established_member_missing"
+    (generation,) = await rows("SELECT continuity,continuity_reason,manifest_committed_at FROM "
+                               "transfer_file_selections WHERE id=?", (second.selection_id,))
+    assert tuple(generation.values()) == ("held", "established_member_missing", None)
+    from transfers.errors import TransferError
+    with pytest.raises(TransferError):
+        await repo.manifest(renewed.record, second, selection_id=second.selection_id)   # never fans out
+    assert await rows("SELECT id,state,ordinal FROM transfer_requests WHERE transfer_id=? AND parent_id=?",
+                      (seed.transfer_id, seed.request_id)) == [legacy]
+    admission = await repo.materialization_authorization(
+        SimpleNamespace(id=1, transfer_id=seed.transfer_id, request_id=legacy["id"], execution=None, state="queued"))
+    assert admission.kind == MaterializationAdmissionKind.STALE
+
+
+# --- canonical candidate bindings across an in-place rebuild (TASK3d-3a0) ------
+
+async def bindings_of(transfer_id):
+    return await rows(
+        """SELECT b.id,b.canonical_artifact_id,b.candidate_id,b.candidate_order FROM canonical_candidate_bindings b
+           JOIN download_files f ON f.id=b.canonical_artifact_id WHERE f.torrent_id=? ORDER BY b.id""", (transfer_id,))
+
+
+async def origins_of(transfer_id):
+    return await rows(
+        """SELECT o.id,o.binding_id FROM canonical_candidate_origins o JOIN canonical_candidate_bindings b
+           ON b.id=o.binding_id JOIN download_files f ON f.id=b.canonical_artifact_id WHERE f.torrent_id=?
+           ORDER BY o.id""", (transfer_id,))
+
+
+async def restart(core):
+    """A process restart over the same database: a fresh engine initializes."""
+    from transfers.convergence_engine import TransferEngine
+    restarted = TransferEngine(core.repository, core.engine.registry, download_root=core.engine.root,
+                               policy=core.engine.policy, clock=core.clock)
+    await restarted.initialize()
+    return restarted
+
+
+async def assert_aligned(core, transfer_id):
+    """Every current candidate's binding holds its position; every other
+    binding sits in the non-current band -- what ordinary readers rely on."""
+    for artifact in await core.repository.artifacts(transfer_id):
+        current = {str(candidate.id): position for position, candidate in enumerate(artifact.candidates, start=1)}
+        for binding in await rows("SELECT candidate_id,candidate_order FROM canonical_candidate_bindings "
+                                  "WHERE canonical_artifact_id=?", (artifact.id,)):
+            if binding["candidate_id"] in current:
+                assert binding["candidate_order"] == current[binding["candidate_id"]]
+            else:
+                assert binding["candidate_order"] > 100000
+
+
+@pytest.mark.asyncio
+async def test_a_retry_reacquisition_rebuilt_in_place_survives_a_restart_with_its_history(core):
+    """The pre-existing defect: the rebuilt member's earlier candidate binding
+    kept order 1, and the next start's binding backfill collided with it."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    await restart(core)                                        # the first start formalizes its binding
+    history = await bindings_of(first.id)
+    origins = await origins_of(first.id)
+    assert history and origins
+    await material_removed(core, first.id)
+    await reacquire(core, CURRENT_MANIFEST)
+
+    await restart(core)
+    await restart(core)                                        # repeated restarts change nothing further
+    after = await bindings_of(first.id)
+    assert {row["id"] for row in history} <= {row["id"] for row in after}        # no binding deleted
+    assert {row["id"] for row in origins} <= {row["id"] for row in await origins_of(first.id)}
+    await assert_aligned(core, first.id)
+    settled = await bindings_of(first.id)
+    await restart(core)
+    assert await bindings_of(first.id) == settled              # idempotent
+
+
+@pytest.mark.asyncio
+async def test_a_database_damaged_before_the_fix_is_repaired_at_startup(core, monkeypatch):
+    """A rebuild that ran without the realignment left its stale binding at an
+    active position; the next start corrects that durable state."""
+    first = await acquire(core, CURRENT_MANIFEST)
+    await restart(core)
+    await material_removed(core, first.id)
+    from transfers.canonical import CanonicalOwnership
+
+    async def unrealigned(self, artifact_id):
+        return None
+
+    with monkeypatch.context() as patched:
+        patched.setattr(CanonicalOwnership, "realign_rebuilt", unrealigned)
+        await reacquire(core, CURRENT_MANIFEST)
+    await restart(core)
+    await assert_aligned(core, first.id)
+
+
+# --- the compatibility crossing is one-way, one-generation, and durable ------
+
+async def generation_rows(transfer_id):
+    return await rows("SELECT id,legacy_established,reacquired_at,reacquisition_consumed_at,continuity,"
+                      "continuity_reason,manifest_committed_at FROM transfer_file_selections WHERE transfer_id=? "
+                      "ORDER BY created_at,id", (transfer_id,))
+
+
+@pytest.mark.asyncio
+async def test_the_compatibility_crossing_is_consumed_once_and_never_carried_forward(core):
+    """Cases 1 and 2: a pre-3a0 decomposition crosses once on its terminal
+    reacquisition; the generation it crosses into is ordinary current-model
+    state, so the NEXT unprovable replacement holds under strict continuity."""
+    first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
+    await material_removed(core, first.id)
+    await reacquire(core, CURRENT_MANIFEST)
+    assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+
+    legacy, crossed = await generation_rows(first.id)
+    assert legacy["legacy_established"] == 1 and legacy["reacquisition_consumed_at"] is not None
+    assert (crossed["legacy_established"], crossed["continuity"], crossed["continuity_reason"]) == (
+        0, "proven", "legacy_compatibility_reconstruction")
+    assert (await core.repository.get(first.id)).collection_root == "Parcel"          # G4: never moved
+
+    # The same transfer, later: its predecessor is current-model now.
+    await material_removed(core, first.id)
+    await reacquire(core, [("payload.bin", "moved/payload.bin", 4)], renewed="box3")
+    assert (await core.repository.get(first.id)).state != TransferState.COMPLETED
+    *_, held = await generation_rows(first.id)
+    assert (held["continuity"], held["continuity_reason"]) == ("held", "established_member_missing")
+
+
+@pytest.mark.asyncio
+async def test_a_restart_between_the_reopen_and_the_new_generation_keeps_the_crossing_and_replays_nothing(core):
+    """Case 6: the terminal-reacquisition fact survives a restart before the
+    replacement generation exists, the crossing happens exactly once, and a
+    restart (and a repeated upgrade) after it replays nothing."""
+    first = await acquire(core, LEGACY_MANIFEST)
+    await upgraded_from_before_generations(core)
+    await material_removed(core, first.id)
+    core.provider.responses.append(_observation(core, "box2", CURRENT_MANIFEST, None))
+    assert await core.engine.retry(first.id, reacquire=True)
+    (legacy,) = await generation_rows(first.id)
+    assert legacy["reacquired_at"] is not None and legacy["reacquisition_consumed_at"] is None
+
+    core.engine = await restart(core)                          # crash: no replacement generation yet
+    for _ in range(6):
+        core.provider.responses.append(_observation(core, "box2", CURRENT_MANIFEST, None))
+        await core.engine.tick()
+        for attempt in await core.repository.executions(first.id):
+            if attempt.state not in {"succeeded", "failed", "absent", "cancelled"}:
+                core.executor.finish(attempt.handle)
+        core.clock.advance(5)
+    assert (await core.repository.get(first.id)).state == TransferState.COMPLETED
+    settled_generations = await generation_rows(first.id)
+    settled_artifacts = await artifacts_of(first.id)
+    assert [row["continuity_reason"] for row in settled_generations] == [None, "legacy_compatibility_reconstruction"]
+
+    core.engine = await restart(core)                          # crash after the crossing committed
+    import aiosqlite
+    from db.migrations.v113_decomposition_generations import (
+        backfill_decomposition_generations,
+    )
+    async with aiosqlite.connect(database.DB_PATH) as raw:
+        await backfill_decomposition_generations(raw)          # a later start's upgrade is a no-op
+    for _ in range(4):
+        await core.engine.tick()
+        core.clock.advance(30)
+    assert await generation_rows(first.id) == settled_generations
+    assert await artifacts_of(first.id) == settled_artifacts

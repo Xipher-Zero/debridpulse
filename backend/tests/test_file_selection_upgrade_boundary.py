@@ -307,7 +307,8 @@ async def test_new_submission_without_selection_mode_is_plain_all_no_generation(
         await core.engine.resolve_pending()
         core.clock.advance(1)
 
-    assert await _selection_row(transfer.id) is None              # no interactive generation
+    row = await _selection_row(transfer.id)                       # no interactive generation:
+    assert (row["interactive"], row["decision"]) == (0, "all")    # its decomposition generation is ALL
     async with database.get_db() as db:
         events = await db.fetchall(
             "SELECT 1 FROM application_events WHERE transfer_id=? AND kind='file_selection_available'",

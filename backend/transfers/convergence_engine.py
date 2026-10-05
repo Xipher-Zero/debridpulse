@@ -1780,6 +1780,9 @@ class TransferEngine(_QualifiedTransferEngine):
                 if not await self.repository.state(transfer_id, TransferState.ACCEPTED,
                                                    operator=True, expected_epoch=transfer.epoch):
                     return False
+                # The semantic point that knows terminal work was reopened for
+                # reacquisition; its generation owner records that durably.
+                await self.repository.record_terminal_reacquisition(transfer_id, self.clock())
                 for artifact_id in artifact_ids:
                     artifact = await self._current_artifact(transfer_id, artifact_id)
                     if artifact is None:

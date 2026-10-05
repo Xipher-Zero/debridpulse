@@ -64,7 +64,9 @@ def test_normalize_selection_mode_defaults_and_validation():
 @pytest.mark.asyncio
 async def test_default_all_never_creates_a_selection_generation_or_offer(api):
     transfer_id = await _submit(api, selection_mode="all")
-    assert await _selection_row(api, transfer_id) is None
+    # Its decomposition generation is decided ALL at creation: no selection.
+    row = await _selection_row(api, transfer_id)
+    assert (row["interactive"], row["decision"], row["manifest_id"]) == (0, "all", None)
     assert await api.repository.file_selection_presentation(transfer_id, now=api.clock()) is None
     assert await api.repository.active_file_selection_offers(now=api.clock()) == []
     import db.database as database

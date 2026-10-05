@@ -1201,6 +1201,12 @@ class Transfer:
     # reconstruction), as a percentage; ``None`` when there is none. Activity
     # only -- ``progress`` alone is completion.
     active_execution_progress: float | None = None
+    # The collection folder its members live under, frozen at its first
+    # committed fan-out (``None`` before); never a later provider-reported
+    # name. ``collection_root_conflict``: existing placement implied no single
+    # folder, so none is assumed.
+    collection_root: str | None = None
+    collection_root_conflict: bool = False
 
 
 @dataclass(frozen=True)

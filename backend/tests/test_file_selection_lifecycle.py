@@ -1347,12 +1347,13 @@ async def test_an_alternate_binding_never_inherits_a_predecessor_transfers_subse
 
 @pytest.mark.asyncio
 async def test_all_mode_bound_by_an_alternate_path_still_materializes_everything(hold_core):
-    """Control: explicit ALL is untouched -- no generation, full fan-out."""
+    """Control: explicit ALL is untouched -- its decomposition generation is
+    decided ALL (never a selection), full fan-out."""
     core = hold_core
     b = await _engine_submit(core, selection_mode="all")
     await _bind_without_resolution(core, b)
     await core.engine.resolve_pending()
-    assert await _generations_of(b.id) == []
+    assert [(row["interactive"], row["decision"]) for row in await _generations_of(b.id)] == [(0, "all")]
     assert len(await _children_of(b.id)) == len(FILES6)
 
 

@@ -115,6 +115,13 @@ class TransferEngine(_RecoveryTransferEngine):
         attempt = None
         provider = None
         try:
+            if record.parent_id is not None and not await self.repository.member_generation_current(record):
+                # A member of a superseded, held or not yet committed
+                # decomposition generation is not resolved: its root's next
+                # fan-out advances it (or, held, nothing does) -- rebuilding it
+                # now would only produce work no generation authorizes.
+                await self.repository.poll_after(record.id, self.clock() + self.policy.resource_poll_interval)
+                return
             if record.parent_id is None and record.resource is None:
                 # Provider cleanup fence: a retired predecessor generation sharing
                 # this transfer's source fingerprint still has outstanding,
@@ -861,6 +868,14 @@ class TransferEngine(_RecoveryTransferEngine):
                     authorized = await self.repository.commit_selected_manifest(
                         record, entries, now=self.clock(),
                     )
+                    if authorized.held:
+                        # The new generation is not provably the established
+                        # decomposition: the root holds, nothing fans out, and
+                        # every member and file stays exactly as it is.
+                        await self.repository.poll_after(
+                            record.id, self.clock() + self.policy.resource_poll_interval,
+                        )
+                        return first_commitment
                     first_commitment = bool(getattr(authorized, "first_commitment", False))
                 else:
                     authorized = entries

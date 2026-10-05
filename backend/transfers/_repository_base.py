@@ -22,12 +22,13 @@ from transfers.cohorts import (
     _FAILED_CONTRIBUTION_DISPOSITION, _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
 )
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.filesystem import safe_name
 from transfers.input_required import public_challenge
 from transfers.mirrors import logical_key
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, CleanupAuthority, ContinuationCapability, ContinuationPlan,
-    ContinuationStrategy, DeliveryKind, ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationResult,
-    OutcomeKind, Ownership, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
+    ContinuationStrategy, DeliveryKind, ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationAdmission,
+    MaterializationAdmissionKind, MaterializationResult, OutcomeKind, Ownership, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
     ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
     TransferState, TransferProgress, new_identity,
 )
@@ -974,7 +975,8 @@ class TransferRepository:
                         display_hash, str(row["source"] or ""), int(row["priority"] or 0),
                         bool(row.get("paused_intent")), None if row["progress"] is None else float(row["progress"]),
                         codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0),
-                        active_execution_percentage(row.get("execution_completed"), row.get("execution_total")))
+                        active_execution_percentage(row.get("execution_completed"), row.get("execution_total")),
+                        row.get("collection_root") or None, bool(row.get("collection_root_conflict")))
 
     async def get(self, transfer_id: int) -> Transfer | None:
         async with get_db() as db:
@@ -2447,12 +2449,29 @@ class TransferRepository:
         detach-and-requeue below. A child whose old execution is already
         terminal (or absent) is retired and advanced immediately, since
         there is nothing left to orphan.
+
+        A generation fans out only once it is committed with continuity
+        ``proven``; anything else changes nothing here. The transfer's
+        collection folder is frozen in this transaction the first time its
+        members are fanned out, from the name it has now: from then on a member
+        target never follows a later provider-reported name.
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            parent = await db.fetchone("SELECT status FROM torrents WHERE id=?", (record.transfer_id,))
+            parent = await db.fetchone("SELECT status,name FROM torrents WHERE id=?", (record.transfer_id,))
             if not parent or parent["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 return
+            if selection_id is not None:
+                generation = await db.fetchone(
+                    "SELECT manifest_committed_at,continuity FROM transfer_file_selections WHERE id=?", (selection_id,))
+                if not generation or generation["manifest_committed_at"] is None or generation["continuity"] != "proven":
+                    await db.rollback()
+                    raise TransferError(NormalizedError(
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
+            await db.execute(
+                """UPDATE torrents SET collection_root=? WHERE id=? AND collection_root IS NULL
+                   AND COALESCE(collection_root_conflict,0)=0""",
+                (safe_name(parent["name"] or ""), record.transfer_id))
             missing_error = NormalizedError(Domain.RESOLUTION, Category.SOURCE_NOT_FOUND, Stage.RESOLUTION)
             # One child per request of every member: a member's alternates are
             # sibling children of the same member, each its own entry.
@@ -2460,7 +2479,7 @@ class TransferRepository:
                          replace(entry, request=request, alternates=()))
                         for entry in entries for alternate, request in manifest_member_requests(entry)]
             identities = [identity for identity, _entry in children]
-            await self._retire_superseded_children(db, record, identities, missing_error)
+            deferred = await self._retire_superseded_children(db, record, identities, missing_error)
             for ordinal, (identity, entry) in enumerate(children):
                 await db.execute("""INSERT OR IGNORE INTO transfer_requests(id,transfer_id,parent_id,ordinal,payload,metadata,materialized_selection_id)
                     VALUES(?,?,?,?,?,?,?)""",
@@ -2479,6 +2498,7 @@ class TransferRepository:
                         )
                         if live_execution:
                             advance_selection_id = None
+                            deferred = True
                         else:
                             artifact_row = await db.fetchone(
                                 "SELECT id, execution_attempt_id FROM download_files WHERE request_id=?", (identity,),
@@ -2497,12 +2517,17 @@ class TransferRepository:
                 await db.execute("""UPDATE transfer_requests SET payload=?,metadata=?,state=CASE WHEN state='waiting_parent' THEN 'pending' ELSE state END,
                     materialized_selection_id=COALESCE(?,materialized_selection_id)
                     WHERE id=?""", (codec.dump(entry.request), codec.dump(entry), advance_selection_id, identity))
-            await db.execute("UPDATE transfer_requests SET state='resolved',error=NULL WHERE id=?", (record.id,))
+            # A member left to a live writer of a superseded generation is not
+            # yet part of this fan-out: the root keeps waiting, so its next
+            # ordinary observation repeats this (idempotent) fan-out once the
+            # writer is retired, rather than leaving that member behind.
+            await db.execute("UPDATE transfer_requests SET state=?,retry_at=0,error=NULL WHERE id=?",
+                             ("waiting" if deferred else "resolved", record.id))
             await db.commit()
 
     @staticmethod
     async def _retire_superseded_children(db, record: RequestRecord, identities: list[str],
-                                          missing_error: NormalizedError) -> None:
+                                          missing_error: NormalizedError) -> bool:
         """Make the supplied entries authoritative for this parent's child slots.
 
         A member's canonical identity is ``uuid5(parent, relative_path)``, so a
@@ -2542,6 +2567,8 @@ class TransferRepository:
         manifest pass then completes the fan-out. This is the same handshake
         the generation-advance branch above already relies on.
 
+        Returns whether a live child was left in place for the next pass.
+
         Nothing here inspects a path. Membership of the current generation is
         decided by identity alone, so this converges any superseded coordinate
         model rather than one historical path shape.
@@ -2551,7 +2578,8 @@ class TransferRepository:
         current = set(identities)
         superseded = [child for child in existing if child["id"] not in current]
         if not superseded:
-            return
+            return False
+        deferred = False
         highest = max([int(child["ordinal"] or 0) for child in existing] + [len(identities) - 1])
         for child in superseded:
             live = await db.fetchone(
@@ -2559,6 +2587,7 @@ class TransferRepository:
                     WHERE f.request_id=? AND e.state IN ('prepared','queued','running','paused','unknown')""",
                 (child["id"],))
             if live:
+                deferred = True
                 continue
             established = await db.fetchone(
                 "SELECT id FROM download_files WHERE request_id=?", (child["id"],))
@@ -2587,6 +2616,7 @@ class TransferRepository:
             if int(child["ordinal"] or 0) < len(identities):
                 highest += 1
                 await db.execute("UPDATE transfer_requests SET ordinal=? WHERE id=?", (highest, child["id"]))
+        return deferred
 
     async def resource_observation(self, transfer_id: int, resource: ProviderResource, state: ResourceState):
         async with get_db() as db:
@@ -2667,6 +2697,50 @@ class TransferRepository:
                         AND e.state IN ('prepared','queued','running','paused','unknown')))""")
         return {str(row["local_path"]).casefold() for row in rows}
 
+    @classmethod
+    async def _decomposition_admission(cls, db, artifact) -> MaterializationAdmission:
+        """THE decomposition-generation admission of one artifact, inside the
+        caller's session (``materialization_authorization`` and
+        ``prepare_execution`` both decide through it).
+
+        Only a manifest member is governed: its stamped generation (the one
+        its fan-out committed) is runnable only when it is, conjunctively,
+
+        * its root's CURRENT generation -- exactly the generation of the
+          root's CURRENT provider-resource binding, never inferred from
+          creation order -- and
+        * committed with continuity ``proven``.
+
+        A root rebound elsewhere (whether or not the new binding's generation
+        has opened yet) or holding no binding at all makes the stamp STALE: a
+        stamp is no authority by itself after another rebind. A current
+        generation not yet committed, or held, is HOLD. A legacy member
+        carrying no stamp is judged by its root's current generation, if any;
+        with none it is ungoverned."""
+        row = await db.fetchone(
+            "SELECT parent_id, materialized_selection_id FROM transfer_requests WHERE id=?", (artifact.request_id,))
+        if not row or not row["parent_id"]:
+            return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+        root_id = row["parent_id"]
+        root = await db.fetchone("SELECT resource FROM transfer_requests WHERE id=?", (root_id,))
+        root_resource = codec.resource(codec.load(root["resource"])) if root and root["resource"] else None
+        binding = (await cls._resolve_binding(db, artifact.transfer_id, root_resource.id)
+                   if root_resource is not None else None)
+        current = (await db.fetchone(
+            "SELECT * FROM transfer_file_selections WHERE request_id=? AND provider_resource_id=?",
+            (root_id, binding)) if binding is not None else None)
+        stamp = row["materialized_selection_id"]
+        if not stamp:
+            if current is None:
+                return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
+            stamp = current["id"]
+        if current is None or str(current["id"]) != str(stamp):
+            return MaterializationAdmission(MaterializationAdmissionKind.STALE,
+                                            authority_generation=current["id"] if current else None)
+        if current["manifest_committed_at"] is None or current["continuity"] != "proven":
+            return MaterializationAdmission(MaterializationAdmissionKind.HOLD, authority_generation=current["id"])
+        return MaterializationAdmission(MaterializationAdmissionKind.PROCEED, authority_generation=current["id"])
+
     async def prepare_execution(self, artifact: Artifact, handle: ExecutionHandle, *, from_input_required: bool = False,
                                 target_initially_absent: bool | None = None,
                                 continuation: ContinuationPlan | None = None) -> bool:
@@ -2680,7 +2754,13 @@ class TransferRepository:
         current material generation (a stale plan admits nothing), everything
         the plan does not retain is reclassified out of VALID, and the attempt
         becomes the next writer generation. Only one writer can hold that
-        generation, because only a detached artifact is admitted here."""
+        generation, because only a detached artifact is admitted here.
+
+        And THE decomposition-generation admission, decided in the same
+        transaction: a member is admitted only while its generation is its
+        root's current, proven, committed generation on the root's current
+        binding (``_decomposition_admission``) -- whatever path asked, no
+        stale or held generation acquires a writer."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone("""SELECT f.* FROM download_files f JOIN torrents t ON t.id=f.torrent_id
@@ -2689,6 +2769,9 @@ class TransferRepository:
                 AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(p.paused,0)=0""",
                 (artifact.id, "input_required" if from_input_required else "queued"))
             if not row:
+                return False
+            if (await self._decomposition_admission(db, artifact)).kind != MaterializationAdmissionKind.PROCEED:
+                await db.rollback()
                 return False
             writer_generation = None
             if continuation is not None:

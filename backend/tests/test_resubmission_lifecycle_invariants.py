@@ -1178,11 +1178,15 @@ async def test_no_control_action_converts_an_undecided_interactive_root_into_all
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_explicit_all_never_opens_a_generation_and_materializes_everything(core):
+async def test_explicit_all_never_opens_an_interactive_generation_and_materializes_everything(core):
+    """G1 (TASK3d-3a0): the decomposition owns a durable generation, decided ALL
+    at creation and never a selection -- no window, no offer, full fan-out."""
     core.provider.responses.append(core.provider.parcel("box", state=ResourceState.AVAILABLE, files=FILES))
     t = await core.engine.submit((parcel_request("fp-all", mode="all"),), name="T")
     await core.engine.resolve_pending()
-    assert await generations(t.id) == []
+    assert [(row["interactive"], row["decision"], row["manifest_id"], row["continuity"])
+            for row in await generations(t.id)] == [(0, "all", None, "proven")]
+    assert await core.repository.file_selection_presentation(t.id, now=core.clock()) is None
     assert len(await children(t.id)) == 3
 
 
@@ -1225,11 +1229,15 @@ async def test_generic_core_guard_creates_or_holds_and_never_infers_all(core):
         available=True, file_manifest=None, now=core.clock())
     assert deleted.held and not deleted.governed
 
+    # An ALL request is never left ungoverned either: its generation is opened
+    # and decided ALL explicitly (never inferred from absence), and never offered.
     plain = await core.engine.submit((parcel_request("fp-plain2", mode="all"),), name="P")
     plain_record = (await core.repository.requests(plain.id))[0]
-    ungoverned = await core.repository.ensure_selection_generation(
+    await core.repository.resource_observation(plain.id, resource, ResourceState.AVAILABLE)
+    decided = await core.repository.ensure_selection_generation(
         plain_record, core.provider.descriptor.id, resource, available=True, file_manifest=None, now=core.clock())
-    assert not ungoverned.required and await generations(plain.id) == []
+    assert decided.governed and not decided.held
+    assert [(row["interactive"], row["decision"]) for row in await generations(plain.id)] == [(0, "all")]
 
 
 @pytest.mark.asyncio

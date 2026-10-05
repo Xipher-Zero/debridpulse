@@ -716,12 +716,16 @@ async def test_generation_is_isolated_per_transfer_and_binding_for_an_identical_
 
 
 @pytest.mark.asyncio
-async def test_selection_policy_has_one_reader_a_default_all_request_with_no_generation_is_ungoverned(repo):
+async def test_selection_policy_has_one_reader_a_default_all_request_is_decided_all_and_never_offered(repo):
     seed = await seed_window(transfer_hash="d" * 40)
-    ungoverned = await repo.ensure_selection_generation(
+    # Every binding of a manifest root owns its decomposition generation; a
+    # default-ALL request's is decided ALL at creation and is no selection.
+    default_all = await repo.ensure_selection_generation(
         seed.record, seed.provider_id, seed.resource, available=True, file_manifest=None, now=1000.0)
-    assert not ungoverned.required and not ungoverned.governed and not ungoverned.held
-    assert await _selection_rows(seed.transfer_id) == []
+    assert default_all.governed and not default_all.held
+    (row,) = await _selection_rows(seed.transfer_id)
+    assert (row["interactive"], row["decision"], row["decision_reason"]) == (0, "all", "default_materialization")
+    assert await repo.file_selection_presentation(seed.transfer_id, now=1000.0) is None
 
     governed = await repo.ensure_selection_generation(
         _as_interactive(seed.record), seed.provider_id, seed.resource, available=True, file_manifest=None, now=1000.0)

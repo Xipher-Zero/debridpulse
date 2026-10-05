@@ -52,6 +52,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from types import SimpleNamespace
 
 from db.database import get_db
 from transfers import codec
@@ -266,10 +267,14 @@ class ManifestCommitResult(tuple):
     facts read the extra attributes.
     """
 
-    def __new__(cls, entries, *, first_commitment: bool, selection_id: str | None = None):
+    def __new__(cls, entries, *, first_commitment: bool, selection_id: str | None = None,
+                held: str | None = None):
         instance = super().__new__(cls, entries)
         instance.first_commitment = first_commitment
         instance.selection_id = selection_id
+        # The bounded reason this generation's continuity could not be proven:
+        # nothing was authorized and nothing may fan out. ``None`` otherwise.
+        instance.held = held
         return instance
 
 
@@ -1465,19 +1470,23 @@ class TransferRepository(_QualifiedTransferRepository):
         ``selection_mode`` whose request now deserializes with the default
         ``"all"``. In that second case a re-resolution onto a new provider
         resource stays interactive and opens a fresh generation for the new
-        binding, never inheriting the prior subset (specification section 13).
+        binding (specification section 13). Only an interactive generation says
+        so: every manifest root owns a decomposition generation, and one that
+        was decided ALL at creation never made the transfer interactive.
         """
         if getattr(record.request, "selection_mode", fs.SELECTION_MODE_ALL) == fs.SELECTION_MODE_INTERACTIVE:
             return True
         row = await db.fetchone(
-            "SELECT 1 FROM transfer_file_selections WHERE transfer_id=? LIMIT 1", (record.transfer_id,))
+            "SELECT 1 FROM transfer_file_selections WHERE transfer_id=? AND interactive=1 LIMIT 1",
+            (record.transfer_id,))
         return row is not None
 
     async def ensure_selection_generation(
         self, record, provider_id: str, resource, *, available: bool, file_manifest, now: float,
     ) -> SelectionAuthority:
-        """THE one owner of "a manifest-capable root that needs interactive
-        selection has its own current generation".
+        """THE one owner of "every binding of a manifest-capable root has its own
+        decomposition generation" -- and, for a root that needs interactive
+        selection, that generation is also its file selection.
 
         Called by the engine for every root resource binding and, as the
         fail-closed materialization guard, before every executable fan-out, so no
@@ -1487,62 +1496,75 @@ class TransferRepository(_QualifiedTransferRepository):
         preserved, never reset, and never inherited from another transfer (the
         generation is keyed on this request and this transfer's binding id).
 
-        Selection state is read from generation EXISTENCE only once one exists --
-        a settled ALL/EXPLICIT generation on a database that predates
-        ``selection_mode`` keeps governing regardless of the request's current
-        policy field. When selection is required but no generation exists, it is
-        created here (never inferred ALL); when it cannot be created the result is
-        ``held``, which callers must treat as "do not materialize".
+        A generation is never inferred: it is created here, interactive when
+        ``_selection_required`` says so and otherwise decided ALL at creation;
+        when it cannot be created the result is ``held``, which callers must
+        treat as "do not materialize". Repeated observation of the same binding
+        finds the same generation and changes nothing.
         """
         binding_id = await self.resource_binding_id(record.transfer_id, resource.id)
         async with get_db() as db:
             exists = await self._selection_generation(db, record.id, binding_id) is not None
-            required = exists or await self._selection_required(db, record)
-        if not required:
-            return SelectionAuthority()
+            interactive = await self._selection_required(db, record)
         if not exists and await self.begin_file_selection_window(
             record.id, record.transfer_id, binding_id, provider_id,
-            initially_available=available, now=now,
+            initially_available=available, now=now, interactive=interactive,
         ) is None:
             return SelectionAuthority(required=True)
         if file_manifest is not None:
             await self.record_file_manifest(record.id, binding_id, file_manifest, now=now)
-        await self._inherit_promoted_selection(record.id, binding_id, now)
+        await self._carry_predecessor_decision(record.id, binding_id, now)
         return SelectionAuthority(required=True, binding_id=binding_id)
 
     @staticmethod
-    async def _inherited_source(db, request_id: str, binding_id: str):
-        """The generation a promoted binding's generation carries forward: the
-        root's latest committed generation on another binding -- its
-        immediate predecessor, whatever it decided -- and only when that
-        predecessor was an explicit choice. A newer ALL is never skipped over
-        to resurrect an older subset, and predecessors committed at the same
-        instant are no determinable predecessor at all."""
+    async def _immediate_predecessor(db, request_id: str, binding_id: str) -> str | None:
+        """THE immediate committed predecessor of a new generation of this
+        root: its latest committed generation on another binding, whatever it
+        decided. Generations committed at the same instant are no determinable
+        predecessor at all. Recorded once, when the generation opens."""
         rows = await db.fetchall(
-            """SELECT id, decision, manifest_committed_at FROM transfer_file_selections
+            """SELECT id, manifest_committed_at FROM transfer_file_selections
                WHERE request_id=? AND provider_resource_id!=? AND manifest_committed_at IS NOT NULL
                ORDER BY manifest_committed_at DESC LIMIT 2""", (request_id, binding_id))
         if not rows or (len(rows) > 1 and rows[0]["manifest_committed_at"] == rows[1]["manifest_committed_at"]):
             return None
-        return rows[0] if rows[0]["decision"] == "explicit" else None
+        return rows[0]["id"]
 
-    async def _inherit_promoted_selection(self, request_id: str, binding_id: str, now: float) -> None:
-        """A root whose route took over a prepared backup (a promoted
-        binding) keeps the files the operator explicitly chose on its earlier
-        binding: the new generation is decided EXPLICIT (``INHERITED``) and
-        ``commit_selected_manifest`` proves that subset against the new
-        manifest with the one existing matcher, failing closed when it cannot.
-        Only an undecided, uncommitted generation of a promoted binding whose
-        root has such a committed subset is touched; every other replacement
-        keeps its fresh window."""
+    @staticmethod
+    async def _committed_predecessor(db, request_id: str, binding_id: str):
+        """The committed generation this binding's generation opened after
+        (its recorded ``predecessor_id``), or ``None``."""
+        row = await db.fetchone(
+            """SELECT p.* FROM transfer_file_selections s JOIN transfer_file_selections p ON p.id=s.predecessor_id
+               WHERE s.request_id=? AND s.provider_resource_id=? AND p.manifest_committed_at IS NOT NULL""",
+            (request_id, binding_id))
+        return row
+
+    @classmethod
+    async def _inherited_source(cls, db, request_id: str, binding_id: str):
+        """The explicit selection a new generation carries forward: its
+        immediate committed predecessor, only when that predecessor was an
+        explicit choice. A newer ALL is never skipped over to resurrect an
+        older subset, and nothing older than the immediate predecessor is ever
+        searched."""
+        predecessor = await cls._committed_predecessor(db, request_id, binding_id)
+        return predecessor if predecessor and predecessor["decision"] == "explicit" else None
+
+    async def _carry_predecessor_decision(self, request_id: str, binding_id: str, now: float) -> None:
+        """Any rebind that opens a new generation after a committed EXPLICIT
+        immediate predecessor carries that explicit subset (``INHERITED``);
+        ``commit_selected_manifest`` proves it against the new manifest with
+        the one existing matcher, failing closed when it cannot. Nothing older
+        than the immediate predecessor is ever read, so a newer ALL is never
+        skipped over to resurrect an older subset -- and an ALL predecessor is
+        not carried: such a generation keeps its own fresh selection window.
+        Only an undecided, uncommitted generation is touched."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             current = await self._selection_generation(db, request_id, binding_id)
-            promoted = await db.fetchone(
-                "SELECT 1 FROM standby_resources WHERE request_id=? AND binding_id=? AND promoted_at IS NOT NULL",
-                (request_id, binding_id))
+            predecessor = await self._committed_predecessor(db, request_id, binding_id)
             if (not current or current["decision"] != "pending" or current["manifest_committed_at"] is not None
-                    or not promoted or not await self._inherited_source(db, request_id, binding_id)):
+                    or not predecessor or predecessor["decision"] != "explicit"):
                 await db.rollback()
                 return
             await db.execute(
@@ -1553,29 +1575,18 @@ class TransferRepository(_QualifiedTransferRepository):
 
     @staticmethod
     async def _current_generation(db, transfer_id: int):
-        """The transfer's current selection generation: the newest one.
+        """The transfer's current selection generation: the newest interactive
+        one.
 
         A re-resolution onto a new provider resource always creates a strictly
         newer generation, so the newest row is the live selector; older
-        generations remain only as historical truth.
+        generations remain only as historical truth. A generation decided ALL
+        at creation was never a selection and is not one here.
         """
         return await db.fetchone(
-            """SELECT * FROM transfer_file_selections WHERE transfer_id=?
+            """SELECT * FROM transfer_file_selections WHERE transfer_id=? AND interactive=1
                ORDER BY created_at DESC, id DESC LIMIT 1""",
             (transfer_id,),
-        )
-
-    @staticmethod
-    async def _current_root_generation(db, transfer_id: int, request_id: str):
-        """One root request's current selection generation: the newest of ITS
-        generations. A re-resolution of that root onto a new provider resource
-        creates a strictly newer one; another root's generation -- a sibling
-        resolving later or still preparing -- is never a re-resolution of it.
-        """
-        return await db.fetchone(
-            """SELECT * FROM transfer_file_selections WHERE transfer_id=? AND request_id=?
-               ORDER BY created_at DESC, id DESC LIMIT 1""",
-            (transfer_id, request_id),
         )
 
     @classmethod
@@ -1626,7 +1637,7 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def begin_file_selection_window(
         self, request_id: str, transfer_id: int, provider_resource_id: str,
-        provider_id: str, *, initially_available: bool, now: float,
+        provider_id: str, *, initially_available: bool, now: float, interactive: bool = True,
     ):
         """Idempotently open the durable file-selection generation for
         (request, provider resource).
@@ -1644,6 +1655,10 @@ class TransferRepository(_QualifiedTransferRepository):
         factual initial-availability observation is captured once per
         generation. A later call, an application restart, or a re-resolution
         never resets any of these fields (``INSERT OR IGNORE``).
+
+        A non-``interactive`` generation is decided ALL at creation and never
+        offered. Every generation records its immediate committed predecessor
+        as it opens.
         """
         selection_id = fs.selection_identity(request_id, provider_resource_id)
         async with get_db() as db:
@@ -1662,15 +1677,21 @@ class TransferRepository(_QualifiedTransferRepository):
             # ``0.0`` while the grace has not started, an absolute deadline once
             # it has. It is retired as a submission-relative window and is never
             # read by the gate; the gate reads ``available_at``.
+            predecessor = await self._immediate_predecessor(db, request_id, provider_resource_id)
             await db.execute(
                 """INSERT OR IGNORE INTO transfer_file_selections(
                         id, request_id, transfer_id, provider_resource_id, provider_id,
-                        initially_available, manifest_wait_until, available_at, created_at, updated_at)
-                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
+                        initially_available, manifest_wait_until, available_at, created_at, updated_at,
+                        interactive, predecessor_id, decision, decision_reason, decision_at)
+                    VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (selection_id, request_id, transfer_id, provider_resource_id, str(provider_id),
                  int(bool(initially_available)),
                  fs.manifest_grace_deadline(now) if initially_available else 0.0,
-                 now if initially_available else None, now, now),
+                 now if initially_available else None, now, now,
+                 int(bool(interactive)), predecessor,
+                 "pending" if interactive else "all",
+                 None if interactive else str(fs.DecisionReason.DEFAULT_MATERIALIZATION),
+                 None if interactive else now),
             )
             row = await self._selection_generation(db, request_id, provider_resource_id)
             await db.commit()
@@ -2063,6 +2084,15 @@ class TransferRepository(_QualifiedTransferRepository):
         A confirmed explicit subset that can no longer be proven fails closed
         with a neutral ``RESOURCE_STATE_CONFLICT`` and never broadens to ALL.
 
+        Before a generation of a root that already fanned out is committed, its
+        authorized members must be exactly the root's established logical
+        decomposition (``fs.decomposition_continuity``), decided in this same
+        transaction: proven, the generation commits ``proven``; not proven, it
+        records ``held`` with the bounded reason and commits nothing, and the
+        result is empty with ``.held`` set -- nothing may fan out, supersede,
+        retarget or start. A held generation is re-proven on every later pass,
+        so a manifest the provider was still completing can still prove.
+
         ``manifest_committed_at`` marks that core has *authorized* materialization
         for this generation and frozen mutation. The child-request fan-out
         (``repository.manifest``) is a following idempotent transaction; a crash
@@ -2096,18 +2126,25 @@ class TransferRepository(_QualifiedTransferRepository):
                 return ManifestCommitResult(full_entries, first_commitment=False)
             selection_id = row["id"]
             already = row["manifest_committed_at"] is not None
+            if already and row["continuity"] == str(fs.Continuity.HELD):
+                await db.rollback()
+                return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
+                                            held=str(row["continuity_reason"] or fs.Continuity.HELD))
             if str(row["decision"]) in ("pending", "all"):
                 authorized = full_entries
                 if not already:
+                    held, provenance = await self._continuity(db, record, row, authorized, now)
+                    if held:
+                        return ManifestCommitResult((), first_commitment=False, selection_id=selection_id, held=held)
                     reason = row["decision_reason"] or str(fs.DecisionReason.DEFAULT_MATERIALIZATION)
                     await db.execute(
                         """UPDATE transfer_file_selections
                            SET decision='all',
                                decision_reason=COALESCE(decision_reason, ?),
                                decision_at=COALESCE(decision_at, ?),
-                               manifest_committed_at=?, updated_at=?
+                               manifest_committed_at=?, continuity=?, continuity_reason=?, updated_at=?
                            WHERE id=?""",
-                        (reason, now, now, now, row["id"]),
+                        (reason, now, now, str(fs.Continuity.PROVEN), provenance, now, row["id"]),
                     )
             else:
                 inherited = str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)
@@ -2138,6 +2175,11 @@ class TransferRepository(_QualifiedTransferRepository):
                     raise TransferError(NormalizedError(
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
                     )) from exc
+                provenance = None
+                if not already:
+                    held, provenance = await self._continuity(db, record, row, authorized, now)
+                    if held:
+                        return ManifestCommitResult((), first_commitment=False, selection_id=selection_id, held=held)
                 if inherited and not already and row["manifest_id"]:
                     # The carried subset, recorded against this generation's own
                     # manifest so it reads like any explicit selection.
@@ -2150,94 +2192,122 @@ class TransferRepository(_QualifiedTransferRepository):
                             (row["id"], row["manifest_id"], entry_id))
                 if not already:
                     await db.execute(
-                        "UPDATE transfer_file_selections SET manifest_committed_at=?, updated_at=? WHERE id=?",
-                        (now, now, row["id"]),
+                        """UPDATE transfer_file_selections SET manifest_committed_at=?, continuity=?,
+                           continuity_reason=?, updated_at=? WHERE id=?""",
+                        (now, str(fs.Continuity.PROVEN), provenance, now, row["id"]),
                     )
             await db.commit()
         return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id)
 
-    async def materialization_authorization(self, artifact) -> MaterializationAdmission:
-        """Universal execution-admission decision for one artifact's dispatch
-        (DP 1.0.12 canonical architecture correction, Workstream A).
+    # The one compatibility crossing a pre-3a0 decomposition may make into the
+    # generation model (see ``_continuity``). Recorded as the committed
+    # generation's continuity provenance.
+    COMPATIBILITY_RECONSTRUCTION = "legacy_compatibility_reconstruction"
+    _COMPATIBLE_DISCONTINUITIES = frozenset({"established_member_missing", "unexplained_member"})
 
-        Derived entirely from the existing durable file-selection generation
-        state this module already owns -- never a transfer-global mutable
-        ``selection_authorized`` flag. An artifact materialized as a
-        file-selection child is bound to its ROOT request's resource-binding
-        generation (file-selection state is keyed on ``(root request id,
-        binding id)`` -- see :meth:`begin_file_selection_window`), so a child
-        artifact's own ``transfer_requests.resource`` (if any -- children
-        resolve their own executable candidates independently) is never
-        consulted here; only its root ancestor's binding decides admission.
+    async def _continuity(self, db, record, row, authorized, now: float) -> tuple[str | None, str | None]:
+        """Inside ``commit_selected_manifest``'s transaction: may this
+        generation of a root that already fanned out commit? Returns
+        ``(held_reason, provenance)``.
 
-        Returns ``PROCEED`` with no authority generation when no selection
-        generation applies (never-interactive request, or a resource not yet
-        durably bound at all -- ordinary early-lifecycle state, not a stale
-        artifact). Returns ``HOLD`` while the generation exists but has not
-        yet been durably committed (``manifest_committed_at IS NULL`` --
-        pending decision, still-open decision hold, or a not-yet-durable
-        commit race). Returns ``STALE`` when the artifact's request is bound
-        to a selection generation that is no longer its root's current
-        one -- a later re-resolution of that root onto a new provider resource
-        (specification section 3.1, acceptance test D) superseded it, so any
-        executable work already materialized under it must not dispatch or
-        resume; the caller retires it through existing canonical machinery
-        and lets ordinary re-resolution reconstruct current authorized work.
-        """
+        The rule is strict continuity: ``authorized`` must be exactly the
+        root's established decomposition (``fs.decomposition_continuity``) --
+        every member the root's earlier fan-out created that no generation
+        superseded. Proven (or nothing established yet): ``(None, None)``.
+
+        One compatibility crossing exists, for a decomposition persisted before
+        decomposition-generation authority existed. It needs ALL of: the
+        immediate committed predecessor is ``legacy_established`` (a pre-3a0
+        compatibility lineage, never a claim about which coordinate model made
+        it); that predecessor carries an unconsumed terminal reacquisition;
+        the discontinuity is purely a different member set (no member at a
+        retained coordinate has an incompatible size, so no retained
+        coordinate's material is overwritten -- a member whose coordinate is
+        not in the new set leaves its material where it is, never adoptable at
+        a current coordinate); and no established member's writer is still
+        live. Then the existing generational supersede of the fan-out owner
+        reconstructs current executable state under the frozen collection
+        root, the generation commits as ordinary current-model state
+        (``legacy_established`` is never carried), and the transition is
+        consumed here, in the same transaction -- so it is never replayed.
+
+        Anything else is recorded ``held`` with the bounded reason (the
+        transaction commits only that) and nothing changes."""
+        established: dict[str, int] = {}
+        for child in await db.fetchall(
+                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
+            entry = codec.load(child["metadata"], {}) or {}
+            path = str(entry.get("relative_path") or "")
+            if path:
+                established[path] = max(established.get(path, 0), int(entry.get("expected_bytes") or 0))
+        reason = fs.decomposition_continuity(list(established.items()), tuple(authorized)) if established else None
+        if reason is None:
+            return None, None
+        predecessor = await self._committed_predecessor(db, record.id, row["provider_resource_id"])
+        if (predecessor is not None and predecessor["legacy_established"]
+                and predecessor["reacquired_at"] is not None and predecessor["reacquisition_consumed_at"] is None
+                and reason in self._COMPATIBLE_DISCONTINUITIES and authorized):
+            live = await db.fetchone(
+                """SELECT 1 FROM transfer_requests c JOIN download_files f ON f.request_id=c.id
+                   JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                   WHERE c.parent_id=? AND e.state IN ('prepared','queued','running','paused','unknown')""",
+                (record.id,))
+            if live:
+                reason = "compatibility_awaits_writer_retirement"
+            else:
+                await db.execute("UPDATE transfer_file_selections SET reacquisition_consumed_at=?,updated_at=? "
+                                 "WHERE id=?", (now, now, predecessor["id"]))
+                return None, self.COMPATIBILITY_RECONSTRUCTION
+        await db.execute(
+            """UPDATE transfer_file_selections SET continuity=?, continuity_reason=?, updated_at=?
+               WHERE id=? AND manifest_committed_at IS NULL""",
+            (str(fs.Continuity.HELD), reason, now, row["id"]))
+        await db.commit()
+        return reason, None
+
+    async def record_terminal_reacquisition(self, transfer_id: int, now: float) -> None:
+        """Completed terminal work was reopened for reacquisition: record it,
+        durably, on the generation currently governing each of the transfer's
+        roots -- the generation whose successor that reacquisition opens. It
+        survives any restart until that successor commits (which consumes it)
+        and grants nothing on its own (``_continuity``)."""
         async with get_db() as db:
-            row = await db.fetchone(
-                "SELECT id, parent_id, materialized_selection_id FROM transfer_requests WHERE id=?",
-                (artifact.request_id,),
-            )
-            if not row or not row["parent_id"]:
-                # No file-selection child relationship applies to this
-                # artifact's own request at all (a root artifact never
-                # materializes directly while a generation governs it -- see
-                # ``TransferRepository.manifest``'s ``selection_id`` stamp;
-                # only children carry one).
-                return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
-            root_id = row["parent_id"]
-            generation = None
-            if row["materialized_selection_id"]:
-                generation = await db.fetchone(
-                    "SELECT * FROM transfer_file_selections WHERE id=?",
-                    (row["materialized_selection_id"],),
-                )
-            if generation is None:
-                # Legacy row materialized before ``materialized_selection_id``
-                # existed (pre-migration data): best-effort fall back to the
-                # root's CURRENTLY bound resource. Correct for the ordinary
-                # case; a root re-resolved AGAIN after this migration can no
-                # longer be perfectly traced for a row this old -- a narrow,
-                # documented legacy-data limitation distinct from the durable
-                # (rebind-proof) path every row materialized from here on
-                # takes.
-                root_row = await db.fetchone(
-                    "SELECT resource FROM transfer_requests WHERE id=?", (root_id,),
-                )
-                root_resource = codec.resource(codec.load(root_row["resource"])) if root_row else None
-                if root_resource is None:
-                    return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
-                binding_id = await self._resolve_binding(db, artifact.transfer_id, root_resource.id)
-                if not binding_id:
-                    return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
-                generation = await self._selection_generation(db, root_id, binding_id)
-            if not generation:
-                return MaterializationAdmission(MaterializationAdmissionKind.PROCEED)
-            if generation["manifest_committed_at"] is None:
-                return MaterializationAdmission(
-                    MaterializationAdmissionKind.HOLD, authority_generation=generation["id"],
-                )
-            # Superseded only by a newer generation of the SAME root: each root
-            # of a transfer owns its own generations.
-            current = await self._current_root_generation(db, artifact.transfer_id, generation["request_id"])
-            if current is not None and str(current["id"]) != str(generation["id"]):
-                return MaterializationAdmission(
-                    MaterializationAdmissionKind.STALE, authority_generation=current["id"],
-                )
-            return MaterializationAdmission(
-                MaterializationAdmissionKind.PROCEED, authority_generation=generation["id"],
-            )
+            await db.execute("BEGIN IMMEDIATE")
+            for root in await db.fetchall(
+                    "SELECT id,resource FROM transfer_requests WHERE transfer_id=? AND parent_id IS NULL", (transfer_id,)):
+                resource = codec.resource(codec.load(root["resource"])) if root["resource"] else None
+                binding = await self._resolve_binding(db, transfer_id, resource.id) if resource else None
+                if binding:
+                    await db.execute(
+                        """UPDATE transfer_file_selections SET reacquired_at=?,reacquisition_consumed_at=NULL,
+                           updated_at=? WHERE request_id=? AND provider_resource_id=?""",
+                        (now, now, root["id"], binding))
+            await db.commit()
+
+    async def materialization_authorization(self, artifact) -> MaterializationAdmission:
+        """Universal execution-admission decision for one artifact's dispatch:
+        whether its decomposition generation may run now. ``PROCEED`` (no
+        generation applies, or the member's generation is its root's current,
+        proven, committed generation on the root's current binding), ``HOLD``
+        (that generation is not yet committed, or its continuity is held) or
+        ``STALE`` (a newer generation, or another or no binding, superseded it:
+        the caller retires its writer through the existing canonical machinery
+        and lets ordinary re-resolution reconstruct current work). Decided by
+        the one owner, ``_decomposition_admission``, which ``prepare_execution``
+        also decides through inside its admitting transaction."""
+        async with get_db() as db:
+            return await self._decomposition_admission(db, artifact)
+
+    async def member_generation_current(self, record) -> bool:
+        """Whether a manifest member may be resolved now: its generation is its
+        root's current, proven, committed generation (the same decision as
+        ``materialization_authorization``). A member of a superseded, held or
+        not yet committed generation waits for its root's fan-out to advance it
+        -- resolving it would only rebuild work no generation authorizes."""
+        async with get_db() as db:
+            admission = await self._decomposition_admission(
+                db, SimpleNamespace(request_id=record.id, transfer_id=record.transfer_id))
+        return admission.kind == MaterializationAdmissionKind.PROCEED
 
     async def file_selection_presentation(self, transfer_id: int, *, now: float):
         """Safe core-only read model for one transfer's file selection.

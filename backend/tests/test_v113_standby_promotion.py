@@ -374,15 +374,22 @@ async def test_a_subset_that_cannot_be_completely_proven_fails_closed(tmp_path, 
     assert (await generation_of(repository, record))["manifest_committed_at"] is None
 
 
-async def test_a_binding_that_was_not_promoted_keeps_its_fresh_window(tmp_path, monkeypatch):
+async def test_any_rebind_carries_the_immediate_explicit_subset_promoted_or_not(tmp_path, monkeypatch):
+    """TASK3d-3a0 D2: the trigger is any resource rebind that opens a new
+    decomposition generation, not only a promoted backup -- the subset is
+    carried exactly as a promoted one, through the same proof."""
     repository, _engine, record, now = await explicit_earlier_generation(tmp_path, monkeypatch, promoted=False)
     await repository.ensure_selection_generation(record, "torbox", record.resource, available=True,
                                                  file_manifest=entries(*EARLIER), now=now)
     generation = await generation_of(repository, record)
-    assert (generation["decision"], generation["decision_reason"]) == ("pending", None)
+    assert (generation["decision"], generation["decision_reason"]) == ("explicit", "inherited")
+    authorized = await repository.commit_selected_manifest(record, executable(*EARLIER), now=now)
+    assert [entry.relative_path for entry in authorized] == ["Show/b.mkv", "Show/d.mkv"]
 
 
 async def test_without_an_earlier_explicit_subset_nothing_is_inherited(tmp_path, monkeypatch):
+    """An ALL predecessor is not carried (TASK3d-3a0 B): the new generation
+    keeps its own fresh selection window, exactly as TASK3c left it."""
     repository, _engine, record, now = await explicit_earlier_generation(tmp_path, monkeypatch, decide="all")
     await repository.ensure_selection_generation(record, "torbox", record.resource, available=True,
                                                  file_manifest=entries(*EARLIER), now=now)
@@ -393,17 +400,22 @@ async def test_without_an_earlier_explicit_subset_nothing_is_inherited(tmp_path,
 
 async def committed_generation(repository, transfer, root, resource, provider_id, chosen, now):
     """One committed generation of ``root`` on ``resource``: explicit over
-    ``chosen`` paths, or ALL when ``chosen`` is None."""
+    ``chosen`` paths, or ALL when ``chosen`` is None -- decided as stated
+    whatever it would have carried (an earlier-decided or legacy generation)."""
     from db.database import get_db
     await repository.resource_observation(transfer.id, resource, ResourceState.AVAILABLE)
     record = replace(root, resource=resource)
     await repository.ensure_selection_generation(record, provider_id, resource, available=True,
                                                  file_manifest=entries(*EARLIER), now=now)
     binding = await repository.resource_binding_id(transfer.id, resource.id)
+    async with get_db() as db:
+        generation = await db.fetchone("SELECT id,manifest_id FROM transfer_file_selections WHERE "
+                                       "provider_resource_id=?", (binding,))
+        await db.execute("DELETE FROM transfer_file_selection_entries WHERE selection_id=?", (generation["id"],))
+        await db.execute("UPDATE transfer_file_selections SET decision='pending',decision_reason=NULL,decision_at=NULL "
+                         "WHERE id=?", (generation["id"],))
+        await db.commit()
     if chosen is not None:
-        async with get_db() as db:
-            generation = await db.fetchone("SELECT manifest_id FROM transfer_file_selections WHERE "
-                                           "provider_resource_id=?", (binding,))
         result = await repository.confirm_file_selection(
             transfer.id, generation["manifest_id"], [fs.entry_identity(binding, path) for path in chosen], now=now)
         assert result.outcome == fs.SelectionOutcome.CONFIRMED
