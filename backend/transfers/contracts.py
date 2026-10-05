@@ -9,7 +9,7 @@ from transfers.applicability import ProviderApplicability
 from transfers.entitlement import ProviderEntitlements
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    AvailabilityState, CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    ActiveCapacity, AvailabilityState, CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -133,6 +133,17 @@ class SpeculativePreparation(Protocol):
     eligible (``IntegrationRegistry.speculative_preparation_allowed``)."""
 
     def speculative_preparation_allowed(self, request: TransferRequest) -> bool: ...
+
+
+@runtime_checkable
+class ActiveCapacitySource(Protocol):
+    """Optional: the provider's concurrent active-resource capacity for
+    ``request``'s class (``ActiveCapacity``), read without creating anything.
+    ``None`` says the class has no such capacity at this provider. Core uses
+    it only to keep backups out of a full provider and to let primary work
+    reclaim the slots its own backups hold -- never to route."""
+
+    async def active_capacity(self, request: TransferRequest) -> ActiveCapacity | None: ...
 
 
 @runtime_checkable

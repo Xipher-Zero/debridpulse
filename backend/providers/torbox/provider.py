@@ -17,7 +17,7 @@ import re
 import time
 from urllib.parse import urlsplit
 
-from providers.torbox.account import refused_family
+from providers.torbox.account import active_slot_maximum, refused_family
 from providers.torbox.client import (
     LIST_PAGE_LIMIT, TORRENT, USENET, WEBDL, TorBoxAPIError, TorBoxService, member_address, member_source_host,
     parse_member_address,
@@ -34,7 +34,7 @@ from transfers.errors import (
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    BITTORRENT_REQUEST_KINDS, AvailabilityState, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    BITTORRENT_REQUEST_KINDS, ActiveCapacity, AvailabilityState, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry, SourceIdentity, TransferCandidate,
     TransferOutcome, TransferRequest,
@@ -79,11 +79,13 @@ class TorBoxProvider:
     applicability = ProviderApplicability(specialized=True, readiness=ApplicabilityReadiness.UNRESOLVED)
 
     def __init__(self, client: TorBoxService, *, usenet: bool = False, staged_input=None,
-                 clock=time.time, prepare_backup_torrents: bool = False):
+                 clock=time.time, prepare_backup_torrents: bool = False,
+                 max_active_torrents: int | None = None):
         self.client = client
         self.staged_input = staged_input
         self._clock = clock
         self._prepare_backup_torrents = bool(prepare_backup_torrents)
+        self._max_active_torrents = max_active_torrents
         kinds = {"magnet", "torrent", "http", "https"}
         # "Usenet via TorBox" is TorBox's own participation in NZB work and
         # nothing more: it never disables, inspects or replaces native Usenet.
@@ -107,6 +109,26 @@ class TorBoxProvider:
         active slots. Nothing else TorBox does is a backup."""
         return (self._prepare_backup_torrents and request.kind in BITTORRENT_REQUEST_KINDS
                 and request.kind in self.descriptor.request_types)
+
+    @normalized_boundary(Stage.RECONCILIATION)
+    async def active_capacity(self, request: TransferRequest) -> ActiveCapacity | None:
+        """Torrent active slots: the current plan's maximum, lowered by the
+        operator's "Maximum Active Torrents" when set; occupancy is every
+        torrent on the account TorBox reports ``active`` -- including ones
+        DebridPulse did not add, never a cached one. Not a torrent: ``None``."""
+        if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:
+            return None
+        maximum = active_slot_maximum(self.entitlements)
+        if self._max_active_torrents is not None:
+            maximum = self._max_active_torrents if maximum is None else min(maximum, self._max_active_torrents)
+        occupancy, offset = 0, 0
+        for _page in range(_MAX_INVENTORY_PAGES):
+            batch = await self._call(self.client.items, TORRENT, offset, stage=Stage.RECONCILIATION)
+            occupancy += sum(1 for record in batch if isinstance(record, dict) and record.get("active") is True)
+            if len(batch) < LIST_PAGE_LIMIT:
+                return ActiveCapacity(maximum, occupancy)
+            offset += len(batch)
+        return ActiveCapacity(maximum, None)
 
     def applicability_for(self, request: TransferRequest) -> ProviderApplicability:
         # Replaced by host maintenance once it is attached.

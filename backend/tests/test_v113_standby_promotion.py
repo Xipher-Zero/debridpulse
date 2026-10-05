@@ -224,7 +224,10 @@ async def test_a_backup_the_provider_reports_gone_is_never_promoted(tmp_path, mo
     assert len(creates(client)) == 2                                           # ordinary resolution again
     assert root.resource.id != standby["resource"].id
     (after,) = await repository.standbys(transfer.id)
-    assert after["promoted_at"] is None and after["resource_state"] == ResourceState.ABSENT.value
+    # Never promoted; the claim on the gone resource is settled (released,
+    # holding nothing) rather than left bound to it.
+    assert after["promoted_at"] is None
+    assert (after["state"], after["binding_id"], after["resource_state"]) == ("deferred", None, None)
 
 
 @pytest.mark.parametrize("refusal", ["ACTIVE_LIMIT", "INVALID_MAGNET"])

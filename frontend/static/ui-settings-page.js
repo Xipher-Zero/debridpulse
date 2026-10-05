@@ -121,6 +121,8 @@
     realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
     torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'},
     torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', commit: 'immediate'},
+    // Empty is "no ceiling of my own": it commits null and follows the plan's maximum.
+    torbox_max_active_torrents: {scope: 'integration:torbox', option: 'max_active_torrents', blank: null},
     torbox_rate_limit_per_minute: {scope: 'integration:torbox', option: 'rate_limit_per_minute'},
     torbox_request_timeout_seconds: {scope: 'integration:torbox', option: 'request_timeout_seconds'},
     torbox_upload_timeout_seconds: {scope: 'integration:torbox', option: 'upload_timeout_seconds'},
@@ -1798,6 +1800,10 @@
             tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
               'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
               torBoxOf(s).prepare_backup_torrents === true),
+            input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? '', {
+              type: 'number', min: 1, max: 10, placeholder: 'Plan maximum',
+              hint: 'Leave empty to follow your TorBox plan (Free 1, Essential 3, Standard 5, Pro 10). A lower number keeps fewer torrents active on TorBox; it never goes above your plan.'
+            }),
             input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
               type: 'number', min: 1, max: 300,
               hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'

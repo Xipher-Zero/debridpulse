@@ -25,6 +25,10 @@ class TorBoxOptions(BaseModel):
     # magnet as a backup source while another provider delivers it. Off by
     # default: every such addition uses TorBox create limits and active slots.
     prepare_backup_torrents: bool = False
+    # "Maximum Active Torrents": the operator's own ceiling on active torrent
+    # slots. Absent (None) follows the account plan's maximum; a value can
+    # only lower it -- the plan maximum is never exceeded.
+    max_active_torrents: int | None = Field(default=None, ge=1, le=10)
 
 
 def canonical_options(settings) -> TorBoxOptions:
@@ -58,7 +62,8 @@ def build(options, environment):
                            upload_timeout_seconds=options.upload_timeout_seconds)
     provider = TorBoxProvider(client, usenet=options.usenet_enabled,
                               staged_input=getattr(environment, "staged_input", None),
-                              prepare_backup_torrents=options.prepare_backup_torrents)
+                              prepare_backup_torrents=options.prepare_backup_torrents,
+                              max_active_torrents=options.max_active_torrents)
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.

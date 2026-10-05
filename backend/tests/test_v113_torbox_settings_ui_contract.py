@@ -78,6 +78,18 @@ def test_prepare_backup_torrents_is_one_precise_persisted_toggle_off_by_default(
         assert jargon not in torbox.casefold()
 
 
+def test_maximum_active_torrents_is_empty_unless_the_operator_sets_a_ceiling():
+    torbox = card("torbox")
+    assert "input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? ''," \
+        in torbox
+    assert "placeholder: 'Plan maximum'" in torbox and "min: 1, max: 10" in torbox
+    # Empty commits null -- following the plan -- so rendering never stores a value.
+    assert ("torbox_max_active_torrents: {scope: 'integration:torbox', option: 'max_active_torrents', blank: null}"
+            in SETTINGS_JS)
+    for jargon in ("standby", "speculative", "reclaim"):
+        assert jargon not in torbox.casefold()
+
+
 def test_one_premium_owner_interprets_torbox_and_words_it_once():
     # The one premium owner reads TorBox's account exactly as every other's:
     # from the neutral account truth, never a TorBox-keyed interpreter.

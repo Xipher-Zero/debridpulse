@@ -233,6 +233,21 @@ class AvailabilityState(StrEnum):
     UNKNOWN = "unknown"
 
 
+@dataclass(frozen=True)
+class ActiveCapacity:
+    """A provider's concurrent active-resource capacity for one request class,
+    as the provider itself states it (``ActiveCapacitySource``).
+
+    ``maximum`` is the effective ceiling -- the provider/account maximum,
+    lowered by the operator's own ceiling when one is set, never raised by it
+    -- or ``None`` when no maximum can be known ahead of a refusal.
+    ``occupancy`` is how much of it is in use now across the whole account
+    (including activity outside DebridPulse), or ``None`` when unknown. Never
+    a count of DebridPulse's own records standing in for the provider's."""
+    maximum: int | None = None
+    occupancy: int | None = None
+
+
 class DeliveryKind(StrEnum):
     """Whether a candidate's endpoint IS the requested source or a
     provider-issued delivery capability for it.

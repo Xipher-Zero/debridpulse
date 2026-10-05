@@ -110,7 +110,7 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
 
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
-  await expect(tuning.locator('[data-setting]')).toHaveCount(6);
+  await expect(tuning.locator('[data-setting]')).toHaveCount(7);
   const toggle = tuning.locator('[data-setting="torbox_usenet_enabled"]');
   await expect(toggle).not.toBeChecked();
   await expect(toggle).toHaveAttribute('data-commit', 'immediate');
@@ -123,6 +123,11 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await expect(backups).toHaveAttribute('data-commit-scope', 'integration:torbox');
   await expect(tuning).toContainText('Prepare Backup Torrents');
   await expect(tuning).toContainText('Uses TorBox create limits and active slots.');
+  const ceiling = tuning.locator('[data-setting="torbox_max_active_torrents"]');
+  await expect(ceiling).toHaveValue('');
+  await expect(ceiling).toHaveAttribute('placeholder', 'Plan maximum');
+  await expect(ceiling).toHaveAttribute('data-commit-scope', 'integration:torbox');
+  await expect(tuning).toContainText('Maximum Active Torrents');
   for (const [key, value, min, max] of [
     ['torbox_rate_limit_per_minute', '240', '1', '300'],
     ['torbox_request_timeout_seconds', '30', '5', '300'],

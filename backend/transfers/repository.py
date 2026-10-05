@@ -60,7 +60,7 @@ from transfers._repository_base import TransferRepository as _QualifiedTransferR
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import (
-    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, ProviderResource, ResourceState,
+    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership, ProviderResource, ResourceState,
     TransferProgress, new_identity,
 )
 from transfers.policy import failure_signature, meaningful_progress_threshold
@@ -977,10 +977,50 @@ class TransferRepository(_QualifiedTransferRepository):
         async with get_db() as db:
             row = await db.fetchone(
                 """SELECT s.id, r.payload FROM standby_resources s JOIN provider_resources r ON r.id=s.binding_id
-                   WHERE s.request_id=? AND s.provider_id=? AND s.state='bound'
+                   WHERE s.request_id=? AND s.provider_id=? AND s.state='bound' AND r.cleanup_authority IS NULL
                      AND r.state NOT IN ('absent','expired') ORDER BY s.generation DESC LIMIT 1""",
                 (request_id, provider_id))
         return (str(row["id"]), codec.resource(codec.load(row["payload"]))) if row else None
+
+    async def reclaimable_standbys(self, provider_id: str) -> tuple[dict, ...]:
+        """The backups ``provider_id`` holds that primary work may take back:
+        bound and never promoted, nothing already cleaning them up, their
+        resource not known gone, and DebridPulse's to clean up under the
+        existing OWNED authority (it CREATED or ADOPTED them). Newest first:
+        the least prepared backup is given up first."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT s.id, s.transfer_id, s.request_id, s.binding_id, r.payload
+                   FROM standby_resources s JOIN provider_resources r ON r.id=s.binding_id
+                   WHERE s.provider_id=? AND s.state='bound' AND s.promoted_at IS NULL
+                     AND r.cleanup_authority IS NULL AND r.state NOT IN ('absent','expired')
+                   ORDER BY s.created_at DESC, s.id DESC""", (provider_id,))
+        found = []
+        for row in rows:
+            resource = codec.resource(codec.load(row["payload"]))
+            if resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
+                found.append({"id": str(row["id"]), "transfer_id": int(row["transfer_id"]),
+                              "request_id": str(row["request_id"]), "binding_id": str(row["binding_id"]),
+                              "resource": resource})
+        return tuple(found)
+
+    async def release_standby(self, standby_id: str, now: float) -> bool:
+        """A reclaimed backup whose resource cleanup has confirmed gone: the
+        claim no longer holds it and may prepare again through the ordinary
+        cadence. Only a binding that is actually absent is released."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT r.state FROM standby_resources s JOIN provider_resources r ON r.id=s.binding_id
+                   WHERE s.id=? AND s.state='bound' AND s.promoted_at IS NULL""", (standby_id,))
+            if not row or row["state"] != ResourceState.ABSENT.value:
+                await db.rollback()
+                return False
+            await db.execute(
+                """UPDATE standby_resources SET state='deferred',binding_id=NULL,error=NULL,attempts=0,retry_at=?,
+                   updated_at=? WHERE id=?""", (now, now, standby_id))
+            await db.commit()
+        return True
 
     async def promote_standby(self, standby_id: str, now: float) -> None:
         """The root's own route takes its prepared resource over: from now on

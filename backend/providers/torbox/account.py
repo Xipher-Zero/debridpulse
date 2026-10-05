@@ -97,6 +97,19 @@ def entitlement(facts: Mapping[str, Any], *, offered: frozenset[str], contracted
         expires_at=until if current else None, plan=PLAN_NAMES[plan] if current else PLAN_NAMES[FREE_PLAN])
 
 
+# TorBox's active download/seed slots per plan (its account restrictions):
+# Free 1, Essential 3, Standard 5, Pro 10 -- 10 is the maximum across plans and
+# cannot be raised. Cached items occupy no slot.
+ACTIVE_SLOTS = {"Free": 1, "Essential": 3, "Standard": 5, "Pro": 10}
+
+
+def active_slot_maximum(entitlements) -> int | None:
+    """The active-slot maximum of the plan the account holds NOW (an expired
+    paid plan is already the Free plan here), or ``None`` while the account's
+    plan is not known."""
+    return ACTIVE_SLOTS.get(str(getattr(entitlements, "plan", None) or ""))
+
+
 def refused_family(exc: BaseException, kind: str) -> frozenset[str]:
     """The request classes a native refusal of creating ``kind`` definitively
     proves this account's plan excludes -- empty for anything else."""

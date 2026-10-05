@@ -133,7 +133,8 @@ async def test_t3_2_t3_6_the_setting_persists_immediately_and_each_rebuild_reads
 
 async def test_t3_7_existing_torbox_options_are_unchanged():
     defaults = TorBoxOptions().model_dump()
-    assert {key: value for key, value in defaults.items() if key != "prepare_backup_torrents"} == {
+    assert {key: value for key, value in defaults.items()
+            if key not in {"prepare_backup_torrents", "max_active_torrents"}} == {
         "api_token": "", "usenet_enabled": False, "rate_limit_per_minute": 240,
         "request_timeout_seconds": 30, "upload_timeout_seconds": 120, "host_refresh_interval_hours": 24}
     stored = {"api_token": TOKEN, "usenet_enabled": True, "rate_limit_per_minute": 100,

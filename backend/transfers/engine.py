@@ -22,14 +22,17 @@ from transfers._repository_base import manifest_child_identity, manifest_member_
 from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
-from transfers.contracts import CachedResolution, Inventory, Manifest, ResourceLookup, speculative_preparation
+from transfers.contracts import (
+    ActiveCapacitySource, CachedResolution, Inventory, Manifest, ResourceLookup, speculative_preparation,
+)
 from transfers.errors import (
-    Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
+    Category, Domain, Origin, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.policy import recovery_action
 from transfers.registry import ProviderRoute
 from transfers.models import (
-    AvailabilityState, CachePresence, Capability, CleanupAuthority, NormalizedError, Ownership, ResolutionResult,
+    ActiveCapacity, AvailabilityState, CachePresence, Capability, CleanupAuthority, NormalizedError, Ownership,
+    ResolutionResult,
     ResourceState,
 )
 
@@ -42,6 +45,8 @@ AVAILABILITY_TIMEOUT_SECONDS = 5.0
 # about at most this many unbound BitTorrent roots; the answer it gave for a
 # root routed later is that root's once, and only while it is this fresh.
 AVAILABILITY_ROUND_LIMIT = 100
+# The bound on one provider's read-only active-capacity answer.
+ACTIVE_CAPACITY_TIMEOUT_SECONDS = 5.0
 AVAILABILITY_ROUND_FRESH_SECONDS = 30.0
 # A root whose primary route has begun -- the only root a speculative backup
 # preparation is ever made for.
@@ -201,8 +206,17 @@ class TransferEngine(_RecoveryTransferEngine):
                 # for this root is taken over instead of resolving again.
                 result = None if cached else await self._promoted_standby(record, provider)
                 if result is None:
-                    result = await (provider.resolve_cached(record.resolvable) if cached
-                                    else provider.resolve(record.resolvable))
+                    if not cached and not await self._make_primary_room(record, provider):
+                        # Full, and not (yet) freed by confirmed cleanup: no
+                        # productive call above the provider's effective
+                        # maximum. The constrained resource is the provider's
+                        # capacity, but DebridPulse made this decision -- the
+                        # provider was never asked -- so its origin is core;
+                        # routing and backoff read it exactly as a refusal.
+                        raise TransferError(NormalizedError(
+                            Domain.PROVIDER, Category.CONCURRENCY_LIMITED, Stage.RESOLUTION, Retryability.BACKOFF,
+                            origin=Origin.CORE, integration_id=provider.descriptor.id))
+                    result = await self._primary_resolution(record, provider, cached)
             if cached and result is None:
                 # Held when asked, no longer held now: nothing was created, and
                 # the group continues from its first dormant alternative.
@@ -363,7 +377,9 @@ class TransferEngine(_RecoveryTransferEngine):
             if await self.repository.globally_paused():
                 return
             transfers = await self.repository.active()
+            capacities: dict[tuple[str, str], ActiveCapacity | None] = {}
             await self._observe_standbys(transfers)
+            await self._settle_released_standbys(transfers)
             # An interrupted claim nothing proved absent is never attempted
             # again in this pass: it may already hold a resource.
             unsettled = await self._reconcile_standby_claims(transfers)
@@ -382,12 +398,28 @@ class TransferEngine(_RecoveryTransferEngine):
                             continue
                         if budget <= 0 or await self.repository.primary_resolution_runnable(self.clock()):
                             return
+                        key = (provider.descriptor.id, record.resolvable.kind)
+                        if key not in capacities:
+                            capacities[key] = await self._active_capacity(provider, record.resolvable)
                         claimed = await self.repository.begin_standby(
                             transfer.id, record.id, provider.descriptor.id, self.clock())
                         if claimed is None:
                             continue
+                        fact = capacities[key]
+                        if fact is not None and fact.maximum is not None and fact.occupancy is not None \
+                                and fact.occupancy >= fact.maximum:
+                            # Full: no productive call at all; the backup waits
+                            # through the ordinary deferral and its backoff.
+                            full = self._error(Category.CONCURRENCY_LIMITED, Stage.RESOLUTION,
+                                               domain=Domain.PROVIDER, retryability=Retryability.BACKOFF)
+                            await self.repository.defer_standby(
+                                claimed[0], full, self._standby_retry_at(full, claimed[1]), self.clock())
+                            continue
                         budget -= 1
-                        await self._prepare_standby(record, provider, *claimed)
+                        if await self._prepare_standby(record, provider, *claimed):
+                            # What the new backup occupies is the provider's to
+                            # say (a cached one occupies nothing): read again.
+                            capacities.pop(key, None)
 
     def _standby_providers(self, record, primary: str, competition) -> list:
         """The providers that may prepare ``record`` as a backup now: its
@@ -398,11 +430,16 @@ class TransferEngine(_RecoveryTransferEngine):
                 and self.registry.entitlement_for(provider, request) is True
                 and self.registry.speculative_preparation_allowed(provider, request)]
 
-    async def _prepare_standby(self, record, provider, standby_id: str, attempts: int) -> None:
+    def _standby_retry_at(self, error: NormalizedError, attempts: int) -> float:
+        """When a deferred backup may be tried again: the existing retry
+        policy's doubling delay, capped, never sooner than the provider asked."""
+        delay = min(self.policy.max_retry_delay, self.policy.retry_delay * 2 ** max(0, attempts))
+        return self.clock() + max(delay, float(error.retry_after_seconds or 0))
+
+    async def _prepare_standby(self, record, provider, standby_id: str, attempts: int) -> bool:
         """One speculative preparation attempt. A resource it yields is bound
-        to the root as a backup; a refusal that only says "not now" defers
-        the backup; any other failure ends only this backup."""
-        now = self.clock()
+        to the root as a backup (``True``); a refusal that only says "not now"
+        defers the backup; any other failure ends only this backup."""
         try:
             async with self._resolution_slot():
                 with speculative_preparation():
@@ -415,7 +452,7 @@ class TransferEngine(_RecoveryTransferEngine):
                 # reports a problem: it is ours to observe and to clean up.
                 await self.repository.bind_standby(standby_id, record.transfer_id, observation.resource,
                                                    observation.state, self.clock())
-                return
+                return True
             raise TransferError(result.error or self._error(
                 Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
                 retryability=Retryability.NEVER))
@@ -424,13 +461,13 @@ class TransferEngine(_RecoveryTransferEngine):
                 exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
                 secrets=(str(record.request.payload),))
             if error.category in _STANDBY_DEFERRABLE or error.retryability == Retryability.BACKOFF:
-                delay = min(self.policy.max_retry_delay, self.policy.retry_delay * 2 ** max(0, attempts))
-                retry_at = now + max(delay, float(error.retry_after_seconds or 0))
-                await self.repository.defer_standby(standby_id, error, retry_at, self.clock())
+                await self.repository.defer_standby(standby_id, error, self._standby_retry_at(error, attempts),
+                                                    self.clock())
             else:
                 await self.repository.fail_standby(standby_id, error, self.clock())
             logger.debug("backup preparation provider=%s request=%s: %s", provider.descriptor.id, record.id,
                          error.category.value)
+            return False
 
     async def _reconcile_standby_claims(self, transfers) -> set[tuple[str, str]]:
         """A ``creating`` claim found when a pass starts was interrupted
@@ -498,6 +535,93 @@ class TransferEngine(_RecoveryTransferEngine):
                             stage=Stage.RECONCILIATION)
                         await self.repository.fail_standby(item["id"], error, self.clock())
         return unsettled
+
+    async def _active_capacity(self, provider, request) -> ActiveCapacity | None:
+        """``provider``'s own active-capacity fact for ``request`` (bounded,
+        creates nothing): ``None`` when the request has no such capacity
+        there; an unreadable answer is a capacity with nothing known."""
+        if not isinstance(provider, ActiveCapacitySource):
+            return None
+        try:
+            fact = await asyncio.wait_for(provider.active_capacity(request), ACTIVE_CAPACITY_TIMEOUT_SECONDS)
+        except Exception as exc:
+            logger.debug("active capacity unknown provider=%s: %s", provider.descriptor.id, type(exc).__name__)
+            return ActiveCapacity()
+        return fact if isinstance(fact, ActiveCapacity) else None
+
+    async def _make_primary_room(self, record, provider) -> bool:
+        """Whether a root's productive creation may go ahead at ``provider``.
+
+        Primary work outranks DebridPulse's own backups, never the provider's
+        effective maximum (the account's, lowered by the operator's ceiling):
+        when that capacity is full, exactly the backups needed to free one
+        slot are given back, and the creation goes ahead only once their
+        cleanup has CONFIRMED the slots free. ``False`` -- no productive call
+        -- while the capacity is full and not confirmed freed (too few
+        backups of DebridPulse's to give back, or their cleanup still
+        pending). An unknown maximum or occupancy, or a member request,
+        always goes ahead: the provider's own answer is then final."""
+        if record.parent_id is not None:
+            return True
+        fact = await self._active_capacity(provider, record.resolvable)
+        if fact is None or fact.maximum is None or fact.occupancy is None:
+            return True
+        needed = fact.occupancy - fact.maximum + 1
+        if needed <= 0:
+            return True
+        held = await self.repository.reclaimable_standbys(provider.descriptor.id)
+        if len(held) < needed:
+            return False
+        return await self._reclaim(held[:needed]) >= needed
+
+    async def _primary_resolution(self, record, provider, cached: bool) -> ResolutionResult | None:
+        """The root's productive resolution. A refusal that says the
+        provider's concurrent active capacity is exhausted -- on a request
+        that has such capacity there -- while DebridPulse holds a backup on
+        that provider reclaims ONE backup and retries ONCE; anything else,
+        or a second refusal, is the ordinary refusal."""
+        def call():
+            return provider.resolve_cached(record.resolvable) if cached else provider.resolve(record.resolvable)
+
+        try:
+            return await call()
+        except TransferError as exc:
+            if cached or not await self._reclaim_after_refusal(record, provider, exc.error):
+                raise
+        return await call()
+
+    async def _reclaim_after_refusal(self, record, provider, error: NormalizedError) -> bool:
+        if record.parent_id is not None or error.category != Category.CONCURRENCY_LIMITED:
+            return False
+        if await self._active_capacity(provider, record.resolvable) is None:
+            return False
+        held = await self.repository.reclaimable_standbys(provider.descriptor.id)
+        return bool(held) and await self._reclaim(held[:1]) > 0
+
+    async def _settle_released_standbys(self, transfers) -> None:
+        """A backup whose resource the ordinary cleanup owner has since
+        confirmed gone -- a reclamation whose cleanup finished on a later
+        cadence, or a resource the provider dropped -- no longer holds
+        anything: its claim returns to deferred so the ordinary cadence may
+        prepare it again."""
+        for transfer in transfers:
+            for item in await self.repository.standbys(transfer.id):
+                if (item["state"] == "bound" and not item.get("promoted_at")
+                        and item["resource_state"] == ResourceState.ABSENT.value):
+                    await self.repository.release_standby(item["id"], self.clock())
+
+    async def _reclaim(self, held) -> int:
+        """Give back backups through the existing cleanup authority; a slot
+        counts as free only once its cleanup confirmed the resource gone.
+        Returns how many were freed."""
+        for item in held:
+            await self.repository.cleanup_intent(item["transfer_id"], item["resource"].id, CleanupAuthority.OWNED)
+        await self._cleanup_pending()
+        freed = 0
+        for item in held:
+            if await self.repository.release_standby(item["id"], self.clock()):
+                freed += 1
+        return freed
 
     async def _promoted_standby(self, record, provider) -> ResolutionResult | None:
         """The one promotion owner. Once the router has made ``provider`` this
