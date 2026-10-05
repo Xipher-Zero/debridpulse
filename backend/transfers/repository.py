@@ -829,38 +829,41 @@ class TransferRepository(_QualifiedTransferRepository):
                 return 0
             return max(0, now - row["progress_at"])
 
-    async def collection_route_provider(self, transfer_id: int) -> str | None:
+    async def collection_route_authority(self, transfer_id: int) -> bool:
+        """Whether specialized authority owns this direct-link collection's
+        routing: generic competition stays closed for every one of its roots.
+        A provider-free fact -- which specialized provider takes each root is
+        that root's own route. A collection bound under the earlier
+        single-owner model (``collection_route_provider_id``) keeps the
+        authority that binding established."""
         async with get_db() as db:
-            row = await db.fetchone("SELECT collection_route_provider_id FROM torrents WHERE id=?", (transfer_id,))
-        value = str((row or {}).get("collection_route_provider_id") or "").strip()
-        return value or None
+            row = await db.fetchone(
+                "SELECT collection_route_authority,collection_route_provider_id FROM torrents WHERE id=?", (transfer_id,))
+        row = row or {}
+        return bool(row.get("collection_route_authority")) or bool(str(row.get("collection_route_provider_id") or "").strip())
 
-    async def bind_collection_route(self, transfer_id: int, provider_id: str) -> str | None:
-        provider_id = str(provider_id or "").strip()
-        if not provider_id:
-            raise ValueError("Collection route provider identity is required")
+    async def establish_collection_route_authority(self, transfer_id: int) -> bool:
+        """Record, once, that specialized authority owns this collection --
+        only for a direct-link collection of more than one root that no route
+        attempt has touched yet. Returns whether the authority holds."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            parent = await db.fetchone("SELECT source,collection_route_provider_id FROM torrents WHERE id=?", (transfer_id,))
+            parent = await db.fetchone(
+                "SELECT source,collection_route_authority,collection_route_provider_id FROM torrents WHERE id=?",
+                (transfer_id,))
             if not parent or str(parent.get("source") or "") != "direct_link":
-                await db.rollback(); return None
-            existing = str(parent.get("collection_route_provider_id") or "").strip()
-            if existing:
-                await db.rollback(); return existing
+                await db.rollback(); return False
+            if parent.get("collection_route_authority") or str(parent.get("collection_route_provider_id") or "").strip():
+                await db.rollback(); return True
             roots = await db.fetchone("SELECT COUNT(*) AS count FROM transfer_requests WHERE transfer_id=? AND parent_id IS NULL", (transfer_id,))
             if int((roots or {}).get("count") or 0) <= 1:
-                await db.rollback(); return None
+                await db.rollback(); return False
             routed = await db.fetchone("""SELECT 1 AS present FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id WHERE r.transfer_id=? LIMIT 1""", (transfer_id,))
             if routed:
-                await db.rollback(); return None
-            cursor = await db.execute("UPDATE torrents SET collection_route_provider_id=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND collection_route_provider_id IS NULL", (provider_id, transfer_id))
-            if cursor.rowcount != 1:
-                current = await db.fetchone("SELECT collection_route_provider_id FROM torrents WHERE id=?", (transfer_id,))
-                await db.rollback()
-                value = str((current or {}).get("collection_route_provider_id") or "").strip()
-                return value or None
+                await db.rollback(); return False
+            await db.execute("UPDATE torrents SET collection_route_authority=1,updated_at=CURRENT_TIMESTAMP WHERE id=?", (transfer_id,))
             await db.commit()
-        return provider_id
+        return True
 
     async def accept_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
         if (not isinstance(total_bytes, int) or isinstance(total_bytes, bool) or total_bytes <= 0 or handle is None):

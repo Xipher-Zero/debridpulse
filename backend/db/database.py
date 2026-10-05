@@ -829,6 +829,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
         'delete_remote': 'INTEGER NOT NULL DEFAULT 0',
         'collection_route_provider_id': 'TEXT',
+        # Specialized authority owns this direct-link collection's routing:
+        # generic competition stays closed for every root, while each root's
+        # specialized provider is its own route. Provider-free by design --
+        # a collection no single provider owns still has it.
+        # ``collection_route_provider_id`` is the earlier single-owner binding,
+        # no longer written; a non-empty value reads as this authority.
+        'collection_route_authority': 'INTEGER NOT NULL DEFAULT 0',
         # Original logical source fingerprint, retained as durable provenance even
         # after Delete retires the active unique ``hash`` dedupe key.
         'source_fingerprint': 'TEXT',
@@ -991,7 +998,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
     'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
-    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'source_fingerprint'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
     'transfer_requests': {

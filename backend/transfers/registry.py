@@ -254,11 +254,11 @@ class IntegrationRegistry:
         # in the competition (``unresolved``), so no lower fallback can win
         # merely because its account truth has not arrived yet. A member of a
         # route that already exists is not new acquisition: entitlement never
-        # touches it. A request whose collection an authoritative specialized
-        # route already owns (``generic_closed``) has had generic competition
-        # closed by that ownership: its re-selection (after an exhaustion or a
-        # decline) judges only the specialized claimants that remain, never
-        # reopens a generic one.
+        # touches it. A request whose collection specialized authority owns
+        # (``generic_closed``) has had generic competition closed by that
+        # authority: its selection -- first or after an exhaustion or a
+        # decline -- judges only its own remaining specialized claimants,
+        # never reopens a generic one.
         entitlement = {}
         candidates = []
         for provider in self.providers.values():
@@ -359,50 +359,37 @@ class IntegrationRegistry:
             entries.append(ProviderDisposition(provider_id, disposition, classification))
         return RoutingDecision(outcome, tuple(entries))
 
-    def collection_provider_for(self, requests: tuple[TransferRequest, ...]) -> Provider | None:
-        """Select one specialized route owner for a logical request collection.
+    def collection_route_authority(self, requests: tuple[TransferRequest, ...]) -> bool:
+        """Whether specialized authority owns the routing of a logical request
+        collection -- a fact about the whole submission, never about one
+        provider.
 
-        Collection affinity is deliberately a higher-level decision than the
-        single-request classifier. Each request still contributes only the
-        provider-neutral applicability facts already used by normal routing.
-        An authoritative specialized match anywhere closes generic competition
-        for the collection; unresolved specialized readiness blocks generic
-        work only when no authoritative specialized owner can yet be selected.
+        An authoritative specialized claimant of ANY root closes generic
+        competition for EVERY root. Which specialized provider takes a root
+        stays that root's own competition (``provider_route`` with
+        ``generic_closed``): a per-root union, so no provider has to claim the
+        whole collection, a provider that cannot claim one root still competes
+        for the others, and a root no specialized provider claims is
+        unsupported. Each request contributes only the provider-neutral facts
+        normal routing uses. Unresolved specialized readiness, or a claimant
+        whose account entitlement is not yet known, keeps the decision
+        premature only while no root has an entitled authoritative claimant.
         """
-        represented: dict[str, Provider] = {}
-        unresolved: set[str] = set()
-        preferred_ids = {
-            request.preferred_provider for request in requests
-            if request.preferred_provider
-        }
-        entitlement_unknown: set[str] = set()
+        pending: set[str] = set()
         for request in requests:
             providers, assessment, unknown = self._provider_selection(request)
-            unresolved.update(assessment.unresolved_specialized)
-            entitlement_unknown.update(unknown)
             specialized_ids = {
                 match.provider_id for match in assessment.matches
                 if match.classification == ApplicabilityClass.SPECIALIZED
             }
-            for provider in providers:
-                if provider.descriptor.id in specialized_ids:
-                    represented[provider.descriptor.id] = provider
-
-        if represented:
-            owner = min(
-                represented.values(),
-                key=lambda provider: (
-                    provider.descriptor.id not in preferred_ids,
-                    -provider.descriptor.priority,
-                    provider.descriptor.id,
-                ),
-            )
-            if owner.descriptor.id in entitlement_unknown:
-                raise ApplicabilityUnresolved((owner.descriptor.id,))
-            return owner
-        if unresolved:
-            raise ApplicabilityUnresolved(sorted(unresolved))
-        return None
+            claimants = {provider.descriptor.id for provider in providers} & specialized_ids
+            if claimants - unknown:
+                return True
+            pending.update(claimants)
+            pending.update(assessment.unresolved_specialized)
+        if pending:
+            raise ApplicabilityUnresolved(sorted(pending))
+        return False
 
     def eligible_providers(self, request: TransferRequest, *, capability: Capability = Capability.RESOLVE,
                            declined: frozenset[str] = frozenset(),
@@ -444,7 +431,9 @@ class IntegrationRegistry:
         if providers and providers[0].descriptor.id in unknown:
             route = ProviderRoute(None, unresolved=(providers[0].descriptor.id,))
         elif not providers:
-            route = ProviderRoute(None, unresolved=tuple(assessment.unresolved_specialized))
+            route = ProviderRoute(None, unresolved=tuple(assessment.unresolved_specialized) or self.unhealthy_claimants(
+                request, declined=declined, exhausted=exhausted, acquisition=acquisition,
+                generic_closed=generic_closed))
         else:
             route = ProviderRoute(providers[0])
         if dispositions is None:
@@ -455,6 +444,37 @@ class IntegrationRegistry:
         except Exception as exc:  # visibility must never change the decision
             logger.debug("routing decision could not be described: %s", type(exc).__name__)
             return route
+
+    def unhealthy_claimants(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
+                            exhausted: frozenset[str] = frozenset(), acquisition: bool = True,
+                            generic_closed: bool = False) -> tuple[str, ...]:
+        """The specialized claimants of ``request`` that only health keeps out
+        of its competition, when collection route authority closed generic
+        competition: they still remain for it, so the request waits for them
+        (held, like any premature decision) instead of being judged
+        unsupported -- health is transient, and no generic provider may take
+        the request meanwhile. Route selection and the exhaustion handoff
+        both ask this one question. Without that authority, nothing changes:
+        ``()``."""
+        if not generic_closed:
+            return ()
+        waiting = tuple(
+            provider for provider in self.providers.values()
+            if provider.descriptor.id in self._unhealthy
+            and provider.descriptor.enabled
+            and provider.descriptor.id not in exhausted
+            and provider.descriptor.id not in declined
+            and Capability.RESOLVE in provider.descriptor.capabilities
+            and request.kind in provider.descriptor.request_types
+            and not (acquisition and self.entitlement_for(provider, request) is False))
+        if not waiting:
+            return ()
+        assessment = assess_provider_applicability(request, tuple(
+            ProviderApplicabilityInput(provider.descriptor.id, provider.descriptor.request_types,
+                                       provider.descriptor.enabled, self._applicability_for(provider, request))
+            for provider in waiting))
+        return tuple(sorted(match.provider_id for match in assessment.matches
+                            if match.classification == ApplicabilityClass.SPECIALIZED))
 
     def _provider_for_bound_owner(self, provider_id: str, request: TransferRequest, *, require_health: bool) -> Provider:
         provider = self.providers.get(provider_id)

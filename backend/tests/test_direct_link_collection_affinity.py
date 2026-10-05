@@ -148,7 +148,7 @@ async def submit_collection(engine: TransferEngine, *requests: TransferRequest):
 
 
 @pytest.mark.parametrize("special_first", [True, False])
-async def test_one_specialized_sibling_binds_entire_collection_regardless_of_order(
+async def test_one_specialized_sibling_establishes_authority_for_entire_collection_regardless_of_order(
     tmp_path, monkeypatch, special_first
 ):
     specialized = UrlFixtureProvider("special", host="special.test")
@@ -163,15 +163,16 @@ async def test_one_specialized_sibling_binds_entire_collection_regardless_of_ord
 
     await engine.resolve_pending()
 
-    assert await repository.collection_route_provider(transfer.id) == "special"
-    assert sorted(str(item.payload) for item in specialized.calls) == sorted(
-        str(item.payload) for item in submitted
-    )
+    assert await repository.collection_route_authority(transfer.id) is True
+    # Authority is submission-wide; claimant selection is per root: the
+    # sibling no specialized provider claims is unsupported, never generic.
+    assert [str(item.payload) for item in specialized.calls] == [str(special.payload)]
     assert generic.calls == []
+    roots = {str(item.request.payload): item for item in await repository.requests(transfer.id)}
+    assert roots[str(ordinary.payload)].state == "failed"
+    assert roots[str(ordinary.payload)].error.category == Category.UNSUPPORTED_REQUEST
     details = await repository.presentation(transfer.id, details=True)
-    assert [item["provider_id"] for item in details["route_attempts"]] == [
-        "special", "special"
-    ]
+    assert [item["provider_id"] for item in details["route_attempts"]] == ["special"]
 
 
 async def test_all_generic_collection_preserves_per_request_generic_routing(tmp_path, monkeypatch):
@@ -188,7 +189,7 @@ async def test_all_generic_collection_preserves_per_request_generic_routing(tmp_
 
     await engine.resolve_pending()
 
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert specialized.calls == []
     assert len(generic.calls) == 2
 
@@ -212,7 +213,7 @@ async def test_unresolved_specialized_readiness_holds_whole_collection_then_bind
     assert specialized.calls == []
     assert generic.calls == []
     assert all(item.state == "pending" and item.attempts == 0 for item in pending)
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
 
     specialized.applicability = ProviderApplicability(
         specialized_hosts=(
@@ -221,8 +222,8 @@ async def test_unresolved_specialized_readiness_holds_whole_collection_then_bind
     )
     await engine.resolve_pending()
 
-    assert await repository.collection_route_provider(transfer.id) == "special"
-    assert len(specialized.calls) == 2
+    assert await repository.collection_route_authority(transfer.id) is True
+    assert [str(item.payload) for item in specialized.calls] == ["https://special.test/special.bin"]
     assert generic.calls == []
 
 
@@ -247,7 +248,7 @@ async def test_specialized_unavailable_before_binding_allows_generic(
 
     await engine.resolve_pending()
 
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert specialized.calls == []
     assert len(generic.calls) == 2
 
@@ -264,7 +265,7 @@ async def test_collection_affinity_survives_repository_and_engine_restart(tmp_pa
         request("ordinary.test", "ordinary.bin"),
     )
     assert await engine._prepare_collection_affinity() == set()
-    assert await repository.collection_route_provider(transfer.id) == "special"
+    assert await repository.collection_route_authority(transfer.id) is True
     assert specialized.calls == [] and generic.calls == []
 
     restarted_repository = TransferRepository()
@@ -283,8 +284,8 @@ async def test_collection_affinity_survives_repository_and_engine_restart(tmp_pa
     await restarted_engine.initialize()
     await restarted_engine.resolve_pending()
 
-    assert await restarted_repository.collection_route_provider(transfer.id) == "special"
-    assert len(restarted_specialized.calls) == 2
+    assert await restarted_repository.collection_route_authority(transfer.id) is True
+    assert [str(item.payload) for item in restarted_specialized.calls] == ["https://special.test/special.bin"]
     assert restarted_generic.calls == []
 
 
@@ -303,7 +304,7 @@ async def test_bound_collection_never_reopens_generic_competition(
         request("ordinary.test", "ordinary.bin"),
     )
     assert await engine._prepare_collection_affinity() == set()
-    assert await repository.collection_route_provider(transfer.id) == "special"
+    assert await repository.collection_route_authority(transfer.id) is True
     if unavailable == "disabled":
         specialized.descriptor = replace(specialized.descriptor, enabled=False)
     else:
@@ -311,13 +312,21 @@ async def test_bound_collection_never_reopens_generic_competition(
 
     await engine.resolve_pending()
 
-    assert generic.calls == []
-    assert await repository.collection_route_provider(transfer.id) == "special"
-    requests = await repository.requests(transfer.id)
-    assert all(item.error and item.error.category == Category.PROVIDER_UNAVAILABLE for item in requests)
+    assert generic.calls == [] and specialized.calls == []
+    assert await repository.collection_route_authority(transfer.id) is True
+    roots = {str(item.request.payload): item for item in await repository.requests(transfer.id)}
+    special_root = roots["https://special.test/special.bin"]
+    ordinary_root = roots["https://ordinary.test/ordinary.bin"]
+    assert ordinary_root.state == "failed" and ordinary_root.error.category == Category.UNSUPPORTED_REQUEST
+    if unavailable == "disabled":
+        # Disabled is no new participation: no specialized claimant remains.
+        assert special_root.state == "failed" and special_root.error.category == Category.UNSUPPORTED_REQUEST
+    else:
+        # Health is transient: the root waits for its claimant, held.
+        assert (special_root.state, special_root.error, special_root.attempts) == ("pending", None, 0)
 
 
-async def test_multiple_specialized_providers_use_neutral_deterministic_policy():
+async def test_multiple_specialized_providers_each_take_only_the_roots_they_claim():
     alpha = UrlFixtureProvider("alpha", host="alpha.test", priority=5)
     beta = UrlFixtureProvider("beta", host="beta.test", priority=10)
     registry = IntegrationRegistry()
@@ -328,14 +337,14 @@ async def test_multiple_specialized_providers_use_neutral_deterministic_policy()
         request("alpha.test", "a.bin"),
         request("beta.test", "b.bin"),
     )
-    assert registry.collection_provider_for(requests) is beta
-    assert registry.collection_provider_for(tuple(reversed(requests))) is beta
+    assert registry.collection_route_authority(requests) is True
+    assert registry.collection_route_authority(tuple(reversed(requests))) is True
+    assert registry.provider_for(requests[0], generic_closed=True) is alpha
+    assert registry.provider_for(requests[1], generic_closed=True) is beta
 
-    preferred = (
-        request("alpha.test", "a.bin", preferred_provider="alpha"),
-        request("beta.test", "b.bin"),
-    )
-    assert registry.collection_provider_for(preferred) is alpha
+    # A preference never hands a root to a provider that does not claim it.
+    preferred = request("beta.test", "b.bin", preferred_provider="alpha")
+    assert registry.provider_for(preferred, generic_closed=True) is beta
 
 
 async def test_single_link_direct_link_submission_keeps_existing_routing(tmp_path, monkeypatch):
@@ -348,7 +357,7 @@ async def test_single_link_direct_link_submission_keeps_existing_routing(tmp_pat
 
     await engine.resolve_pending()
 
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert len(specialized.calls) == 1
     assert generic.calls == []
 
@@ -371,7 +380,7 @@ async def test_historical_route_history_is_not_reinterpreted_by_new_affinity(tmp
     blocked = await engine._prepare_collection_affinity()
 
     assert blocked == set()
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert await repository.bound_route_provider(records[0].id) == "generic"
 
 
@@ -429,7 +438,7 @@ async def test_all_collection_sources_failed_produces_truthful_transfer_failure(
 async def test_no_candidate_failure_never_creates_bogus_artifact(tmp_path, monkeypatch):
     specialized = UrlFixtureProvider("special", host="special.test")
     generic = UrlFixtureProvider("generic", generic=True)
-    ordinary = request("ordinary.test", "none.bin")
+    ordinary = request("special.test", "none.bin")
     specialized.no_candidate_payloads.add(str(ordinary.payload))
     repository, _registry, _executor, engine = await build_core(
         tmp_path, monkeypatch, "no-candidate.sqlite3", specialized, generic

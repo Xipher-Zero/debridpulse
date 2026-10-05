@@ -218,9 +218,9 @@ class TransferEngine(_RecoveryTransferEngine):
             # A member continues the route that decomposed it: it is
             # never new acquisition, so account entitlement never gates it.
             acquisition=record.parent_id is None,
-            # A collection a specialized route owns never reopens generic
+            # A collection specialized authority owns never reopens generic
             # competition for any of its requests.
-            generic_closed=await self.repository.collection_route_provider(record.transfer_id) is not None)
+            generic_closed=await self.repository.collection_route_authority(record.transfer_id))
 
     @staticmethod
     def _route_evidence(record, route: ProviderRoute) -> str | None:

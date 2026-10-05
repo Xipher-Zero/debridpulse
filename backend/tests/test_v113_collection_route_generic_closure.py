@@ -1,11 +1,12 @@
 """Collection route authority keeps generic competition closed.
 
-Once a specialized provider durably owns a direct-link collection
-(``torrents.collection_route_provider_id``), a root that its owner exhausts
-under policy re-competes only among the specialized claimants that remain --
-the existing neutral exhaustion handoff -- never among generic ones. Without
-that collection fact (single-root transfers, all-generic collections) the
-established competition is untouched.
+Once specialized authority durably owns a direct-link collection
+(``torrents.collection_route_authority``), every root routes only among its own
+specialized claimants: a root its provider exhausts under policy re-competes
+among the specialized claimants that remain -- the existing neutral exhaustion
+handoff -- and a root no specialized provider claims is unsupported; neither
+ever reaches a generic provider. Without that collection fact (single-root
+transfers, all-generic collections) the established competition is untouched.
 
 Every provider here is a neutral fixture: no concrete integration is named.
 """
@@ -140,8 +141,9 @@ async def test_an_owned_collection_root_its_owner_exhausts_never_falls_to_generi
 
     await drive(engine)
 
-    assert await repository.collection_route_provider(transfer.id) == "special-x"
-    assert sorted(owner.resolved) == sorted([a, b, c])
+    assert await repository.collection_route_authority(transfer.id) is True
+    # A root the specialized provider never claimed is never asked of it.
+    assert sorted(owner.resolved) == sorted([a, b, c] if owner_claims_b else [a, c])
     history = await routes(repository, transfer.id)
     assert [(item["provider_id"], item["transition_kind"], item["transition_reason"]) for item in history
             if item["provider_id"] == "generic-route"] == []
@@ -150,7 +152,8 @@ async def test_an_owned_collection_root_its_owner_exhausts_never_falls_to_generi
     assert roots[b].state == "failed"
     assert roots[b].error.category == Category.UNSUPPORTED_REQUEST
     assert roots[a].state != "failed" and roots[c].state != "failed"
-    assert await repository.exhausted_route_providers(roots[b].id) == frozenset({"special-x"})
+    assert await repository.exhausted_route_providers(roots[b].id) == (
+        frozenset({"special-x"}) if owner_claims_b else frozenset())
     artifacts = await repository.artifacts(transfer.id)
     assert {artifact.name for artifact in artifacts} == {"a.bin", "c.bin"}
     assert_generic_never_touched(generic, artifacts, await routes(repository, transfer.id))
@@ -165,7 +168,7 @@ async def test_another_specialized_claimant_still_takes_the_root_its_owner_exhau
 
     await drive(engine)
 
-    assert await repository.collection_route_provider(transfer.id) == "special-x"
+    assert await repository.collection_route_authority(transfer.id) is True
     assert other.resolved == [b]
     roots = await by_payload(repository, transfer.id)
     assert await repository.bound_route_provider(roots[b].id) == "special-y"
@@ -188,7 +191,7 @@ async def test_an_unowned_collection_still_routes_through_generic(tmp_path, monk
     await drive(engine)
     await engine.tick()
 
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert owner.resolved == []
     assert sorted(generic.resolved) == sorted([one, two])
     for artifact in await repository.artifacts(transfer.id):
@@ -209,7 +212,7 @@ async def test_a_single_request_keeps_the_established_specialized_then_generic_h
 
     # No collection owner exists for one root: the pre-ownership competition
     # (provider exhaustion failover) is exactly what it was.
-    assert await repository.collection_route_provider(transfer.id) is None
+    assert await repository.collection_route_authority(transfer.id) is False
     assert owner.resolved == [payload] and generic.resolved == [payload]
 
 
@@ -235,7 +238,7 @@ async def test_restart_keeps_generic_closed_and_the_specialized_handoff_open(tmp
         tmp_path, monkeypatch, restarted_owner, restarted_generic, restarted_other, fresh=False)
     await drive(restarted_engine)
 
-    assert await restarted.collection_route_provider(transfer.id) == "special-x"
+    assert await restarted.collection_route_authority(transfer.id) is True
     assert b not in restarted_owner.resolved
     assert restarted_other.resolved == [b]
     assert restarted_generic.resolved == []
@@ -274,14 +277,17 @@ async def test_provider_recovery_resumes_the_owner_and_never_reopens_generic(tmp
 
     await drive(engine)
     assert owner.resolved == [] and generic.resolved == []
-    assert all(item.error and item.error.category == Category.PROVIDER_UNAVAILABLE
-               for item in (await by_payload(repository, transfer.id)).values())
+    roots = await by_payload(repository, transfer.id)
+    # The claimed root waits for its unhealthy claimant (held, nothing spent);
+    # the unclaimed root has no specialized claimant at all.
+    assert (roots[a].state, roots[a].error, roots[a].attempts) == ("pending", None, 0)
+    assert roots[b].state == "failed" and roots[b].error.category == Category.UNSUPPORTED_REQUEST
 
     registry.mark_health("special-x", healthy=True)
     clock.now += 3_600
     await drive(engine)
 
-    assert sorted(owner.resolved) == sorted([a, b])
+    assert owner.resolved == [a]
     assert generic.resolved == []
     assert (await by_payload(repository, transfer.id))[b].state == "failed"
 
@@ -338,11 +344,11 @@ async def test_operator_retry_reenters_the_owner_and_never_generic(tmp_path, mon
     assert await engine.retry(transfer.id)
     await drive(engine)
 
-    assert sorted(owner.resolved) == sorted([a, b, a, b])
+    assert owner.resolved == [a, a]
     assert generic.resolved == []
     roots = await by_payload(repository, transfer.id)
     assert roots[b].state == "failed" and roots[a].state != "failed"
-    assert await repository.collection_route_provider(transfer.id) == "special-x"
+    assert await repository.collection_route_authority(transfer.id) is True
 
 
 # -- 11.9: Resume -------------------------------------------------------------------------

@@ -53,17 +53,17 @@ class TransferEngine(_QualifiedTransferEngine):
             roots = tuple(record for record in records if record.parent_id is None)
             if len(roots) <= 1:
                 return False
-            if await self.repository.collection_route_provider(transfer_id):
+            if await self.repository.collection_route_authority(transfer_id):
                 return False
             for record in records:
                 if await self.repository.bound_route_provider(record.id):
                     return False
             try:
-                provider = self.registry.collection_provider_for(tuple(record.request for record in roots))
+                authority = self.registry.collection_route_authority(tuple(record.request for record in roots))
             except ApplicabilityUnresolved:
                 return True
-            if provider is not None:
-                await self.repository.bind_collection_route(transfer_id, provider.descriptor.id)
+            if authority:
+                await self.repository.establish_collection_route_authority(transfer_id)
             return False
 
     async def _prepare_collection_affinity(self) -> set[int]:

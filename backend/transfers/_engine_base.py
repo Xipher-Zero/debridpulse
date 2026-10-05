@@ -1498,10 +1498,16 @@ class TransferEngine:
         provider = self.registry.providers.get(provider_id) if provider_id else None
         if provider is None or not provider.descriptor.enabled:
             return None
+        declined = await self.repository.declined_route_providers(record.id)
+        exhausted = await self.repository.exhausted_route_providers(record.id) | {provider_id}
+        generic_closed = await self.repository.collection_route_authority(record.transfer_id)
+        # A specialized claimant only health keeps out still remains under
+        # collection route authority: the request continues and waits for it,
+        # exactly as its route selection holds for it.
         remaining = self.registry.eligible_providers(
-            record.resolvable, declined=await self.repository.declined_route_providers(record.id),
-            exhausted=await self.repository.exhausted_route_providers(record.id) | {provider_id},
-            generic_closed=await self.repository.collection_route_provider(record.transfer_id) is not None)
+            record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed,
+        ) or self.registry.unhealthy_claimants(
+            record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed)
         return provider_id, bool(remaining)
 
     async def _resolve(self, record: RequestRecord):
