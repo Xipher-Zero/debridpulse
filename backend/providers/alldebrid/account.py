@@ -27,6 +27,13 @@ from transfers.entitlement import AccountServiceClass, ProviderEntitlements, acc
 from transfers.errors import Category
 
 SCHEMA_VERSION = "alldebrid-account-v1"
+# AllDebrid's documented ceiling on concurrently active magnets
+# (docs.alldebrid.com, MAGNET_TOO_MANY_ACTIVE: "Already have maximum allowed
+# active magnets (30)."). ``/user`` reports no per-account limit.
+ACTIVE_MAGNET_MAXIMUM = 30
+# magnet/status ``statusCode`` values that are still processing -- active --
+# as opposed to ready (4) or ended in an error (5 and above).
+ACTIVE_MAGNET_STATUS_CODES = frozenset({0, 1, 2, 3})
 TORRENTS = frozenset({"magnet", "torrent"})
 HOSTERS = frozenset({"http", "https"})
 PREMIUM = TORRENTS | HOSTERS

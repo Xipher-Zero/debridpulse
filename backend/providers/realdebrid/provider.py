@@ -14,12 +14,13 @@ from providers.realdebrid.translation import (
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
+from transfers.contracts import speculative_attempt
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Permanence, Retryability, Stage, TransferError,
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    BITTORRENT_REQUEST_KINDS, ActiveCapacity, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState, SourceEntry,
     SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
@@ -61,8 +62,11 @@ class RealDebridProvider:
     # descriptor request types.
     applicability = ProviderApplicability(specialized=True, readiness=ApplicabilityReadiness.UNRESOLVED)
 
-    def __init__(self, client: RealDebridService):
+    def __init__(self, client: RealDebridService, *, prepare_backup_torrents: bool = False,
+                 max_active_torrents: int | None = None):
         self.client = client
+        self._prepare_backup_torrents = bool(prepare_backup_torrents)
+        self._max_active_torrents = max_active_torrents
         self.descriptor = IntegrationDescriptor(
             INTEGRATION_ID, "Real-Debrid",
             frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA,
@@ -88,6 +92,31 @@ class RealDebridProvider:
 
     def _secrets(self) -> tuple[str, ...]:
         return self.client.secrets()
+
+    def speculative_preparation_allowed(self, request: TransferRequest) -> bool:
+        """Only a magnet or torrent, and only while the operator allows
+        "Prepare Backup Torrents": a backup torrent occupies an active slot."""
+        return (self._prepare_backup_torrents and request.kind in BITTORRENT_REQUEST_KINDS
+                and request.kind in self.descriptor.request_types)
+
+    async def active_capacity(self, request: TransferRequest) -> ActiveCapacity | None:
+        """Active torrents as Real-Debrid states them (``/torrents/activeCount``):
+        the account's current limit, lowered by the operator's "Maximum Active
+        Torrents" when set, and the account's active count. A value that is
+        not a sane count is unknown, never guessed. Not a torrent: ``None``."""
+        if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:
+            return None
+        native = await self._call(self.client.active_count, stage=Stage.RECONCILIATION)
+
+        def count(value, *, positive):
+            if isinstance(value, bool) or not isinstance(value, int) or value < (1 if positive else 0):
+                return None
+            return value
+
+        maximum, occupancy = count(native.get("limit"), positive=True), count(native.get("nb"), positive=False)
+        if self._max_active_torrents is not None:
+            maximum = self._max_active_torrents if maximum is None else min(maximum, self._max_active_torrents)
+        return ActiveCapacity(maximum, occupancy)
 
     async def _call(self, operation, *args, stage=Stage.RESOLUTION, **kwargs):
         try:
@@ -154,8 +183,9 @@ class RealDebridProvider:
             if exc.error_code != _ALREADY_ACTIVE:
                 # A refusal of the torrent feature itself still fails this
                 # route the ordinary way; it only also tells the account owner.
+                # A speculative backup's refusal never contracts anything.
                 family, owner = refused_family(exc, request.kind), getattr(self, "account", None)
-                if family and owner is not None:
+                if family and owner is not None and not speculative_attempt():
                     await owner.contract(family)
                 raise
             resource = await self._already_active(request, exc)

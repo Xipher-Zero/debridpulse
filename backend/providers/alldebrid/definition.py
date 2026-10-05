@@ -12,6 +12,13 @@ class AllDebridOptions(BaseModel):
     api_key: str = Field(default="", repr=False)
     agent: str = APP_SHORT_NAME
     rate_limit_per_minute: int = Field(default=60, ge=0, le=600)
+    # "Prepare Backup Torrents": whether AllDebrid may also add a magnet or
+    # torrent as a backup source while another provider delivers it. Off by
+    # default: every such magnet occupies one of AllDebrid's active slots.
+    prepare_backup_torrents: bool = False
+    # "Maximum Active Torrents": the operator's own ceiling. Absent (None)
+    # follows AllDebrid's documented maximum; a value can only lower it.
+    max_active_torrents: int | None = Field(default=None, ge=1, le=30)
 
 
 _LEGACY_AGENT_IDENTITIES = frozenset({
@@ -62,6 +69,8 @@ def build(options, environment):
     provider = AllDebridProvider(
         options.api_key, options.agent,
         rate_limit_per_minute=options.rate_limit_per_minute,
+        prepare_backup_torrents=options.prepare_backup_torrents,
+        max_active_torrents=options.max_active_torrents,
     )
     # URL applicability is populated from AllDebrid's persisted/native host
     # inventory. Magnet/torrent remain neutral descriptor request-type claims.

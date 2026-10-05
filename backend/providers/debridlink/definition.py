@@ -16,6 +16,11 @@ class DebridLinkOptions(BaseModel):
     request_timeout_seconds: int = Field(default=30, ge=5, le=300)
     torrent_upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
+    # "Prepare Backup Torrents": whether Debrid-Link may also add a magnet or
+    # torrent to the seedbox as a backup source while another provider
+    # delivers it. Off by default. Debrid-Link states no active-torrent
+    # maximum to read, so there is no ceiling to tune: its own refusal is final.
+    prepare_backup_torrents: bool = False
 
 
 def canonical_options(settings) -> DebridLinkOptions:
@@ -46,7 +51,7 @@ def build(options, environment):
 
     client = DebridLinkService(options.api_key, request_timeout_seconds=options.request_timeout_seconds,
                                upload_timeout_seconds=options.torrent_upload_timeout_seconds)
-    provider = DebridLinkProvider(client)
+    provider = DebridLinkProvider(client, prepare_backup_torrents=options.prepare_backup_torrents)
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.

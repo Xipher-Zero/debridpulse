@@ -5,7 +5,9 @@ from dataclasses import replace
 from functools import wraps
 from urllib.parse import urlsplit
 
-from providers.alldebrid.account import FREE_HOST, HOSTERS, refused_family
+from providers.alldebrid.account import (
+    ACTIVE_MAGNET_MAXIMUM, ACTIVE_MAGNET_STATUS_CODES, FREE_HOST, HOSTERS, refused_family,
+)
 from providers.alldebrid.client import AllDebridService, API_V4
 from services.network_safety import validate_provider_download_url
 from providers.alldebrid.translation import (
@@ -13,10 +15,11 @@ from providers.alldebrid.translation import (
     native_members, observation_from_native, resource_from_native, translate_error,
 )
 from transfers.applicability import ProviderApplicability
+from transfers.contracts import speculative_attempt
 from transfers.entitlement import AccountServiceClass, ProviderEntitlements
 from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    BITTORRENT_REQUEST_KINDS, ActiveCapacity, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState,
     SourceEntry, SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
@@ -49,11 +52,14 @@ class AllDebridProvider:
     applicability = ProviderApplicability()
 
     def __init__(self, api_key: str = "", agent: str = "DebridPulse", *, client=None,
-                 rate_limit_per_minute: int = 60):
+                 rate_limit_per_minute: int = 60, prepare_backup_torrents: bool = False,
+                 max_active_torrents: int | None = None):
         self.client = client if client is not None else AllDebridService(
             api_key, agent, rate_limit_per_minute=rate_limit_per_minute,
         )
         self._secrets = (api_key,)
+        self._prepare_backup_torrents = bool(prepare_backup_torrents)
+        self._max_active_torrents = max_active_torrents
         self.descriptor = IntegrationDescriptor(
             "alldebrid", "AllDebrid",
             frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA,
@@ -63,6 +69,31 @@ class AllDebridProvider:
             request_types=frozenset({"magnet", "torrent", "http", "https"}),
             enabled=bool(api_key) or client is not None,
         )
+
+    def speculative_preparation_allowed(self, request: TransferRequest) -> bool:
+        """Only a magnet or torrent, and only while the operator allows
+        "Prepare Backup Torrents": a backup magnet occupies an active slot."""
+        return (self._prepare_backup_torrents and request.kind in BITTORRENT_REQUEST_KINDS
+                and request.kind in self.descriptor.request_types)
+
+    async def active_capacity(self, request: TransferRequest) -> ActiveCapacity | None:
+        """Active magnets: AllDebrid's documented maximum, lowered by the
+        operator's "Maximum Active Torrents" when set; occupancy is every
+        magnet on the account still processing (statusCode 0-3), including
+        ones DebridPulse did not add. Unknown -- never zero -- when the
+        account's magnet list cannot be read or is not a well-formed list.
+        Not a torrent: ``None``."""
+        if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:
+            return None
+        maximum = ACTIVE_MAGNET_MAXIMUM
+        if self._max_active_torrents is not None:
+            maximum = min(maximum, self._max_active_torrents)
+        try:
+            codes = await self._call(self.client.account_magnet_status_codes, stage=Stage.RECONCILIATION)
+        except TransferError:
+            return ActiveCapacity(maximum, None)
+        occupancy = sum(1 for code in codes if code in ACTIVE_MAGNET_STATUS_CODES)
+        return ActiveCapacity(maximum, occupancy)
 
     async def _call(self, operation, *args, stage=Stage.RESOLUTION, **kwargs):
         try:
@@ -148,8 +179,10 @@ class AllDebridProvider:
         except TransferError as exc:
             # A refusal of the torrent feature itself still fails this route
             # the ordinary way; it only also tells the account owner.
+            # A speculative backup's refusal never contracts anything: it
+            # says only that the backup could not be made now.
             family, owner = refused_family(exc.error.native_code, request.kind), getattr(self, "account", None)
-            if family and owner is not None:
+            if family and owner is not None and not speculative_attempt():
                 await owner.contract(family)
             raise
         if native is None:

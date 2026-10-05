@@ -73,7 +73,9 @@ def test_prepare_backup_torrents_is_one_precise_persisted_toggle_off_by_default(
     assert ("torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', "
             "commit: 'immediate'}") in SETTINGS_JS
     # The one control lives in TorBox's own Additional Settings, nowhere else.
-    assert SETTINGS_JS.count("prepare_backup_torrents") == 4   # mapping key + option, toggle key, value read
+    # TorBox's control: its mapping key, its toggle key and its value read -- once each.
+    assert SETTINGS_JS.count("torbox_prepare_backup_torrents") == 2
+    assert SETTINGS_JS.count("torBoxOf(s).prepare_backup_torrents") == 1
     for jargon in ("standby", "speculative", "prewarm"):
         assert jargon not in torbox.casefold()
 

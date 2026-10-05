@@ -111,14 +111,19 @@
     // Services
     alldebrid_api_key: {scope: 'integration:alldebrid', option: 'api_key'},
     alldebrid_rate_limit_per_minute: {scope: 'integration:alldebrid', option: 'rate_limit_per_minute'},
+    alldebrid_prepare_backup_torrents: {scope: 'integration:alldebrid', option: 'prepare_backup_torrents', commit: 'immediate'},
+    alldebrid_max_active_torrents: {scope: 'integration:alldebrid', option: 'max_active_torrents', blank: null},
     debridlink_api_key: {scope: 'integration:debridlink', option: 'api_key'},
     debridlink_request_timeout_seconds: {scope: 'integration:debridlink', option: 'request_timeout_seconds'},
     debridlink_torrent_upload_timeout_seconds: {scope: 'integration:debridlink', option: 'torrent_upload_timeout_seconds'},
     debridlink_host_refresh_interval_hours: {scope: 'integration:debridlink', option: 'host_refresh_interval_hours'},
+    debridlink_prepare_backup_torrents: {scope: 'integration:debridlink', option: 'prepare_backup_torrents', commit: 'immediate'},
     realdebrid_rate_limit_per_minute: {scope: 'integration:realdebrid', option: 'rate_limit_per_minute'},
     realdebrid_request_timeout_seconds: {scope: 'integration:realdebrid', option: 'request_timeout_seconds'},
     realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
     realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
+    realdebrid_prepare_backup_torrents: {scope: 'integration:realdebrid', option: 'prepare_backup_torrents', commit: 'immediate'},
+    realdebrid_max_active_torrents: {scope: 'integration:realdebrid', option: 'max_active_torrents', blank: null},
     torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'},
     torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', commit: 'immediate'},
     // Empty is "no ceiling of my own": it commits null and follows the plan's maximum.
@@ -1717,6 +1722,13 @@
               type: 'number', min: 0, max: 300,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
             }),
+            tuningToggle('alldebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
+              allDebridOf(s).prepare_backup_torrents === true),
+            input('alldebrid_max_active_torrents', 'Maximum Active Torrents', allDebridOf(s).max_active_torrents ?? '', {
+              type: 'number', min: 1, max: 30, placeholder: 'AllDebrid maximum (30)',
+              hint: 'Leave empty to follow AllDebrid (30 active magnets). A lower number keeps fewer torrents active on AllDebrid; it never goes above 30.'
+            }),
             input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
               type: 'number', min: 10,
               hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
@@ -1770,6 +1782,13 @@
             input('realdebrid_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', realDebridOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Real-Debrid supports.'
+            }),
+            tuningToggle('realdebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
+              realDebridOf(s).prepare_backup_torrents === true),
+            input('realdebrid_max_active_torrents', 'Maximum Active Torrents', realDebridOf(s).max_active_torrents ?? '', {
+              type: 'number', min: 1, placeholder: 'Account maximum',
+              hint: 'Leave empty to follow your Real-Debrid account limit. A lower number keeps fewer torrents active on Real-Debrid; it never goes above your account limit.'
             }),
           )}
         </div>
@@ -1868,6 +1887,9 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Debrid-Link supports.'
             }),
+            tuningToggle('debridlink_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to your Debrid-Link seedbox as backup sources while another provider delivers them.',
+              debridLinkOf(s).prepare_backup_torrents === true),
           )}
         </div>
       </details>

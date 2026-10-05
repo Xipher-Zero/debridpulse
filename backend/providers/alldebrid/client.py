@@ -197,6 +197,24 @@ class AllDebridService:
                 )
             raise
 
+    async def account_magnet_status_codes(self) -> List[int]:
+        """The statusCode of every magnet on the account, read strictly from
+        one v4.1 ``magnet/status`` listing: a ``magnets`` array whose every
+        record carries a non-negative integer ``statusCode``. Anything else
+        raises ``AllDebridAPIError("MALFORMED_RESPONSE")`` -- a response that
+        does not say what is on the account is never read as an empty one."""
+        data = await self._post(API_V41, "magnet/status")
+        magnets = data.get("magnets") if isinstance(data, dict) else None
+        if not isinstance(magnets, list):
+            raise AllDebridAPIError("MALFORMED_RESPONSE", "magnet/status returned no magnets array")
+        codes = []
+        for magnet in magnets:
+            code = magnet.get("statusCode") if isinstance(magnet, dict) else None
+            if not isinstance(code, int) or isinstance(code, bool) or code < 0:
+                raise AllDebridAPIError("MALFORMED_RESPONSE", "magnet/status returned a magnet without a statusCode")
+            codes.append(code)
+        return codes
+
     async def get_magnet_files(self, magnet_ids: List[str]) -> List[Dict]:
         if not magnet_ids:
             return []

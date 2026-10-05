@@ -729,18 +729,21 @@ def test_no_localized_save_action_survives_for_the_alldebrid_credential():
         assert banned not in panel, banned
 
 
-def test_the_alldebrid_additional_settings_are_five_tuning_cells():
+def test_the_alldebrid_additional_settings_are_its_tuning_cells():
     """Tuning-only behind its disclosure: the five existing controls, each still
-    bound to the same canonical setting, in the reusable tuning grid. The
-    disclosure row carries no Test, no Save and no action footer."""
+    bound to the same canonical setting, plus the backup-torrent toggle and
+    its ceiling, in the reusable tuning grid. The disclosure row carries no
+    Test, no Save and no action footer."""
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     additional = panel[panel.index("dp-settings-additional"):panel.index("`, allDebrid, {")]
     assert "tuningCells(" in additional
     for field in ("alldebrid_rate_limit_per_minute", "poll_interval_seconds",
                   "full_sync_interval_minutes", "upload_fail_retry_count",
-                  "upload_fail_retry_delay_minutes"):
+                  "upload_fail_retry_delay_minutes", "alldebrid_prepare_backup_torrents",
+                  "alldebrid_max_active_torrents"):
         assert field in additional, field
-    assert additional.count("input(") == 5, "the collection does not hold exactly five cells"
+    assert additional.count("input(") == 6, "the collection does not hold exactly six inputs"
+    assert additional.count("tuningToggle(") == 1
     for banned in ("test-alldebrid", "Save", "dp-settings-provider-actions"):
         assert banned not in additional, banned
 

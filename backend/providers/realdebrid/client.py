@@ -291,6 +291,11 @@ class RealDebridService:
         return _object(_decode(await self._authorized("PUT", "torrents/addTorrent", data=bytes(metainfo),
                                                       timeout=self.upload_timeout)), "torrent creation")
 
+    async def active_count(self) -> dict:
+        """``GET /torrents/activeCount``: "currently active torrents number and
+        the current maximum limit" -- ``nb`` and ``limit`` for this account."""
+        return _object(_decode(await self._authorized("GET", "torrents/activeCount")), "active torrent count")
+
     async def select_files(self, native_id: str, files: str = "all") -> int:
         """Select files of a torrent; 204 selected it, 202 says it already was."""
         response = await self._authorized("POST", f"torrents/selectFiles/{native_id}", data={"files": files})

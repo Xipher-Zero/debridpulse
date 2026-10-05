@@ -4,11 +4,11 @@ Whether a provider allows a request to be prepared speculatively -- added to
 its account as a backup while another provider delivers it -- is the
 provider's own pure answer (``SpeculativePreparation``), read through one
 fail-closed reader (``IntegrationRegistry.speculative_preparation_allowed``).
-A provider without the contract is never eligible. AllDebrid, Real-Debrid and
-Debrid-Link do not offer it: each has scarce active-resource or quota capacity
-(their own translated refusals), so a backup is not benign there. TorBox
-offers it for torrents and magnets only, and only while the operator turns on
-"Prepare Backup Torrents" (default off). Nothing here prepares anything.
+A provider without the contract is never eligible. AllDebrid, Real-Debrid,
+Debrid-Link and TorBox each offer it for torrents and magnets only, and only
+while the operator turns on that provider's own "Prepare Backup Torrents"
+(default off); their active-slot and quota limits constrain capacity rather
+than excluding them. Nothing here prepares anything.
 """
 from __future__ import annotations
 
@@ -78,10 +78,13 @@ async def test_a_provider_without_the_contract_is_never_eligible():
 
 
 @pytest.mark.parametrize("identity", ["alldebrid", "realdebrid", "debridlink"])
-async def test_alldebrid_realdebrid_and_debridlink_stay_ineligible_for_every_request(identity):
+async def test_alldebrid_realdebrid_and_debridlink_are_off_by_default_and_torrent_only_when_on(identity):
+    # Each offers backup torrents of its own (TASK3d-2), only by the operator's choice.
     provider = built(identity)
-    assert not isinstance(provider, SpeculativePreparation)
+    assert isinstance(provider, SpeculativePreparation)
     assert [allowed(provider, request) for request in EVERY_KIND] == [False] * len(EVERY_KIND)
+    enabled = built(identity, prepare_backup_torrents=True)
+    assert [allowed(enabled, request) for request in EVERY_KIND] == [True, True, False, False]
 
 
 # -- T3.1 / T3.4 / T3.5: TorBox, default off, torrents and magnets only ----------------------

@@ -20,6 +20,13 @@ class RealDebridOptions(BaseModel):
     request_timeout_seconds: int = Field(default=30, ge=5, le=300)
     torrent_upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
+    # "Prepare Backup Torrents": whether Real-Debrid may also add a magnet or
+    # torrent as a backup source while another provider delivers it. Off by
+    # default: every such torrent occupies one of the account's active slots.
+    prepare_backup_torrents: bool = False
+    # "Maximum Active Torrents": the operator's own ceiling. Absent (None)
+    # follows the account's current Real-Debrid limit; a value only lowers it.
+    max_active_torrents: int | None = Field(default=None, ge=1)
 
 
 def canonical_options(settings) -> RealDebridOptions:
@@ -59,7 +66,8 @@ def build(options, environment):
                                request_timeout_seconds=options.request_timeout_seconds,
                                upload_timeout_seconds=options.torrent_upload_timeout_seconds,
                                on_refresh=persist_refreshed_credential)
-    provider = RealDebridProvider(client)
+    provider = RealDebridProvider(client, prepare_backup_torrents=options.prepare_backup_torrents,
+                                  max_active_torrents=options.max_active_torrents)
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.

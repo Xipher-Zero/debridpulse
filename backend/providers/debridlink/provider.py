@@ -41,7 +41,7 @@ from transfers.errors import (
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    BITTORRENT_REQUEST_KINDS, ActiveCapacity, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState, SourceEntry,
     SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
@@ -86,8 +86,9 @@ class DebridLinkProvider:
     # remain descriptor request types.
     applicability = ProviderApplicability(specialized=True, readiness=ApplicabilityReadiness.UNRESOLVED)
 
-    def __init__(self, client: DebridLinkService):
+    def __init__(self, client: DebridLinkService, *, prepare_backup_torrents: bool = False):
         self.client = client
+        self._prepare_backup_torrents = bool(prepare_backup_torrents)
         self.descriptor = IntegrationDescriptor(
             INTEGRATION_ID, "Debrid-Link",
             frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA,
@@ -97,6 +98,21 @@ class DebridLinkProvider:
             request_types=frozenset({"magnet", "torrent", "http", "https"}),
             enabled=client.configured,
         )
+
+    def speculative_preparation_allowed(self, request: TransferRequest) -> bool:
+        """Only a magnet or torrent, and only while the operator allows
+        "Prepare Backup Torrents"."""
+        return (self._prepare_backup_torrents and request.kind in BITTORRENT_REQUEST_KINDS
+                and request.kind in self.descriptor.request_types)
+
+    async def active_capacity(self, request: TransferRequest) -> ActiveCapacity | None:
+        """Seedbox torrents do have a concurrent-transfer limit (its
+        ``maxTransfer`` refusal), but Debrid-Link states neither the maximum
+        nor the current count: both unknown, so only its own refusal says the
+        seedbox is full. Not a torrent: ``None``."""
+        if request.kind not in BITTORRENT_REQUEST_KINDS or request.kind not in self.descriptor.request_types:
+            return None
+        return ActiveCapacity()
 
     def applicability_for(self, request: TransferRequest) -> ProviderApplicability:
         # Replaced by host maintenance once it is attached.

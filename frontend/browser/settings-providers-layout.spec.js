@@ -134,12 +134,17 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       parseFloat(getComputedStyle(el).borderTopWidth))).toBe(0);
   });
 
-  test('expanded: exactly five compact tuning cells, each still bound to its setting',
+  test('expanded: exactly seven compact tuning cells, each still bound to its setting',
     async ({page}) => {
       await summary(page).click();
       await expect(optionBody(page)).toBeVisible();
-      await expect(cells(page)).toHaveCount(5);
+      await expect(cells(page)).toHaveCount(7);
+      // The backup-torrent toggle is a cell of the same set (its checkbox is
+      // the visually hidden control behind the track).
+      await expect(page.locator('.dp-settings-tuning-grid [data-setting="alldebrid_prepare_backup_torrents"]'))
+        .toHaveCount(1);
       for (const id of ['#dp-settings-field-alldebrid-rate-limit-per-minute',
+                        '#dp-settings-field-alldebrid-max-active-torrents',
                         '#dp-settings-field-poll-interval-seconds',
                         '#dp-settings-field-full-sync-interval-minutes',
                         '#dp-settings-field-upload-fail-retry-count',
@@ -163,22 +168,24 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       // spanning the usable width, with a bounded card centred in each. A
       // lane is its cell plus the slack centring the card in it.
       await expect(card(page).locator('.dp-settings-tuning-grid'))
-        .toHaveAttribute('data-tuning-lanes', '5');
+        .toHaveAttribute('data-tuning-lanes', '7');
       const lanes = await cells(page).evaluateAll(nodes => nodes.map(node => {
         const style = getComputedStyle(node);
         return node.getBoundingClientRect().width + parseFloat(style.marginLeft) + parseFloat(style.marginRight);
       }));
-      expect(lanes.length, 'the set lost a lane').toBe(5);
+      expect(lanes.length, 'the set lost a lane').toBe(7);
       expect(Math.max(...lanes) - Math.min(...lanes), 'the lanes are not equal')
         .toBeLessThanOrEqual(1);
-      expect(grid.width - (lanes.reduce((a, b) => a + b, 0) + 4 * 16),
+      expect(grid.width - (lanes.reduce((a, b) => a + b, 0) + 6 * 16),
         'the lanes do not span the usable width').toBeLessThanOrEqual(2);
 
-      for (let i = 0; i < 5; i += 1) {
+      for (let i = 0; i < 7; i += 1) {
         const cell = cells(page).nth(i);
         const cellBox = await boxOf(cell);
         // Bounded: a card never stretches edge to edge in its lane.
         expect(cellBox.width).toBeLessThanOrEqual(240);
+        // A toggle cell has no number control: its own parts are checked.
+        if (await cell.locator('.input').count() === 0) continue;
         // Label, control and help are each centred AS ELEMENTS on the cell axis.
         for (const part of ['.form-label', '.input', '.form-hint']) {
           const partBox = await boxOf(cell.locator(part));
@@ -229,9 +236,9 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       // the VIEWPORT is deliberately not asserted: the Settings chrome has its
       // own breakpoints, so the region's own width is not a monotonic function
       // of the window's -- and the lane rule answers to the region alone.
-      expect(seen[0], `the set did not hold all five lanes: ${seen}`).toBe(5);
-      for (const lanes of seen) expect(lanes).toBeLessThanOrEqual(5);
-      expect(Math.min(...seen), `lane count never dropped: ${seen}`).toBeLessThan(5);
+      expect(seen[0], `the set did not hold all seven lanes: ${seen}`).toBe(7);
+      for (const lanes of seen) expect(lanes).toBeLessThanOrEqual(7);
+      expect(Math.min(...seen), `lane count never dropped: ${seen}`).toBeLessThan(7);
       await page.setViewportSize({width: 1440, height: 1000});
     });
 

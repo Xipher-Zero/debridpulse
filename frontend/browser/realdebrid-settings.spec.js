@@ -166,7 +166,14 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
   await expect(tuning.locator('.dp-settings-tuning-grid')).toHaveCount(1);
-  await expect(tuning.locator('[data-setting]')).toHaveCount(4);
+  await expect(tuning.locator('[data-setting]')).toHaveCount(6);
+  const backups = tuning.locator('[data-setting="realdebrid_prepare_backup_torrents"]');
+  await expect(backups).not.toBeChecked();
+  await expect(backups).toHaveAttribute('data-commit', 'immediate');
+  const ceiling = tuning.locator('[data-setting="realdebrid_max_active_torrents"]');
+  await expect(ceiling).toHaveValue('');
+  await expect(ceiling).toHaveAttribute('placeholder', 'Account maximum');
+  await expect(ceiling).toHaveAttribute('data-commit-scope', 'integration:realdebrid');
   for (const [key, value, min, max] of [
     ['realdebrid_rate_limit_per_minute', '240', '1', '250'],
     ['realdebrid_request_timeout_seconds', '30', '5', '300'],
