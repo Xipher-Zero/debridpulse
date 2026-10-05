@@ -7,7 +7,7 @@ from transfers.applicability import ProviderApplicability
 from transfers.entitlement import ProviderEntitlements
 from transfers.input_required import SubmittedInput
 from transfers.models import (
-    CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
+    AvailabilityState, CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
     ExecutorHealth, ExecutorRuntimeControlResult, ExecutorThroughput, HealthObservation, InputRequirement,
     IntegrationDescriptor,
@@ -84,6 +84,18 @@ class CachedResolution(Protocol):
     async def cache_presence(self, requests: tuple[TransferRequest, ...]) -> tuple[CachePresence, ...]: ...
 
     async def resolve_cached(self, request: TransferRequest) -> ResolutionResult | None: ...
+
+
+@runtime_checkable
+class AvailabilitySource(Protocol):
+    """Optional, declared by ``Capability.AVAILABILITY``: for each request in
+    order, whether the provider can deliver it now without beginning
+    productive acquisition (``AvailabilityState``). One bounded read that
+    creates nothing, batched where the provider can; ``UNKNOWN`` when it
+    cannot tell. Core asks only the providers already competing for a root,
+    and only to prefer a ``READY`` one -- never to add, remove or exhaust one."""
+
+    async def availability(self, requests: tuple[TransferRequest, ...]) -> tuple[AvailabilityState, ...]: ...
 
 
 @runtime_checkable

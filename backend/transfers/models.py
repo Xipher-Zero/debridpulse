@@ -217,6 +217,22 @@ class CachePresence(StrEnum):
     UNKNOWN = "unknown"
 
 
+class AvailabilityState(StrEnum):
+    """Whether a provider can deliver a request NOW without beginning any
+    productive remote acquisition -- a live, read-only answer asked before
+    routing (``AvailabilitySource``), never the historical admission-time
+    ``CachePresence``.
+
+    ``READY`` / ``NOT_READY`` come only from the provider's own authoritative
+    read-only statement. ``UNKNOWN`` is everything else: no such statement
+    exists, the read failed or timed out, or the request carries nothing the
+    provider can be asked about. ``UNKNOWN`` is never a miss.
+    """
+    READY = "ready"
+    NOT_READY = "not_ready"
+    UNKNOWN = "unknown"
+
+
 class DeliveryKind(StrEnum):
     """Whether a candidate's endpoint IS the requested source or a
     provider-issued delivery capability for it.

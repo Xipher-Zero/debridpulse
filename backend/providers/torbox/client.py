@@ -38,6 +38,8 @@ DEFAULT_UPLOAD_TIMEOUT_SECONDS = 120
 # far smaller, so anything larger is malformed, not data.
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
 LIST_PAGE_LIMIT = 1000
+# TorBox answers at most about this many info-hashes per torrent cache query.
+TORRENT_CACHE_BATCH = 100
 
 TORRENT, WEBDL, USENET = "torrent", "webdl", "usenet"
 
@@ -352,6 +354,29 @@ class TorBoxService:
             if link is not None:
                 found[link] = entry
         return found
+
+    async def torrents_cached(self, hashes: tuple[str, ...]) -> frozenset[str]:
+        """The info-hashes among ``hashes`` that TorBox's torrent cache holds;
+        one that it does not hold is absent. Batched reads (``torrents/checkcached``,
+        at most ``TORRENT_CACHE_BATCH`` hashes each) that create nothing."""
+        wanted = sorted({str(value).casefold() for value in hashes if value})
+        found = set()
+        for start in range(0, len(wanted), TORRENT_CACHE_BATCH):
+            chunk = wanted[start:start + TORRENT_CACHE_BATCH]
+            native = _envelope(await self._send(
+                "GET", "torrents/checkcached", params={"hash": ",".join(chunk), "format": "object"}))
+            if native is None:
+                continue
+            if not isinstance(native, dict):
+                raise TorBoxProtocolError("TorBox returned an unexpected cache answer")
+            for key, entry in native.items():
+                if entry is None:
+                    continue
+                if not isinstance(entry, dict):
+                    raise TorBoxProtocolError("TorBox returned an unexpected cache entry")
+                if str(key).casefold() in chunk:
+                    found.add(str(key).casefold())
+        return frozenset(found)
 
     async def create_usenet(self, posting, *, name: str) -> str:
         """Submit one NZB posting as a file. ``posting`` is bytes or a binary

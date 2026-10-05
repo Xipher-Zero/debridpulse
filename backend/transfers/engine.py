@@ -13,6 +13,7 @@ failures (via ``policy.compatibility``) before lifecycle policy consumes them.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 import logging
 
@@ -28,10 +29,19 @@ from transfers.errors import (
 from transfers.policy import recovery_action
 from transfers.registry import ProviderRoute
 from transfers.models import (
-    CachePresence, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
+    AvailabilityState, CachePresence, Capability, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
 )
 
 logger = logging.getLogger(__name__)
+
+# The bound on one provider's read-only availability answer while a root is
+# routed; a provider that does not answer in time is UNKNOWN for that decision.
+AVAILABILITY_TIMEOUT_SECONDS = 5.0
+# One observation round asks each competing provider, in one batched read,
+# about at most this many unbound BitTorrent roots; the answer it gave for a
+# root routed later is that root's once, and only while it is this fresh.
+AVAILABILITY_ROUND_LIMIT = 100
+AVAILABILITY_ROUND_FRESH_SECONDS = 30.0
 
 
 class TransferEngine(_RecoveryTransferEngine):
@@ -212,15 +222,102 @@ class TransferEngine(_RecoveryTransferEngine):
         bound_provider_id = await self.repository.bound_route_provider(record.id)
         if bound_provider_id:
             return ProviderRoute(self.registry.provider_for_bound_route(bound_provider_id, record.resolvable))
-        return self.registry.provider_route(
-            record.resolvable, declined=await self.repository.declined_route_providers(record.id),
-            exhausted=await self.repository.exhausted_route_providers(record.id),
+        competition = await self._competition(record)
+        # Only a root's new acquisition is ever asked about, and only where an
+        # answer can change the order -- never merely to have it recorded.
+        availability = (await self._root_availability(record, competition)
+                        if record.parent_id is None and self.registry.availability_orders(record.resolvable)
+                        else None)
+        return self.registry.provider_route(record.resolvable, availability=availability, **competition)
+
+    async def _competition(self, record) -> dict:
+        """The facts of ``record``'s one canonical provider competition."""
+        return {
+            "declined": await self.repository.declined_route_providers(record.id),
+            "exhausted": await self.repository.exhausted_route_providers(record.id),
             # A member continues the route that decomposed it: it is
             # never new acquisition, so account entitlement never gates it.
-            acquisition=record.parent_id is None,
+            "acquisition": record.parent_id is None,
             # A collection specialized authority owns never reopens generic
             # competition for any of its requests.
-            generic_closed=await self.repository.collection_route_authority(record.transfer_id))
+            "generic_closed": await self.repository.collection_route_authority(record.transfer_id),
+        }
+
+    async def _root_availability(self, record, competition) -> dict[str, AvailabilityState]:
+        """Each provider competing for this unbound BitTorrent root with its
+        read-only availability. The answer an earlier round already gave for
+        it is used once, while fresh; otherwise one round observes it together
+        with the other unbound BitTorrent roots waiting to be routed, so a
+        provider that batches is asked once for all of them. An answer only
+        ever prefers among the root's competitors at the moment it is routed."""
+        answers = getattr(self, "_availability_answers", None)
+        if answers is None:
+            answers = self._availability_answers = {}
+            self._availability_round_lock = asyncio.Lock()
+        # Concurrent routing waits for a round in progress instead of
+        # starting its own: that round may already be observing this root.
+        async with self._availability_round_lock:
+            now = self.clock()
+            for request_id, (observed_at, _states) in list(answers.items()):
+                if now - observed_at > AVAILABILITY_ROUND_FRESH_SECONDS:
+                    answers.pop(request_id, None)
+            earlier = answers.pop(record.id, None)
+            if earlier is not None:
+                return earlier[1]
+            roots = [(record, competition)]
+            for item in await self._availability_round_roots(record, answers):
+                roots.append((item, await self._competition(item)))
+            observed = await self._observe_availability(roots)
+            for item, _competition in roots[1:]:
+                answers[item.id] = (now, observed[item.id])
+            return observed[record.id]
+
+    async def _availability_round_roots(self, record, answers) -> list:
+        """The other unbound BitTorrent roots waiting to be routed (this
+        root's transfer first), up to the round's bound."""
+        found = []
+        transfers = sorted(await self.repository.active(), key=lambda item: item.id != record.transfer_id)
+        for transfer in transfers:
+            for item in await self.repository.requests(transfer.id):
+                if len(found) >= AVAILABILITY_ROUND_LIMIT - 1:
+                    return found
+                if (item.id == record.id or item.id in answers or item.parent_id is not None
+                        or item.state != "pending" or not self.registry.availability_orders(item.resolvable)
+                        or await self.repository.bound_route_provider(item.id)):
+                    continue
+                found.append(item)
+        return found
+
+    async def _observe_availability(self, roots) -> dict[str, dict[str, AvailabilityState]]:
+        """``{request_id: {provider_id: state}}`` for each root's competitors:
+        each provider that declares ``AVAILABILITY`` is asked once, about every
+        root it competes for, within the bound; everyone else -- and any root
+        whose provider failed, timed out or answered malformed -- is UNKNOWN.
+        Concurrent, creates nothing, never a routing failure. Nobody outside a
+        root's competition is asked about it."""
+        observed, asked = {}, {}
+        for item, competition in roots:
+            competitors = self.registry.eligible_providers(item.resolvable, **competition)
+            observed[item.id] = {provider.descriptor.id: AvailabilityState.UNKNOWN for provider in competitors}
+            for provider in competitors:
+                if Capability.AVAILABILITY in provider.descriptor.capabilities:
+                    asked.setdefault(provider.descriptor.id, (provider, []))[1].append(item)
+
+        async def observe(provider, items) -> None:
+            try:
+                states = await asyncio.wait_for(provider.availability(tuple(item.resolvable for item in items)),
+                                                AVAILABILITY_TIMEOUT_SECONDS)
+            except Exception as exc:
+                logger.debug("availability unknown provider=%s: %s", provider.descriptor.id, type(exc).__name__)
+                return
+            if (not isinstance(states, tuple) or len(states) != len(items)
+                    or not all(isinstance(state, AvailabilityState) for state in states)):
+                return
+            for item, state in zip(items, states):
+                observed[item.id][provider.descriptor.id] = state
+
+        await asyncio.gather(*(observe(provider, items) for provider, items in asked.values()))
+        return observed
 
     @staticmethod
     def _route_evidence(record, route: ProviderRoute) -> str | None:

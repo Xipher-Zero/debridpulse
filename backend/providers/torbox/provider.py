@@ -13,6 +13,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from functools import wraps
+import re
 import time
 from urllib.parse import urlsplit
 
@@ -32,7 +33,7 @@ from transfers.errors import (
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
+    BITTORRENT_REQUEST_KINDS, AvailabilityState, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
     IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResourceSnapshot, ResourceState, SourceEntry, SourceIdentity, TransferCandidate,
     TransferOutcome, TransferRequest,
@@ -66,6 +67,10 @@ def normalized_boundary(stage):
     return decorate
 
 
+# A v1 BitTorrent info-hash, as admission records it (``transfers.requests.extract_hash``).
+_INFO_HASH = re.compile(r"[0-9a-f]{40}")
+
+
 class TorBoxProvider:
     # HTTP(S) applicability is published by this provider's own host
     # maintenance from TorBox's supported-host catalogue; until it has a
@@ -86,7 +91,7 @@ class TorBoxProvider:
             kinds.add("nzb")
         self.descriptor = IntegrationDescriptor(
             INTEGRATION_ID, "TorBox",
-            frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA,
+            frozenset({Capability.RESOLVE, Capability.AVAILABILITY, Capability.REFRESH, Capability.METADATA,
                        Capability.FILE_MANIFEST, Capability.RESOURCE_CREATION,
                        Capability.RESOURCE_LOOKUP, Capability.INVENTORY,
                        Capability.CLEANUP, Capability.HEALTH}),
@@ -181,6 +186,31 @@ class TorBoxProvider:
         cached = await self._call(self.client.webdl_cached, tuple({link for link in links if link}))
         return tuple(CachePresence.UNKNOWN if link is None else
                      CachePresence.HIT if link in cached else CachePresence.MISS for link in links)
+
+    @staticmethod
+    def _torrent_hash(request: TransferRequest) -> str | None:
+        """The v1 info-hash a BitTorrent-class root names, if it names one."""
+        value = str(request.fingerprint or "").casefold()
+        return value if request.kind in BITTORRENT_REQUEST_KINDS and _INFO_HASH.fullmatch(value) else None
+
+    @normalized_boundary(Stage.RESOLUTION)
+    async def availability(self, requests: tuple[TransferRequest, ...]) -> tuple[AvailabilityState, ...]:
+        """Whether TorBox can deliver each request now without acquiring it:
+        a torrent its torrent cache holds (by info-hash), or a root web
+        download its web-download cache holds -- two separate batched reads
+        that create nothing. ``NOT_READY`` is TorBox's own answer without the
+        request; anything it cannot be asked about is ``UNKNOWN``."""
+        hashes = [self._torrent_hash(request) for request in requests]
+        links = [None if digest else self._webdl_link(request) for request, digest in zip(requests, hashes)]
+        held = (await self._call(self.client.torrents_cached, tuple(h for h in hashes if h))
+                if any(hashes) else frozenset())
+        cached = (await self._call(self.client.webdl_cached, tuple({link for link in links if link}))
+                  if any(links) else {})
+        return tuple(
+            (AvailabilityState.READY if digest in held else AvailabilityState.NOT_READY) if digest
+            else (AvailabilityState.READY if link in cached else AvailabilityState.NOT_READY) if link
+            else AvailabilityState.UNKNOWN
+            for digest, link in zip(hashes, links))
 
     @normalized_boundary(Stage.RESOLUTION)
     async def resolve_cached(self, request: TransferRequest) -> ResolutionResult | None:

@@ -13,7 +13,7 @@ from transfers.applicability import (
     assess_provider_applicability,
 )
 from transfers.contracts import (
-    ApplicabilitySource, CandidateRefresh, EntitlementSource, RequestEntitlementSource, CandidateSampling, CandidateSamplingContinuation, Cleanup,
+    ApplicabilitySource, AvailabilitySource, CandidateRefresh, EntitlementSource, RequestEntitlementSource, CandidateSampling, CandidateSamplingContinuation, Cleanup,
     ContinuationBoundaryDiscovery, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
     ExecutorInputRecovery, RemoteDiscovery,
@@ -23,13 +23,14 @@ from transfers.contracts import (
 from transfers.entitlement import ProviderEntitlements
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.models import (
-    Capability, ContinuationCapability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim,
+    BITTORRENT_REQUEST_KINDS, AvailabilityState, Capability, ContinuationCapability, ExecutionSubject, ExecutorCapabilities, ExecutorClaim,
     ExecutorRuntimeCapability, TransferRequest,
 )
 
 
 _PROVIDER_CAPABILITIES = {
     Capability.REFRESH: CandidateRefresh, Capability.CLEANUP: Cleanup,
+    Capability.AVAILABILITY: AvailabilitySource,
     Capability.INVENTORY: Inventory, Capability.HEALTH: Health,
     Capability.RESOURCE_LOOKUP: ResourceLookup,
     Capability.METADATA: Manifest,
@@ -95,6 +96,9 @@ class ProviderDisposition:
     provider_id: str
     disposition: RoutingDisposition
     classification: ApplicabilityClass | None = None
+    # The read-only availability the decision consumed for this provider;
+    # ``None`` when none was observed for the request.
+    availability: AvailabilityState | None = None
 
 
 @dataclass(frozen=True)
@@ -109,7 +113,8 @@ class RoutingDecision:
     def encode(self) -> str:
         return json.dumps({"v": 1, "outcome": self.outcome.value, "providers": [
             {"provider_id": item.provider_id, "disposition": item.disposition.value,
-             **({"class": item.classification.value} if item.classification else {})}
+             **({"class": item.classification.value} if item.classification else {}),
+             **({"availability": item.availability.value} if item.availability else {})}
             for item in self.providers]}, separators=(",", ":"))
 
 
@@ -237,6 +242,7 @@ class IntegrationRegistry:
         acquisition: bool = True,
         generic_closed: bool = False,
         dispositions: dict | None = None,
+        ready: frozenset[str] = frozenset(),
     ):
         # ``dispositions``, when given, receives every provider this decision
         # removed before classification and why -- the values it computes
@@ -310,9 +316,30 @@ class IntegrationRegistry:
         applicable.sort(key=lambda provider: self._provider_selection_key(
             provider, request, conditional=conditional[provider.descriptor.id],
             specific=specific[provider.descriptor.id]))
+        # Read-only availability may only PREFER: where it orders at all
+        # (``availability_orders``), the READY competitors whose entitlement is
+        # established come first, each group keeping the established order
+        # (a stable sort); no READY changes nothing. It never moves a provider
+        # whose entitlement is still unknown ahead of anyone, and when the
+        # established winner's own entitlement is unknown the decision stays
+        # exactly as premature as it was.
+        if (ready and applicable and self.availability_orders(request)
+                and entitlement[applicable[0].descriptor.id] is not None):
+            prefer = frozenset(provider_id for provider_id in ready if entitlement.get(provider_id) is True)
+            applicable.sort(key=lambda provider: provider.descriptor.id not in prefer)
         unresolved = frozenset(provider.descriptor.id for provider in applicable
                                if entitlement[provider.descriptor.id] is None)
         return tuple(applicable), assessment, unresolved
+
+    @staticmethod
+    def availability_orders(request: TransferRequest) -> bool:
+        """Whether read-only availability may change the provider order for
+        ``request``: only for a BitTorrent-class root, where every claimant's
+        READY answer means the same thing (the swarm's content is already
+        held). A hoster root keeps its established winner: one provider being
+        able to read a cache while another has no such read is no evidence
+        that the other cannot deliver."""
+        return request.kind in BITTORRENT_REQUEST_KINDS
 
     def conditional_claim(self, provider: Provider, request: TransferRequest) -> bool:
         """Whether ``provider``'s claim on ``request`` is conditional -- the
@@ -321,7 +348,7 @@ class IntegrationRegistry:
         return bool(getattr(facts, "conditional", False))
 
     def _decision(self, request, route, providers, assessment, unknown, removed, declined,
-                  generic_closed) -> RoutingDecision:
+                  generic_closed, availability=None) -> RoutingDecision:
         """Describe the decision ``_provider_selection`` just made, from its
         own results: the providers it removed before classification, the
         classifier's assessment, and the ordered competition. Pure -- no
@@ -356,7 +383,8 @@ class IntegrationRegistry:
         for provider_id in sorted(found, key=lambda item: (order.get(item, len(order)), item)):
             value = found[provider_id]
             disposition, classification = value if isinstance(value, tuple) else (value, None)
-            entries.append(ProviderDisposition(provider_id, disposition, classification))
+            entries.append(ProviderDisposition(provider_id, disposition, classification,
+                                               (availability or {}).get(provider_id)))
         return RoutingDecision(outcome, tuple(entries))
 
     def collection_route_authority(self, requests: tuple[TransferRequest, ...]) -> bool:
@@ -416,18 +444,24 @@ class IntegrationRegistry:
 
     def provider_route(self, request: TransferRequest, *, declined: frozenset[str] = frozenset(),
                        exhausted: frozenset[str] = frozenset(), acquisition: bool = True,
-                       generic_closed: bool = False) -> ProviderRoute:
+                       generic_closed: bool = False,
+                       availability: dict[str, AvailabilityState] | None = None) -> ProviderRoute:
         """``provider_for``'s one decision, not raised: its provider (or why
-        there is none) and the routing decision that produced it."""
+        there is none) and the routing decision that produced it.
+        ``availability`` -- the read-only answers of the providers competing
+        for ``request`` -- may prefer a READY competitor where
+        ``availability_orders``; it never adds, removes or exhausts one."""
         return self._route(request, declined=declined, exhausted=exhausted, acquisition=acquisition,
-                           generic_closed=generic_closed, record=True)
+                           generic_closed=generic_closed, record=True, availability=availability)
 
     def _route(self, request: TransferRequest, *, declined, exhausted, acquisition, generic_closed,
-               record: bool = False) -> ProviderRoute:
+               record: bool = False, availability: dict[str, AvailabilityState] | None = None) -> ProviderRoute:
         dispositions = {} if record else None
         providers, assessment, unknown = self._provider_selection(
             request, declined=declined, exhausted=exhausted, acquisition=acquisition,
-            generic_closed=generic_closed, dispositions=dispositions)
+            generic_closed=generic_closed, dispositions=dispositions,
+            ready=frozenset(provider_id for provider_id, state in (availability or {}).items()
+                            if state == AvailabilityState.READY))
         if providers and providers[0].descriptor.id in unknown:
             route = ProviderRoute(None, unresolved=(providers[0].descriptor.id,))
         elif not providers:
@@ -440,7 +474,7 @@ class IntegrationRegistry:
             return route
         try:
             return replace(route, decision=self._decision(request, route, providers, assessment, unknown,
-                                                          dispositions, declined, generic_closed))
+                                                          dispositions, declined, generic_closed, availability))
         except Exception as exc:  # visibility must never change the decision
             logger.debug("routing decision could not be described: %s", type(exc).__name__)
             return route
