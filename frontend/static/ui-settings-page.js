@@ -120,6 +120,7 @@
     realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
     realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
     torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'},
+    torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', commit: 'immediate'},
     torbox_rate_limit_per_minute: {scope: 'integration:torbox', option: 'rate_limit_per_minute'},
     torbox_request_timeout_seconds: {scope: 'integration:torbox', option: 'request_timeout_seconds'},
     torbox_upload_timeout_seconds: {scope: 'integration:torbox', option: 'upload_timeout_seconds'},
@@ -1794,6 +1795,9 @@
             tuningToggle('torbox_usenet_enabled', 'Usenet via TorBox',
               'Let TorBox process NZB downloads remotely. Native Usenet stays available whenever it is set up.',
               torBoxOf(s).usenet_enabled === true),
+            tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
+              torBoxOf(s).prepare_backup_torrents === true),
             input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
               type: 'number', min: 1, max: 300,
               hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'

@@ -110,13 +110,19 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
 
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
-  await expect(tuning.locator('[data-setting]')).toHaveCount(5);
+  await expect(tuning.locator('[data-setting]')).toHaveCount(6);
   const toggle = tuning.locator('[data-setting="torbox_usenet_enabled"]');
   await expect(toggle).not.toBeChecked();
   await expect(toggle).toHaveAttribute('data-commit', 'immediate');
   await expect(toggle).toHaveAttribute('data-commit-scope', 'integration:torbox');
   await expect(tuning).toContainText('Usenet via TorBox');
   await expect(tuning).toContainText('Let TorBox process NZB downloads remotely.');
+  const backups = tuning.locator('[data-setting="torbox_prepare_backup_torrents"]');
+  await expect(backups).not.toBeChecked();
+  await expect(backups).toHaveAttribute('data-commit', 'immediate');
+  await expect(backups).toHaveAttribute('data-commit-scope', 'integration:torbox');
+  await expect(tuning).toContainText('Prepare Backup Torrents');
+  await expect(tuning).toContainText('Uses TorBox create limits and active slots.');
   for (const [key, value, min, max] of [
     ['torbox_rate_limit_per_minute', '240', '1', '300'],
     ['torbox_request_timeout_seconds', '30', '5', '300'],

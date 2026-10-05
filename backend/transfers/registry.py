@@ -17,7 +17,7 @@ from transfers.contracts import (
     ContinuationBoundaryDiscovery, Executor,
     ExecutorAcquisitionGate, ExecutorAggregateThroughput, ExecutorBandwidthControl, ExecutorInputContinuation,
     ExecutorInputRecovery, RemoteDiscovery,
-    ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource,
+    ExecutorNativeRetry, Health, Inventory, PauseResume, Provider, RequestApplicabilitySource, SpeculativePreparation,
     ResourceLookup, Manifest,
 )
 from transfers.entitlement import ProviderEntitlements
@@ -330,6 +330,19 @@ class IntegrationRegistry:
         unresolved = frozenset(provider.descriptor.id for provider in applicable
                                if entitlement[provider.descriptor.id] is None)
         return tuple(applicable), assessment, unresolved
+
+    @staticmethod
+    def speculative_preparation_allowed(provider: Provider, request: TransferRequest) -> bool:
+        """Whether ``provider`` allows ``request`` to be prepared
+        speculatively. Fail-closed: only the provider's own ``True`` allows it;
+        a provider without the contract, any other answer, or an answer that
+        raises is not eligible."""
+        if not isinstance(provider, SpeculativePreparation):
+            return False
+        try:
+            return provider.speculative_preparation_allowed(request) is True
+        except Exception:
+            return False
 
     @staticmethod
     def availability_orders(request: TransferRequest) -> bool:

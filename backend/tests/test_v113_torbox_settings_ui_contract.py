@@ -64,6 +64,20 @@ def test_usenet_via_torbox_is_one_precise_persisted_toggle():
     assert "'torbox'" in SETTINGS_JS[SETTINGS_JS.index("const INTEGRATION_SCOPES"):][:200]
 
 
+def test_prepare_backup_torrents_is_one_precise_persisted_toggle_off_by_default():
+    torbox = card("torbox")
+    assert "tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents'," in torbox
+    assert ("Also add torrents to TorBox as backup sources while another provider delivers them. "
+            "Uses TorBox create limits and active slots.") in torbox
+    assert "torBoxOf(s).prepare_backup_torrents === true" in torbox        # absent reads as off
+    assert ("torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', "
+            "commit: 'immediate'}") in SETTINGS_JS
+    # The one control lives in TorBox's own Additional Settings, nowhere else.
+    assert SETTINGS_JS.count("prepare_backup_torrents") == 4   # mapping key + option, toggle key, value read
+    for jargon in ("standby", "speculative", "prewarm"):
+        assert jargon not in torbox.casefold()
+
+
 def test_one_premium_owner_interprets_torbox_and_words_it_once():
     # The one premium owner reads TorBox's account exactly as every other's:
     # from the neutral account truth, never a TorBox-keyed interpreter.

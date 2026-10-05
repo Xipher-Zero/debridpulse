@@ -78,10 +78,11 @@ class TorBoxProvider:
     applicability = ProviderApplicability(specialized=True, readiness=ApplicabilityReadiness.UNRESOLVED)
 
     def __init__(self, client: TorBoxService, *, usenet: bool = False, staged_input=None,
-                 clock=time.time):
+                 clock=time.time, prepare_backup_torrents: bool = False):
         self.client = client
         self.staged_input = staged_input
         self._clock = clock
+        self._prepare_backup_torrents = bool(prepare_backup_torrents)
         kinds = {"magnet", "torrent", "http", "https"}
         # "Usenet via TorBox" is TorBox's own participation in NZB work and
         # nothing more: it never disables, inspects or replaces native Usenet.
@@ -98,6 +99,13 @@ class TorBoxProvider:
             request_types=frozenset(kinds),
             enabled=client.configured,
         )
+
+    def speculative_preparation_allowed(self, request: TransferRequest) -> bool:
+        """Only a torrent or magnet, and only while the operator allows
+        "Prepare Backup Torrents": a backup uses TorBox create limits and
+        active slots. Nothing else TorBox does is a backup."""
+        return (self._prepare_backup_torrents and request.kind in BITTORRENT_REQUEST_KINDS
+                and request.kind in self.descriptor.request_types)
 
     def applicability_for(self, request: TransferRequest) -> ProviderApplicability:
         # Replaced by host maintenance once it is attached.

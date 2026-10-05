@@ -21,6 +21,10 @@ class TorBoxOptions(BaseModel):
     request_timeout_seconds: int = Field(default=30, ge=5, le=300)
     upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
+    # "Prepare Backup Torrents": whether TorBox may also add a torrent or
+    # magnet as a backup source while another provider delivers it. Off by
+    # default: every such addition uses TorBox create limits and active slots.
+    prepare_backup_torrents: bool = False
 
 
 def canonical_options(settings) -> TorBoxOptions:
@@ -53,7 +57,8 @@ def build(options, environment):
                            request_timeout_seconds=options.request_timeout_seconds,
                            upload_timeout_seconds=options.upload_timeout_seconds)
     provider = TorBoxProvider(client, usenet=options.usenet_enabled,
-                              staged_input=getattr(environment, "staged_input", None))
+                              staged_input=getattr(environment, "staged_input", None),
+                              prepare_backup_torrents=options.prepare_backup_torrents)
     commands = getattr(environment, "commands", None)
     # Host inventory maintenance reaches the application through the generic
     # integration lifecycle seam; composition names no provider.

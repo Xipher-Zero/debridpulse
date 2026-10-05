@@ -99,6 +99,17 @@ class AvailabilitySource(Protocol):
 
 
 @runtime_checkable
+class SpeculativePreparation(Protocol):
+    """Optional: whether the provider allows a request to be prepared
+    speculatively -- added to its account as a backup while another provider
+    delivers it. A pure, provider-owned answer that performs no I/O and may
+    follow the provider's current options. A provider without it is never
+    eligible (``IntegrationRegistry.speculative_preparation_allowed``)."""
+
+    def speculative_preparation_allowed(self, request: TransferRequest) -> bool: ...
+
+
+@runtime_checkable
 class ProviderInputContinuation(Protocol):
     async def resolve_with_input(self, request: TransferRequest, submitted: SubmittedInput) -> ResolutionResult: ...
 
