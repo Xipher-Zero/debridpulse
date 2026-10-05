@@ -970,6 +970,27 @@ class TransferRepository(_QualifiedTransferRepository):
                    WHERE id=? AND state='creating'""", (codec.dump(error), now, standby_id))
             await db.commit()
 
+    async def promotable_standby(self, request_id: str, provider_id: str) -> tuple[str, ProviderResource] | None:
+        """The prepared resource ``provider_id`` already holds for this root, if
+        its own route may take it over now: a bound backup of that provider
+        whose resource is not known gone. ``(standby id, resource)``."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT s.id, r.payload FROM standby_resources s JOIN provider_resources r ON r.id=s.binding_id
+                   WHERE s.request_id=? AND s.provider_id=? AND s.state='bound'
+                     AND r.state NOT IN ('absent','expired') ORDER BY s.generation DESC LIMIT 1""",
+                (request_id, provider_id))
+        return (str(row["id"]), codec.resource(codec.load(row["payload"]))) if row else None
+
+    async def promote_standby(self, standby_id: str, now: float) -> None:
+        """The root's own route takes its prepared resource over: from now on
+        the row is provenance, never a backup. The resource keeps its one
+        ``provider_resources`` binding, ownership and cleanup obligation."""
+        async with get_db() as db:
+            await db.execute("UPDATE standby_resources SET promoted_at=COALESCE(promoted_at, ?),updated_at=? WHERE id=?",
+                             (now, now, standby_id))
+            await db.commit()
+
     async def primary_resolution_runnable(self, now: float) -> bool:
         """Whether any root or member of a live, unpaused transfer is waiting
         to be resolved now -- primary work a backup preparation yields to."""
@@ -1446,7 +1467,49 @@ class TransferRepository(_QualifiedTransferRepository):
             return SelectionAuthority(required=True)
         if file_manifest is not None:
             await self.record_file_manifest(record.id, binding_id, file_manifest, now=now)
+        await self._inherit_promoted_selection(record.id, binding_id, now)
         return SelectionAuthority(required=True, binding_id=binding_id)
+
+    @staticmethod
+    async def _inherited_source(db, request_id: str, binding_id: str):
+        """The generation a promoted binding's generation carries forward: the
+        root's latest committed generation on another binding -- its
+        immediate predecessor, whatever it decided -- and only when that
+        predecessor was an explicit choice. A newer ALL is never skipped over
+        to resurrect an older subset, and predecessors committed at the same
+        instant are no determinable predecessor at all."""
+        rows = await db.fetchall(
+            """SELECT id, decision, manifest_committed_at FROM transfer_file_selections
+               WHERE request_id=? AND provider_resource_id!=? AND manifest_committed_at IS NOT NULL
+               ORDER BY manifest_committed_at DESC LIMIT 2""", (request_id, binding_id))
+        if not rows or (len(rows) > 1 and rows[0]["manifest_committed_at"] == rows[1]["manifest_committed_at"]):
+            return None
+        return rows[0] if rows[0]["decision"] == "explicit" else None
+
+    async def _inherit_promoted_selection(self, request_id: str, binding_id: str, now: float) -> None:
+        """A root whose route took over a prepared backup (a promoted
+        binding) keeps the files the operator explicitly chose on its earlier
+        binding: the new generation is decided EXPLICIT (``INHERITED``) and
+        ``commit_selected_manifest`` proves that subset against the new
+        manifest with the one existing matcher, failing closed when it cannot.
+        Only an undecided, uncommitted generation of a promoted binding whose
+        root has such a committed subset is touched; every other replacement
+        keeps its fresh window."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            current = await self._selection_generation(db, request_id, binding_id)
+            promoted = await db.fetchone(
+                "SELECT 1 FROM standby_resources WHERE request_id=? AND binding_id=? AND promoted_at IS NOT NULL",
+                (request_id, binding_id))
+            if (not current or current["decision"] != "pending" or current["manifest_committed_at"] is not None
+                    or not promoted or not await self._inherited_source(db, request_id, binding_id)):
+                await db.rollback()
+                return
+            await db.execute(
+                """UPDATE transfer_file_selections SET decision='explicit', decision_reason=?, decision_at=?,
+                   updated_at=? WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
+                (str(fs.DecisionReason.INHERITED), now, now, current["id"]))
+            await db.commit()
 
     @staticmethod
     async def _current_generation(db, transfer_id: int):
@@ -2007,13 +2070,19 @@ class TransferRepository(_QualifiedTransferRepository):
                         (reason, now, now, now, row["id"]),
                     )
             else:
+                inherited = str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)
+                source = await self._inherited_source(db, record.id, binding_id) if inherited else None
+                if inherited and source is None:
+                    await db.rollback()
+                    raise TransferError(NormalizedError(
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
                 selected = await db.fetchall(
                     """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
                        FROM transfer_file_selection_entries s
                        JOIN transfer_file_manifest_entries e
                          ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
                        WHERE s.selection_id=? ORDER BY e.ordinal""",
-                    (row["id"],),
+                    (source["id"] if inherited else row["id"],),
                 )
                 if not selected:
                     await db.rollback()
@@ -2029,6 +2098,16 @@ class TransferRepository(_QualifiedTransferRepository):
                     raise TransferError(NormalizedError(
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
                     )) from exc
+                if inherited and not already and row["manifest_id"]:
+                    # The carried subset, recorded against this generation's own
+                    # manifest so it reads like any explicit selection.
+                    for entry in authorized:
+                        entry_id = fs.entry_identity(binding_id, fs.normalize_relative_path(entry.relative_path))
+                        await db.execute(
+                            """INSERT OR IGNORE INTO transfer_file_selection_entries(selection_id,manifest_id,entry_id)
+                               SELECT ?, manifest_id, entry_id FROM transfer_file_manifest_entries
+                               WHERE manifest_id=? AND entry_id=?""",
+                            (row["id"], row["manifest_id"], entry_id))
                 if not already:
                     await db.execute(
                         "UPDATE transfer_file_selections SET manifest_committed_at=?, updated_at=? WHERE id=?",

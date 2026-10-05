@@ -197,8 +197,12 @@ class TransferEngine(_RecoveryTransferEngine):
                 )
                 if attempt is None:
                     return
-                result = await (provider.resolve_cached(record.resolvable) if cached
-                                else provider.resolve(record.resolvable))
+                # The route is chosen; a backup that provider already prepared
+                # for this root is taken over instead of resolving again.
+                result = None if cached else await self._promoted_standby(record, provider)
+                if result is None:
+                    result = await (provider.resolve_cached(record.resolvable) if cached
+                                    else provider.resolve(record.resolvable))
             if cached and result is None:
                 # Held when asked, no longer held now: nothing was created, and
                 # the group continues from its first dormant alternative.
@@ -495,6 +499,33 @@ class TransferEngine(_RecoveryTransferEngine):
                         await self.repository.fail_standby(item["id"], error, self.clock())
         return unsettled
 
+    async def _promoted_standby(self, record, provider) -> ResolutionResult | None:
+        """The one promotion owner. Once the router has made ``provider`` this
+        root's route, a backup that provider already prepared for the root is
+        taken over as its resource -- read with the provider's own
+        ``observe``, never created again -- and the rest of the lifecycle is
+        the ordinary sequential one. ``None`` when there is nothing to take
+        over (no live backup, a provider that cannot observe one, or a backup
+        the provider reports gone, which is recorded as such): ordinary
+        resolution proceeds. Promotion never chooses a provider."""
+        if not isinstance(provider, ResourceLookup):
+            return None
+        held = await self.repository.promotable_standby(record.id, provider.descriptor.id)
+        if held is None:
+            return None
+        standby_id, resource = held
+        observed = await provider.observe(resource)
+        if observed.resource.provider_id != provider.descriptor.id or observed.resource.id != resource.id:
+            raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION,
+                                            domain=Domain.PROVIDER, retryability=Retryability.NEVER))
+        if observed.state in _STANDBY_ENDED_RESOURCE:
+            await self.repository.observe_standby(standby_id, record.transfer_id, observed.resource, observed.state,
+                                                  self.clock())
+            return None
+        await self.repository.promote_standby(standby_id, self.clock())
+        observation = replace(observed, request=record.resolvable)
+        return ResolutionResult(observation.state, observation=observation, error=observation.error)
+
     async def _observe_standbys(self, transfers) -> None:
         """Each bound backup's resource as its provider observes it, at most
         once per resource poll interval. A disabled provider's backup is
@@ -503,7 +534,7 @@ class TransferEngine(_RecoveryTransferEngine):
         for transfer in transfers:
             for item in await self.repository.standbys(transfer.id):
                 resource = item["resource"]
-                if item["state"] != "bound" or resource is None:
+                if item["state"] != "bound" or resource is None or item.get("promoted_at"):
                     continue
                 if item["resource_state"] and ResourceState(item["resource_state"]) in _STANDBY_ENDED_RESOURCE:
                     continue

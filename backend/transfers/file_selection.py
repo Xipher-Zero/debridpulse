@@ -118,6 +118,9 @@ class DecisionReason(StrEnum):
     MANIFEST_TIMEOUT = "manifest_timeout"
     SINGLE_FILE = "single_file"
     DEFAULT_MATERIALIZATION = "default_materialization"
+    # A promoted backup's generation carries the operator's earlier explicit
+    # subset forward (proven against the new manifest, never broadened).
+    INHERITED = "inherited"
 
 
 class SelectionGate(StrEnum):

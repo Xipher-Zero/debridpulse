@@ -826,8 +826,10 @@ TRANSFER_REPOSITORY_SCHEMA = (
     # ordinary ``provider_resources`` binding (``binding_id``), so its state,
     # cleanup authority and inventory identity are the ones every resource
     # has; this row is only the root's claim on it and the preparation's own
-    # lifecycle (creating / bound / deferred / failed). It never routes,
-    # never binds the root's primary resource, and is never a candidate.
+    # lifecycle (creating / bound / deferred / failed). It never routes and is
+    # never a candidate; ``promoted_at`` records the moment the root's own
+    # route took the prepared resource over as its primary resource, after
+    # which the row is provenance only.
     """CREATE TABLE IF NOT EXISTS standby_resources (
         id TEXT PRIMARY KEY,
         transfer_id INTEGER NOT NULL REFERENCES torrents(id),
@@ -842,11 +844,14 @@ TRANSFER_REPOSITORY_SCHEMA = (
         observed_at REAL NOT NULL DEFAULT 0,
         created_at REAL NOT NULL,
         updated_at REAL NOT NULL,
+        promoted_at REAL,
         UNIQUE(request_id, provider_id, generation))""",
     "CREATE INDEX IF NOT EXISTS idx_standby_resources_transfer ON standby_resources(transfer_id,state)",
 )
 
 TRANSFER_REPOSITORY_COLUMNS = {
+    # Additive for databases created before backup promotion existed.
+    'standby_resources': {'promoted_at': 'REAL'},
     'torrents': {
         'normalized_error': 'TEXT',
         'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
@@ -1006,7 +1011,7 @@ TRANSFER_REPOSITORY_COLUMNS = {
 
 _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'standby_resources': {'id', 'transfer_id', 'request_id', 'provider_id', 'generation', 'state', 'binding_id', 'error',
-                          'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at'},
+                          'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at', 'promoted_at'},
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},

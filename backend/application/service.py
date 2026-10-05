@@ -800,7 +800,12 @@ class ApplicationService:
         if item["files"]:
             return {"source": "local", "files": item["files"]}
         files = []
+        # A backup still held in reserve is not this transfer's file set.
+        reserve = {item["resource"].id for item in await self.repository.standbys(transfer_id)
+                   if item["resource"] is not None and not item.get("promoted_at")}
         for resource, _state, _pending in await self.repository.resources(transfer_id):
+            if resource.id in reserve:
+                continue
             provider = self.engine.registry.providers.get(resource.provider_id)
             if isinstance(provider, Manifest):
                 entries = await provider.manifest(resource)
