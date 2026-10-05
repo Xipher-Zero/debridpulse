@@ -294,6 +294,58 @@ test('archive passwords persist when focus leaves the editor, and keep their spe
     }
   });
 
+/* The empty tail row becoming a password must not replace the line being typed
+ * in: if it did, focus would be gone until it could be handed back, and every
+ * keystroke in between would be dropped ("hunter2" stored as "hnter2"). */
+test('typing into the empty tail row keeps the same focused line, so no keystroke is lost',
+  async ({page}) => {
+    await page.goto('/');
+    const before = await canonical(page);
+    try {
+      await openSettings(page, 'extraction');
+      await expect.poll(() => page.evaluate(() =>
+        !!(window.DPArchivePasswords && window.DPArchivePasswords.hydrated))).toBe(true);
+      const stored = (await storedPasswords(page)).split('\n').filter(Boolean);
+      await passwordLines(page).last().click();
+
+      // A burst: every character goes to whatever holds focus, all within one
+      // task, so no frame can run between the first character and the rest --
+      // as fast typing can outrun one.
+      const burst = await page.evaluate(word => {
+        const tail = document.activeElement;
+        const lines = () => [...document.querySelectorAll('.dp-settings-password-line')];
+        const count = lines().length;
+        const type = character => {
+          const target = document.activeElement;
+          if (!(target instanceof HTMLInputElement)) return;
+          target.value += character;
+          target.dispatchEvent(new InputEvent('input', {bubbles: true, data: character, inputType: 'insertText'}));
+        };
+        type(word[0]);
+        const afterFirst = {focused: document.activeElement === tail, connected: tail.isConnected};
+        for (const character of word.slice(1)) type(character);
+        const after = lines();
+        return {...afterFirst, value: tail.value, added: after.length - count,
+                newTailEmpty: after.at(-1) !== tail && after.at(-1).value === '',
+                stillFocused: document.activeElement === tail};
+      }, 'hunter2');
+      expect(burst).toEqual({focused: true, connected: true, value: 'hunter2', added: 1,
+                             newTailEmpty: true, stillFocused: true});
+
+      await concurrency(page).click();                 // focus leaves the editor
+      await expect.poll(() => storedPasswords(page)).toBe([...stored, 'hunter2'].join('\n'));
+
+      // The operator's own keyboard, with no delay, into the next empty tail.
+      await passwordLines(page).last().click();
+      await page.keyboard.type('swordfish');
+      await expect(passwordLines(page)).toHaveCount(stored.length + 3);
+      await concurrency(page).click();
+      await expect.poll(() => storedPasswords(page)).toBe([...stored, 'hunter2', 'swordfish'].join('\n'));
+    } finally {
+      await restoreExtraction(page, before);
+    }
+  });
+
 test('Clear Passwords is the canonical destructive action, and declining mutates nothing',
   async ({page}) => {
     await page.goto('/');
