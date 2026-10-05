@@ -60,7 +60,8 @@ from transfers._repository_base import TransferRepository as _QualifiedTransferR
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import (
-    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, TransferProgress,
+    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, ProviderResource, ResourceState,
+    TransferProgress, new_identity,
 )
 from transfers.policy import failure_signature, meaningful_progress_threshold
 
@@ -864,6 +865,122 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.execute("UPDATE torrents SET collection_route_authority=1,updated_at=CURRENT_TIMESTAMP WHERE id=?", (transfer_id,))
             await db.commit()
         return True
+
+    # -- speculative backup preparation ------------------------------------------------
+    # A root's standby preparations (``standby_resources``): one per (root,
+    # provider, generation). The resource each one holds is an ordinary
+    # ``provider_resources`` binding of the transfer, so its state, cleanup
+    # authority and inventory identity are every resource's; nothing here
+    # routes, binds the root's primary resource or makes a candidate.
+
+    async def standbys(self, transfer_id: int) -> tuple[dict, ...]:
+        """Every standby preparation of the transfer, with the resource it
+        holds (``resource``) and that resource's state (``resource_state``)."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT s.*, r.payload AS resource_payload, r.state AS resource_state
+                   FROM standby_resources s LEFT JOIN provider_resources r ON r.id=s.binding_id
+                   WHERE s.transfer_id=? ORDER BY s.created_at, s.id""", (transfer_id,))
+        found = []
+        for row in rows:
+            item = dict(row)
+            payload = item.pop("resource_payload")
+            item["resource"] = codec.resource(codec.load(payload)) if payload else None
+            item["error"] = codec.error(item["error"]) if item.get("error") else None
+            found.append(item)
+        return tuple(found)
+
+    async def begin_standby(self, transfer_id: int, request_id: str, provider_id: str,
+                            now: float) -> tuple[str, int] | None:
+        """Claim the one preparation of (root, provider) for a productive
+        attempt now: ``(id, attempts so far)``. A new preparation, a deferred
+        one whose retry time has passed, or one an interrupted attempt left
+        ``creating`` (reconciled by the attempt, never duplicated: one row per
+        root and provider). ``None`` when the root is not a live root of the
+        transfer or its preparation is already bound, failed or deferred."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            root = await db.fetchone(
+                """SELECT t.status FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE r.id=? AND r.transfer_id=? AND r.parent_id IS NULL""", (request_id, transfer_id))
+            if not root or root["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
+                await db.rollback()
+                return None
+            row = await db.fetchone(
+                "SELECT id,state,retry_at,attempts FROM standby_resources WHERE request_id=? AND provider_id=? "
+                "AND generation=1", (request_id, provider_id))
+            if row is None:
+                standby_id = new_identity()
+                await db.execute(
+                    """INSERT INTO standby_resources(id,transfer_id,request_id,provider_id,generation,state,
+                       created_at,updated_at) VALUES(?,?,?,?,1,'creating',?,?)""",
+                    (standby_id, transfer_id, request_id, provider_id, now, now))
+                await db.commit()
+                return standby_id, 0
+            if row["state"] == "creating" or (row["state"] == "deferred" and float(row["retry_at"]) <= now):
+                await db.execute("UPDATE standby_resources SET state='creating',updated_at=? WHERE id=?",
+                                 (now, row["id"]))
+                await db.commit()
+                return str(row["id"]), int(row["attempts"] or 0)
+            await db.rollback()
+            return None
+
+    async def bind_standby(self, standby_id: str, transfer_id: int, resource: ProviderResource,
+                           state: ResourceState, now: float) -> str:
+        """Record the resource a preparation holds as the transfer's ordinary
+        resource binding and the preparation as bound to it. A resource
+        another live transfer already holds is refused exactly as for any
+        binding (``OWNERSHIP_CONFLICT``) and nothing is recorded."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            try:
+                binding_id = await self._resource(db, transfer_id, resource, state)
+            except Exception:
+                await db.rollback()
+                raise
+            await db.execute(
+                """UPDATE standby_resources SET state='bound',binding_id=?,error=NULL,observed_at=?,updated_at=?
+                   WHERE id=?""", (binding_id, now, now, standby_id))
+            await db.commit()
+        return binding_id
+
+    async def observe_standby(self, standby_id: str, transfer_id: int, resource: ProviderResource,
+                              state: ResourceState, now: float) -> None:
+        """A bound preparation's resource as its provider observes it now."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await self._resource(db, transfer_id, resource, state)
+            await db.execute("UPDATE standby_resources SET observed_at=?,updated_at=? WHERE id=?",
+                             (now, now, standby_id))
+            await db.commit()
+
+    async def defer_standby(self, standby_id: str, error: NormalizedError, retry_at: float, now: float) -> None:
+        """Nothing was prepared and the attempt may be made again at ``retry_at``."""
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE standby_resources SET state='deferred',error=?,attempts=attempts+1,retry_at=?,updated_at=?
+                   WHERE id=? AND state='creating'""", (codec.dump(error), retry_at, now, standby_id))
+            await db.commit()
+
+    async def fail_standby(self, standby_id: str, error: NormalizedError, now: float) -> None:
+        """This preparation ended without a usable resource; only it is affected."""
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE standby_resources SET state='failed',error=?,attempts=attempts+1,updated_at=?
+                   WHERE id=? AND state='creating'""", (codec.dump(error), now, standby_id))
+            await db.commit()
+
+    async def primary_resolution_runnable(self, now: float) -> bool:
+        """Whether any root or member of a live, unpaused transfer is waiting
+        to be resolved now -- primary work a backup preparation yields to."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT 1 FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
+                   WHERE r.state='pending' AND r.retry_at<=?
+                     AND t.status NOT IN ('deleted','completed','consolidated','cancelled')
+                     AND COALESCE(p.paused,0)=0 LIMIT 1""", (now,))
+        return row is not None
 
     async def accept_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
         if (not isinstance(total_bytes, int) or isinstance(total_bytes, bool) or total_bytes <= 0 or handle is None):

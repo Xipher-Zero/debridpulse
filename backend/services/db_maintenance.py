@@ -22,6 +22,7 @@ TABLES = [
     "transfer_controls",
     "transfer_requests",
     "provider_resources",
+    "standby_resources",
     "transfer_file_manifests",
     "transfer_file_manifest_entries",
     "transfer_file_selections",
@@ -75,7 +76,10 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             "application_events", "artifact_recovery_state", "artifact_material_state", "postprocess_attempts",
             "transfer_outcomes",
             "execution_attempt_provenance", "route_attempt_provenance",
-            "execution_attempts", "resolution_attempts", "provider_resources",
+            "execution_attempts", "resolution_attempts",
+            # A standby preparation references its root request and its
+            # provider_resources binding: it goes first.
+            "standby_resources", "provider_resources",
         ):
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")

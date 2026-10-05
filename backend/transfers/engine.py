@@ -22,14 +22,15 @@ from transfers._repository_base import manifest_child_identity, manifest_member_
 from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
-from transfers.contracts import CachedResolution, Manifest, ResourceLookup
+from transfers.contracts import CachedResolution, Inventory, Manifest, ResourceLookup, speculative_preparation
 from transfers.errors import (
     Category, Domain, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.policy import recovery_action
 from transfers.registry import ProviderRoute
 from transfers.models import (
-    AvailabilityState, CachePresence, Capability, CleanupAuthority, Ownership, ResolutionResult, ResourceState,
+    AvailabilityState, CachePresence, Capability, CleanupAuthority, NormalizedError, Ownership, ResolutionResult,
+    ResourceState,
 )
 
 logger = logging.getLogger(__name__)
@@ -42,10 +43,25 @@ AVAILABILITY_TIMEOUT_SECONDS = 5.0
 # root routed later is that root's once, and only while it is this fresh.
 AVAILABILITY_ROUND_LIMIT = 100
 AVAILABILITY_ROUND_FRESH_SECONDS = 30.0
+# A root whose primary route has begun -- the only root a speculative backup
+# preparation is ever made for.
+_STANDBY_ROOT_STATES = frozenset({"waiting", "materializing", "resolved"})
+# Refusals that say only "not now": a backup that met them is deferred, not
+# failed. Neither is ever an account, route, health or transfer fact.
+_STANDBY_DEFERRABLE = frozenset({Category.RATE_LIMITED, Category.CONCURRENCY_LIMITED, Category.QUOTA_EXCEEDED})
+# A provider resource that no longer exists: nothing left to observe.
+_STANDBY_ENDED_RESOURCE = frozenset({ResourceState.ABSENT, ResourceState.EXPIRED})
 
 
 class TransferEngine(_RecoveryTransferEngine):
     """Recovery-qualified engine plus authoritative bound-provider continuation."""
+
+    async def resolve_pending(self):
+        """The resolution pass, then -- only once its primary work has drained
+        -- the speculative backup preparations it leaves room for."""
+        result = await super().resolve_pending()
+        await self._prepare_standbys()
+        return result
 
     async def _request_failure(self, record, error, *, attempts=None, waiting=False):
         """Attach legacy recovery fields only after factual integration output."""
@@ -318,6 +334,193 @@ class TransferEngine(_RecoveryTransferEngine):
 
         await asyncio.gather(*(observe(provider, items) for provider, items in asked.values()))
         return observed
+
+    async def _prepare_standbys(self) -> None:
+        """Speculative backup preparation, after the pass's primary work.
+
+        For a root whose primary route has begun, each other provider still in
+        its TASK1 competition whose account is entitled and that allows a
+        speculative preparation of it (``speculative_preparation_allowed``)
+        may prepare it as a backup, through that provider's ordinary
+        ``resolve`` inside ``speculative_preparation``. A durable claim
+        (``begin_standby``) comes first, so a root never holds two for one
+        provider and an interrupted attempt is reconciled rather than
+        repeated. Before each attempt the pass yields if any primary
+        resolution is runnable, and it makes at most the resolution
+        concurrency's worth of attempts. A backup never touches the root's
+        route, request state, primary resource, entitlement or health, and is
+        never a candidate. Bound backups are observed first."""
+        lock = getattr(self, "_standby_lock", None)
+        if lock is None:
+            lock = self._standby_lock = asyncio.Lock()
+        if lock.locked():
+            return
+        async with lock:
+            if await self.repository.globally_paused():
+                return
+            transfers = await self.repository.active()
+            await self._observe_standbys(transfers)
+            # An interrupted claim nothing proved absent is never attempted
+            # again in this pass: it may already hold a resource.
+            unsettled = await self._reconcile_standby_claims(transfers)
+            budget = max(1, self.policy.resolution_concurrency)
+            for transfer in transfers:
+                if not await self._live(transfer.id, admission=True):
+                    continue
+                for record in await self.repository.requests(transfer.id):
+                    if record.parent_id is not None or record.state not in _STANDBY_ROOT_STATES:
+                        continue
+                    primary = await self.repository.bound_route_provider(record.id)
+                    if not primary:
+                        continue
+                    for provider in self._standby_providers(record, primary, await self._competition(record)):
+                        if (record.id, provider.descriptor.id) in unsettled:
+                            continue
+                        if budget <= 0 or await self.repository.primary_resolution_runnable(self.clock()):
+                            return
+                        claimed = await self.repository.begin_standby(
+                            transfer.id, record.id, provider.descriptor.id, self.clock())
+                        if claimed is None:
+                            continue
+                        budget -= 1
+                        await self._prepare_standby(record, provider, *claimed)
+
+    def _standby_providers(self, record, primary: str, competition) -> list:
+        """The providers that may prepare ``record`` as a backup now: its
+        TASK1 competitors other than its primary, entitled, and allowing it."""
+        request = record.resolvable
+        return [provider for provider in self.registry.eligible_providers(request, **competition)
+                if provider.descriptor.id != primary
+                and self.registry.entitlement_for(provider, request) is True
+                and self.registry.speculative_preparation_allowed(provider, request)]
+
+    async def _prepare_standby(self, record, provider, standby_id: str, attempts: int) -> None:
+        """One speculative preparation attempt. A resource it yields is bound
+        to the root as a backup; a refusal that only says "not now" defers
+        the backup; any other failure ends only this backup."""
+        now = self.clock()
+        try:
+            async with self._resolution_slot():
+                with speculative_preparation():
+                    result = await provider.resolve(record.resolvable)
+            result = self._authoritative_provider_result(provider.descriptor.id, result,
+                                                         request_kind=record.resolvable.kind)
+            observation = result.observation
+            if observation is not None:
+                # A resource the provider holds is recorded even when it
+                # reports a problem: it is ours to observe and to clean up.
+                await self.repository.bind_standby(standby_id, record.transfer_id, observation.resource,
+                                                   observation.state, self.clock())
+                return
+            raise TransferError(result.error or self._error(
+                Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
+                retryability=Retryability.NEVER))
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
+                secrets=(str(record.request.payload),))
+            if error.category in _STANDBY_DEFERRABLE or error.retryability == Retryability.BACKOFF:
+                delay = min(self.policy.max_retry_delay, self.policy.retry_delay * 2 ** max(0, attempts))
+                retry_at = now + max(delay, float(error.retry_after_seconds or 0))
+                await self.repository.defer_standby(standby_id, error, retry_at, self.clock())
+            else:
+                await self.repository.fail_standby(standby_id, error, self.clock())
+            logger.debug("backup preparation provider=%s request=%s: %s", provider.descriptor.id, record.id,
+                         error.category.value)
+
+    async def _reconcile_standby_claims(self, transfers) -> set[tuple[str, str]]:
+        """A ``creating`` claim found when a pass starts was interrupted
+        (passes never overlap): its provider may or may not have created the
+        resource. It is settled from the provider's read-only inventory --
+        never by asking it to create anything:
+
+        * exactly one of the provider's own resources for the root's
+          fingerprint: that is the backup, bound as ADOPTED;
+        * a complete inventory without one: it was never created -- the
+          claim gets its one ordinary attempt while the provider allows a
+          backup, and otherwise ends here (``RESOURCE_NOT_FOUND``);
+        * anything less certain changes nothing.
+
+        Returns the ``(request_id, provider_id)`` of every interrupted claim
+        this pass could not settle and must not attempt again: only a claim
+        proven absent while still allowed is left out of it.
+        """
+        snapshots: dict[str, object] = {}
+        unsettled: set[tuple[str, str]] = set()
+        for transfer in transfers:
+            for item in await self.repository.standbys(transfer.id):
+                if item["state"] != "creating":
+                    continue
+                unsettled.add((item["request_id"], item["provider_id"]))
+                provider = self.registry.providers.get(item["provider_id"])
+                record = next((request for request in await self.repository.requests(transfer.id)
+                               if request.id == item["request_id"]), None)
+                fingerprint = str(getattr(record.request, "fingerprint", "") or "").casefold() if record else ""
+                if (record is None or not fingerprint or provider is None or not provider.descriptor.enabled
+                        or not isinstance(provider, Inventory)):
+                    continue
+                if provider.descriptor.id not in snapshots:
+                    try:
+                        snapshots[provider.descriptor.id] = await provider.inventory()
+                    except Exception as exc:
+                        logger.debug("backup reconciliation provider=%s: %s", provider.descriptor.id,
+                                     type(exc).__name__)
+                        snapshots[provider.descriptor.id] = None
+                snapshot = snapshots[provider.descriptor.id]
+                if snapshot is None or snapshot.error is not None:
+                    continue
+                matches = [observed for observed in snapshot.observations
+                           if observed.resource.provider_id == provider.descriptor.id
+                           and str(observed.fingerprint or "").casefold() == fingerprint
+                           and observed.state != ResourceState.ABSENT]
+                if not matches and snapshot.complete:
+                    if self.registry.speculative_preparation_allowed(provider, record.resolvable):
+                        unsettled.discard((item["request_id"], item["provider_id"]))   # its one ordinary attempt
+                    else:
+                        await self.repository.fail_standby(item["id"], NormalizedError(
+                            Domain.PROVIDER, Category.RESOURCE_NOT_FOUND, Stage.RECONCILIATION,
+                            Retryability.NEVER, integration_id=provider.descriptor.id), self.clock())
+                        unsettled.discard((item["request_id"], item["provider_id"]))
+                elif len(matches) == 1:
+                    found = matches[0]
+                    unsettled.discard((item["request_id"], item["provider_id"]))
+                    try:
+                        await self.repository.bind_standby(
+                            item["id"], transfer.id, replace(found.resource, ownership=Ownership.ADOPTED),
+                            found.state, self.clock())
+                    except Exception as exc:
+                        error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                            exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
+                            stage=Stage.RECONCILIATION)
+                        await self.repository.fail_standby(item["id"], error, self.clock())
+        return unsettled
+
+    async def _observe_standbys(self, transfers) -> None:
+        """Each bound backup's resource as its provider observes it, at most
+        once per resource poll interval. A disabled provider's backup is
+        parked, exactly like a parked primary; an observation that fails
+        changes nothing."""
+        for transfer in transfers:
+            for item in await self.repository.standbys(transfer.id):
+                resource = item["resource"]
+                if item["state"] != "bound" or resource is None:
+                    continue
+                if item["resource_state"] and ResourceState(item["resource_state"]) in _STANDBY_ENDED_RESOURCE:
+                    continue
+                if self.clock() - float(item["observed_at"] or 0) < self.policy.resource_poll_interval:
+                    continue
+                provider = self.registry.providers.get(resource.provider_id)
+                if provider is None or not provider.descriptor.enabled or not isinstance(provider, ResourceLookup):
+                    continue
+                try:
+                    observed = await provider.observe(resource)
+                except Exception as exc:
+                    logger.debug("backup observation provider=%s: %s", resource.provider_id, type(exc).__name__)
+                    continue
+                if observed.resource.provider_id != resource.provider_id:
+                    continue
+                await self.repository.observe_standby(item["id"], transfer.id, observed.resource, observed.state,
+                                                      self.clock())
 
     @staticmethod
     def _route_evidence(record, route: ProviderRoute) -> str | None:

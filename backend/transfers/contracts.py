@@ -1,6 +1,8 @@
 """Small capability contracts; integration implementations own no core policy."""
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from typing import Protocol, runtime_checkable
 
 from transfers.applicability import ProviderApplicability
@@ -96,6 +98,30 @@ class AvailabilitySource(Protocol):
     and only to prefer a ``READY`` one -- never to add, remove or exhaust one."""
 
     async def availability(self, requests: tuple[TransferRequest, ...]) -> tuple[AvailabilityState, ...]: ...
+
+
+# Set by core for exactly the duration of a speculative backup preparation's
+# ``resolve`` (never for any other provider call), so a provider's own refusal
+# boundary can tell a backup that hit scarce capacity from a primary refusal.
+_SPECULATIVE_ATTEMPT: ContextVar[bool] = ContextVar("speculative_attempt", default=False)
+
+
+def speculative_attempt() -> bool:
+    """Whether the provider call in progress is a speculative backup
+    preparation. Its refusals say only that the backup could not be made now:
+    a provider must not contract the account's entitlement, or record any
+    other lasting account fact, from them."""
+    return _SPECULATIVE_ATTEMPT.get()
+
+
+@contextmanager
+def speculative_preparation():
+    """The scope of one speculative backup preparation's provider call."""
+    token = _SPECULATIVE_ATTEMPT.set(True)
+    try:
+        yield
+    finally:
+        _SPECULATIVE_ATTEMPT.reset(token)
 
 
 @runtime_checkable

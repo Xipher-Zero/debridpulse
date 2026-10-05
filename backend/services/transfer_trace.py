@@ -108,7 +108,8 @@ OBSERVATION_TIMEOUT_SECONDS = 5.0
 # named here or in ``_OMITTED`` would be reported ``omitted`` with an unknown
 # reason rather than silently ignored.
 _TABLES = (
-    "torrents", "transfer_requests", "provider_resources", "resolution_attempts", "route_attempt_provenance",
+    "torrents", "transfer_requests", "provider_resources", "standby_resources", "resolution_attempts",
+    "route_attempt_provenance",
     "transfer_file_manifests", "transfer_file_manifest_entries", "transfer_file_selections",
     "transfer_file_selection_entries", "download_files", "canonical_candidate_bindings",
     "canonical_candidate_origins", "artifact_consolidations", "execution_attempts", "execution_attempt_provenance",
@@ -131,6 +132,8 @@ _REFERENCES = (
     ("transfer_requests", "equivalence_target_artifact_id", "download_files", "id"),
     ("resolution_attempts", "request_id", "transfer_requests", "id"),
     ("route_attempt_provenance", "request_id", "transfer_requests", "id"),
+    ("standby_resources", "request_id", "transfer_requests", "id"),
+    ("standby_resources", "binding_id", "provider_resources", "id"),
     ("route_attempt_provenance", "previous_attempt_id", "resolution_attempts", "id"),
     ("download_files", "torrent_id", "torrents", "id"),
     ("download_files", "request_id", "transfer_requests", "id"),
@@ -318,7 +321,8 @@ async def _transfer_rows(collector: _Collector, transfer_id: int, scope: str) ->
     participant of its consolidation component)."""
     select = collector.select
     await select("torrents", "id=?", (transfer_id,), scope=scope)
-    for table in ("transfer_requests", "provider_resources", "route_attempt_provenance", "transfer_file_manifests",
+    for table in ("transfer_requests", "provider_resources", "standby_resources", "route_attempt_provenance",
+                  "transfer_file_manifests",
                   "transfer_file_selections", "execution_attempts", "execution_attempt_provenance",
                   "artifact_recovery_state", "transfer_outcomes", "postprocess_attempts",
                   "transfer_input_challenges", "application_events"):

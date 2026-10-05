@@ -28,6 +28,7 @@ from providers.torbox.translation import (
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
+from transfers.contracts import speculative_attempt
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
@@ -123,10 +124,11 @@ class TorBoxProvider:
     async def _refused(self, exc: Exception, kind: str) -> None:
         """A creation TorBox refused because the plan excludes the feature
         contracts exactly that family for this account; any other refusal is
-        an ordinary failure."""
+        an ordinary failure. A speculative backup's refusal never contracts
+        anything: it says only that the backup could not be made now."""
         family = refused_family(exc, kind)
         owner = getattr(self, "account", None)
-        if family and owner is not None:
+        if family and owner is not None and not speculative_attempt():
             await owner.contract(family)
 
     async def _call(self, operation, *args, stage=Stage.RESOLUTION, **kwargs):
