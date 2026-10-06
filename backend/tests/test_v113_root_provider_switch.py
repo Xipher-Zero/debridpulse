@@ -401,8 +401,8 @@ def test_every_surface_reaches_the_one_route_action_through_its_one_owner():
     assert "${providerChip(t,'dashboard_recent')}" in (static / "ui-dashboard-transfer-presentation.js").read_text()
     assert "${providerChip(t, 'downloads')}" in (static / "ui-downloads.js").read_text()
     index = (static / "index.html").read_text()
-    assert index.count('/ui-root-provider.js?v=1') == 1
-    assert "@import url('/ui-root-provider.css?v=1');" in (static / "style.css").read_text()
+    assert index.count('/ui-root-provider.js?v=2') == 1
+    assert "@import url('/ui-root-provider.css?v=2');" in (static / "style.css").read_text()
 
 
 # -- the switch's temporary fence never erases a newer operator Pause / Pause All ------------------------------
@@ -613,8 +613,10 @@ async def test_the_bounded_list_reads_route_facts_without_per_transfer_connectio
 
 def test_every_operator_pause_control_and_the_switch_enter_the_one_boundary():
     """Every non-test call of an engine pause control (and of the switch, which
-    sets and lifts its own) sits inside ``async with ...operator_controls``, and
-    nothing that runs inside that boundary re-enters it."""
+    sets and lifts its own fence) sits inside ``async with ...operator_controls``,
+    and nothing that runs inside that boundary re-enters it. The switch itself
+    calls no operator pause control: its fence is the claim-scoped pause intent,
+    lifted without a Resume."""
     import ast
     controls = {"pause", "resume", "pause_all", "resume_all", "record_pause_intent", "restore_pause_intent"}
     root = Path(__file__).resolve().parents[1]
@@ -647,8 +649,11 @@ def test_every_operator_pause_control_and_the_switch_enter_the_one_boundary():
 
         visit(tree, [])
     assert unguarded == []
-    assert {relative for relative, _name in found} == {"application/service.py", "transfers/manual_route_switch.py",
-                                                       "application/manual_route_switch.py"}
+    assert {relative for relative, _name in found} == {"application/service.py", "application/manual_route_switch.py"}
+    switch = (root / "transfers" / "manual_route_switch.py").read_text(encoding="utf-8")
+    assert "engine.pause(" not in switch and "engine.resume(" not in switch
+    assert switch.count("set_pause_and_fence(int(transfer_id), True, claimed_only=True)") == 1
+    assert switch.count("set_pause_and_fence(int(transfer_id), False, claimed_only=True)") == 1
     service = (root / "application" / "service.py").read_text(encoding="utf-8")
     inside = [block for block in service.split("async with self.operator_controls")[1:]]
     assert inside and not any("operator_controls" in block.split("\n    async def ")[0] for block in inside)

@@ -13,28 +13,36 @@ owner, continuity proven or held), and members are rebuilt in place.
 The replacement composes existing owners only, in an order that never leaves
 an old writer alive under a new route and never leaves the root ownerless:
 
-1. validate against current truth (stale, busy, target not a legitimate,
-   entitled, enabled claimant) and admit the target as PRIMARY work through
-   TASK3d-1 (``_make_primary_room``) -- nothing changes on a refusal;
-2. fence: the durable per-transfer pause and its one writer retirement
-   (quiesce, checkpoint, fence), then the same retirement for any job a
-   parking executor left quiesced (``retire_writer(park=False)``, exactly as a
-   whole-state replacement releases its writers), each detached once proven
-   stopped -- DebridPulse-valid material stays as committed;
+1. preflight: every refusal knowable without disturbing the transfer --
+   stale, the root's own state (``root_route_replacement_refusal``, the one
+   owner ``replace_root_route`` also decides through), target not a
+   legitimate, entitled, enabled claimant, and TASK3d-1 admission of the
+   target as PRIMARY work (``_make_primary_room``) unless it holds a
+   promotable prepared backup (``promotable_standby``) -- nothing is fenced,
+   paused or retired on a refusal;
+2. fence: the durable pause intent every admission reads, fencing exactly
+   the recovery claims an older owner still holds
+   (``set_pause_and_fence(claimed_only=True)``) -- never a per-member fence
+   -- then the one writer retirement for each live writer (quiesce,
+   checkpoint, fence), each detached once proven stopped. A writer that
+   already succeeded is delivered through the canonical execution processing
+   instead: its material is the old generation's finished work;
 3. one transaction (``TransferRepository.replace_root_route``) that commits
    the replacement only while the route is still the one the operator saw and
    no writer is live: a newer route or a live writer changes nothing;
-4. lift the pause this replacement set. It sets one only when no operator
-   pause (per transfer or Pause All) already fences the transfer, and it runs
-   inside the application's one operator pause-control boundary
-   (``ApplicationService.operator_controls``), so no Pause or Pause All can
-   land in between and lifting it can never clear an operator's intent.
+4. lift the fence this replacement set -- the intent alone, never an
+   operator Resume: no recovery sweep over the decomposition. It sets one
+   only when no operator pause (per transfer or Pause All) already fences
+   the transfer, and it runs inside the application's one operator
+   pause-control boundary (``ApplicationService.operator_controls``), so no
+   Pause or Pause All can land in between and lifting it can never clear an
+   operator's intent.
 
-A refusal after the fence lifts the pause it set: the old route, binding and
-generation are untouched, and the retired writers continue from their
-checkpointed material through ordinary recovery. A crash before the commit
-leaves the transfer paused on its old route (Resume restores it); after the
-commit, the new route is durable.
+A refusal after the fence lifts it: the old route, binding and generation are
+untouched, and the retired writers' members are queued again for the old
+route's ordinary dispatch from their checkpointed material. A crash before the
+commit leaves the transfer paused on its old route (Resume restores it); after
+the commit, the new route is durable.
 """
 from __future__ import annotations
 
@@ -184,38 +192,53 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
             raise _refusal(Category.ACCOUNT_LIMITED, domain=Domain.PROVIDER, retryability=Retryability.BACKOFF,
                            integration_id=str(provider_id))
         raise _refusal(Category.PROVIDER_UNAVAILABLE, domain=Domain.PROVIDER, integration_id=str(provider_id))
-    latest = await engine.repository.latest_root_route(root.id)
+    repository = engine.repository
+    latest = await repository.latest_root_route(root.id)
     if not latest or latest["provider_id"] != current:
         raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.IMMEDIATE)
+    refusal = await repository.root_route_replacement_refusal(
+        root.id, expected_attempt_id=str(latest["id"]), expected_provider_id=str(current))
+    if refusal:
+        raise _refusal(Category.RESOURCE_STATE_CONFLICT,
+                       retryability=Retryability.BACKOFF if refusal == "busy" else Retryability.IMMEDIATE)
     # The target is PRIMARY work: TASK3d-1 admission, never a bypass -- unless
-    # it already holds this root's prepared backup, which the one promotion
-    # seam takes over without a new slot (exactly the order ``_resolve`` uses).
-    prepared = any(item["request_id"] == root.id and item["provider_id"] == provider_id
-                   and item["state"] == "bound" and item.get("promoted_at") is None
-                   for item in await engine.repository.standbys(root.transfer_id))
+    # it holds this root's backup that the one promotion seam can take over
+    # without a new slot (exactly the order ``_resolve`` uses). Admission is
+    # the last preflight: it may give back a backup to make room.
+    prepared = await repository.promotable_standby(root.id, str(provider_id)) is not None
     if not prepared and not await engine._make_primary_room(root, target):
         raise _refusal(Category.CONCURRENCY_LIMITED, domain=Domain.PROVIDER, retryability=Retryability.BACKOFF,
                        integration_id=str(provider_id))
 
-    # The fence is a temporary pause this replacement owns -- only when no
-    # operator pause (per transfer or global) already fences it, so lifting
+    # The fence is a temporary pause intent this replacement owns -- only when
+    # no operator pause (per transfer or global) already fences it, so lifting
     # it can never clear an operator's intent. The caller runs this inside
     # the application's one operator pause-control boundary, so no Pause or
     # Pause All can land between setting and lifting it.
-    paused_here = not transfer.paused and not await engine.repository.globally_paused()
+    paused_here = not transfer.paused and not await repository.globally_paused()
     if paused_here:
-        await engine.pause(int(transfer_id))
+        async with engine._dispatch_lock:
+            await repository.set_pause_and_fence(int(transfer_id), True, claimed_only=True)
     try:
-        for artifact in await engine.repository.artifacts(int(transfer_id)):
+        for artifact in await repository.artifacts(int(transfer_id)):
             if artifact.execution is None or artifact.state == "completed":
                 continue
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
             retired = await retire_writer(engine, artifact, candidate, artifact, candidate,
                                           boundary="operator_route_switch", park=False)
+            if retired.reason == "writer_already_succeeded":
+                # Finished, not live: delivered (or rejected) by the canonical
+                # execution processing while its generation still governs.
+                current_artifact = await engine._current_artifact(int(transfer_id), artifact.id)
+                if current_artifact is not None:
+                    await engine._process_executions(int(transfer_id), (current_artifact,), {})
+                    await engine._verify_pending()
+                continue
             if retired.reason:
                 raise _refusal(Category.RESOURCE_STATE_CONFLICT, retryability=Retryability.BACKOFF)
-            await engine.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="paused")
-        outcome = await engine.repository.replace_root_route(
+            await repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id,
+                                                   state="queued" if paused_here else "paused")
+        outcome = await repository.replace_root_route(
             root.id, expected_attempt_id=str(latest["id"]), expected_provider_id=str(current),
             target_provider_id=str(provider_id))
         if outcome != "replaced":
@@ -224,7 +247,14 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
                            else Retryability.IMMEDIATE)
     finally:
         if paused_here:
-            await engine.resume(int(transfer_id))
+            async with engine._dispatch_lock:
+                await repository.set_pause_and_fence(int(transfer_id), False, claimed_only=True)
+            # A writer the ordinary Pause retirement stopped meanwhile was
+            # detached paused; with the fence lifted it is queued again.
+            for artifact in await repository.artifacts(int(transfer_id)):
+                if artifact.state == "paused" and artifact.execution is None:
+                    await repository.artifact_state(artifact.id, "queued")
+            await engine._aggregate(int(transfer_id))
     await engine._cleanup_pending()
     engine._resolution_opportunity(int(transfer_id))
     return {"transfer_id": int(transfer_id), "provider_id": str(provider_id), "previous_provider_id": current}

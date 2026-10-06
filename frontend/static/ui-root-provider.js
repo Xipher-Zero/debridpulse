@@ -16,7 +16,11 @@
  *
  * Interaction follows the existing candidate chooser: a non-modal dialog
  * anchored to its launcher, Escape / click-away to close, arrow keys between
- * actions, focus returned to the launcher.
+ * actions, focus returned to the launcher. Choosing a provider closes the
+ * picker at once: while the one switch request is outstanding every surface
+ * keeps the committed provider and says "Switching to <provider>…" beside it
+ * (re-rendered by the surfaces' ordinary refreshes), and that transfer takes
+ * no second switch until the request settles.
  */
 (function () {
   'use strict';
@@ -47,8 +51,10 @@
   let menuSurface = null;
   let menuTransferId = null;
   let menuStatus = null;
-  let menuBusy = false;
   let detailTransferId = null;
+  // transferId -> target provider label, while that transfer's one switch
+  // request is outstanding.
+  const switching = new Map();
 
   function esc(value) {
     if (typeof window.esc === 'function') return window.esc(value);
@@ -66,24 +72,52 @@
   }
 
   // A torrent root's badge: interactive only when a real alternative exists.
+  // It always names the COMMITTED route; a switch in flight is said beside it.
   function badgeMarkup(item, surface) {
     const label = providerLabel(item && item.route_provider_name, item && item.route_provider_id);
     const known = Boolean(item && item.route_provider_id);
     if (!known || !(item && item.route_switch_available)) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
-        (known ? 'known' : 'pending') + '">' + esc(label) + '</span>';
+        (known ? 'known' : 'pending') + '">' + esc(label) + '</span>' + switchingMarkup(item && item.id);
     }
     return launcherMarkup(item.id, item.route_provider_id, label, surface);
   }
 
+  function switchingMarkup(transferId) {
+    const target = transferId == null ? null : switching.get(Number(transferId));
+    return target == null ? '' : '<span class="dp-root-provider-switching" role="status" ' +
+      'data-dp-switching-transfer="' + esc(transferId) + '">' + esc('Switching to ' + target + '…') + '</span>';
+  }
+
   function launcherMarkup(transferId, providerId, label, surface) {
+    const busy = switching.has(Number(transferId));
     return '<button type="button" class="dp-provider-chip dp-root-provider-launcher" ' + TRIGGER_ATTR + ' ' +
       'data-dp-transfer-id="' + esc(transferId) + '" data-dp-provider-id="' + esc(providerId) + '" ' +
       'data-dp-surface="' + esc(surface || '') + '" data-provider-state="known" ' +
-      'aria-haspopup="dialog" aria-expanded="false" ' +
-      'aria-label="' + esc('Provider: ' + label + '. Choose another provider') + '">' +
+      'aria-haspopup="dialog" aria-expanded="false"' + (busy ? ' aria-disabled="true"' : '') + ' ' +
+      'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' :
+        '. Choose another provider')) + '">' +
       '<span class="dp-root-provider-name">' + esc(label) + '</span>' +
-      '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>';
+      '<span class="dp-root-provider-caret" aria-hidden="true"></span></button>' + switchingMarkup(transferId);
+  }
+
+  // Say the switch on every surface already rendered, without a reload: each
+  // badge keeps its committed provider label.
+  function showSwitching(transferId) {
+    const id = CSS.escape(String(transferId));
+    document.querySelectorAll('[data-dp-switching-transfer="' + id + '"]').forEach(function (node) { node.remove(); });
+    if (!switching.has(Number(transferId))) {
+      document.querySelectorAll('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' + id + '"]').forEach(function (node) {
+        node.removeAttribute('aria-disabled');
+        node.setAttribute('aria-label', 'Provider: ' + node.textContent + '. Choose another provider');
+      });
+      return;
+    }
+    document.querySelectorAll('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' + id + '"]').forEach(function (node) {
+      node.setAttribute('aria-disabled', 'true');
+      node.setAttribute('aria-label', 'Provider: ' + node.textContent + '. A provider switch is in progress');
+      node.insertAdjacentHTML('afterend', switchingMarkup(transferId));
+    });
   }
 
   async function readStatus(transferId) {
@@ -137,7 +171,7 @@
       action = '<span class="dp-root-provider-current">CURRENT</span>';
     } else if (item.selectable) {
       action = '<button type="button" class="dp-root-provider-switch" data-dp-provider-id="' + esc(item.provider_id) +
-        '"' + (menuBusy ? ' disabled aria-disabled="true"' : '') + '>Switch</button>';
+        '">Switch</button>';
     } else {
       action = '<button type="button" class="dp-root-provider-switch" disabled aria-disabled="true">Switch</button>';
     }
@@ -155,7 +189,6 @@
     menu.setAttribute('aria-labelledby', heading);
     menu.innerHTML = '<div class="dp-root-provider-title" id="' + heading + '">Provider</div>' +
       (status.providers || []).map(rowMarkup).join('');
-    if (menuBusy) menu.setAttribute('aria-busy', 'true'); else menu.removeAttribute('aria-busy');
   }
 
   function positionMenu() {
@@ -181,7 +214,7 @@
   }
 
   async function open(transferId, trigger) {
-    if (menuBusy) return;
+    if (switching.has(Number(transferId))) return;
     closeMenu();
     menuTrigger = trigger || null;
     menuSurface = trigger ? trigger.getAttribute('data-dp-surface') : null;
@@ -210,7 +243,6 @@
     if (menuEl) {
       menuEl.hidden = true;
       menuEl.innerHTML = '';
-      menuEl.removeAttribute('aria-busy');
     }
     menuTrigger = null;
     menuSurface = null;
@@ -259,25 +291,26 @@
   }
 
   async function choose(providerId) {
-    if (menuBusy || !menuStatus || menuTransferId == null) return;
-    const transferId = menuTransferId;
+    if (!menuStatus || menuTransferId == null || switching.has(Number(menuTransferId))) return;
+    const transferId = Number(menuTransferId);
     const status = menuStatus;
     const current = status.current_provider_id;
     const currentName = providerLabel(status.current_provider_name, current);
     const target = (status.providers || []).find(function (item) { return item.provider_id === providerId; });
     const targetName = providerLabel(target && target.provider_name, providerId);
-    menuBusy = true;
-    renderMenu(status);
+    // One request per transfer; the picker never holds the page meanwhile.
+    switching.set(transferId, targetName);
+    closeMenu({focusTrigger: true});
+    showSwitching(transferId);
     try {
       await switchProvider(transferId, providerId, current);
-      menuBusy = false;
-      closeMenu();
       toast('Switched provider to ' + targetName + '.', 'success');
     } catch (error) {
-      menuBusy = false;
-      closeMenu({focusTrigger: true});
       toast({title: 'Could not switch provider; transfer remains on ' + currentName + '.',
         body: String((error && error.message) || 'Nothing was switched.')}, 'error');
+    } finally {
+      switching.delete(transferId);
+      showSwitching(transferId);
     }
     await refreshSurfaces(transferId);
   }
@@ -292,7 +325,7 @@
   function onMenuKeydown(event) {
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!menuBusy) closeMenu({focusTrigger: true});
+      closeMenu({focusTrigger: true});
       return;
     }
     if (event.key === 'ArrowDown' || event.key === 'ArrowUp' || event.key === 'Home' || event.key === 'End') {
@@ -316,14 +349,14 @@
     event.stopPropagation();
     const transferId = Number(trigger.getAttribute('data-dp-transfer-id'));
     if (menuTrigger === trigger && menuEl && !menuEl.hidden) {
-      if (!menuBusy) closeMenu({focusTrigger: true});
+      closeMenu({focusTrigger: true});
       return;
     }
     open(transferId, trigger);
   }
 
   function onDocumentPointerDown(event) {
-    if (!menuEl || menuEl.hidden || menuBusy) return;
+    if (!menuEl || menuEl.hidden) return;
     const target = event.target instanceof Node ? event.target : null;
     if (target && (menuEl.contains(target) || (menuTrigger && menuTrigger.contains(target)))) return;
     closeMenu();
@@ -340,7 +373,7 @@
       menuTrigger = live;
       live.setAttribute('aria-expanded', 'true');
       positionMenu();
-    } else if (!menuBusy) {
+    } else {
       closeMenu();
     }
   }
@@ -356,7 +389,7 @@
     });
     document.addEventListener('debridpulse:detail-closed', function () {
       detailTransferId = null;
-      if (!menuBusy) closeMenu();
+      closeMenu();
     });
     document.addEventListener('debridpulse:dashboard-recent-rendered', function () { queueMicrotask(onSurfaceRendered); });
     document.addEventListener('debridpulse:downloads-rendered', function () { queueMicrotask(onSurfaceRendered); });

@@ -1061,8 +1061,42 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.commit()
         return cursor.rowcount == 1
 
-    async def execution(self, observation) -> None:
-        """Persist execution evidence and reset recovery only on meaningful progress."""
+    async def live_execution_handles(self) -> tuple:
+        """``(transfer id, artifact status, handle)`` of every live writer: an
+        authorized, nonterminal attempt still linked to its artifact, of a
+        live transfer -- bounded by the execution width, never by the size of
+        any decomposition (the fast observation, ``sample_throughput``)."""
+        async with get_db() as db:
+            rows = await db.fetchall("""SELECT e.transfer_id,f.status,e.handle FROM execution_attempts e
+                JOIN download_files f ON f.execution_attempt_id=e.id JOIN torrents t ON t.id=e.transfer_id
+                WHERE e.authorized=1 AND e.state IN ('queued','running','paused','unknown')
+                AND t.status NOT IN ('deleted','completed','consolidated','cancelled') ORDER BY e.id""")
+        return tuple((int(row["transfer_id"]), str(row["status"]), codec.handle(codec.load(row["handle"])))
+                     for row in rows)
+
+    def execution_writes(self, attempt_id: str) -> int:
+        """How many times this process has made an observation of the attempt
+        durable through ``execution`` -- read BEFORE observing, it is the
+        freshness an observation is persisted against (``expected_writes``).
+        Process-local by nature: no observation outlives its process."""
+        return self.__dict__.get("_execution_write_counts", {}).get(attempt_id, 0)
+
+    async def execution(self, observation, *, live_only: bool = False,
+                        expected_writes: int | None = None) -> bool | None:
+        """Persist execution evidence and reset recovery only on meaningful progress.
+
+        ``expected_writes`` (``execution_writes`` read before the observation
+        was obtained): when anything made a newer observation of the attempt
+        durable meanwhile, this one is stale and nothing is written -- ``None``.
+        Observations are ordered by when they were obtained, never by
+        comparing states, which move in both directions.
+
+        ``live_only`` (the fast observation's factual activity): persist only
+        while the attempt is still an authorized, nonterminal writer linked to
+        its artifact and the observation does not move its progress backwards
+        -- decided in this same transaction, so a late fast observation can
+        never overwrite what the reconcile cycle or a retirement recorded.
+        Returns whether anything was persisted."""
         handle = observation.handle
         accepted_total = None
         async with get_db() as db:
@@ -1071,9 +1105,20 @@ class TransferRepository(_QualifiedTransferRepository):
             if not row or codec.load(row["handle"]) != codec.load(codec.dump(handle)):
                 await db.rollback()
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RECONCILIATION))
+            if expected_writes is not None and self.execution_writes(handle.attempt_id) != expected_writes:
+                await db.rollback()
+                return None
             if (not bool(row.get("authorized")) and row.get("state") in _TERMINAL_EXECUTION_STATES):
                 await db.rollback()
-                return
+                return False
+            if live_only and (not bool(row.get("authorized")) or row.get("state") in _TERMINAL_EXECUTION_STATES
+                              or row.get("state") == "prepared"
+                              or int(observation.progress.completed_bytes or 0)
+                              < int(TransferProgress(**codec.load(row["progress"], {})).completed_bytes or 0)
+                              or not await db.fetchone("SELECT 1 FROM download_files WHERE execution_attempt_id=?",
+                                                       (handle.attempt_id,))):
+                await db.rollback()
+                return False
             if row.get("state") == ExecutionState.FAILED.value and observation.state == ExecutionState.ABSENT:
                 # A proven failure is higher-confidence truth than a later
                 # absence of the same attempt: the failed native object is
@@ -1081,7 +1126,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 # FAILED state and native cause; the caller still holds the
                 # absence as runtime evidence.
                 await db.rollback()
-                return
+                return False
             previous = TransferProgress(**codec.load(row["progress"], {}))
             artifact = await db.fetchone(
                 "SELECT id,torrent_id,size_bytes,recovery_failures,recovery_refreshes FROM download_files WHERE id=?",
@@ -1153,9 +1198,14 @@ class TransferRepository(_QualifiedTransferRepository):
             )
             if credible:
                 accepted_total = (int(artifact["id"]), total)
+            # Counted before the commit yields: a concurrent writer's freshness
+            # check, made once it holds the database, already sees this write.
+            counts = self.__dict__.setdefault("_execution_write_counts", {})
+            counts[handle.attempt_id] = counts.get(handle.attempt_id, 0) + 1
             await db.commit()
         if accepted_total:
             await self.accept_execution_total(accepted_total[0], handle, accepted_total[1])
+        return True
 
     async def refine_execution_total(self, artifact_id: int, handle, total_bytes: int) -> bool:
         # DP 1.0.12 canonical lifecycle/recovery/completion rework, Section
@@ -2334,6 +2384,41 @@ class TransferRepository(_QualifiedTransferRepository):
                    JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
                    WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
 
+    @staticmethod
+    async def _root_route_replacement(db, request_id: str, expected_attempt_id: str, expected_provider_id: str):
+        """THE root-state refusals of an operator root-route replacement, in
+        the caller's session: ``(refusal, root row, latest route attempt)``,
+        ``refusal`` being ``"gone"``, ``"busy"``, ``"stale"`` or ``None``.
+        ``replace_root_route`` decides through it inside its commit;
+        ``root_route_replacement_refusal`` reads it before anything is fenced."""
+        row = await db.fetchone(
+            """SELECT r.state,r.resource,r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+               WHERE r.id=? AND r.parent_id IS NULL
+               AND t.status NOT IN ('deleted','completed','consolidated','cancelled')""", (request_id,))
+        if not row:
+            return "gone", None, None
+        if row["state"] in {"resolving", "materializing", "input_required"}:
+            return "busy", row, None
+        latest = await db.fetchone(
+            """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
+               JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+               WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
+        if (not latest or str(latest["id"]) != str(expected_attempt_id)
+                or str(latest["provider_id"]) != str(expected_provider_id)
+                or latest["state"] in _ENDED_ROUTE_STATES):
+            return "stale", row, latest
+        return None, row, latest
+
+    async def root_route_replacement_refusal(self, request_id: str, *, expected_attempt_id: str,
+                                             expected_provider_id: str) -> str | None:
+        """Read-only: why ``replace_root_route`` would refuse right now for
+        the root's own state (never its writers, which a switch retires
+        only after this answered ``None``)."""
+        async with get_db() as db:
+            refusal, _row, _latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
+                                                                        expected_provider_id)
+        return refusal
+
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
                                  target_provider_id: str) -> str:
         """THE operator root-route replacement, decided atomically.
@@ -2360,25 +2445,11 @@ class TransferRepository(_QualifiedTransferRepository):
         transition committed first) or ``"writer_live"``."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone(
-                """SELECT r.state,r.resource,r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
-                   WHERE r.id=? AND r.parent_id IS NULL
-                   AND t.status NOT IN ('deleted','completed','consolidated','cancelled')""", (request_id,))
-            if not row:
+            refusal, row, latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
+                                                                      expected_provider_id)
+            if refusal:
                 await db.rollback()
-                return "gone"
-            if row["state"] in {"resolving", "materializing", "input_required"}:
-                await db.rollback()
-                return "busy"
-            latest = await db.fetchone(
-                """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
-                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
-                   WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
-            if (not latest or str(latest["id"]) != str(expected_attempt_id)
-                    or str(latest["provider_id"]) != str(expected_provider_id)
-                    or latest["state"] in _ENDED_ROUTE_STATES):
-                await db.rollback()
-                return "stale"
+                return refusal
             if await db.fetchone(
                     """SELECT 1 FROM transfer_requests c JOIN download_files f ON f.request_id=c.id
                        JOIN execution_attempts e ON e.id=f.execution_attempt_id

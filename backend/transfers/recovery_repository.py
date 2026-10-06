@@ -244,8 +244,14 @@ class TransferRepository(_QualifiedRepository):
     # Pause/resume fencing
     # ------------------------------------------------------------------
 
-    async def set_pause_and_fence(self, transfer_id: int, paused: bool) -> None:
+    async def set_pause_and_fence(self, transfer_id: int, paused: bool, *, claimed_only: bool = False) -> None:
         """Atomically publish Pause/Resume intent and fence every older recovery owner.
+
+        ``claimed_only`` fences exactly the artifacts that hold a recovery
+        claim (a token, expired or not) -- the only artifacts an older
+        recovery owner can still act on: an artifact without a token has no
+        owner to invalidate. Its cost scales with outstanding claims, not
+        with decomposition size (an operator route switch's own fence).
 
         Pausing releases any continuation reservation this transfer's
         artifacts are holding. Dispatch is not legally permitted while
@@ -269,9 +275,11 @@ class TransferRepository(_QualifiedRepository):
             )
             rows = await db.fetchall(
                 """SELECT id,torrent_id,recovery_failures,recovery_refreshes,local_path
-                   FROM download_files WHERE torrent_id=? AND request_id IS NOT NULL
-                   AND COALESCE(mirror_state,'')!='standby'""",
-                (transfer_id,),
+                   FROM download_files f WHERE torrent_id=? AND request_id IS NOT NULL
+                   AND COALESCE(mirror_state,'')!='standby'
+                   AND (?=0 OR EXISTS(SELECT 1 FROM artifact_recovery_state s
+                        WHERE s.artifact_id=f.id AND s.recovery_claim_token IS NOT NULL))""",
+                (transfer_id, int(claimed_only)),
             )
             for row in rows:
                 artifact_id = int(row["id"])

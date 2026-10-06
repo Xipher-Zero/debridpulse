@@ -9,9 +9,10 @@ cycle work). The meter was rebuilt only at the end of each whole
 repository-backed cycle, so the volatile fact was hostage to it.
 
 The one core owner now also samples that same counting rule between cycles,
-from the executions the last cycle found live, serialized with the cycle and
-without persisting anything; the presentation read of it is pure memory and
-never waits for the slower repository-backed occupancy fact.
+from the live writers alone (bounded by the execution width), without waiting
+for the cycle; the same observation persists only factual nonterminal
+activity, guarded. The presentation read of it is pure memory and never waits
+for the slower repository-backed occupancy fact.
 """
 from __future__ import annotations
 
@@ -72,13 +73,13 @@ async def test_the_throughput_fact_follows_the_executor_between_reconcile_cycles
 
 
 @pytest.mark.asyncio
-async def test_sampling_reads_nothing_from_the_repository_and_persists_nothing(acquiring, monkeypatch):
+async def test_sampling_reads_only_the_live_writers_never_the_decomposition(acquiring, monkeypatch):
     _rate(acquiring.executor, 1 * MIB)
     await acquiring.engine.reconcile_executions()
 
     async def forbidden(*_args, **_kwargs):
-        raise AssertionError("throughput sampling touched the repository")
-    for name in ("active", "artifacts", "occupied_execution_slots", "execution", "executions"):
+        raise AssertionError("throughput sampling walked transfers or artifacts")
+    for name in ("active", "artifacts", "occupied_execution_slots", "executions"):
         monkeypatch.setattr(acquiring.repository, name, forbidden)
     _rate(acquiring.executor, 3 * MIB)
     await acquiring.engine.sample_throughput()
@@ -97,14 +98,13 @@ async def test_sampling_never_revives_an_executor_the_cycle_found_idle(acquiring
 
 
 @pytest.mark.asyncio
-async def test_sampling_is_serialized_with_the_reconcile_cycle(acquiring):
+async def test_sampling_never_waits_for_the_reconcile_cycle(acquiring):
     _rate(acquiring.executor, 1 * MIB)
     await acquiring.engine.reconcile_executions()
-    async with acquiring.engine._execution_cycle_lock:
-        sample = asyncio.create_task(acquiring.engine.sample_throughput())
-        await asyncio.sleep(0.05)
-        assert not sample.done(), "a throughput sample observed executors during a reconcile cycle"
-    await asyncio.wait_for(sample, 1)
+    _rate(acquiring.executor, 5 * MIB)
+    async with acquiring.engine._execution_cycle_lock:               # a long cycle is running
+        await asyncio.wait_for(acquiring.engine.sample_throughput(), 1)
+        assert acquiring.engine.throughput.current() == 5 * MIB
 
 
 # ── RED 1A: the speed read never waits for the slower occupancy fact ─────────
@@ -153,7 +153,7 @@ async def test_the_scheduler_samples_throughput_at_presentation_cadence(monkeypa
 
     async def sample():
         calls.append(time.monotonic())
-    application = SimpleNamespace(engine=SimpleNamespace(sample_throughput=sample))
+    application = SimpleNamespace(observe_live_executions=sample)
     monkeypatch.setattr(scheduler, "application", application)
     monkeypatch.setattr(scheduler, "_application_storage_ready", lambda: True)
     task = asyncio.create_task(scheduler.throughput_sampling_loop())

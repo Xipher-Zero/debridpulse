@@ -141,8 +141,8 @@ test('every surface switches through the one action, and the badge follows only 
   await ready(page);
   await page.locator('#dash-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher').click();
   await page.locator('.dp-root-provider-menu [data-dp-provider-status="prepared"] .dp-root-provider-switch').click();
-  await expect(page.locator('.dp-root-provider-menu')).toBeHidden();
-  expect(state.posts).toEqual([{ provider_id: 'realdebrid', expected_provider_id: 'alldebrid' }]);
+  await expect(page.locator('.dp-root-provider-menu')).toBeHidden();      // closes before the request answers
+  await expect.poll(() => state.posts).toEqual([{ provider_id: 'realdebrid', expected_provider_id: 'alldebrid' }]);
   await expect(page.locator('#dash-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher')).toHaveText('Real-Debrid');
 
   await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });

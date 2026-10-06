@@ -316,6 +316,51 @@ class ApplicationService:
             "last_apply_error": status.last_apply_error,
         }
 
+    async def _publish_active_changes(self, before, *, stats=True):
+        """Publish what changed in the small active projection since ``before``
+        (the reconcile cycle and the fast observation of live writers). The
+        fast observation runs at presentation cadence and sends no
+        ``stats_changed``: the browser already reloads statistics, throttled,
+        after progress patches, and fully after a status change."""
+        # Periodic progress publication is a list/read concern, not a reason
+        # to reconstruct canonical transfer truth once per active transfer.
+        # Re-read the small durable active projection once, publish one batch,
+        # and let status transitions request one authoritative lightweight
+        # collection refresh in the browser.
+        after = await self.repository.active()
+        after_by_id = {transfer.id: transfer for transfer in after}
+        updates = []
+        for previous in before:
+            current = after_by_id.get(previous.id)
+            if current is None:
+                updates.append(self._active_overlay_item(previous, status_changed=True))
+                continue
+            previous_state = str(getattr(previous.state, "value", previous.state))
+            current_state = str(getattr(current.state, "value", current.state))
+            previous_progress = (previous.progress, previous.active_execution_progress)
+            current_progress = (current.progress, current.active_execution_progress)
+            if current_state != previous_state or current_progress != previous_progress:
+                updates.append(
+                    self._active_overlay_item(
+                        current,
+                        status_changed=current_state != previous_state,
+                    )
+                )
+
+        if updates:
+            await publish("torrent_updated", {"progress_only": True, "items": updates})
+            if stats:
+                await publish("stats_changed", {})
+
+    async def observe_live_executions(self):
+        """The fast observation of live writers (``TransferEngine.sample_throughput``):
+        it persists factual activity, so it is admitted like every other
+        DB-backed operation and drained by maintenance."""
+        async with self.application_operation():
+            before = await self.repository.active()
+            await self.engine.sample_throughput()
+            await self._publish_active_changes(before, stats=False)
+
     async def execution_throughput(self) -> dict:
         """The volatile speed facts alone, read from memory.
 
@@ -849,34 +894,7 @@ class ApplicationService:
             recovery = await self.engine.reconcile_executions()
             await self._contain_download_storage_faults(before)
 
-            # Periodic progress publication is a list/read concern, not a reason
-            # to reconstruct canonical transfer truth once per active transfer.
-            # Re-read the small durable active projection once, publish one batch,
-            # and let status transitions request one authoritative lightweight
-            # collection refresh in the browser.
-            after = await self.repository.active()
-            after_by_id = {transfer.id: transfer for transfer in after}
-            updates = []
-            for previous in before:
-                current = after_by_id.get(previous.id)
-                if current is None:
-                    updates.append(self._active_overlay_item(previous, status_changed=True))
-                    continue
-                previous_state = str(getattr(previous.state, "value", previous.state))
-                current_state = str(getattr(current.state, "value", current.state))
-                previous_progress = (previous.progress, previous.active_execution_progress)
-                current_progress = (current.progress, current.active_execution_progress)
-                if current_state != previous_state or current_progress != previous_progress:
-                    updates.append(
-                        self._active_overlay_item(
-                            current,
-                            status_changed=current_state != previous_state,
-                        )
-                    )
-
-            if updates:
-                await publish("torrent_updated", {"progress_only": True, "items": updates})
-                await publish("stats_changed", {})
+            await self._publish_active_changes(before)
             return recovery
 
     async def process_postprocessors(self):

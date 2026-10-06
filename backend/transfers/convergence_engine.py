@@ -2326,6 +2326,7 @@ class TransferEngine(_QualifiedTransferEngine):
             # restart -- instead of staying ``pending`` forever.
             await super()._process_executions(transfer_id, (), observations, dispatch_allowed=dispatch_allowed)
             return
+        admitted = []
         for artifact in artifacts:
             candidate = self._candidate(artifact)
             # Routing eligibility and already-satisfied delivery truth are
@@ -2380,12 +2381,19 @@ class TransferEngine(_QualifiedTransferEngine):
                     if admission.kind != MaterializationAdmissionKind.PROCEED:
                         await self._reconcile_unauthorized_existing_execution(artifact)
                         continue
-            await super()._process_executions(
-                transfer_id,
-                (artifact,),
-                observations,
-                dispatch_allowed=dispatch_allowed,
-            )
+            admitted.append(artifact)
+        # ONE base pass for the transfer this cycle, and with it its one
+        # lifecycle aggregation -- also when every artifact was gated above.
+        # Handing the base one artifact at a time aggregated the whole
+        # transfer once per member: a cycle quadratic in decomposition size,
+        # long enough that a writer started in one cycle was first observed
+        # (already finished) in the next, so it was never durably running.
+        await super()._process_executions(
+            transfer_id,
+            tuple(admitted),
+            observations,
+            dispatch_allowed=dispatch_allowed,
+        )
 
     async def _reconcile_unauthorized_existing_execution(self, artifact: Artifact) -> None:
         """Route a HOLD/STALE existing execution discovered on the ordinary

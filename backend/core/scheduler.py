@@ -9,6 +9,7 @@ from core.performance import async_timer
 from core.version import is_version_newer, normalize_version_tag
 from services.notification_service import NotificationService, reporting_participates
 from transfers.runtime_telemetry import THROUGHPUT_SAMPLE_SECONDS
+from services.maintenance_gate import ApplicationMaintenanceActive
 
 application = None
 
@@ -146,15 +147,19 @@ async def sync_download_clients_loop():
 
 
 async def throughput_sampling_loop():
-    """Sample the one core throughput fact at presentation cadence.
+    """Observe live writers -- their activity and the one core throughput
+    fact -- at presentation cadence.
 
-    The reconcile cycle keeps its own pace; the operator-facing speed does not
-    wait for it (``TransferEngine.sample_throughput``)."""
+    The reconcile cycle keeps its own pace; neither the operator-facing speed
+    nor a writer's running state waits for it
+    (``ApplicationService.observe_live_executions``)."""
     while True:
         started = time.monotonic()
         if _application_storage_ready():
             try:
-                await application.engine.sample_throughput()
+                await application.observe_live_executions()
+            except ApplicationMaintenanceActive:
+                pass                                   # maintenance owns the database meanwhile
             except Exception as e:
                 logger.error("Throughput sampling error: %s", sanitize_exception(e))
         await asyncio.sleep(max(0.05, THROUGHPUT_SAMPLE_SECONDS - (time.monotonic() - started)))

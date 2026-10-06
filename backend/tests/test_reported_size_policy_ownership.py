@@ -54,7 +54,8 @@ def test_completion_size_acceptance_has_one_owner_below_the_engine_recovery_laye
     """Canonical ownership means both that the owner exists AND that no layer
     above it independently verifies or refines completion size. What a SUCCEEDED
     observation proves about the payload is decided once -- in
-    ``_engine_base._execution_result`` over ``transfers.filesystem`` /
+    ``_engine_base._verify_succeeded`` (which ``_execution_result`` hands every
+    SUCCEEDED observation to) over ``transfers.filesystem`` /
     ``transfers.size_evidence`` -- so correctness never depends on which layer
     of the engine stack wins (the removed ``_engine_recovery._execution_result``
     accepted the executor's total by its own rule)."""
@@ -65,11 +66,18 @@ def test_completion_size_acceptance_has_one_owner_below_the_engine_recovery_laye
     ]
     assert composed._execution_result is engine_base.TransferEngine._execution_result
 
-    completion = inspect.getsource(engine_base.TransferEngine._execution_result)
+    assert [cls.__module__ for cls in composed.__mro__ if "_verify_succeeded" in vars(cls)] == [
+        "transfers._engine_base",
+    ]
+    routing = inspect.getsource(engine_base.TransferEngine._execution_result)
+    completion = inspect.getsource(engine_base.TransferEngine._verify_succeeded)
     # The one generalized materialization verifier (whose FILE branch is the
-    # hardened ``stable_material_size``) is the completion-size owner.
-    assert "verify_materialization(" in completion
-    assert "stable_payload(" not in completion and "payload_matches(" not in completion
+    # hardened ``stable_material_size``) is the completion-size owner; the
+    # result router only hands a SUCCEEDED observation to it.
+    assert "verify_materialization(" in completion and "verify_materialization(" not in routing
+    assert "self._verification(" in routing and "_pending_verifications" in routing
+    for source in (routing, completion):
+        assert "stable_payload(" not in source and "payload_matches(" not in source
     verifier = inspect.getsource(__import__("transfers.filesystem", fromlist=["x"]).verify_materialization)
     assert "stable_material_size(" in verifier
 

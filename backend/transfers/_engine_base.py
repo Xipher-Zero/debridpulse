@@ -106,6 +106,17 @@ from pathlib import Path
 import time
 from weakref import WeakValueDictionary
 
+
+class ObservationBatch(dict):
+    """One reconcile cycle's batched observations, by attempt id, with each
+    attempt's durable write count (``TransferRepository.execution_writes``)
+    read before it was observed: the freshness its persistence is checked
+    against."""
+
+    def __init__(self):
+        super().__init__()
+        self.writes: dict[str, int] = {}
+
 from transfers.canonical import CanonicalOwnership
 from transfers.contracts import CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
 from transfers import codec
@@ -390,7 +401,10 @@ class TransferEngine:
         # and sampled between cycles (``sample_throughput``) from exactly the
         # executions the last cycle found live.
         self.throughput = ExecutionThroughputMeter()
-        self._throughput_handles: dict[str, tuple[ExecutionHandle, ...]] = {}
+        # Succeeded executions awaiting their stability-delayed verification,
+        # and the one tracked verification task per attempt (``_verify_pending``).
+        self._pending_verifications: dict[str, tuple] = {}
+        self._verifications: dict[str, asyncio.Future] = {}
         # Executors whose acquisition gate global pause has confirmed engaged.
         self._acquisition_gated: set[str] = set()
 
@@ -997,7 +1011,7 @@ class TransferEngine:
                 for artifact in artifacts_by_transfer[transfer.id]:
                     if artifact.execution and artifact.state in {"queued", "downloading", "unknown", "verifying", "paused"}:
                         grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
-            observations = {}
+            observations = ObservationBatch()
             reservation_facts = {}
             throughput_contributions = {}
             for executor_id, handles in grouped.items():
@@ -1006,6 +1020,8 @@ class TransferEngine:
                 executor = self.registry.executor_for_handle(handles[0])
                 if executor is None:
                     continue
+                observations.writes.update((handle.attempt_id, self.repository.execution_writes(handle.attempt_id))
+                                           for handle in handles)
                 snapshot = await self._observe_batch(executor, tuple(handles))
                 certain = snapshot.error is None
                 for handle, observation in zip(handles, snapshot.observations):
@@ -1025,7 +1041,6 @@ class TransferEngine:
             # handles: an executor with none contributes nothing at all, so a
             # finished or paused acquisition cannot leave a live rate behind.
             self.throughput.record(throughput_contributions)
-            self._throughput_handles = {executor_id: tuple(handles) for executor_id, handles in grouped.items()}
             for transfer in transfers:
                 challenge = challenges[transfer.id]
                 # A pre-writer question (provider or evidence origin) concerns a
@@ -1040,30 +1055,62 @@ class TransferEngine:
                 if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
             await self._release_runtime_reservations()
+        # Succeeded writers wait out their stability interval here, with the
+        # cycle lock released: the fast observation keeps running meanwhile.
+        await self._verify_pending()
 
     async def sample_throughput(self) -> None:
-        """Refresh the one throughput fact between reconcile cycles.
+        """THE fast observation of live writers, at presentation cadence.
 
-        The reconcile cycle is repository-backed and paced by the execution
-        poll interval; the operator-facing speed is not. This applies the
-        cycle's own counting rule (``_executor_throughput``) to exactly the
-        executions the last cycle found live -- never another set, so an
-        executor the cycle found idle cannot be revived -- through the one
-        batched observation call. It is serialized with the cycle, reads and
-        persists nothing durable, and accepts no observation: execution truth
-        stays the cycle's."""
-        async with self._execution_cycle_lock:
-            contributions = {}
-            for executor_id, handles in self._throughput_handles.items():
-                executor = self.registry.executor_for_handle(handles[0])
-                if executor is None:
+        The reconcile cycle walks every artifact and its pace grows with the
+        size of a decomposition; a writer it starts is otherwise not seen
+        again until the next cycle. This observes exactly the live writers
+        (``live_execution_handles``: bounded by the execution width) through
+        the one batched observation per executor and the one acceptance
+        point, and from that one observation:
+
+        * the throughput fact, by the cycle's own counting rule;
+        * factual nonterminal activity (queued, running, paused) persisted by
+          the one execution owner, guarded in its own transaction
+          (``live_only``) so it never overwrites terminal or newer truth; a
+          transfer whose writer's state moved is aggregated once.
+
+        It decides nothing: no terminal handling, recovery, verification,
+        candidate, provider or admission decision -- an UNKNOWN, terminal or
+        erroring observation is left to the reconcile cycle. It never waits
+        for the cycle."""
+        statuses = {ExecutionState.RUNNING: "downloading", ExecutionState.QUEUED: "queued",
+                    ExecutionState.PAUSED: "paused"}
+        grouped: dict[str, list] = {}
+        for transfer_id, status, handle in await self.repository.live_execution_handles():
+            grouped.setdefault(handle.executor_id, []).append((transfer_id, status, handle))
+        contributions, moved = {}, set()
+        for executor_id, live in grouped.items():
+            executor = self.registry.executor_for_handle(live[0][2])
+            if executor is None:
+                continue
+            writes = {handle.attempt_id: self.repository.execution_writes(handle.attempt_id)
+                      for _transfer, _status, handle in live}
+            snapshot = await self._observe_batch(executor, tuple(handle for _transfer, _status, handle in live))
+            observed = []
+            for (transfer_id, status, handle), observation in zip(live, snapshot.observations):
+                try:
+                    observation = await self._accept_observation(handle, observation)
+                    observed.append(observation)
+                    lock = self._convergence_lock(handle.attempt_id)
+                    if observation.state not in statuses or observation.error is not None or lock.locked():
+                        continue                           # a control owner is deciding this writer now
+                    async with lock:
+                        if (await self.repository.execution(observation, live_only=True,
+                                                            expected_writes=writes[handle.attempt_id])
+                                and status != statuses[observation.state]):
+                            moved.add(transfer_id)
+                except TransferError:
                     continue
-                # An aggregating executor is counted by its one figure alone:
-                # its executions need no observation to sample it.
-                observed = () if getattr(executor.capabilities, "aggregate_throughput", False) \
-                    else (await self._observe_batch(executor, handles)).observations
-                contributions[executor_id] = await self._executor_throughput(executor, observed)
-            self.throughput.record(contributions)
+            contributions[executor_id] = await self._executor_throughput(executor, observed)
+        self.throughput.record(contributions)
+        for transfer_id in sorted(moved):
+            await self._aggregate(transfer_id)
 
     @staticmethod
     async def _executor_throughput(executor, observations) -> int:
@@ -1224,6 +1271,7 @@ class TransferEngine:
 
     def _convergence_lock(self, attempt_id: str):
         return self._execution_convergence_locks.setdefault(attempt_id, asyncio.Lock())
+
 
     @staticmethod
     def _control_error(exc, executor_id: str):
@@ -1424,7 +1472,9 @@ class TransferEngine:
                         await self.repository.artifact_state(artifact.id, "error", error=error)
                         continue
                     observed = observations.get(artifact.execution.attempt_id)
+                    expected = getattr(observations, "writes", {}).get(artifact.execution.attempt_id)
                     if observed is None:
+                        expected = self.repository.execution_writes(artifact.execution.attempt_id)
                         observed = await self._observe_execution(executor, artifact.execution)
                     else:
                         observed = await self._accept_observation(artifact.execution, observed)
@@ -1435,7 +1485,8 @@ class TransferEngine:
                             or current.execution.attempt_id != observed.handle.attempt_id:
                         # Retired meanwhile (DebridPulse Pause): no writer left.
                         continue
-                    await self._execution_result(artifact, executor, observed)
+                    await self._execution_result(artifact, executor, observed, defer_verification=True,
+                                                 expected_writes=expected)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "queued" and artifact.retry_at <= self.clock():
                     await self._dispatch(artifact)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
@@ -3094,11 +3145,23 @@ class TransferEngine:
                 return
         await self.repository.artifact_state(artifact.id, "queued", release=True)
 
-    async def _execution_result(self, artifact, executor, observed):
+    async def _execution_result(self, artifact, executor, observed, *, defer_verification=False,
+                                expected_writes=None):
+        """``expected_writes`` is the attempt's durable write count read
+        before ``observed`` was obtained (``TransferRepository.execution_writes``).
+        An observation that something newer has superseded durably meanwhile
+        -- the fast observation, a control -- is never written back: the
+        attempt is observed afresh and decided on that instead."""
         observed = await self._accept_observation(artifact.execution, observed)
         artifact = replace(artifact, execution=observed.handle)
         idle_seconds = await self.repository.execution_idle_seconds(observed, self.clock())
-        await self.repository.execution(observed)
+        if await self.repository.execution(observed, expected_writes=expected_writes) is None:
+            expected_writes = self.repository.execution_writes(observed.handle.attempt_id)
+            observed = await self._accept_observation(artifact.execution,
+                                                      await self._observe_execution(executor, artifact.execution))
+            artifact = replace(artifact, execution=observed.handle)
+            if await self.repository.execution(observed, expected_writes=expected_writes) is None:
+                return                                   # superseded again: the next cycle decides
         if observed.resumable and observed.reports_material and self._material_checkpoint_due(
                 observed.handle.attempt_id):
             await self._checkpoint_material(artifact, observed)
@@ -3142,6 +3205,39 @@ class TransferEngine:
                 retryability=Retryability.BACKOFF)
             await self._recover_artifact(artifact, error)
         elif observed.state == ExecutionState.SUCCEEDED:
+            # Its success is durable (the artifact is ``verifying``). The
+            # reconcile cycle's plain observation defers the stability-delayed
+            # verification until it has released its lock (``_verify_pending``);
+            # every other caller decides on its outcome now, so it waits.
+            if defer_verification:
+                self._pending_verifications[observed.handle.attempt_id] = (artifact, executor, observed)
+            else:
+                await self._verification(artifact, executor, observed)
+            return
+        elif observed.state == ExecutionState.FAILED:
+            error = observed.error or self._error(Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION, domain=Domain.EXECUTOR)
+            await self._recover_artifact(artifact, error)
+        elif observed.state == ExecutionState.ABSENT:
+            error = self._error(Category.ORPHANED_RESOURCE, Stage.RECONCILIATION, domain=Domain.RECONCILIATION,
+                                retryability=Retryability.BACKOFF)
+            await self._recover_artifact(artifact, error)
+        elif observed.state == ExecutionState.CANCELLED:
+            await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
+                cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
+        if observed.state in {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.ABSENT,
+                              ExecutionState.CANCELLED}:
+            # Its terminal truth was acted on: nothing asks about it any more.
+            self._admitted_executions.discard(observed.handle.attempt_id)
+
+
+    async def _verify_succeeded(self, artifact, executor, observed):
+        """THE completion verification of a succeeded execution (formerly
+        inline in ``_execution_result``), run outside the reconcile cycle's
+        lock: the existing verifier, including its stability delay, then the
+        existing commit -- only while that same execution is still the
+        artifact's current, verifying writer (another owner may have retired,
+        replaced or cancelled it meanwhile, and then it decides)."""
+        try:
             candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
             if candidate is None:
                 raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.VERIFICATION))
@@ -3161,6 +3257,13 @@ class TransferEngine:
                 recorded_bytes=artifact.expected_bytes, integrity=candidate.integrity,
                 delay=self.policy.adoption_stability_seconds,
             )
+
+            current = await self._current_artifact(artifact.transfer_id, artifact.id)
+            if (current is None or current.execution is None
+                    or current.execution.attempt_id != observed.handle.attempt_id
+                    or current.state != "verifying" or not await self._live(artifact.transfer_id)):
+                return
+            artifact = replace(current, execution=observed.handle)
             if verified is not None and await self.repository.record_materialization(observed.handle, verified.result):
                 if work.materialization.kind == MaterializationKind.FILE and verified.total_bytes > 0:
                     # Normal completion is a forced checkpoint of the whole
@@ -3200,21 +3303,55 @@ class TransferEngine:
                 if owned:
                     await self._retire_execution_owned_material(artifact, work, footprint)
                 await self._recover_artifact(artifact, error)
-        elif observed.state == ExecutionState.FAILED:
-            error = observed.error or self._error(Category.UNMAPPED_EXECUTOR_ERROR, Stage.EXECUTION, domain=Domain.EXECUTOR)
-            await self._recover_artifact(artifact, error)
-        elif observed.state == ExecutionState.ABSENT:
-            error = self._error(Category.ORPHANED_RESOURCE, Stage.RECONCILIATION, domain=Domain.RECONCILIATION,
-                                retryability=Retryability.BACKOFF)
-            await self._recover_artifact(artifact, error)
-        elif observed.state == ExecutionState.CANCELLED:
-            await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.CANCELLED,
-                cancellation_initiator=CancellationInitiator.EXECUTOR), attempt_id=observed.handle.attempt_id)
-        if observed.state in {ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.ABSENT,
-                              ExecutionState.CANCELLED}:
-            # Its terminal truth was acted on: nothing asks about it any more.
             self._admitted_executions.discard(observed.handle.attempt_id)
+        except Exception as exc:
+            # The same authority as the commit: a verification that went stale
+            # while it waited publishes nothing against its successor.
+            current = await self._current_artifact(artifact.transfer_id, artifact.id)
+            if (current is None or current.execution is None
+                    or current.execution.attempt_id != observed.handle.attempt_id
+                    or current.state != "verifying" or not await self._live(artifact.transfer_id)):
+                return
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc,
+                integration_id=executor.descriptor.id, domain=Domain.RECONCILIATION, stage=Stage.VERIFICATION)
+            await self.repository.artifact_state(artifact.id, "error", error=error)
+            await self.repository.outcome(artifact.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
 
+    async def _verify_pending(self):
+        """Verify every succeeded execution queued by ``_execution_result``,
+        concurrently, and wait for them: one tracked task per attempt (a
+        second drainer awaits the same task, never verifies twice), then one
+        aggregation per affected transfer. Never under ``_execution_cycle_lock``:
+        the stability interval is a verification requirement, not scheduler
+        occupancy. The durable ``verifying`` state re-queues anything a
+        restart interrupted on the next cycle."""
+        transfers = set()
+        for attempt, item in list(self._pending_verifications.items()):
+            del self._pending_verifications[attempt]
+            transfers.add(item[0].transfer_id)
+            self._verification_task(*item)
+        running = list(self._verifications.values())
+        if running:
+            await asyncio.gather(*running, return_exceptions=True)
+        for transfer_id in sorted(transfers):
+            await self._aggregate(transfer_id)
+
+    def _verification_task(self, artifact, executor, observed):
+        """The one tracked verification of an attempt: created once, joined
+        by every later caller until it finishes."""
+        attempt = observed.handle.attempt_id
+        task = self._verifications.get(attempt)
+        if task is None:
+            task = asyncio.ensure_future(self._verify_succeeded(artifact, executor, observed))
+            self._verifications[attempt] = task
+            task.add_done_callback(lambda _done, key=attempt: self._verifications.pop(key, None))
+        return task
+
+    async def _verification(self, artifact, executor, observed):
+        """Verify one succeeded attempt now (joining a verification already
+        under way), for a caller that decides on its outcome."""
+        self._pending_verifications.pop(observed.handle.attempt_id, None)
+        await self._verification_task(artifact, executor, observed)
 
     @staticmethod
     def _verification_rejected(artifact: Artifact, attempt_id: str) -> bool:

@@ -29,6 +29,17 @@
 .dp-root-provider-launcher[aria-expanded="true"] .dp-root-provider-caret {
   transform: rotate(180deg);
 }
+.dp-root-provider-launcher[aria-disabled="true"] {
+  cursor: progress;
+}
+/* A switch in flight, beside the committed provider (never replacing it). */
+.dp-root-provider-switching {
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--dp-text-muted, var(--text3));
+}
 
 .dp-root-provider-menu {
   min-width: 260px;
