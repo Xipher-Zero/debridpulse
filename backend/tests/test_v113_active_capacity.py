@@ -464,6 +464,18 @@ async def test_an_overfull_provider_gives_back_enough_backups_to_admit_the_prima
 
 # -- provenance: who actually refused ----------------------------------------------------------------------------
 
+async def refusal(repository, transfer_id):
+    """The refusal TorBox's route ended on: a full provider is a failure of
+    that provider alone, so its route records it and the root moves on."""
+    from transfers import codec
+    from db.database import get_db
+    root = await root_of(repository, transfer_id)
+    async with get_db() as db:
+        row = await db.fetchone("SELECT error FROM resolution_attempts WHERE request_id=? AND provider_id='torbox' "
+                                "AND error IS NOT NULL ORDER BY created_at DESC LIMIT 1", (root.id,))
+    return codec.error(row["error"])
+
+
 async def test_a_locally_held_primary_is_recorded_as_core_not_provider(tmp_path, monkeypatch):
     from transfers.errors import Origin
     from transfers.policy import provider_attributable
@@ -475,7 +487,7 @@ async def test_a_locally_held_primary_is_recorded_as_core_not_provider(tmp_path,
     await engine._resolve(await root_of(repository, transfer))
 
     assert creates(client) == [] and client.refused == []                 # TorBox was never asked
-    error = (await root_of(repository, transfer)).error
+    error = await refusal(repository, transfer)
     assert (error.domain.value, error.category.value, error.retryability.value) == (
         "provider", "concurrency_limited", "backoff")
     assert error.origin == Origin.CORE and error.integration_id == "torbox"
@@ -491,5 +503,5 @@ async def test_a_real_active_limit_refusal_is_recorded_as_provider(tmp_path, mon
     await engine._resolve(await root_of(repository, transfer))
 
     assert len(client.refused) == 1                                        # TorBox answered ACTIVE_LIMIT
-    error = (await root_of(repository, transfer)).error
+    error = await refusal(repository, transfer)
     assert error.category.value == "concurrency_limited" and error.origin == Origin.PROVIDER

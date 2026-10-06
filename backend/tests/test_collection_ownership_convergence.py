@@ -17,7 +17,7 @@ import pytest_asyncio
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers.convergence_engine import TransferEngine
-from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
 from transfers.models import ResolutionResult, ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -29,9 +29,10 @@ _OWNER_BACKOFF = 600
 
 class SlowMemberProvider(ParcelProvider):
     """Resolves every member to the shared payload of its name. A member named
-    in ``slow`` is not resolvable yet: resolution fails transiently, so the
-    request durably returns to PENDING with a backoff -- the ordinary
-    unresolved state an overlapping earlier transfer's member sits in."""
+    in ``slow`` is not resolvable yet: its source is temporarily unavailable,
+    so the request durably returns to PENDING with a backoff on its route --
+    the ordinary unresolved state an overlapping earlier transfer's member
+    sits in."""
 
     def __init__(self, identity, *, retry_after=None):
         super().__init__(identity)
@@ -42,9 +43,9 @@ class SlowMemberProvider(ParcelProvider):
         self.calls.append(("resolve", request.payload))
         if request.name in self.slow:
             raise TransferError(NormalizedError(
-                Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
+                Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Stage.RESOLUTION,
                 integration_id=self.descriptor.id, retryability=Retryability.BACKOFF,
-                retry_after_seconds=self.retry_after,
+                origin=Origin.REMOTE_SOURCE, retry_after_seconds=self.retry_after,
             ))
         return ResolutionResult(
             ResourceState.AVAILABLE, (self.candidate(request.name, payload=f"shared:{request.name}"),),

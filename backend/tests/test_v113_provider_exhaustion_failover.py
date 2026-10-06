@@ -328,18 +328,19 @@ async def test_restart_after_every_provider_exhausted_retries_nothing_before_a_n
 
 async def test_administrative_disablement_is_a_hard_stop_never_exhaustion(tmp_path, monkeypatch):
     first, second = RouteLab("alpha-route"), RouteLab("beta-route")
-    first.always = PROVIDER_RETRYABLE
+    first.script = [Ownership.CREATED]                    # alpha holds a live route: its resource is preparing
     repository, engine = await lab(tmp_path, monkeypatch, first, second)
     transfer = await submit(engine)
     await engine.resolve_pending()
     first.descriptor = replace(first.descriptor, enabled=False)
+    first.observed_error = PROVIDER_RETRYABLE
 
     await drive(engine)
 
     assert second.resolved == []
     record = await root(repository, transfer.id)
     assert await repository.bound_route_provider(record.id) == "alpha-route"
-    assert record.error.category == Category.PROVIDER_UNAVAILABLE
+    assert await repository.exhausted_route_providers(record.id) == frozenset()
 
 
 # -- persistence and campaigns ------------------------------------------------------
@@ -503,15 +504,16 @@ async def current_providers(repository, transfer_id):
 
 async def test_current_provider_follows_live_routes_in_details_and_the_bounded_list(tmp_path, monkeypatch):
     first, second = RouteLab("alpha-route"), RouteLab("beta-route")
-    first.always = PROVIDER_RETRYABLE
-    second.always = PROVIDER_RETRYABLE
+    first.always = PROVIDER_FINAL
+    second.script = [Ownership.CREATED]                   # B's route stays live: its resource is preparing
     repository, engine = await lab(tmp_path, monkeypatch, first, second)
     transfer = await submit(engine)
     record = await root(repository, transfer.id)
 
-    # 1. A owns the live route while it retries.
+    # 1. A's failure ends A's route at once: A is never current again.
     await engine.resolve_pending()
-    assert await current_providers(repository, transfer.id) == ("alpha-route", "alpha-route")
+    assert "alpha-route" in await repository.exhausted_route_providers(record.id)
+    assert "alpha-route" not in await current_providers(repository, transfer.id)
 
     # 2. A exhausted, B active.
     for _ in range(10):
@@ -522,6 +524,7 @@ async def test_current_provider_follows_live_routes_in_details_and_the_bounded_l
     assert await current_providers(repository, transfer.id) == ("beta-route", "beta-route")
 
     # 3. Every provider exhausted: history keeps both, nobody is current.
+    second.observed_error = PROVIDER_FINAL
     await drive(engine, passes=10)
     assert await repository.exhausted_route_providers(record.id) == frozenset({"alpha-route", "beta-route"})
     assert await current_providers(repository, transfer.id) == (None, None)

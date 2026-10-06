@@ -948,7 +948,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         'preparing_bytes': 'INTEGER',
         'preparing_since': 'REAL',
     },
-    'resolution_attempts': {'result': 'TEXT'},
+    'resolution_attempts': {
+        'result': 'TEXT',
+        # A route that ended on a transient provider-local failure: the
+        # engine-clock instant its provider may re-enter this request's
+        # automatic competition. NULL for every other ended route.
+        'reentry_at': 'REAL',
+    },
     # The canonical selector's decision that started this route attempt: one
     # neutral disposition per provider it considered (historical causality,
     # bounded by the registered providers). Additive and nullable: an attempt
@@ -1066,7 +1072,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at', 'preparing_bytes', 'preparing_since'},
-    'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
+    'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at', 'reentry_at'},
     'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'routing_decision', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
     'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},

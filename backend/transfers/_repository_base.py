@@ -1968,10 +1968,12 @@ class TransferRepository:
     async def bound_route_provider(self, request_id: str) -> str | None:
         """Return the provider owning this request's route: the latest durable
         route attempt, else the transfer's collection route binding. A
-        provider that positively declined the request never owns its route,
-        and a route whose latest attempt exhausted its provider -- in this
-        routing campaign or an earlier one (``_ENDED_ROUTE_STATES``) -- has
-        ended: nothing owns it until the next provider is selected."""
+        provider that positively declined the request, or that it exhausted,
+        never owns its route, and a route whose latest attempt exhausted its
+        provider -- in this routing campaign or an earlier one
+        (``_ENDED_ROUTE_STATES``) -- has ended: nothing owns it until the next
+        provider is selected. A provider whose route ended only until its
+        re-entry owns a route it opens again afterwards."""
         async with get_db() as db:
             return (await self._bound_route_providers(db, (request_id,))).get(str(request_id))
 
@@ -1987,9 +1989,12 @@ class TransferRepository:
             chunk = ids[start:start + 500]
             marks = ",".join("?" * len(chunk))
             excluded: dict[str, set[str]] = {}
+            # A provider whose route merely ended on a transient failure
+            # (``reentry_at``) owns the route it opens after re-entering.
             for row in await db.fetchall(
                     f"""SELECT DISTINCT request_id,provider_id FROM resolution_attempts
-                    WHERE request_id IN ({marks}) AND state IN ('declined','exhausted')""", tuple(chunk)):
+                    WHERE request_id IN ({marks})
+                    AND (state='declined' OR (state='exhausted' AND reentry_at IS NULL))""", tuple(chunk)):
                 excluded.setdefault(str(row["request_id"]), set()).add(str(row["provider_id"]))
             latest = {str(row["request_id"]): row for row in await db.fetchall(
                 f"""SELECT request_id,provider_id,state FROM (
@@ -2008,6 +2013,12 @@ class TransferRepository:
                         and str(row["provider_id"]) not in own):
                     found[request_id] = str(row["provider_id"])
                     continue
+                if row and row.get("state") == "exhausted" and row.get("provider_id"):
+                    # An exhausted latest route owns nothing, permanently or
+                    # until its provider's re-entry: ``reentry_at`` governs a
+                    # NEW route's eligibility and never revives this one
+                    # through the collection binding.
+                    own = own | {str(row["provider_id"])}
                 value = collection.get(request_id, "")
                 found[request_id] = value if value and value not in own else None
         return found
@@ -2026,21 +2037,35 @@ class TransferRepository:
             return await self._declined_route_providers(db, request_id)
 
     @staticmethod
-    async def _exhausted_route_providers(db, request_id: str) -> frozenset[str]:
+    async def _exhausted_route_providers(db, request_id: str, now: float | None = None) -> frozenset[str]:
         rows = await db.fetchall(
-            "SELECT DISTINCT provider_id FROM resolution_attempts WHERE request_id=? AND state='exhausted'",
-            (request_id,))
+            "SELECT DISTINCT provider_id FROM resolution_attempts WHERE request_id=? AND state='exhausted' "
+            "AND (? IS NULL OR reentry_at IS NULL OR reentry_at>?)", (request_id, now, now))
         return frozenset(str(row["provider_id"]) for row in rows)
 
-    async def exhausted_route_providers(self, request_id: str) -> frozenset[str]:
+    async def exhausted_route_providers(self, request_id: str, now: float | None = None) -> frozenset[str]:
         """The providers exhausted for this request in its CURRENT routing
         campaign. Durable, so a restart cannot hand the request straight back
-        to one of them; released by the next campaign (``retry_requests``)."""
+        to one of them; released by the next campaign (``retry_requests``).
+        With ``now``, a provider whose route ended on a transient failure
+        (``reentry_at``) counts only until it may re-enter competition."""
         async with get_db() as db:
-            return await self._exhausted_route_providers(db, request_id)
+            return await self._exhausted_route_providers(db, request_id, now)
+
+    async def provider_reentries(self, request_id: str) -> dict[str, tuple[int, float]]:
+        """Per provider whose routes of this request ended on a transient
+        failure in the current campaign: ``(how many, the latest re-entry
+        instant)``. The provider's own retry budget is spent against the
+        first; the second is when it may compete again."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT provider_id,COUNT(*) AS failures,MAX(reentry_at) AS reentry_at FROM resolution_attempts
+                   WHERE request_id=? AND state='exhausted' AND reentry_at IS NOT NULL GROUP BY provider_id""",
+                (request_id,))
+        return {str(row["provider_id"]): (int(row["failures"]), float(row["reentry_at"])) for row in rows}
 
     async def exhaust_route(self, request_id: str, provider_id: str, error: NormalizedError, *,
-                            continues: bool) -> bool:
+                            continues: bool, reentry_at: float | None = None, wake_at: float = 0.0) -> bool:
         """THE provider-exhaustion transition, decided atomically.
 
         ``provider_id``'s route of this root request is exhausted under policy
@@ -2051,15 +2076,19 @@ class TransferRepository:
         it bound, when DebridPulse owns its cleanup (``CREATED``/``ADOPTED``,
         not already absent), gets the ordinary owned cleanup intent the one
         cleanup cadence then drains; and the route ends -- the request holds
-        no resource. Then, when another provider remains (``continues``), the
-        request returns to ``pending`` with a fresh retry budget for it;
+        no resource. A transient provider failure ends the route the same
+        way with ``reentry_at``: the provider is excluded from automatic
+        competition only until then (``exhausted_route_providers(now=)``).
+        Then, when another provider remains or will re-enter (``continues``),
+        the request returns to ``pending`` -- runnable at once, or at
+        ``wake_at`` when nothing can run before then -- with a fresh budget;
         otherwise it fails with this provider's error, every provider of the
         campaign exhausted. The logical request, its transfer and its lineage
         are untouched. Returns ``False`` -- changing nothing -- when
         the request is no longer live root resolution work, its route is no
         longer ``provider_id``'s, or the route already produced executable
-        work -- member requests it decomposed into, or artifacts it
-        materialized: those, their routes and their material are the bound
+        work -- member requests a generation of its own resource decomposed
+        into, or artifacts it materialized: those, their routes and their material are the bound
         provider's own issue, and nothing can hand them to another provider."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -2071,8 +2100,20 @@ class TransferRepository:
                 """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
                    JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
                    WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
-            decomposed = (await db.fetchone("SELECT 1 FROM transfer_requests WHERE parent_id=? LIMIT 1", (request_id,))
-                          or await db.fetchone("SELECT 1 FROM download_files WHERE request_id=? LIMIT 1", (request_id,)))
+            resource = codec.resource(codec.load(row["resource"])) if row and row["resource"] else None
+            # Executable work THIS route produced: members fanned out by a
+            # decomposition generation of its own resource binding (a member
+            # from before generations existed counts as its own), or the
+            # root's own artifact. A previous route's generation -- the
+            # decomposition an operator switch moved away from -- is not this
+            # route's, and is rebuilt in place on whichever route commits next.
+            decomposed = (await db.fetchone(
+                """SELECT 1 FROM transfer_requests c WHERE c.parent_id=? AND (c.materialized_selection_id IS NULL
+                   OR c.materialized_selection_id IN (SELECT s.id FROM transfer_file_selections s
+                       JOIN provider_resources b ON b.id=s.provider_resource_id
+                       WHERE s.request_id=? AND b.resource_key=?)) LIMIT 1""",
+                (request_id, request_id, resource.id if resource else None))
+                or await db.fetchone("SELECT 1 FROM download_files WHERE request_id=? LIMIT 1", (request_id,)))
             if (not row or decomposed or not latest or str(latest["provider_id"]) != provider_id
                     or latest["state"] in _ENDED_ROUTE_STATES):
                 await db.rollback()
@@ -2080,11 +2121,10 @@ class TransferRepository:
             error_blob = codec.dump(error)
             await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP "
                              "WHERE request_id=? AND state='started' AND id!=?", (error_blob, request_id, latest["id"]))
-            await db.execute("UPDATE resolution_attempts SET state='exhausted',error=?,updated_at=CURRENT_TIMESTAMP "
-                             "WHERE id=?", (error_blob, latest["id"]))
+            await db.execute("UPDATE resolution_attempts SET state='exhausted',error=?,reentry_at=?,"
+                             "updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, reentry_at, latest["id"]))
             await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP "
                              "WHERE resolution_attempt_id=?", (latest["id"],))
-            resource = codec.resource(codec.load(row["resource"])) if row["resource"] else None
             if (resource is not None and resource.provider_id == provider_id
                     and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}):
                 binding = await db.fetchone(
@@ -2094,8 +2134,9 @@ class TransferRepository:
                 if binding and binding["state"] != ResourceState.ABSENT.value:
                     await self.cleanup_intent(row["transfer_id"], resource.id, CleanupAuthority.OWNED, db=db)
             if continues:
-                await db.execute("UPDATE transfer_requests SET state='pending',resource=NULL,retry_at=0,error=NULL,"
-                                 "attempts=0 WHERE id=?", (request_id,))
+                # A request that must wait keeps the failure it waits on.
+                await db.execute("UPDATE transfer_requests SET state='pending',resource=NULL,retry_at=?,error=?,"
+                                 "attempts=0 WHERE id=?", (wake_at, error_blob if wake_at else None, request_id))
             else:
                 await db.execute("UPDATE transfer_requests SET state='failed',resource=NULL,retry_at=0,error=? "
                                  "WHERE id=?", (error_blob, request_id))

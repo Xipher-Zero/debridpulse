@@ -7,7 +7,7 @@ import pytest
 import db.database as database
 from fake_integrations import ParcelProvider
 from transfers.engine import TransferEngine
-from transfers.errors import Category, Domain, NormalizedError, Recovery, Retryability, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage, TransferError
 from transfers.models import ResolutionResult, ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -35,9 +35,13 @@ async def core(tmp_path, monkeypatch, name="group-a.sqlite3"):
 
 
 def retryable_failure():
+    # A transient failure of the SOURCE: the request retries on its bound
+    # route. (A provider-attributable failure ends that provider's route and
+    # reopens competition by design -- test_v113_transfer523_provider_failover;
+    # what these cases pin is that drift alone never re-decides a bound route.)
     return NormalizedError(
-        Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
-        retryability=Retryability.IMMEDIATE, recovery=Recovery.RETRY,
+        Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Stage.RESOLUTION,
+        retryability=Retryability.IMMEDIATE, recovery=Recovery.RETRY, origin=Origin.REMOTE_SOURCE,
     )
 
 

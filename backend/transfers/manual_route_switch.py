@@ -88,8 +88,9 @@ def provider_choices(registry, facts: dict) -> list[dict]:
     root's competition gets ONE entry:
 
     * ``current`` -- it owns the committed root route;
-    * ``failed_earlier`` -- automatic routing exhausted it for this root, but
-      it is still a legitimate claimant: an explicit choice retries it;
+    * ``failed_earlier`` -- a failure of its own ended its route of this root
+      (exhausted, or backing off until it may re-enter), but it is still a
+      legitimate claimant: an explicit choice retries it;
     * ``available`` -- a legitimate claimant (applicable, entitled, enabled,
       healthy): an operator switch may choose it;
     * ``unavailable`` with a bounded ``reason`` -- disabled, not entitled,
@@ -158,14 +159,17 @@ def standby_choice(standby: dict) -> tuple[str, bool]:
     selectable: switching to it would leave productive work for an
     indefinite remote wait. A backup the provider itself contradicts (its
     route on the root failed after the resource was last seen available, or
-    the resource is in no usable state) ``failed_earlier``: an explicit retry
-    only. A resource known gone holds nothing, and a deferred claim holds no
-    resource: the target resolves cold, as ``available`` / ``deferred``."""
+    the resource is in no usable state), or a preparation that itself
+    ended in failure, ``failed_earlier``: an explicit retry only. A resource
+    known gone holds nothing, and a deferred claim holds no resource: the
+    target resolves cold, as ``available`` / ``deferred``."""
     state, resource = standby["state"], standby.get("resource_state")
     if state == "creating" or (state == "bound" and resource == ResourceState.PREPARING.value):
         return PREPARING, False
     if state == "deferred":
         return DEFERRED, True
+    if state == "failed":
+        return FAILED_EARLIER, True
     if state != "bound" or resource in {ResourceState.ABSENT.value, ResourceState.EXPIRED.value}:
         return AVAILABLE, True
     if resource == ResourceState.AVAILABLE.value and not standby.get("contradicted"):

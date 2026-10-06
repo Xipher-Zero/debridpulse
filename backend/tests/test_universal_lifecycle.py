@@ -138,7 +138,10 @@ async def test_transient_retry_uses_durable_budget_and_elapsed_deadline(core):
         await core.engine.tick()
     assert len(core.provider.calls) == 3
     record = (await core.repository.requests(transfer.id))[0]
-    assert record.attempts == 3
+    async with database.get_db() as db:                    # the budget is durable on the provider's routes
+        spent = await db.fetchone("SELECT COUNT(*) AS n FROM resolution_attempts WHERE request_id=? "
+                                  "AND state='exhausted'", (record.id,))
+    assert spent["n"] == 3
     assert record.state == "failed"
 
 
@@ -807,7 +810,11 @@ async def test_postprocessing_failure_is_recorded_separately_from_delivery(core)
 
 @pytest.mark.asyncio
 async def test_provider_retry_stays_bound_to_original_route(core):
-    error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.BACKOFF)
+    # A transient failure of the source retries on the bound route; health
+    # drift never re-decides it. (A provider-attributable failure ends that
+    # provider's route by design: test_v113_transfer523_provider_failover.)
+    error = replace(failure(Category.SOURCE_TEMPORARILY_UNAVAILABLE, retryability=Retryability.BACKOFF,
+                            recovery=Recovery.BACKOFF), domain=Domain.RESOLUTION, origin=Origin.REMOTE_SOURCE)
     core.provider.responses = [ResolutionResult(ResourceState.UNKNOWN, error=error)]
     transfer = await submit(core)
     await core.engine.tick()
@@ -1060,7 +1067,11 @@ async def test_multiple_mirrors_keep_one_physical_artifact_and_do_not_cycle_on_l
 @pytest.mark.parametrize("retries, delay", [(0, 0), (2, 0), (2, 10)])
 async def test_resolution_retry_budget_and_zero_delay_drive_actual_attempts(core, retries, delay):
     core.engine.policy = replace(core.engine.policy, resolution_max_attempts=retries + 1, resolution_retry_delay=delay)
-    error = failure(Category.PROVIDER_UNAVAILABLE, retryability=Retryability.BACKOFF, recovery=Recovery.RETRY)
+    # A same-route resolution retry (a transient failure of the source). A
+    # provider-attributable one ends that provider's route instead and
+    # re-enters after ``retry_delay``: test_v113_transfer523_provider_failover.
+    error = failure(Category.SOURCE_TEMPORARILY_UNAVAILABLE, retryability=Retryability.BACKOFF,
+                    recovery=Recovery.RETRY, domain=Domain.RESOLUTION, origin=Origin.REMOTE_SOURCE)
     core.provider.responses = [ResolutionResult(ResourceState.UNAVAILABLE, error=error)] * (retries + 1)
     await submit(core)
     await core.engine.resolve_pending()

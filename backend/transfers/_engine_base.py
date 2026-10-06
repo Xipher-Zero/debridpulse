@@ -98,6 +98,7 @@ aggregation) safe against every other writer.
 from __future__ import annotations
 
 import asyncio
+import math
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -153,6 +154,7 @@ from transfers.cohorts import _HELD_DISPOSITIONS, _disposition, _normalized_cand
 from transfers.mirrors import EvidenceContext, askable, shared_evidence, shared_size, source_key
 from transfers.policy import (
     TERMINAL_TRANSFER_STATES, TransferPolicy, alternate_interpretation_progresses, interpretation_absent,
+    provider_attributable,
 )
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
@@ -1505,21 +1507,50 @@ class TransferEngine:
                 await self.repository.outcome(transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
         await self._aggregate(transfer_id)
 
-    async def _request_failure(self, record: RequestRecord, error: NormalizedError, *, attempts=None, waiting=False):
+    async def _request_failure(self, record: RequestRecord, error: NormalizedError, *, attempts=None, waiting=False,
+                               routed=True):
         count = record.attempts + int(waiting) if attempts is None else attempts
+        # A provider's failure belongs to the provider, never to the logical
+        # root: a provider-attributable failure of a root's route ends that
+        # provider's route whatever stage the route had reached and however it
+        # was chosen (automatically, by promotion or by the operator). One the
+        # resolution policy would retry (counted against that provider's own
+        # failures of this root) ends it only until the provider may re-enter
+        # automatic competition: after the ordinary retry interval
+        # (``retry_delay``), never before a wait the provider itself asked
+        # for. That is not a same-route resolution retry, so the resolution
+        # retry delay does not govern it. Another legitimate provider proceeds
+        # now and the root waits only when nothing else can run. A failure
+        # while observing a resource the provider already holds
+        # (``waiting``) keeps retrying that resource under its budget and
+        # the Stalled Timeout, and a refusal before any route attempt ran
+        # (``routed`` false: DebridPulse's own health gate on the bound route)
+        # is no failure of the provider's route -- health drift alone never
+        # re-decides a bound route.
+        provider_local = record.parent_id is None and not waiting and routed and provider_attributable(error)
+        if provider_local:
+            provider_id = await self.repository.bound_route_provider(record.id)
+            count = (await self.repository.provider_reentries(record.id)).get(provider_id, (0, 0.0))[0] + 1
         decision = self.policy.retry_resolution(error, count, self.clock())
-        if decision.action == Recovery.TRY_ALTERNATE_PROVIDER:
+        transient = (provider_local and decision.action != Recovery.TRY_ALTERNATE_PROVIDER
+                     and decision.retry_at is not None)
+        if decision.action == Recovery.TRY_ALTERNATE_PROVIDER or transient:
             # The bound provider had its whole route and is exhausted -- whether
             # or not any other provider remains. Its route ends and its owned
             # resource is cleaned up by the one cleanup cadence. When another
             # provider of the one canonical competition remains, the same
             # logical request continues through it, the exhausted provider
-            # excluded for this routing campaign; otherwise the request fails
-            # here, truthfully, with every provider tried exhausted. No
-            # provider chooses its successor.
-            route = await self._exhaustible_route(record)
+            # excluded for this routing campaign (a transiently failed one
+            # until its re-entry); otherwise the request fails here,
+            # truthfully, with every provider tried exhausted. Each provider's
+            # transient failures spend its own retry budget, so routing can
+            # never alternate between failing providers forever. No provider
+            # chooses its successor.
+            reentry_at = (self.clock() + max(float(self.policy.retry_delay), float(error.retry_after_seconds or 0))
+                          if transient else None)
+            route = await self._exhaustible_route(record, reentry_at=reentry_at)
             if route is not None and await self.repository.exhaust_route(
-                    record.id, route[0], error, continues=route[1]):
+                    record.id, route[0], error, continues=route[1], reentry_at=reentry_at, wake_at=route[2]):
                 await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
                 await self._cleanup_pending()
                 if route[1]:
@@ -1541,11 +1572,17 @@ class TransferEngine:
             # is (a failed contribution) and whether the transfer is settled.
             await self.canonical.settle(record.transfer_id)
 
-    async def _exhaustible_route(self, record: RequestRecord) -> tuple[str, bool] | None:
+    async def _exhaustible_route(self, record: RequestRecord, *,
+                                 reentry_at: float | None = None) -> tuple[str, bool, float] | None:
         """The provider whose route of this root request an exhaustion ends,
-        and whether another provider remains eligible for the SAME request
-        under the canonical competition -- routing facts only; whether the
-        provider is exhausted is the policy's decision alone.
+        whether the SAME request continues under the canonical competition,
+        and from when -- routing facts only; whether the provider is
+        exhausted is the policy's decision alone.
+
+        It continues at once (``0.0``) when another provider is eligible now;
+        otherwise, when a provider whose route ended on a transient failure
+        (this one, with ``reentry_at``, included) will re-enter, at the
+        earliest such re-entry; otherwise it does not continue.
 
         ``None`` when nothing can be exhausted: a member request's route
         belongs to the route that decomposed it, and administrative
@@ -1557,17 +1594,31 @@ class TransferEngine:
         provider = self.registry.providers.get(provider_id) if provider_id else None
         if provider is None or not provider.descriptor.enabled:
             return None
+        now = self.clock()
         declined = await self.repository.declined_route_providers(record.id)
-        exhausted = await self.repository.exhausted_route_providers(record.id) | {provider_id}
         generic_closed = await self.repository.collection_route_authority(record.transfer_id)
-        # A specialized claimant only health keeps out still remains under
-        # collection route authority: the request continues and waits for it,
-        # exactly as its route selection holds for it.
-        remaining = self.registry.eligible_providers(
-            record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed,
-        ) or self.registry.unhealthy_claimants(
-            record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed)
-        return provider_id, bool(remaining)
+
+        def claimants(exhausted):
+            # A specialized claimant only health keeps out still remains under
+            # collection route authority: the request continues and waits for
+            # it, exactly as its route selection holds for it.
+            return self.registry.eligible_providers(
+                record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed,
+            ) or self.registry.unhealthy_claimants(
+                record.resolvable, declined=declined, exhausted=exhausted, generic_closed=generic_closed)
+
+        if claimants(await self.repository.exhausted_route_providers(record.id, now) | {provider_id}):
+            return provider_id, True, 0.0
+        permanent = await self.repository.exhausted_route_providers(record.id, math.inf)
+        reentries = {other: at for other, (_failures, at) in (await self.repository.provider_reentries(
+            record.id)).items() if at > now and other not in permanent and other != provider_id}
+        if reentry_at is not None:
+            reentries[provider_id] = reentry_at
+        else:
+            permanent |= {provider_id}
+        later = [reentries[item.descriptor.id] for item in claimants(permanent)
+                 if item.descriptor.id in reentries]
+        return (provider_id, True, min(later)) if later else (provider_id, False, 0.0)
 
     async def _resolve(self, record: RequestRecord):
         raise NotImplementedError("_resolve is implemented by transfers.engine.TransferEngine")

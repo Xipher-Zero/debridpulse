@@ -82,10 +82,10 @@ class TransferEngine(_RecoveryTransferEngine):
         await self._prepare_standbys()
         return result
 
-    async def _request_failure(self, record, error, *, attempts=None, waiting=False):
+    async def _request_failure(self, record, error, *, attempts=None, waiting=False, routed=True):
         """Attach legacy recovery fields only after factual integration output."""
         return await super()._request_failure(
-            record, self.policy.compatibility(error), attempts=attempts, waiting=waiting,
+            record, self.policy.compatibility(error), attempts=attempts, waiting=waiting, routed=routed,
         )
 
     def _bound_resource_provider(self, record):
@@ -266,7 +266,7 @@ class TransferEngine(_RecoveryTransferEngine):
                     attempt, ResolutionResult(ResourceState.UNKNOWN, error=error),
                 )
             await self._request_failure(
-                record, error, attempts=record.attempts + (1 if attempt else 0),
+                record, error, attempts=record.attempts + (1 if attempt else 0), routed=attempt is not None,
             )
 
     async def _route_provider(self, record):
@@ -304,7 +304,9 @@ class TransferEngine(_RecoveryTransferEngine):
         """The facts of ``record``'s one canonical provider competition."""
         return {
             "declined": await self.repository.declined_route_providers(record.id),
-            "exhausted": await self.repository.exhausted_route_providers(record.id),
+            # A provider whose route ended on a transient failure rejoins
+            # once its re-entry instant has passed.
+            "exhausted": await self.repository.exhausted_route_providers(record.id, self.clock()),
             # A member continues the route that decomposed it: it is
             # never new acquisition, so account entitlement never gates it.
             "acquisition": record.parent_id is None,
