@@ -33,7 +33,7 @@ SPECIALIZATIONS = {
     ("convergence_engine", "reconcile_executions"): "startup reconcile + quiescent-recovery wake before the base sweep",
     ("convergence_engine", "_process_executions"): "provider/executor/materialization admission guard per artifact",
     ("engine", "_request_failure"): "project context-free compatibility facts onto factual integration errors",
-    ("_engine_recovery", "resolve_pending"): "collection-affinity serialization and post-resolution aggregation",
+    ("engine", "resolve_pending"): "collection-affinity serialization, post-resolution aggregation, then backup preparation",
     ("_engine_recovery", "_process_request"): "collection-affinity precondition",
     ("_engine_recovery", "_materialize"): "cohort lock, collection coordination, candidate provenance",
     # repository stack

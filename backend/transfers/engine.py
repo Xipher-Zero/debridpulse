@@ -62,9 +62,23 @@ class TransferEngine(_RecoveryTransferEngine):
     """Recovery-qualified engine plus authoritative bound-provider continuation."""
 
     async def resolve_pending(self):
-        """The resolution pass, then -- only once its primary work has drained
-        -- the speculative backup preparations it leaves room for."""
-        result = await super().resolve_pending()
+        """The resolution pass, serialized with collection affinity and
+        followed by direct-link aggregation, then -- only once its primary work
+        has drained and outside that serialization -- the speculative backup
+        preparations it leaves room for."""
+        lock = getattr(self, "_collection_resolution_lock", None)
+        if lock is None:
+            lock = self._collection_resolution_lock = asyncio.Lock()
+        async with lock:
+            blocked = await self._prepare_collection_affinity()
+            self._collection_affinity_blocked = blocked
+            try:
+                result = await super().resolve_pending()
+                for transfer in await self.repository.active():
+                    if transfer.source == "direct_link":
+                        await self._aggregate(transfer.id)
+            finally:
+                self._collection_affinity_blocked = set()
         await self._prepare_standbys()
         return result
 

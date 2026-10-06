@@ -108,6 +108,9 @@ test('the native EventSource is never wrapped', async ({ page }) => {
 test('semantic SSE event produces one structured toast and reload does not replay it client-side', async ({ page }) => {
   await installEventSourceFixture(page);
   await page.goto('/');
+  // The app opens its event stream after its session bootstrap: emit only
+  // once it has actually subscribed to the semantic event.
+  await page.waitForFunction(() => window.__dpFakeEventSource?.listeners.has('duplicate_consolidated'));
 
   await page.evaluate(() => window.__dpFakeEventSource.emit('duplicate_consolidated', {
     source_transfer_id: 8,

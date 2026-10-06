@@ -73,22 +73,6 @@ class TransferEngine(_QualifiedTransferEngine):
                 blocked.add(transfer.id)
         return blocked
 
-    async def resolve_pending(self):
-        lock = getattr(self, "_collection_resolution_lock", None)
-        if lock is None:
-            lock = self._collection_resolution_lock = asyncio.Lock()
-        async with lock:
-            blocked = await self._prepare_collection_affinity()
-            self._collection_affinity_blocked = blocked
-            try:
-                result = await super().resolve_pending()
-                for transfer in await self.repository.active():
-                    if transfer.source == "direct_link":
-                        await self._aggregate(transfer.id)
-                return result
-            finally:
-                self._collection_affinity_blocked = set()
-
     async def _process_request(self, record):
         if record.transfer_id in getattr(self, "_collection_affinity_blocked", set()):
             return
