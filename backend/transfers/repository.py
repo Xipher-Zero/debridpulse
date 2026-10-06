@@ -57,12 +57,13 @@ from types import SimpleNamespace
 from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
+from transfers._repository_base import _ENDED_ROUTE_STATES
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import (
-    ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership, ProviderResource, ResourceState,
-    TransferProgress, new_identity,
+    CleanupAuthority, ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership,
+    ProviderResource, ResolutionAttempt, ResourceState, TransferProgress, new_identity,
 )
 from transfers.policy import failure_signature, meaningful_progress_threshold
 
@@ -2264,6 +2265,182 @@ class TransferRepository(_QualifiedTransferRepository):
             (str(fs.Continuity.HELD), reason, now, row["id"]))
         await db.commit()
         return reason, None
+
+    # The route-attempt operation an operator's explicit root route
+    # replacement is recorded under, distinct from ordinary resolution
+    # (``resolve``) and from automatic failover (whose predecessor attempt
+    # carries the exhaustion that caused it).
+    OPERATOR_SWITCH = "operator_switch"
+
+    async def _root_route_facts(self, db, transfer_ids) -> dict[int, dict]:
+        """Inside the caller's session, set-oriented: for each transfer of
+        exactly ONE root request, the facts its provider route is decided
+        from -- the root (``root_id``, its submitted ``kind``, its
+        ``resolvable``), its committed route provider (``current``, the one
+        rule of ``_bound_route_providers``), the providers that ``declined``
+        it or were ``exhausted`` for it, and whether collection route
+        authority closed ``generic`` competition. A bounded number of queries
+        for any number of transfers; other transfers are absent."""
+        ids = list(dict.fromkeys(int(item) for item in transfer_ids))
+        facts: dict[int, dict] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            roots: dict[int, list] = {}
+            for row in await db.fetchall(
+                    f"""SELECT id,transfer_id,payload,interpretation FROM transfer_requests
+                    WHERE parent_id IS NULL AND transfer_id IN ({marks})""", tuple(chunk)):
+                roots.setdefault(int(row["transfer_id"]), []).append(row)
+            single = {transfer_id: rows[0] for transfer_id, rows in roots.items() if len(rows) == 1}
+            if not single:
+                continue
+            root_ids = [str(row["id"]) for row in single.values()]
+            current = await self._bound_route_providers(db, root_ids)
+            competition: dict[str, dict[str, set[str]]] = {}
+            root_marks = ",".join("?" * len(root_ids))
+            for row in await db.fetchall(
+                    f"""SELECT DISTINCT request_id,provider_id,state FROM resolution_attempts
+                    WHERE request_id IN ({root_marks}) AND state IN ('declined','exhausted')""", tuple(root_ids)):
+                competition.setdefault(str(row["request_id"]), {}).setdefault(row["state"], set()).add(
+                    str(row["provider_id"]))
+            authority = {int(row["id"]): bool(row.get("collection_route_authority"))
+                         or bool(str(row.get("collection_route_provider_id") or "").strip())
+                         for row in await db.fetchall(
+                             f"""SELECT id,collection_route_authority,collection_route_provider_id FROM torrents
+                             WHERE id IN ({marks})""", tuple(chunk))}
+            for transfer_id, row in single.items():
+                request = codec.request(codec.load(row["payload"]))
+                interpretation = codec.request(codec.load(row["interpretation"])) if row.get("interpretation") else None
+                own = competition.get(str(row["id"]), {})
+                facts[transfer_id] = {
+                    "root_id": str(row["id"]), "kind": str(request.kind or "").strip().lower(),
+                    "resolvable": interpretation or request, "current": current.get(str(row["id"])),
+                    "declined": frozenset(own.get("declined", ())), "exhausted": frozenset(own.get("exhausted", ())),
+                    "generic_closed": authority.get(transfer_id, False),
+                }
+        return facts
+
+    async def root_route_facts(self, transfer_id: int) -> dict | None:
+        """``_root_route_facts`` for one transfer, in its own session."""
+        async with get_db() as db:
+            return (await self._root_route_facts(db, (int(transfer_id),))).get(int(transfer_id))
+
+    async def latest_root_route(self, request_id: str) -> dict | None:
+        """The latest non-declined route attempt of a root request (the one
+        ``bound_route_provider`` reads): ``{id, provider_id, state}``."""
+        async with get_db() as db:
+            return await db.fetchone(
+                """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
+
+    async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
+                                 target_provider_id: str) -> str:
+        """THE operator root-route replacement, decided atomically.
+
+        The root's current route -- its latest route attempt, which must still
+        be ``expected_attempt_id`` by ``expected_provider_id`` and not ended --
+        ends ``released`` (never ``exhausted``: the provider did not fail), and
+        ``target_provider_id``'s route attempt is opened as the root's route
+        under the ``operator_switch`` operation, which ordinary resolution then
+        adopts (``begin_pinned_resolution``). Only the target's own earlier
+        exhaustion of this root is released (``released`` stays history);
+        no other provider's exhaustion and no other root is touched. The
+        replaced provider resource, when DebridPulse owns its cleanup and it
+        is not already absent, gets the ordinary owned cleanup intent the one
+        cleanup cadence drains. The routes the replaced root route gave its
+        members end with it (``released``, history kept). The root holds no
+        binding afterwards, so every
+        member of the old decomposition generation stops being runnable at
+        this commit (``_decomposition_admission``). Requires every writer of
+        the root's members to be terminal or detached first.
+
+        Returns ``"replaced"``, or why nothing changed: ``"gone"`` (not live
+        root work), ``"busy"`` (resolution in flight), ``"stale"`` (another
+        transition committed first) or ``"writer_live"``."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT r.state,r.resource,r.transfer_id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE r.id=? AND r.parent_id IS NULL
+                   AND t.status NOT IN ('deleted','completed','consolidated','cancelled')""", (request_id,))
+            if not row:
+                await db.rollback()
+                return "gone"
+            if row["state"] in {"resolving", "materializing", "input_required"}:
+                await db.rollback()
+                return "busy"
+            latest = await db.fetchone(
+                """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
+            if (not latest or str(latest["id"]) != str(expected_attempt_id)
+                    or str(latest["provider_id"]) != str(expected_provider_id)
+                    or latest["state"] in _ENDED_ROUTE_STATES):
+                await db.rollback()
+                return "stale"
+            if await db.fetchone(
+                    """SELECT 1 FROM transfer_requests c JOIN download_files f ON f.request_id=c.id
+                       JOIN execution_attempts e ON e.id=f.execution_attempt_id
+                       WHERE c.parent_id=? AND e.state IN ('prepared','queued','running','paused','unknown')""",
+                    (request_id,)):
+                await db.rollback()
+                return "writer_live"
+            transfer_id = int(row["transfer_id"])
+            await db.execute("UPDATE resolution_attempts SET state='released',updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                             (latest["id"],))
+            await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP "
+                             "WHERE resolution_attempt_id=? AND outcome IN ('started','resolved','unknown')",
+                             (latest["id"],))
+            await db.execute("UPDATE resolution_attempts SET state='released',updated_at=CURRENT_TIMESTAMP "
+                             "WHERE request_id=? AND provider_id=? AND state='exhausted'",
+                             (request_id, target_provider_id))
+            # Members continue the route that decomposed them: the routes the
+            # replaced root route gave them end with it (history kept), so the
+            # next fan-out routes them from the root's new provider.
+            await db.execute("""UPDATE resolution_attempts SET state='released',updated_at=CURRENT_TIMESTAMP
+                WHERE request_id IN (SELECT id FROM transfer_requests WHERE parent_id=?)
+                AND state NOT IN ('declined','exhausted','released')""", (request_id,))
+            pin = new_identity()
+            await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')",
+                             (pin, request_id, target_provider_id))
+            await self._begin_route_provenance(db, pin, transfer_id, request_id, target_provider_id,
+                                               operation=self.OPERATOR_SWITCH)
+            resource = codec.resource(codec.load(row["resource"])) if row["resource"] else None
+            if resource is not None and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
+                binding = await db.fetchone(
+                    "SELECT state FROM provider_resources WHERE transfer_id=? "
+                    "AND (resource_key=? OR (resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
+                if binding and binding["state"] != ResourceState.ABSENT.value:
+                    await self.cleanup_intent(transfer_id, resource.id, CleanupAuthority.OWNED, db=db)
+            await db.execute("""UPDATE transfer_requests SET state='pending',resource=NULL,retry_at=0,error=NULL,
+                attempts=0,routing_decision=NULL WHERE id=?""", (request_id,))
+            await db.commit()
+        return "replaced"
+
+    async def begin_pinned_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
+        """Adopt the root's open ``operator_switch`` route attempt for
+        ``provider_id`` as its resolution attempt -- the replacement's own
+        attempt, never a second one. ``None`` when there is none to adopt
+        (then ordinary ``begin_resolution`` applies)."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            pinned = await db.fetchone(
+                """SELECT a.id,a.provider_id,a.state,p.operation FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   JOIN transfer_requests r ON r.id=a.request_id JOIN torrents t ON t.id=r.transfer_id
+                   LEFT JOIN transfer_pause_intents i ON i.torrent_id=t.id
+                   WHERE a.request_id=? AND a.state!='declined' AND r.state='pending'
+                   AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(i.paused,0)=0
+                   ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
+            if (not pinned or pinned["operation"] != self.OPERATOR_SWITCH or pinned["state"] != "started"
+                    or str(pinned["provider_id"]) != str(provider_id)):
+                await db.rollback()
+                return None
+            await db.execute("UPDATE transfer_requests SET state='resolving',attempts=attempts+1,routing_decision=NULL "
+                             "WHERE id=?", (request_id,))
+            await db.commit()
+        return ResolutionAttempt(str(pinned["id"]), request_id, str(provider_id), "started")
 
     async def record_terminal_reacquisition(self, transfer_id: int, now: float) -> None:
         """Completed terminal work was reopened for reacquisition: record it,

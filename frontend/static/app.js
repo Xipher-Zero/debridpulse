@@ -269,6 +269,14 @@ function sourceLabel(source, requestKinds) {
 }
 
 function transferProviderPresentation(t) {
+  // A torrent root's provider is its committed ROOT route (the backend's
+  // ``route_provider_id``, present only for one-root torrent transfers): a
+  // live route-state indicator, never an origin or a child file's provider.
+  if (t && Object.prototype.hasOwnProperty.call(t, 'route_provider_id')) {
+    return t.route_provider_id
+      ? {label: String(t.route_provider_name || t.route_provider_id), state: 'known'}
+      : {label: 'Pending', state: 'pending'};
+  }
   const completed = String(t?.status || '') === 'completed';
   // The backend's origin projection (the provider owning the transfer's root
   // route) is what the compact chip names; current/delivering stay the
@@ -284,7 +292,10 @@ function transferProviderPresentation(t) {
   return {label: 'Unknown', state: 'unknown'};
 }
 
-function providerChip(t) {
+function providerChip(t, surface) {
+  if (t && Object.prototype.hasOwnProperty.call(t, 'route_provider_id') && window.DPRootProvider) {
+    return window.DPRootProvider.badgeMarkup(t, surface);
+  }
   const provider = transferProviderPresentation(t);
   return `<span class="dp-provider-chip" data-provider-state="${provider.state}">${esc(provider.label)}</span>`;
 }
@@ -1708,6 +1719,7 @@ async function showDetail(id) {
           <div class="card-header dp-detail-files-header">
             <span class="card-title">Files${dpDisplayFiles.length?` (${dpDisplayFiles.length})`:''}</span>
             <span class="dp-detail-files-header-actions">
+              <span class="dp-detail-files-provider-slot" data-dp-root-provider-mount data-dp-transfer-id="${t.id}"></span>
               <span class="dp-detail-files-group-slot" data-dp-group-candidates-mount data-dp-transfer-id="${t.id}"></span>
               <span class="dp-detail-files-selection-slot" data-dp-file-selection-mount data-dp-transfer-id="${t.id}"></span>
             </span>

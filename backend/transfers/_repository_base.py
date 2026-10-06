@@ -1973,25 +1973,44 @@ class TransferRepository:
         routing campaign or an earlier one (``_ENDED_ROUTE_STATES``) -- has
         ended: nothing owns it until the next provider is selected."""
         async with get_db() as db:
-            excluded = (await self._declined_route_providers(db, request_id)
-                        | await self._exhausted_route_providers(db, request_id))
-            row = await db.fetchone(
-                """SELECT a.provider_id,a.state FROM route_attempt_provenance p
-                JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
-                WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""",
-                (request_id,),
-            )
-            if row and row.get("state") in _ENDED_ROUTE_STATES:
-                row = None
-            elif row and row.get("provider_id") and str(row["provider_id"]) not in excluded:
-                return str(row["provider_id"])
-            row = await db.fetchone(
-                """SELECT t.collection_route_provider_id FROM transfer_requests r
-                JOIN torrents t ON t.id=r.transfer_id WHERE r.id=?""",
-                (request_id,),
-            )
-        value = str((row or {}).get("collection_route_provider_id") or "").strip()
-        return value if value and value not in excluded else None
+            return (await self._bound_route_providers(db, (request_id,))).get(str(request_id))
+
+    @classmethod
+    async def _bound_route_providers(cls, db, request_ids) -> dict[str, str | None]:
+        """``bound_route_provider``'s one rule for many requests, inside the
+        caller's session and set-oriented (a bounded number of queries for any
+        number of requests): every reader of a committed route -- routing,
+        Details, the bounded list -- derives it here."""
+        ids = list(dict.fromkeys(str(item) for item in request_ids))
+        found: dict[str, str | None] = {}
+        for start in range(0, len(ids), 500):
+            chunk = ids[start:start + 500]
+            marks = ",".join("?" * len(chunk))
+            excluded: dict[str, set[str]] = {}
+            for row in await db.fetchall(
+                    f"""SELECT DISTINCT request_id,provider_id FROM resolution_attempts
+                    WHERE request_id IN ({marks}) AND state IN ('declined','exhausted')""", tuple(chunk)):
+                excluded.setdefault(str(row["request_id"]), set()).add(str(row["provider_id"]))
+            latest = {str(row["request_id"]): row for row in await db.fetchall(
+                f"""SELECT request_id,provider_id,state FROM (
+                    SELECT a.request_id,a.provider_id,a.state,
+                        ROW_NUMBER() OVER (PARTITION BY a.request_id ORDER BY p.ordinal DESC) AS row_number
+                    FROM route_attempt_provenance p JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                    WHERE a.request_id IN ({marks}) AND a.state!='declined') WHERE row_number=1""", tuple(chunk))}
+            collection = {str(row["id"]): str(row.get("collection_route_provider_id") or "").strip()
+                          for row in await db.fetchall(
+                              f"""SELECT r.id,t.collection_route_provider_id FROM transfer_requests r
+                              JOIN torrents t ON t.id=r.transfer_id WHERE r.id IN ({marks})""", tuple(chunk))}
+            for request_id in chunk:
+                own = excluded.get(request_id, set())
+                row = latest.get(request_id)
+                if (row and row.get("state") not in _ENDED_ROUTE_STATES and row.get("provider_id")
+                        and str(row["provider_id"]) not in own):
+                    found[request_id] = str(row["provider_id"])
+                    continue
+                value = collection.get(request_id, "")
+                found[request_id] = value if value and value not in own else None
+        return found
 
     @staticmethod
     async def _declined_route_providers(db, request_id: str) -> frozenset[str]:

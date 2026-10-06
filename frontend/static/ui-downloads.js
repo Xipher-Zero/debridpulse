@@ -353,7 +353,7 @@ function rowMarkup(t) {
     </td>
     <td class="sz dp-downloads-provider-cell">
       <span class="dp-downloads-provider-block">
-        <span class="dp-downloads-provider-line">${sourceMarkup}${providerChip(t)}${fileSelectionMarkup}${groupMarkup}</span>
+        <span class="dp-downloads-provider-line">${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}</span>
         <span class="dp-transfer-source-label">${sourceLabel(t.source, t.request_kinds)}</span>
       </span>
       ${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}

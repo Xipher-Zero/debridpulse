@@ -129,6 +129,9 @@ def _candidate_source(value) -> dict[str, str] | None:
     return {"kind": "host", "host": host} if host else None
 
 
+_NOT_A_TORRENT_ROOT = object()
+
+
 def public_source_identity(request_kind, candidate_source=None) -> dict[str, str]:
     """Project only a safe source identity, with root request-type precedence."""
     kind = str(request_kind or "").strip().lower()
@@ -495,6 +498,15 @@ class TransferRepository(_CanonicalTransferRepository):
                     request_kind = str(codec.request(codec.load(root["payload"])).kind or "").strip().lower()
                 except (TypeError, ValueError, KeyError):
                     request_kind = ""
+            # A torrent root's provider is its committed ROOT route -- the
+            # route routing, promotion and failover read
+            # (``_bound_route_provider``), read in this session -- never a
+            # child candidate's or an origin's.
+            route_provider = _NOT_A_TORRENT_ROOT
+            if request_kind in BITTORRENT_REQUEST_KINDS:
+                facts = (await self._root_route_facts(db, (transfer_id,))).get(int(transfer_id))
+                if facts is not None:
+                    route_provider = facts["current"]
 
             # The canonical request kinds of this transfer's ROOT requests.
             # Derived, never stored a second time: the kind already lives in the
@@ -770,6 +782,8 @@ class TransferRepository(_CanonicalTransferRepository):
                     item["download_speed"] = 0
 
         result["request_kinds"] = request_kinds
+        if route_provider is not _NOT_A_TORRENT_ROOT:
+            result["route_provider_id"] = route_provider
         result["current_source_identity"] = public_source_identity(request_kind, candidate_source)
         if _candidate_source(selected_source) is not None:
             result["current_source_identity"] = public_source_identity(request_kind, selected_source)

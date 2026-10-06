@@ -204,9 +204,12 @@ class TransferEngine(_RecoveryTransferEngine):
             async with self._resolution_slot():
                 if not await self._live(record.transfer_id, admission=True):
                     return
-                attempt = await self.repository.begin_resolution(
-                    record.id, provider.descriptor.id, routing_decision=self._route_evidence(record, route),
-                )
+                # An operator's explicit route replacement opened this route's
+                # attempt already: resolution adopts it rather than opening another.
+                attempt = (await self.repository.begin_pinned_resolution(record.id, provider.descriptor.id)
+                           or await self.repository.begin_resolution(
+                               record.id, provider.descriptor.id, routing_decision=self._route_evidence(record, route),
+                           ))
                 if attempt is None:
                     return
                 # The route is chosen; a backup that provider already prepared
@@ -264,6 +267,18 @@ class TransferEngine(_RecoveryTransferEngine):
         if bound_provider_id:
             return ProviderRoute(self.registry.provider_for_bound_route(bound_provider_id, record.resolvable))
         competition = await self._competition(record)
+        if record.parent_id is not None:
+            # A member continues the route that decomposed it: its root's
+            # current provider takes it whenever that provider is one of its
+            # own legitimate claimants -- so a root whose route was replaced
+            # fans its members out to the provider it is on now.
+            root_provider_id = await self.repository.bound_route_provider(record.parent_id)
+            following = next((provider for provider in self.registry.eligible_providers(
+                record.resolvable, declined=competition["declined"], exhausted=competition["exhausted"],
+                acquisition=False, generic_closed=competition["generic_closed"])
+                if provider.descriptor.id == root_provider_id), None) if root_provider_id else None
+            if following is not None:
+                return ProviderRoute(following)
         # Only a root's new acquisition is ever asked about, and only where an
         # answer can change the order -- never merely to have it recorded.
         availability = (await self._root_availability(record, competition)

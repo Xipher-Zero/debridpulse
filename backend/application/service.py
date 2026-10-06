@@ -112,6 +112,12 @@ class ApplicationService:
         # discovered generically by composition.
         self.configuration_appliers = {}
         self._admission = ApplicationMaintenanceGate()
+        # Operator pause control is one serialized boundary: per-transfer
+        # Pause/Resume, Pause All/Resume All, the maintenance pause-intent
+        # record/restore and a provider route switch (whose writer fence is a
+        # temporary pause it owns) never interleave, so no control can clear
+        # a pause intent another control set meanwhile.
+        self.operator_controls = asyncio.Lock()
         self.capacity = capacity
         self.observability = None
         self.resolution_wakeup = asyncio.Event()
@@ -675,7 +681,7 @@ class ApplicationService:
             return {"ok": True, "transfer_id": transfer_id, "artifact_id": artifact_id}
 
     async def pause(self, transfer_id):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             await self.require(transfer_id)
             errors = await self.engine.pause(transfer_id)
             self.execution_wakeup.set()
@@ -683,7 +689,7 @@ class ApplicationService:
             return self._control_result(errors)
 
     async def resume(self, transfer_id):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             await self.require(transfer_id)
             errors = await self.engine.resume(transfer_id)
             self.resolution_wakeup.set()
@@ -698,13 +704,13 @@ class ApplicationService:
         return {"ok": True}
 
     async def pause_all(self):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             results = await self.engine.pause_all()
             await publish("stats_changed", {})
             return {"ok": not any(results.values()), "paused": await self.repository.globally_paused(), "count": len(results), "failed": sum(bool(errors) for errors in results.values())}
 
     async def resume_all(self):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             results = await self.engine.resume_all()
             self.resolution_wakeup.set()
             self.execution_wakeup.set()
@@ -715,11 +721,11 @@ class ApplicationService:
         return await self.engine.pause_intent()
 
     async def record_pause_intent(self, intent):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             await self.engine.record_pause_intent(intent)
 
     async def restore_pause_intent(self, intent):
-        async with self.application_operation():
+        async with self.operator_controls, self.application_operation():
             results = await self.engine.restore_pause_intent(intent)
             self.resolution_wakeup.set()
             self.execution_wakeup.set()

@@ -259,6 +259,8 @@ def _public_transfer_presentation(value, definitions) -> dict:
         result["delivering_provider_name"] = _provider_display_name(result.get("delivering_provider_id"), definitions)
     if "origin_provider_id" in result:
         result["origin_provider_name"] = _provider_display_name(result.get("origin_provider_id"), definitions)
+    if "route_provider_id" in result:
+        result["route_provider_name"] = _provider_display_name(result.get("route_provider_id"), definitions)
 
     for attempt in result.get("route_attempts", []) or []:
         attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)
