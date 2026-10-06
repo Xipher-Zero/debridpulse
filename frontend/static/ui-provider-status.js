@@ -232,16 +232,42 @@
       : '<div class="conn-row dp-provider-status-row" data-provider-state="inactive"><div class="dot warn"></div><span>No download providers enabled</span></div>';
   }
 
+  /* Current observation, else valid last-known-good, else unresolved.
+   *
+   * A status endpoint that answered is the current observation, whatever it
+   * says. One that did not answer this time (the request failed or timed
+   * out) says nothing new about the integration, so the last answer it gave
+   * stays authoritative while it is still valid: taken under the same
+   * candidate facts (endpoint, participation, configuration, verification)
+   * and younger than the backend's own account-truth freshness (five
+   * minutes, integrations/account_entitlement.py). Only with neither is the
+   * provider unresolved. An answer becomes last-known-good only when its
+   * observation is the one rendered (``refresh``'s generation guard): an
+   * obsolete answer, or one begun before a settings save, never seeds it. */
+  const LAST_KNOWN_GOOD_MS = 5 * 60 * 1000;
+  const lastKnownGood = new Map();
+  const factsKey = candidate => [candidate.endpoint, candidate.enabled, candidate.configured,
+    candidate.verified, candidate.verifiable].join('|');
+
   async function observe(candidate) {
-    if (!candidate.enabled) return {...candidate, state:'disabled'};
-    if (candidate.staticStatus) return verificationAdjusted({...candidate, state:candidate.staticStatus});
-    if (!candidate.endpoint) return {...candidate, state:'unknown'};
-    try {
-      const status = await api('GET', candidate.endpoint);
-      return accountAdjusted(verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status}));
-    } catch (_) {
-      return {...candidate, state:'unknown'};
+    if (!candidate.enabled) return {entry:{...candidate, state:'disabled'}, answered:null};
+    if (candidate.staticStatus) {
+      return {entry:verificationAdjusted({...candidate, state:candidate.staticStatus}), answered:null};
     }
+    if (!candidate.endpoint) return {entry:{...candidate, state:'unknown'}, answered:null};
+    let status, answered = null;
+    try {
+      status = await api('GET', candidate.endpoint);
+      answered = {at:Date.now(), key:factsKey(candidate), status};
+    } catch (_) {
+      const known = lastKnownGood.get(candidate.id);
+      if (!known || known.key !== factsKey(candidate) || Date.now() - known.at >= LAST_KNOWN_GOOD_MS) {
+        return {entry:{...candidate, state:'unknown'}, answered};
+      }
+      status = known.status;
+    }
+    return {entry:accountAdjusted(verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status})),
+      answered};
   }
 
   async function refresh() {
@@ -250,8 +276,10 @@
     try { settings = settingsData; } catch (_) {}
     const providers = candidates(settings);
     if (providers === null) { render([], 'unknown'); return null; }
-    const observations = await Promise.all(providers.map(observe));
+    const results = await Promise.all(providers.map(observe));
     if (owned !== generation) return null;
+    for (const {entry, answered} of results) if (answered) lastKnownGood.set(entry.id, answered);
+    const observations = results.map(result => result.entry);
     render(observations);
     document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail:{entries:observations, generation:owned}}));
     return observations;

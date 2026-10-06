@@ -30,7 +30,7 @@
   const STATUS_LABELS = {
     current: 'Current',
     prepared: 'Prepared',
-    preparing: 'Preparing',
+    preparing: 'Preparing…',
     deferred: 'Deferred',
     available: 'Available',
     failed_earlier: 'Failed earlier',
@@ -258,6 +258,9 @@
       if (category === 'concurrency_limited') return 'The provider has no free capacity right now. Try again shortly.';
       if (category === 'provider_unavailable') return 'Provider is no longer available for this transfer.';
       if (category === 'account_limited') return 'This provider\'s account cannot take this transfer right now.';
+      if (category === 'resource_state_conflict' && detail.domain === 'provider') {
+        return 'That provider is still preparing this transfer; nothing was switched.';
+      }
       if (category === 'resource_state_conflict') return 'The transfer changed meanwhile; nothing was switched.';
     }
     return 'Nothing was switched.';

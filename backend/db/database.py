@@ -940,6 +940,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # a stale claimant can never overwrite a newer owner.
         'cleanup_claim_token': 'TEXT',
         'cleanup_claim_until': 'REAL NOT NULL DEFAULT 0',
+        # Remote-preparation progress while the resource is PREPARING: the
+        # highest completed bytes its provider reported and the engine-clock
+        # instant they last increased (or it was first observed preparing).
+        # Both are cleared whenever the resource leaves PREPARING; a new or
+        # replaced resource is a new row and starts a fresh epoch.
+        'preparing_bytes': 'INTEGER',
+        'preparing_since': 'REAL',
     },
     'resolution_attempts': {'result': 'TEXT'},
     # The canonical selector's decision that started this route attempt: one
@@ -1058,7 +1065,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
     'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
-    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at'},
+    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at', 'preparing_bytes', 'preparing_since'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at'},
     'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'routing_decision', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},

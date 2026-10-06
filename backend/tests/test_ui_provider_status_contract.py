@@ -90,7 +90,7 @@ def test_application_shell_explicitly_loads_the_single_provider_owners():
     style = (ROOT / "frontend" / "static" / "style.css").read_text()
     assert 'id="provider-status-list"' in INDEX
     assert INDEX.count('id="provider-status-list"') == 1
-    assert '/ui-provider-status.js?v=4' in INDEX
+    assert '/ui-provider-status.js?v=5' in INDEX
     assert '/ui-premium-account-status.js?v=1' in INDEX
     assert 'ui-alldebrid-account-status' not in INDEX
     assert 'ui-provider-cards' not in INDEX

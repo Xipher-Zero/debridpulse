@@ -401,7 +401,7 @@ def test_every_surface_reaches_the_one_route_action_through_its_one_owner():
     assert "${providerChip(t,'dashboard_recent')}" in (static / "ui-dashboard-transfer-presentation.js").read_text()
     assert "${providerChip(t, 'downloads')}" in (static / "ui-downloads.js").read_text()
     index = (static / "index.html").read_text()
-    assert index.count('/ui-root-provider.js?v=2') == 1
+    assert index.count('/ui-root-provider.js?v=3') == 1
     assert "@import url('/ui-root-provider.css?v=2');" in (static / "style.css").read_text()
 
 

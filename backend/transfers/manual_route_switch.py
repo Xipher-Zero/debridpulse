@@ -15,11 +15,11 @@ an old writer alive under a new route and never leaves the root ownerless:
 
 1. preflight: every refusal knowable without disturbing the transfer --
    stale, the root's own state (``root_route_replacement_refusal``, the one
-   owner ``replace_root_route`` also decides through), target not a
-   legitimate, entitled, enabled claimant, and TASK3d-1 admission of the
-   target as PRIMARY work (``_make_primary_room``) unless it holds a
-   promotable prepared backup (``promotable_standby``) -- nothing is fenced,
-   paused or retired on a refusal;
+   owner ``replace_root_route`` also decides through), target not selectable
+   in the one read model (``route_providers``: not a legitimate, entitled,
+   enabled claimant, or a backup still preparing), and TASK3d-1 admission of
+   the target as PRIMARY work (``_make_primary_room``) unless that read model
+   calls it ``prepared`` -- nothing is fenced, paused or retired on a refusal;
 2. fence: the durable pause intent every admission reads, fencing exactly
    the recovery claims an older owner still holds
    (``set_pause_and_fence(claimed_only=True)``) -- never a per-member fence
@@ -57,13 +57,12 @@ from transfers.errors import (
     Stage,
     TransferError,
 )
-from transfers.models import BITTORRENT_REQUEST_KINDS
+from transfers.models import BITTORRENT_REQUEST_KINDS, ResourceState
 from transfers.registry import RoutingDisposition
 
 # Provider status vocabulary of the one read model.
 CURRENT, PREPARED, PREPARING, DEFERRED, AVAILABLE, FAILED_EARLIER, UNAVAILABLE = (
     "current", "prepared", "preparing", "deferred", "available", "failed_earlier", "unavailable")
-_STANDBY_STATES = {"bound": PREPARED, "creating": PREPARING, "deferred": DEFERRED}
 _UNAVAILABLE_REASONS = {
     RoutingDisposition.DISABLED: "disabled",
     RoutingDisposition.NOT_ENTITLED: "not_entitled",
@@ -146,12 +145,43 @@ def switch_available(registry, facts: dict | None) -> bool:
         entry["selectable"] for entry in provider_choices(registry, facts))
 
 
+def standby_choice(standby: dict) -> tuple[str, bool]:
+    """What one TASK3 backup of the root makes an otherwise available target:
+    ``(status, selectable)``.
+
+    ``prepared`` says provider-side preparation is complete and the backup
+    is eligible for immediate promotion: it is bound, its resource was last
+    observed AVAILABLE, and no route of that provider on the root has failed
+    since (it promises nothing about the candidates the provider later
+    issues). A backup whose provider is still acquiring the content (a claim
+    being created, or a resource still PREPARING) is ``preparing`` and not
+    selectable: switching to it would leave productive work for an
+    indefinite remote wait. A backup the provider itself contradicts (its
+    route on the root failed after the resource was last seen available, or
+    the resource is in no usable state) ``failed_earlier``: an explicit retry
+    only. A resource known gone holds nothing, and a deferred claim holds no
+    resource: the target resolves cold, as ``available`` / ``deferred``."""
+    state, resource = standby["state"], standby.get("resource_state")
+    if state == "creating" or (state == "bound" and resource == ResourceState.PREPARING.value):
+        return PREPARING, False
+    if state == "deferred":
+        return DEFERRED, True
+    if state != "bound" or resource in {ResourceState.ABSENT.value, ResourceState.EXPIRED.value}:
+        return AVAILABLE, True
+    if resource == ResourceState.AVAILABLE.value and not standby.get("contradicted"):
+        return PREPARED, True
+    return FAILED_EARLIER, True
+
+
 async def route_providers(engine, transfer_id: int) -> dict | None:
     """THE provider status of one torrent root's route, provider-neutral:
     ``provider_choices``, with each legitimate claimant's TASK3 backup of this
-    root shown as ``prepared`` / ``preparing`` / ``deferred`` (never its cache
-    readiness, which stays the secondary ``readiness`` fact). ``None`` for a
-    transfer that is not one torrent root."""
+    root deciding its status and selectability (``standby_choice``; never its
+    cache readiness, which stays the secondary ``readiness`` fact). The picker
+    and the switch's own preflight both read this one answer (the bounded
+    list's launcher reads ``switch_available``, which no backup narrows: a
+    root whose only alternative is still preparing opens a picker that says
+    so). ``None`` for a transfer that is not one torrent root."""
     facts = await engine.repository.root_route_facts(int(transfer_id))
     if not torrent_root(facts):
         return None
@@ -160,8 +190,8 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
     providers = provider_choices(engine.registry, facts)
     for entry in providers:
         standby = standbys.get(entry["provider_id"])
-        if entry["status"] == AVAILABLE and standby and standby["state"] in _STANDBY_STATES:
-            entry["status"] = _STANDBY_STATES[standby["state"]]
+        if entry["status"] == AVAILABLE and standby:
+            entry["status"], entry["selectable"] = standby_choice(standby)
     return {"transfer_id": int(transfer_id), "current_provider_id": facts["current"], "providers": providers,
             "switchable": any(entry["selectable"] for entry in providers)}
 
@@ -185,9 +215,14 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
     if provider_id == current:
         raise _refusal(Category.INVALID_REQUEST, domain=Domain.REQUEST)
     target = engine.registry.providers.get(str(provider_id))
-    choice = next((entry for entry in provider_choices(engine.registry, facts)
+    choice = next((entry for entry in (await route_providers(engine, int(transfer_id)))["providers"]
                    if entry["provider_id"] == provider_id), None)
     if target is None or choice is None or not choice["selectable"]:
+        if choice is not None and choice["status"] == PREPARING:
+            # Its provider is still acquiring the content: the productive
+            # route stays exactly as it is.
+            raise _refusal(Category.RESOURCE_STATE_CONFLICT, domain=Domain.PROVIDER,
+                           retryability=Retryability.BACKOFF, integration_id=str(provider_id))
         if choice is not None and choice["reason"] in {"not_entitled", "entitlement_unknown"}:
             raise _refusal(Category.ACCOUNT_LIMITED, domain=Domain.PROVIDER, retryability=Retryability.BACKOFF,
                            integration_id=str(provider_id))
@@ -202,10 +237,10 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
         raise _refusal(Category.RESOURCE_STATE_CONFLICT,
                        retryability=Retryability.BACKOFF if refusal == "busy" else Retryability.IMMEDIATE)
     # The target is PRIMARY work: TASK3d-1 admission, never a bypass -- unless
-    # it holds this root's backup that the one promotion seam can take over
-    # without a new slot (exactly the order ``_resolve`` uses). Admission is
-    # the last preflight: it may give back a backup to make room.
-    prepared = await repository.promotable_standby(root.id, str(provider_id)) is not None
+    # it holds this root's prepared backup that the one promotion seam takes
+    # over without a new slot (exactly the order ``_resolve`` uses). Admission
+    # is the last preflight: it may give back a backup to make room.
+    prepared = choice["status"] == PREPARED
     if not prepared and not await engine._make_primary_room(root, target):
         raise _refusal(Category.CONCURRENCY_LIMITED, domain=Domain.PROVIDER, retryability=Retryability.BACKOFF,
                        integration_id=str(provider_id))

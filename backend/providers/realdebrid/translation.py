@@ -65,7 +65,9 @@ _ERRORS = {
     30: (Category.INVALID_REQUEST, Retryability.NEVER),                 # Torrent file invalid
     33: (Category.RESOURCE_STATE_CONFLICT, Retryability.AFTER_RESOURCE_CHANGE),  # Torrent already active
     34: (Category.RATE_LIMITED, Retryability.BACKOFF),                  # Too many requests
-    35: (Category.CONTENT_INVALID, Retryability.NEVER),                 # Infringing file
+    # Infringing file: Real-Debrid's own refusal to serve this content, not a
+    # fact about the content -- another provider may still serve it.
+    35: (Category.CANDIDATE_REJECTED, Retryability.NEVER),
     36: (Category.QUOTA_EXCEEDED, Retryability.AFTER_RESOURCE_CHANGE),  # Fair Usage Limit
     37: (Category.UNSUPPORTED_CAPABILITY, Retryability.NEVER),          # Disabled endpoint
 }

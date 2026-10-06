@@ -164,7 +164,7 @@ async def test_existing_alldebrid_translations_classify_as_the_contract_requires
 
 
 @pytest.mark.parametrize("code, attributable", [
-    (23, True), (20, True), (16, True), (8, True), (25, True), (2, False), (24, False), (35, False), (17, False),
+    (23, True), (20, True), (16, True), (8, True), (25, True), (2, False), (24, False), (35, True), (17, False),
 ])
 async def test_existing_realdebrid_translations_classify_as_the_contract_requires(code, attributable):
     from providers.realdebrid.client import RealDebridAPIError

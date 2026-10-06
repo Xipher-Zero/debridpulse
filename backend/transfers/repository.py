@@ -881,10 +881,16 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def standbys(self, transfer_id: int) -> tuple[dict, ...]:
         """Every standby preparation of the transfer, with the resource it
-        holds (``resource``) and that resource's state (``resource_state``)."""
+        holds (``resource``), that resource's state (``resource_state``) and
+        whether its provider's own route of the root failed at or after that
+        state was last observed (``contradicted``): a newer failure of the
+        same provider on the root outranks an older readiness observation."""
         async with get_db() as db:
             rows = await db.fetchall(
-                """SELECT s.*, r.payload AS resource_payload, r.state AS resource_state
+                """SELECT s.*, r.payload AS resource_payload, r.state AS resource_state,
+                   EXISTS(SELECT 1 FROM resolution_attempts a WHERE a.request_id=s.request_id
+                          AND a.provider_id=s.provider_id AND a.error IS NOT NULL
+                          AND a.updated_at>=r.updated_at) AS contradicted
                    FROM standby_resources s LEFT JOIN provider_resources r ON r.id=s.binding_id
                    WHERE s.transfer_id=? ORDER BY s.created_at, s.id""", (transfer_id,))
         found = []
@@ -893,6 +899,7 @@ class TransferRepository(_QualifiedTransferRepository):
             payload = item.pop("resource_payload")
             item["resource"] = codec.resource(codec.load(payload)) if payload else None
             item["error"] = codec.error(item["error"]) if item.get("error") else None
+            item["contradicted"] = bool(item.get("contradicted"))
             found.append(item)
         return tuple(found)
 

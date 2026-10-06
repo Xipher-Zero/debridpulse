@@ -37,7 +37,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
     index = read("index.html")
     expected = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=3",
+        "/ui-processing-presentation.js?v=4",
         "/ui-transfer-source-presentation.js?v=1",
         "/ui-file-selection.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
@@ -279,7 +279,7 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
     index = read("index.html")
     ordered = (
         "/ui-toast-contract.js?v=2",
-        "/ui-processing-presentation.js?v=3",
+        "/ui-processing-presentation.js?v=4",
         "/ui-file-selection.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-downloads.js?v=1",

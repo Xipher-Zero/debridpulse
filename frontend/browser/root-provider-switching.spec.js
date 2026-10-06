@@ -174,3 +174,49 @@ test('a refused switch clears the switching state, keeps the committed provider 
   await launcher.click();                                                     // switchable again
   await expect(page.locator('.dp-root-provider-menu')).toBeVisible();
 });
+
+test('statistics refreshes during a switch never reload the Downloads list or the 222-file Details', async ({ page }) => {
+  const state = freshState();
+  state.paused = false;
+  await apis(page, state);
+  await page.route(url => url.pathname === '/api/stats', route => route.fulfill({
+    status: 200, contentType: 'application/json',
+    body: JSON.stringify({ paused: state.paused, by_status: { downloading: 1 }, version: '1.0.13' }) }));
+  await ready(page);
+  await page.evaluate(() => showDetail(30));                                // Details of the 222-member transfer
+  await expect(page.locator('#modal-body .dp-detail-provider .dv')).toHaveText('AllDebrid');
+  const launcher = page.locator('#modal-body [data-dp-root-provider-mount] .dp-root-provider-launcher');
+  await launcher.click();
+  await page.locator('.dp-root-provider-menu [data-dp-provider-status="prepared"] .dp-root-provider-switch').click();
+  await expect(page.locator('#modal-body .dp-root-provider-switching')).toHaveText('Switching to Real-Debrid…');
+  await page.waitForTimeout(500);
+
+  // Ten statistics refreshes (each progress patch schedules one) while the
+  // switch is outstanding: the list and the Details are not reloaded by them.
+  const reads = () => ({
+    list: state.requests.filter(item => item.path === '/api/torrents').length,
+    detail: state.requests.filter(item => item.path === '/api/torrents/30').length,
+  });
+  const before = reads();
+  for (let index = 0; index < 10; index += 1) await page.evaluate(() => loadStats());
+  await page.waitForTimeout(800);                                            // past the capacity debounce
+  const after = reads();
+  console.log(`[11.9 browser] members=${MEMBERS} stats_refreshes=10 list_reads=${after.list - before.list} ` +
+    `detail_reads=${after.detail - before.detail} posts=${state.posts.length}`);
+  expect(after).toEqual(before);
+  expect(state.posts).toHaveLength(1);
+
+  // A real pause toggle still re-measures the Downloads capacity; later
+  // statistics refreshes with the same pause state again read nothing.
+  state.paused = true;
+  await page.evaluate(() => loadStats());
+  await expect.poll(() => reads().list).toBeGreaterThan(after.list);
+  await page.waitForTimeout(800);
+  const toggled = reads();
+  for (let index = 0; index < 3; index += 1) await page.evaluate(() => loadStats());
+  await page.waitForTimeout(800);
+  expect(reads()).toEqual(toggled);
+
+  state.release();
+  await expect(page.locator('#modal-body .dp-detail-provider .dv')).toHaveText('Real-Debrid');
+});

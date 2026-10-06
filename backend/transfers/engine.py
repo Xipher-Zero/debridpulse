@@ -934,9 +934,20 @@ class TransferEngine(_RecoveryTransferEngine):
                     domain=Domain.PROVIDER,
                 ))
             elif observation.state == ResourceState.PREPARING:
-                await self.repository.poll_after(
-                    record.id, self.clock() + self.policy.resource_poll_interval,
-                )
+                # A remote preparation that makes no useful progress for the
+                # operator's Stalled Timeout is this provider's failure: it
+                # spends the route's ordinary budget and then exhausts it.
+                idle = await self.repository.preparation_idle(
+                    record.transfer_id, observation.resource, observation.progress.completed_bytes, self.clock())
+                if 0 < self.policy.stalled_after_seconds <= idle:
+                    await self._request_failure(record, NormalizedError(
+                        Domain.PROVIDER, Category.TRANSFER_STALLED, Stage.RESOLUTION, Retryability.BACKOFF,
+                        origin=Origin.CORE, integration_id=provider.descriptor.id,
+                        diagnostic="remote preparation made no progress"), waiting=True)
+                else:
+                    await self.repository.poll_after(
+                        record.id, self.clock() + self.policy.resource_poll_interval,
+                    )
             return first_commitment
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(

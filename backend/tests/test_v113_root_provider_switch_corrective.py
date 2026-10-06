@@ -351,6 +351,21 @@ async def _unpromotable_backup(repository, engine, providers, transfer):
     return "parcel-b", "parcel-a", Category.CONCURRENCY_LIMITED
 
 
+async def _preparing_backup(repository, engine, providers, transfer):
+    """Transfer 516: the target's backup is bound, but its provider is still
+    acquiring the content (resource PREPARING, no manifest). It is not a
+    switch target at all: refused before anything is fenced."""
+    root = await root_of(repository, transfer.id)
+    standby_id, _attempts = await repository.begin_standby(transfer.id, root.id, "parcel-b", engine.clock())
+    acquiring = providers["parcel-b"].parcel("acquiring", state=ResourceState.PREPARING)
+    await repository.bind_standby(standby_id, transfer.id, acquiring.observation.resource, ResourceState.PREPARING,
+                                  engine.clock())
+    status = await manual_route_switch.route_providers(engine, transfer.id)
+    assert {entry["provider_id"]: (entry["status"], entry["selectable"]) for entry in status["providers"]}[
+        "parcel-b"] == ("preparing", False)
+    return "parcel-b", "parcel-a", Category.RESOURCE_STATE_CONFLICT
+
+
 async def _root_busy(repository, engine, providers, transfer):
     root = await root_of(repository, transfer.id)
     async with get_db() as db:                                       # a resolution of the root is in flight
@@ -360,7 +375,8 @@ async def _root_busy(repository, engine, providers, transfer):
 
 
 @pytest.mark.parametrize("arrange", [_stale, _current, _disabled, _not_entitled, _not_a_claimant, _capacity,
-                                     _unpromotable_backup, _root_busy], ids=lambda item: item.__name__.strip("_"))
+                                     _unpromotable_backup, _preparing_backup, _root_busy],
+                         ids=lambda item: item.__name__.strip("_"))
 async def test_a_knowable_refusal_touches_no_writer_and_changes_nothing(tmp_path, monkeypatch, arrange):
     members = MEMBERS if arrange is _stale else SMALL       # O(1) proven once at full size; zero-touch at any size
     repository, engine, providers, executor, transfer = await big_lab(tmp_path, monkeypatch, "parcel-a", "parcel-b",

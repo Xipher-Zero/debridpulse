@@ -2352,6 +2352,8 @@ class TransferRepository:
             """INSERT INTO provider_resources(id,transfer_id,provider_id,payload,state,resource_key) VALUES(?,?,?,?,?,?)
                ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,state=excluded.state,
                    resource_key=COALESCE(provider_resources.resource_key, excluded.resource_key),
+                   preparing_bytes=CASE WHEN excluded.state='preparing' THEN provider_resources.preparing_bytes END,
+                   preparing_since=CASE WHEN excluded.state='preparing' THEN provider_resources.preparing_since END,
                    updated_at=CURRENT_TIMESTAMP""",
             (binding_id, transfer_id, resource.provider_id, codec.dump(resource), state, resource_key),
         )
@@ -2641,6 +2643,33 @@ class TransferRepository:
         async with get_db() as db:
             await self._resource(db, transfer_id, resource, state)
             await db.commit()
+
+    async def preparation_idle(self, transfer_id: int, resource: ProviderResource, completed_bytes: int,
+                               now: float) -> float:
+        """Seconds a PREPARING provider resource has gone without useful
+        progress, recording this observation. Its first PREPARING observation
+        starts the clock, and only reported completed bytes above the highest
+        seen so far restart it; a provider that reports no progress at all is
+        counted from that first observation. The record belongs to the
+        resource's own binding row (a new or replaced resource starts fresh)
+        and is cleared when it leaves PREPARING."""
+        completed = max(0, int(completed_bytes or 0))
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT id,preparing_bytes,preparing_since FROM provider_resources WHERE transfer_id=?
+                   AND (resource_key=? OR (resource_key IS NULL AND id=?)) AND state='preparing'""",
+                (transfer_id, resource.id, resource.id))
+            if row is None:
+                await db.rollback()
+                return 0.0
+            if row["preparing_since"] is None or completed > int(row["preparing_bytes"] or 0):
+                await db.execute("UPDATE provider_resources SET preparing_bytes=?,preparing_since=? WHERE id=?",
+                                 (max(completed, int(row["preparing_bytes"] or 0)), now, row["id"]))
+                await db.commit()
+                return 0.0
+            await db.rollback()
+        return max(0.0, now - float(row["preparing_since"]))
 
     async def materialize(self, record: RequestRecord, candidates: tuple[TransferCandidate, ...], target: str) -> Artifact | None:
         """Allocate (or rebuild) ``record``'s own canonical artifact.
