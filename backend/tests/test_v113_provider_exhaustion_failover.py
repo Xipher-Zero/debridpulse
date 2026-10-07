@@ -488,6 +488,63 @@ async def test_a_decomposed_route_is_never_handed_off(tmp_path, monkeypatch):
     assert await repository.bound_route_provider(record.id) == "alpha-route"
 
 
+async def test_a_refused_handoff_of_a_decomposed_route_spends_the_request_s_own_bounded_budget(tmp_path, monkeypatch):
+    """A provider-local transient failure of a route that already decomposed:
+    the repository refuses to end that route, so no provider re-entry is ever
+    recorded and the provider's count cannot be the budget. The failure is one
+    of the request's own attempts, exactly as the bound-resource wait counted
+    it -- bounded, and ending the root as it always did."""
+    transient = NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION,
+                                Retryability.UNKNOWN, origin=Origin.PROVIDER)
+
+    class Decomposing(RouteLab):
+        async def observe(self, resource):
+            return ProviderObservation(resource, ResourceState.AVAILABLE, "remote")
+
+        async def manifest(self, resource):
+            return (SourceEntry("member.bin", 4, "member.bin",
+                                TransferRequest("parcel-member", "member", preferred_provider=self.descriptor.id)),)
+
+    async def failures(directory, *, waiting):
+        directory.mkdir()
+        first = Decomposing("alpha-route", kinds=("parcel", "parcel-member"))
+        first.descriptor = replace(first.descriptor, capabilities=first.descriptor.capabilities | {Capability.METADATA})
+        second = RouteLab("beta-route")
+        first.script = [Ownership.CREATED]
+        repository, engine = await lab(directory, monkeypatch, first, second)
+        engine.policy = TransferPolicy(retry_delay=60.0, resolution_retry_delay=300.0, max_attempts=3)
+        transfer = await submit(engine)
+        await drive(engine, passes=3)
+        record = await root(repository, transfer.id)
+        assert any(item.parent_id == record.id for item in await repository.requests(transfer.id))
+        # Where a deferred fan-out leaves the root: observing its own decomposed resource again.
+        async with database.get_db() as db:
+            await db.execute("UPDATE transfer_requests SET state='waiting' WHERE id=?", (record.id,))
+            await db.commit()
+        trace = []
+        for _ in range(10):
+            record = await root(repository, transfer.id)
+            if record.state == "failed":
+                break
+            # ``waiting``: the bound-resource wait's own accounting (the prerequisite
+            # path); otherwise the provider-owned manifest boundary's call.
+            await engine._request_failure(record, transient, waiting=waiting)
+            record = await root(repository, transfer.id)
+            trace.append((record.attempts, record.retry_at - NOW if record.retry_at else None, record.state == "failed"))
+            assert await repository.exhausted_route_providers(record.id) == frozenset()   # the refusal stands
+            assert await repository.provider_reentries(record.id) == {}                    # nothing fabricated
+        assert second.resolved == []                                                       # never handed off
+        assert await repository.bound_route_provider(record.id) == "alpha-route"
+        return trace
+
+    manifest_boundary = await failures(tmp_path / "boundary", waiting=False)
+    prerequisite = await failures(tmp_path / "prerequisite", waiting=True)
+
+    assert manifest_boundary[-1][2]                                  # bounded: the root ends
+    assert [attempts for attempts, _delay, _ended in manifest_boundary] == [2, 3]   # the request budget advances
+    assert manifest_boundary == prerequisite                         # the same budget, delays and terminal outcome
+
+
 # -- current provider read model ------------------------------------------------------
 
 async def current_providers(repository, transfer_id):

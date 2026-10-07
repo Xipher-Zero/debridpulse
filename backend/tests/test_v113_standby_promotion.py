@@ -12,6 +12,7 @@ matcher proves it completely, and fails closed otherwise.
 """
 from __future__ import annotations
 
+import math
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -54,6 +55,7 @@ from transfers.models import (
     SourceEntry,
     TransferRequest,
 )
+from transfers.policy import TransferPolicy
 
 pytestmark = pytest.mark.asyncio
 
@@ -463,3 +465,60 @@ async def test_only_the_immediate_predecessors_choice_is_ever_carried(tmp_path, 
         assert (generation["decision"], generation["decision_reason"]) == ("explicit", "inherited")
         authorized = await repository.commit_selected_manifest(promoted, executable(*EARLIER), now=t + 30)
         assert [entry.relative_path for entry in authorized] == expected       # B's choice, never A's
+
+
+# -- transfer 536: a route whose AVAILABLE resource cannot be made executable hands over to the backup ----------
+
+class UnmanifestablePrimary(Primary):
+    """The primary's resource becomes AVAILABLE, then its provider cannot
+    produce the executable manifest -- transfer 536's normalized facts, with
+    no provider's text."""
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.available = False
+        self.manifests = 0
+
+    async def observe(self, resource):
+        self.observed += 1
+        return ProviderObservation(resource, ResourceState.AVAILABLE if self.available else ResourceState.PREPARING,
+                                   "Show")
+
+    async def manifest(self, resource):
+        self.manifests += 1
+        raise TransferError(NormalizedError(
+            Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION, Retryability.UNKNOWN,
+            origin=Origin.PROVIDER, permanence=Permanence.UNKNOWN, integration_id=self.descriptor.id))
+
+
+async def test_an_available_route_whose_manifest_fails_at_its_provider_promotes_the_prepared_backup(
+        tmp_path, monkeypatch):
+    clock, client, primary = Clock(), FakeClient(), UnmanifestablePrimary()
+    repository, registry, engine = await lab(
+        tmp_path, monkeypatch, primary, torbox(client), clock=clock,
+        policy=TransferPolicy(retry_delay=60.0, resolution_retry_delay=300.0, max_attempts=4))
+    for executor in registry.executors.values():
+        executor.claim_schemes = frozenset({*executor.claim_schemes, "https"})
+    transfer = await submitted(engine)
+    await engine.resolve_pending()
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["state"] == "bound" and len(creates(client)) == 1
+    client.objects[TORRENT][str(client.next_id)].update(download_state="cached", download_present=True, progress=1.0)
+    root = await root_of(repository, transfer)
+
+    primary.available = True
+    clock.now += 31
+    await engine.tick()                                                        # AVAILABLE, then its manifest fails
+    failed_at = clock.now
+    for _ in range(3):
+        await engine.tick()
+
+    assert primary.manifests == 1
+    assert "provider-a" in await repository.exhausted_route_providers(root.id, failed_at)
+    assert "provider-a" not in await repository.exhausted_route_providers(root.id, math.inf)   # re-enters later
+    root = await root_of(repository, transfer)
+    assert await repository.bound_route_provider(root.id) == "torbox"          # the router chose it, at once
+    assert root.resource.id == standby["resource"].id                          # the prepared resource, taken over
+    assert len(creates(client)) == 1                                           # never created again
+    (after,) = await repository.standbys(transfer.id)
+    assert after["promoted_at"] is not None

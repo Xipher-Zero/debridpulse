@@ -15,6 +15,7 @@ the Real-Debrid adapter's own translation, unchanged.
 """
 from __future__ import annotations
 
+import asyncio
 import math
 from dataclasses import replace
 
@@ -25,12 +26,23 @@ from test_v113_root_provider_switch import MAGNET, magnet_provider, root_of, row
 from test_v113_root_provider_switch_corrective import ParkingExecutor
 
 from db import database
+from providers.realdebrid.translation import translate_error
 from transfers import manual_route_switch
 from transfers.convergence_engine import TransferEngine
-from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError
+from transfers.errors import (
+    Category,
+    Domain,
+    NormalizedError,
+    Origin,
+    Permanence,
+    Recovery,
+    Retryability,
+    Stage,
+    TransferError,
+)
 from transfers.manual_route_switch import switch_root_provider
 from transfers.models import ResourceState, TransferRequest
-from transfers.policy import TransferPolicy
+from transfers.policy import TransferPolicy, provider_attributable
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
 
@@ -501,3 +513,64 @@ async def test_a_collection_binding_never_revives_a_route_that_ended_on_a_transi
     a_routes = [item for item in await routes(root.id) if item[0] == "parcel-a"]
     assert [item[1] for item in a_routes][0] == "exhausted" and a_routes[-1][1] != "exhausted"
     assert await repository.bound_route_provider(root.id) == "parcel-a"      # the NEW live attempt owns it
+
+
+# -- transfer 536: an AVAILABLE resource whose provider cannot produce its executable manifest ---------------------
+
+# Transfer 536's normalized facts, with no provider's text: a provider protocol
+# violation met while the provider prepares the executable manifest.
+MANIFEST_PROTOCOL = NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION,
+                                    Retryability.UNKNOWN, origin=Origin.PROVIDER, permanence=Permanence.UNKNOWN)
+
+
+def manifest_timeout() -> TransferError:
+    """A provider API read timeout met inside ``manifest()``, normalized by a
+    provider adapter's own translation owner, unchanged but for whose it is."""
+    return TransferError(replace(translate_error(asyncio.TimeoutError(), stage=Stage.CANDIDATE_PREPARATION),
+                                 integration_id="parcel-b"))
+
+
+async def test_the_536_failure_shape_is_the_provider_s_own_and_transient():
+    assert provider_attributable(MANIFEST_PROTOCOL)
+    assert (MANIFEST_PROTOCOL.retryability, MANIFEST_PROTOCOL.permanence) == (Retryability.UNKNOWN, Permanence.UNKNOWN)
+    decision = TransferPolicy(**LIVE_POLICY).retry_resolution(MANIFEST_PROTOCOL, 1, 0.0)
+    assert decision.action == Recovery.RETRY and decision.retry_at is not None   # transient: re-entry, not exclusion
+    timeout = manifest_timeout().error
+    assert (timeout.domain, timeout.origin, timeout.stage) == (Domain.NETWORK, Origin.PROVIDER,
+                                                              Stage.CANDIDATE_PREPARATION)
+    assert provider_attributable(timeout)
+
+
+@pytest.mark.parametrize("failure", [
+    lambda: TransferError(replace(MANIFEST_PROTOCOL, integration_id="parcel-b")),
+    manifest_timeout,
+], ids=["provider-protocol-violation", "provider-transport-timeout"])
+async def test_an_available_resource_whose_manifest_fails_at_its_provider_ends_that_route_and_continues(
+        tmp_path, monkeypatch, failure):
+    refuser = refusing(magnet_provider("parcel-b"), failure())
+    alternate = magnet_provider("parcel-c")
+    repository, engine, _executor, first, transfer = await productive_then_switched(
+        tmp_path, monkeypatch, refuser, alternate)
+    offer(first, native="again")
+    offer(alternate)
+    root = await root_of(repository, transfer.id)
+
+    await tick(engine)                                             # parcel-b: AVAILABLE, then its manifest fails
+    failed_at = engine.clock.now
+    await tick(engine, times=3)
+
+    assert refuser.calls.count(("manifest", "parcel-b:x")) == 1    # once: no same-resource manifest retry
+    assert "parcel-b" in await repository.exhausted_route_providers(root.id)
+    assert "parcel-b" not in await repository.exhausted_route_providers(root.id, math.inf)   # never blacklisted
+    reentry = await rows("SELECT state,reentry_at FROM resolution_attempts WHERE request_id=? AND provider_id='parcel-b'",
+                         (root.id,))
+    assert [(row["state"], row["reentry_at"]) for row in reentry] == [("exhausted", pytest.approx(failed_at + REENTRY))]
+    history = await routes(root.id)
+    failed = [item for item in history if item[0] == "parcel-b"]
+    successor = history[history.index(failed[0]) + 1]
+    assert successor[2:4] == ("resolve", "provider_change")        # automatic, never operator
+    assert successor[0] in {"parcel-a", "parcel-c"}
+    assert await repository.bound_route_provider(root.id) == successor[0]
+    assert engine.clock.now - failed_at < 5                        # never parked on parcel-b's retry
+    assert (await root_of(repository, transfer.id)).resource.provider_id == successor[0]
+    assert await status(transfer.id) != "error" and await terminal_count(transfer.id) == 0

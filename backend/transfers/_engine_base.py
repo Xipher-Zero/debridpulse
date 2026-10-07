@@ -1519,6 +1519,7 @@ class TransferEngine:
     async def _request_failure(self, record: RequestRecord, error: NormalizedError, *, attempts=None, waiting=False,
                                routed=True):
         count = record.attempts + int(waiting) if attempts is None else attempts
+        consume = waiting
         # A provider's failure belongs to the provider, never to the logical
         # root: a provider-attributable failure of a root's route ends that
         # provider's route whatever stage the route had reached and however it
@@ -1567,13 +1568,23 @@ class TransferEngine:
                 else:
                     await self.canonical.settle(record.transfer_id)
                 return
+            if provider_local:
+                # The repository refused to end this route (it already produced
+                # executable work, or routing may not end it): no re-entry was
+                # recorded, so the provider's count is no budget for this
+                # failure. It is one of the request's own attempts -- counted
+                # now unless the caller already counted it -- decided by the
+                # ordinary request policy, bounded, and never handed off again.
+                count = record.attempts + 1 if attempts is None else attempts
+                consume = attempts is None
+                decision = self.policy.retry_resolution(error, count, self.clock())
         retry_state = "waiting" if waiting and decision.action != Recovery.RERESOLVE else "pending"
         # A root's terminal failure under this policy is its own: in an
         # explicit alternative-source group it hands the group to the next
         # alternative (``request_failure``), whose routes and budget are its
         # own -- nothing about this root exhausts it.
         await self.repository.request_failure(record.id, error, decision.retry_at, retry_state=retry_state,
-                                              consume_attempt=waiting, advance_alternative=True)
+                                              consume_attempt=consume, advance_alternative=True)
         await self.repository.outcome(record.transfer_id, TransferOutcome(OutcomeKind.FAILURE, error))
         if decision.retry_at is None:
             # A source that failed for good: the canonical owner decides

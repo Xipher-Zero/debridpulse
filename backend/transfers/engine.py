@@ -28,7 +28,7 @@ from transfers.contracts import (
 from transfers.errors import (
     Category, Domain, MutationOutcome, Origin, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
-from transfers.policy import recovery_action
+from transfers.policy import provider_attributable, recovery_action
 from transfers.registry import ProviderRoute
 from transfers.models import (
     ActiveCapacity, AvailabilityState, CachePresence, Capability, CleanupAuthority, NormalizedError, Ownership,
@@ -1058,7 +1058,18 @@ class TransferEngine(_RecoveryTransferEngine):
                 # Entirely provider-agnostic: core never inspects the opaque
                 # ``context``, and a provider whose ``observe()`` returns the
                 # resource unchanged sees no difference at all.
-                entries = await provider.manifest(observation.resource)
+                try:
+                    entries = await provider.manifest(observation.resource)
+                except TransferError as exc:
+                    if not provider_attributable(exc.error):
+                        raise
+                    # The resource is AVAILABLE: a provider that then cannot
+                    # state its executable members has failed its own route,
+                    # not left DebridPulse waiting on the resource. Its route
+                    # failure goes to the one provider-failure owner (exhaustion,
+                    # re-entry, the next claimant), never the resource wait.
+                    await self._request_failure(record, exc.error)
+                    return first_commitment
                 # Decomposition is an admission boundary: a member resource
                 # that carries credentials is split exactly like a submission.
                 entries, supplied = self._split_member_credentials(entries)
