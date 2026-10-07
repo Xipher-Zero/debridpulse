@@ -17,8 +17,11 @@ created or swapped in before it has been validated completely.
 
 Compatibility is exact: a restore point records ``schema_version`` -- the
 fingerprint of its database's schema -- and is usable only while that equals
-the fingerprint of the running installation's database. There is no restore
-migration.
+the fingerprint of the running installation's database. The one exception is
+a schema named in ``_UPGRADABLE_SCHEMAS``: the canonical database bootstrap
+upgrades a restore's private staged copy of it (never the restore point
+itself), and that copy must then equal the running schema before anything is
+swapped in.
 """
 import asyncio
 import hashlib
@@ -56,6 +59,12 @@ _PACKAGE_PREFIX = ".dp-package-"
 _RESTORE_PREFIX = ".dp-restore-"
 _JOURNAL_NAME = ".dp-restore-journal.json"
 _COPY_CHUNK = 1024 * 1024
+# Schemas the canonical bootstrap (``db.database.init_db``) upgrades to the
+# running one: exactly the v1.0.13 schema before transfer-owned file-selection
+# intent (6b691ef7), which that bootstrap extends with the intent tables alone.
+_UPGRADABLE_SCHEMAS = frozenset({
+    "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
+})
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"
 
@@ -220,7 +229,7 @@ def _allowed_members(manifest: dict) -> frozenset[str]:
     return frozenset({_MANIFEST_NAME, _CONFIG_MEMBER, manifest["database"], *_AVATAR_MEMBERS})
 
 
-def _check_database(path: Path, recorded: str | None, live: str, action: str) -> None:
+def _check_database(path: Path, recorded: str | None, live: str, action: str, *, upgradable: bool = False) -> None:
     try:
         with closing(_open_frozen(path)) as conn:
             if conn.execute("PRAGMA integrity_check").fetchone()[0] != "ok":
@@ -235,7 +244,7 @@ def _check_database(path: Path, recorded: str | None, live: str, action: str) ->
         raise _invalid(action) from None
     if recorded is not None and actual != recorded:
         raise _invalid(action)
-    if actual != live:
+    if actual != live and not (upgradable and actual in _UPGRADABLE_SCHEMAS):
         raise _unsupported(action)
 
 
@@ -268,7 +277,9 @@ def _validate_directory(directory: Path, live_schema: str, action: str) -> dict:
         raise _invalid(action)
     if manifest.get("errors"):
         raise _invalid(action)
-    _check_database(directory / database, manifest["schema_version"], live_schema, action)
+    # A restore point may hold an upgradable schema; restoring it upgrades only
+    # the staged copy (``stage_restore``), which must then match exactly.
+    _check_database(directory / database, manifest["schema_version"], live_schema, action, upgradable=True)
     _check_config(directory / _CONFIG_MEMBER, action)
     return manifest
 
@@ -649,9 +660,14 @@ class StagedRestore:
     config: Path
     avatar: Path | None
     moves: list[tuple[str, str]] = field(default_factory=list)
+    # The staged copy was upgraded from the restore point's own schema.
+    upgraded: bool = False
 
     def validate(self) -> None:
-        _check_database(self.database, self.manifest["schema_version"], self.live_schema, "restore")
+        # Exact, always: an upgraded copy is checked against the running schema
+        # only -- the schema its restore point recorded is the one it left.
+        _check_database(self.database, None if self.upgraded else self.manifest["schema_version"],
+                        self.live_schema, "restore")
         _check_config(self.config, "restore")
 
     def _plan(self) -> list[tuple[str, str]]:
@@ -744,6 +760,12 @@ async def stage_restore(point_id: str) -> StagedRestore:
             directory.mkdir(mode=0o700)
         database = db_stage / f"restored-{DB_PATH.name}"
         await asyncio.to_thread(_copy_private, point.path / manifest["database"], database)
+        upgraded = await asyncio.to_thread(_staged_schema, database) != live
+        if upgraded:
+            # The private copy only, through the one canonical bootstrap.
+            from db import database as canonical
+            await canonical.init_db(database)
+            await asyncio.to_thread(_settle_staged, database)
         document = json.loads((point.path / _CONFIG_MEMBER).read_text(encoding="utf-8"))
         document["backup_folder"] = get_settings().backup_folder
         config = config_stage / "restored-config.json"
@@ -759,7 +781,21 @@ async def stage_restore(point_id: str) -> StagedRestore:
             shutil.rmtree(directory, ignore_errors=True)
         logger.warning("Restore staging failed: %s", type(exc).__name__)
         raise BackupRejected("restore") from None
-    return StagedRestore(point, manifest, live, stage_dirs, database, config, avatar)
+    return StagedRestore(point, manifest, live, stage_dirs, database, config, avatar, upgraded=upgraded)
+
+
+def _staged_schema(path: Path) -> str:
+    with closing(_open_frozen(path)) as conn:
+        return _fingerprint(conn)
+
+
+def _settle_staged(path: Path) -> None:
+    """Fold an upgraded staged copy's write-ahead log into the file itself, so
+    the one file that is validated and swapped in is complete."""
+    with closing(sqlite3.connect(str(path))) as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    for suffix in ("-wal", "-shm"):
+        Path(f"{path}{suffix}").unlink(missing_ok=True)
 
 
 def recover_interrupted_restore() -> bool:

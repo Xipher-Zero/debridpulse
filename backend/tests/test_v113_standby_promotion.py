@@ -435,6 +435,14 @@ async def test_only_the_immediate_predecessors_choice_is_ever_carried(tmp_path, 
     first = ProviderResource("provider-a", {"n": 1}, Ownership.CREATED, id="provider-a:1")
     second = ProviderResource("provider-b", {"n": 2}, Ownership.CREATED, id="provider-b:2")
     await committed_generation(repository, transfer, root, first, "provider-a", ("Show/b.mkv", "Show/d.mkv"), t)
+    # These generations are decided as stated, as a transfer from before the
+    # transfer-owned selection intent was: it holds none, so the immediate
+    # predecessor's own choice is what is carried (or not).
+    from db.database import get_db
+    async with get_db() as db:
+        await db.execute("DELETE FROM transfer_file_selection_intent_entries WHERE request_id=?", (root.id,))
+        await db.execute("DELETE FROM transfer_file_selection_intents WHERE request_id=?", (root.id,))
+        await db.commit()
     later = await committed_generation(repository, transfer, root, second, "provider-b", newer, t + 10)
     assert [entry.relative_path for entry in later] == (list(newer) if newer else [path for path, _ in EARLIER])
 

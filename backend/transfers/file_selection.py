@@ -668,6 +668,58 @@ def established_logical_paths(selected: list[tuple[str, int]],
     return tuple(recorded[key] for key in keys)
 
 
+def intent_in_predecessor(intent: list[tuple[str, int]],
+                          predecessor: list[tuple[str, int]]) -> list[tuple[str, int]]:
+    """The live transfer's intent (logical coordinates) as the predecessor
+    generation's own members (``(path, size)`` of its whole manifest), in
+    intent order -- the selection a successor proves.
+
+    By exact normalized path when every intent member is there; otherwise
+    by the unique (case-sensitive basename, size > 0) identity of each --
+    the predecessor may hold members the operator has since deselected, but
+    every intent member must be exactly one of its members. A predecessor
+    with no recorded manifest has nothing to map: the intent's own
+    coordinates are proved as they are. Raises :class:`SelectionUnprovable`
+    with a bounded ``fallback_intent_*`` reason otherwise."""
+    if not predecessor:
+        return list(intent)
+    by_path: dict[str, tuple[str, int]] = {}
+    for path, size in predecessor:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("fallback_unsafe_path") from None
+        if normalized in by_path:
+            raise SelectionUnprovable("fallback_duplicate_path")
+        by_path[normalized] = (path, size)
+    try:
+        wanted = [normalize_relative_path(path) for path, _size in intent]
+    except ManifestInvalid:
+        raise SelectionUnprovable("fallback_intent_unsafe_path") from None
+    if all(path in by_path for path in wanted):
+        return [by_path[path] for path in wanted]
+    by_key: dict[tuple[str, int], tuple[str, int]] = {}
+    for normalized, (path, size) in by_path.items():
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable("fallback_unknown_size")
+        key = (PurePosixPath(normalized).name, size)
+        if key in by_key:
+            raise SelectionUnprovable("fallback_duplicate_identity")
+        by_key[key] = (path, size)
+    mapped, seen = [], set()
+    for normalized, (_path, size) in zip(wanted, intent):
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable("fallback_intent_unknown_size")
+        key = (PurePosixPath(normalized).name, size)
+        if key in seen:
+            raise SelectionUnprovable("fallback_duplicate_identity")
+        seen.add(key)
+        if key not in by_key:
+            raise SelectionUnprovable("fallback_intent_member_missing")
+        mapped.append(by_key[key])
+    return mapped
+
+
 def migrate_inherited_subset(
     selected: list[tuple[str, int]],
     predecessor: list[tuple[str, int]],

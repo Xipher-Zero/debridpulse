@@ -305,7 +305,11 @@ async def test_confirmed_subset_never_broadens_when_unprovable(repo):
 # --------------------------------------------------------------------------- #
 
 @pytest.mark.asyncio
-async def test_new_provider_resource_gets_a_fresh_generation_and_never_inherits(repo):
+async def test_new_provider_resource_gets_its_own_generation_carrying_the_transfers_intent(repo):
+    """A new provider resource always gets its own generation -- and, once the
+    operator's choice is the live transfer's intent, that generation is born
+    carrying it: never pending, never offered, committing exactly the chosen
+    files while the earlier generation stays as it was."""
     clock = Clock(1000.0)
     seed = await seed_window(transfer_hash="g" * 40)
 
@@ -330,20 +334,14 @@ async def test_new_provider_resource_gets_a_fresh_generation_and_never_inherits(
         initially_available=False, now=clock())
     selection_b = row_b["id"]
     assert selection_b != selection_a
-    assert row_b["decision"] == "pending"        # fresh generation, default ALL
+    assert (row_b["decision"], row_b["decision_reason"]) == ("explicit", "inherited")   # the intent, not a new choice
 
     # B's manifest — same file tree, but bound to resource B => different manifest id.
     manifest_b = await repo.record_file_manifest(reso_b.request_id, reso_b.provider_resource_id, tree, now=clock())
     assert manifest_b.manifest_id != manifest_a.manifest_id
 
-    # The read model must surface only B's live generation, never historical A,
-    # even though A shares the transfer id and is not yet committed.
-    offers = await repo.active_file_selection_offers(now=clock())
-    assert [o["selection_id"] for o in offers] == [selection_b]
-    view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
-    assert view["selection_id"] == selection_b
-    assert view["provider_resource_id"] == reso_b.provider_resource_id
-    assert view["manifest_id"] == manifest_b.manifest_id
+    # Nothing is offered again: neither B nor the historical A.
+    assert await repo.active_file_selection_offers(now=clock()) == []
 
     async with database.get_db() as db:
         # A's generation and its explicit rows are still historically persisted.
@@ -354,18 +352,24 @@ async def test_new_provider_resource_gets_a_fresh_generation_and_never_inherits(
             "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (selection_b,))
     assert gen_a["decision"] == "explicit"
     assert {r["entry_id"] for r in entries_a} == set(keep)
-    assert entries_b == []                       # B inherited nothing
+    assert entries_b == []                       # nothing recorded for B before it commits
 
-    # Materializing B cannot consume A's selection rows: default ALL for B.
+    # Materializing B commits the transfer's intent -- never ALL -- and records
+    # it against B's own manifest.
     full_b = executable(("f1", "s/f1", 10), ("f2", "s/f2", 20), ("f3", "s/f3", 30))
     authorized_b = await repo.commit_selected_manifest(reso_b.record, full_b, now=clock())
-    assert authorized_b == full_b                # all three files, not A's subset
+    assert [entry.relative_path for entry in authorized_b] == ["s/f1", "s/f3"]
+    async with database.get_db() as db:
+        recorded_b = await db.fetchall(
+            "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (selection_b,))
+    assert {r["entry_id"] for r in recorded_b} == {
+        manifest_b.entries[0].entry_id, manifest_b.entries[2].entry_id}
 
     async with database.get_db() as db:
         gen_a = await db.fetchone("SELECT decision, manifest_committed_at FROM transfer_file_selections WHERE id=?", (selection_a,))
         gen_b = await db.fetchone("SELECT decision, manifest_committed_at FROM transfer_file_selections WHERE id=?", (selection_b,))
     assert gen_a["decision"] == "explicit" and gen_a["manifest_committed_at"] is None   # A untouched
-    assert gen_b["decision"] == "all" and gen_b["manifest_committed_at"] is not None
+    assert gen_b["decision"] == "explicit" and gen_b["manifest_committed_at"] is not None
 
 
 @pytest.mark.asyncio

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import time
 from collections import Counter
 from dataclasses import dataclass, replace
 from pathlib import Path
@@ -139,6 +140,119 @@ def manifest_member_requests(entry: SourceEntry) -> tuple[tuple[int, TransferReq
     """``(alternate, request)`` for every request of one manifest member, in
     the provider's order: its own request first (``0``)."""
     return ((0, entry.request), *enumerate(entry.alternates, start=1))
+
+
+# -- the live transfer's current file-selection intent ------------------------------------------------------------
+#
+# THE one owner of what the operator wants now for a manifest root: a concrete
+# member set (logical coordinates), owned by the root request for as long as
+# the transfer lives. Established by the first settled usable multi-file
+# choice, revised only by the operator's member control, ended by Delete.
+# Provider generations (``transfer_file_selections``) prove and record it;
+# they never edit it. Every read and write is transaction-local.
+
+async def _selection_intent_in_db(db, request_id: str) -> list[tuple[str, int]] | None:
+    """The intent's members (``(logical path, size)``), or ``None`` when the
+    root has none -- an empty list is an intent to materialize nothing."""
+    if not await db.fetchone("SELECT 1 FROM transfer_file_selection_intents WHERE request_id=?", (request_id,)):
+        return None
+    return [(row["relative_path"], int(row["expected_bytes"] or 0)) for row in await db.fetchall(
+        "SELECT relative_path,expected_bytes FROM transfer_file_selection_intent_entries WHERE request_id=? "
+        "ORDER BY relative_path", (request_id,))]
+
+
+async def _release_selection_poll_wait_in_db(db, request_id: str, now: float) -> None:
+    """End the scheduler wait the file-selection gate created for the root --
+    only it: a request ``waiting`` with no ``error`` -- never a provider
+    backoff (see ``TransferRepository._release_selection_poll_wait``)."""
+    await db.execute(
+        "UPDATE transfer_requests SET retry_at=? "
+        "WHERE id=? AND state='waiting' AND error IS NULL AND retry_at > ?",
+        (now, request_id, now),
+    )
+
+
+async def _set_selection_intent_in_db(db, request_id: str, transfer_id: int, members, now: float, *,
+                                      origin_selection_id: str | None = None) -> None:
+    """Make ``members`` the intent of ``request_id`` (creating it if absent).
+
+    An intent that comes into being here also governs the root's current
+    generation if that is still an open choice: it is decided as carrying the
+    intent in this same transaction -- no longer pending, no longer offered,
+    its decision wait released -- so a generation that opened before the
+    intent existed can never settle another choice. A committed generation,
+    or one already decided, is never touched."""
+    from transfers import file_selection as fs
+
+    created = await db.fetchone("SELECT 1 FROM transfer_file_selection_intents WHERE request_id=?",
+                                (request_id,)) is None
+    await db.execute(
+        """INSERT INTO transfer_file_selection_intents(request_id,transfer_id,origin_selection_id,created_at,updated_at)
+           VALUES(?,?,?,?,?) ON CONFLICT(request_id) DO UPDATE SET updated_at=excluded.updated_at""",
+        (request_id, int(transfer_id), origin_selection_id, now, now))
+    await db.execute("DELETE FROM transfer_file_selection_intent_entries WHERE request_id=?", (request_id,))
+    for path, size in members:
+        await db.execute(
+            "INSERT OR REPLACE INTO transfer_file_selection_intent_entries(request_id,relative_path,expected_bytes) "
+            "VALUES(?,?,?)", (request_id, str(path), int(size or 0)))
+    if not created:
+        return
+    current = await db.fetchone(
+        """SELECT id,decision,manifest_committed_at FROM transfer_file_selections WHERE request_id=?
+           ORDER BY created_at DESC, id DESC LIMIT 1""", (request_id,))
+    if current is None or current["decision"] != "pending" or current["manifest_committed_at"] is not None:
+        return
+    cursor = await db.execute(
+        """UPDATE transfer_file_selections SET decision='explicit', decision_reason=?, decision_at=?, updated_at=?
+           WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
+        (str(fs.DecisionReason.INHERITED), now, now, current["id"]))
+    if cursor.rowcount == 1:
+        await _release_selection_poll_wait_in_db(db, request_id, now)
+
+
+async def _established_children_in_db(db, root_id: str) -> list[tuple[str, object]]:
+    """``(recorded path, size)`` of each member the root has fanned out and not
+    set aside: its own (primary) request, active. A member's alternates are
+    sibling requests at its path; they never keep a member the operator
+    deselected (whose own request is skipped) established."""
+    members = []
+    for child in await db.fetchall(
+            "SELECT id,metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (root_id,)):
+        entry = codec.load(child["metadata"], {}) or {}
+        path = str(entry.get("relative_path") or "")
+        if path and child["id"] == manifest_child_identity(root_id, path):
+            members.append((path, entry.get("expected_bytes")))
+    return members
+
+
+async def _edit_selection_intent_member_in_db(db, root_id: str, transfer_id: int, child, selected: bool,
+                                               now: float) -> None:
+    """The operator's member control, inside its own transaction: deselect
+    removes the member from the root's intent, reselect restores it. A root
+    without intent gains one here from its committed decomposition -- an
+    operator action, never a backfill. A root no generation committed has no
+    intent to edit. A member the latest committed generation no longer
+    carries cannot be reselected: that generation is history, and refusing
+    changes nothing."""
+    from transfers import file_selection as fs
+
+    committed = await db.fetchone(
+        """SELECT id FROM transfer_file_selections WHERE request_id=? AND manifest_committed_at IS NOT NULL
+           ORDER BY manifest_committed_at DESC LIMIT 1""", (root_id,))
+    if committed is None:
+        return
+    if selected and str(child["materialized_selection_id"] or "") != str(committed["id"]):
+        raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE,
+                                            diagnostic="member_not_in_committed_selection"))
+    entry = codec.load(child["metadata"], {}) or {}
+    path, size = str(entry.get("relative_path") or ""), int(entry.get("expected_bytes") or 0)
+    intent = await _selection_intent_in_db(db, root_id)
+    if intent is None:
+        intent = [(member, int(member_size or 0)) for member, member_size in await _established_children_in_db(db, root_id)]
+    key = fs.normalize_relative_path(path)
+    kept = [(member, member_size) for member, member_size in intent if fs.normalize_relative_path(member) != key]
+    await _set_selection_intent_in_db(db, root_id, transfer_id, [*kept, (path, size)] if selected else kept, now,
+                                      origin_selection_id=committed["id"])
 
 
 @dataclass(frozen=True)
@@ -4164,6 +4278,13 @@ class TransferRepository:
             else:
                 await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
                     updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
+            # Deleting a transfer ends its current file-selection intent; its
+            # provider generations' selections stay as history. A later re-add
+            # of the same source is a new transfer and chooses afresh.
+            await db.execute(
+                """DELETE FROM transfer_file_selection_intent_entries WHERE request_id IN
+                   (SELECT request_id FROM transfer_file_selection_intents WHERE transfer_id=?)""", (transfer_id,))
+            await db.execute("DELETE FROM transfer_file_selection_intents WHERE transfer_id=?", (transfer_id,))
             # FUNC-001: this path settles the parent into DELETED without
             # going through _write_lifecycle_transition, so it must invoke the
             # same transaction-local auxiliary-state retirement directly.
@@ -4315,6 +4436,16 @@ class TransferRepository:
                 return
             if row["execution_attempt_id"] or row["status"] not in {"queued", "unresolved", "paused", "blocked", "pending"}:
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.QUEUE))
+            member = await db.fetchone(
+                "SELECT parent_id,metadata,materialized_selection_id FROM transfer_requests WHERE id=?",
+                (row["request_id"],))
+            if member is not None and member["parent_id"]:
+                try:
+                    await _edit_selection_intent_member_in_db(db, member["parent_id"], transfer_id, member, selected,
+                                                              time.time())
+                except TransferError:
+                    await db.rollback()
+                    raise
             ready = bool(codec.load(row["candidates"], []))
             await db.execute("UPDATE download_files SET blocked=?,status=? WHERE id=?",
                              (int(not selected), ("queued" if ready else "unresolved") if selected else "blocked", artifact_id))

@@ -843,3 +843,71 @@ async def test_add_backup_refuses_a_stream_beyond_the_available_storage_while_it
     assert [entry.name for entry in folder.iterdir() if entry.name.startswith(".dp-")] == []
     assert [point.id for point in backup.list_restore_points()] == [existing]
     assert sorted(entry.name for entry in backup.restore_point(existing).path.iterdir()) == before
+
+
+
+# --------------------------------------------------------------------------- #
+# the pinned pre-change restore point
+# --------------------------------------------------------------------------- #
+
+# Written by the pinned baseline's own backup service (6b691ef7), before the
+# transfer-owned selection-intent tables existed.
+BASELINE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-6b691ef7.zip"
+
+
+def _managed_database(point) -> Path:
+    return point.path / json.loads((point.path / ".debridpulse-backup.json").read_text())["database"]
+
+
+def _digest(path: Path) -> str:
+    import hashlib
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+async def test_the_pinned_pre_change_backup_is_upgraded_on_a_private_copy_and_restored(served):
+    """T12: admitted and validated by its own recorded schema, upgraded only
+    on the private staged copy through the canonical bootstrap, which then
+    equals the running schema; the managed backup is never modified."""
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=BASELINE_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        assert backup._fingerprint(conn) != live
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before and sorted(entry.name for entry in point.path.iterdir()) == sorted(
+        [".debridpulse-backup.json", "config.json", managed.name])
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert [row[0] for row in conn.execute("SELECT id FROM torrents")] == [1]
+        assert conn.execute("SELECT COUNT(*) FROM transfer_file_selection_intents").fetchone()[0] == 0
+        assert conn.execute("SELECT decision FROM transfer_file_selections").fetchall() == [("explicit",)]
+    finally:
+        conn.close()
+
+
+async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(
+        served, monkeypatch):
+    app, client, _composed, _calls = served
+    kept = await _submit(app, client, "kept")
+    added = await client.post("/api/admin/backups", content=BASELINE_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    point = backup.restore_point(added.json()["backup"]["id"])
+    before = _digest(_managed_database(point))
+
+    async def broken(path=None):
+        raise RuntimeError("upgrade failed")
+
+    monkeypatch.setattr(database, "init_db", broken)
+    response = await client.post("/api/admin/backups/restore", json={"id": point.id})
+    assert response.status_code == 400
+    assert await _ids(app) == [kept]
+    assert _digest(_managed_database(point)) == before
+    assert not list(database.DB_PATH.parent.glob(".dp-restore-*"))
+    assert not (database.DB_PATH.parent / ".dp-restore-journal.json").exists()

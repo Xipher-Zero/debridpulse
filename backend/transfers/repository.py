@@ -57,7 +57,10 @@ from types import SimpleNamespace
 from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
-from transfers._repository_base import _ENDED_ROUTE_STATES
+from transfers._repository_base import (
+    _ENDED_ROUTE_STATES, _established_children_in_db, _release_selection_poll_wait_in_db, _selection_intent_in_db,
+    _set_selection_intent_in_db,
+)
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
@@ -1736,6 +1739,26 @@ class TransferRepository(_QualifiedTransferRepository):
         )
         return int((row or {}).get("n") or 0)
 
+    @staticmethod
+    async def _settle_selection_intent(db, row, now: float, *, entry_ids=None) -> None:
+        """THE settlement of a usable multi-file choice into the live
+        transfer's intent, in the settling transaction: the confirmed entries
+        (``entry_ids``), or -- ALL by Close/X or the decision timeout -- every
+        member of that manifest, as a concrete set. An intent once established
+        is never replaced by a later generation's settlement."""
+        if not row["manifest_id"] or await _selection_intent_in_db(db, row["request_id"]) is not None:
+            return
+        members = await db.fetchall(
+            "SELECT entry_id,relative_path,expected_bytes FROM transfer_file_manifest_entries WHERE manifest_id=?",
+            (row["manifest_id"],))
+        if entry_ids is not None:
+            wanted = {str(entry_id) for entry_id in entry_ids}
+            members = [member for member in members if member["entry_id"] in wanted]
+        await _set_selection_intent_in_db(
+            db, row["request_id"], row["transfer_id"],
+            [(member["relative_path"], int(member["expected_bytes"] or 0)) for member in members], now,
+            origin_selection_id=row["id"])
+
     async def begin_file_selection_window(
         self, request_id: str, transfer_id: int, provider_resource_id: str,
         provider_id: str, *, initially_available: bool, now: float, interactive: bool = True,
@@ -1779,6 +1802,14 @@ class TransferRepository(_QualifiedTransferRepository):
             # it has. It is retired as a submission-relative window and is never
             # read by the gate; the gate reads ``available_at``.
             predecessor = await self._immediate_predecessor(db, request_id, provider_resource_id)
+            # Once the live transfer holds a selection intent, every new
+            # generation is born carrying it: never pending, never offered.
+            if await _selection_intent_in_db(db, request_id) is not None:
+                decision, reason, decided = "explicit", str(fs.DecisionReason.INHERITED), now
+            elif interactive:
+                decision, reason, decided = "pending", None, None
+            else:
+                decision, reason, decided = "all", str(fs.DecisionReason.DEFAULT_MATERIALIZATION), now
             await db.execute(
                 """INSERT OR IGNORE INTO transfer_file_selections(
                         id, request_id, transfer_id, provider_resource_id, provider_id,
@@ -1789,10 +1820,7 @@ class TransferRepository(_QualifiedTransferRepository):
                  int(bool(initially_available)),
                  fs.manifest_grace_deadline(now) if initially_available else 0.0,
                  now if initially_available else None, now, now,
-                 int(bool(interactive)), predecessor,
-                 "pending" if interactive else "all",
-                 None if interactive else str(fs.DecisionReason.DEFAULT_MATERIALIZATION),
-                 None if interactive else now),
+                 int(bool(interactive)), predecessor, decision, reason, decided),
             )
             row = await self._selection_generation(db, request_id, provider_resource_id)
             await db.commit()
@@ -1808,9 +1836,18 @@ class TransferRepository(_QualifiedTransferRepository):
         is deliberately non-fatal before explicit confirmation: the selector
         stays unavailable and default ALL keeps governing the full transfer.
         """
+        def recordable(sel) -> bool:
+            # A pending generation, or one born carrying the transfer's intent:
+            # it still records its own manifest -- the proof and provenance of
+            # what it will authorize -- but never opens a decision.
+            return bool(sel) and sel["manifest_committed_at"] is None and (
+                sel["decision"] == "pending"
+                or (sel["decision"] == "explicit"
+                    and str(sel["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)))
+
         async with get_db() as db:
             sel = await self._selection_generation(db, request_id, provider_resource_id)
-            if not sel or sel["manifest_committed_at"] is not None or sel["decision"] != "pending":
+            if not recordable(sel):
                 return None
             try:
                 canonical = fs.canonicalize_manifest(provider_resource_id, manifest)
@@ -1818,7 +1855,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 return None
             await db.execute("BEGIN IMMEDIATE")
             sel = await self._selection_generation(db, request_id, provider_resource_id)
-            if not sel or sel["manifest_committed_at"] is not None or sel["decision"] != "pending":
+            if not recordable(sel):
                 await db.rollback()
                 return None
             await db.execute(
@@ -1848,7 +1885,8 @@ class TransferRepository(_QualifiedTransferRepository):
             # duplicate manifest, a scheduler pass, a browser reconnect, or a
             # restart. There is no submission-relative cutoff.
             hold_until = sel["hold_until"]
-            if canonical.file_count > 1 and hold_until is None:
+            pending = sel["decision"] == "pending"
+            if pending and canonical.file_count > 1 and hold_until is None:
                 hold_until = fs.decision_hold_deadline(now)
                 assignments.append("hold_until=?")
                 params.append(hold_until)
@@ -1867,7 +1905,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 manifest_id=canonical.manifest_id, manifest_file_count=canonical.file_count,
                 manifest_committed_at=None, auto_offer_dismissed_at=sel["auto_offer_dismissed_at"],
             )
-            queue_offer = sel["auto_offer_queued_at"] is None and fs.auto_offer_active(bound_state, now)
+            queue_offer = pending and sel["auto_offer_queued_at"] is None and fs.auto_offer_active(bound_state, now)
             if queue_offer:
                 assignments.append("auto_offer_queued_at=?")
                 params.append(now)
@@ -1959,6 +1997,10 @@ class TransferRepository(_QualifiedTransferRepository):
                        WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
                     (str(evaluation.resolve_decision), str(evaluation.resolve_reason), now, now, row["id"]),
                 )
+                if evaluation.resolve_reason == fs.DecisionReason.DECISION_TIMEOUT:
+                    # The operator's decision window on a usable multi-file
+                    # manifest ran out: ALL, as the concrete member set it is.
+                    await self._settle_selection_intent(db, row, now)
             elif (evaluation.gate != fs.SelectionGate.PROCEED and poll_interval is not None
                     and str(row["decision"]) == "pending" and row["manifest_committed_at"] is None):
                 # (5) A genuine still-pending selection wait. Only a request that
@@ -2009,11 +2051,7 @@ class TransferRepository(_QualifiedTransferRepository):
         ``error IS NULL`` selection wait, and it reschedules only an
         ``error IS NULL`` selection wait.
         """
-        await db.execute(
-            "UPDATE transfer_requests SET retry_at=? "
-            "WHERE id=? AND state='waiting' AND error IS NULL AND retry_at > ?",
-            (now, request_id, now),
-        )
+        await _release_selection_poll_wait_in_db(db, request_id, now)
 
     async def confirm_file_selection(
         self, transfer_id: int, manifest_id: str, entry_ids, *, now: float,
@@ -2101,6 +2139,7 @@ class TransferRepository(_QualifiedTransferRepository):
             if cursor.rowcount != 1:
                 await db.rollback()
                 return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "materialization_won")
+            await self._settle_selection_intent(db, row, now, entry_ids=requested)
             # The decision is settled; the 120s hold is no longer active. Release
             # the file-selection gate wait in the SAME transaction so the next
             # resolution cycle materialises the confirmed subset immediately —
@@ -2130,6 +2169,15 @@ class TransferRepository(_QualifiedTransferRepository):
                     str(fs.SelectionOutcome.CONFLICT), "materialization_committed",
                     decision=str(row["decision"]), committed=True,
                 )
+            if (str(row["decision"]) == "explicit"
+                    and str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)):
+                # This generation carries the live transfer's intent: a Close
+                # from an earlier offer can neither settle nor replace it.
+                await db.rollback()
+                return fs.SelectionCommandResult(
+                    str(fs.SelectionOutcome.CONFLICT), "selection_superseded",
+                    decision="explicit", manifest_id=row["manifest_id"],
+                )
             file_count = await self._manifest_file_count(db, row["manifest_id"])
             # Close/X on any live auto-presented multi-file hold settles ALL and
             # releases immediately, whatever the resource's initial availability
@@ -2147,6 +2195,7 @@ class TransferRepository(_QualifiedTransferRepository):
                     (str(fs.DecisionReason.CLOSED), now, now, now, row["id"]),
                 )
                 if cursor.rowcount == 1:
+                    await self._settle_selection_intent(db, row, now)
                     # Close/X settled the decision to default ALL; the 120s hold
                     # is over. Release the file-selection gate wait in the same
                     # transaction so ALL materialisation proceeds immediately
@@ -2249,26 +2298,49 @@ class TransferRepository(_QualifiedTransferRepository):
                     )
             else:
                 inherited = str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)
-                source = await self._inherited_source(db, record.id, binding_id) if inherited else None
-                if inherited and source is None:
+                # An inherited generation proves the live transfer's intent; one
+                # of a transfer that predates the intent proves its committed
+                # explicit predecessor's selection, as before.
+                intent = await _selection_intent_in_db(db, record.id) if inherited else None
+                if intent is not None:
+                    source = await self._committed_predecessor(db, record.id, binding_id)
+                elif inherited:
+                    source = await self._inherited_source(db, record.id, binding_id)
+                else:
+                    source = None
+                if inherited and source is None and intent is None:
                     await db.rollback()
                     raise TransferError(NormalizedError(
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
                         diagnostic="missing_inherited_predecessor"))
-                selected = await db.fetchall(
-                    """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
-                       FROM transfer_file_selection_entries s
-                       JOIN transfer_file_manifest_entries e
-                         ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
-                       WHERE s.selection_id=? ORDER BY e.ordinal""",
-                    (source["id"] if inherited else row["id"],),
-                )
-                if not selected:
+                if intent is not None:
+                    try:
+                        # The intent's members at the committed predecessor's own
+                        # coordinates (the one identity owner), never one it no
+                        # longer holds; with no committed predecessor, the intent's
+                        # own (logical) coordinates.
+                        pairs = fs.intent_in_predecessor(
+                            intent, await self._manifest_members(db, source["manifest_id"]) if source else [])
+                    except fs.SelectionUnprovable as refused:
+                        await db.rollback()
+                        raise TransferError(NormalizedError(
+                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                            diagnostic=refused.reason)) from None
+                else:
+                    selected = await db.fetchall(
+                        """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
+                           FROM transfer_file_selection_entries s
+                           JOIN transfer_file_manifest_entries e
+                             ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
+                           WHERE s.selection_id=? ORDER BY e.ordinal""",
+                        (source["id"] if inherited else row["id"],),
+                    )
+                    pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
+                if not pairs:
                     await db.rollback()
                     raise TransferError(NormalizedError(
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
                         diagnostic="selection_empty"))
-                pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
                 established = await self._established_members(db, record) if inherited else []
                 try:
                     authorized = fs.reconcile_executable_subset(pairs, full_entries)
@@ -2286,6 +2358,8 @@ class TransferRepository(_QualifiedTransferRepository):
                     try:
                         if not (inherited and exc.reason == "selected_path_missing"):
                             raise exc
+                        if source is None:
+                            raise fs.SelectionUnprovable("missing_inherited_predecessor")
                         migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
                                                                     full_entries, established)
                     except fs.SelectionUnprovable as refused:
@@ -2325,18 +2399,23 @@ class TransferRepository(_QualifiedTransferRepository):
                                     coordinates=coordinates)
 
     @staticmethod
+    async def _manifest_members(db, manifest_id) -> list[tuple[str, int]]:
+        """``(path, size)`` of every entry of one recorded manifest."""
+        if not manifest_id:
+            return []
+        return [(entry["relative_path"], int(entry["expected_bytes"] or 0)) for entry in await db.fetchall(
+            "SELECT relative_path,expected_bytes FROM transfer_file_manifest_entries WHERE manifest_id=?",
+            (manifest_id,))]
+
+    @staticmethod
     async def _established_members(db, record) -> list[tuple[str, int]]:
         """``(recorded path, size)`` of every member the root has fanned out and
         not set aside: its established logical decomposition. A member's
         alternates are sibling children at its one path, so a path is one
         member; siblings that disagree on its size leave it unknown (0)."""
         sizes: dict[str, set] = {}
-        for child in await db.fetchall(
-                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
-            entry = codec.load(child["metadata"], {}) or {}
-            path = str(entry.get("relative_path") or "")
-            if path:
-                sizes.setdefault(path, set()).add(entry.get("expected_bytes"))
+        for path, size in await _established_children_in_db(db, record.id):
+            sizes.setdefault(path, set()).add(size)
         return [(path, next(iter(values)) if len(values) == 1 else 0) for path, values in sizes.items()]
 
     @staticmethod
@@ -2356,15 +2435,9 @@ class TransferRepository(_QualifiedTransferRepository):
         ``commit_selected_manifest``'s transaction: both generations'
         complete manifests and each binding's own reported source
         fingerprints, with the members already established under the root."""
-        async def manifest(manifest_id):
-            if not manifest_id:
-                return []
-            return [(entry["relative_path"], int(entry["expected_bytes"] or 0)) for entry in await db.fetchall(
-                "SELECT relative_path,expected_bytes FROM transfer_file_manifest_entries WHERE manifest_id=?",
-                (manifest_id,))]
-
         return fs.migrate_inherited_subset(
-            selected, await manifest(source["manifest_id"]), await manifest(row["manifest_id"]), tuple(full_entries),
+            selected, await self._manifest_members(db, source["manifest_id"]),
+            await self._manifest_members(db, row["manifest_id"]), tuple(full_entries),
             predecessor_fingerprints=await self._binding_fingerprints(db, record.id, source["provider_resource_id"]),
             replacement_fingerprints=await self._binding_fingerprints(db, record.id, binding_id),
             established=established)
@@ -2419,12 +2492,8 @@ class TransferRepository(_QualifiedTransferRepository):
         Anything else is recorded ``held`` with the bounded reason (the
         transaction commits only that) and nothing changes."""
         established: dict[str, int] = {}
-        for child in await db.fetchall(
-                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
-            entry = codec.load(child["metadata"], {}) or {}
-            path = str(entry.get("relative_path") or "")
-            if path:
-                established[path] = max(established.get(path, 0), int(entry.get("expected_bytes") or 0))
+        for path, size in await _established_children_in_db(db, record.id):
+            established[path] = max(established.get(path, 0), int(size or 0))
         reason = fs.decomposition_continuity(list(established.items()), tuple(authorized)) if established else None
         if reason is None:
             return None, None

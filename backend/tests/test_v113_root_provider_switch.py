@@ -826,7 +826,7 @@ def rejecting_provider(identity, *, priority=0):
     return provider
 
 
-async def lineage_lab(tmp_path, monkeypatch, *, members=None, chosen=("S1/A.mkv", "S3/C.mkv")):
+async def lineage_lab(tmp_path, monkeypatch, *, members=None, chosen=("S1/A.mkv", "S3/C.mkv"), deduplicate=False):
     """parcel-a (hierarchical, preferred), parcel-b (flat), parcel-c
     (rejects), parcel-d (hierarchical); the root starts on parcel-a with an
     explicit selection. ``members(provider_id, files)`` may supply each
@@ -848,13 +848,16 @@ async def lineage_lab(tmp_path, monkeypatch, *, members=None, chosen=("S1/A.mkv"
     lab.offer = lambda identity, files, native="x": supplied_offer(lab, identity, files, native)
     lab.offer("parcel-a", SEASONS)
     transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
-                                   name="Show", deduplicate=False)
+                                   name="Show", deduplicate=deduplicate)
     for _ in range(3):
         await engine.tick()
     view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
-    await repository.confirm_file_selection(
-        transfer.id, view["manifest_id"], [entry["entry_id"] for entry in view["entries"]
-                                           if entry["relative_path"] in chosen], now=engine.clock())
+    if chosen is None:                                      # Close/X on the live offer: ALL
+        await repository.dismiss_file_selection(transfer.id, view["manifest_id"], now=engine.clock())
+    else:
+        await repository.confirm_file_selection(
+            transfer.id, view["manifest_id"], [entry["entry_id"] for entry in view["entries"]
+                                               if entry["relative_path"] in chosen], now=engine.clock())
     await settle(engine, 4)
     lab.transfer = transfer
     return lab
@@ -959,27 +962,6 @@ async def test_automatic_failover_after_a_rejected_intermediate_commits_and_so_d
                                                                  ("S3/C.mkv", "y:S3/C.mkv")]
 
 
-async def test_a_member_deselected_after_commitment_refuses_the_next_migration_with_its_reason(
-        tmp_path, monkeypatch):
-    """FB-5 and the established-child mutability answer: an operator may
-    deselect one member that has no writer (``select_artifact``: its request
-    ``skipped``, its artifact ``blocked``) without recommitting the selection.
-    A switch detaches the retired writers, so right after one the operator
-    can. The established set is then no longer the selected one, so the
-    migration is refused, naming why -- never guessed."""
-    lab = await lineage_lab(tmp_path, monkeypatch)
-    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
-    lab.offer("parcel-d", SEASONS)
-    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-d", expected_provider_id="parcel-b")
-    member = next(item for item in await lab.repository.requests(lab.transfer.id)
-                  if item.parent_id and item.entry.relative_path == "S3/C.mkv")
-    (artifact,) = await rows("SELECT id FROM download_files WHERE request_id=?", (member.id,))
-    await lab.repository.select_artifact(lab.transfer.id, artifact["id"], False)
-    error = await first_conflict(lab.repository, lab.engine, lab.transfer.id)
-    assert error is not None and error.diagnostic == "fallback_established_member_missing"
-    assert (await generation_of(lab.transfer.id, "parcel-d"))["manifest_committed_at"] is None
-
-
 # -- credentials follow the proven coordinate, never a path match --------------------------------------------------
 
 def credentialed(provider_id, files):
@@ -1061,3 +1043,325 @@ def test_the_engine_places_credentials_by_the_proven_coordinate_only():
     for forbidden in ("migrate_inherited_subset", "established_logical_paths", "PurePosixPath", ".name,",
                       "fingerprint", "basename"):
         assert forbidden not in source, forbidden
+
+
+# -- the transfer owns its file selection: providers prove it, never ask again --------------------------------------
+#
+# Once the operator settles a usable multi-file choice (Confirm, Close/X, or
+# the decision timeout), that concrete member set is the live transfer's
+# intent. Every later provider generation silently proves and records it; an
+# operator's later deselect or reselect revises it; deleting the transfer ends
+# it.
+
+async def active_members(repository, transfer_id):
+    return sorted((item.entry.relative_path, item.request.payload)
+                  for item in await repository.requests(transfer_id) if item.parent_id and item.state != "skipped")
+
+
+async def intent_of(lab):
+    root = await root_of(lab.repository, lab.transfer.id)
+    if not await rows("SELECT 1 FROM transfer_file_selection_intents WHERE request_id=?", (root.id,)):
+        return None
+    return sorted(row["relative_path"] for row in await rows(
+        "SELECT relative_path FROM transfer_file_selection_intent_entries WHERE request_id=?", (root.id,)))
+
+
+def never_offered(generation):
+    return (generation["decision"], generation["hold_until"], generation["auto_offer_queued_at"]) == (
+        "explicit", None, None)
+
+
+async def deselect(lab, path, selected=False):
+    member = next(item for item in await lab.repository.requests(lab.transfer.id)
+                  if item.parent_id and item.entry.relative_path == path and item.id == child(lab, item.parent_id, path))
+    (artifact,) = await rows("SELECT id FROM download_files WHERE request_id=?", (member.id,))
+    await lab.repository.select_artifact(lab.transfer.id, artifact["id"], selected)
+
+
+async def test_a_successor_after_a_settled_all_never_offers_selection_again(tmp_path, monkeypatch):
+    """FB-1 / T2: Close/X settled ALL on a usable three-file manifest; the
+    next provider never reopens the selector and commits exactly those
+    three."""
+    lab = await lineage_lab(tmp_path, monkeypatch, chosen=None)
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-a", native="y")
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert never_offered(generation), dict(generation)
+    assert committed_proven(generation)
+    assert await active_members(lab.repository, lab.transfer.id) == [
+        ("S1/A.mkv", "y:S1/A.mkv"), ("S2/B.mkv", "y:S2/B.mkv"), ("S3/C.mkv", "y:S3/C.mkv")]
+
+
+async def test_an_explicit_selection_crosses_providers_without_ever_being_offered_again(tmp_path, monkeypatch):
+    """FB-3 / T1: no successor is ever pending or offerable; each commits
+    exactly the confirmed members, across a path-changing provider too."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    offers = len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'"))
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-b", native="y")
+    for provider in ("parcel-b", "parcel-d"):
+        generation = await generation_of(lab.transfer.id, provider)
+        assert never_offered(generation), (provider, dict(generation))
+        assert committed_proven(generation)
+    assert len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'")) == offers
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "y:S1/A.mkv"),
+                                                                     ("S3/C.mkv", "y:S3/C.mkv")]
+
+
+async def test_a_deselect_after_commitment_is_what_every_later_provider_commits(tmp_path, monkeypatch):
+    """FB-2 / T4: confirmed A+C; the operator deselects C (a switch detaches
+    the writers, so it has none); the flat provider and then a hierarchical
+    one each commit A alone, and the generation that committed A+C keeps
+    its own record."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    first = await generation_of(lab.transfer.id, "parcel-a")
+    lab.offer("parcel-b", FLAT)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    await deselect(lab, "S3/C.mkv")
+    await settle(lab.engine)
+    flat = await generation_of(lab.transfer.id, "parcel-b")
+    assert committed_proven(flat), (flat["continuity"], flat["continuity_reason"])
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "x:A.mkv")]
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-b", native="y")
+    later = await generation_of(lab.transfer.id, "parcel-d")
+    assert committed_proven(later), (later["continuity"], later["continuity_reason"])
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "y:S1/A.mkv")]
+    assert len(await rows("SELECT 1 FROM transfer_file_selection_entries WHERE selection_id=?", (first["id"],))) == 2
+    assert await intent_of(lab) == ["S1/A.mkv"]
+
+
+async def test_a_reselect_before_the_successor_commits_restores_the_member(tmp_path, monkeypatch):
+    """T5."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    lab.offer("parcel-b", FLAT)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    await deselect(lab, "S3/C.mkv")
+    await deselect(lab, "S3/C.mkv", selected=True)
+    await settle(lab.engine)
+    assert committed_proven(await generation_of(lab.transfer.id, "parcel-b"))
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "x:A.mkv"), ("S3/C.mkv", "x:C.mkv")]
+    assert await intent_of(lab) == ["S1/A.mkv", "S3/C.mkv"]
+
+
+async def test_a_reselect_after_a_newer_generation_committed_without_the_member_is_refused(tmp_path, monkeypatch):
+    """The late re-add boundary: the member is no longer part of the current
+    committed decomposition; the reselect is refused and changes nothing."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    lab.offer("parcel-b", FLAT)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    await deselect(lab, "S3/C.mkv")
+    await settle(lab.engine)
+    with pytest.raises(TransferError) as caught:
+        await deselect(lab, "S3/C.mkv", selected=True)
+    assert caught.value.error.category == Category.RESOURCE_STATE_CONFLICT
+    assert await intent_of(lab) == ["S1/A.mkv"]
+
+
+async def test_a_rejected_successor_never_changes_the_intent(tmp_path, monkeypatch):
+    """T6."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    lab.offer("parcel-a", SEASONS, native="x2")
+    await switched(lab, "parcel-c", SEASONS, expected="parcel-a")
+    assert (await generation_of(lab.transfer.id, "parcel-c"))["manifest_committed_at"] is None
+    automatic = await generation_of(lab.transfer.id, "parcel-a")
+    assert never_offered(automatic) and committed_proven(automatic)
+    assert await intent_of(lab) == ["S1/A.mkv", "S3/C.mkv"]
+
+
+async def test_an_empty_intent_is_kept_and_never_broadens(tmp_path, monkeypatch):
+    """T10: every member deselected -- the intent row stays, empty, and
+    nothing is materialized as ALL."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    lab.offer("parcel-b", FLAT)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    await deselect(lab, "S1/A.mkv")
+    await deselect(lab, "S3/C.mkv")
+    await settle(lab.engine)
+    assert await intent_of(lab) == []
+    assert await active_members(lab.repository, lab.transfer.id) == []
+    flat = await generation_of(lab.transfer.id, "parcel-b")
+    assert not await rows("SELECT 1 FROM transfer_file_selection_entries WHERE selection_id=?", (flat["id"],))
+
+
+async def test_lifecycle_retirement_never_edits_the_intent(tmp_path, monkeypatch):
+    """T9: generations superseding members and provider switches change no
+    intent; only the operator's member control does."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    root = await root_of(lab.repository, lab.transfer.id)
+    (before,) = await rows("SELECT updated_at FROM transfer_file_selection_intents WHERE request_id=?", (root.id,))
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-b", native="y")
+    (after,) = await rows("SELECT updated_at FROM transfer_file_selection_intents WHERE request_id=?", (root.id,))
+    assert after["updated_at"] == before["updated_at"]
+    assert await intent_of(lab) == ["S1/A.mkv", "S3/C.mkv"]
+
+
+async def test_a_deleted_transfer_takes_its_intent_and_a_re_add_chooses_afresh(tmp_path, monkeypatch):
+    """T7 / T13 (delete): the same source added again is a new transfer with
+    no intent -- its source fingerprint equal, its lineage not -- and its
+    first usable manifest is offered."""
+    lab = await lineage_lab(tmp_path, monkeypatch, deduplicate=True)
+    old_root = await root_of(lab.repository, lab.transfer.id)
+    await lab.engine.delete(lab.transfer.id, remote=False)
+    assert not await rows("SELECT 1 FROM transfer_file_selection_intents WHERE request_id=?", (old_root.id,))
+    assert not await rows("SELECT 1 FROM transfer_file_selection_intent_entries WHERE request_id=?", (old_root.id,))
+    assert await rows("SELECT 1 FROM transfer_file_selections WHERE request_id=?", (old_root.id,))   # history kept
+    lab.offer("parcel-a", SEASONS, native="z")
+    again = await lab.engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                    name="Show", deduplicate=True)
+    assert again.id != lab.transfer.id
+    fingerprints = await rows("SELECT source_fingerprint FROM torrents WHERE id IN (?,?)", (lab.transfer.id, again.id))
+    assert len({row["source_fingerprint"] for row in fingerprints}) == 1
+    for _ in range(3):
+        await lab.engine.tick()
+    lab.transfer = again
+    assert await intent_of(lab) is None
+    (fresh,) = await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=?", (again.id,))
+    assert (fresh["decision"], fresh["predecessor_id"]) == ("pending", None) and fresh["auto_offer_queued_at"]
+
+
+async def test_a_re_add_after_delete_is_a_new_transfer_offered_afresh(tmp_path, monkeypatch):
+    """FB-4 (preservation): a deleted transfer's selection never reaches an
+    independent re-add of the same source."""
+    lab = await lineage_lab(tmp_path, monkeypatch, deduplicate=True)
+    await lab.engine.delete(lab.transfer.id, remote=False)
+    lab.offer("parcel-a", SEASONS, native="z")
+    again = await lab.engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                    name="Show", deduplicate=True)
+    assert again.id != lab.transfer.id
+    for _ in range(3):
+        await lab.engine.tick()
+    (fresh,) = await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=?", (again.id,))
+    assert (fresh["decision"], fresh["predecessor_id"]) == ("pending", None) and fresh["auto_offer_queued_at"]
+
+
+async def test_a_deduplicated_submission_keeps_the_live_transfers_intent(tmp_path, monkeypatch):
+    """T8."""
+    lab = await lineage_lab(tmp_path, monkeypatch, deduplicate=True)
+    same = await lab.engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=True)
+    assert same.id == lab.transfer.id
+    assert await intent_of(lab) == ["S1/A.mkv", "S3/C.mkv"]
+
+
+async def test_no_usable_manifest_settles_all_without_intent_and_a_later_manifest_is_offered(tmp_path, monkeypatch):
+    """T3 / T14: a provider that never publishes a complete manifest (its
+    observation carries none) settles ALL by the manifest grace; that is no
+    selection, so the next provider's first usable manifest is offered."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
+    await database.init_db()
+    repository, registry = TransferRepository(), IntegrationRegistry()
+    providers = {name: magnet_provider(name) for name in ("parcel-a", "parcel-b")}
+    for provider in providers.values():
+        registry.register_provider(provider)
+    registry.register_executor(MemoryExecutor(repository.authorize_execution))
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "dl"),
+                            policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
+    await engine.initialize()
+    resource = offer_source(providers["parcel-a"], SEASONS, SOURCE)
+    providers["parcel-a"].resources[resource.id] = replace(providers["parcel-a"].resources[resource.id],
+                                                           file_manifest=None)
+    providers["parcel-a"].responses[-1] = replace(
+        providers["parcel-a"].responses[-1],
+        observation=replace(providers["parcel-a"].responses[-1].observation, file_manifest=None))
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=False)
+    await settle(engine, 6)
+    (first,) = await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=?", (transfer.id,))
+    assert (first["decision"], first["decision_reason"], first["hold_until"]) == ("all", "manifest_timeout", None)
+    lab = SimpleNamespace(repository=repository, transfer=transfer)
+    assert await intent_of(lab) is None
+    offer_source(providers["parcel-b"], SEASONS, SOURCE)
+    await switch_root_provider(engine, transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    for _ in range(3):
+        await engine.tick()
+    second = await generation_of(transfer.id, "parcel-b")
+    assert second["decision"] == "pending" and second["auto_offer_queued_at"] is not None
+
+
+async def test_a_transfer_without_intent_gains_it_only_from_an_operator_member_change(tmp_path, monkeypatch):
+    """T11 (operator action): a transfer whose selection predates the intent
+    (no intent row -- nothing is backfilled) keeps the pre-change behavior
+    until the operator changes a member; that change establishes the intent
+    from the committed decomposition, and the next provider commits it."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    root = await root_of(lab.repository, lab.transfer.id)
+    async with get_db() as db:
+        await db.execute("DELETE FROM transfer_file_selection_intent_entries WHERE request_id=?", (root.id,))
+        await db.execute("DELETE FROM transfer_file_selection_intents WHERE request_id=?", (root.id,))
+        await db.commit()
+    assert await intent_of(lab) is None
+    lab.offer("parcel-b", FLAT)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    await deselect(lab, "S3/C.mkv")
+    assert await intent_of(lab) == ["S1/A.mkv"]
+    await settle(lab.engine)
+    assert committed_proven(await generation_of(lab.transfer.id, "parcel-b"))
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "x:A.mkv")]
+
+
+async def test_an_intent_established_while_a_successor_is_open_governs_that_successor(tmp_path, monkeypatch):
+    """A committed ALL that is no intent (the manifest grace ran out), then a
+    provider whose usable manifest is offered. The operator deselects one
+    established member: that establishes the intent, and the open successor
+    carries it at once -- no longer offered, never ALL past its old deadline,
+    committing exactly the reduced intent; a stale Confirm or Close from the
+    earlier offer conflicts and replaces nothing."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
+    await database.init_db()
+    repository, registry = TransferRepository(), IntegrationRegistry()
+    providers = {name: magnet_provider(name) for name in ("parcel-a", "parcel-b")}
+    for provider in providers.values():
+        registry.register_provider(provider)
+    registry.register_executor(MemoryExecutor(repository.authorize_execution))
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "dl"),
+                            policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
+    await engine.initialize()
+    resource = offer_source(providers["parcel-a"], SEASONS, SOURCE)
+    providers["parcel-a"].resources[resource.id] = replace(providers["parcel-a"].resources[resource.id],
+                                                           file_manifest=None)
+    providers["parcel-a"].responses[-1] = replace(
+        providers["parcel-a"].responses[-1],
+        observation=replace(providers["parcel-a"].responses[-1].observation, file_manifest=None))
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=False)
+    await settle(engine, 6)
+    lab = SimpleNamespace(repository=repository, engine=engine, transfer=transfer)
+    assert (await generation_of(transfer.id, "parcel-a"))["decision_reason"] == "manifest_timeout"
+    assert await intent_of(lab) is None
+
+    offer_source(providers["parcel-b"], SEASONS, SOURCE)
+    await switch_root_provider(engine, transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    for _ in range(2):
+        await engine.tick()
+    opened = await generation_of(transfer.id, "parcel-b")
+    assert opened["decision"] == "pending" and opened["auto_offer_queued_at"] is not None
+    assert [offer["selection_id"] for offer in await repository.active_file_selection_offers(now=engine.clock())] \
+        == [opened["id"]]
+
+    await deselect(lab, "S3/C.mkv")
+    assert await intent_of(lab) == ["S1/A.mkv", "S2/B.mkv"]
+    carried = await generation_of(transfer.id, "parcel-b")
+    assert (carried["decision"], carried["decision_reason"]) == ("explicit", "inherited")
+    assert await repository.active_file_selection_offers(now=engine.clock()) == []
+
+    stale_confirm = await repository.confirm_file_selection(
+        transfer.id, carried["manifest_id"], [fs_entry(carried, "S3/C.mkv")], now=engine.clock())
+    stale_close = await repository.dismiss_file_selection(transfer.id, carried["manifest_id"], now=engine.clock())
+    assert (stale_confirm.outcome, stale_close.outcome) == ("conflict", "conflict")
+    assert await intent_of(lab) == ["S1/A.mkv", "S2/B.mkv"]
+
+    engine.clock.now = float(opened["hold_until"]) + 60                # past the old decision deadline
+    await settle(engine)
+    committed = await generation_of(transfer.id, "parcel-b")
+    assert (committed["decision"], committed["continuity"]) == ("explicit", "proven")
+    assert committed["manifest_committed_at"] is not None
+    assert await active_members(repository, transfer.id) == [("S1/A.mkv", "x:S1/A.mkv"),
+                                                             ("S2/B.mkv", "x:S2/B.mkv")]
+    recorded = await rows("SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?",
+                          (committed["id"],))
+    assert {row["entry_id"] for row in recorded} == {fs_entry(committed, "S1/A.mkv"), fs_entry(committed, "S2/B.mkv")}
+
+
+def fs_entry(generation, path):
+    from transfers import file_selection as fs
+    return fs.entry_identity(generation["provider_resource_id"], path)

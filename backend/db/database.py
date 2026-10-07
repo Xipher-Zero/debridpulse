@@ -821,6 +821,24 @@ TRANSFER_REPOSITORY_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_file_selections_request ON transfer_file_selections(request_id,provider_resource_id)",
     "CREATE INDEX IF NOT EXISTS idx_file_selections_active ON transfer_file_selections(decision,manifest_committed_at,manifest_id)",
     "CREATE INDEX IF NOT EXISTS idx_file_selection_entries_manifest ON transfer_file_selection_entries(manifest_id,entry_id)",
+    # The live transfer's current file-selection intent: the one authority for
+    # what the operator wants now, owned by the root request for as long as
+    # the transfer lives. Provider-generation selections above stay the
+    # immutable record of what each generation authorized. A row with no
+    # entries is an intent to materialize nothing -- never "no intent".
+    # Entries are the members' logical coordinates (never a provider's).
+    """CREATE TABLE IF NOT EXISTS transfer_file_selection_intents (
+        request_id TEXT PRIMARY KEY REFERENCES transfer_requests(id),
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        origin_selection_id TEXT REFERENCES transfer_file_selections(id),
+        created_at REAL NOT NULL,
+        updated_at REAL NOT NULL)""",
+    """CREATE TABLE IF NOT EXISTS transfer_file_selection_intent_entries (
+        request_id TEXT NOT NULL REFERENCES transfer_file_selection_intents(request_id),
+        relative_path TEXT NOT NULL,
+        expected_bytes INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY(request_id, relative_path))""",
+    "CREATE INDEX IF NOT EXISTS idx_file_selection_intents_transfer ON transfer_file_selection_intents(transfer_id)",
     # A root's speculative backup preparations: one row per (root, provider,
     # preparation generation). The provider-native resource itself is the
     # ordinary ``provider_resources`` binding (``binding_id``), so its state,
@@ -1087,6 +1105,8 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
     'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at', 'interactive', 'predecessor_id', 'continuity', 'continuity_reason', 'legacy_established', 'reacquired_at', 'reacquisition_consumed_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
+    'transfer_file_selection_intents': {'request_id', 'transfer_id', 'origin_selection_id', 'created_at', 'updated_at'},
+    'transfer_file_selection_intent_entries': {'request_id', 'relative_path', 'expected_bytes'},
     'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint', 'collection_root', 'collection_root_conflict'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
@@ -1139,13 +1159,15 @@ async def validate_runtime_state_schema() -> None:
     await _validate_schema_readonly({"integration_runtime_state": _RUNTIME_STATE_COLUMNS}, owner="integration runtime state")
 
 
-async def init_db():
-    await _init_db_sqlite()
+async def init_db(path: Path | None = None):
+    """THE schema bootstrap and upgrade: the live database, or -- for a
+    restore -- the private staged copy at ``path``."""
+    await _init_db_sqlite(path or DB_PATH)
 
 
-async def _init_db_sqlite():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    async with aiosqlite.connect(DB_PATH, timeout=30) as db:
+async def _init_db_sqlite(path: Path):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    async with aiosqlite.connect(path, timeout=30) as db:
         await db.execute("PRAGMA journal_mode=WAL")
         await _configure_sqlite_connection(db)
         await db.commit()
@@ -1271,7 +1293,7 @@ async def _init_db_sqlite():
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 
-    async with aiosqlite.connect(DB_PATH) as idx_db:
+    async with aiosqlite.connect(path) as idx_db:
         for ddl in [
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_torrent_status ON download_files (torrent_id, status, blocked)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_queue ON download_files (status, download_client, blocked, torrent_id, id)",
@@ -1323,7 +1345,7 @@ async def _init_db_sqlite():
         await idx_db.commit()
     logger.debug("SQLite indexes ensured")
 
-    async with aiosqlite.connect(DB_PATH) as verify_db:
+    async with aiosqlite.connect(path) as verify_db:
         required = {
             "torrents": {"id", "hash", "status"} | {name for name, _ in _SCHEMA_COLUMNS_TORRENTS},
             "download_files": {"id", "torrent_id", "status", "blocked"} | {name for name, _ in _SCHEMA_COLUMNS_FILES},
@@ -1343,4 +1365,4 @@ async def _init_db_sqlite():
             logger.error("CRITICAL: required schema remains incomplete: %s", missing_by_table)
             raise RuntimeError(f"Required SQLite schema is incomplete: {missing_by_table}")
         logger.info("SQLite schema verified — all required runtime columns present")
-    logger.info("SQLite database initialised: %s", DB_PATH)
+    logger.info("SQLite database initialised: %s", path)

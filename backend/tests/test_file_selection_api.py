@@ -452,7 +452,7 @@ async def test_offers_and_read_model_expose_only_the_current_generation_after_re
     view_b = view_response.json()
     assert view_b["manifest_id"] not in ("", None) and view_b["manifest_id"] != manifest_a
     assert view_b["file_count"] == 4                         # B's tree, not A's 6
-    assert view_b["decision"] == "pending"                   # fresh generation, no inheritance
+    assert view_b["decision"] == "explicit"                  # the transfer's choice, never asked again
     assert {e["relative_path"] for e in view_b["entries"]} == {f"B/b{i}.bin" for i in range(4)}
     assert set(view_b) == set(_PUBLIC_SELECTION_FIELDS)
     _assert_no_internal_leak(view_b)
@@ -462,7 +462,7 @@ async def test_offers_and_read_model_expose_only_the_current_generation_after_re
 
     offers_response = await api.client.get("/api/file-selections/offers")
     offers = offers_response.json()["offers"]
-    assert [o["manifest_id"] for o in offers] == [view_b["manifest_id"]]
+    assert offers == []                                      # nothing is offered again
     assert manifest_a not in offers_response.text            # A's manifest id absent
     _assert_no_internal_leak(offers_response.json())
 

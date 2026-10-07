@@ -601,9 +601,11 @@ async def test_a_legacy_decomposition_rebound_without_a_terminal_reacquisition_h
         (row["id"], row["local_path"], 0) for row in before]
 
 
-async def test_an_interactive_all_predecessor_gets_a_fresh_window_that_converges_on_timeout(tmp_path, monkeypatch):
-    """Case 8: an ALL predecessor is not carried; the new generation opens its
-    own selection window, and its timeout to ALL proves continuity normally."""
+async def test_a_timed_out_all_is_the_transfers_intent_and_the_next_generation_carries_it(tmp_path, monkeypatch):
+    """Case 8: the decision window on a usable multi-file manifest timed out
+    to ALL -- the concrete member set is the live transfer's intent -- so the
+    next generation is born carrying it, opens no window, and proves
+    continuity over exactly those members."""
     repository, engine, provider, _executor = await lab(tmp_path, monkeypatch)
     provider.responses.append(provider.parcel("x", state=ResourceState.AVAILABLE, files=FILES, file_manifest=None))
     transfer = await engine.submit((TransferRequest("parcel", "x", name="Show", selection_mode="interactive"),),
@@ -617,14 +619,12 @@ async def test_an_interactive_all_predecessor_gets_a_fresh_window_that_converges
     before = await files_of(transfer.id)
 
     await reacquire(repository, engine, provider, transfer, ticks=2)
-    fresh = await current_generation(repository, transfer.id)
-    assert (fresh["decision"], fresh["decision_reason"], fresh["manifest_committed_at"]) == ("pending", None, None)
-
-    engine.clock.now += 300                                          # its own window times out: ALL
+    carried = await current_generation(repository, transfer.id)
+    assert (carried["decision"], carried["decision_reason"], carried["hold_until"]) == ("explicit", "inherited", None)
     for _ in range(6):
         engine.clock.now += 60
         await engine.tick()
     committed = await current_generation(repository, transfer.id)
-    assert (committed["decision"], committed["continuity"]) == ("all", "proven")
+    assert (committed["decision"], committed["continuity"]) == ("explicit", "proven")
     assert [(row["id"], row["local_path"]) for row in await files_of(transfer.id)] == [
         (row["id"], row["local_path"]) for row in before]

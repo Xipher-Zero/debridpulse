@@ -179,3 +179,26 @@ async def test_wipe_removes_populated_canonical_state_child_first(db_path):
         assert (await db.fetchall("PRAGMA foreign_key_check")) == []
 
     assert set(_CANONICAL_TABLES) <= set(result["wiped_tables"])
+
+
+@pytest.mark.asyncio
+async def test_wipe_removes_the_transfer_file_selection_intent_child_first(db_path):
+    """T13: the transfer-owned selection intent is ordinary application state;
+    the wipe removes its entries before its roots, foreign keys enforced."""
+    async with database.get_db() as db:
+        await db.execute("BEGIN IMMEDIATE")
+        await db.execute("INSERT INTO torrents(id,hash,name,status) VALUES(1,?,?,'downloading')", ("d" * 40, "intent"))
+        await db.execute(
+            "INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state) VALUES('root',1,0,'{}','resolved')")
+        await db.execute("INSERT INTO transfer_file_selection_intents(request_id,transfer_id,created_at,updated_at) "
+                         "VALUES('root',1,1.0,1.0)")
+        await db.execute("INSERT INTO transfer_file_selection_intent_entries(request_id,relative_path,expected_bytes) "
+                         "VALUES('root','S1/A.mkv',100)")
+        await db.commit()
+    result = await db_maintenance.wipe_database(verified_quiesced=True)
+    assert result["ok"] is True
+    async with database.get_db() as db:
+        for table in ("transfer_file_selection_intent_entries", "transfer_file_selection_intents"):
+            assert (await db.fetchall(f"SELECT COUNT(*) AS n FROM {table}"))[0]["n"] == 0
+        assert (await db.fetchall("PRAGMA foreign_key_check")) == []
+    assert {"transfer_file_selection_intents", "transfer_file_selection_intent_entries"} <= set(result["wiped_tables"])

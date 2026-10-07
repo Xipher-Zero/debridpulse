@@ -27,6 +27,8 @@ TABLES = [
     "transfer_file_manifest_entries",
     "transfer_file_selections",
     "transfer_file_selection_entries",
+    "transfer_file_selection_intents",
+    "transfer_file_selection_intent_entries",
     "resolution_attempts",
     "route_attempt_provenance",
     "execution_attempts",
@@ -55,8 +57,12 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         # ordinary integration disablement never reaches this path.
         await db.execute("DELETE FROM integration_runtime_state")
         await db.execute("DELETE FROM transfer_input_challenges")
-        # File-selection provenance is deleted child-first so no orphan can
-        # outlive an explicit whole-database wipe.
+        # File-selection intent and provenance are deleted child-first so no
+        # orphan can outlive an explicit whole-database wipe: an intent's
+        # entries, then the intent (which names its originating generation),
+        # then the generations' own records.
+        await db.execute("DELETE FROM transfer_file_selection_intent_entries")
+        await db.execute("DELETE FROM transfer_file_selection_intents")
         await db.execute("DELETE FROM transfer_file_selection_entries")
         await db.execute("DELETE FROM transfer_file_selections")
         await db.execute("DELETE FROM transfer_file_manifest_entries")
