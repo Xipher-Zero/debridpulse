@@ -8,7 +8,7 @@ from urllib.parse import urlsplit
 from providers.realdebrid.account import refused_family
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
-    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, native_members, native_name,
+    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, creation_error, native_members, native_name,
     observation_from_native, protocol_error, resource_from_native, translate_error,
     unrestricted_matches,
 )
@@ -187,10 +187,25 @@ class RealDebridProvider:
                 family, owner = refused_family(exc, request.kind), getattr(self, "account", None)
                 if family and owner is not None and not speculative_attempt():
                     await owner.contract(family)
-                raise
+                raise TransferError(creation_error(exc, secrets=self._secrets())) from None
             resource = await self._already_active(request, exc)
-        await self._bootstrap(resource)
-        observation = replace(await self.observe(resource), request=request)
+        except Exception as exc:
+            # Real-Debrid was asked to create the torrent and gave no usable
+            # answer: whether it created it anyway is the creation's own
+            # truth (``creation_error``), never decided by the exception alone.
+            raise TransferError(creation_error(exc, secrets=self._secrets())) from None
+        try:
+            await self._bootstrap(resource)
+            observation = replace(await self.observe(resource), request=request)
+        except TransferError as exc:
+            # The torrent exists and its id is known: it reaches DebridPulse's
+            # durable provider-resource boundary unready rather than vanish
+            # with this exception -- a failed file selection or first
+            # observation is no proof it is gone, and only a bound resource is
+            # observed again (``observe`` re-selects a torrent still waiting
+            # for its file selection) and cleaned up.
+            unknown = ProviderObservation(resource, ResourceState.UNKNOWN, error=exc.error, request=request)
+            return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         return ResolutionResult(observation.state, observation=observation, error=observation.error)
 
     async def _already_active(self, request: TransferRequest, exc: RealDebridAPIError) -> ProviderResource:
@@ -206,6 +221,7 @@ class RealDebridProvider:
             raise exc
         return replace(matches[0].resource, ownership=Ownership.ADOPTED)
 
+    @normalized_boundary(Stage.RESOLUTION)
     async def _bootstrap(self, resource: ProviderResource) -> None:
         """Real-Debrid's own start action: select every file upstream.
 

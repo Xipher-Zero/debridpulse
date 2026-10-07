@@ -51,6 +51,8 @@ def _application():
         notify_applicability_changed=lambda _identity: None,
         apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=AsyncMock(),
+        # No integration of this double gates an option on account truth.
+        option_availability=lambda _definition: {},
     )
 
 

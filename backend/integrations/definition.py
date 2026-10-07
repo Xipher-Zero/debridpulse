@@ -304,6 +304,18 @@ class IntegrationPresentation:
 
 
 @dataclass(frozen=True)
+class EntitlementOption:
+    """An option whose ``True`` makes the integration offer ``request_types``
+    -- something only an account entitled to them can do. Declared by the
+    integration; ``requirement`` is its own short reason (the plan it needs),
+    shown wherever the option is not available. The account owner's own
+    truth decides availability (``integrations.account_entitlement``)."""
+    option: str
+    request_types: frozenset[str]
+    requirement: str
+
+
+@dataclass(frozen=True)
 class IntegrationDefinition:
     id: str
     kind: str
@@ -335,6 +347,11 @@ class IntegrationDefinition:
     # means the integration owns exactly its own id.
     durable_identities: frozenset[str] = frozenset()
     presentation: IntegrationPresentation = IntegrationPresentation()
+    # Options an operator may turn on only while the connected account is
+    # entitled to what they offer: never canonical once account truth proves
+    # otherwise (``ApplicationService.validate_configuration`` refuses the
+    # change; ``converge_entitled_options`` turns a stale one off).
+    entitlement_options: tuple[EntitlementOption, ...] = ()
 
     @property
     def owned_identities(self) -> frozenset[str]:

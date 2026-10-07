@@ -939,15 +939,19 @@ class TransferRepository(_QualifiedTransferRepository):
             return None
 
     async def bind_standby(self, standby_id: str, transfer_id: int, resource: ProviderResource,
-                           state: ResourceState, now: float) -> str:
+                           state: ResourceState, now: float, *, cleanup: str | None = None) -> str:
         """Record the resource a preparation holds as the transfer's ordinary
         resource binding and the preparation as bound to it. A resource
         another live transfer already holds is refused exactly as for any
-        binding (``OWNERSHIP_CONFLICT``) and nothing is recorded."""
+        binding (``OWNERSHIP_CONFLICT``) and nothing is recorded. ``cleanup``:
+        the cleanup intent it gets in the same transaction (a backup found for
+        a transfer that is gone)."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
                 binding_id = await self._resource(db, transfer_id, resource, state)
+                if cleanup:
+                    await self.cleanup_intent(transfer_id, resource.id, cleanup, db=db)
             except Exception:
                 await db.rollback()
                 raise
@@ -973,6 +977,39 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.execute(
                 """UPDATE standby_resources SET state='deferred',error=?,attempts=attempts+1,retry_at=?,updated_at=?
                    WHERE id=? AND state='creating'""", (codec.dump(error), retry_at, now, standby_id))
+            await db.commit()
+
+    async def unowned_standby_creations(self, now: float) -> tuple[dict, ...]:
+        """``creating`` claims of transfers no longer live (deleted or
+        finished), due by ``now``: an attempt there may have created the
+        backup, and no backup pass reaches it any more. ``id``,
+        ``request_id``, ``provider_id``, ``transfer_id``, ``status``,
+        ``delete_remote``."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT s.id,s.request_id,s.provider_id,s.transfer_id,t.status,t.delete_remote
+                   FROM standby_resources s JOIN torrents t ON t.id=s.transfer_id
+                   WHERE s.state='creating' AND s.retry_at<=?
+                   AND t.status IN ('deleted','completed','consolidated','cancelled')""", (now,))
+        return tuple(dict(row) for row in rows)
+
+    async def defer_standby_reconciliation(self, standby_id: str, at: float) -> None:
+        """A ``creating`` claim whose reconciliation could not settle yet is
+        next due ``at``; it stays ``creating``."""
+        async with get_db() as db:
+            await db.execute("UPDATE standby_resources SET retry_at=? WHERE id=? AND state='creating'",
+                             (at, standby_id))
+            await db.commit()
+
+    async def uncertain_standby(self, standby_id: str, error: NormalizedError, now: float) -> None:
+        """An attempt whose provider may have created the backup although no
+        answer named it: the claim stays ``creating`` -- reconciled, never
+        repeated blindly (``TransferEngine._reconcile_standby_claims``) --
+        carrying that uncertain ``error`` and one more spent attempt."""
+        async with get_db() as db:
+            await db.execute(
+                """UPDATE standby_resources SET error=?,attempts=attempts+1,updated_at=?
+                   WHERE id=? AND state='creating'""", (codec.dump(error), now, standby_id))
             await db.commit()
 
     async def fail_standby(self, standby_id: str, error: NormalizedError, now: float) -> None:

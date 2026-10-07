@@ -38,10 +38,14 @@ def _application(current, *, validate_configuration=None, aria2_admin=None):
     # A single stable admin object (not a fresh one per ``integration_admin``
     # call) so tests can assert on its ``apply_memory_tuning`` mock.
     admin = aria2_admin if aria2_admin is not None else SimpleNamespace(apply_memory_tuning=AsyncMock())
+    exclusive = []
     return SimpleNamespace(
         definitions=DEFINITIONS,
         application_operation=lambda: _noop(),
-        configuration_admission=lambda: _raise_if_entered(),
+        # Exclusive admission is the connection-replacement path only; the
+        # double records every entry so a test can tell which path ran.
+        configuration_admission=lambda: _recorded(exclusive),
+        exclusive=exclusive,
         configure=MockConfigure(),
         reconcile_executions=AsyncMock(),
         integration_admin=lambda _identity: admin,
@@ -53,6 +57,8 @@ def _application(current, *, validate_configuration=None, aria2_admin=None):
         notify_applicability_changed=lambda _identity: None,
         apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=validate_configuration or AsyncMock(),
+        # No integration of this double gates an option on account truth.
+        option_availability=lambda _definition: {},
         execution_runtime_limits=AsyncMock(side_effect=lambda: {
             "ok": True, "configured": {}, "effective": {}, "last_apply_error": None}),
     )
@@ -64,9 +70,9 @@ async def _noop():
 
 
 @asynccontextmanager
-async def _raise_if_entered():
-    raise AssertionError("configuration_admission() (ApplicationMaintenanceGate) must never be entered by a scoped route")
-    yield  # pragma: no cover
+async def _recorded(entries):
+    entries.append(True)
+    yield
 
 
 class MockConfigure:
@@ -418,13 +424,23 @@ async def test_aria2_settings_carry_no_daemon_topology_and_tuning_round_trips():
     assert set(result["options"]) == CURRENT_ARIA2_OPTIONS
 
 
-def test_integration_configuration_route_never_acquires_configuration_admission():
-    source = __import__("pathlib").Path(routes.__file__).read_text(encoding="utf-8")
-    start = source.index("async def patch_integration_configuration(")
-    end = source.index("\n\n@router.", start)
-    body = source[start:end]
-    assert "application.application_operation()" in body
-    assert "configuration_admission" not in body
+@pytest.mark.asyncio
+async def test_only_replacing_a_connection_takes_the_exclusive_configuration_admission():
+    """A tunable keeps the ordinary admission; replacing an ownership field
+    (the connection) takes the exclusive one, so admitted productive work has
+    drained before the connection's references are read."""
+    current = _settings_with_full_integrations()
+    application = _application(current)
+    with patch("api.routes.get_settings", return_value=current), \
+         patch("api.routes.load_settings", side_effect=lambda: current.model_copy(deep=True)), \
+         patch("api.routes.save_settings"), patch("api.routes.apply_settings"):
+        await routes.patch_integration_configuration(
+            "aria2", routes.IntegrationConfigurationUpdate(options={"split": 40}), application=application)
+        assert application.exclusive == []
+        await routes.patch_integration_configuration(
+            "alldebrid", routes.IntegrationConfigurationUpdate(options={"api_key": "rotated-key"}),
+            application=application)
+        assert application.exclusive == [True]
 
 
 # --------------------------------------------------------------------------- #

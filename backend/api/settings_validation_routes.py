@@ -403,9 +403,10 @@ async def _record_verification_outcome(application: ApplicationService, integrat
     """Persist the outcome of a Test about the CURRENT saved configuration.
 
     It takes the same narrow config-write lock every other settings mutation
-    uses, and it needs no admission of its own: these are POST routes, so the
-    application mutation-admission middleware is already holding
-    ``application_operation()`` for the whole request.
+    uses, inside its own ordinary ``application_operation()``: a connection
+    flow that saves through the canonical scoped mutation owns its admission
+    instead of the request middleware, and a Test route still under the
+    middleware simply nests it.
 
     Returns the integration's canonical PUBLIC projection when durable evidence
     actually changed, so the caller can publish the accepted state through the
@@ -419,18 +420,19 @@ async def _record_verification_outcome(application: ApplicationService, integrat
     definition = next((item for item in application.definitions if item.id == integration_id), None)
     if definition is None:
         return None
-    async with config_write_lock():
-        settings = load_settings()
-        saved = bool(saved_subjects(settings, definition, fingerprint))
-        updated = record_verification_outcome(settings, definition, fingerprint, ok)
-        if updated is not None:
-            _persist_evidence(updated)
-    if ok and saved:
-        # A successful Test of the SAVED account is the operator asking to
-        # check now: the live account-truth owner refreshes, enabled or not,
-        # and nothing about enablement changes. A draft's Test matches no saved
-        # subject and touches no live truth.
-        await application.refresh_account_entitlement(integration_id)
+    async with application.application_operation():
+        async with config_write_lock():
+            settings = load_settings()
+            saved = bool(saved_subjects(settings, definition, fingerprint))
+            updated = record_verification_outcome(settings, definition, fingerprint, ok)
+            if updated is not None:
+                _persist_evidence(updated)
+        if ok and saved:
+            # A successful Test of the SAVED account is the operator asking to
+            # check now: the live account-truth owner refreshes, enabled or
+            # not, and nothing about enablement changes. A draft's Test matches
+            # no saved subject and touches no live truth.
+            await application.refresh_account_entitlement(integration_id)
     if updated is None:
         return None
     return public_integrations(updated, application.definitions).get(integration_id)

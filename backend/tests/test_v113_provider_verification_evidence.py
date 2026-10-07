@@ -290,12 +290,15 @@ def _application():
     return SimpleNamespace(
         definitions=DEFINITIONS,
         application_operation=lambda: _noop(),
+        configuration_admission=lambda: _noop(),
         configure=lambda: None,
         integration_admin=lambda _identity: SimpleNamespace(apply_memory_tuning=AsyncMock()),
         apply_integration_configuration=AsyncMock(return_value=None),
         validate_configuration=AsyncMock(),
         notify_applicability_changed=lambda _identity: None,
         refresh_account_entitlement=AsyncMock(return_value=False),
+        # No integration of this double gates an option on account truth.
+        option_availability=lambda _definition: {},
     )
 
 

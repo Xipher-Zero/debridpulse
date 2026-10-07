@@ -703,7 +703,7 @@ class TransferRepository:
         executor's), and work recorded under ANY of them is a reference to that
         integration's configuration.
 
-        Three things are a real dependency, and nothing else is:
+        Four things are a real dependency, and nothing else is:
 
         1. a live authorized execution for an owned executor identity;
         2. a NONTERMINAL transfer still holding a non-ABSENT provider resource,
@@ -711,7 +711,13 @@ class TransferRepository:
         3. genuinely outstanding cleanup -- the durable cleanup owner still has
            responsibility to act -- which needs the credential it was recorded
            against. That is the canonical `pending_cleanup` predicate, not a
-           second cleanup state machine.
+           second cleanup state machine;
+        4. an outstanding creation reconciliation -- a primary attempt that
+           armed or owes one (``reconcile_at``), or a backup claim still
+           ``creating`` (a create whose result may never have become durable)
+           -- which can only be settled against the account the creation was
+           asked of: another account's inventory would prove its absence
+           falsely.
 
         What is NOT a dependency is HISTORY. A completed or deleted transfer
         keeps its provider-resource row as provenance, and that row keeps
@@ -739,14 +745,21 @@ class TransferRepository:
         )
         live_execution = ("SELECT id FROM execution_attempts WHERE authorized=1"
                           " AND state IN ('prepared','queued','running','paused','unknown')")
+        owed_creation = ("SELECT provider_id FROM resolution_attempts WHERE reconcile_at IS NOT NULL"
+                         " UNION ALL SELECT provider_id FROM standby_resources WHERE state='creating'")
         async with get_db() as db:
             if not identities:
                 if await db.fetchone(f"{live_execution} LIMIT 1", ()):
+                    return True
+                if await db.fetchone(f"{owed_creation} LIMIT 1", ()):
                     return True
                 return bool(await db.fetchone(f"{owned} LIMIT 1", _TERMINAL_TRANSFER_STATUSES))
             placeholders = ",".join("?" for _ in identities)
             params = tuple(identities)
             if await db.fetchone(f"{live_execution} AND executor_id IN ({placeholders}) LIMIT 1", params):
+                return True
+            if await db.fetchone(f"SELECT 1 FROM ({owed_creation}) WHERE provider_id IN ({placeholders}) LIMIT 1",
+                                 params):
                 return True
             return bool(await db.fetchone(
                 f"{owned} AND r.provider_id IN ({placeholders}) LIMIT 1",
@@ -2423,7 +2436,11 @@ class TransferRepository:
                 await self._resource(db, row["transfer_id"], result.observation.resource, result.observation.state)
             error = codec.dump(result.error) if result.error else None
             status = "failed" if result.error else "succeeded"
-            await db.execute("UPDATE resolution_attempts SET state=?,error=?,result=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (status, error, codec.dump(result), attempt.id))
+            # An attempt that now names its resource owes no reconciliation of
+            # a creation it may have made: that creation is this resource.
+            await db.execute("UPDATE resolution_attempts SET state=?,error=?,result=?,updated_at=CURRENT_TIMESTAMP,"
+                             "reconcile_at=CASE WHEN ? THEN NULL ELSE reconcile_at END WHERE id=?",
+                             (status, error, codec.dump(result), bool(result.observation), attempt.id))
             await db.execute("""UPDATE route_attempt_provenance SET outcome=?,candidate_summary=?,updated_at=CURRENT_TIMESTAMP
                 WHERE resolution_attempt_id=?""",
                 ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
@@ -2434,6 +2451,136 @@ class TransferRepository:
                                  (request_state, resource, error, attempt.request_id))
             await db.commit()
         return row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}
+
+    async def hold_uncertain_resolution(self, attempt: ResolutionAttempt, error: NormalizedError, retry_at: float,
+                                        *, consume_attempt: bool = False) -> bool:
+        """Keep a root's creation attempt open while its provider may have
+        created the resource although no answer named it (``error`` is that
+        uncertain failure). The attempt stays ``started`` -- the route's own,
+        never a failure that frees it for another creation -- carrying the
+        error, and owes a reconciliation at ``retry_at`` (``reconcile_at``):
+        the durable obligation, which outlives the route and the transfer
+        until reconciliation settles it (``settle_creation``). The request
+        waits, ``pending``, until then, when its next resolution settles the
+        attempt first (``TransferEngine._settle_uncertain_resolution``).
+        ``consume_attempt``: an inconclusive settlement spends one of the
+        request's attempts. ``False`` when the route cannot hold: the attempt
+        is no longer open, or its request or transfer is (deleted meanwhile)
+        -- the obligation is still recorded on an open attempt then, and
+        reconciled without its route (``_settle_unowned_creations``)."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            error_blob = codec.dump(error)
+            opened = await db.execute(
+                "UPDATE resolution_attempts SET error=?,reconcile_at=?,updated_at=CURRENT_TIMESTAMP "
+                "WHERE id=? AND state='started'", (error_blob, retry_at, attempt.id))
+            if not opened.rowcount:
+                await db.rollback()
+                return False
+            held = await db.execute(
+                """UPDATE transfer_requests SET state='pending',error=?,retry_at=?,attempts=attempts+? WHERE id=?
+                   AND state IN ('resolving','pending') AND transfer_id IN (SELECT id FROM torrents
+                   WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
+                (error_blob, retry_at, int(consume_attempt), attempt.request_id))
+            await db.commit()
+        return bool(held.rowcount)
+
+    async def arm_creation(self, attempt_id: str, at: float) -> bool:
+        """Owe a creation reconciliation BEFORE a productive provider call
+        whose outcome its inventory can settle: from here until the outcome
+        is known -- a resource bound (``resolution``), a definitive
+        non-creation (``settle_creation``) -- a process that ends mid-call
+        leaves the obligation, never a bare interrupted attempt."""
+        async with get_db() as db:
+            armed = await db.execute(
+                "UPDATE resolution_attempts SET reconcile_at=? WHERE id=? AND state='started'", (at, attempt_id))
+            await db.commit()
+        return bool(armed.rowcount)
+
+    async def armed_resolution(self, request_id: str) -> ResolutionAttempt | None:
+        """The request's open attempt that was armed (``arm_creation``) and
+        never learned its outcome -- the process ended mid-call; ``None`` for
+        an unarmed one, which is never read as a creation."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT id,provider_id FROM resolution_attempts WHERE request_id=? AND state='started'
+                   AND reconcile_at IS NOT NULL ORDER BY rowid DESC LIMIT 1""", (request_id,))
+        return ResolutionAttempt(str(row["id"]), request_id, str(row["provider_id"]), "started") if row else None
+
+    async def uncertain_resolution(self, request_id: str) -> tuple[ResolutionAttempt, NormalizedError] | None:
+        """The request's open creation attempt that still owes a
+        reconciliation (``hold_uncertain_resolution``), with its uncertain
+        error; ``None`` for anything else -- an attempt merely interrupted
+        owes none and is never read as one."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT id,provider_id,error FROM resolution_attempts WHERE request_id=? AND state='started'
+                   AND reconcile_at IS NOT NULL ORDER BY rowid DESC LIMIT 1""", (request_id,))
+        error = codec.error(row["error"]) if row else None
+        if error is None:
+            return None
+        return ResolutionAttempt(str(row["id"]), request_id, str(row["provider_id"]), "started", error), error
+
+    async def defer_creation_reconciliation(self, attempt_id: str, at: float) -> None:
+        """An owed reconciliation that could not settle yet is next due ``at``."""
+        async with get_db() as db:
+            await db.execute("UPDATE resolution_attempts SET reconcile_at=? WHERE id=? AND reconcile_at IS NOT NULL",
+                             (at, attempt_id))
+            await db.commit()
+
+    async def unowned_creations(self, now: float) -> tuple[dict, ...]:
+        """Owed reconciliations no route settles any more -- the attempt's
+        route ended (an inconclusive settlement spent its budget, or another
+        transition closed the attempt), or its transfer was deleted or
+        finished -- due by ``now``: ``attempt_id``, ``provider_id``,
+        ``request_id``, ``transfer_id``, ``status``, ``delete_remote``.
+        Deleting a transfer never discards the obligation; only
+        ``settle_creation`` does."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT a.id AS attempt_id,a.provider_id,a.request_id,r.transfer_id,t.status,t.delete_remote
+                   FROM resolution_attempts a JOIN transfer_requests r ON r.id=a.request_id
+                   JOIN torrents t ON t.id=r.transfer_id
+                   WHERE a.reconcile_at IS NOT NULL AND a.reconcile_at<=?
+                   AND (a.state!='started' OR t.status IN ('deleted','completed','consolidated','cancelled'))
+                   ORDER BY a.reconcile_at""", (now,))
+        return tuple(dict(row) for row in rows)
+
+    async def settle_creation(self, attempt_id: str, *, transfer_id: int | None = None,
+                              resource: ProviderResource | None = None, state: ResourceState | None = None,
+                              cleanup: str | None = None) -> str:
+        """Settle an owed reconciliation, atomically. Without ``resource``:
+        proven absent (or nothing to own). With it: the creation found --
+        bound to the transfer as DebridPulse's ordinary resource and, with
+        ``cleanup``, given that cleanup intent so the one cleanup cadence
+        removes it. A resource this transfer already binds keeps its own
+        lifecycle (``"known"``); one another live transfer holds is not
+        DebridPulse's to take (``"foreign"``). ``"bound"`` / ``"settled"``
+        otherwise."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            outcome = "settled"
+            if resource is not None:
+                known = await db.fetchone(
+                    "SELECT 1 FROM provider_resources WHERE transfer_id=? AND (resource_key=? OR "
+                    "(resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
+                if known:
+                    outcome = "known"
+                else:
+                    try:
+                        await self._resource(db, transfer_id, resource, state)
+                    except TransferError as exc:
+                        if exc.error.category != Category.OWNERSHIP_CONFLICT:
+                            await db.rollback()
+                            raise
+                        outcome = "foreign"
+                    else:
+                        outcome = "bound"
+                        if cleanup:
+                            await self.cleanup_intent(transfer_id, resource.id, cleanup, db=db)
+            await db.execute("UPDATE resolution_attempts SET reconcile_at=NULL WHERE id=?", (attempt_id,))
+            await db.commit()
+        return outcome
 
     async def record_interpretation(self, request_id: str, interpretation: TransferRequest) -> None:
         """Durably establish the provider's alternate reading of one request

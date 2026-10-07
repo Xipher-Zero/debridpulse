@@ -16,11 +16,11 @@ from uuid import NAMESPACE_URL, uuid5
 import aiohttp
 
 from providers.realdebrid.client import (
-    CREDENTIAL_MISSING, OAUTH_GRANT_REJECTED, RealDebridAPIError, RealDebridProtocolError,
+    CREDENTIAL_MISSING, OAUTH_GRANT_REJECTED, RealDebridAPIError, RealDebridProtocolError, RealDebridRequestNotSent,
 )
 from services.network_safety import UnsafeDestinationError
 from transfers.errors import (
-    Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
+    Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.file_selection import collection_member_paths
@@ -148,6 +148,8 @@ def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
                     secrets: tuple[str, ...] = ()) -> NormalizedError:
     if isinstance(exc, TransferError):
         return exc.error
+    if isinstance(exc, RealDebridRequestNotSent):
+        return translate_error(exc.cause, stage=stage, secrets=secrets)
     if isinstance(exc, RealDebridAPIError):
         return error_from_native(exc, stage=stage, secrets=secrets)
     if isinstance(exc, RealDebridProtocolError):
@@ -166,6 +168,24 @@ def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
         )
     return _error(Category.UNMAPPED_PROVIDER_ERROR, Retryability.UNKNOWN, "unmapped", exc,
                   stage=stage, secrets=secrets, known=False)
+
+
+def creation_error(exc: Exception, *, secrets: tuple[str, ...] = ()) -> NormalizedError:
+    """A creation that yielded no usable answer, with whether Real-Debrid may
+    have created the torrent anyway (``MutationOutcome``).
+
+    Only a positive fact proves nothing was created: Real-Debrid's own refusal
+    (a native code, or a client-side status), a request its client never
+    transmitted (``RealDebridRequestNotSent``), or a connection that was never
+    established. Anything else -- a success answer whose body is unusable or
+    names no torrent, a server-side failure page without a native code, a
+    timeout, a connection lost once the request could have been processed --
+    cannot rule the creation out."""
+    error = translate_error(exc, stage=Stage.RESOLUTION, secrets=secrets)
+    refused = isinstance(exc, RealDebridAPIError) and bool(exc.error_code is not None or exc.status < 500)
+    if refused or isinstance(exc, (RealDebridRequestNotSent, aiohttp.ClientConnectorError)):
+        return error
+    return replace(error, mutation=MutationOutcome.UNCERTAIN)
 
 
 def resource_from_native(native: dict, *, ownership: Ownership = Ownership.OBSERVED) -> ProviderResource:

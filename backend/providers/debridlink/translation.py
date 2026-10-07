@@ -17,7 +17,7 @@ Two native shapes become provider resources:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from uuid import NAMESPACE_URL, uuid5
 
@@ -28,7 +28,7 @@ from providers.debridlink.client import (
 )
 from services.network_safety import UnsafeDestinationError
 from transfers.errors import (
-    Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
+    Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.file_selection import ManifestInvalid, collection_member_paths
@@ -158,6 +158,23 @@ def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
         )
     return _error(Category.UNMAPPED_PROVIDER_ERROR, Retryability.UNKNOWN, "unmapped", exc,
                   stage=stage, secrets=secrets, known=False)
+
+
+def creation_error(exc: Exception, *, secrets: tuple[str, ...] = ()) -> NormalizedError:
+    """A creation that yielded no usable answer, with whether Debrid-Link may
+    have created the torrent anyway (``MutationOutcome``).
+
+    Only a positive fact proves nothing was created: Debrid-Link's own refusal
+    (a native code, or a client-side status), or a connection that was never
+    established. Anything else -- a success answer whose body is unusable or
+    names no torrent, a server-side failure page without a native code, a
+    timeout, a connection lost once the request could have been processed --
+    cannot rule the creation out."""
+    error = translate_error(exc, stage=Stage.RESOLUTION, secrets=secrets)
+    refused = isinstance(exc, DebridLinkAPIError) and bool(exc.error or exc.status < 500)
+    if refused or isinstance(exc, aiohttp.ClientConnectorError):
+        return error
+    return replace(error, mutation=MutationOutcome.UNCERTAIN)
 
 
 def _adapter_error(stage: Stage = Stage.RESOLUTION) -> TransferError:

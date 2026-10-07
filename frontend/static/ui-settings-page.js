@@ -1807,6 +1807,11 @@
     // Absent means OFF: TorBox participates only once an operator turns it on,
     // exactly as its definition declares.
     const torBox = integrations.torbox || {enabled: false};
+    // An option the connected account is not entitled to (the backend's
+    // `option_availability`, decided from account truth) is off and cannot
+    // be turned on; its requirement replaces the hint.
+    const usenetGate = torBox.option_availability?.usenet_enabled;
+    const usenetUnavailable = usenetGate?.available === false;
     const torBoxCard = providerCard('torbox', 'TorBox', `
       <div class="dp-settings-account-connection" data-torbox-connection>${deviceConnectionMarkup('torbox')}</div>
       <details class="dp-settings-additional">
@@ -1814,8 +1819,9 @@
         <div class="dp-settings-additional-body">
           ${tuningCells(
             tuningToggle('torbox_usenet_enabled', 'Usenet via TorBox',
-              'Let TorBox process NZB downloads remotely. Native Usenet stays available whenever it is set up.',
-              torBoxOf(s).usenet_enabled === true),
+              usenetUnavailable ? usenetGate.requirement
+                : 'Let TorBox process NZB downloads remotely. Native Usenet stays available whenever it is set up.',
+              !usenetUnavailable && torBoxOf(s).usenet_enabled === true, {disabled: usenetUnavailable}),
             tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
               'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
               torBoxOf(s).prepare_backup_torrents === true),

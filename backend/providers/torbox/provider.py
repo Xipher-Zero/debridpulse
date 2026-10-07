@@ -23,8 +23,8 @@ from providers.torbox.client import (
     parse_member_address,
 )
 from providers.torbox.translation import (
-    INTEGRATION_ID, identity, native_members, observation, protocol_error, resource, translate_error,
-    webdl_source_host,
+    INTEGRATION_ID, creation_error, identity, native_members, observation, protocol_error, resource,
+    translate_error, webdl_source_host,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
@@ -182,8 +182,26 @@ class TorBoxProvider:
             # exhaustion and failover are the core's); it only also tells the
             # account owner what this plan excludes.
             await self._refused(exc, request.kind)
+            if request.kind in BITTORRENT_REQUEST_KINDS:
+                raise TransferError(creation_error(exc, secrets=self.client.secrets())) from None
             raise
-        observed = replace(await self.observe(resource(family, native_id, ownership=ownership)), request=request)
+        return await self._owned(resource(family, native_id, ownership=ownership), request)
+
+    async def _owned(self, value: ProviderResource, request: TransferRequest) -> ResolutionResult:
+        """The resolution of an object TorBox just created or adopted.
+
+        Its native identity is known, so it reaches DebridPulse's durable
+        provider-resource boundary even when the first observation fails:
+        that failure is no proof the object is gone, and raising here would
+        lose the only record of it -- nothing could observe it again or clean
+        it up. It is handed over unready (``UNKNOWN``, carrying what the
+        observation said) and the ordinary observation of a bound resource
+        decides what happens next."""
+        try:
+            observed = replace(await self.observe(value), request=request)
+        except TransferError as exc:
+            unknown = ProviderObservation(value, ResourceState.UNKNOWN, error=exc.error, request=request)
+            return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         return ResolutionResult(observed.state, observation=observed, error=observed.error)
 
     async def _webdl(self, link: str) -> str:
@@ -259,9 +277,7 @@ class TorBoxProvider:
             raise
         if native_id is None:
             return None
-        observed = replace(await self.observe(resource(WEBDL, native_id, ownership=Ownership.CREATED)),
-                           request=request)
-        return ResolutionResult(observed.state, observation=observed, error=observed.error)
+        return await self._owned(resource(WEBDL, native_id, ownership=Ownership.CREATED), request)
 
     async def _torrent(self, request: TransferRequest) -> tuple[str, Ownership]:
         try:
@@ -280,6 +296,13 @@ class TorBoxProvider:
             if exc.error.upper() != "DUPLICATE_ITEM":
                 raise
             return await self._already_present(request, exc), Ownership.ADOPTED
+        except TransferError:
+            raise
+        except Exception as exc:
+            # TorBox was asked to create the torrent and gave no usable answer:
+            # whether it created it anyway is the creation's own truth
+            # (``creation_error``), never decided by the exception alone.
+            raise TransferError(creation_error(exc, secrets=self.client.secrets())) from None
 
     async def _already_present(self, request: TransferRequest, exc: TorBoxAPIError) -> str:
         """Adopt the account's existing torrent when TorBox refuses a duplicate

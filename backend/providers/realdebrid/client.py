@@ -60,6 +60,17 @@ class RealDebridProtocolError(Exception):
     """A Real-Debrid response that does not have the documented shape."""
 
 
+class RealDebridRequestNotSent(Exception):
+    """A productive request that was never performed: refreshing the access
+    token it needed failed before the request was transmitted (or replayed
+    after Real-Debrid refused the stale token, which performed nothing).
+    ``cause`` is that failure, translated exactly as it would be alone."""
+
+    def __init__(self, cause: BaseException):
+        self.cause = cause
+        super().__init__(str(cause))
+
+
 # Not a native code: the token endpoint refused the stored grant. Definitive --
 # the operator has to connect again -- and distinct from any numeric code.
 OAUTH_GRANT_REJECTED = "oauth_grant_rejected"
@@ -255,16 +266,27 @@ class RealDebridService:
             return self._access_token
 
     async def _authorized(self, method: str, path: str, *, params=None, data=None,
-                          timeout=None) -> RawResponse:
+                          timeout=None, productive: bool = False) -> RawResponse:
+        """``productive``: the request creates something remotely, so a token
+        refresh that fails before it is transmitted says so
+        (``RealDebridRequestNotSent``) -- that creation never happened."""
+        async def refreshed(stale):
+            try:
+                return await self._refresh(stale)
+            except Exception as exc:
+                if productive:
+                    raise RealDebridRequestNotSent(exc) from exc
+                raise
+
         token = self._access_token
         if not token or self._clock() >= self._access_expires_at:
-            token = await self._refresh(token)
+            token = await refreshed(token)
         response = await self._send(method, f"{API}/{path}", headers={"Authorization": f"Bearer {token}"},
                                     params=params, data=data, timeout=timeout)
         if response.status == 401:
             # The protocol's own recovery: a refused access token is refreshed
             # once and the refused call replayed once. Nothing was performed.
-            token = await self._refresh(token)
+            token = await refreshed(token)
             response = await self._send(method, f"{API}/{path}", headers={"Authorization": f"Bearer {token}"},
                                         params=params, data=data, timeout=timeout)
         if response.status >= 400:
@@ -284,12 +306,13 @@ class RealDebridService:
                        "unrestricted link")
 
     async def add_magnet(self, magnet: str) -> dict:
-        return _object(_decode(await self._authorized("POST", "torrents/addMagnet", data={"magnet": magnet})),
-                       "torrent creation")
+        return _object(_decode(await self._authorized("POST", "torrents/addMagnet", data={"magnet": magnet},
+                                                      productive=True)), "torrent creation")
 
     async def add_torrent(self, metainfo: bytes) -> dict:
         return _object(_decode(await self._authorized("PUT", "torrents/addTorrent", data=bytes(metainfo),
-                                                      timeout=self.upload_timeout)), "torrent creation")
+                                                      timeout=self.upload_timeout, productive=True)),
+                       "torrent creation")
 
     async def active_count(self) -> dict:
         """``GET /torrents/activeCount``: "currently active torrents number and

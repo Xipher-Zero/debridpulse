@@ -1,7 +1,9 @@
 """TorBox registration and provider-owned settings schema."""
 from pydantic import BaseModel, Field
 
-from integrations.definition import IntegrationDefinition, IntegrationPresentation, VerificationSubject
+from integrations.definition import (
+    EntitlementOption, IntegrationDefinition, IntegrationPresentation, VerificationSubject,
+)
 from providers.torbox.rate_limit import SERVICE_LIMIT_PER_MINUTE
 
 
@@ -92,6 +94,9 @@ definition = IntegrationDefinition(
     # uses TorBox is not reported as an unconfigured provider.
     default_enabled=False,
     verification_subjects=_verification_subjects,
+    # "Usenet via TorBox" offers NZBs, which only a plan with Usenet takes
+    # (``providers.torbox.account.PLAN_ENTITLEMENT``: Pro).
+    entitlement_options=(EntitlementOption("usenet_enabled", frozenset({"nzb"}), "Requires TorBox Pro."),),
     presentation=IntegrationPresentation(
         status_name="TorBox",
         premium=True,

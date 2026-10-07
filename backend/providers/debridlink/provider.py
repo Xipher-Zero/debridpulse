@@ -27,11 +27,11 @@ from urllib.parse import urlsplit
 
 from providers.debridlink.account import HOSTERS
 from providers.debridlink.client import (
-    MAX_IDS, DebridLinkService, member_address, native_id, parse_member_address,
+    MAX_IDS, DebridLinkProtocolError, DebridLinkService, member_address, native_id, parse_member_address,
 )
 from providers.debridlink.translation import (
-    INTEGRATION_ID, LINKS, SEEDBOX, identity, link_members, links_observation, links_resource, protocol_error,
-    seedbox_members, seedbox_observation, seedbox_resource, translate_error,
+    INTEGRATION_ID, LINKS, SEEDBOX, creation_error, identity, link_members, links_observation, links_resource,
+    protocol_error, seedbox_members, seedbox_observation, seedbox_resource, translate_error,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
@@ -174,18 +174,35 @@ class DebridLinkProvider:
         if request.kind in {"http", "https"}:
             return await self._hoster(request)
         if request.kind == "magnet":
-            created = await self.client.add_torrent(magnet=str(request.payload))
+            create = {"magnet": str(request.payload)}
         elif request.kind == "torrent" and isinstance(request.payload, bytes):
-            created = await self.client.add_torrent(metainfo=request.payload, name=request.name or "")
+            create = {"metainfo": request.payload, "name": request.name or ""}
         else:
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST,
                                                 Stage.SUBMISSION, Retryability.NEVER,
                                                 origin=Origin.USER, integration_id=INTEGRATION_ID))
-        torrent = native_id(created.get("id"))
-        if torrent is None:
-            raise TransferError(protocol_error(Stage.RESOLUTION, "torrent creation without an id"))
-        observed = replace(await self.observe(seedbox_resource(torrent, ownership=Ownership.CREATED)),
-                           request=request)
+        try:
+            torrent = native_id((await self.client.add_torrent(**create)).get("id"))
+            if torrent is None:
+                raise DebridLinkProtocolError("Debrid-Link returned a torrent creation without an id")
+        except Exception as exc:
+            # Debrid-Link was asked to create the torrent and gave no usable
+            # answer (transfer 524: a nominal success that was not JSON, the
+            # torrent created anyway): whether it created it is the creation's
+            # own truth (``creation_error``), never decided by the exception.
+            raise TransferError(creation_error(exc, secrets=self.client.secrets())) from None
+        created_resource = seedbox_resource(torrent, ownership=Ownership.CREATED)
+        try:
+            observed = replace(await self.observe(created_resource), request=request)
+        except TransferError as exc:
+            # The torrent exists and its id is known: it reaches DebridPulse's
+            # durable provider-resource boundary unready rather than vanish
+            # with this exception -- a failed first observation is no proof it
+            # is gone, and only a bound resource is observed again and cleaned
+            # up. The ordinary observation of a bound resource decides next.
+            unknown = ProviderObservation(created_resource, ResourceState.UNKNOWN, error=exc.error,
+                                          request=request)
+            return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         return ResolutionResult(observed.state, observation=observed, error=observed.error)
 
     async def _hoster(self, request: TransferRequest) -> ResolutionResult:

@@ -258,6 +258,17 @@ class ApplicationService:
             if any(old.get(key) != new.get(key) for key in definition.ownership_fields):
                 if await self.repository.has_integration_references(definition.owned_identities):
                     raise ValueError(f"Finish or remove existing {definition.name} resources before changing its connection")
+        for definition in self.definitions:
+            # An option only an entitled account can use is refused, when it
+            # is turned on, while the connected account's own truth proves it
+            # is not entitled.
+            old = previous.integrations[definition.id].options
+            new = current.integrations[definition.id].options
+            for gated in definition.entitlement_options:
+                if new.get(gated.option) is True and old.get(gated.option) is not True:
+                    state = self.option_availability(definition)[gated.option]
+                    if not state["available"]:
+                        raise ValueError(state["requirement"])
         download_folder_changed = previous.download_folder != current.download_folder
         if download_folder_changed and await self.repository.has_integration_references():
             raise ValueError("Finish or remove existing resources before changing the download folder")
@@ -1028,3 +1039,52 @@ class ApplicationService:
         async with self.application_operation():
             for integration in self.lifecycle:
                 await integration.maintain()
+        # After the application operation: the canonical configuration write
+        # converge_entitled_options makes takes its own.
+        await self.converge_entitled_options()
+
+    def option_availability(self, definition) -> dict[str, dict]:
+        """``integrations.account_entitlement.option_availability`` of the
+        registered implementation of ``definition``."""
+        from integrations.account_entitlement import option_availability
+        if not definition.entitlement_options:
+            return {}
+        registry = self.engine.registry
+        implementation = registry.providers.get(definition.id) or registry.executors.get(definition.id)
+        return option_availability(definition, implementation)
+
+    async def converge_entitled_options(self) -> tuple[str, ...]:
+        """An option only an entitled account can use never stays saved once
+        the connected account's own truth proves it is not entitled (a plan
+        that no longer includes it): it is turned off through THE canonical
+        scoped configuration mutation (``mutate_integration_configuration``,
+        the owner beneath the HTTP route) -- validated, normalized, saved,
+        applied and reconfigured exactly as an operator's change, never a
+        second writer -- so the integration stops offering what its account cannot
+        do instead of staying degraded by an impossible setting. Woken by the
+        account owner's announcement of changed truth
+        (``notify_applicability_changed``). The integrations converged."""
+        from core.config import get_settings
+        from integrations.configuration_mutation import mutate_integration_configuration
+        settings, converged = get_settings(), []
+        for definition in self.definitions:
+            availability = self.option_availability(definition)
+            entry = settings.integrations.get(definition.id)
+            if entry is None or not availability:
+                continue
+            stale = {gated.option: False for gated in definition.entitlement_options
+                     if entry.options.get(gated.option) is True and not availability[gated.option]["available"]}
+            if not stale:
+                continue
+            try:
+                await mutate_integration_configuration(self, definition, options=stale)
+            except Exception as exc:
+                logger.warning("%s: could not turn off %s: %s", definition.name, ", ".join(sorted(stale)),
+                               sanitize_exception(exc))
+                continue
+            logger.info("%s: %s turned off -- the connected account is not entitled to it",
+                        definition.name, ", ".join(sorted(stale)))
+            converged.append(definition.id)
+        if converged:
+            await self.notify_status_changed()
+        return tuple(converged)

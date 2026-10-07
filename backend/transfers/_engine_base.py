@@ -122,7 +122,7 @@ from transfers.canonical import CanonicalOwnership
 from transfers.contracts import CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
 from transfers import codec
 from transfers.errors import (
-    Category, Domain, NormalizedError, Recovery, Retryability, Stage,
+    Category, Domain, MutationOutcome, NormalizedError, Recovery, Retryability, Stage,
     TransferError, unknown_failure,
 )
 from transfers.candidate_activation import reconcile_native_transition, resolve_candidate_index, retire_writer
@@ -984,6 +984,15 @@ class TransferEngine:
                 else:
                     raise TransferError(self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION))
             elif record.state == "resolving":
+                armed = await self.repository.armed_resolution(record.id)
+                if armed is not None and await self.repository.hold_uncertain_resolution(armed, NormalizedError(
+                        Domain.RECONCILIATION, Category.RECOVERY_FAILED, Stage.RECONCILIATION,
+                        integration_id=armed.provider_id, mutation=MutationOutcome.UNCERTAIN,
+                        diagnostic="interrupted while the provider was asked to create the resource"), self.clock()):
+                    # Interrupted inside a productive call it had armed: the
+                    # provider may have created the resource, so the ordinary
+                    # creation reconciliation settles it before anything else.
+                    return
                 error = self._error(Category.RECOVERY_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION)
                 await self.repository.request_failure(record.id, error, None)
         except Exception as exc:

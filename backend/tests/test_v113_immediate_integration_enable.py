@@ -62,6 +62,8 @@ def _application(wakeups):
         validate_configuration=AsyncMock(),
         notify_applicability_changed=wakeups,
         refresh_account_entitlement=AsyncMock(return_value=False),
+        # No integration of this double gates an option on account truth.
+        option_availability=lambda _definition: {},
     )
 
 
@@ -134,12 +136,16 @@ async def test_canonical_configuration_mutation_wakes_lifecycle_and_routing(inte
 
 @pytest.mark.asyncio
 async def test_the_wake_is_neutral_and_names_no_integration():
+    from integrations import configuration_mutation
     source = (Path(routes.__file__)).read_text(encoding="utf-8")
     block = source[source.index("async def patch_integration_configuration("):
                    source.index("@router.get(\"/stats/comprehensive\")")]
-    assert "notify_applicability_changed(integration_id)" in block
+    # The wake belongs to the one canonical scoped mutation the route delegates to.
+    owner = Path(configuration_mutation.__file__).read_text(encoding="utf-8")
+    assert "notify_applicability_changed(integration_id)" in owner
     for named in ("usenet", "sabnzbd", "alldebrid", "nzb", "nntp"):
         assert f'"{named}"' not in block.replace('integration_id == "aria2"', "")
+        assert f'"{named}"' not in owner
 
 
 # --- frontend: one shared immediate path, no surviving deferred writer ------

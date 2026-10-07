@@ -23,7 +23,7 @@ from providers.realdebrid.host_runtime import (
 from providers.realdebrid.provider import RealDebridProvider
 from providers.realdebrid.translation import translate_error
 from transfers.applicability import ApplicabilityReadiness
-from transfers.errors import Category, Retryability, TransferError
+from transfers.errors import Category, MutationOutcome, Retryability, TransferError
 from transfers.file_selection import normalize_relative_path, reconcile_executable_subset
 from transfers.models import (
     CachePresence, CleanupAuthority, CleanupDirective, DeliveryKind, OutcomeKind, Ownership, ResourceState,
@@ -440,6 +440,45 @@ async def test_a_selection_refused_before_the_file_list_exists_is_made_when_real
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("answer, mutation", [
+    (RealDebridProtocolError("Real-Debrid returned invalid JSON"), MutationOutcome.UNCERTAIN),
+    ({"uri": "https://api.real-debrid.com/rest/1.0/torrents/info/"}, MutationOutcome.UNCERTAIN),
+    (RealDebridAPIError(None, "", 524), MutationOutcome.UNCERTAIN),
+    (RealDebridAPIError(21, "too_many_active_downloads", 509), MutationOutcome.NOT_COMMITTED),
+    (RealDebridAPIError(19, "hoster_unavailable", 503), MutationOutcome.NOT_COMMITTED),
+], ids=["unreadable-success", "success-naming-no-torrent", "uncoded-server-failure", "native-refusal",
+        "coded-server-refusal"])
+async def test_a_creation_without_a_usable_answer_says_whether_it_may_have_happened(answer, mutation):
+    # Only Real-Debrid's own refusal proves nothing was created; an answer
+    # that arrived but names no torrent, or a server failure page, does not.
+    with pytest.raises(TransferError) as failed:
+        await RealDebridProvider(FakeClient(add_magnet=answer)).resolve(
+            TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40))
+    assert failed.value.error.mutation == mutation
+
+
+UNUSABLE_TOKEN = (200, {"token_type": "Bearer"})                  # a token answer without a token
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("script, sent", [
+    ({("POST", f"{OAUTH}/token"): [UNUSABLE_TOKEN]}, 0),
+    ({("POST", f"{OAUTH}/token"): [TOKEN, UNUSABLE_TOKEN],
+      ("POST", f"{API}/torrents/addMagnet"): [(401, {"error": "bad_token", "error_code": 8})]}, 1),
+], ids=["refresh-before-the-create", "refresh-before-its-replay"])
+async def test_a_creation_whose_token_refresh_failed_before_sending_was_not_committed(script, sent):
+    # The create was never performed -- not sent at all, or refused for its
+    # stale token and never replayed -- so nothing can have been created,
+    # whatever the refresh failure itself was.
+    client, transport = service(script)
+    with pytest.raises(TransferError) as failed:
+        await RealDebridProvider(client).resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40))
+    assert failed.value.error.mutation == MutationOutcome.NOT_COMMITTED
+    assert failed.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION      # the cause, translated as ever
+    assert len([call for call in transport.calls if call["url"].endswith("/torrents/addMagnet")]) == sent
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("refused, status, category", [
     # The same parameter refusal once Real-Debrid has a file list is not timing.
     (RealDebridAPIError(2, "parameter_missing", 400), "downloading", Category.INVALID_REQUEST),
@@ -447,11 +486,19 @@ async def test_a_selection_refused_before_the_file_list_exists_is_made_when_real
     (RealDebridAPIError(7, "unknown_ressource", 404), "magnet_conversion", Category.RESOURCE_NOT_FOUND),
     (RealDebridAPIError(999, "something_new", 400), "magnet_conversion", Category.UNMAPPED_PROVIDER_ERROR),
 ], ids=["parameter-refusal-after-conversion", "unrelated-400", "not-found", "unknown-native"])
-async def test_every_other_selection_refusal_propagates(refused, status, category):
+async def test_every_other_selection_refusal_hands_over_the_created_torrent_with_that_refusal(
+        refused, status, category):
+    # The torrent exists once add_magnet answered its id: a refused file
+    # selection is Real-Debrid's answer, but never a reason to lose the only
+    # record of the torrent. It crosses the durable boundary unready, carrying
+    # the normalized refusal.
     client = FakeClient(add_magnet={"id": "T1"}, select_files=refused, torrent_info=info(status))
-    with pytest.raises(TransferError) as failed:
-        await RealDebridProvider(client).resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40))
-    assert failed.value.error.category == category
+    request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40)
+    result = await RealDebridProvider(client).resolve(request)
+    assert result.state == ResourceState.UNKNOWN and result.error is None
+    assert result.observation.resource.context["id"] == "T1"
+    assert result.observation.resource.ownership == Ownership.CREATED
+    assert result.observation.error.category == category and result.observation.request is request
 
 
 @pytest.mark.asyncio
@@ -661,10 +708,13 @@ def _application(provider=None):
         yield
 
     return SimpleNamespace(
-        definitions=(definition,), application_operation=operation, configure=lambda: None,
+        definitions=(definition,), application_operation=operation, configuration_admission=operation,
+        configure=lambda: None,
         apply_integration_configuration=AsyncMock(return_value=None), validate_configuration=AsyncMock(),
         notify_applicability_changed=lambda _identity: None,
         refresh_account_entitlement=AsyncMock(return_value=False),
+        # No integration of this double gates an option on account truth.
+        option_availability=lambda _definition: {},
         engine=SimpleNamespace(registry=SimpleNamespace(providers={"realdebrid": provider} if provider else {})))
 
 
@@ -817,3 +867,48 @@ def test_the_wrapper_is_the_neutral_rule_and_real_hierarchy_survives_it():
     assert [member.relative_path for member in translation.native_members(single, root_name="Root")] == ["Root"]
     with pytest.raises(file_selection.ManifestInvalid):
         translation.native_members([{"path": "/Root//x.bin", "bytes": 1, "selected": 1}], root_name="Root")
+
+
+# -- the created torrent's ownership survives its failed bootstrap --------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_created_torrent_whose_bootstrap_failed_stays_owned_resumes_and_is_cleaned_up(tmp_path, monkeypatch):
+    """RD1 (and the neutral O1/O2 through the real adapter): once add_magnet
+    answered the torrent's id, a failing file selection never loses it. The
+    root holds the CREATED torrent durably and unready; the ordinary
+    observation of a bound resource re-attempts the file selection and the
+    torrent progresses; a restart observes it instead of adding it again; and
+    removing the transfer cleans it up through the one cleanup owner."""
+    from test_v113_standby_preparation import lab
+
+    client = FakeClient(add_magnet={"id": "T1"},
+                        select_files=[RealDebridAPIError(25, "service_unavailable", 503), 204],
+                        torrent_info=[info("waiting_files_selection"), info("downloading")] + [info("downloading")] * 8,
+                        delete_torrent=None)
+    request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + "c" * 40, name="Root", fingerprint="c" * 40)
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, RealDebridProvider(client))
+    transfer = await engine.submit((request,), name="Root", deduplicate=False)
+    await engine.resolve_pending()
+
+    def calls(name):
+        return [call for call in client.calls if call[0] == name]
+
+    (bound, state, _pending), = await repository.resources(transfer.id)
+    assert (bound.provider_id, bound.context["id"], bound.ownership) == ("realdebrid", "T1", Ownership.CREATED)
+    assert state == ResourceState.UNKNOWN                                # unready, never fabricated ready
+    root = next(item for item in await repository.requests(transfer.id) if item.parent_id is None)
+    assert root.state == "waiting" and root.resource.id == bound.id
+    assert len(calls("select_files")) == 1 and len(calls("add_magnet")) == 1
+
+    await engine.resolve_pending()                                       # the ordinary bound observation
+    assert len(calls("select_files")) == 2                               # the bootstrap was re-attempted
+    (_resource, state, _pending), = await repository.resources(transfer.id)
+    assert state == ResourceState.PREPARING                              # and the torrent progresses
+
+    reopened, _registry, restarted = await lab(tmp_path, monkeypatch, RealDebridProvider(client), fresh=False)
+    await restarted.resolve_pending()
+    assert len(calls("add_magnet")) == 1                                 # observed, never added again
+    assert transfer.id in {item.id for item in await reopened.active()}
+
+    await restarted.delete(transfer.id, remote=True)
+    assert calls("delete_torrent") == [("delete_torrent", "T1")]

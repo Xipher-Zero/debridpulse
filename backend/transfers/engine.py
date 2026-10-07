@@ -26,7 +26,7 @@ from transfers.contracts import (
     ActiveCapacitySource, CachedResolution, Inventory, Manifest, ResourceLookup, speculative_preparation,
 )
 from transfers.errors import (
-    Category, Domain, Origin, Recovery, Retryability, Stage, TransferError, unknown_failure,
+    Category, Domain, MutationOutcome, Origin, Recovery, Retryability, Stage, TransferError, unknown_failure,
 )
 from transfers.policy import recovery_action
 from transfers.registry import ProviderRoute
@@ -70,6 +70,9 @@ class TransferEngine(_RecoveryTransferEngine):
         if lock is None:
             lock = self._collection_resolution_lock = asyncio.Lock()
         async with lock:
+            # Owed creation reconciliations first: anything found is handed to
+            # the one cleanup cadence the pass then drains.
+            await self._settle_unowned_creations()
             blocked = await self._prepare_collection_affinity()
             self._collection_affinity_blocked = blocked
             try:
@@ -136,6 +139,12 @@ class TransferEngine(_RecoveryTransferEngine):
                 # now would only produce work no generation authorizes.
                 await self.repository.poll_after(record.id, self.clock() + self.policy.resource_poll_interval)
                 return
+            if record.parent_id is None and record.resource is None:
+                held = await self.repository.uncertain_resolution(record.id)
+                if held is not None:
+                    # A creation that may have happened is settled before
+                    # anything else may create: never a second one blindly.
+                    return await self._settle_uncertain_resolution(record, *held)
             if record.parent_id is None and record.resource is None:
                 # Provider cleanup fence: a retired predecessor generation sharing
                 # this transfer's source fingerprint still has outstanding,
@@ -240,7 +249,33 @@ class TransferEngine(_RecoveryTransferEngine):
                         raise TransferError(NormalizedError(
                             Domain.PROVIDER, Category.CONCURRENCY_LIMITED, Stage.RESOLUTION, Retryability.BACKOFF,
                             origin=Origin.CORE, integration_id=provider.descriptor.id))
-                    result = await self._primary_resolution(record, provider, cached)
+                    # The provider may create the root's resource now: the
+                    # reconciliation is owed BEFORE the call, so a process that
+                    # ends mid-call leaves it, never a bare interrupted attempt.
+                    armed = (not cached and record.parent_id is None and self._reconcilable(provider, record)
+                             and await self.repository.arm_creation(attempt.id, self.clock()))
+                    try:
+                        result = await self._primary_resolution(record, provider, cached)
+                    except TransferError as exc:
+                        if armed and exc.error.mutation != MutationOutcome.UNCERTAIN:
+                            # Definitively nothing created: nothing owed.
+                            await self.repository.settle_creation(attempt.id)
+                        raise
+                    except Exception as exc:
+                        if not armed:
+                            raise
+                        # No normalized outcome at all: nothing proves the
+                        # creation did not happen, so it is uncertain and the
+                        # armed obligation is reconciled -- never a failure the
+                        # provider re-enters from to create again.
+                        raise TransferError(replace(unknown_failure(
+                            exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
+                            stage=Stage.RESOLUTION, secrets=(str(record.request.payload),)),
+                            mutation=MutationOutcome.UNCERTAIN)) from None
+                    if armed and (result is None or result.observation is None):
+                        # An answer naming no resource of the provider: nothing
+                        # owed. One naming a resource settles when it is bound.
+                        await self.repository.settle_creation(attempt.id)
             if cached and result is None:
                 # Held when asked, no longer held now: nothing was created, and
                 # the group continues from its first dormant alternative.
@@ -261,6 +296,15 @@ class TransferEngine(_RecoveryTransferEngine):
                 secrets=(str(record.request.payload),),
             )
             error = self.policy.compatibility(error)
+            if (attempt and error.mutation == MutationOutcome.UNCERTAIN and record.parent_id is None
+                    and self._reconcilable(provider, record)
+                    and await self.repository.hold_uncertain_resolution(
+                        attempt, error, self.clock() + self.policy.resource_poll_interval)):
+                # The provider may have created the resource even though no
+                # answer named it: the attempt stays open -- never a failure
+                # that frees the route for another creation -- until the
+                # provider's own inventory settles whether it exists.
+                return
             if attempt:
                 await self.repository.resolution(
                     attempt, ResolutionResult(ResourceState.UNKNOWN, error=error),
@@ -268,6 +312,159 @@ class TransferEngine(_RecoveryTransferEngine):
             await self._request_failure(
                 record, error, attempts=record.attempts + (1 if attempt else 0), routed=attempt is not None,
             )
+
+    def _reconcilable(self, provider, record) -> bool:
+        """Whether a creation ``provider`` may have made for ``record`` can be
+        found again: the provider reads its own complete inventory, and the
+        request names the content-derived identity (fingerprint) that inventory
+        reports. Nothing else is authoritative enough to take ownership."""
+        return (provider is not None and isinstance(provider, Inventory)
+                and bool(str(getattr(record.request, "fingerprint", "") or "")))
+
+    async def _creation_reconciliation(self, provider, record, snapshots: dict) -> tuple[str, object]:
+        """THE settlement of a creation that may have happened -- a root's
+        primary resolution or its backup preparation -- from the provider's
+        read-only inventory, never by asking it to create anything:
+
+        * ``("found", observation)``: exactly one of the provider's own
+          resources carries the request's fingerprint;
+        * ``("absent", None)``: a complete inventory holds none;
+        * ``("unsettled", None)``: anything less certain -- several matches,
+          an incomplete or unreadable inventory, a provider that cannot be
+          asked now.
+
+        ``snapshots`` shares one inventory read per provider within a pass."""
+        fingerprint = str(getattr(record.request, "fingerprint", "") or "").casefold()
+        if (not fingerprint or provider is None or not provider.descriptor.enabled
+                or not isinstance(provider, Inventory)):
+            return "unsettled", None
+        if provider.descriptor.id not in snapshots:
+            try:
+                snapshots[provider.descriptor.id] = await provider.inventory()
+            except Exception as exc:
+                logger.debug("creation reconciliation provider=%s: %s", provider.descriptor.id, type(exc).__name__)
+                snapshots[provider.descriptor.id] = None
+        snapshot = snapshots[provider.descriptor.id]
+        if snapshot is None or snapshot.error is not None:
+            return "unsettled", None
+        matches = [observed for observed in snapshot.observations
+                   if observed.resource.provider_id == provider.descriptor.id
+                   and str(observed.fingerprint or "").casefold() == fingerprint
+                   and observed.state != ResourceState.ABSENT]
+        if not matches and snapshot.complete:
+            return "absent", None
+        if len(matches) == 1:
+            return "found", matches[0]
+        return "unsettled", None
+
+    async def _settle_unowned_creations(self) -> None:
+        """Reconcile every creation DebridPulse may have caused that no route
+        or backup pass owns any more: a primary attempt whose route ended
+        before settling it, or whose transfer was deleted or finished, and a
+        backup claim left ``creating`` on such a transfer. Through THE
+        creation reconciliation, before the one cleanup cadence drains:
+
+        * found: bound to its transfer as DebridPulse's resource with the
+          cleanup intent its transfer's state calls for
+          (``_unowned_cleanup``), so the one cleanup cadence removes it;
+        * absent: settled -- nothing was created;
+        * unsettled: reconciled again later -- never silently abandoned, and
+          never by creating anything.
+        """
+        now, snapshots = self.clock(), {}
+        later = now + self.policy.max_retry_delay
+        for item in await self.repository.unowned_creations(now):
+            outcome, found = await self._unowned_reconciliation(item, snapshots)
+            if outcome == "unsettled":
+                await self.repository.defer_creation_reconciliation(item["attempt_id"], later)
+            elif outcome == "absent":
+                await self.repository.settle_creation(item["attempt_id"])
+            else:
+                await self.repository.settle_creation(
+                    item["attempt_id"], transfer_id=item["transfer_id"],
+                    resource=replace(found.resource, ownership=Ownership.ADOPTED), state=found.state,
+                    cleanup=self._unowned_cleanup(item))
+        for item in await self.repository.unowned_standby_creations(now):
+            outcome, found = await self._unowned_reconciliation(item, snapshots)
+            if outcome == "unsettled":
+                await self.repository.defer_standby_reconciliation(item["id"], later)
+                continue
+            if outcome == "found":
+                try:
+                    await self.repository.bind_standby(
+                        item["id"], item["transfer_id"], replace(found.resource, ownership=Ownership.ADOPTED),
+                        found.state, now, cleanup=self._unowned_cleanup(item))
+                    continue
+                except TransferError as exc:
+                    error = exc.error                       # another live transfer holds it: not ours
+            else:
+                error = NormalizedError(Domain.PROVIDER, Category.RESOURCE_NOT_FOUND, Stage.RECONCILIATION,
+                                        Retryability.NEVER, integration_id=item["provider_id"])
+            await self.repository.fail_standby(item["id"], error, now)
+
+    async def _unowned_reconciliation(self, item: dict, snapshots: dict) -> tuple[str, object]:
+        record = next((request for request in await self.repository.requests(item["transfer_id"])
+                       if request.id == item["request_id"]), None)
+        if record is None:
+            return "unsettled", None
+        return await self._creation_reconciliation(self.registry.providers.get(item["provider_id"]), record,
+                                                   snapshots)
+
+    @staticmethod
+    def _unowned_cleanup(item: dict) -> str | None:
+        """A found creation of a deleted transfer is removed only when the
+        operator asked Delete to remove remote resources (exactly the intent
+        Delete gives every resource it knows); of a transfer whose route
+        ended or that finished, it is surplus DebridPulse owns."""
+        if item["status"] == "deleted":
+            return CleanupAuthority.USER_REQUEST if item["delete_remote"] else None
+        return CleanupAuthority.OWNED
+
+    async def _settle_uncertain_resolution(self, record, attempt, error: NormalizedError) -> None:
+        """Settle a root's open primary creation the provider may have made.
+
+        Found: it IS the root's resource -- adopted onto the very attempt that
+        made it, so it is observed, cleaned up and owned exactly like any
+        other. Absent: nothing was created, and the attempt ends as the
+        ordinary failure it then was (provider exhaustion, re-entry and
+        failover unchanged). Unsettled: it waits for another reading under the
+        ordinary resolution retry budget -- never an indefinite wait. Once that
+        is spent, whether the provider created it is still unknown, so the
+        provider can never be asked to create it again for this root: its
+        route ends for good (``Retryability.NEVER``) and another legitimate
+        provider proceeds, or the root fails truthfully -- while the owed
+        reconciliation itself continues (``_settle_unowned_creations``)."""
+        provider = self.registry.providers.get(attempt.provider_id)
+        outcome, found = await self._creation_reconciliation(provider, record, {})
+        if outcome == "found":
+            adopted = replace(found, resource=replace(found.resource, ownership=Ownership.ADOPTED),
+                              request=record.resolvable)
+            await self._apply_resolution(record, attempt, provider, ResolutionResult(
+                adopted.state, observation=adopted, error=adopted.error))
+            return
+        if outcome == "absent":
+            await self.repository.settle_creation(attempt.id)
+            error = replace(error, mutation=MutationOutcome.NOT_COMMITTED)     # absence proven
+        if outcome == "unsettled":
+            decision = self.policy.retry_resolution(self._error(
+                Category.RECONCILIATION_FAILED, Stage.RECONCILIATION, domain=Domain.RECONCILIATION,
+                retryability=Retryability.BACKOFF), record.attempts, self.clock())
+            if decision.retry_at is not None:
+                if await self.repository.hold_uncertain_resolution(attempt, error, decision.retry_at,
+                                                                   consume_attempt=True):
+                    return
+            else:
+                # The ROUTE stops waiting; the obligation does not end with it:
+                # the creation is still reconciled -- and, if found, cleaned
+                # up -- by ``_settle_unowned_creations``.
+                await self.repository.defer_creation_reconciliation(
+                    attempt.id, self.clock() + self.policy.max_retry_delay)
+                error = NormalizedError(
+                    Domain.PROVIDER, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION, Retryability.NEVER,
+                    origin=Origin.PROVIDER, integration_id=attempt.provider_id, mutation=MutationOutcome.UNCERTAIN,
+                    diagnostic="whether the provider created the resource could not be settled")
+        await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
+        await self._request_failure(record, error, attempts=record.attempts)
 
     async def _route_provider(self, record):
         """The provider this request's resolution belongs to: its bound route,
@@ -498,31 +695,45 @@ class TransferEngine(_RecoveryTransferEngine):
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
                 secrets=(str(record.request.payload),))
-            if error.category in _STANDBY_DEFERRABLE or error.retryability == Retryability.BACKOFF:
-                await self.repository.defer_standby(standby_id, error, self._standby_retry_at(error, attempts),
-                                                    self.clock())
+            if error.mutation == MutationOutcome.UNCERTAIN and self._reconcilable(provider, record):
+                # The backup may exist although no answer named it: the claim
+                # stays ``creating`` -- exactly what an interrupted attempt
+                # leaves -- so the next pass settles it from the provider's
+                # inventory before anything is created again.
+                await self.repository.uncertain_standby(standby_id, error, self.clock())
             else:
-                await self.repository.fail_standby(standby_id, error, self.clock())
+                await self._standby_failure(standby_id, error, attempts)
             logger.debug("backup preparation provider=%s request=%s: %s", provider.descriptor.id, record.id,
                          error.category.value)
             return False
 
+    async def _standby_failure(self, standby_id: str, error: NormalizedError, attempts: int) -> None:
+        """A backup attempt that created nothing: a refusal that only says
+        "not now" defers it; any other failure ends only this backup."""
+        if error.category in _STANDBY_DEFERRABLE or error.retryability == Retryability.BACKOFF:
+            await self.repository.defer_standby(standby_id, error, self._standby_retry_at(error, attempts),
+                                                self.clock())
+        else:
+            await self.repository.fail_standby(standby_id, error, self.clock())
+
     async def _reconcile_standby_claims(self, transfers) -> set[tuple[str, str]]:
-        """A ``creating`` claim found when a pass starts was interrupted
-        (passes never overlap): its provider may or may not have created the
-        resource. It is settled from the provider's read-only inventory --
-        never by asking it to create anything:
+        """A ``creating`` claim found when a pass starts may already hold a
+        resource: an interrupted attempt (passes never overlap), or one whose
+        provider gave no usable answer (its uncertain error kept on the
+        claim). It is settled by THE creation reconciliation
+        (``_creation_reconciliation``) -- never by asking the provider to
+        create anything:
 
-        * exactly one of the provider's own resources for the root's
-          fingerprint: that is the backup, bound as ADOPTED;
-        * a complete inventory without one: it was never created -- the
-          claim gets its one ordinary attempt while the provider allows a
+        * found: that is the backup, bound as ADOPTED;
+        * absent: it was never created -- an uncertain attempt ends as the
+          ordinary failure it then was (``_standby_failure``); an interrupted
+          one gets its one ordinary attempt while the provider allows a
           backup, and otherwise ends here (``RESOURCE_NOT_FOUND``);
-        * anything less certain changes nothing.
+        * unsettled: nothing changes.
 
-        Returns the ``(request_id, provider_id)`` of every interrupted claim
-        this pass could not settle and must not attempt again: only a claim
-        proven absent while still allowed is left out of it.
+        Returns the ``(request_id, provider_id)`` of every claim this pass
+        could not settle and must not attempt again: only a claim proven
+        absent and still allowed an ordinary attempt is left out of it.
         """
         snapshots: dict[str, object] = {}
         unsettled: set[tuple[str, str]] = set()
@@ -530,39 +741,27 @@ class TransferEngine(_RecoveryTransferEngine):
             for item in await self.repository.standbys(transfer.id):
                 if item["state"] != "creating":
                     continue
-                unsettled.add((item["request_id"], item["provider_id"]))
+                key = (item["request_id"], item["provider_id"])
+                unsettled.add(key)
                 provider = self.registry.providers.get(item["provider_id"])
                 record = next((request for request in await self.repository.requests(transfer.id)
                                if request.id == item["request_id"]), None)
-                fingerprint = str(getattr(record.request, "fingerprint", "") or "").casefold() if record else ""
-                if (record is None or not fingerprint or provider is None or not provider.descriptor.enabled
-                        or not isinstance(provider, Inventory)):
+                if record is None:
                     continue
-                if provider.descriptor.id not in snapshots:
-                    try:
-                        snapshots[provider.descriptor.id] = await provider.inventory()
-                    except Exception as exc:
-                        logger.debug("backup reconciliation provider=%s: %s", provider.descriptor.id,
-                                     type(exc).__name__)
-                        snapshots[provider.descriptor.id] = None
-                snapshot = snapshots[provider.descriptor.id]
-                if snapshot is None or snapshot.error is not None:
-                    continue
-                matches = [observed for observed in snapshot.observations
-                           if observed.resource.provider_id == provider.descriptor.id
-                           and str(observed.fingerprint or "").casefold() == fingerprint
-                           and observed.state != ResourceState.ABSENT]
-                if not matches and snapshot.complete:
-                    if self.registry.speculative_preparation_allowed(provider, record.resolvable):
-                        unsettled.discard((item["request_id"], item["provider_id"]))   # its one ordinary attempt
-                    else:
+                outcome, found = await self._creation_reconciliation(provider, record, snapshots)
+                uncertain = item.get("error") is not None and item["error"].mutation == MutationOutcome.UNCERTAIN
+                if outcome == "absent":
+                    unsettled.discard(key)
+                    if uncertain:
+                        # Absence proven: the failure created nothing after all.
+                        await self._standby_failure(item["id"], replace(
+                            item["error"], mutation=MutationOutcome.NOT_COMMITTED), int(item.get("attempts") or 0))
+                    elif not self.registry.speculative_preparation_allowed(provider, record.resolvable):
                         await self.repository.fail_standby(item["id"], NormalizedError(
                             Domain.PROVIDER, Category.RESOURCE_NOT_FOUND, Stage.RECONCILIATION,
                             Retryability.NEVER, integration_id=provider.descriptor.id), self.clock())
-                        unsettled.discard((item["request_id"], item["provider_id"]))
-                elif len(matches) == 1:
-                    found = matches[0]
-                    unsettled.discard((item["request_id"], item["provider_id"]))
+                elif outcome == "found":
+                    unsettled.discard(key)
                     try:
                         await self.repository.bind_standby(
                             item["id"], transfer.id, replace(found.resource, ownership=Ownership.ADOPTED),

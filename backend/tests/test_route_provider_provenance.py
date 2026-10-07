@@ -860,7 +860,8 @@ async def test_cache_fact_persists_in_the_existing_resolution_result_and_survive
     assert codec.load(row["result"])["observation"]["cache_presence"] == "hit"
     assert not any("cache" in name for name in tables)
     assert columns == {"id", "request_id", "provider_id", "state", "error", "result", "created_at", "updated_at",
-                       "reentry_at"}                       # (a provider's re-entry instant, not a cache fact)
+                       "reentry_at",                       # (a provider's re-entry instant, not a cache fact)
+                       "reconcile_at"}                     # (an owed creation reconciliation, not a cache fact)
 
     restarted = TransferRepository()
     await restarted.initialize()

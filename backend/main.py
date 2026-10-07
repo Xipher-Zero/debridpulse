@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
@@ -246,6 +247,12 @@ _BACKUP_RESTORE_PATH = "/api/admin/backups/restore"
 _SELF_MAINTAINED_MUTATION_PATHS = {
     "/api/settings",
 }
+# The integration-connection surfaces -- the scoped configuration mutation and
+# the connection flows that save or forget a connection through it -- reach the
+# one canonical scoped mutation (``mutate_integration_configuration``), which
+# owns its admission: exclusive while it replaces a connection. The same rule
+# applies to them, by shape, for every integration.
+_SELF_MAINTAINED_MUTATION_PATTERN = re.compile(r"/api/integrations/[^/]+/(?:configuration|authorization/poll|disconnect)")
 _AUTH_MUTATION_PATHS = {
     "/login",
     "/api/auth/logout",
@@ -261,6 +268,7 @@ async def application_mutation_admission_middleware(request: Request, call_next)
         and request.url.path != _DATABASE_WIPE_PATH
         and request.url.path != _BACKUP_RESTORE_PATH
         and request.url.path not in _SELF_MAINTAINED_MUTATION_PATHS
+        and not _SELF_MAINTAINED_MUTATION_PATTERN.fullmatch(request.url.path)
         and request.url.path not in _AUTH_MUTATION_PATHS
     ):
         try:

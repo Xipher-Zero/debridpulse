@@ -269,6 +269,71 @@ async def test_p3_6_an_interrupted_create_is_reconciled_by_adopting_never_by_cre
     assert list(client.objects[TORRENT]) == ["900"]                      # still one remote torrent
 
 
+async def test_an_unreadable_creation_answer_keeps_the_claim_and_is_adopted_never_created_again(
+        tmp_path, monkeypatch):
+    """A-T6 on the standby path, transfer 524's own class: TorBox created the
+    backup torrent but its answer was not readable, so no id named it. That
+    is no proof nothing was created: the claim stays ``creating`` with the
+    uncertain failure, and the next pass adopts the one torrent its inventory
+    holds for the root -- it is never created a second time."""
+    from providers.torbox.client import TorBoxProtocolError
+
+    from transfers.errors import MutationOutcome
+
+    client = FakeClient()
+    create = client.create_torrent
+
+    async def created_then_unreadable(**kwargs):
+        await create(**kwargs)
+        raise TorBoxProtocolError("TorBox returned invalid JSON")
+
+    client.create_torrent = created_then_unreadable
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, Primary(), torbox(client))
+    transfer = await submitted(engine)
+    await engine.resolve_pending()
+
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["state"] == "creating" and standby["error"].mutation == MutationOutcome.UNCERTAIN
+    # The claim is TorBox's account's to settle: its connection may not be replaced meanwhile.
+    assert await repository.has_integration_references("torbox")
+
+    client.create_torrent = create
+    await engine._prepare_standbys()
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["state"] == "bound" and standby["resource"].ownership == Ownership.ADOPTED
+    assert standby["resource"].context["id"] == str(client.next_id)
+    assert len(creates(client)) == 1 and len(client.objects[TORRENT]) == 1
+
+
+async def test_a_backup_claim_left_creating_on_a_deleted_transfer_is_still_reconciled_and_cleaned_up(
+        tmp_path, monkeypatch):
+    """Delete ends the transfer, never the obligation: the backup TorBox may
+    have created (its answer unreadable) is found from the inventory although
+    no backup pass reaches a deleted transfer, and removed because Delete asked
+    to remove remote resources."""
+    from providers.torbox.client import TorBoxProtocolError
+
+    client = FakeClient()
+    create = client.create_torrent
+
+    async def created_then_unreadable(**kwargs):
+        await create(**kwargs)
+        raise TorBoxProtocolError("TorBox returned invalid JSON")
+
+    client.create_torrent = created_then_unreadable
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, Primary(), torbox(client))
+    transfer = await submitted(engine)
+    await engine.resolve_pending()
+    native = str(client.next_id)
+    await engine.delete(transfer.id, remote=True)
+    assert native in client.objects[TORRENT]                            # Delete knew nothing to remove
+
+    await engine.resolve_pending()
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["state"] == "bound" and standby["resource"].ownership == Ownership.ADOPTED
+    assert ("delete", TORRENT, native) in client.calls and len(creates(client)) == 1
+
+
 # -- P3.7 / P3.8: isolation ----------------------------------------------------------------------------
 
 @pytest.mark.parametrize("refusal", ["ACTIVE_LIMIT", "RATE_LIMIT", "COOLDOWN_LIMIT", "PLAN_RESTRICTED_FEATURE"])
@@ -336,6 +401,46 @@ async def test_p3_8_a_hard_backup_failure_ends_only_that_backup(tmp_path, monkey
     assert len(creates(client)) == 1                                     # never retried
     root = await root_of(repository, transfer)
     assert root.state == "waiting" and await repository.bound_route_provider(root.id) == "provider-a"
+
+
+async def test_a_backup_whose_first_observation_failed_stays_owned_observed_and_cleaned_up(tmp_path, monkeypatch):
+    """TB1 on the standby path: TorBox answered the created torrent's id, then
+    its first observation was not readable (transfer 524's invalid JSON). The
+    backup is still bound -- the torrent is DebridPulse's, unready, never
+    fabricated ready -- so the ordinary backup observation sees it next, no
+    second one is created, and removal cleans it up."""
+    from providers.torbox.client import TorBoxProtocolError
+
+    client = FakeClient()
+    observe = client.item
+    unreadable = [TorBoxProtocolError("TorBox returned invalid JSON")]
+
+    async def item(family, native_id):
+        if unreadable:
+            client.calls.append(("item", family, native_id))
+            raise unreadable.pop()
+        return await observe(family, native_id)
+
+    client.item = item
+    clock = Clock()
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, Primary(), torbox(client), clock=clock)
+    transfer = await submitted(engine)
+    await engine.resolve_pending()
+
+    native = str(client.next_id)
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["state"] == "bound" and standby["resource"].context == {"family": TORRENT, "id": native}
+    assert standby["resource"].ownership == Ownership.CREATED
+    assert standby["resource_state"] == ResourceState.UNKNOWN.value
+
+    clock.now += TransferPolicy().resource_poll_interval + 1
+    await engine.resolve_pending()
+    (standby,) = await repository.standbys(transfer.id)
+    assert standby["resource_state"] == ResourceState.PREPARING.value   # observed again, ordinarily
+    assert len(creates(client)) == 1
+
+    await engine.delete(transfer.id, remote=True)
+    assert ("delete", TORRENT, native) in client.calls
 
 
 # -- T3.6 / disable: ON -> OFF and a disabled provider keep the ordinary lifecycle -------------------------

@@ -8,7 +8,7 @@ request -- is owned by the universal core.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 import re
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
@@ -21,7 +21,7 @@ from providers.torbox.client import (
 )
 from services.network_safety import UnsafeDestinationError
 from transfers.errors import (
-    Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin,
+    Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.file_selection import collection_member_paths
@@ -155,6 +155,23 @@ def resource(family: str, native_id: str, *, ownership: Ownership = Ownership.OB
                                             integration_id=INTEGRATION_ID))
     return ProviderResource(INTEGRATION_ID, {"family": family, "id": str(native_id)}, ownership,
                             uuid5(NAMESPACE_URL, f"torbox:{family}:{native_id}").hex)
+
+
+def creation_error(exc: Exception, *, secrets: tuple[str, ...] = ()) -> NormalizedError:
+    """A creation that yielded no usable answer, with whether TorBox may
+    have created the object anyway (``MutationOutcome``).
+
+    Only a positive fact proves nothing was created: TorBox's own refusal
+    (a native code, or a client-side status), or a connection that was never
+    established. Anything else -- a success answer whose body is unusable or
+    names no object, a server-side failure page without a native code, a
+    timeout, a connection lost once the request could have been processed --
+    cannot rule the creation out."""
+    error = translate_error(exc, stage=Stage.RESOLUTION, secrets=secrets)
+    refused = isinstance(exc, TorBoxAPIError) and bool(exc.error or exc.status < 500)
+    if refused or isinstance(exc, aiohttp.ClientConnectorError):
+        return error
+    return replace(error, mutation=MutationOutcome.UNCERTAIN)
 
 
 def identity(resource_value: ProviderResource) -> tuple[str, str]:

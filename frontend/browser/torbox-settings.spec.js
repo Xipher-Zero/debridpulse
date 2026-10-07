@@ -142,6 +142,34 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   }
 });
 
+test('Usenet via TorBox is off and cannot be turned on while the account lacks Usenet', async ({page}) => {
+  // The backend's account-derived option availability (here: a plan without
+  // Usenet, with a stale saved "on") decides the control, never the saved bit.
+  await page.route('https://fonts.googleapis.com/**', route =>
+    route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  await page.route(url => url.pathname === '/api/settings', async route => {
+    if (route.request().method() !== 'GET') return route.fallback();
+    const response = await route.fetch();
+    const settings = await response.json();
+    const torbox = {...projection(true), options: {...projection(true).options, usenet_enabled: true},
+                    option_availability: {usenet_enabled: {available: false, requirement: 'Requires TorBox Pro.'}}};
+    settings.integrations = {...settings.integrations, torbox};
+    return route.fulfill({response, json: settings});
+  });
+  await page.goto('/');
+  await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+  await page.locator('#view-settings [data-tab="sources"]').click();
+  const card = page.locator('.dp-settings-provider-card--torbox');
+  await card.locator('.dp-settings-disclosure').click();
+  await card.locator('.dp-settings-additional > summary').click();
+  const tuning = card.locator('.dp-settings-additional-body');
+  const toggle = tuning.locator('[data-setting="torbox_usenet_enabled"]');
+  await expect(toggle).not.toBeChecked();
+  await expect(toggle).toBeDisabled();
+  await expect(tuning).toContainText('Requires TorBox Pro.');
+  await expect(tuning).not.toContainText('Let TorBox process NZB downloads remotely.');
+});
+
 test('authorization opens in the operator browser, polls, connects, enables and disconnects', async ({page}) => {
   const {card, region, calls} = await prepare(page);
   const before = page.url();

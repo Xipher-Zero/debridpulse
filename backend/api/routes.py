@@ -185,6 +185,17 @@ _AUTH_COMPAT_SETTINGS_FIELDS = (
 )
 
 
+def _with_option_availability(integrations: dict, application: ApplicationService) -> dict:
+    """Each integration's account-gated options as its account owner allows
+    them now (``ApplicationService.option_availability``): live truth beside
+    the saved options, never stored."""
+    for definition in application.definitions:
+        availability = application.option_availability(definition)
+        if availability and definition.id in integrations:
+            integrations[definition.id]["option_availability"] = availability
+    return integrations
+
+
 def _public_settings(settings: AppSettings, definitions=()) -> dict:
     data = settings.model_dump()
     from integrations.configuration import public_integration_groups, public_integrations
@@ -298,7 +309,9 @@ def _revoke_stale_authentication_state(previous: AppSettings, current: AppSettin
 
 @router.get("/settings")
 async def get_settings_ep(application: ApplicationService = Depends(get_application)):
-    return _public_settings(get_settings(), application.definitions)
+    data = _public_settings(get_settings(), application.definitions)
+    _with_option_availability(data["integrations"], application)
+    return data
 
 
 @router.get("/health")
@@ -441,6 +454,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
         application.configure()
         await _apply_aria2_settings(application)
         data = _public_settings(clean, application.definitions)
+        _with_option_availability(data["integrations"], application)
         data["ok"] = True
         return data
 
@@ -1892,87 +1906,28 @@ async def patch_integration_configuration(
     ever been used) is still enforced for an integration's ownership fields;
     it is not exempt merely because this is a scoped route."""
     definition = _integration_definition(application, integration_id)
-    from integrations.configuration import accept_verification
-    async with application.application_operation():
-        # The narrow config-write lock (specification sections 9.5, 13.8)
-        # serializes this load-modify-save critical section -- including the
-        # ``previous`` baseline read used below -- against every other
-        # settings-mutation route.
-        async with config_write_lock():
-            previous = get_settings()
-            current = load_settings()
-            existing = current.integrations.get(integration_id)
-            was_enabled = bool(getattr(previous.integrations.get(integration_id), "enabled", False))
-            existing_options = existing.options if isinstance(existing, IntegrationSettings) else {}
-            merged_options = {**existing_options, **body.options}
-            try:
-                validated_options = definition.options_model(**merged_options).model_dump()
-            except Exception as exc:
-                raise HTTPException(400, _sanitize_error(exc)) from None
-            entry = IntegrationSettings(
-                enabled=(existing.enabled if isinstance(existing, IntegrationSettings) and body.enabled is None else bool(body.enabled)),
-                priority=(existing.priority if isinstance(existing, IntegrationSettings) and body.priority is None else int(body.priority or 0)),
-                options=validated_options,
-                clear_secrets=body.clear_secrets,
-            )
-            current.integrations = {**current.integrations, integration_id: entry}
-            from integrations.configuration import normalize_settings
-            # ``previous=previous`` (Gate 9 revision-3 rejection finding 2):
-            # without it, ``normalize_settings``'s generic secret-preservation
-            # branch (``old_options.get(secret)``) has no prior namespace to
-            # restore a blank/omitted secret from, so an ordinary Save whose
-            # already-configured-secret UI control is intentionally blank
-            # (the existing UI contract: blank means "keep current") would
-            # erase the stored secret. This is the SAME ``previous`` the
-            # whole-settings route already threads through for exactly this
-            # reason -- a scoped route is not exempt from it.
-            clean = normalize_settings(current, application.definitions, previous=previous)
-            # A draft the operator tested before saving it may be verified by
-            # the Save that promotes it -- but only after the generic owner has
-            # proven the proof describes the configuration just saved.
-            clean = accept_verification(clean, definition, body.verification)
-            try:
-                await application.validate_configuration(previous, clean)
-            except ValueError as exc:
-                raise HTTPException(409, str(exc)) from None
-            save_settings(clean)
-            apply_settings(clean)
-            # Reconfigure and the aria2 lifecycle apply now happen INSIDE
-            # the config-write lock (Gate 9 revision-3 rejection finding 7):
-            # previously the lock was released before this apply phase, so
-            # two concurrent integration-configuration writes could apply
-            # their native/lifecycle effects out of order relative to their
-            # persisted revisions. Holding the lock across validate -> save
-            # -> apply -> reconfigure -> lifecycle makes the last writer
-            # under the lock win coherently for the durable revision AND
-            # the resulting live/native state together.
-            application.configure()
-            if integration_id == "aria2":
-                await _apply_aria2_settings(application)
-            # An integration that owns external configuration applies it here,
-            # inside the same lock, through the generic seam. No integration is
-            # named: composition discovered which namespaces have appliers.
-            applied = await application.apply_integration_configuration(integration_id)
-    # A canonical configuration change can alter which sources are routable and
-    # whether an integration's managed lifecycle component is still required.
-    # Waking the neutral maintenance/resolution signals here is what makes an
-    # operator-visible control IMMEDIATE rather than cadence-bound: before this,
-    # an integration whose enable state had just changed converged only on the
-    # 60 s integration-maintenance tick, so an operator who enabled one saw an
-    # unreachable service for up to a minute. Issued AFTER the
-    # application-operation block so maintenance is never woken into an
-    # admission this request still holds. Neutral: it names no integration and
-    # applies to every namespace.
-    application.notify_applicability_changed(integration_id)
-    if entry.enabled and not was_enabled:
-        # Re-enabling brings the integration back into service on CURRENT
-        # upstream account truth: one explicit refresh of the rebuilt live
-        # owner, whatever its last-known-good freshness. Neutral (a no-op for
-        # an integration without account truth); a failed check keeps the
-        # operator's Enable and the owner's last-known-good.
-        await application.refresh_account_entitlement(integration_id)
+    from integrations.configuration_mutation import (
+        ConfigurationRefused, InvalidIntegrationOptions, SettingsStore, mutate_integration_configuration,
+    )
+
+    async def apply_aria2():
+        await _apply_aria2_settings(application)
+
+    try:
+        result = await mutate_integration_configuration(
+            application, definition, options=body.options, enabled=body.enabled, priority=body.priority,
+            clear_secrets=body.clear_secrets, verification=body.verification,
+            # This route's own bound view of the settings owner.
+            store=SettingsStore(get_settings, load_settings, save_settings, apply_settings, config_write_lock),
+            apply_native=apply_aria2 if integration_id == "aria2" else None)
+    except InvalidIntegrationOptions as exc:
+        raise HTTPException(400, _sanitize_error(exc.__cause__ or exc)) from None
+    except ConfigurationRefused as exc:
+        raise HTTPException(409, str(exc)) from None
+    clean, applied = result.settings, result.applied
     from integrations.configuration import public_integrations
-    public = public_integrations(clean, application.definitions).get(integration_id, {})
+    public = _with_option_availability(public_integrations(clean, application.definitions),
+                                       application).get(integration_id, {})
     # A save whose native application failed is reported truthfully: the
     # canonical namespace is saved (it is the desired state) but the operator is
     # never told the service is configured when it is not.

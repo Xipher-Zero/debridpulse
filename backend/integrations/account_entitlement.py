@@ -116,6 +116,20 @@ class AccountEntitlementMaintenance:
             self._facts, offered=frozenset(self._provider.descriptor.request_types),
             contracted=self._contracted, now=float(self._clock()))
 
+    def entitles(self, request_types) -> bool | None:
+        """Whether the account's own plan includes every one of
+        ``request_types`` now, whatever is offered today; ``None`` while no
+        account truth is held. Deliberately the plan alone: a definitive
+        refusal recorded against a class the plan includes (``contract``) is
+        drift the account is truthfully degraded for, never a reason to say
+        the plan lacks it."""
+        if self._facts is None:
+            return None
+        kinds = frozenset(str(item) for item in request_types)
+        derived = self._translation.derive(self._facts, offered=kinds, contracted=frozenset(),
+                                           now=float(self._clock()))
+        return kinds <= frozenset(derived.request_types)
+
     def connection_unusable(self) -> bool:
         """Whether account truth is absent because the connection is failing."""
         return self._facts is None and (self._connection_failed or not self._translation.configured())
@@ -275,3 +289,21 @@ class AccountEntitlementMaintenance:
                            self._integration_id, sanitize_exception(exc))
             return
         self._generation, self._stale_after = record.generation, float(record.stale_after or 0.0)
+
+
+def option_availability(definition, implementation) -> dict[str, dict]:
+    """Whether each option ``definition`` gates on account entitlement
+    (``EntitlementOption``) may be on now: unavailable only when the
+    implementation's account owner positively proves its plan lacks what the
+    option offers -- unknown account truth never forbids anything.
+    ``{option: {"available": bool, "requirement": str}}``, the requirement
+    only when unavailable. The one answer configuration validation,
+    convergence and Settings presentation share."""
+    from integrations.definition import lifecycle_components
+    owners = [component for component in lifecycle_components(implementation)
+              if isinstance(component, AccountEntitlementMaintenance)]
+    result = {}
+    for gated in definition.entitlement_options:
+        available = all(owner.entitles(gated.request_types) is not False for owner in owners)
+        result[gated.option] = {"available": available, "requirement": "" if available else gated.requirement}
+    return result

@@ -176,6 +176,19 @@ class Confidence(StrEnum):
     UNKNOWN = "unknown"
 
 
+class MutationOutcome(StrEnum):
+    """Whether a failed operation may still have changed remote state.
+
+    Only an operation that creates something remotely can be uncertain, and
+    only its emitter knows: a structured refusal, or a request that provably
+    never left, is ``NOT_COMMITTED``; an answer that arrived but cannot be
+    read, or a request lost once it could have been processed, cannot rule the
+    creation out and is ``UNCERTAIN``. An exception is never by itself proof
+    that nothing was created."""
+    NOT_COMMITTED = "not_committed"
+    UNCERTAIN = "uncertain"
+
+
 class EvidenceBasis(StrEnum):
     STRUCTURED = "structured"
     TYPED_EXCEPTION = "typed_exception"
@@ -255,6 +268,7 @@ class NormalizedError:
     retry_after_seconds: float | None = None
     confidence: Confidence = Confidence.UNKNOWN
     evidence_basis: EvidenceBasis = EvidenceBasis.UNKNOWN
+    mutation: MutationOutcome = MutationOutcome.NOT_COMMITTED
 
     def __post_init__(self):
         # Reconstructed/persisted values are canonicalized here. This layer may
@@ -263,7 +277,8 @@ class NormalizedError:
         for name, enum in (("domain", Domain), ("category", Category), ("stage", Stage),
                            ("retryability", Retryability), ("recovery", Recovery),
                            ("origin", Origin), ("permanence", Permanence),
-                           ("confidence", Confidence), ("evidence_basis", EvidenceBasis)):
+                           ("confidence", Confidence), ("evidence_basis", EvidenceBasis),
+                           ("mutation", MutationOutcome)):
             object.__setattr__(self, name, enum(getattr(self, name)))
         if self.domain == Domain.SECURITY or self.category in _SECURITY_CATEGORIES:
             object.__setattr__(self, "domain", Domain.SECURITY)

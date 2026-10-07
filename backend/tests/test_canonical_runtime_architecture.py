@@ -1,5 +1,6 @@
 """Enforce final runtime ownership rather than the previous wrapper structure."""
 import ast
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -214,6 +215,17 @@ def test_bandwidth_and_tuning_routes_never_acquire_application_wide_maintenance(
         start = source.index(f"async def {name}(")
         end = source.index("\n\n@router.", start)
         body = source[start:end]
+        if name == "patch_integration_configuration":
+            # The route delegates to the one canonical scoped mutation, which
+            # owns the admission: ordinary for every option, exclusive only
+            # while replacing the connection itself.
+            assert "mutate_integration_configuration(" in body
+            assert "configuration_admission" not in body
+            owner = (ROOT / "integrations/configuration_mutation.py").read_text(encoding="utf-8")
+            assert "application.application_operation()" in owner
+            assert owner.count("application.configuration_admission()") == 1
+            assert re.search(r"application\.configuration_admission\(\) if replaces_connection", owner)
+            continue
         assert "application.application_operation()" in body
         assert "application.configuration_admission()" not in body
 

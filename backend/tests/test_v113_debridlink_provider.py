@@ -37,7 +37,7 @@ from transfers.applicability import (
     ApplicabilityReadiness, HostClaim, HostClaimScope, ProviderApplicability,
 )
 from transfers.entitlement import AccountServiceClass, ProviderEntitlements
-from transfers.errors import Category, Retryability, TransferError
+from transfers.errors import Category, MutationOutcome, Retryability, TransferError
 from transfers.models import (
     CachePresence, CleanupAuthority, CleanupDirective, DeliveryKind, OutcomeKind, Ownership, ResourceState,
     SourceIdentity, TransferRequest,
@@ -393,6 +393,39 @@ async def test_a_magnet_creates_one_owned_torrent_observed_until_every_file_is_s
     from providers.debridlink.translation import seedbox_resource
     # Stable identity: the native torrent id alone, never a link or a secret.
     assert resource.id == seedbox_resource("t0rr3nt").id
+
+
+async def test_a_created_torrent_whose_first_observation_failed_is_handed_over_unready():
+    """DL1: Debrid-Link answered the new torrent's id, then its first read was
+    a nominal success that is not JSON. The torrent is handed over as an
+    owned, unready resource carrying that protocol violation -- never lost
+    with the exception -- and the ordinary observation reads it next."""
+    provider, _ = provider_with({("POST", "seedbox/add"): [ok(torrent(files=[]))],
+                                 ("GET", "seedbox/list"): [(200, b"<html>busy</html>", {}), ok([torrent()])]})
+    request = TransferRequest("magnet", MAGNET, "Show")
+    result = await provider.resolve(request)
+    assert result.state == ResourceState.UNKNOWN and result.error is None
+    assert result.observation.resource.context == {"family": SEEDBOX, "id": "t0rr3nt"}
+    assert result.observation.resource.ownership == Ownership.CREATED and result.observation.request is request
+    assert result.observation.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert (await provider.observe(result.observation.resource)).state == ResourceState.PREPARING
+
+
+async def test_a_nominal_success_create_answer_that_is_not_json_is_an_uncertain_protocol_violation():
+    """DL4 and transfer 524's class: /seedbox/add answers JSON (Debrid-Link's
+    v2 documentation), so a 2xx answer that is not JSON is never read as a
+    creation -- no id is invented, nothing is handed over -- yet it is no
+    proof the torrent was not created either. Debrid-Link's own refusal is."""
+    provider, transport = provider_with({("POST", "seedbox/add"): [(200, b"<html>busy</html>", {}),
+                                                                  refused("maxTorrent", 403)]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert caught.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert [call["url"].removeprefix(API + "/") for call in transport.calls] == ["seedbox/add"]
+    with pytest.raises(TransferError) as refusal:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    assert refusal.value.error.mutation == MutationOutcome.NOT_COMMITTED
 
 
 async def test_a_torrent_upload_is_multipart_and_never_selects_files():
