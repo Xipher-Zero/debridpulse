@@ -1428,3 +1428,135 @@ async def test_tolerant_decoding_never_turns_an_error_status_into_success():
         await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
     assert caught.value.error.category == Category.PROVIDER_UNAVAILABLE
     assert caught.value.error.mutation == MutationOutcome.UNCERTAIN
+
+
+# -- the whole bounded body ---------------------------------------------------------------
+#
+# Transfer 530: TorBox's mylist was kept as 49,077 and then 66,823 bytes, cut
+# mid-field in otherwise valid JSON -- one StreamReader.read(n) returns what is
+# buffered, not the body. These run the real aiohttp transport against a local
+# server writing each answer in delayed parts, cutting it off, trickling it,
+# or streaming past the size bound. The JSON here is strictly valid.
+
+class LocalTorBox:
+    """TorBox's API on 127.0.0.1: each route answers its scripted
+    ``(how, status, body)`` -- ``parts`` (three delayed writes), ``cut`` (a
+    prefix, then the connection dies), ``trickle`` (slowly) or ``flood``
+    (megabyte writes until the client stops reading)."""
+
+    def __init__(self, script):
+        self.script = {key: list(value) for key, value in script.items()}
+        self.seen = []
+
+    async def __aenter__(self):
+        from aiohttp import web
+        app = web.Application()
+        app.router.add_route("*", "/{tail:.*}", self.handle)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, "127.0.0.1", 0)
+        await site.start()
+        self.origin = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        return self
+
+    async def __aexit__(self, *_exc):
+        await self.runner.cleanup()
+
+    def service(self, **options):
+        async def local(method, url, **kwargs):
+            return await aiohttp_transport(method, url.replace("https://api.torbox.app", self.origin), **kwargs)
+        return TorBoxService(TOKEN, rate_limiter=NoLimit(), transport=local, **options)
+
+    async def handle(self, request):
+        import asyncio
+        from aiohttp import web
+        self.seen.append((request.method, request.path))
+        how, status, body = self.script[(request.method, request.path)].pop(0)
+        response = web.StreamResponse(status=status, headers={"Content-Type": "application/json"})
+        await response.prepare(request)
+        third = max(1, len(body) // 3)
+        try:
+            if how == "flood":
+                megabyte = b" " * (1 << 20)
+                for _ in range(24):
+                    await response.write(megabyte)
+                await response.write_eof()
+                return response
+            if how == "cut":
+                await response.write(body[:third])
+                await asyncio.sleep(0.05)
+                request.transport.close()
+                return response
+            step, pause = (8, 0.1) if how == "trickle" else (third, 0.05)
+            for start in range(0, len(body), step):
+                await response.write(body[start:start + step])
+                await asyncio.sleep(pause)
+            await response.write_eof()
+        except (ConnectionError, RuntimeError):
+            pass
+        return response
+
+
+def listed(native_id=7):
+    files = ",".join('{"id":%d,"name":"Show/e%03d.mkv","size":1846517,"opensubtitles_hash":"be03%012d"}'
+                     % (index, index, index) for index in range(200))
+    return raw(envelope_text(torrent_text(native_id=str(native_id), files="[" + files + "]")))
+
+
+async def test_an_answer_written_in_parts_is_read_through_its_end():
+    """HTTP-R1: strictly valid JSON, longer than its first write."""
+    body = listed()
+    assert json.loads(body.decode())["data"]["id"] == 7          # strict JSON: no tolerance involved
+    async with LocalTorBox({("GET", "/v1/api/torrents/mylist"): [("parts", 200, body)]}) as remote:
+        observed = await TorBoxProvider(remote.service()).observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert observed.state == ResourceState.AVAILABLE and len(observed.file_manifest.entries) == 200
+
+
+async def test_an_oversized_streamed_answer_stays_bounded():
+    """HTTP-R2: the client stops once the answer is past the bound; the server
+    had more to send, and nothing is decoded."""
+    from providers.torbox.client import MAX_RESPONSE_BYTES
+    async with LocalTorBox({("GET", "/v1/api/torrents/mylist"): [("flood", 200, b"")]}) as remote:
+        with pytest.raises(TransferError) as caught:
+            await TorBoxProvider(remote.service()).observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    text = caught.value.error.diagnostic
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert "returned an oversized response" in text and f"length={MAX_RESPONSE_BYTES + 1}" in text
+
+
+async def test_an_answer_cut_off_mid_body_is_a_transport_failure_never_a_partial_answer():
+    """HTTP-R5: a create whose answer dies after the request was sent stays
+    UNCERTAIN; the same on a read is an ordinary network failure."""
+    created = raw('{"success":true,"error":null,"detail":"Found Cached Torrent. Using Cached Download.",'
+                  '"data":{"hash":"' + "a" * 40 + '","torrent_id":7,"auth_id":"' + "u" * 200 + '"}}')
+    async with LocalTorBox({("POST", "/v1/api/torrents/createtorrent"): [("cut", 200, created)],
+                            ("GET", "/v1/api/torrents/mylist"): [("cut", 200, listed())]}) as remote:
+        provider = TorBoxProvider(remote.service())
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert creating.value.error.category == Category.CONNECTION_FAILED
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_FAILED
+    assert reading.value.error.mutation == MutationOutcome.NOT_COMMITTED
+    assert remote.seen.count(("POST", "/v1/api/torrents/createtorrent")) == 1
+
+
+async def test_a_trickled_answer_is_bounded_by_the_total_timeout():
+    """HTTP-R6."""
+    import time
+    created = raw('{"success":true,"error":null,"detail":"ok","data":{"torrent_id":7,"pad":"' + "p" * 200 + '"}}')
+    async with LocalTorBox({("POST", "/v1/api/torrents/createtorrent"): [("trickle", 200, created)],
+                            ("GET", "/v1/api/torrents/mylist"): [("trickle", 200, listed())]}) as remote:
+        provider = TorBoxProvider(remote.service(request_timeout_seconds=0.5))
+        started = time.monotonic()
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+        elapsed = time.monotonic() - started
+    assert creating.value.error.category == Category.CONNECTION_TIMEOUT
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_TIMEOUT
+    assert elapsed < 10

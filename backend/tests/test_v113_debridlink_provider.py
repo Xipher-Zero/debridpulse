@@ -873,3 +873,173 @@ async def test_materialization_still_refuses_a_file_not_stored_whatever_the_stat
     with pytest.raises(TransferError) as refused_member:
         await provider.resolve(TransferRequest("https", member_address("t0rr3nt", "t0rr3nt-2"), "e02.mkv"))
     assert refused_member.value.error.category == Category.RESOLUTION_TEMPORARILY_FAILED
+
+
+# -- the whole bounded body ---------------------------------------------------------------
+#
+# Transfer 530: Debrid-Link's /seedbox/add answered a successful 16,122-byte
+# creation, and DP kept only a prefix -- one StreamReader.read(n) returns what
+# is buffered, not the body -- so the created torrent was never bound. These
+# run the real aiohttp transport against a local server writing each answer in
+# delayed parts, cutting it off, or trickling it.
+
+class LocalDebridLink:
+    """Debrid-Link's API on 127.0.0.1: each route answers its scripted
+    ``(how, status, payload)`` -- ``parts`` (three delayed writes), ``cut``
+    (a prefix, then the connection dies) or ``trickle`` (slowly)."""
+
+    def __init__(self, script):
+        self.script = {key: list(value) for key, value in script.items()}
+        self.seen = []
+
+    async def __aenter__(self):
+        from aiohttp import web
+        app = web.Application()
+        app.router.add_route("*", "/{tail:.*}", self.handle)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, "127.0.0.1", 0)
+        await site.start()
+        self.origin = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        return self
+
+    async def __aexit__(self, *_exc):
+        await self.runner.cleanup()
+
+    def service(self, **options):
+        async def local(method, url, **kwargs):
+            return await aiohttp_transport(method, url.replace("https://debrid-link.com", self.origin), **kwargs)
+        return DebridLinkService(KEY, transport=local, **options)
+
+    async def handle(self, request):
+        import asyncio
+        from aiohttp import web
+        self.seen.append((request.method, request.path, request.headers.get("Content-Type", "")))
+        how, status, payload = self.script[(request.method, request.path)].pop(0)
+        body = json.dumps(payload).encode()
+        response = web.StreamResponse(status=status, headers={"Content-Type": "application/json"})
+        await response.prepare(request)
+        third = max(1, len(body) // 3)
+        try:
+            if how == "cut":
+                await response.write(body[:third])
+                await asyncio.sleep(0.05)
+                request.transport.close()
+                return response
+            step, pause = (8, 0.1) if how == "trickle" else (third, 0.05)
+            for start in range(0, len(body), step):
+                await response.write(body[start:start + step])
+                await asyncio.sleep(pause)
+            await response.write_eof()
+        except (ConnectionError, RuntimeError):
+            pass
+        return response
+
+
+def created(torrent_id="t0rr3nt", digest="d" * 40):
+    value = torrent(torrent_id, files=[], name="The Real Ghostbusters " + "x" * 2000)
+    value["hashString"] = digest
+    return value
+
+
+async def test_a_creation_answer_written_in_parts_binds_the_created_torrent():
+    """HTTP-R3 (transfer 530): the complete answer names the torrent, so it is
+    bound -- never a locally manufactured uncertain creation."""
+    async with LocalDebridLink({("POST", "/api/v2/seedbox/add"): [("parts", 200, ok(created())[1])],
+                                ("GET", "/api/v2/seedbox/list"): [("parts", 200, ok([torrent()])[1])]}) as remote:
+        provider = DebridLinkProvider(remote.service())
+        assert (await provider.client.add_torrent(magnet=MAGNET))["id"] == "t0rr3nt"
+        remote.script[("POST", "/api/v2/seedbox/add")].append(("parts", 200, ok(created())[1]))
+        result = await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    assert result.observation.resource.context == {"family": SEEDBOX, "id": "t0rr3nt"}
+    assert result.observation.resource.ownership == Ownership.CREATED and result.error is None
+    assert result.state == ResourceState.PREPARING
+    assert [content for method, _path, content in remote.seen if method == "POST"] == [
+        "application/x-www-form-urlencoded"] * 2
+
+
+async def test_an_inventory_page_written_in_parts_is_read_whole():
+    """HTTP-R4: the complete page, its pagination and every fingerprint."""
+    page = {**ok([torrent("aaa", status=100, percent=100), torrent("bbb")])[1], "pagination": {"page": 0, "next": -1}}
+    async with LocalDebridLink({("GET", "/api/v2/seedbox/list"): [("parts", 200, page)]}) as remote:
+        snapshot = await DebridLinkProvider(remote.service()).inventory()
+    assert snapshot.complete
+    assert [(item.resource.context["id"], item.fingerprint, item.state) for item in snapshot.observations] == [
+        ("aaa", "d" * 40, ResourceState.AVAILABLE), ("bbb", "d" * 40, ResourceState.PREPARING)]
+
+
+async def test_an_answer_cut_off_mid_body_is_a_transport_failure_never_a_partial_answer():
+    """HTTP-R5: a creation whose answer dies after the request was sent stays
+    UNCERTAIN; the same on a read is an ordinary network failure."""
+    from providers.debridlink.translation import seedbox_resource
+    async with LocalDebridLink({("POST", "/api/v2/seedbox/add"): [("cut", 200, ok(created())[1])],
+                                ("GET", "/api/v2/seedbox/list"): [("cut", 200, ok([created()])[1])]}) as remote:
+        provider = DebridLinkProvider(remote.service())
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(seedbox_resource("t0rr3nt", ownership=Ownership.CREATED))
+    assert creating.value.error.category == Category.CONNECTION_FAILED
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_FAILED
+    assert reading.value.error.mutation == MutationOutcome.NOT_COMMITTED
+    assert [method for method, _path, _content in remote.seen].count("POST") == 1
+
+
+async def test_a_trickled_answer_is_bounded_by_the_total_timeout():
+    """HTTP-R6: the existing total timeout covers the whole body, however
+    slowly it arrives; nothing partial is returned."""
+    import time
+    from providers.debridlink.translation import seedbox_resource
+    async with LocalDebridLink({("POST", "/api/v2/seedbox/add"): [("trickle", 200, ok(created())[1])],
+                                ("GET", "/api/v2/seedbox/list"): [("trickle", 200, ok([created()])[1])]}) as remote:
+        provider = DebridLinkProvider(remote.service(request_timeout_seconds=0.5))
+        started = time.monotonic()
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(seedbox_resource("t0rr3nt", ownership=Ownership.CREATED))
+        elapsed = time.monotonic() - started
+    assert creating.value.error.category == Category.CONNECTION_TIMEOUT
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_TIMEOUT
+    assert elapsed < 10
+
+
+async def test_an_uncertain_backup_of_a_deleted_transfer_is_rediscovered_and_removed(tmp_path, monkeypatch):
+    """DL-C1: the existing owners, unchanged. A backup creation whose answer
+    was lost stays an uncertain ``creating`` claim; the transfer is deleted
+    with its remote resources; the next pass reads Debrid-Link's inventory
+    whole, finds exactly the one torrent with the request's info-hash, binds
+    it ADOPTED with the user's cleanup authority, and the one cleanup cadence
+    removes it through Debrid-Link's own removal -- never a second create."""
+    from test_v113_standby_preparation import HASH, Primary, lab, submitted
+
+    from db.database import get_db
+    from transfers.policy import TransferPolicy
+
+    page = {**ok([created(digest=HASH)])[1], "pagination": {"page": 0, "next": -1}}
+    async with LocalDebridLink({("POST", "/api/v2/seedbox/add"): [("cut", 200, ok(created(digest=HASH))[1])],
+                                ("GET", "/api/v2/seedbox/list"): [("parts", 200, page)] * 4,
+                                ("DELETE", "/api/v2/seedbox/t0rr3nt/remove"): [("parts", 200, ok(["t0rr3nt"])[1])]}
+                               ) as remote:
+        backup = DebridLinkProvider(remote.service(), prepare_backup_torrents=True)
+        repository, _registry, engine = await lab(tmp_path, monkeypatch, Primary(), backup,
+                                                  policy=TransferPolicy(retry_delay=0.0, max_attempts=3))
+        transfer = await submitted(engine)
+        await engine.resolve_pending()
+        (standby,) = [item for item in await repository.standbys(transfer.id) if item["provider_id"] == "debridlink"]
+        assert standby["state"] == "creating"                        # lost answer: uncertain, unbound
+        await engine.delete(transfer.id, remote=True)
+        for _ in range(3):
+            await engine.resolve_pending()
+        async with get_db() as db:
+            rows = await db.fetchall("SELECT payload,state,cleanup_attempts FROM provider_resources "
+                                     "WHERE transfer_id=? AND provider_id='debridlink'", (transfer.id,))
+    requests = [(method, path) for method, path, _content in remote.seen]
+    assert requests.count(("POST", "/api/v2/seedbox/add")) == 1      # never created again
+    assert requests.count(("DELETE", "/api/v2/seedbox/t0rr3nt/remove")) == 1
+    (row,) = rows
+    adopted = json.loads(row["payload"])
+    assert adopted["context"] == {"family": SEEDBOX, "id": "t0rr3nt"} and adopted["ownership"] == "adopted"
+    assert row["cleanup_attempts"] == 1

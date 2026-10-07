@@ -39,6 +39,8 @@ DEFAULT_UPLOAD_TIMEOUT_SECONDS = 120
 # A native response is decoded only up to this size: a full page of objects is
 # far smaller, so anything larger is malformed, not data.
 MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+# The most one read of a response body asks for.
+_READ_CHUNK_BYTES = 64 * 1024
 LIST_PAGE_LIMIT = 1000
 # TorBox answers at most about this many info-hashes per torrent cache query.
 TORRENT_CACHE_BATCH = 100
@@ -114,9 +116,24 @@ async def aiohttp_transport(method: str, url: str, *, headers=None, params=None,
     async with aiohttp.ClientSession() as session:
         async with session.request(method, url, headers=headers or {}, params=params, data=data,
                                    timeout=timeout, allow_redirects=False) as response:
-            body = await response.content.read(MAX_RESPONSE_BYTES + 1)
+            body = await _bounded_body(response.content)
             return RawResponse(response.status, {key.casefold(): value for key, value in response.headers.items()},
                                body)
+
+
+async def _bounded_body(stream: aiohttp.StreamReader) -> bytes:
+    """The whole body: read until it ends, or until it is past
+    ``MAX_RESPONSE_BYTES`` -- all an oversized answer needs to show. One read
+    returns only what has arrived so far, never the body. A failure before
+    the end raises, so a partial body is never taken for an answer; the
+    request's total timeout bounds every read here."""
+    body = bytearray()
+    while len(body) <= MAX_RESPONSE_BYTES:
+        chunk = await stream.read(min(_READ_CHUNK_BYTES, MAX_RESPONSE_BYTES + 1 - len(body)))
+        if not chunk:
+            break
+        body += chunk
+    return bytes(body)
 
 
 # What an unreadable answer may keep: enough to tell JSON, HTML, a CDN or WAF
