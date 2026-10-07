@@ -8,9 +8,10 @@ from urllib.parse import urlsplit
 from providers.realdebrid.account import refused_family
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
-    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, creation_error, malformed_links_evidence, manifest_evidence,
-    member_link_evidence, native_members, native_name, observation_from_native, protocol_error,
-    resource_from_native, translate_error, unrestricted_matches,
+    AMBIGUOUS_MEMBER, AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, MEMBER_ALREADY_PROVEN, NO_MEMBER,
+    creation_error, link_identity_evidence, malformed_links_evidence, manifest_evidence, native_members,
+    native_name, observation_from_native, protocol_error, resource_from_native, translate_error,
+    unrestricted_matches,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
@@ -268,18 +269,29 @@ class RealDebridProvider:
 
     # -- executable members -------------------------------------------------------
 
+    # The diagnostic each way a link's identity can fail to prove one member.
+    _IDENTITY_FAILURES = {
+        NO_MEMBER: "a torrent link matches no file",
+        AMBIGUOUS_MEMBER: "a torrent link matches more than one file",
+        MEMBER_ALREADY_PROVEN: "two torrent links match the same file",
+    }
+
     @normalized_boundary(Stage.CANDIDATE_PREPARATION)
     async def manifest(self, resource: ProviderResource) -> tuple[SourceEntry, ...]:
         """Executable members, in the SAME collection-root-relative coordinate
         system the early ``FileManifest`` published.
 
-        ``links[k]`` belongs to the k-th SELECTED file in native ``files[]``
-        order. That pairing is the one thing here Real-Debrid does not state
-        outright, so every pair is proven before it becomes executable: the
-        restricted link is unrestricted and the returned identity must be the
-        member's. A count that does not reconcile, or one contradicted member,
-        fails the whole manifest -- a link is never executed for the wrong file
-        and never re-paired by searching its neighbours."""
+        ``files[]`` describes the torrent; ``links[]`` is what Real-Debrid can
+        execute now, and may hold fewer entries than its files -- even than
+        the files it reports selected. Real-Debrid does not state which file
+        a link is, so each link is identified by its own unrestricted answer:
+        that identity must match exactly one native file, and no file twice.
+        A link that matches none or several, or a file two links match, fails
+        the whole manifest -- a link is never assigned by count, ordinal or
+        neighbour. The proven members are emitted in native ``files[]`` order;
+        which of them the transfer materializes is core's selection, not this
+        adapter's. The unrestricted answer is proof only: each member keeps
+        its restricted link, which resolution unrestricts again."""
         stage = Stage.CANDIDATE_PREPARATION
         native_id = self._native_id(resource)
         native = await self._call(self.client.torrent_info, native_id, stage=stage)
@@ -294,26 +306,32 @@ class RealDebridProvider:
         except ManifestInvalid:
             raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, stage,
                                                 integration_id=INTEGRATION_ID)) from None
-        selected = [member for member in members if member.selected]
-        if not selected or len(selected) != len(links):
+        if not links:
             raise TransferError(protocol_error(
-                stage, "selected files and links do not reconcile",
+                stage, "torrent has no executable links",
                 diagnostic_evidence=manifest_evidence(native, native_id, members, links)))
+        try:
+            restricted = [validate_provider_download_url(link, context="torrent member link") for link in links]
+        except Exception as exc:
+            raise TransferError(translate_error(exc, stage=stage, secrets=self._secrets())) from None
+        proven: dict[int, int] = {}
+        for ordinal, link in enumerate(restricted):
+            unrestricted = await self._unrestricted(link, stage=stage)
+            matches = [index for index, member in enumerate(members) if unrestricted_matches(member, unrestricted)]
+            if len(matches) == 1 and matches[0] not in proven:
+                proven[matches[0]] = ordinal
+                continue
+            reason = (NO_MEMBER if not matches else AMBIGUOUS_MEMBER if len(matches) > 1
+                      else MEMBER_ALREADY_PROVEN)
+            identity = link_identity_evidence(ordinal, link, unrestricted, native, members, matches, reason,
+                                              proven_by=proven.get(matches[0]) if len(matches) == 1 else None)
+            raise TransferError(protocol_error(
+                stage, self._IDENTITY_FAILURES[reason],
+                diagnostic_evidence=manifest_evidence(native, native_id, members, links, link_identity=identity)))
         entries = []
-        for member, link in zip(selected, links, strict=True):
-            try:
-                restricted = validate_provider_download_url(link, context="torrent member link")
-            except Exception as exc:
-                raise TransferError(translate_error(exc, stage=stage, secrets=self._secrets())) from None
-            unrestricted = await self._unrestricted(restricted, stage=stage)
-            if not unrestricted_matches(member, unrestricted):
-                contradiction = member_link_evidence(len(entries), member, restricted, unrestricted)
-                raise TransferError(protocol_error(
-                    stage, "a member link does not match its file",
-                    diagnostic_evidence=manifest_evidence(native, native_id, members, links,
-                                                          member_link=contradiction)))
-            request = TransferRequest(urlsplit(restricted).scheme, restricted, member.name,
-                                      preferred_provider=INTEGRATION_ID)
+        for index in sorted(proven):
+            member, link = members[index], restricted[proven[index]]
+            request = TransferRequest(urlsplit(link).scheme, link, member.name, preferred_provider=INTEGRATION_ID)
             entries.append(SourceEntry(member.name, member.expected_bytes, member.relative_path, request))
         return tuple(entries)
 

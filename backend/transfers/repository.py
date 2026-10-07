@@ -2224,8 +2224,11 @@ class TransferRepository(_QualifiedTransferRepository):
         ``tuple[SourceEntry, ...]``:
 
         * no selection generation for this resource, on a request that never
-          needed one (``_selection_required`` is false), or a settled ALL /
-          still-pending decision -> the full provider list. A request that DOES
+          needed one (``_selection_required`` is false), or a settled ALL with
+          no durable intent / still-pending decision -> the full provider list;
+          a settled ALL the transfer owns as a concrete intent -> exactly that
+          intent, every member proven executable before it commits (fails
+          closed with the neutral reason otherwise). A request that DOES
           require selection but has no generation for this binding fails closed
           with ``RESOURCE_STATE_CONFLICT`` -- absence of a generation is never ALL;
         * a confirmed EXPLICIT subset -> only the members proven to match the
@@ -2282,6 +2285,25 @@ class TransferRepository(_QualifiedTransferRepository):
                                             held=str(row["continuity_reason"] or fs.Continuity.HELD))
             if str(row["decision"]) in ("pending", "all"):
                 authorized = recorded = full_entries
+                # A settled ALL the live transfer owns as a concrete intent
+                # (Close/X or the decision timeout on a usable choice) is that
+                # member set, in this generation's own coordinates: every
+                # member must be executable before it commits, and nothing
+                # beyond it is authorized. Without an intent, ALL stays every
+                # executable member the provider exposes.
+                intent = (await _selection_intent_in_db(db, record.id)
+                          if str(row["decision"]) == "all" and not already else None)
+                if intent is not None:
+                    try:
+                        fs.reconcile_executable_subset(intent, full_entries)
+                    except fs.SelectionUnprovable as refused:
+                        await db.rollback()
+                        raise TransferError(NormalizedError(
+                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                            diagnostic=refused.reason)) from None
+                    intended = {path for path, _size in intent}
+                    authorized = recorded = tuple(entry for entry in full_entries
+                                                  if fs.normalize_relative_path(entry.relative_path) in intended)
                 if not already:
                     held, provenance = await self._continuity(db, record, row, authorized, now)
                     if held:

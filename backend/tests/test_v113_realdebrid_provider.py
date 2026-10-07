@@ -25,12 +25,13 @@ from providers.realdebrid.provider import RealDebridProvider
 from providers.realdebrid.translation import translate_error
 from transfers.applicability import ApplicabilityReadiness
 from transfers import codec
-from transfers.errors import Category, MutationOutcome, Retryability, TransferError
-from transfers.file_selection import normalize_relative_path, reconcile_executable_subset
+from transfers.errors import Category, MutationOutcome, Origin, Retryability, Stage, TransferError
+from transfers.file_selection import SelectionUnprovable, normalize_relative_path, reconcile_executable_subset
 from transfers.models import (
     CachePresence, CleanupAuthority, CleanupDirective, DeliveryKind, OutcomeKind, Ownership, ResourceState,
     SourceIdentity, TransferRequest,
 )
+from transfers.policy import provider_attributable
 
 CREDENTIAL = Credential("bound-client", "client-secret-value", "refresh-token-value")
 
@@ -579,14 +580,18 @@ def torrent(files=FILES, links=LINKS, unrestrict=UNRESTRICT):
                                          unrestrict_link=lambda link: unrestrict[link]))
 
 
+def unrestricted_links(provider):
+    return [call[1] for call in provider.client.calls if call[0] == "unrestrict_link"]
+
+
 @pytest.mark.asyncio
-async def test_links_pair_with_selected_files_by_native_ordinal_and_paths_match_the_early_manifest():
+async def test_proven_links_keep_native_file_order_and_paths_match_the_early_manifest():
     provider = torrent()
     early = (await provider.observe(provider_resource())).file_manifest
     assert [entry.relative_path for entry in early.entries] == [
         "A/same.bin", "B/same.bin", "skip.nfo", "unique-b.bin", "unique-a.bin"]
     entries = await provider.manifest(provider_resource())
-    # Native order kept (never sorted), the unselected file skipped, the root
+    # Native order kept (never sorted), the file no link proves absent, the root
     # wrapper removed once, and duplicate basenames kept apart by their path.
     assert [(entry.relative_path, entry.expected_bytes, entry.request.payload) for entry in entries] == [
         ("A/same.bin", 100, LINKS[0]), ("B/same.bin", 200, LINKS[1]),
@@ -600,40 +605,46 @@ async def test_links_pair_with_selected_files_by_native_ordinal_and_paths_match_
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("unrestrict, pair", [
-    # The two same-name members' links swapped: only the size tells them apart.
-    ({**UNRESTRICT, LINKS[0]: UNRESTRICT[LINKS[1]], LINKS[1]: UNRESTRICT[LINKS[0]]}, 0),
+@pytest.mark.parametrize("unrestrict, failed_link", [
     # Same size, contradicting name: the supporting fact still refutes it.
     ({**UNRESTRICT, LINKS[2]: {**UNRESTRICT[LINKS[2]], "filename": "other.bin"}}, 2),
     # A matching name never overrides a size contradiction.
     ({**UNRESTRICT, LINKS[3]: {**UNRESTRICT[LINKS[3]], "filesize": 301}}, 3),
-], ids=["swapped-duplicates", "name-contradiction", "size-contradiction"])
-async def test_a_member_link_that_is_not_its_file_fails_the_manifest_closed(unrestrict, pair):
+], ids=["name-contradiction", "size-contradiction"])
+async def test_a_link_whose_identity_matches_no_file_fails_the_manifest_closed(unrestrict, failed_link):
+    """T3."""
     provider = torrent(unrestrict=unrestrict)
     with pytest.raises(TransferError) as failed:
         await provider.manifest(provider_resource())
-    assert failed.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
-    # The contradicted pair keeps the identity its unrestriction already
-    # returned -- no further unrestriction, and never the download link.
-    assert [call[0] for call in provider.client.calls].count("unrestrict_link") == pair + 1
-    expected = [("A/same.bin", 100), ("B/same.bin", 200), ("unique-b.bin", 400), ("unique-a.bin", 300)][pair]
-    returned = unrestrict[LINKS[pair]]
-    evidence = failed.value.error.as_dict(diagnostics=True)["diagnostic_evidence"]
-    assert evidence["member_link"] == {
-        "pair_ordinal": pair, "expected": {"relative_path": expected[0], "bytes": expected[1]},
+    error = failed.value.error
+    assert (error.category, error.stage, error.diagnostic) == (
+        Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION, "a torrent link matches no file")
+    # Processing stops at the link that proved nothing: one unrestriction per
+    # link examined, and its already-returned identity is the evidence.
+    assert unrestricted_links(provider) == LINKS[:failed_link + 1]
+    returned = unrestrict[LINKS[failed_link]]
+    evidence = error.as_dict(diagnostics=True)["diagnostic_evidence"]
+    assert evidence["link_identity"] == {
+        "link_ordinal": failed_link, "reason": "no_member",
         "returned": {"filename": returned["filename"], "filesize": returned["filesize"]},
-        "restricted_link": {"ordinal": pair, "scheme": "https", "host": "real-debrid.com", "port": None,
+        "match_count": 0, "matched": [], "matched_omitted": 0,
+        "restricted_link": {"ordinal": failed_link, "scheme": "https", "host": "real-debrid.com", "port": None,
                             "has_resource_component": True}}
     assert (evidence["native_selected_count"], evidence["link_count"]) == (4, 4)
-    durable = codec.dump(failed.value.error)
+    durable = codec.dump(error)
     assert "cdn.example" not in durable and "/d/L" not in durable
 
 
 @pytest.mark.asyncio
-async def test_counts_that_do_not_reconcile_and_unsafe_paths_fail_closed():
-    with pytest.raises(TransferError) as short:
-        await torrent(links=LINKS[:3]).manifest(provider_resource())
-    assert short.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+async def test_links_are_identified_by_their_answer_never_by_their_position_and_unsafe_paths_fail_closed():
+    """T6: the two same-name members' links swapped, and one link fewer than
+    the selected files -- each link is the member its answer proves."""
+    swapped = {**UNRESTRICT, LINKS[0]: UNRESTRICT[LINKS[1]], LINKS[1]: UNRESTRICT[LINKS[0]]}
+    provider = torrent(links=LINKS[:3], unrestrict=swapped)
+    entries = await provider.manifest(provider_resource())
+    assert [(entry.relative_path, entry.expected_bytes, entry.request.payload) for entry in entries] == [
+        ("A/same.bin", 100, LINKS[1]), ("B/same.bin", 200, LINKS[0]), ("unique-b.bin", 400, LINKS[2])]
+    assert unrestricted_links(provider) == LINKS[:3]
     unsafe = [*FILES[:1], {"id": 9, "path": "/Root/../escape.bin", "bytes": 1, "selected": 1}]
     with pytest.raises(TransferError) as escaped:
         await torrent(files=unsafe, links=LINKS[:2]).manifest(provider_resource())
@@ -642,16 +653,16 @@ async def test_counts_that_do_not_reconcile_and_unsafe_paths_fail_closed():
 
 
 @pytest.mark.asyncio
-async def test_a_count_mismatch_records_the_native_facts_that_justified_it():
-    provider = torrent(links=LINKS[:3])
+async def test_an_identity_failure_records_the_native_facts_that_justified_it():
+    unmatched = {"filename": "nothing.bin", "filesize": 7, "download": "https://cdn.example/x"}
+    provider = torrent(links=LINKS[:3], unrestrict={**UNRESTRICT, LINKS[2]: unmatched})
     with pytest.raises(TransferError) as failed:
         await provider.manifest(provider_resource())
     error = failed.value.error
     assert error.category == Category.PROVIDER_PROTOCOL_VIOLATION
-    assert error.diagnostic == "selected files and links do not reconcile"
     evidence = error.as_dict(diagnostics=True).get("diagnostic_evidence")
     assert evidence, "the rejection carries no evidence of what Real-Debrid returned"
-    assert {key: value for key, value in evidence.items() if key not in ("files", "links")} == {
+    assert {key: value for key, value in evidence.items() if key not in ("files", "links", "link_identity")} == {
         "provider_operation": "torrent_manifest", "native_status": "downloaded", "native_torrent_id": "T1",
         "native_file_count": 5, "native_selected_count": 4, "link_count": 3,
         "files_total": 5, "files_emitted": 5, "files_omitted": 0,
@@ -665,10 +676,10 @@ async def test_a_count_mismatch_records_the_native_facts_that_justified_it():
             "A/same.bin", "B/same.bin", "skip.nfo", "unique-b.bin", "unique-a.bin")))]
     assert evidence["links"] == [{"ordinal": index, "scheme": "https", "host": "real-debrid.com", "port": None,
                                   "has_resource_component": True} for index in range(3)]
+    assert evidence["link_identity"]["returned"] == {"filename": "nothing.bin", "filesize": 7}
     durable = codec.dump(error)
-    assert "/d/L" not in durable and not re.search(r"real-debrid\.com/", durable)
-    # Still fail-closed, and nothing was unrestricted to learn it.
-    assert [call[0] for call in provider.client.calls] == ["torrent_info"]
+    assert "/d/L" not in durable and not re.search(r"real-debrid\.com/", durable) and "cdn.example" not in durable
+    assert [call[0] for call in provider.client.calls] == ["torrent_info", *["unrestrict_link"] * 3]
 
 
 @pytest.mark.asyncio
@@ -676,8 +687,11 @@ async def test_a_large_native_answer_is_recorded_within_the_evidence_bound():
     files = [{"id": index + 1, "path": f"/Root/Season 01/Episode {index:03d} of a long running series title.mkv",
               "bytes": 1_000_000 + index, "selected": 0 if index == 7 else 1} for index in range(200)]
     links = [f"https://real-debrid.com/d/LINK{index:03d}" for index in range(200)]
+    unmatched = {"filename": "nothing.bin", "filesize": 7, "download": "https://cdn.example/x"}
+    provider = torrent(files=files, links=links, unrestrict=dict.fromkeys(links, unmatched))
     with pytest.raises(TransferError) as failed:
-        await torrent(files=files, links=links).manifest(provider_resource())
+        await provider.manifest(provider_resource())
+    assert unrestricted_links(provider) == links[:1]
     evidence = failed.value.error.as_dict(diagnostics=True)["diagnostic_evidence"]
     assert (evidence["native_file_count"], evidence["native_selected_count"], evidence["link_count"]) == (200, 199, 200)
     assert evidence["files_total"] == evidence["links_total"] == 200
@@ -710,6 +724,137 @@ async def test_malformed_links_record_only_their_shape(links, shape):
         "provider_operation": "torrent_manifest", "native_status": "downloaded", "native_torrent_id": "T1", **shape}
     durable = codec.dump(error)
     assert "SECRET" not in durable and "/d/" not in durable
+
+
+# Transfer 538: five native files, every one selected upstream, and one link.
+# Which file a link is, is its unrestricted identity's answer -- never a count
+# or an ordinal.
+WHALE = "The.Whale.2022.HDR.2160p.WEB.H265-NAISU[TGx]"
+MOVIE = "the.whale.2022.hdr.2160p.web.h265-naisu.mkv"
+NFO = "the.whale.2022.hdr.2160p.web.h265-naisu.nfo"
+WHALE_FILES = [
+    {"id": 1, "path": "/NEW upcoming releases by Xclusive.txt", "bytes": 175, "selected": 1},
+    {"id": 2, "path": "/[TGx]Downloaded from torrentgalaxy.to .txt", "bytes": 718, "selected": 1},
+    {"id": 3, "path": f"/{MOVIE}", "bytes": 22_576_859_233, "selected": 1},
+    {"id": 4, "path": f"/{NFO}", "bytes": 400, "selected": 1},
+    {"id": 5, "path": "/the.whale.2022.hdr.2160p.web.h265-naisu.sfv", "bytes": 1890, "selected": 1},
+]
+WHALE_LINK = "https://real-debrid.com/d/WHALE538"
+AS_MOVIE = {"filename": MOVIE, "filesize": 22_576_859_233, "download": "https://cdn.example/whale/movie"}
+
+
+def whale(links=(WHALE_LINK,), unrestrict=None, files=WHALE_FILES):
+    answers = unrestrict if unrestrict is not None else {WHALE_LINK: AS_MOVIE}
+    return RealDebridProvider(FakeClient(
+        torrent_info=info(files=files, links=list(links), filename=WHALE, original_filename=WHALE),
+        unrestrict_link=lambda link: answers[link]))
+
+
+@pytest.mark.asyncio
+async def test_the_one_link_of_transfer_538_is_proven_to_be_the_movie_by_its_identity():
+    """FB-1 / T1."""
+    provider = whale()
+    try:
+        entries = await provider.manifest(provider_resource())
+    except TransferError as exc:
+        raise AssertionError((exc.error.category, exc.error.diagnostic, unrestricted_links(provider))) from None
+    (entry,) = entries
+    assert (entry.relative_path, entry.expected_bytes) == (MOVIE, 22_576_859_233)
+    assert (entry.request.payload, entry.request.preferred_provider) == (WHALE_LINK, "realdebrid")
+    assert unrestricted_links(provider) == [WHALE_LINK]
+
+
+@pytest.mark.asyncio
+async def test_the_one_link_may_prove_a_file_the_transfer_did_not_select_and_core_refuses_it():
+    """T2: the adapter states what the link is; selection is core's."""
+    provider = whale(unrestrict={WHALE_LINK: {"filename": NFO, "filesize": 400, "download": "https://cdn.example/n"}})
+    (entry,) = await provider.manifest(provider_resource())
+    assert (entry.relative_path, entry.expected_bytes, entry.request.payload) == (NFO, 400, WHALE_LINK)
+    assert unrestricted_links(provider) == [WHALE_LINK]
+    with pytest.raises(SelectionUnprovable) as refused:
+        reconcile_executable_subset([(normalize_relative_path(MOVIE), 22_576_859_233)], (entry,))
+    assert refused.value.reason == "selected_path_missing"
+
+
+@pytest.mark.asyncio
+async def test_a_link_whose_identity_matches_several_files_is_never_assigned_to_the_first():
+    """T4: same basename and size in two directories."""
+    files = [{"id": 1, "path": "/Root/CD1/disc.iso", "bytes": 700, "selected": 1},
+             {"id": 2, "path": "/Root/CD2/disc.iso", "bytes": 700, "selected": 1},
+             {"id": 3, "path": "/Root/readme.txt", "bytes": 9, "selected": 1}]
+    link = "https://real-debrid.com/d/DISC"
+    provider = torrent(files=files, links=[link],
+                       unrestrict={link: {"filename": "disc.iso", "filesize": 700, "download": "https://cdn.example/d"}})
+    with pytest.raises(TransferError) as failed:
+        await provider.manifest(provider_resource())
+    error = failed.value.error
+    assert (error.category, error.diagnostic) == (Category.PROVIDER_PROTOCOL_VIOLATION,
+                                                  "a torrent link matches more than one file")
+    assert unrestricted_links(provider) == [link]
+    identity = error.as_dict(diagnostics=True)["diagnostic_evidence"]["link_identity"]
+    assert (identity["reason"], identity["match_count"], identity["matched_omitted"]) == ("ambiguous_member", 2, 0)
+    assert identity["matched"] == [{"ordinal": 0, "native_id": 1, "relative_path": "CD1/disc.iso"},
+                                   {"ordinal": 1, "native_id": 2, "relative_path": "CD2/disc.iso"}]
+    assert "/d/DISC" not in codec.dump(error)
+
+
+@pytest.mark.asyncio
+async def test_two_links_proving_the_same_file_never_become_two_members():
+    """T5."""
+    second = "https://real-debrid.com/d/WHALE538-AGAIN"
+    provider = whale(links=(WHALE_LINK, second), unrestrict={WHALE_LINK: AS_MOVIE, second: AS_MOVIE})
+    with pytest.raises(TransferError) as failed:
+        await provider.manifest(provider_resource())
+    error = failed.value.error
+    assert (error.category, error.diagnostic) == (Category.PROVIDER_PROTOCOL_VIOLATION,
+                                                  "two torrent links match the same file")
+    assert unrestricted_links(provider) == [WHALE_LINK, second]
+    identity = error.as_dict(diagnostics=True)["diagnostic_evidence"]["link_identity"]
+    assert (identity["link_ordinal"], identity["reason"], identity["proven_by_link_ordinal"]) == (
+        1, "member_already_proven", 0)
+    assert identity["matched"] == [{"ordinal": 2, "native_id": 3, "relative_path": MOVIE}]
+    assert "WHALE538" not in codec.dump(error)
+
+
+@pytest.mark.asyncio
+async def test_every_file_with_its_own_link_in_any_order_is_emitted_in_native_order():
+    """T6: five files, five links, ``links[]`` shuffled."""
+    links = [f"https://real-debrid.com/d/W{record['id']}" for record in WHALE_FILES]
+    answers = {link: {"filename": record["path"].lstrip("/"), "filesize": record["bytes"],
+                      "download": f"https://cdn.example/{record['id']}"} for link, record in zip(links, WHALE_FILES)}
+    shuffled = [links[3], links[0], links[4], links[2], links[1]]
+    provider = whale(links=shuffled, unrestrict=answers)
+    entries = await provider.manifest(provider_resource())
+    assert [(entry.relative_path, entry.expected_bytes, entry.request.payload) for entry in entries] == [
+        (record["path"].lstrip("/"), record["bytes"], link) for record, link in zip(WHALE_FILES, links)]
+    assert unrestricted_links(provider) == shuffled
+
+
+@pytest.mark.asyncio
+async def test_an_unsafe_link_is_refused_by_network_safety_before_any_unrestriction():
+    """T8: never classified as an identity mismatch."""
+    provider = whale(links=(WHALE_LINK, "https://127.0.0.1/d/LOCAL"))
+    with pytest.raises(TransferError) as failed:
+        await provider.manifest(provider_resource())
+    assert failed.value.error.category == Category.DESTINATION_BLOCKED
+    assert unrestricted_links(provider) == []
+
+
+@pytest.mark.asyncio
+async def test_a_downloaded_torrent_without_links_fails_and_says_so():
+    """T9: never an empty manifest."""
+    provider = whale(links=())
+    with pytest.raises(TransferError) as failed:
+        await provider.manifest(provider_resource())
+    error = failed.value.error
+    assert (error.category, error.stage, error.origin, error.diagnostic) == (
+        Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION, Origin.PROVIDER,
+        "torrent has no executable links")
+    assert provider_attributable(error)
+    evidence = error.as_dict(diagnostics=True)["diagnostic_evidence"]
+    assert (evidence["native_file_count"], evidence["native_selected_count"], evidence["link_count"]) == (5, 5, 0)
+    assert evidence["links"] == [] and len(evidence["files"]) == 5
+    assert unrestricted_links(provider) == []
 
 
 @pytest.mark.asyncio

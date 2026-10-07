@@ -1167,6 +1167,44 @@ async def test_a_rejected_successor_never_changes_the_intent(tmp_path, monkeypat
     assert await intent_of(lab) == ["S1/A.mkv", "S3/C.mkv"]
 
 
+def executable_only(path):
+    """parcel-d executes ``path`` alone of its three described files (as
+    Real-Debrid may link fewer files than it describes); every other
+    provider executes all of them."""
+    def members(identity, files):
+        native = "y" if identity == "parcel-d" else "x"
+        return tuple(SourceEntry(name, size, member, TransferRequest("parcel-member", f"{native}:{member}", name=name))
+                     for name, member, size in files if identity != "parcel-d" or member == path)
+    return members
+
+
+async def test_an_inherited_selection_commits_against_a_successor_executing_only_that_member(tmp_path, monkeypatch):
+    """T10 (transfer 538): described three, executes the chosen one."""
+    lab = await lineage_lab(tmp_path, monkeypatch, chosen=("S1/A.mkv",), members=executable_only("S1/A.mkv"))
+    offers = len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'"))
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-a", native="y")
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert never_offered(generation) and committed_proven(generation), dict(generation)
+    assert await active_members(lab.repository, lab.transfer.id) == [("S1/A.mkv", "y:S1/A.mkv")]
+    assert len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'")) == offers
+    assert await intent_of(lab) == ["S1/A.mkv"]
+
+
+async def test_an_inherited_selection_refuses_a_successor_executing_only_another_member(tmp_path, monkeypatch):
+    """T11: the successor's one executable member is not the chosen one."""
+    lab = await lineage_lab(tmp_path, monkeypatch, chosen=("S1/A.mkv",), members=executable_only("S2/B.mkv"))
+    offers = len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'"))
+    lab.offer("parcel-d", SEASONS, "y")
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-d", expected_provider_id="parcel-a")
+    error = await first_conflict(lab.repository, lab.engine, lab.transfer.id)
+    assert error is not None and error.diagnostic == "fallback_executable_path_missing"
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert never_offered(generation) and generation["manifest_committed_at"] is None, dict(generation)
+    assert "S2/B.mkv" not in [path for path, _payload in await members_of(lab.repository, lab.transfer.id)]
+    assert len(await rows("SELECT 1 FROM application_events WHERE kind='file_selection_available'")) == offers
+    assert await intent_of(lab) == ["S1/A.mkv"]
+
+
 async def test_an_empty_intent_is_kept_and_never_broadens(tmp_path, monkeypatch):
     """T10: every member deselected -- the intent row stays, empty, and
     nothing is materialized as ALL."""

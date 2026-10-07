@@ -14,7 +14,7 @@ from fake_integrations import MemoryExecutor, ParcelProvider
 from file_selection_support import Clock, executable, file_manifest, seed_window
 from transfers import file_selection as fs
 from transfers.engine import TransferEngine
-from transfers.errors import TransferError
+from transfers.errors import Category, TransferError
 from transfers.models import ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
@@ -182,6 +182,102 @@ async def test_cached_timeout_at_120s_settles_all_and_discards_no_draft(repo):
     view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
     assert view["decision"] == "all" and view["decision_reason"] == fs.DecisionReason.DECISION_TIMEOUT
     assert view["selected_entry_ids"] == []
+
+
+# --------------------------------------------------------------------------- #
+# A settled concrete ALL is the transfer's intent: the executable manifest
+# proves every member of it, or nothing commits
+# --------------------------------------------------------------------------- #
+
+THREE = (("a", "s/a", 10), ("b", "s/b", 20), ("c", "s/c", 30))
+
+
+async def _settled_all(repo, how):
+    """ALL settled on a usable three-file manifest by its real owner: Close/X
+    (``dismiss_file_selection``) or the decision timeout (the gate)."""
+    clock = Clock(1000.0)
+    seed = await window(repo, clock, initially_available=True, tag="w" if how == "closed" else "x")
+    clock.set(1005.0)
+    canonical = await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(*THREE),
+                                                now=clock())
+    if how == "closed":
+        clock.set(1050.0)
+        assert (await repo.dismiss_file_selection(seed.transfer_id, canonical.manifest_id, now=clock())).decision == "all"
+    else:
+        clock.set(1005.0 + fs.IMMEDIATE_DECISION_HOLD_SECONDS)
+        assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id,
+                                              now=clock()) == fs.SelectionGate.PROCEED
+    return seed, clock
+
+
+async def _intent(request_id):
+    async with database.get_db() as db:
+        if not await db.fetchone("SELECT 1 FROM transfer_file_selection_intents WHERE request_id=?", (request_id,)):
+            return None
+        return [(row["relative_path"], row["expected_bytes"]) for row in await db.fetchall(
+            "SELECT relative_path,expected_bytes FROM transfer_file_selection_intent_entries WHERE request_id=? "
+            "ORDER BY relative_path", (request_id,))]
+
+
+async def _decision(seed):
+    async with database.get_db() as db:
+        row = await db.fetchone(
+            "SELECT decision,decision_reason,manifest_committed_at FROM transfer_file_selections WHERE request_id=?",
+            (seed.request_id,))
+        children = await db.fetchone("SELECT COUNT(*) AS n FROM transfer_requests WHERE parent_id=?",
+                                     (seed.request_id,))
+    return row["decision"], row["decision_reason"], row["manifest_committed_at"], children["n"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["closed", "decision_timeout"])
+async def test_a_settled_concrete_all_never_commits_a_partial_executable_set(repo, how):
+    """FB-2 / T12."""
+    seed, clock = await _settled_all(repo, how)
+    settled = await _decision(seed)
+    assert await _intent(seed.request_id) == [("s/a", 10), ("s/b", 20), ("s/c", 30)]
+    with pytest.raises(TransferError) as refused:
+        await repo.commit_selected_manifest(seed.record, executable(("b", "s/b", 20)), now=clock())
+    assert (refused.value.error.category, refused.value.error.diagnostic) == (
+        Category.RESOURCE_STATE_CONFLICT, "selected_path_missing")
+    assert await _decision(seed) == settled and settled[0] == "all" and settled[2:] == (None, 0)
+    assert await _intent(seed.request_id) == [("s/a", 10), ("s/b", 20), ("s/c", 30)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["closed", "decision_timeout"])
+async def test_a_settled_concrete_all_commits_when_every_member_is_executable(repo, how):
+    """T13."""
+    seed, clock = await _settled_all(repo, how)
+    full = executable(*THREE)
+    authorized = await repo.commit_selected_manifest(seed.record, full, now=clock())
+    assert authorized == full and authorized.first_commitment is True
+    decision, _reason, committed, _children = await _decision(seed)
+    assert (decision, committed) == ("all", clock())
+    assert await _intent(seed.request_id) == [("s/a", 10), ("s/b", 20), ("s/c", 30)]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["default_materialization", "manifest_timeout"])
+async def test_an_operational_all_without_intent_commits_every_executable_member(repo, how):
+    """T14: no durable intent -- ALL is what the provider executes, as before."""
+    clock = Clock(1000.0)
+    if how == "default_materialization":
+        seed = await seed_window(transfer_hash="y" * 40)
+        assert await repo.begin_file_selection_window(
+            seed.request_id, seed.transfer_id, seed.provider_resource_id, seed.provider_id,
+            initially_available=True, now=clock(), interactive=False) is not None
+        await repo.record_file_manifest(seed.request_id, seed.provider_resource_id, file_manifest(*THREE), now=clock())
+    else:
+        seed = await window(repo, clock, initially_available=True, tag="z")
+        clock.set(1060.0)
+    assert await repo.file_selection_gate(seed.request_id, seed.provider_resource_id,
+                                          now=clock()) == fs.SelectionGate.PROCEED
+    partial = executable(("b", "s/b", 20))
+    assert await repo.commit_selected_manifest(seed.record, partial, now=clock()) == partial
+    decision, reason, committed, _children = await _decision(seed)
+    assert (decision, reason, committed) == ("all", how, clock())
+    assert await _intent(seed.request_id) is None
 
 
 # --------------------------------------------------------------------------- #

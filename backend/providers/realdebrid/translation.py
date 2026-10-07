@@ -234,7 +234,7 @@ def native_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
     collection wrapper is the neutral rule's
     (``transfers.file_selection.collection_member_paths``), given the torrent's
     authoritative name ``root_name``. Order is never changed -- the executable
-    manifest pairs ``links[]`` by native selected-file ordinal.
+    manifest emits its proven members in native ``files[]`` order.
 
     Raises ``ManifestInvalid`` for any path that would escape the root and
     ``ValueError``/``TypeError`` for a malformed native record.
@@ -414,7 +414,7 @@ def _header(native: dict, native_id: str) -> dict:
 
 
 def manifest_evidence(native: dict, native_id: str, members: tuple[NativeMember, ...], links: list[str], *,
-                      member_link: dict | None = None) -> dict:
+                      link_identity: dict | None = None) -> dict:
     """The native files (as ``native_members`` read them) and links a
     manifest rejection judged, as the longest native-order prefixes the
     durable evidence bound keeps, with counts that state exactly what was
@@ -422,8 +422,8 @@ def manifest_evidence(native: dict, native_id: str, members: tuple[NativeMember,
     records = native["files"]
     evidence = {**_header(native, native_id), "native_file_count": len(members),
                 "native_selected_count": sum(member.selected for member in members), "link_count": len(links)}
-    if member_link is not None:
-        evidence["member_link"] = member_link
+    if link_identity is not None:
+        evidence["link_identity"] = link_identity
     files = [{"ordinal": ordinal, "native_id": _native_number(record.get("id")),
               "relative_path": member.relative_path, "bytes": member.expected_bytes, "selected": member.selected}
              for ordinal, (record, member) in enumerate(zip(records[:EVIDENCE_RECORDS], members))]
@@ -444,14 +444,31 @@ def manifest_evidence(native: dict, native_id: str, members: tuple[NativeMember,
         kept_files, kept_links = kept
 
 
-def member_link_evidence(ordinal: int, member: NativeMember, link: str, unrestricted: dict) -> dict:
+# Why a link's unrestricted identity proved no one member.
+NO_MEMBER = "no_member"
+AMBIGUOUS_MEMBER = "ambiguous_member"
+MEMBER_ALREADY_PROVEN = "member_already_proven"
+
+
+def link_identity_evidence(ordinal: int, link: str, unrestricted: dict, native: dict,
+                           members: tuple[NativeMember, ...], matches: list[int], reason: str, *,
+                           proven_by: int | None = None) -> dict:
     """The identity an ``/unrestrict/link`` answer already returned for the
-    pair it contradicted -- never its download link."""
-    return {"pair_ordinal": ordinal,
-            "expected": {"relative_path": member.relative_path, "bytes": member.expected_bytes},
-            "returned": {"filename": _native_text(unrestricted.get("filename")),
-                         "filesize": _native_number(unrestricted.get("filesize"))},
-            "restricted_link": link_descriptor(ordinal, link)}
+    link that proved no one member, and the members it did match (a bounded
+    native-order prefix) -- never its download link."""
+    records = native["files"]
+    evidence = {"link_ordinal": ordinal, "reason": reason,
+                "returned": {"filename": _native_text(unrestricted.get("filename")),
+                             "filesize": _native_number(unrestricted.get("filesize"))},
+                "match_count": len(matches),
+                "matched": [{"ordinal": index, "native_id": _native_number(records[index].get("id")),
+                             "relative_path": members[index].relative_path}
+                            for index in matches[:EVIDENCE_RECORDS]],
+                "matched_omitted": max(0, len(matches) - EVIDENCE_RECORDS),
+                "restricted_link": link_descriptor(ordinal, link)}
+    if proven_by is not None:
+        evidence["proven_by_link_ordinal"] = proven_by
+    return evidence
 
 
 def malformed_links_evidence(native: dict, native_id: str) -> dict:
