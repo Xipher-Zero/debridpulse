@@ -16,8 +16,8 @@ import pytest
 import db.database as database
 from providers.torbox import admin
 from providers.torbox.client import (
-    API, TORRENT, USENET, WEBDL, RawResponse, TorBoxAPIError, TorBoxService, member_address, member_source_host,
-    parse_member_address,
+    API, TORRENT, USENET, WEBDL, RawResponse, TorBoxAPIError, TorBoxService, aiohttp_transport, member_address,
+    member_source_host, parse_member_address,
 )
 from providers.torbox.definition import TorBoxOptions, definition
 from providers.torbox.host_runtime import (
@@ -28,10 +28,10 @@ from providers.torbox.provider import TorBoxProvider
 from providers.torbox.translation import identity, native_members, observation, resource, translate_error
 from providers.usenet.provider import UsenetProvider
 from transfers.applicability import ApplicabilityReadiness
-from transfers.errors import Category, Domain, Recovery, Retryability, TransferError
+from transfers.errors import Category, Domain, MutationOutcome, Recovery, Retryability, TransferError
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
-    CleanupAuthority, CleanupDirective, DeliveryKind, OutcomeKind, Ownership, ResourceState, SourceIdentity,
+    CachePresence, CleanupAuthority, CleanupDirective, DeliveryKind, OutcomeKind, Ownership, ResourceState, SourceIdentity,
     TransferRequest,
 )
 from transfers.policy import TransferPolicy, provider_attributable
@@ -66,9 +66,10 @@ class Transport:
     async def __call__(self, method, url, *, headers=None, params=None, data=None, timeout=None):
         self.calls.append({"method": method, "url": url, "headers": dict(headers or {}),
                            "params": dict(params or {}), "data": data, "timeout": timeout})
-        status, payload = self.script[(method, url.removeprefix(API + "/"))].pop(0)
+        status, payload, *headers = self.script[(method, url.removeprefix(API + "/"))].pop(0)
         body = payload if isinstance(payload, bytes) else json.dumps(payload).encode()
-        return RawResponse(status, {}, body)
+        return RawResponse(status, {key.casefold(): value for key, value in (headers[0] if headers else {}).items()},
+                           body)
 
 
 class NoLimit:
@@ -275,6 +276,9 @@ class FakeClient:
         self.hoster_list = [{"domains": ["hoster.example"], "status": True}]
         # Links TorBox's web-download cache holds (``webdl_cached``); empty: nothing cached.
         self.cache = set()
+        # TorBox's queue of torrent submissions it has not started, by queued_id
+        # -- the queue's own ids, never torrent ids.
+        self.queued = {}
 
     @property
     def configured(self):
@@ -321,6 +325,10 @@ class FakeClient:
         if native_id not in self.objects[family]:
             raise TorBoxAPIError("ITEM_NOT_FOUND", "", 404)
         return dict(self.objects[family][native_id])
+
+    async def queued_torrents(self, offset, limit=1000):
+        self.calls.append(("queued_torrents", offset))
+        return list(self.queued.values())[offset:offset + limit]
 
     async def items(self, family, offset, limit=1000):
         values = list(self.objects[family].values())
@@ -904,3 +912,402 @@ async def test_cleanup_of_a_cache_created_object_is_owned_and_an_observed_one_is
 def replace_ownership(resource_value, ownership):
     from dataclasses import replace as _replace
     return _replace(resource_value, ownership=ownership)
+
+
+# -- the native wire, freshness, the queue and unreadable answers ------------------------
+#
+# Transfer 526: TorBox named two real torrents, yet a fresh per-id read of
+# each sometimes came back "TorBox returned invalid JSON" with every fact of
+# the answer discarded. These prove the documented native contract and that
+# such an answer now carries what it actually was. None of them claims to be
+# the cause of 526's unreadable answer: that is TorBox's wire to tell.
+
+async def on_the_wire(data):
+    """What aiohttp actually sends for ``data``, received by a local server
+    through this client's own transport: the Content-Type and the fields."""
+    from aiohttp import web
+    seen = {}
+
+    async def receive(request):
+        seen["content_type"] = request.headers.get("Content-Type", "")
+        form = await request.post()
+        seen["fields"] = {key: value.file.read() if hasattr(value, "file") else value for key, value in form.items()}
+        return web.json_response(ok({"torrent_id": 7})[1])
+
+    app = web.Application()
+    app.router.add_post("/", receive)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        await aiohttp_transport("POST", f"http://127.0.0.1:{port}/", data=data)
+    finally:
+        await runner.cleanup()
+    return seen
+
+
+async def test_a_magnet_creation_is_multipart_on_the_wire():
+    """TB-FB1 (contract hygiene): createtorrent is documented
+    multipart/form-data; a form of plain strings is not multipart by itself."""
+    client, transport = service({("POST", "torrents/createtorrent"): [ok({"torrent_id": 7}), ok({"torrent_id": 8})],
+                                 ("POST", "webdl/createwebdownload"): [ok({"webdownload_id": 9})]})
+    assert await client.create_torrent(magnet=MAGNET) == "7"
+    assert await client.create_torrent(metainfo=b"d4:infoe", name="x.torrent") == "8"
+    assert await client.create_webdl("https://hoster.example/f/1") == "9"
+    magnet = await on_the_wire(transport.calls[0]["data"])
+    assert magnet["content_type"].startswith("multipart/form-data; boundary=")
+    assert magnet["fields"] == {"magnet": MAGNET, "allow_zip": "false"}
+    upload = await on_the_wire(transport.calls[1]["data"])
+    assert upload["content_type"].startswith("multipart/form-data; boundary=")
+    assert upload["fields"] == {"file": b"d4:infoe", "allow_zip": "false"}
+    # createwebdownload is documented application/x-www-form-urlencoded: unchanged.
+    webdl = await on_the_wire(transport.calls[2]["data"])
+    assert webdl["content_type"] == "application/x-www-form-urlencoded"
+
+
+def queued(queued_id=7, **extra):
+    """One entry of TorBox's queue: its ``id`` is a queued_id."""
+    return {"id": queued_id, "created_at": "2026-10-07T00:33:36Z", "magnet": MAGNET, "hash": "a" * 40,
+            "name": "Show", "type": "torrent", **extra}
+
+
+def observing(script):
+    client, transport = service(script)
+    return TorBoxProvider(client), transport
+
+
+def asked(transport):
+    return [(call["url"].removeprefix(API + "/"), call["params"]) for call in transport.calls]
+
+
+CURRENT = ("torrents/mylist", {"id": "7", "bypass_cache": "true"})
+QUEUE = ("queued/getqueued", {"type": "torrent", "offset": 0, "limit": 1000, "bypass_cache": "true"})
+
+
+async def test_a_torrent_id_is_never_read_as_a_queued_id():
+    """TB-ID1: torrent ids and queued ids are separate namespaces. A bound
+    torrent TorBox no longer holds is absent under the existing semantics --
+    the queue entry that happens to carry the same number is another object
+    and is never consulted, returned or reported PREPARING for it."""
+    provider, transport = observing({("GET", "torrents/mylist"): [refused("ITEM_NOT_FOUND", 404)],
+                                     ("GET", "queued/getqueued"): [ok(queued(7))]})
+    bound = resource(TORRENT, "7", ownership=Ownership.CREATED)
+    gone = await provider.observe(bound)
+    assert gone.state == ResourceState.ABSENT and gone.error.category == Category.RESOURCE_NOT_FOUND
+    assert gone.resource == bound and gone.name == "" and gone.fingerprint == ""
+    assert asked(transport) == [CURRENT]
+
+
+async def test_a_queued_create_answer_binds_no_queued_id():
+    """TB-ID4: TorBox accepted the torrent into its queue and answered only a
+    queued_id. The creation happened, so it stays UNCERTAIN for the existing
+    reconciliation; nothing is bound, and the queued_id is never read as a
+    torrent id or named as one."""
+    provider, transport = observing({("POST", "torrents/createtorrent"): [
+        ok({"queued_id": 55, "hash": "a" * 40, "auth_id": "x", "active_limit": 1, "current_active_downloads": 1})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    error = caught.value.error
+    assert error.mutation == MutationOutcome.UNCERTAIN
+    assert "accepted the torrent into its queue without a current torrent_id" in error.diagnostic
+    assert "55" not in error.diagnostic
+    assert [url for url, _params in asked(transport)] == ["torrents/createtorrent"]
+
+
+async def test_a_current_create_answer_binds_its_torrent_id_and_never_asks_the_queue():
+    """TB-ID5."""
+    provider, transport = observing({("POST", "torrents/createtorrent"): [ok({"torrent_id": 7, "hash": "a" * 40})],
+                                     ("GET", "torrents/mylist"): [ok(torrent(7))]})
+    result = await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    assert result.state == ResourceState.PREPARING
+    assert result.observation.resource.context == {"family": TORRENT, "id": "7"}
+    assert result.observation.resource.ownership == Ownership.CREATED
+    assert asked(transport) == [("torrents/createtorrent", {}), CURRENT]
+
+
+async def test_a_stale_list_that_lacks_a_torrent_never_makes_it_absent():
+    """TB-P1: TorBox refreshes its list only every 600 s unless asked to bypass
+    that cache, so a torrent just created may be missing from the cached list
+    yet present in a fresh read. Only fresh reads decide presence."""
+    calls = []
+
+    async def transport(method, url, *, headers=None, params=None, data=None, timeout=None):
+        calls.append(dict(params or {}))
+        fresh = (params or {}).get("bypass_cache") == "true"
+        status, payload = ok(torrent(present=True, state="cached") if fresh else None)
+        return RawResponse(status, {}, json.dumps(payload).encode())
+
+    provider = TorBoxProvider(TorBoxService(TOKEN, rate_limiter=NoLimit(), transport=transport))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert observed.state == ResourceState.AVAILABLE
+    assert all(call.get("bypass_cache") == "true" for call in calls) and len(calls) == 1
+
+
+@pytest.mark.parametrize("unreadable", [
+    (200, b"<html>busy</html>", {"Content-Type": "text/html"}),
+    (302, b"<html>moved</html>", {"Content-Type": "text/html", "Location": "https://api.torbox.app/x"}),
+    (200, b"", {}),
+    ok(["not", "an", "object"]),
+])
+async def test_an_unreadable_current_answer_is_a_protocol_failure_never_absence(unreadable):
+    provider, transport = observing({("GET", "torrents/mylist"): [unreadable]})
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert asked(transport) == [CURRENT]
+
+
+async def test_a_redirect_is_an_explicit_safe_protocol_fact_never_invalid_json():
+    """HTTP-FB1: a 302 is never decoded as JSON. Its safe facts -- method,
+    endpoint path, status, media type, length, the Location's scheme, host and
+    path, a bounded body prefix -- survive; its query, the token and any
+    credential never do."""
+    location = f"https://api.torbox.app/v1/api/torrents/mylist?id=7&token={TOKEN}#frag"
+    provider, transport = observing({("GET", "torrents/mylist"): [
+        (302, b"<html><body>Moved</body></html>", {"Content-Type": "text/html; charset=utf-8",
+                                                    "Location": location})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    error = caught.value.error
+    assert error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    text = error.diagnostic
+    assert "invalid JSON" not in text
+    for fact in ("GET /v1/api/torrents/mylist", "redirect", "HTTP 302", "content-type=text/html; charset=utf-8",
+                 "length=31", "location-scheme=https", "location-host=api.torbox.app",
+                 "location-path=/v1/api/torrents/mylist", "body-prefix=", "Moved"):
+        assert fact in text, fact
+    rendered = json.dumps(error.as_dict(diagnostics=True), default=str)
+    assert TOKEN not in rendered and "token=" not in rendered and "frag" not in rendered and "id=7" not in text
+    assert len(transport.calls) == 1   # read once; nothing retried
+
+
+async def test_a_malformed_success_keeps_bounded_safe_evidence():
+    body = b"<html>" + b"x" * 5000 + f"Bearer {TOKEN}".encode() + b"</html>"
+    provider, _ = observing({("GET", "torrents/mylist"): [(200, body, {"Content-Type": "text/html"})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    text = caught.value.error.diagnostic
+    assert "HTTP 200" in text and "content-type=text/html" in text and f"length={len(body)}" in text
+    assert "not JSON" in text and "<html>xxx" in text and len(text) <= 500
+    assert TOKEN not in text and "x" * 200 not in text
+
+
+async def test_a_creation_answered_with_a_redirect_stays_uncertain():
+    provider, transport = observing({("POST", "torrents/createtorrent"): [
+        (307, b"", {"Location": "https://api.torbox.app/v1/api/torrents/createtorrent"})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert caught.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert "HTTP 307" in caught.value.error.diagnostic and len(transport.calls) == 1
+
+
+async def test_the_native_transport_never_follows_a_redirect():
+    from aiohttp import web
+    followed = []
+
+    async def moved(request):
+        return web.Response(status=302, headers={"Location": "/elsewhere"}, content_type="text/html",
+                            text="<html>moved</html>")
+
+    async def elsewhere(request):
+        followed.append(request.method)
+        return web.json_response(ok({})[1])
+
+    app = web.Application()
+    app.router.add_route("*", "/create", moved)
+    app.router.add_route("*", "/elsewhere", elsewhere)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        for method in ("POST", "GET"):
+            answer = await aiohttp_transport(method, f"http://127.0.0.1:{port}/create", data=None)
+            assert answer.status == 302 and answer.headers["location"] == "/elsewhere"
+    finally:
+        await runner.cleanup()
+    assert followed == []
+
+
+# -- the queue is evidence for the account's inventory, never an observation ---------
+#
+# The neutral creation reconciliation trusts a complete inventory without the
+# request's info-hash as proof a create never happened. A torrent TorBox holds
+# in its queue has only a queued_id -- no torrent id yet -- so it can be no
+# observation; while the queue holds anything, the inventory is not complete.
+
+EMPTY = {("GET", "torrents/mylist"): [ok([])], ("GET", "webdl/mylist"): [ok([])], ("GET", "usenet/mylist"): [ok([])]}
+
+
+async def test_the_queue_is_read_first_and_only_an_empty_queue_completes_the_inventory():
+    """TB-ID7: queue first (fresh, to its end), then every current collection;
+    complete only when the queue is empty."""
+    provider, transport = observing({**EMPTY, ("GET", "queued/getqueued"): [ok([])]})
+    snapshot = await provider.inventory()
+    assert snapshot.complete and snapshot.observations == ()
+    assert [url for url, _params in asked(transport)] == [
+        "queued/getqueued", "torrents/mylist", "webdl/mylist", "usenet/mylist"]
+    assert asked(transport)[0] == QUEUE
+
+    provider, _ = observing({**EMPTY, ("GET", "torrents/mylist"): [ok([torrent(9)])],
+                             ("GET", "queued/getqueued"): [ok([queued(7)])]})
+    snapshot = await provider.inventory()
+    assert not snapshot.complete
+    assert [item.resource.context for item in snapshot.observations] == [{"family": TORRENT, "id": "9"}]
+
+
+async def test_a_queued_entry_is_never_an_observation_even_when_its_number_is_a_torrent_id():
+    """TB-ID2 / TB-ID1 in the inventory: no ``resource(TORRENT, queued_id)``,
+    no deduplication across the two namespaces by number."""
+    client = FakeClient()
+    current = client._created(TORRENT, torrent(present=True, state="cached"))
+    client.queued = {"7": queued(7), current: queued(int(current), hash="b" * 40, name="Other")}
+    snapshot = await TorBoxProvider(client).inventory()
+    assert not snapshot.complete
+    (only,) = snapshot.observations
+    assert only.resource == resource(TORRENT, current)
+    assert (only.name, only.fingerprint, only.state) == ("Show", "a" * 40, ResourceState.AVAILABLE)
+
+
+@pytest.mark.parametrize("unreadable", [
+    (200, b"<html>busy</html>", {"Content-Type": "text/html"}), refused("DATABASE_ERROR", 500), ok({"id": 7}),
+    ok(["not an object"]),
+])
+async def test_an_unreadable_queue_never_yields_a_complete_inventory(unreadable):
+    provider, _ = observing({**EMPTY, ("GET", "queued/getqueued"): [unreadable]})
+    with pytest.raises(TransferError):
+        await provider.inventory()
+
+
+async def test_an_unreadable_current_collection_never_yields_a_complete_inventory():
+    provider, _ = observing({**EMPTY, ("GET", "queued/getqueued"): [ok([])],
+                             ("GET", "torrents/mylist"): [(200, b"<html>busy</html>", {"Content-Type": "text/html"})]})
+    with pytest.raises(TransferError):
+        await provider.inventory()
+
+
+async def test_a_duplicate_refusal_adopts_only_a_current_torrent_never_a_queued_entry():
+    """TB-ID6: the one inventory adopts the unique current match by its real
+    torrent id; a match only in the queue is no torrent, so the refusal
+    stands."""
+    client = FakeClient()
+    existing = client._created(TORRENT, torrent(present=True, state="cached"))
+    client.queued = {"7": queued(7)}
+    client.refusal = TorBoxAPIError("DUPLICATE_ITEM", "exists", 400)
+    result = await TorBoxProvider(client).resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    assert result.observation.resource.context == {"family": TORRENT, "id": existing}
+    assert result.observation.resource.ownership == Ownership.ADOPTED
+
+    queued_only = FakeClient()
+    queued_only.queued = {"7": queued(7)}
+    queued_only.refusal = TorBoxAPIError("DUPLICATE_ITEM", "exists", 400)
+    with pytest.raises(TransferError) as caught:
+        await TorBoxProvider(queued_only).resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    assert caught.value.error.category == Category.RESOURCE_STATE_CONFLICT
+    assert not [call for call in queued_only.calls if call[0] in {"item", "delete", "requestdl"}]
+
+
+class QueuedCreate(FakeClient):
+    """TorBox accepting every torrent into its queue: it answers no torrent id
+    (TB-ID4's answer, as the client raises it). ``promote`` starts the queued
+    submission right after the next read of the queue, as a torrent under a
+    new torrent id of its own."""
+
+    def __init__(self, *, promote=False):
+        super().__init__()
+        self.promote = promote
+        self.next_queued = 500
+
+    async def create_torrent(self, *, magnet="", metainfo=None, name=""):
+        from providers.torbox.client import TorBoxProtocolError
+        self.calls.append(("create_torrent", magnet or metainfo))
+        self.next_queued += 1
+        self.queued[str(self.next_queued)] = queued(self.next_queued)
+        raise TorBoxProtocolError("TorBox accepted the torrent into its queue without a current torrent_id")
+
+    async def queued_torrents(self, offset, limit=1000):
+        page = await super().queued_torrents(offset, limit)
+        if self.promote and self.queued:
+            self.queued.clear()
+            self.started = self._created(TORRENT, torrent(present=True, state="cached"))
+        return page
+
+
+async def queued_create_lab(tmp_path, monkeypatch, client):
+    from test_v113_collection_route_generic_closure import Clock
+    from test_v113_standby_preparation import lab, magnet, torbox
+
+    from transfers.policy import TransferPolicy
+
+    clock = Clock()
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, torbox(client, on=False), clock=clock,
+                                              policy=TransferPolicy(retry_delay=60.0, max_attempts=3))
+    transfer = await engine.submit((magnet(),), name="Show", deduplicate=False)
+    await engine.resolve_pending()
+    return repository, engine, clock, transfer
+
+
+async def test_a_queue_only_create_is_never_adopted_settled_absent_or_created_again(tmp_path, monkeypatch):
+    """TB-ID2: while the submission is only in the queue, the existing
+    reconciliation cannot prove absence (the inventory is not complete) and
+    has nothing to adopt; the creation stays owed and nothing is created
+    again."""
+    from test_v113_standby_preparation import creates, root_of
+    from test_v113_uncertain_creation import owed
+
+    client = QueuedCreate()
+    repository, engine, clock, transfer = await queued_create_lab(tmp_path, monkeypatch, client)
+    root = await root_of(repository, transfer)
+    assert root.resource is None and root.error.mutation == MutationOutcome.UNCERTAIN
+    for _ in range(4):
+        clock.now += 61
+        await engine.resolve_pending()
+    root = await root_of(repository, transfer)
+    assert root.resource is None and await owed(root.id)
+    assert len(creates(client)) == 1
+    assert not [call for call in client.calls if call[0] in {"item", "delete", "requestdl"}]
+
+
+async def test_a_submission_started_between_the_queue_and_current_reads_is_adopted_by_its_torrent_id(
+        tmp_path, monkeypatch):
+    """TB-ID3: TorBox starts the queued submission (queued_id Q) right after
+    the queue is read; reading the current collections afterwards sees it
+    under its real torrent id T (T != Q), and the existing reconciliation
+    adopts T by info-hash. Q never becomes a resource; nothing is created
+    again."""
+    from test_v113_standby_preparation import creates, root_of
+
+    client = QueuedCreate(promote=True)
+    repository, engine, clock, transfer = await queued_create_lab(tmp_path, monkeypatch, client)
+    clock.now += 61
+    await engine.resolve_pending()
+    root = await root_of(repository, transfer)
+    assert root.resource is not None and root.resource.ownership == Ownership.ADOPTED
+    assert root.resource.context == {"family": TORRENT, "id": client.started}
+    assert client.started != str(client.next_queued)
+    assert len(creates(client)) == 1
+
+
+# -- an error status whose body is not TorBox's answer keeps its safe facts -------------
+
+@pytest.mark.parametrize("status, category, mutation", [
+    (503, Category.PROVIDER_UNAVAILABLE, MutationOutcome.UNCERTAIN),
+    (403, Category.CREDENTIAL_INVALID, MutationOutcome.NOT_COMMITTED),
+])
+async def test_a_malformed_error_status_keeps_its_classification_and_safe_evidence(status, category, mutation):
+    page = f"<html><title>{status}</title>Bearer {TOKEN}</html>".encode()
+    provider, transport = observing({("POST", "torrents/createtorrent"): [
+        (status, page, {"Content-Type": "text/html"})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    error = caught.value.error
+    assert (error.category, error.mutation, error.native_code) == (category, mutation, str(status))
+    for fact in ("POST /v1/api/torrents/createtorrent", f"HTTP {status}", "content-type=text/html",
+                 f"length={len(page)}", "body-prefix=", f"<title>{status}</title>"):
+        assert fact in error.diagnostic, fact
+    assert TOKEN not in json.dumps(error.as_dict(diagnostics=True), default=str)
+    assert len(transport.calls) == 1

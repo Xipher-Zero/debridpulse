@@ -438,8 +438,30 @@ class TorBoxProvider:
     @normalized_boundary(Stage.RECONCILIATION)
     async def inventory(self) -> ResourceSnapshot:
         """Every object on the account, all three families, paged locally until
-        complete. TorBox's separate queue of not-yet-started submissions holds
-        no object yet, so nothing there can be observed or adopted."""
+        complete.
+
+        TorBox's separate queue of torrent submissions it has not started is
+        read first, to its end. A queued submission has its own ``queued_id``
+        -- not a torrent id, and never one -- and only becomes a torrent, under
+        a torrent id of its own, when TorBox starts it; so nothing in the
+        queue is an observation of anything here. It is evidence all the
+        same: while the queue holds any torrent, the snapshot is not
+        complete, so an absence is never proven by an account that may still
+        be about to produce it. Reading the queue BEFORE the current
+        collections means a submission TorBox starts in between is seen
+        under its real torrent id."""
+        queued = 0
+        offset = 0
+        for _page in range(_MAX_INVENTORY_PAGES):
+            batch = await self._call(self.client.queued_torrents, offset, stage=Stage.RECONCILIATION)
+            if any(not isinstance(record, dict) for record in batch):
+                raise TransferError(protocol_error(Stage.RECONCILIATION, "queued torrent page is malformed"))
+            queued += len(batch)
+            if len(batch) < LIST_PAGE_LIMIT:
+                break
+            offset += len(batch)
+        else:
+            raise TransferError(protocol_error(Stage.RECONCILIATION, "queued torrent inventory does not end"))
         observations = []
         for family in _FAMILIES:
             offset = 0
@@ -454,7 +476,7 @@ class TorBoxProvider:
             else:
                 raise TransferError(protocol_error(Stage.RECONCILIATION, f"{family} inventory does not end"))
         observations.sort(key=lambda item: (identity(item.resource)[0], int(identity(item.resource)[1])))
-        return ResourceSnapshot(tuple(observations), complete=True)
+        return ResourceSnapshot(tuple(observations), complete=not queued)
 
     @normalized_boundary(Stage.CLEANUP)
     async def cleanup(self, directive: CleanupDirective) -> TransferOutcome:

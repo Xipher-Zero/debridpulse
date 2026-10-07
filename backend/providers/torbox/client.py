@@ -18,7 +18,8 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping
 from urllib.parse import parse_qs, urlencode, urlsplit
 
@@ -26,6 +27,7 @@ import aiohttp
 
 from core.presentation_safety import safe_public_host
 from providers.torbox.rate_limit import SlidingWindowRateLimiter
+from transfers.errors import safe_diagnostic
 
 API_HOST = "api.torbox.app"
 API = f"https://{API_HOST}/v1/api"
@@ -97,6 +99,10 @@ class RawResponse:
     status: int
     headers: Mapping[str, str]
     body: bytes
+    # The request this answers, as ``TorBoxService._send`` made it: method and
+    # endpoint path only -- never its query, which can carry the token.
+    method: str = ""
+    path: str = ""
 
 
 Transport = Callable[..., Awaitable[RawResponse]]
@@ -113,19 +119,58 @@ async def aiohttp_transport(method: str, url: str, *, headers=None, params=None,
                                body)
 
 
+# What an unreadable answer may keep: enough to tell JSON, HTML, a CDN or WAF
+# page and an empty or garbled body apart, never the body itself.
+_EVIDENCE_BODY_BYTES = 96
+_EVIDENCE_HOST = re.compile(r"[a-z0-9.-]{1,253}")
+
+
+def _location(value: str) -> str:
+    """A redirect target's scheme, host, port and path -- never its userinfo,
+    query or fragment."""
+    try:
+        target = urlsplit(value.strip())
+        port = target.port
+    except ValueError:
+        return "location=unreadable"
+    host = target.hostname or ""
+    facts = [f"location-scheme={target.scheme or 'none'}",
+             f"location-host={host if _EVIDENCE_HOST.fullmatch(host) else 'unreadable' if host else 'none'}"]
+    if port is not None:
+        facts.append(f"location-port={port}")
+    facts.append(f"location-path={safe_diagnostic(target.path, limit=96) or '/'}")
+    return " ".join(facts)
+
+
+def _unreadable(response: RawResponse, what: str) -> TorBoxProtocolError:
+    """A TorBox answer that is not the documented one, described by its safe,
+    bounded HTTP facts so it can be named: method, endpoint path, status,
+    media type, length, a redirect's target and a short body prefix. Never a
+    header but those, a query, a credential or the full body."""
+    facts = [f"TorBox {response.method or '?'} {response.path or '?'} {what}: HTTP {response.status}",
+             f"content-type={safe_diagnostic(response.headers.get('content-type'), limit=64) or 'none'}",
+             f"length={len(response.body)}"]
+    if response.headers.get("location") is not None:
+        facts.append(_location(str(response.headers["location"])))
+    if response.body:
+        prefix = response.body[:_EVIDENCE_BODY_BYTES].decode("utf-8", "replace")
+        facts.append("body-prefix=" + json.dumps(safe_diagnostic(prefix, limit=_EVIDENCE_BODY_BYTES)))
+    return TorBoxProtocolError("; ".join(facts))
+
+
 def _decode(response: RawResponse) -> Any:
     if len(response.body) > MAX_RESPONSE_BYTES:
-        raise TorBoxProtocolError("TorBox returned an oversized response")
+        raise _unreadable(response, "returned an oversized response")
     try:
         text = response.body.decode("utf-8").strip() if response.body else ""
     except UnicodeDecodeError:
-        raise TorBoxProtocolError("TorBox returned a response that is not UTF-8") from None
+        raise _unreadable(response, "returned a response that is not UTF-8") from None
     if not text:
-        raise TorBoxProtocolError("TorBox returned an empty response")
+        raise _unreadable(response, "returned an empty response")
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        raise TorBoxProtocolError("TorBox returned invalid JSON") from None
+        raise _unreadable(response, "returned an answer that is not JSON") from None
 
 
 def _envelope(response: RawResponse) -> Any:
@@ -133,15 +178,20 @@ def _envelope(response: RawResponse) -> Any:
 
     TorBox states success in its ``success`` flag and the reason in its
     ``error`` code; HTTP status alone is not authoritative (it answers some
-    refusals 500 and some 400), so both are read."""
+    refusals 500 and some 400), so both are read. A redirect is never
+    followed and never decoded: it is a protocol fact of its own."""
+    if 300 <= response.status < 400:
+        raise _unreadable(response, "answered a redirect")
     try:
         payload = _decode(response)
-    except TorBoxProtocolError:
+    except TorBoxProtocolError as exc:
+        # An error status whose body is not TorBox's answer is still that
+        # status's refusal; the body's safe facts are its only detail.
         if response.status >= 400:
-            raise TorBoxAPIError("", "", response.status) from None
+            raise TorBoxAPIError("", str(exc), response.status) from None
         raise
     if not isinstance(payload, dict):
-        raise TorBoxProtocolError("TorBox returned an unexpected answer")
+        raise _unreadable(response, "returned an unexpected answer")
     error = payload.get("error")
     if payload.get("success") is True and not error and response.status < 400:
         return payload.get("data")
@@ -247,8 +297,9 @@ class TorBoxService:
         if authorized:
             sent["Authorization"] = f"Bearer {self.token}"
         await self._rate_limiter.acquire()
-        return await self._transport(method, f"{API}/{path}", headers=sent, timeout=timeout or self.request_timeout,
-                                     **kwargs)
+        url = f"{API}/{path}"
+        response = await self._transport(method, url, headers=sent, timeout=timeout or self.request_timeout, **kwargs)
+        return replace(response, method=method, path=urlsplit(url).path)
 
     async def _json(self, method, path, body: dict) -> Any:
         return _envelope(await self._send(method, path, headers={"Content-Type": "application/json"},
@@ -296,13 +347,22 @@ class TorBoxService:
     # -- creation -----------------------------------------------------------------
 
     def _created(self, family: str, native: Any) -> str:
-        value = _object(native, "creation answer").get(FAMILIES[family].created_id)
+        answer = _object(native, "creation answer")
+        value = answer.get(FAMILIES[family].created_id)
         if isinstance(value, bool) or not isinstance(value, (int, str)) or not str(value).strip().isdigit():
+            # TorBox may accept a torrent into its queue of submissions it has
+            # not started: it answers a ``queued_id`` -- the queue's own id,
+            # never a torrent id -- and the torrent has none until it starts.
+            # The creation happened, yet nothing here can be bound to it.
+            if family == TORRENT and answer.get("queued_id") is not None:
+                raise TorBoxProtocolError("TorBox accepted the torrent into its queue without a current torrent_id")
             raise TorBoxProtocolError("TorBox returned a creation answer without an object id")
         return str(value).strip()
 
     async def create_torrent(self, *, magnet: str = "", metainfo: bytes | None = None, name: str = "") -> str:
-        form = aiohttp.FormData()
+        # createtorrent is documented multipart/form-data; a form of plain
+        # strings (a magnet) is not multipart unless asked to be.
+        form = aiohttp.FormData(default_to_multipart=True)
         if metainfo is not None:
             form.add_field("file", bytes(metainfo), filename=name or "upload.torrent",
                            content_type="application/x-bittorrent")
@@ -409,6 +469,24 @@ class TorBoxService:
             return []
         if not isinstance(payload, list):
             raise TorBoxProtocolError(f"TorBox returned an unexpected {family} page")
+        return payload
+
+    async def queued_torrents(self, offset: int, limit: int = LIST_PAGE_LIMIT) -> list:
+        """One page of TorBox's queue of torrent submissions it has not
+        started yet, read fresh. An empty queue is an empty page. Each entry's
+        ``id`` is a ``queued_id``, never a torrent id."""
+        try:
+            payload = _envelope(await self._send(
+                "GET", "queued/getqueued",
+                params={"type": "torrent", "offset": offset, "limit": limit, "bypass_cache": "true"}))
+        except TorBoxAPIError as exc:
+            if exc.error == "ITEM_NOT_FOUND":
+                return []
+            raise
+        if payload is None:
+            return []
+        if not isinstance(payload, list):
+            raise TorBoxProtocolError("TorBox returned an unexpected queued page")
         return payload
 
     async def requestdl(self, family: str, native_id: str, file_id: str) -> str:

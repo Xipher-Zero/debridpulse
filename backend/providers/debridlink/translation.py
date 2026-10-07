@@ -118,15 +118,18 @@ def error_from_native(exc: DebridLinkAPIError, *, stage: Stage = Stage.RESOLUTIO
         category, retry = _ERRORS[exc.error]
         return _error(category, retry, exc.error, exc.error, stage=stage, secrets=secrets, known=True,
                       retry_after=exc.retry_after)
+    # A refusal without a native code is described by its status -- and by
+    # the safe facts of the body that carried no code, when there was one.
     if not exc.error and exc.status in _STATUSES:
         category, retry = _STATUSES[exc.status]
-        return _error(category, retry, str(exc.status), str(exc.status), stage=stage, secrets=secrets,
-                      known=True, retry_after=exc.retry_after)
+        return _error(category, retry, str(exc.status), exc.detail or str(exc.status), stage=stage,
+                      secrets=secrets, known=True, retry_after=exc.retry_after)
     if not exc.error and exc.status >= 500:
-        return _error(Category.PROVIDER_UNAVAILABLE, Retryability.BACKOFF, str(exc.status), str(exc.status),
-                      stage=stage, secrets=secrets, known=True, retry_after=exc.retry_after)
+        return _error(Category.PROVIDER_UNAVAILABLE, Retryability.BACKOFF, str(exc.status),
+                      exc.detail or str(exc.status), stage=stage, secrets=secrets, known=True,
+                      retry_after=exc.retry_after)
     return _error(Category.UNMAPPED_PROVIDER_ERROR, Retryability.UNKNOWN, exc.error or str(exc.status),
-                  exc.error or str(exc.status), stage=stage, secrets=secrets, known=False)
+                  exc.error or exc.detail or str(exc.status), stage=stage, secrets=secrets, known=False)
 
 
 def protocol_error(stage: Stage, diagnostic: object = "") -> NormalizedError:

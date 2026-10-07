@@ -18,11 +18,13 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Awaitable, Callable, Mapping
 from urllib.parse import parse_qs, quote, urlencode, urlsplit
 
 import aiohttp
+
+from transfers.errors import safe_diagnostic
 
 API_HOST = "debrid-link.com"
 API = f"https://{API_HOST}/api/v2"
@@ -46,12 +48,15 @@ _FILE_ID = re.compile(r"\A[A-Za-z0-9][A-Za-z0-9_-]{0,191}\Z")
 
 class DebridLinkAPIError(Exception):
     """A Debrid-Link refusal: its native ``error`` code (``""`` when the answer
-    carried none), the HTTP status, and the delay the server asked for."""
+    carried none), the HTTP status, the delay the server asked for, and -- for
+    an error status whose body was not Debrid-Link's answer -- that body's
+    safe facts (``detail``)."""
 
-    def __init__(self, error: str, status: int = 0, *, retry_after: float | None = None):
+    def __init__(self, error: str, status: int = 0, *, retry_after: float | None = None, detail: str = ""):
         self.error = str(error or "")
         self.status = int(status or 0)
         self.retry_after = retry_after
+        self.detail = str(detail or "")
         super().__init__(f"Debrid-Link [{self.error or self.status}]")
 
 
@@ -68,6 +73,10 @@ class RawResponse:
     status: int
     headers: Mapping[str, str]
     body: bytes
+    # The request this answers, as ``DebridLinkService._send`` made it: method
+    # and endpoint path only -- never its query.
+    method: str = ""
+    path: str = ""
 
 
 Transport = Callable[..., Awaitable[RawResponse]]
@@ -84,19 +93,58 @@ async def aiohttp_transport(method: str, url: str, *, headers=None, params=None,
                                body)
 
 
+# What an unreadable answer may keep: enough to tell JSON, HTML, a CDN or WAF
+# page and an empty or garbled body apart, never the body itself.
+_EVIDENCE_BODY_BYTES = 96
+_EVIDENCE_HOST = re.compile(r"[a-z0-9.-]{1,253}")
+
+
+def _location(value: str) -> str:
+    """A redirect target's scheme, host, port and path -- never its userinfo,
+    query or fragment."""
+    try:
+        target = urlsplit(value.strip())
+        port = target.port
+    except ValueError:
+        return "location=unreadable"
+    host = target.hostname or ""
+    facts = [f"location-scheme={target.scheme or 'none'}",
+             f"location-host={host if _EVIDENCE_HOST.fullmatch(host) else 'unreadable' if host else 'none'}"]
+    if port is not None:
+        facts.append(f"location-port={port}")
+    facts.append(f"location-path={safe_diagnostic(target.path, limit=96) or '/'}")
+    return " ".join(facts)
+
+
+def _unreadable(response: RawResponse, what: str) -> DebridLinkProtocolError:
+    """A Debrid-Link answer that is not the documented one, described by its
+    safe, bounded HTTP facts so it can be named: method, endpoint path,
+    status, media type, length, a redirect's target and a short body prefix.
+    Never a header but those, a query, a credential or the full body."""
+    facts = [f"Debrid-Link {response.method or '?'} {response.path or '?'} {what}: HTTP {response.status}",
+             f"content-type={safe_diagnostic(response.headers.get('content-type'), limit=64) or 'none'}",
+             f"length={len(response.body)}"]
+    if response.headers.get("location") is not None:
+        facts.append(_location(str(response.headers["location"])))
+    if response.body:
+        prefix = response.body[:_EVIDENCE_BODY_BYTES].decode("utf-8", "replace")
+        facts.append("body-prefix=" + json.dumps(safe_diagnostic(prefix, limit=_EVIDENCE_BODY_BYTES)))
+    return DebridLinkProtocolError("; ".join(facts))
+
+
 def _decode(response: RawResponse) -> Any:
     if len(response.body) > MAX_RESPONSE_BYTES:
-        raise DebridLinkProtocolError("Debrid-Link returned an oversized response")
+        raise _unreadable(response, "returned an oversized response")
     try:
         text = response.body.decode("utf-8").strip() if response.body else ""
     except UnicodeDecodeError:
-        raise DebridLinkProtocolError("Debrid-Link returned a response that is not UTF-8") from None
+        raise _unreadable(response, "returned a response that is not UTF-8") from None
     if not text:
-        raise DebridLinkProtocolError("Debrid-Link returned an empty response")
+        raise _unreadable(response, "returned an empty response")
     try:
         return json.loads(text)
     except json.JSONDecodeError:
-        raise DebridLinkProtocolError("Debrid-Link returned invalid JSON") from None
+        raise _unreadable(response, "returned an answer that is not JSON") from None
 
 
 def _retry_after(response: RawResponse) -> float | None:
@@ -109,15 +157,20 @@ def _envelope(response: RawResponse) -> tuple[Any, dict]:
 
     v2 states success as ``{"success": true, "value": ...}`` and a refusal as
     ``{"success": false, "error": "<code>"}`` with a 4xx/5xx status; both the
-    flag and the status are read, so neither alone can pass a refusal."""
+    flag and the status are read, so neither alone can pass a refusal. A
+    redirect is never followed and never decoded: it is a protocol fact of its
+    own."""
+    if 300 <= response.status < 400:
+        raise _unreadable(response, "answered a redirect")
     try:
         payload = _decode(response)
-    except DebridLinkProtocolError:
+    except DebridLinkProtocolError as exc:
         if response.status >= 400:
-            raise DebridLinkAPIError("", response.status, retry_after=_retry_after(response)) from None
+            raise DebridLinkAPIError("", response.status, retry_after=_retry_after(response),
+                                     detail=str(exc)) from None
         raise
     if not isinstance(payload, dict):
-        raise DebridLinkProtocolError("Debrid-Link returned an unexpected answer")
+        raise _unreadable(response, "returned an unexpected answer")
     if payload.get("success") is True and response.status < 400:
         return payload.get("value"), payload
     raise DebridLinkAPIError(str(payload.get("error") or ""), response.status, retry_after=_retry_after(response))
@@ -206,8 +259,9 @@ class DebridLinkService:
         sent = dict(headers or {})
         if authorized:
             sent["Authorization"] = f"Bearer {self.api_key}"
-        return await self._transport(method, f"{API}/{path}", headers=sent,
-                                     timeout=timeout or self.request_timeout, **kwargs)
+        url = f"{API}/{path}"
+        response = await self._transport(method, url, headers=sent, timeout=timeout or self.request_timeout, **kwargs)
+        return replace(response, method=method, path=urlsplit(url).path)
 
     async def _json(self, method, path, body: dict) -> RawResponse:
         return await self._send(method, path, headers={"Content-Type": "application/json"}, data=json.dumps(body))
@@ -252,7 +306,9 @@ class DebridLinkService:
     async def add_torrent(self, *, magnet: str = "", metainfo: bytes | None = None, name: str = "") -> dict:
         """Add a torrent. It always starts with every file wanted
         (``wait`` false): DebridPulse's own file selection decides what it
-        materializes and is never pushed back."""
+        materializes and is never pushed back. seedbox/add takes form fields
+        -- a magnet as an ordinary form, a torrent file as multipart -- never
+        JSON."""
         if metainfo is not None:
             form = aiohttp.FormData()
             form.add_field("file", bytes(metainfo), filename=name or "upload.torrent",
@@ -260,7 +316,7 @@ class DebridLinkService:
             form.add_field("wait", "false")
             value = _envelope(await self._send("POST", "seedbox/add", data=form, timeout=self.upload_timeout))[0]
         else:
-            value = _envelope(await self._json("POST", "seedbox/add", {"url": magnet, "wait": False}))[0]
+            value = _envelope(await self._send("POST", "seedbox/add", data={"url": magnet, "wait": "false"}))[0]
         return _object(value, "torrent creation")
 
     async def torrent(self, torrent_id: str) -> dict | None:

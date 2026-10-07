@@ -21,7 +21,7 @@ from providers.alldebrid.provider import AllDebridProvider
 from providers.debridlink import account as accounts
 from providers.debridlink import admin
 from providers.debridlink.client import (
-    API, DebridLinkAPIError, DebridLinkService, RawResponse, member_address, parse_member_address,
+    API, DebridLinkAPIError, DebridLinkService, RawResponse, aiohttp_transport, member_address, parse_member_address,
 )
 from providers.debridlink.definition import DebridLinkOptions, credential_material, definition
 from providers.debridlink.host_runtime import (
@@ -384,7 +384,8 @@ async def test_a_magnet_creates_one_owned_torrent_observed_until_every_file_is_s
     resource = result.observation.resource
     assert result.state == ResourceState.PREPARING and result.observation.file_manifest is None
     assert resource.ownership == Ownership.CREATED and resource.context == {"family": SEEDBOX, "id": "t0rr3nt"}
-    assert json.loads(transport.calls[0]["data"]) == {"url": MAGNET, "wait": False}  # never native selection
+    assert transport.calls[0]["data"] == {"url": MAGNET, "wait": "false"}  # a form; never native selection
+    assert "Content-Type" not in transport.calls[0]["headers"]
     observed = await provider.observe(resource)
     assert observed.state == ResourceState.AVAILABLE and observed.fingerprint == "d" * 40
     assert observed.cache_presence == CachePresence.UNKNOWN
@@ -434,6 +435,131 @@ async def test_a_torrent_upload_is_multipart_and_never_selects_files():
     await provider.resolve(TransferRequest("torrent", b"d4:infod4:name4:showee", "show.torrent"))
     fields = {field[0]["name"]: field[2] for field in transport.calls[0]["data"]._fields}
     assert fields["file"] == b"d4:infod4:name4:showee" and fields["wait"] == "false"
+
+
+async def on_the_wire(data):
+    """What aiohttp actually sends for ``data``, received by a local server
+    through this client's own transport: the Content-Type and the fields."""
+    from aiohttp import web
+    seen = {}
+
+    async def receive(request):
+        seen["content_type"] = request.headers.get("Content-Type", "")
+        form = await request.post()
+        seen["fields"] = {key: value.file.read() if hasattr(value, "file") else value for key, value in form.items()}
+        return web.json_response(ok({})[1])
+
+    app = web.Application()
+    app.router.add_post("/", receive)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        await aiohttp_transport("POST", f"http://127.0.0.1:{port}/", data=data)
+    finally:
+        await runner.cleanup()
+    return seen
+
+
+async def test_a_magnet_is_added_as_a_form_and_a_torrent_file_as_multipart_on_the_wire():
+    """DL-FB1: seedbox/add takes form data, as every working seedbox client
+    sends it -- never the magnet in JSON, and never the retired ``async``."""
+    provider, transport = provider_with({("POST", "seedbox/add"): [ok(torrent(files=[])), ok(torrent(files=[]))],
+                                         ("GET", "seedbox/list"): [ok([torrent()]), ok([torrent()])]})
+    await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    await provider.resolve(TransferRequest("torrent", b"d4:infod4:name4:showee", "show.torrent"))
+    magnet = await on_the_wire(transport.calls[0]["data"])
+    assert magnet == {"content_type": "application/x-www-form-urlencoded",
+                      "fields": {"url": MAGNET, "wait": "false"}}
+    upload = await on_the_wire(transport.calls[2]["data"])
+    assert upload["content_type"].startswith("multipart/form-data; boundary=")
+    assert upload["fields"] == {"file": b"d4:infod4:name4:showee", "wait": "false"}
+    assert transport.calls[0]["headers"] == transport.calls[2]["headers"] == {"Authorization": f"Bearer {KEY}"}
+
+
+async def test_a_redirected_create_is_an_uncertain_safe_protocol_fact_never_invalid_json():
+    """HTTP-FB1 / DL-A5 / DL-A6: a 302 answer to seedbox/add is never decoded
+    as JSON and never followed; it names what it was -- status, media type,
+    the Location's scheme, host and path -- without the key, a query or a
+    full body, and it is still no proof the torrent was not created."""
+    location = f"https://debrid-link.fr/api/v2/seedbox/add?apikey={KEY}"
+    provider, transport = provider_with({("POST", "seedbox/add"): [
+        (302, b"<html><head><title>302 Found</title></head></html>",
+         {"Content-Type": "text/html", "Location": location})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    error = caught.value.error
+    assert error.category == Category.PROVIDER_PROTOCOL_VIOLATION and error.mutation == MutationOutcome.UNCERTAIN
+    text = error.diagnostic
+    assert "invalid JSON" not in text
+    for fact in ("POST /api/v2/seedbox/add", "redirect", "HTTP 302", "content-type=text/html",
+                 "location-scheme=https", "location-host=debrid-link.fr", "location-path=/api/v2/seedbox/add",
+                 "body-prefix=", "302 Found"):
+        assert fact in text, fact
+    rendered = json.dumps(error.as_dict(diagnostics=True), default=str)
+    assert KEY not in rendered and "apikey" not in rendered
+    assert len(transport.calls) == 1   # one native operation; nothing retried or followed
+
+
+async def test_a_malformed_success_read_keeps_bounded_safe_evidence():
+    provider, _ = provider_with({("GET", "seedbox/list"): [(200, b"<!doctype html><p>maintenance</p>",
+                                                            {"Content-Type": "text/html"})]})
+    from providers.debridlink.translation import seedbox_resource
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(seedbox_resource("t0rr3nt"))
+    text = caught.value.error.diagnostic
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    assert "GET /api/v2/seedbox/list" in text and "HTTP 200" in text and "not JSON" in text
+    assert "content-type=text/html" in text and "maintenance" in text and "ids=" not in text
+
+
+@pytest.mark.parametrize("status, category, mutation", [
+    (502, Category.PROVIDER_UNAVAILABLE, MutationOutcome.UNCERTAIN),
+    (403, Category.AUTHORIZATION_FAILED, MutationOutcome.NOT_COMMITTED),
+])
+async def test_a_malformed_error_status_keeps_its_classification_and_safe_evidence(status, category, mutation):
+    page = f"<html><title>{status}</title>Bearer {KEY}</html>".encode()
+    provider, transport = provider_with({("POST", "seedbox/add"): [(status, page, {"Content-Type": "text/html"})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show"))
+    error = caught.value.error
+    assert (error.category, error.mutation, error.native_code) == (category, mutation, str(status))
+    for fact in ("POST /api/v2/seedbox/add", f"HTTP {status}", "content-type=text/html", f"length={len(page)}",
+                 "body-prefix=", f"<title>{status}</title>"):
+        assert fact in error.diagnostic, fact
+    assert KEY not in json.dumps(error.as_dict(diagnostics=True), default=str)
+    assert len(transport.calls) == 1
+
+
+async def test_the_native_transport_never_follows_a_redirect():
+    from aiohttp import web
+    followed = []
+
+    async def moved(request):
+        return web.Response(status=302, headers={"Location": "/elsewhere"}, content_type="text/html",
+                            text="<html>moved</html>")
+
+    async def elsewhere(request):
+        followed.append(request.method)
+        return web.json_response(ok({})[1])
+
+    app = web.Application()
+    app.router.add_route("*", "/add", moved)
+    app.router.add_route("*", "/elsewhere", elsewhere)
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "127.0.0.1", 0)
+    await site.start()
+    try:
+        port = site._server.sockets[0].getsockname()[1]
+        for method in ("POST", "GET"):
+            answer = await aiohttp_transport(method, f"http://127.0.0.1:{port}/add", data=None)
+            assert answer.status == 302 and answer.headers["location"] == "/elsewhere"
+    finally:
+        await runner.cleanup()
+    assert followed == []
 
 
 async def test_a_zip_listed_or_unstored_torrent_publishes_no_manifest():
