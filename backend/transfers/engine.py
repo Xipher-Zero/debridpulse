@@ -1113,7 +1113,17 @@ class TransferEngine(_RecoveryTransferEngine):
                     record, authorized, selection_id=getattr(authorized, "selection_id", None),
                 )
                 members = {entry.relative_path for entry in authorized}
+                # Material supplied under the provider's own member path goes to
+                # the member the selection proof placed that path at
+                # (``coordinates``); a path it placed nowhere, or at a member it
+                # also placed another path at, is withheld -- never guessed.
+                coordinates = getattr(authorized, "coordinates", None) or {}
+                placed = [coordinates[path] for path in coordinates]
                 for relative_path, alternate, address, values in supplied:
+                    if coordinates:
+                        relative_path = coordinates.get(relative_path)
+                        if relative_path is None or placed.count(relative_path) != 1:
+                            continue
                     if relative_path in members:
                         await self._admit_supplied(record.transfer_id,
                                                    manifest_child_identity(record.id, relative_path, alternate),

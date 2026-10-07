@@ -388,7 +388,7 @@ def migrate(*, selected=CHOSEN, predecessor=SEASONS, replacement=FLAT, executabl
     return fs.migrate_inherited_subset(
         list(selected), list(predecessor), list(replacement),
         executable(replacement if executable_pairs is None else executable_pairs),
-        predecessor_fingerprints=before, replacement_fingerprints=after, established=established or {})
+        predecessor_fingerprints=before, replacement_fingerprints=after, established=established or [])
 
 
 def test_a_complete_flattened_replacement_carries_exactly_the_selected_members():
@@ -401,7 +401,7 @@ def test_a_complete_flattened_replacement_carries_exactly_the_selected_members()
 
 
 def test_the_established_member_coordinate_is_carried_verbatim():
-    migration = migrate(established={"S1/A.mkv": "S1/A.mkv", "S3/C.mkv": "S3/C.mkv"})
+    migration = migrate(established=[("S1/A.mkv", 100), ("S3/C.mkv", 300)])
     assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
 
 
@@ -449,3 +449,89 @@ def test_every_unprovable_migration_fails_closed_with_its_bounded_reason(case, o
 
 def test_equal_fingerprints_differing_only_in_case_are_the_same_source():
     assert migrate(after=frozenset({"A" * 40})).provenance
+
+
+# --------------------------------------------------------------------------- #
+# The established logical coordinates, recovered by identity, never by path
+# --------------------------------------------------------------------------- #
+#
+# A predecessor that itself reported the files flat (an earlier migration) is
+# no authority on where they live: the established members are. Each selected
+# member's logical path is the one established member with its exact
+# (case-sensitive basename, size) identity -- and the established set must be
+# exactly the selected set.
+
+ESTABLISHED = [("S1/A.mkv", 100), ("S3/C.mkv", 300)]
+FLAT_CHOSEN = [("A.mkv", 100), ("C.mkv", 300)]
+
+
+def test_a_flat_predecessor_recovers_the_established_paths_by_identity():
+    """T-C3: a committed flat predecessor, a hierarchical replacement."""
+    migration = migrate(selected=FLAT_CHOSEN, predecessor=FLAT, replacement=SEASONS, established=ESTABLISHED)
+    assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
+    assert [entry.relative_path for entry in migration.provenance] == ["S1/A.mkv", "S3/C.mkv"]
+    assert [entry.request.payload for entry in migration.logical] == ["new:S1/A.mkv", "new:S3/C.mkv"]
+
+
+def test_a_flat_predecessor_and_a_flat_replacement_keep_the_established_paths():
+    """T-C5: the replacement need not restore the hierarchy."""
+    migration = migrate(selected=FLAT_CHOSEN, predecessor=FLAT,
+                        replacement=(("x/A.mkv", 100), ("x/B.mkv", 200), ("x/C.mkv", 300)),
+                        established=ESTABLISHED)
+    assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
+    assert [entry.relative_path for entry in migration.provenance] == ["x/A.mkv", "x/C.mkv"]
+
+
+def test_order_does_not_matter_only_identity():
+    """T-C13."""
+    paths = fs.established_logical_paths([("C.mkv", 300), ("A.mkv", 100)], [("S1/A.mkv", 100), ("S3/C.mkv", 300)])
+    assert paths == ("S3/C.mkv", "S1/A.mkv")
+
+
+def test_no_established_members_seed_from_the_predecessor():
+    """T-C20: a predecessor committed but never fanned out (its fan-out runs
+    in a separate transaction after the commit) has no established
+    geometry; its own coordinates seed the logical ones, as before."""
+    migration = migrate(established=[])
+    assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
+
+
+@pytest.mark.parametrize("case, selected, established, reason", [
+    ("T-C9 duplicate established identity", FLAT_CHOSEN,
+     [("S1/A.mkv", 100), ("S2/A.mkv", 100), ("S3/C.mkv", 300)], "fallback_established_duplicate_identity"),
+    ("T-C10 unknown established size", FLAT_CHOSEN, [("S1/A.mkv", 0), ("S3/C.mkv", 300)],
+     "fallback_established_unknown_size"),
+    ("T-C11 established member missing", FLAT_CHOSEN, [("S1/A.mkv", 100)], "fallback_established_member_missing"),
+    ("T-C12 extra established member", FLAT_CHOSEN, [*ESTABLISHED, ("S2/B.mkv", 200)],
+     "fallback_established_member_set_mismatch"),
+    ("T-C14 case-sensitive identity", FLAT_CHOSEN, [("S1/a.mkv", 100), ("S3/C.mkv", 300)],
+     "fallback_established_member_missing"),
+    ("duplicate established path", FLAT_CHOSEN, [("S1/A.mkv", 100), ("S1/A.mkv", 100), ("S3/C.mkv", 300)],
+     "fallback_established_duplicate_path"),
+    ("unsafe established path", FLAT_CHOSEN, [("../A.mkv", 100), ("S3/C.mkv", 300)],
+     "fallback_established_unsafe_path"),
+    ("unknown selected size", [("A.mkv", 0), ("C.mkv", 300)], ESTABLISHED, "fallback_established_unknown_size"),
+])
+def test_established_identity_is_exact_or_refused(case, selected, established, reason):
+    with pytest.raises(fs.SelectionUnprovable) as caught:
+        fs.established_logical_paths(selected, established)
+    assert caught.value.reason == reason, case
+
+
+def test_an_established_set_that_fails_never_falls_back_to_the_predecessor_path():
+    """T-C11 through the migration: no member is ever placed at the
+    predecessor's own path because its established member is missing."""
+    with pytest.raises(fs.SelectionUnprovable) as caught:
+        migrate(selected=FLAT_CHOSEN, predecessor=FLAT, replacement=SEASONS, established=[("S1/A.mkv", 100)])
+    assert caught.value.reason == "fallback_established_member_missing"
+
+
+def test_the_whole_manifest_and_fingerprint_proofs_still_come_first():
+    """T-C15 / T-C16: established recovery never stands in for them."""
+    with pytest.raises(fs.SelectionUnprovable) as caught:
+        migrate(selected=FLAT_CHOSEN, predecessor=FLAT, replacement=SEASONS, established=ESTABLISHED,
+                after=frozenset())
+    assert caught.value.reason == "fallback_missing_fingerprint"
+    with pytest.raises(fs.SelectionUnprovable) as caught:
+        migrate(selected=FLAT_CHOSEN, predecessor=FLAT, replacement=SEASONS[:2], established=ESTABLISHED)
+    assert caught.value.reason == "fallback_manifest_count_mismatch"

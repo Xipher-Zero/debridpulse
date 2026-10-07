@@ -42,7 +42,6 @@ import hashlib
 from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import PurePosixPath
-from typing import Mapping
 from uuid import NAMESPACE_URL, uuid5
 
 from transfers.filesystem import safe_name
@@ -622,6 +621,53 @@ def _migration_keys(entries: list[tuple[str, int]]) -> dict[tuple[str, int], str
     return keys
 
 
+def established_logical_paths(selected: list[tuple[str, int]],
+                              established: list[tuple[str, int]]) -> tuple[str, ...]:
+    """The established logical path of each ``selected`` member, in order.
+
+    ``established`` is the members the root already fanned out
+    (``(recorded path, size)``): its logical decomposition. Each selected
+    member is the one established member with its exact (case-sensitive
+    basename, size > 0) identity, and the two sets must be exactly equal --
+    never a path lookup, so a predecessor that itself reported other paths (an
+    earlier migration's) can never redefine where the members live. Raises
+    :class:`SelectionUnprovable` with a bounded ``fallback_established_*``
+    reason otherwise."""
+    paths: set[str] = set()
+    recorded: dict[tuple[str, int], str] = {}
+    for path, size in established:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("fallback_established_unsafe_path") from None
+        if normalized in paths:
+            raise SelectionUnprovable("fallback_established_duplicate_path")
+        paths.add(normalized)
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable("fallback_established_unknown_size")
+        key = (PurePosixPath(normalized).name, size)
+        if key in recorded:
+            raise SelectionUnprovable("fallback_established_duplicate_identity")
+        recorded[key] = path
+    keys = []
+    for path, size in selected:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("fallback_established_unsafe_path") from None
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable("fallback_established_unknown_size")
+        key = (PurePosixPath(normalized).name, size)
+        if key not in recorded:
+            raise SelectionUnprovable("fallback_established_member_missing")
+        keys.append(key)
+    if len(set(keys)) != len(keys):
+        raise SelectionUnprovable("fallback_established_duplicate_identity")
+    if set(keys) != recorded.keys():
+        raise SelectionUnprovable("fallback_established_member_set_mismatch")
+    return tuple(recorded[key] for key in keys)
+
+
 def migrate_inherited_subset(
     selected: list[tuple[str, int]],
     predecessor: list[tuple[str, int]],
@@ -630,7 +676,7 @@ def migrate_inherited_subset(
     *,
     predecessor_fingerprints: frozenset[str],
     replacement_fingerprints: frozenset[str],
-    established: Mapping[str, str],
+    established: list[tuple[str, int]],
 ) -> InheritedMigration:
     """Carry an inherited explicit selection onto a replacement resource that
     reports the same files under different paths (one that lost the
@@ -648,9 +694,11 @@ def migrate_inherited_subset(
     * each selected member's replacement is in the replacement's executable
       list at that manifest's own path with that exact size.
 
-    Never broader than ``selected``. ``established`` maps an already
-    fanned-out member's normalized path to its recorded path, which is kept
-    verbatim; otherwise the predecessor's path is the logical one."""
+    Never broader than ``selected``. Where the root already fanned out
+    (``established``: ``(recorded path, size)`` of each member), the logical
+    paths are those members', recovered by identity
+    (``established_logical_paths``) -- never by the predecessor's path; only
+    a root with no established members takes the predecessor's paths."""
     before = {value.strip().casefold() for value in predecessor_fingerprints if value.strip()}
     after = {value.strip().casefold() for value in replacement_fingerprints if value.strip()}
     if not before or not after:
@@ -675,7 +723,7 @@ def migrate_inherited_subset(
         if normalized in executable:
             raise SelectionUnprovable("fallback_duplicate_path")
         executable[normalized] = entry
-    logical, provenance = [], []
+    provenance, predecessor_paths = [], []
     for path, _size in selected:
         try:
             key = key_of[normalize_relative_path(path)]
@@ -686,6 +734,8 @@ def migrate_inherited_subset(
             raise SelectionUnprovable("fallback_executable_path_missing")
         if isinstance(entry.expected_bytes, bool) or entry.expected_bytes != key[1]:
             raise SelectionUnprovable("fallback_executable_size_conflict")
-        logical.append(replace(entry, relative_path=established.get(old[key], old[key])))
         provenance.append(entry)
-    return InheritedMigration(tuple(logical), tuple(provenance))
+        predecessor_paths.append(old[key])
+    logical_paths = established_logical_paths(selected, established) if established else predecessor_paths
+    return InheritedMigration(tuple(replace(entry, relative_path=path) for entry, path in zip(provenance, logical_paths)),
+                              tuple(provenance))

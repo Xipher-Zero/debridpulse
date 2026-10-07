@@ -11,6 +11,7 @@ drive every case; no provider identity decides anything.
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 from dataclasses import replace
 from pathlib import Path
 
@@ -797,3 +798,266 @@ async def test_a_selection_of_the_current_generation_never_crosses_coordinates(t
     error = await first_conflict(repository, engine, transfer.id)
     assert error is not None and error.diagnostic == "selected_path_missing"
     assert await members_of(repository, transfer.id) == []
+
+
+# -- the established paths survive every later replacement (transfer 533) -----------------------------------------
+#
+# A committed flat generation (an earlier migration) must not redefine where
+# the members live: each later generation recovers the established logical
+# paths by the members' identity. A generation that fails before it commits
+# never becomes the predecessor.
+
+def rejecting_provider(identity, *, priority=0):
+    """A manifest provider that binds, then refuses the source at candidate
+    preparation -- the provider's own permanent rejection (as Real-Debrid
+    answers ``infringing_file``)."""
+    from transfers.errors import Domain, NormalizedError, Origin, Permanence, Retryability, Stage
+
+    class Rejecting(ParcelProvider):
+        async def manifest(self, resource):
+            self.calls.append(("manifest", resource.id))
+            raise TransferError(NormalizedError(
+                Domain.PROVIDER, Category.CANDIDATE_REJECTED, Stage.CANDIDATE_PREPARATION, Retryability.NEVER,
+                origin=Origin.PROVIDER, permanence=Permanence.PERMANENT, integration_id=identity, native_code="35"))
+
+    provider = Rejecting(identity, file_manifest=True)
+    provider.descriptor = replace(provider.descriptor, request_types=frozenset({"magnet", "parcel-member"}),
+                                  priority=priority)
+    return provider
+
+
+async def lineage_lab(tmp_path, monkeypatch, *, members=None, chosen=("S1/A.mkv", "S3/C.mkv")):
+    """parcel-a (hierarchical, preferred), parcel-b (flat), parcel-c
+    (rejects), parcel-d (hierarchical); the root starts on parcel-a with an
+    explicit selection. ``members(provider_id, files)`` may supply each
+    provider's executable members."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
+    await database.init_db()
+    repository, registry = TransferRepository(), IntegrationRegistry()
+    providers = {"parcel-a": magnet_provider("parcel-a"), "parcel-b": magnet_provider("parcel-b"),
+                 "parcel-c": rejecting_provider("parcel-c"), "parcel-d": magnet_provider("parcel-d")}
+    providers["parcel-a"].descriptor = replace(providers["parcel-a"].descriptor, priority=40)
+    for provider in providers.values():
+        registry.register_provider(provider)
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_executor(executor)
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "dl"),
+                            policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
+    await engine.initialize()
+    lab = SimpleNamespace(repository=repository, engine=engine, providers=providers, members=members)
+    lab.offer = lambda identity, files, native="x": supplied_offer(lab, identity, files, native)
+    lab.offer("parcel-a", SEASONS)
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=False)
+    for _ in range(3):
+        await engine.tick()
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    await repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [entry["entry_id"] for entry in view["entries"]
+                                           if entry["relative_path"] in chosen], now=engine.clock())
+    await settle(engine, 4)
+    lab.transfer = transfer
+    return lab
+
+
+def supplied_offer(lab, identity, files, native):
+    provider = lab.providers[identity]
+    resource = offer_source(provider, files, SOURCE) if native == "x" else None
+    if resource is None:
+        result = provider.parcel(native, state=ResourceState.AVAILABLE, files=files)
+        observed = replace(result.observation, request=TransferRequest("magnet", MAGNET), fingerprint=SOURCE)
+        provider.resources[observed.resource.id] = observed
+        provider.responses.append(replace(result, observation=observed))
+        resource = observed.resource
+    if lab.members is not None:
+        provider.members[resource.id] = lab.members(identity, files)
+    return resource
+
+
+async def switched(lab, target, files, *, expected, native="x"):
+    lab.offer(target, files, native)
+    await switch_root_provider(lab.engine, lab.transfer.id, target, expected_provider_id=expected)
+    await settle(lab.engine)
+
+
+async def generation_of(transfer_id, provider_id):
+    return (await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=? AND provider_id=? "
+                       "ORDER BY created_at DESC, id DESC LIMIT 1", (transfer_id, provider_id)))[0]
+
+
+def committed_proven(generation):
+    return (generation["manifest_committed_at"] is not None, generation["continuity"]) == (True, "proven")
+
+
+async def test_hierarchy_then_flat_then_hierarchy_keeps_the_established_paths(tmp_path, monkeypatch):
+    """FB-2 / T-C4 / T-C19."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    assert committed_proven(await generation_of(lab.transfer.id, "parcel-b"))          # FB-1/T-C2: first hop
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-b")
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert committed_proven(generation), (generation["continuity"], generation["continuity_reason"])
+    assert await members_of(lab.repository, lab.transfer.id) == [("S1/A.mkv", "x:S1/A.mkv"),
+                                                                 ("S3/C.mkv", "x:S3/C.mkv")]
+
+
+async def test_hierarchy_then_flat_then_flat_keeps_the_established_paths(tmp_path, monkeypatch):
+    """T-C5: the second flat replacement proves by exact path against the
+    flat predecessor; the logical paths are still the established ones."""
+    from transfers import file_selection as fs
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    await switched(lab, "parcel-d", FLAT, expected="parcel-b")
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert committed_proven(generation), (generation["continuity"], generation["continuity_reason"])
+    assert await members_of(lab.repository, lab.transfer.id) == [("S1/A.mkv", "x:A.mkv"), ("S3/C.mkv", "x:C.mkv")]
+    root = await root_of(lab.repository, lab.transfer.id)
+    binding = await lab.repository.resource_binding_id(lab.transfer.id, root.resource.id)
+    recorded = {row["entry_id"] for row in await rows(
+        "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (generation["id"],))}
+    assert recorded == {fs.entry_identity(binding, "A.mkv"), fs.entry_identity(binding, "C.mkv")}   # T-C18
+
+
+async def test_a_rejected_intermediate_never_becomes_the_predecessor_and_the_next_switch_commits(
+        tmp_path, monkeypatch):
+    """FB-3 / T-C6 (transfer 533): hierarchy, flat committed, a provider that
+    binds and then rejects the source, then an operator switch onward."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    flat = await generation_of(lab.transfer.id, "parcel-b")
+    lab.offer("parcel-a", SEASONS, native="x2")                       # where the core's reselection lands
+    await switched(lab, "parcel-c", SEASONS, expected="parcel-b")
+    rejected = await generation_of(lab.transfer.id, "parcel-c")
+    assert rejected["manifest_committed_at"] is None                                   # never authority
+    root = await root_of(lab.repository, lab.transfer.id)
+    await switched(lab, "parcel-d", SEASONS, expected=root.resource.provider_id, native="y")
+    generation = await generation_of(lab.transfer.id, "parcel-d")
+    assert generation["predecessor_id"] != rejected["id"]
+    assert committed_proven(generation), (generation["continuity"], generation["continuity_reason"])
+    assert await members_of(lab.repository, lab.transfer.id) == [("S1/A.mkv", "y:S1/A.mkv"),
+                                                                 ("S3/C.mkv", "y:S3/C.mkv")]
+    assert flat["manifest_committed_at"] is not None
+
+
+async def test_automatic_failover_after_a_rejected_intermediate_commits_and_so_does_a_later_switch(
+        tmp_path, monkeypatch):
+    """FB-4 / T-C7 / T-C8: after the rejection the core's own reselection
+    (the preferred hierarchical provider) commits the inherited selection;
+    a later operator switch commits too."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    lab.offer("parcel-a", SEASONS, native="x2")                       # what parcel-a answers when reselected
+    await switched(lab, "parcel-c", SEASONS, expected="parcel-b")
+    automatic = await generation_of(lab.transfer.id, "parcel-a")
+    root = await root_of(lab.repository, lab.transfer.id)
+    assert root.resource.provider_id == "parcel-a" and root.resource.id.endswith("x2")
+    assert committed_proven(automatic), (automatic["continuity"], automatic["continuity_reason"])
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-a", native="y")
+    later = await generation_of(lab.transfer.id, "parcel-d")
+    assert committed_proven(later), (later["continuity"], later["continuity_reason"])
+    assert await members_of(lab.repository, lab.transfer.id) == [("S1/A.mkv", "y:S1/A.mkv"),
+                                                                 ("S3/C.mkv", "y:S3/C.mkv")]
+
+
+async def test_a_member_deselected_after_commitment_refuses_the_next_migration_with_its_reason(
+        tmp_path, monkeypatch):
+    """FB-5 and the established-child mutability answer: an operator may
+    deselect one member that has no writer (``select_artifact``: its request
+    ``skipped``, its artifact ``blocked``) without recommitting the selection.
+    A switch detaches the retired writers, so right after one the operator
+    can. The established set is then no longer the selected one, so the
+    migration is refused, naming why -- never guessed."""
+    lab = await lineage_lab(tmp_path, monkeypatch)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    lab.offer("parcel-d", SEASONS)
+    await switch_root_provider(lab.engine, lab.transfer.id, "parcel-d", expected_provider_id="parcel-b")
+    member = next(item for item in await lab.repository.requests(lab.transfer.id)
+                  if item.parent_id and item.entry.relative_path == "S3/C.mkv")
+    (artifact,) = await rows("SELECT id FROM download_files WHERE request_id=?", (member.id,))
+    await lab.repository.select_artifact(lab.transfer.id, artifact["id"], False)
+    error = await first_conflict(lab.repository, lab.engine, lab.transfer.id)
+    assert error is not None and error.diagnostic == "fallback_established_member_missing"
+    assert (await generation_of(lab.transfer.id, "parcel-d"))["manifest_committed_at"] is None
+
+
+# -- credentials follow the proven coordinate, never a path match --------------------------------------------------
+
+def credentialed(provider_id, files):
+    """Members whose requests carry USER_SUPPLIED userinfo: a primary and an
+    alternate per member, each its own scope."""
+    return tuple(
+        SourceEntry(name, size, path,
+                    TransferRequest("parcel-member", f"sftp://user-{provider_id}:secret@{provider_id}.example/{path}",
+                                    name=name),
+                    alternates=(TransferRequest("parcel-member",
+                                                f"sftp://alt-{provider_id}:secret@mirror-{provider_id}.example/{path}",
+                                                name=name),))
+        for name, path, size in files)
+
+
+def admitted(lab):
+    """``{(child request id, scope host)}`` holding admitted material."""
+    return {(key[1], key[2].host) for key, context in lab.engine.inputs._contexts.items()
+            if key[0] == lab.transfer.id and context.materials}
+
+
+def child(lab, root_id, path, alternate=0):
+    from transfers._repository_base import manifest_child_identity
+    return manifest_child_identity(root_id, path, alternate)
+
+
+async def test_credentials_are_admitted_to_the_established_member_across_coordinates(tmp_path, monkeypatch):
+    """C-C1 (exact path), C-C2 / C-C6 (flat replacement), C-C3 (an unselected
+    member's credentials stay unadmitted), C-C4 (alternate ordinals), C-C5
+    (hierarchy, flat, hierarchy: always the same logical child)."""
+    lab = await lineage_lab(tmp_path, monkeypatch, members=credentialed)
+    root = await root_of(lab.repository, lab.transfer.id)
+    expected = {(child(lab, root.id, path, alternate), f"{prefix}{provider}.example")
+                for path in ("S1/A.mkv", "S3/C.mkv") for alternate, prefix in ((0, ""), (1, "mirror-"))
+                for provider in ("parcel-a",)}
+    assert admitted(lab) == expected                                                  # C-C1
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    expected |= {(child(lab, root.id, path, alternate), f"{prefix}parcel-b.example")
+                 for path in ("S1/A.mkv", "S3/C.mkv") for alternate, prefix in ((0, ""), (1, "mirror-"))}
+    assert admitted(lab) == expected                                                  # C-C2..C-C4
+    await switched(lab, "parcel-d", SEASONS, expected="parcel-b")
+    expected |= {(child(lab, root.id, path, alternate), f"{prefix}parcel-d.example")
+                 for path in ("S1/A.mkv", "S3/C.mkv") for alternate, prefix in ((0, ""), (1, "mirror-"))}
+    assert admitted(lab) == expected                                                  # C-C5
+    flat_children = {child(lab, root.id, path, alternate) for path in ("A.mkv", "B.mkv", "C.mkv", "S2/B.mkv")
+                     for alternate in (0, 1)}
+    assert not {request for request, _host in admitted(lab)} & flat_children
+
+
+async def test_a_credential_without_one_proven_coordinate_is_withheld(tmp_path, monkeypatch):
+    """C-C7: a translation that names no member, or names one logical member
+    for two coordinates, admits nothing it cannot place -- never at the
+    provider's own path, never to another member."""
+    from transfers.repository import ManifestCommitResult
+    lab = await lineage_lab(tmp_path, monkeypatch, members=credentialed)
+    root = await root_of(lab.repository, lab.transfer.id)
+    before = admitted(lab)
+    commit = lab.repository.commit_selected_manifest
+
+    async def ambiguous(record, entries, *, now):
+        result = await commit(record, entries, now=now)
+        return ManifestCommitResult(tuple(result), first_commitment=result.first_commitment,
+                                    selection_id=result.selection_id, held=result.held,
+                                    coordinates={"A.mkv": "S1/A.mkv", "B.mkv": "S1/A.mkv"})
+
+    monkeypatch.setattr(lab.repository, "commit_selected_manifest", ambiguous)
+    await switched(lab, "parcel-b", FLAT, expected="parcel-a")
+    new = admitted(lab) - before
+    assert not {host for _request, host in new} & {"parcel-b.example", "mirror-parcel-b.example"}
+
+
+def test_the_engine_places_credentials_by_the_proven_coordinate_only():
+    """C-C6: the engine consumes the selection owner's translation; it
+    derives no member identity of its own."""
+    import inspect
+    from transfers.engine import TransferEngine as Engine
+    source = inspect.getsource(Engine._observe_resource)
+    assert "coordinates" in source
+    for forbidden in ("migrate_inherited_subset", "established_logical_paths", "PurePosixPath", ".name,",
+                      "fingerprint", "basename"):
+        assert forbidden not in source, forbidden

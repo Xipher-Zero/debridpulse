@@ -50,7 +50,7 @@ attempted in the artifact's current recovery episode. Only ever grows
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import SimpleNamespace
 
@@ -269,13 +269,19 @@ class ManifestCommitResult(tuple):
     """
 
     def __new__(cls, entries, *, first_commitment: bool, selection_id: str | None = None,
-                held: str | None = None):
+                held: str | None = None, coordinates=None):
         instance = super().__new__(cls, entries)
         instance.first_commitment = first_commitment
         instance.selection_id = selection_id
         # The bounded reason this generation's continuity could not be proven:
         # nothing was authorized and nothing may fan out. ``None`` otherwise.
         instance.held = held
+        # Where the selection proof placed an authorized member at another path
+        # than the provider reported it under: provider path -> the authorized
+        # (established logical) path, for exactly the authorized members. Empty
+        # when every authorized member keeps the provider's own path. Transient:
+        # never persisted, never a credential.
+        instance.coordinates = dict(coordinates or {})
         return instance
 
 
@@ -2226,7 +2232,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
                                             held=str(row["continuity_reason"] or fs.Continuity.HELD))
             if str(row["decision"]) in ("pending", "all"):
-                authorized = full_entries
+                authorized = recorded = full_entries
                 if not already:
                     held, provenance = await self._continuity(db, record, row, authorized, now)
                     if held:
@@ -2263,9 +2269,16 @@ class TransferRepository(_QualifiedTransferRepository):
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
                         diagnostic="selection_empty"))
                 pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
+                established = await self._established_members(db, record) if inherited else []
                 try:
                     authorized = fs.reconcile_executable_subset(pairs, full_entries)
                     recorded = authorized
+                    if established and not self._at_established_paths(authorized, established):
+                        # Proven by exact path against a predecessor that itself
+                        # held other paths than the established ones (an earlier
+                        # migration's): the members stay where they live.
+                        authorized = tuple(replace(entry, relative_path=path) for entry, path in zip(
+                            recorded, fs.established_logical_paths(pairs, established)))
                 except fs.SelectionUnprovable as exc:
                     # Exact path is the proof. Only an inherited selection whose
                     # replacement reports a selected member under another path
@@ -2274,7 +2287,7 @@ class TransferRepository(_QualifiedTransferRepository):
                         if not (inherited and exc.reason == "selected_path_missing"):
                             raise exc
                         migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
-                                                                    full_entries)
+                                                                    full_entries, established)
                     except fs.SelectionUnprovable as refused:
                         await db.rollback()
                         # The bounded reason only: never a path, name or payload.
@@ -2306,15 +2319,43 @@ class TransferRepository(_QualifiedTransferRepository):
                         (now, str(fs.Continuity.PROVEN), provenance, now, row["id"]),
                     )
             await db.commit()
-        return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id)
+        coordinates = ({native.relative_path: logical.relative_path for native, logical in zip(recorded, authorized)}
+                       if recorded is not authorized else {})
+        return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id,
+                                    coordinates=coordinates)
+
+    @staticmethod
+    async def _established_members(db, record) -> list[tuple[str, int]]:
+        """``(recorded path, size)`` of every member the root has fanned out and
+        not set aside: its established logical decomposition. A member's
+        alternates are sibling children at its one path, so a path is one
+        member; siblings that disagree on its size leave it unknown (0)."""
+        sizes: dict[str, set] = {}
+        for child in await db.fetchall(
+                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
+            entry = codec.load(child["metadata"], {}) or {}
+            path = str(entry.get("relative_path") or "")
+            if path:
+                sizes.setdefault(path, set()).add(entry.get("expected_bytes"))
+        return [(path, next(iter(values)) if len(values) == 1 else 0) for path, values in sizes.items()]
+
+    @staticmethod
+    def _at_established_paths(authorized, established) -> bool:
+        """Whether every authorized member already has an established
+        member's path -- the ordinary case, decided by path alone."""
+        try:
+            paths = {fs.normalize_relative_path(path) for path, _size in established}
+            return all(fs.normalize_relative_path(entry.relative_path) in paths for entry in authorized)
+        except fs.ManifestInvalid:
+            return False
 
     async def _inherited_migration(self, db, record, source, row, binding_id: str, selected,
-                                   full_entries) -> "fs.InheritedMigration":
+                                   full_entries, established) -> "fs.InheritedMigration":
         """The whole-manifest proof (``fs.migrate_inherited_subset``) that an
         inherited selection's members are this replacement's, read inside
         ``commit_selected_manifest``'s transaction: both generations'
-        complete manifests, each binding's own reported source fingerprints,
-        and the members already established under the root."""
+        complete manifests and each binding's own reported source
+        fingerprints, with the members already established under the root."""
         async def manifest(manifest_id):
             if not manifest_id:
                 return []
@@ -2322,14 +2363,6 @@ class TransferRepository(_QualifiedTransferRepository):
                 "SELECT relative_path,expected_bytes FROM transfer_file_manifest_entries WHERE manifest_id=?",
                 (manifest_id,))]
 
-        established = {}
-        for child in await db.fetchall(
-                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
-            path = str((codec.load(child["metadata"], {}) or {}).get("relative_path") or "")
-            try:
-                established[fs.normalize_relative_path(path)] = path
-            except fs.ManifestInvalid:
-                continue
         return fs.migrate_inherited_subset(
             selected, await manifest(source["manifest_id"]), await manifest(row["manifest_id"]), tuple(full_entries),
             predecessor_fingerprints=await self._binding_fingerprints(db, record.id, source["provider_resource_id"]),
