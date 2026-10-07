@@ -1311,3 +1311,120 @@ async def test_a_malformed_error_status_keeps_its_classification_and_safe_eviden
         assert fact in error.diagnostic, fact
     assert TOKEN not in json.dumps(error.as_dict(diagnostics=True), default=str)
     assert len(transport.calls) == 1
+
+
+# -- TorBox JSON that Python's strict parser refuses -----------------------------------
+#
+# Live: TorBox answered 200 application/json with a sound envelope, and DP's
+# strict json.loads refused it. A literal control character inside a JSON
+# string is what strict parsing refuses and what TorBox's other clients'
+# parsers accept; only that is tolerated, and everything after decoding is
+# validated exactly as before.
+
+def raw(text):
+    return text.encode("utf-8")
+
+
+def envelope_text(data_text):
+    return '{"success":true,"error":null,"detail":"Torrent list retrieved successfully","data":' + data_text + "}"
+
+
+def torrent_text(*, name="Show", files='[{"id":0,"name":"Show/e01.mkv","size":1000}]', native_id="7",
+                 hash_text="a" * 40):
+    return ('{"id":' + native_id + ',"hash":"' + hash_text + '","name":"' + name + '","size":1000,"progress":1,'
+            '"download_state":"cached","download_present":true,"download_speed":0,"files":' + files + "}")
+
+
+def current(body, status=200):
+    return {("GET", "torrents/mylist"): [(status, body, {"Content-Type": "application/json"})]}
+
+
+async def test_strict_json_is_decoded_unchanged():
+    """TB-J1."""
+    provider, _ = observing(current(raw(envelope_text(torrent_text()))))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert observed.state == ResourceState.AVAILABLE and observed.name == "Show"
+    assert [entry.relative_path for entry in observed.file_manifest.entries] == ["e01.mkv"]
+
+
+async def test_a_literal_control_character_in_a_string_is_tolerated_and_still_validated():
+    """TB-J2: a literal tab in TorBox's detail and in the torrent's name."""
+    body = raw(envelope_text(torrent_text(name="Show\tSeason")).replace("retrieved", "retrieved\t"))
+    with pytest.raises(json.JSONDecodeError):
+        json.loads(body.decode())
+    provider, _ = observing(current(body))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert observed.state == ResourceState.AVAILABLE and observed.name == "Show\tSeason"
+    assert observed.fingerprint == "a" * 40
+
+
+async def test_a_tolerated_consumed_field_still_faces_semantic_validation():
+    """TB-J3: tolerated syntax never vouches for a value -- an id carrying a
+    control character is not the torrent's id, and an info-hash carrying one
+    is no info-hash."""
+    provider, _ = observing(current(raw(envelope_text(torrent_text(native_id='"7\x01"')))))
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert caught.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+
+    provider, _ = observing(current(raw(envelope_text(torrent_text(hash_text="a" * 39 + "\x01")))))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    assert observed.fingerprint == ""
+
+
+async def test_a_tolerated_control_character_in_a_member_path_stays_path_safe(tmp_path):
+    """TB-J3A: the neutral manifest/destination boundary -- not TorBox --
+    sanitizes a control character in a member path, and two paths that only
+    the sanitizer makes equal fail closed."""
+    from transfers.file_selection import ManifestInvalid, canonicalize_manifest
+    from transfers.filesystem import destination
+
+    one = '[{"id":0,"name":"Show/e\x0101.mkv","size":1000}]'
+    provider, _ = observing(current(raw(envelope_text(torrent_text(files=one)))))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    (entry,) = observed.file_manifest.entries
+    canonical = canonicalize_manifest(observed.resource.id, observed.file_manifest)
+    assert [item.relative_path for item in canonical.entries] == ["e_01.mkv"]
+    target = destination(str(tmp_path), entry.relative_path)
+    assert target.name == "e_01.mkv" and "\x01" not in str(target)
+
+    two = ('[{"id":0,"name":"Show/e\x0101.mkv","size":1000},'
+           '{"id":1,"name":"Show/e\x0201.mkv","size":1000}]')
+    provider, _ = observing(current(raw(envelope_text(torrent_text(files=two)))))
+    observed = await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    with pytest.raises(ManifestInvalid) as collided:
+        canonicalize_manifest(observed.resource.id, observed.file_manifest)
+    assert collided.value.reason == "duplicate_path"
+
+
+@pytest.mark.parametrize("broken", [
+    envelope_text(torrent_text())[:-40],                                  # truncated
+    envelope_text(torrent_text(name="Sh\x01ow")).replace('"size":1000,', '"size":1000,,'),  # broken delimiter
+])
+async def test_structurally_broken_json_still_fails_with_bounded_location(broken):
+    """TB-J4: strict=False tolerates string content only; structure still
+    fails, now saying where, with control characters shown escaped."""
+    body = raw(broken)
+    for strict in (True, False):
+        with pytest.raises(json.JSONDecodeError):
+            json.loads(body.decode(), strict=strict)
+    provider, transport = observing(current(body))
+    with pytest.raises(TransferError) as caught:
+        await provider.observe(resource(TORRENT, "7", ownership=Ownership.CREATED))
+    error = caught.value.error
+    assert error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    text = error.diagnostic
+    for fact in ("GET /v1/api/torrents/mylist", "HTTP 200", "json-error=", "line 1", "col ", "json-context="):
+        assert fact in text, fact
+    assert "\x01" not in text and len(text) <= 500 and TOKEN not in text
+    assert len(transport.calls) == 1
+
+
+async def test_tolerant_decoding_never_turns_an_error_status_into_success():
+    """TB-J6."""
+    body = raw('{"success":true,"error":null,"detail":"busy\there","data":{"torrent_id":7}}')
+    provider, _ = observing({("POST", "torrents/createtorrent"): [(503, body, {"Content-Type": "application/json"})]})
+    with pytest.raises(TransferError) as caught:
+        await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
+    assert caught.value.error.category == Category.PROVIDER_UNAVAILABLE
+    assert caught.value.error.mutation == MutationOutcome.UNCERTAIN

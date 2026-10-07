@@ -307,12 +307,16 @@ def _manifest(members: tuple[NativeMember, ...]) -> FileManifest | None:
 
 # -- the one status translator ----------------------------------------------------------
 
-# Debrid-Link's documented torrent statuses: 0 paused, 1 queued, 2
-# verification, 4 downloading, 8 seeding, 100 finished. Only a torrent whose
-# every file Debrid-Link reports at 100 % is available; nothing that merely
-# sounds finished is reported ready before its files can be requested.
-_PREPARING = frozenset({0, 1, 2, 4})
-_STORED = frozenset({8, 100})
+# Debrid-Link's torrent statuses. Its API documentation lists 0 paused, 1
+# queued, 2 verifying, 4 downloading, 8 seeding, 100 finished; its seedbox
+# also answers, as working clients read it, 0 stopped, 1 queued to verify, 2
+# verifying, 3 queued to download, 4 downloading, 5 queued to seed, 6 seeding,
+# 100 stored. Stopped says nothing about the files either way. Only a torrent
+# whose every file Debrid-Link reports at 100 % is available; nothing that
+# merely sounds finished is reported ready before its files can be requested.
+_STOPPED = 0
+_PREPARING = frozenset({1, 2, 3, 4})
+_STORED = frozenset({5, 6, 8, 100})
 
 
 def _nonnegative(value) -> int:
@@ -352,7 +356,8 @@ def seedbox_observation(native: dict, *, resource_value: ProviderResource | None
     status = native.get("status")
     status = status if isinstance(status, int) and not isinstance(status, bool) else None
     error = None
-    if status in _STORED and members and all(member.complete for member in members):
+    if ((status in _STORED or status == _STOPPED) and members
+            and all(member.complete for member in members)):
         state = ResourceState.AVAILABLE
     elif status in _PREPARING or status in _STORED:
         state = ResourceState.PREPARING

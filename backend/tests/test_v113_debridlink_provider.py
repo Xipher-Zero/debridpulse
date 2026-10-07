@@ -791,3 +791,85 @@ async def test_a_last_known_good_debridlink_row_restores_its_exact_meaning():
     assert truth.request_types == frozenset({"http", "https"})
     assert set(truth.public()) == {"entitlement", "service_class", "functional", "request_types", "plan",
                                    "expires_at"}
+
+
+# -- the seedbox status table -----------------------------------------------------------
+#
+# Debrid-Link's API documentation lists 0 paused, 1 queued, 2 verifying, 4
+# downloading, 8 seeding, 100 finished; working clients (RDTClient) read its
+# seedbox codes 0 stopped, 1 queued to verify, 2 verifying, 3 queued to
+# download, 4 downloading, 5 queued to seed, 6 seeding, 100 stored. Live, all
+# files of a torrent were downloadable from Debrid-Link while DP still showed
+# it preparing. A status is never enough on its own: every file must be stored.
+
+def stored(status, **extra):
+    return torrent(status=status, percent=100, **extra)
+
+
+def partial(status):
+    value = stored(status)
+    value["files"][1]["downloadPercent"] = 50
+    return value
+
+
+@pytest.mark.parametrize("status", [5, 6, 8, 100])
+async def test_a_finished_or_seeding_torrent_with_every_file_stored_is_available(status):
+    """DL-S1 (6), DL-S2 (5), DL-S3 (100), and 8 -- seeding in Debrid-Link's
+    own documentation, whose sample shows it with every file at 100 %."""
+    from providers.debridlink.translation import seedbox_observation
+    observed = seedbox_observation(stored(status))
+    assert observed.state == ResourceState.AVAILABLE and observed.error is None
+    assert [entry.relative_path for entry in observed.file_manifest.entries] == ["e01.mkv", "Extras/e02.mkv"]
+
+
+@pytest.mark.parametrize("status", [1, 2, 3, 4])
+async def test_queued_verifying_and_downloading_torrents_are_preparing(status):
+    """DL-S4 (3), DL-S5 (4)."""
+    from providers.debridlink.translation import seedbox_observation
+    observed = seedbox_observation(torrent(status=status))
+    assert observed.state == ResourceState.PREPARING and observed.error is None and observed.file_manifest is None
+
+
+async def test_a_stopped_torrent_is_available_exactly_when_every_file_is_stored():
+    """DL-S6 / DL-S6A: stopped says nothing about readiness. Every file
+    stored is available; otherwise it is neither available nor claimed as
+    preparing -- unknown, owned, and naming status 0."""
+    from providers.debridlink.translation import seedbox_observation, seedbox_resource
+    observed = seedbox_observation(stored(0))
+    assert observed.state == ResourceState.AVAILABLE and observed.file_manifest is not None
+
+    owned = seedbox_resource("t0rr3nt", ownership=Ownership.CREATED)
+    halted = seedbox_observation(partial(0), resource_value=owned)
+    assert halted.state == ResourceState.UNKNOWN and halted.file_manifest is None
+    assert halted.resource == owned
+    assert halted.error.category == Category.UNMAPPED_PROVIDER_ERROR and halted.error.native_code == "0"
+
+
+async def test_an_unmapped_status_names_its_own_code():
+    """DL-S6B."""
+    from providers.debridlink.translation import seedbox_observation
+    observed = seedbox_observation(stored(42))
+    assert observed.state == ResourceState.UNKNOWN and observed.file_manifest is None
+    assert observed.error.native_code == "42" and "42" in observed.error.diagnostic
+
+
+@pytest.mark.parametrize("status", [5, 6, 8, 100])
+async def test_a_finished_status_with_a_file_not_stored_is_never_available(status):
+    """DL-S7."""
+    from providers.debridlink.translation import seedbox_observation
+    observed = seedbox_observation(partial(status))
+    assert observed.state == ResourceState.PREPARING and observed.file_manifest is None
+    no_files = seedbox_observation(stored(status, files=[]))
+    assert no_files.state == ResourceState.PREPARING and no_files.file_manifest is None
+
+
+async def test_materialization_still_refuses_a_file_not_stored_whatever_the_status():
+    """DL-S8: manifest() and a member's material check the files themselves."""
+    from providers.debridlink.translation import seedbox_resource
+    provider, _ = provider_with({("GET", "seedbox/list"): [ok([partial(6)]), ok([partial(6)])]})
+    with pytest.raises(TransferError) as refused_manifest:
+        await provider.manifest(seedbox_resource("t0rr3nt", ownership=Ownership.CREATED))
+    assert refused_manifest.value.error.category == Category.PROVIDER_PROTOCOL_VIOLATION
+    with pytest.raises(TransferError) as refused_member:
+        await provider.resolve(TransferRequest("https", member_address("t0rr3nt", "t0rr3nt-2"), "e02.mkv"))
+    assert refused_member.value.error.category == Category.RESOLUTION_TEMPORARILY_FAILED

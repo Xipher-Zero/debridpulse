@@ -122,6 +122,8 @@ async def aiohttp_transport(method: str, url: str, *, headers=None, params=None,
 # What an unreadable answer may keep: enough to tell JSON, HTML, a CDN or WAF
 # page and an empty or garbled body apart, never the body itself.
 _EVIDENCE_BODY_BYTES = 96
+# How much of an unparseable answer around the parser's failure is kept.
+_EVIDENCE_JSON_CONTEXT = 64
 _EVIDENCE_HOST = re.compile(r"[a-z0-9.-]{1,253}")
 
 
@@ -142,14 +144,22 @@ def _location(value: str) -> str:
     return " ".join(facts)
 
 
-def _unreadable(response: RawResponse, what: str) -> TorBoxProtocolError:
+def _unreadable(response: RawResponse, what: str, *, parse: json.JSONDecodeError | None = None
+                ) -> TorBoxProtocolError:
     """A TorBox answer that is not the documented one, described by its safe,
     bounded HTTP facts so it can be named: method, endpoint path, status,
-    media type, length, a redirect's target and a short body prefix. Never a
-    header but those, a query, a credential or the full body."""
+    media type, length, where JSON parsing failed with a short escaped window
+    around it, a redirect's target and a short body prefix. Never a header but
+    those, a query, a credential or the full body."""
     facts = [f"TorBox {response.method or '?'} {response.path or '?'} {what}: HTTP {response.status}",
              f"content-type={safe_diagnostic(response.headers.get('content-type'), limit=64) or 'none'}",
              f"length={len(response.body)}"]
+    if parse is not None:
+        window = parse.doc[max(0, parse.pos - _EVIDENCE_JSON_CONTEXT):parse.pos + _EVIDENCE_JSON_CONTEXT]
+        facts.append(f"json-error={safe_diagnostic(parse.msg, limit=64)} at pos {parse.pos} line {parse.lineno} "
+                     f"col {parse.colno}")
+        # ``json.dumps`` escapes every control character, so none is emitted literally.
+        facts.append("json-context=" + safe_diagnostic(json.dumps(window), limit=4 * _EVIDENCE_JSON_CONTEXT))
     if response.headers.get("location") is not None:
         facts.append(_location(str(response.headers["location"])))
     if response.body:
@@ -169,8 +179,15 @@ def _decode(response: RawResponse) -> Any:
         raise _unreadable(response, "returned an empty response")
     try:
         return json.loads(text)
-    except json.JSONDecodeError:
-        raise _unreadable(response, "returned an answer that is not JSON") from None
+    except json.JSONDecodeError as strict:
+        # TorBox may send a literal control character inside a JSON string,
+        # which its other clients' parsers accept and Python's strict parser
+        # refuses. Only that is tolerated: the structure must still be JSON,
+        # and every check after decoding still applies.
+        try:
+            return json.loads(text, strict=False)
+        except json.JSONDecodeError:
+            raise _unreadable(response, "returned an answer that is not JSON", parse=strict) from None
 
 
 def _envelope(response: RawResponse) -> Any:
