@@ -8,9 +8,9 @@ from urllib.parse import urlsplit
 from providers.realdebrid.account import refused_family
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
-    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, creation_error, native_members, native_name,
-    observation_from_native, protocol_error, resource_from_native, translate_error,
-    unrestricted_matches,
+    AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, creation_error, malformed_links_evidence, manifest_evidence,
+    member_link_evidence, native_members, native_name, observation_from_native, protocol_error,
+    resource_from_native, translate_error, unrestricted_matches,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
@@ -287,7 +287,8 @@ class RealDebridProvider:
             raise TransferError(protocol_error(stage, "torrent identity mismatch"))
         links = native.get("links")
         if not isinstance(links, list) or any(not isinstance(link, str) for link in links):
-            raise TransferError(protocol_error(stage, "torrent links are malformed"))
+            raise TransferError(protocol_error(stage, "torrent links are malformed",
+                                               diagnostic_evidence=malformed_links_evidence(native, native_id)))
         try:
             members = native_members(native.get("files"), root_name=native_name(native))
         except ManifestInvalid:
@@ -295,7 +296,9 @@ class RealDebridProvider:
                                                 integration_id=INTEGRATION_ID)) from None
         selected = [member for member in members if member.selected]
         if not selected or len(selected) != len(links):
-            raise TransferError(protocol_error(stage, "selected files and links do not reconcile"))
+            raise TransferError(protocol_error(
+                stage, "selected files and links do not reconcile",
+                diagnostic_evidence=manifest_evidence(native, native_id, members, links)))
         entries = []
         for member, link in zip(selected, links, strict=True):
             try:
@@ -304,7 +307,11 @@ class RealDebridProvider:
                 raise TransferError(translate_error(exc, stage=stage, secrets=self._secrets())) from None
             unrestricted = await self._unrestricted(restricted, stage=stage)
             if not unrestricted_matches(member, unrestricted):
-                raise TransferError(protocol_error(stage, "a member link does not match its file"))
+                contradiction = member_link_evidence(len(entries), member, restricted, unrestricted)
+                raise TransferError(protocol_error(
+                    stage, "a member link does not match its file",
+                    diagnostic_evidence=manifest_evidence(native, native_id, members, links,
+                                                          member_link=contradiction)))
             request = TransferRequest(urlsplit(restricted).scheme, restricted, member.name,
                                       preferred_provider=INTEGRATION_ID)
             entries.append(SourceEntry(member.name, member.expected_bytes, member.relative_path, request))

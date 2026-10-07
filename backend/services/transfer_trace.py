@@ -61,7 +61,14 @@ selector's decision that started each root route attempt -- one neutral
 disposition per provider it considered -- and
 ``transfer_requests.routing_decision`` the decision of a root request that is
 held or that nothing could take. Rows recorded before either column existed
-have none; nothing is reconstructed for them.
+have none; nothing is reconstructed for them. 6 is a strict superset of 5:
+normalized errors may carry bounded, diagnostics-only ``diagnostic_evidence``
+captured when the failure was created, on the same error-bearing rows that
+already carry the error (``resolution_attempts.error``,
+``transfer_outcomes.payload``, ``transfer_requests.error``,
+``torrents.normalized_error`` ...); the evidence is already safe before
+persistence and is sanitized again here like every other value. There is no
+separate evidence section, and errors recorded before it existed have none.
 """
 from __future__ import annotations
 
@@ -91,7 +98,8 @@ TRACE_FORMAT = "debridpulse.transfer-trace"
 # metadata.closure.component, metadata.component_transfer_ids).
 # 4: artifact_material_state rows and per-target material observations.
 # 5: routing decisions on route attempts and held/unroutable root requests.
-TRACE_FORMAT_VERSION = 5
+# 6: bounded diagnostic_evidence on normalized errors (no new section).
+TRACE_FORMAT_VERSION = 6
 # Bounds of the consolidation component (``_component``); hitting one is
 # declared in metadata.closure.component, never silent.
 COMPONENT_MAX_TRANSFERS = 32

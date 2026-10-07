@@ -303,3 +303,43 @@ async def test_extraction_notification_flag_is_independent_of_download_notificat
     await Observability(core.repository).deliver()
     notifier.send_extract_failed.assert_awaited_once()
     notifier.send_complete.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_error_notifications_never_carry_diagnostic_evidence(core, monkeypatch):
+    import json
+    from application.observability import Observability
+    from services.notifications import NotificationService as DiscordNotificationClient
+    from transfers import codec
+    from transfers.errors import Domain, NormalizedError, Origin, Retryability, Stage
+    canary = "EVIDENCE-CANARY-7731"
+    transfer = await submit(core)
+    error = NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION,
+                            Retryability.NEVER, origin=Origin.PROVIDER, integration_id="realdebrid",
+                            diagnostic_evidence={"note": canary, "files": [{"relative_path": canary}]})
+    assert await core.repository.state(transfer.id, TransferState.FAILED, error=error)
+    assert canary in codec.dump(error)                       # the evidence is durable...
+    client = DiscordNotificationClient("https://discord.example/api/webhooks/1/hook")
+    sent, published = [], []
+
+    async def deliver(**payload):
+        sent.append(payload)
+        return True
+
+    async def publish(kind, payload):
+        published.append((kind, payload))
+    monkeypatch.setattr(client, "_send", deliver)
+    monkeypatch.setattr("application.observability.publish", publish)
+    monkeypatch.setattr("application.observability.NotificationService", lambda: SimpleNamespace(client=lambda: client))
+    monkeypatch.setattr("application.observability.get_settings", lambda: SimpleNamespace(
+        discord_notify_added=False, discord_notify_finished=False, discord_notify_error=True,
+        discord_notify_extract=False))
+    await Observability(core.repository).deliver()
+    # ...and the outbound webhook (and the browser event) never see it: the
+    # ordinary error projection is the boundary.
+    (payload,) = sent
+    for text in (json.dumps(payload), json.dumps(published, default=str)):
+        assert canary not in text and "diagnostic_evidence" not in text
+    fields = {field["name"]: field["value"] for field in payload["fields"]}
+    assert fields["Category"] == "provider_protocol_violation" and fields["Reason"] == error.message
+    assert fields["Transfer ID"] == str(transfer.id) and payload["title"] == "❌ Error"

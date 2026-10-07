@@ -21,8 +21,12 @@ from api.routes import router
 from application.service import ApplicationService
 from fake_integrations import MemoryExecutor, ParcelProvider
 from services import transfer_trace
+from transfers import codec
 from transfers.engine import TransferEngine
-from transfers.models import Endpoint, ResolutionResult, ResourceState, TransferRequest
+from transfers.errors import Category, Domain, NormalizedError, Origin, Retryability, Stage
+from transfers.models import (
+    Endpoint, OutcomeKind, ResolutionResult, ResourceState, TransferOutcome, TransferRequest,
+)
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
@@ -96,7 +100,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 5
+    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 6
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])
@@ -188,6 +192,49 @@ async def test_trace_sanitizes_credentials_and_capabilities_but_keeps_structure(
     assert detail["note"] == "kept" and re.fullmatch(r"<redacted-secret-\d+>", detail["api_key"])
     # Tokens are per export: nothing value-derived crosses traces.
     assert "<redacted-" in text and not re.search(r"[0-9a-f]{32,}", "".join(re.findall(r"<redacted-[^>]*>", text)))
+
+
+@pytest.mark.asyncio
+async def test_trace_exports_diagnostic_evidence_on_the_error_it_explains(traced):
+    evidence = {"provider_operation": "torrent_manifest", "native_status": "downloaded",
+                "native_file_count": 2, "native_selected_count": 2, "link_count": 1,
+                "files": [{"ordinal": 0, "native_id": 1, "relative_path": "movie.mkv", "bytes": 22576859233,
+                           "selected": True},
+                          {"ordinal": 1, "native_id": 2, "relative_path": "movie.nfo", "bytes": 400, "selected": True}],
+                "links": [{"ordinal": 0, "scheme": "https", "host": "real-debrid.com", "port": None,
+                           "has_resource_component": True}],
+                "note": "https://real-debrid.com/d/EVIDENCE-CAPABILITY"}
+    error = NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION,
+                            Retryability.NEVER, origin=Origin.PROVIDER, integration_id="realdebrid",
+                            diagnostic="selected files and links do not reconcile", diagnostic_evidence=evidence)
+    await traced.engine.repository.outcome(traced.later.id, TransferOutcome(OutcomeKind.FAILURE, error))
+    # A row that bypassed the durable boundary still meets the trace's own
+    # recursive sanitizer: the second defense is not relaxed for evidence.
+    bypass = {**json.loads(codec.dump(error)),
+              "diagnostic_evidence": {"link": "https://real-debrid.com/d/BYPASS-CAPABILITY", "token": "BYPASS-TOKEN"}}
+    async with database.get_db() as db:
+        await db.execute("UPDATE resolution_attempts SET error=? WHERE request_id IN "
+                         "(SELECT id FROM transfer_requests WHERE transfer_id=?)", (json.dumps(bypass), traced.later.id))
+        await db.commit()
+    trace = await transfer_trace.build(traced.later.id, traced.application)
+    assert trace["metadata"]["trace_format_version"] == 6
+    assert not [key for key in trace if "evidence" in key]
+    text = json.dumps(trace)
+    for secret in ("EVIDENCE-CAPABILITY", "BYPASS-CAPABILITY", "BYPASS-TOKEN", "/d/"):
+        assert secret not in text, secret
+    (outcome,) = [json.loads(item["row"]["payload"]) for item in trace["data"]["transfer_outcomes"]
+                  if item["row"]["transfer_id"] == traced.later.id and item["row"]["kind"] == "failure"]
+    exported = outcome["error"]["diagnostic_evidence"]
+    assert {key: exported[key] for key in ("native_file_count", "native_selected_count", "link_count")} == {
+        "native_file_count": 2, "native_selected_count": 2, "link_count": 1}
+    assert [(item["relative_path"], item["bytes"], item["selected"]) for item in exported["files"]] == [
+        ("movie.mkv", 22576859233, True), ("movie.nfo", 400, True)]
+    assert exported["links"] == evidence["links"] and exported["note"] == "<capability-url>"
+    bypassed = {json.dumps(json.loads(item["row"]["error"])["diagnostic_evidence"], sort_keys=True)
+                for item in trace["data"]["resolution_attempts"] if item["row"]["error"]}
+    (only,) = [json.loads(item) for item in bypassed]
+    assert re.fullmatch(r"https://real-debrid\.com/<redacted-resource-\d+>", only["link"])
+    assert re.fullmatch(r"<redacted-secret-\d+>", only["token"])
 
 
 @pytest.mark.asyncio

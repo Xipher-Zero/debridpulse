@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import StrEnum
+import json
 import re
 import math
 from typing import Mapping
@@ -250,6 +251,158 @@ def safe_context(value: Mapping | None, *, secrets: tuple[str, ...] = ()) -> dic
     return result
 
 
+# Bounds of ``NormalizedError.diagnostic_evidence``. The node budget bounds the
+# work and leaves room for two full 64-record lists; the byte ceiling is what
+# bounds the durable size. It is measured on the compact JSON encoding as it is
+# persisted (``codec.dump``: non-ASCII escaped), which is never shorter than
+# its UTF-8 form, so both stay within it.
+EVIDENCE_MAX_NODES = 1024
+EVIDENCE_MAX_DEPTH = 5
+EVIDENCE_MAX_ENTRIES = 64
+EVIDENCE_MAX_TEXT = 256
+EVIDENCE_MAX_BYTES = 16384
+# The one evidence-wide fact that something was cut.
+EVIDENCE_TRUNCATED = "_truncated"
+_EVIDENCE_KEY = re.compile(r"[A-Za-z0-9_.-]{1,64}")
+_EVIDENCE_SECRET_KEY = re.compile(r"(?i)(passphrase|session|bearer|access.?key)")
+_EVIDENCE_INT = 2 ** 63
+
+
+def _evidence_bytes(value) -> int:
+    return len(json.dumps(value, separators=(",", ":"), sort_keys=True))
+
+
+class _EvidenceBudget:
+    def __init__(self):
+        self.nodes = EVIDENCE_MAX_NODES
+        self.truncated = False
+
+
+def _evidence_value(value, depth: int, budget: _EvidenceBudget, secrets: tuple[str, ...]):
+    budget.nodes -= 1
+    if value is None or isinstance(value, bool):
+        return value
+    if isinstance(value, int):
+        return value if -_EVIDENCE_INT < value < _EVIDENCE_INT else "<large-int>"
+    if isinstance(value, float):
+        return value if math.isfinite(value) else None
+    if isinstance(value, (Mapping, list, tuple)):
+        if depth >= EVIDENCE_MAX_DEPTH:
+            budget.truncated = True
+            return "<truncated>"
+        if isinstance(value, Mapping):
+            return _evidence_mapping(list(value.items()), depth, budget, secrets)
+        result = []
+        for index, item in enumerate(value):
+            if index >= EVIDENCE_MAX_ENTRIES or budget.nodes <= 0:
+                budget.truncated = True
+                break
+            result.append(_evidence_value(item, depth + 1, budget, secrets))
+        return result
+    # Free text, and only the type of anything that is not plain data: never
+    # a repr, never bytes.
+    text = value if isinstance(value, str) else f"<{type(value).__name__}>"
+    text = text.encode("utf-8", "replace").decode("utf-8")
+    return safe_diagnostic(text, secrets=secrets, limit=EVIDENCE_MAX_TEXT)
+
+
+def _evidence_mapping(items: list, depth: int, budget: _EvidenceBudget, secrets: tuple[str, ...]) -> dict:
+    result = {}
+    for index, (key, item) in enumerate(items):
+        if index >= EVIDENCE_MAX_ENTRIES or budget.nodes <= 0:
+            budget.truncated = True
+            break
+        if not isinstance(key, str) or not _EVIDENCE_KEY.fullmatch(key):
+            continue
+        if _SECRET_KEY.search(key) or _EVIDENCE_SECRET_KEY.search(key):
+            budget.nodes -= 1
+            result[key] = "<redacted>"
+            continue
+        result[key] = _evidence_value(item, depth + 1, budget, secrets)
+    return result
+
+
+def _evidence_within_bytes(evidence: dict) -> dict:
+    """Deterministically prune whole list entries and mapping values -- the
+    largest top-level container first, from its end, so native order keeps
+    its prefix -- and only then top-level scalars, largest first, until the
+    compact encoding fits. Sizes are tracked exactly, never re-encoded."""
+    if _evidence_bytes(evidence) <= EVIDENCE_MAX_BYTES:
+        return evidence
+    evidence[EVIDENCE_TRUNCATED] = True
+    size = _evidence_bytes(evidence)
+    sizes = {key: _evidence_bytes(item) for key, item in evidence.items() if isinstance(item, (dict, list))}
+    while size > EVIDENCE_MAX_BYTES:
+        containers = [key for key in sorted(sizes) if evidence[key]]
+        if containers:
+            key = max(containers, key=lambda name: sizes[name])
+            container = evidence[key]
+            if isinstance(container, list):
+                delta = _evidence_bytes(container.pop())
+            else:
+                last = sorted(container)[-1]
+                delta = _evidence_bytes(last) + 1 + _evidence_bytes(container.pop(last))
+            delta += 1 if container else 0
+            sizes[key] -= delta
+        else:
+            scalars = [key for key in sorted(evidence) if key != EVIDENCE_TRUNCATED and key not in sizes]
+            if not scalars:
+                return {EVIDENCE_TRUNCATED: True}
+            key = max(scalars, key=lambda name: _evidence_bytes(name) + _evidence_bytes(evidence[name]))
+            delta = _evidence_bytes(key) + 1 + _evidence_bytes(evidence.pop(key)) + 1
+        size -= delta
+    return evidence
+
+
+def safe_diagnostic_evidence(value: Mapping | None, *, secrets: tuple[str, ...] = ()) -> dict:
+    """THE durable-safety boundary for nested forensic evidence, as plain JSON
+    data. Only mappings, lists, ``None``, booleans, integers, finite floats
+    and bounded free text cross it; a credential- or capability-named key
+    keeps only ``<redacted>``, free text gets ``safe_diagnostic`` (a URL never
+    survives), and the whole value is bounded (nodes, depth, entries per
+    level, text, and ``EVIDENCE_MAX_BYTES`` of compact JSON), stating
+    ``_truncated`` when cut. Top-level scalars -- the cardinality facts -- are
+    kept before any container. Never raises for size; idempotent.
+
+    ``safe_context`` stays the separate scalar-only contract."""
+    if not isinstance(value, Mapping):
+        return {}
+    items = list(value.items())
+    truncated = value.get(EVIDENCE_TRUNCATED) is True
+    items = [item for item in items if item[0] != EVIDENCE_TRUNCATED]
+    containers = [item for item in items if isinstance(item[1], (Mapping, list, tuple))]
+    scalars = [item for item in items if not isinstance(item[1], (Mapping, list, tuple))]
+    budget = _EvidenceBudget()
+    budget.nodes -= 1
+    evidence = _evidence_mapping(scalars, 0, budget, secrets)
+    if len(scalars) > EVIDENCE_MAX_ENTRIES:
+        containers = []
+        budget.truncated = True
+    containers = containers[:EVIDENCE_MAX_ENTRIES - len(evidence)] if containers else []
+    if len(evidence) + len(containers) < len(items):
+        budget.truncated = True
+    evidence.update(_evidence_mapping(containers, 0, budget, secrets))
+    if truncated or budget.truncated:
+        evidence[EVIDENCE_TRUNCATED] = True
+    return _evidence_within_bytes(evidence)
+
+
+def _frozen_evidence(value):
+    if isinstance(value, dict):
+        return MappingProxyType({key: _frozen_evidence(item) for key, item in value.items()})
+    if isinstance(value, list):
+        return tuple(_frozen_evidence(item) for item in value)
+    return value
+
+
+def _thawed_evidence(value):
+    if isinstance(value, Mapping):
+        return {key: _thawed_evidence(item) for key, item in value.items()}
+    if isinstance(value, tuple):
+        return [_thawed_evidence(item) for item in value]
+    return value
+
+
 @dataclass(frozen=True)
 class NormalizedError:
     domain: Domain
@@ -269,6 +422,11 @@ class NormalizedError:
     confidence: Confidence = Confidence.UNKNOWN
     evidence_basis: EvidenceBasis = EvidenceBasis.UNKNOWN
     mutation: MutationOutcome = MutationOutcome.NOT_COMMITTED
+    # Bounded forensic facts that were in memory when this failure was
+    # created: diagnostics only. Never compared, never part of a failure
+    # signature, never read by policy, recovery, routing or presentation; only
+    # the durable (``diagnostics=True``) encoding carries it.
+    diagnostic_evidence: Mapping = field(default_factory=dict, compare=False, repr=False)
 
     def __post_init__(self):
         # Reconstructed/persisted values are canonicalized here. This layer may
@@ -290,6 +448,8 @@ class NormalizedError:
         for name, limit in (("integration_id", 128), ("native_code", 128), ("diagnostic", 500)):
             object.__setattr__(self, name, safe_diagnostic(getattr(self, name), limit=limit))
         object.__setattr__(self, "context", MappingProxyType(safe_context(self.context)))
+        object.__setattr__(self, "diagnostic_evidence",
+                           _frozen_evidence(safe_diagnostic_evidence(self.diagnostic_evidence)))
         if self.severity not in {"info", "warning", "error", "critical"}:
             object.__setattr__(self, "severity", "error")
         if self.retry_after_seconds is not None:
@@ -308,6 +468,11 @@ class NormalizedError:
         payload = {name: getattr(self, name) for name in self.__dataclass_fields__}
         payload["context"] = dict(self.context)
         payload["message"] = self.message
+        # Present only when there is evidence: an error without any keeps the
+        # exact durable encoding it had before the field existed.
+        evidence = payload.pop("diagnostic_evidence")
+        if diagnostics and evidence:
+            payload["diagnostic_evidence"] = _thawed_evidence(evidence)
         if not diagnostics:
             for field_name in ("native_code", "diagnostic", "context"):
                 payload.pop(field_name)

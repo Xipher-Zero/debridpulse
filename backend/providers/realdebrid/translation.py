@@ -11,6 +11,7 @@ import asyncio
 from dataclasses import dataclass, replace
 import re
 import unicodedata
+from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, uuid5
 
 import aiohttp
@@ -20,8 +21,8 @@ from providers.realdebrid.client import (
 )
 from services.network_safety import UnsafeDestinationError
 from transfers.errors import (
-    Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
-    Permanence, Retryability, Stage, TransferError, safe_diagnostic,
+    EVIDENCE_TRUNCATED, Category, Confidence, Domain, EvidenceBasis, MutationOutcome, NormalizedError, Origin,
+    Permanence, Retryability, Stage, TransferError, safe_diagnostic, safe_diagnostic_evidence,
 )
 from transfers.file_selection import collection_member_paths
 from transfers.models import (
@@ -137,11 +138,12 @@ def status_error(status: str, *, stage: Stage = Stage.RECONCILIATION) -> Normali
     return _error(category, retry, status, status, stage=stage, secrets=(), known=status in _FAILED_STATUSES)
 
 
-def protocol_error(stage: Stage, diagnostic: object = "") -> NormalizedError:
+def protocol_error(stage: Stage, diagnostic: object = "", *, diagnostic_evidence=None) -> NormalizedError:
     return NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, stage,
                            Retryability.NEVER, origin=Origin.PROVIDER, permanence=Permanence.PERMANENT,
                            integration_id=INTEGRATION_ID, diagnostic=safe_diagnostic(diagnostic),
-                           confidence=Confidence.HIGH, evidence_basis=EvidenceBasis.NATIVE_CODE)
+                           confidence=Confidence.HIGH, evidence_basis=EvidenceBasis.NATIVE_CODE,
+                           diagnostic_evidence=diagnostic_evidence or {})
 
 
 def translate_error(exc: Exception, *, stage: Stage = Stage.RESOLUTION,
@@ -373,3 +375,92 @@ def unrestricted_matches(member: NativeMember, native: dict) -> bool:
             return False
         return True
     return sizes_known
+
+
+# -- forensic evidence of an executable-manifest rejection ---------------------
+# What Real-Debrid's own answer said when the executable manifest rejected it,
+# built only from facts already in memory at that decision: no call, no
+# second path interpretation (``native_members`` is the one), native order
+# kept. It is diagnostics only -- it decides nothing -- and it never carries a
+# link: each restricted link is reduced to its origin before it is recorded.
+EVIDENCE_RECORDS = 64
+_MANIFEST_OPERATION = "torrent_manifest"
+
+
+def _native_text(value) -> str | None:
+    return value if isinstance(value, str) else None
+
+
+def _native_number(value) -> int | str | None:
+    return value if isinstance(value, (int, str)) and not isinstance(value, bool) else None
+
+
+def link_descriptor(ordinal: int, link: str) -> dict:
+    """A restricted link's origin only. Its path, query, fragment and
+    userinfo -- the capability -- are never recorded, nor anything derived
+    from them; ``has_resource_component`` says only that one exists."""
+    try:
+        parts = urlsplit(link)
+        host, port = parts.hostname or "", parts.port
+    except ValueError:
+        return {"ordinal": ordinal, "scheme": None, "host": None, "port": None, "has_resource_component": None}
+    return {"ordinal": ordinal, "scheme": parts.scheme.casefold(), "host": host, "port": port,
+            "has_resource_component": parts.path not in ("", "/") or bool(parts.query or parts.fragment)}
+
+
+def _header(native: dict, native_id: str) -> dict:
+    return {"provider_operation": _MANIFEST_OPERATION, "native_status": _native_text(native.get("status")),
+            "native_torrent_id": native_id}
+
+
+def manifest_evidence(native: dict, native_id: str, members: tuple[NativeMember, ...], links: list[str], *,
+                      member_link: dict | None = None) -> dict:
+    """The native files (as ``native_members`` read them) and links a
+    manifest rejection judged, as the longest native-order prefixes the
+    durable evidence bound keeps, with counts that state exactly what was
+    kept and what was omitted."""
+    records = native["files"]
+    evidence = {**_header(native, native_id), "native_file_count": len(members),
+                "native_selected_count": sum(member.selected for member in members), "link_count": len(links)}
+    if member_link is not None:
+        evidence["member_link"] = member_link
+    files = [{"ordinal": ordinal, "native_id": _native_number(record.get("id")),
+              "relative_path": member.relative_path, "bytes": member.expected_bytes, "selected": member.selected}
+             for ordinal, (record, member) in enumerate(zip(records[:EVIDENCE_RECORDS], members))]
+    described = [link_descriptor(ordinal, link) for ordinal, link in enumerate(links[:EVIDENCE_RECORDS])]
+    kept_files, kept_links = len(files), len(described)
+    while True:
+        bounded = {**evidence,
+                   "files_total": len(members), "files_emitted": kept_files,
+                   "files_omitted": len(members) - kept_files, "files": files[:kept_files],
+                   "links_total": len(links), "links_emitted": kept_links,
+                   "links_omitted": len(links) - kept_links, "links": described[:kept_links]}
+        if kept_files < len(members) or kept_links < len(links):
+            bounded[EVIDENCE_TRUNCATED] = True
+        safe = safe_diagnostic_evidence(bounded)
+        kept = len(safe.get("files") or ()), len(safe.get("links") or ())
+        if kept == (kept_files, kept_links):
+            return safe
+        kept_files, kept_links = kept
+
+
+def member_link_evidence(ordinal: int, member: NativeMember, link: str, unrestricted: dict) -> dict:
+    """The identity an ``/unrestrict/link`` answer already returned for the
+    pair it contradicted -- never its download link."""
+    return {"pair_ordinal": ordinal,
+            "expected": {"relative_path": member.relative_path, "bytes": member.expected_bytes},
+            "returned": {"filename": _native_text(unrestricted.get("filename")),
+                         "filesize": _native_number(unrestricted.get("filesize"))},
+            "restricted_link": link_descriptor(ordinal, link)}
+
+
+def malformed_links_evidence(native: dict, native_id: str) -> dict:
+    """The shape of a ``links`` value that is not a list of strings: its
+    container type, cardinality and element types -- never its values."""
+    links = native.get("links")
+    evidence = {**_header(native, native_id), "links_container_type": type(links).__name__}
+    if isinstance(links, list):
+        evidence.update(links_total=len(links),
+                        link_element_types=[type(link).__name__ for link in links[:EVIDENCE_RECORDS]],
+                        link_element_types_omitted=max(0, len(links) - EVIDENCE_RECORDS))
+    return evidence

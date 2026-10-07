@@ -9,6 +9,7 @@ import pytest_asyncio
 
 import db.database as database
 from fake_integrations import MemoryExecutor, ParcelProvider
+from transfers import codec
 from transfers.engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
@@ -654,6 +655,40 @@ async def test_reacquire_transfer_rejects_a_non_terminal_transfer(canonical_core
     assert [(item.id, item.state, item.execution) for item in before] == [
         (item.id, item.state, item.execution) for item in after
     ]
+
+
+@pytest.mark.asyncio
+async def test_an_error_differing_only_in_diagnostic_evidence_is_the_same_lifecycle_state(core):
+    transfer = await submit(core)
+    first = NormalizedError(Domain.PROVIDER, Category.PROVIDER_PROTOCOL_VIOLATION, Stage.CANDIDATE_PREPARATION,
+                            Retryability.NEVER, origin=Origin.PROVIDER, integration_id="realdebrid",
+                            diagnostic="selected files and links do not reconcile",
+                            diagnostic_evidence={"link_count": 1})
+    assert await core.repository.state(transfer.id, TransferState.FAILED, error=first)
+
+    async def lifecycle():
+        async with database.get_db() as db:
+            row = await db.fetchone("SELECT status,progress,normalized_error,error_message,updated_at "
+                                    "FROM torrents WHERE id=?", (transfer.id,))
+            events = await db.fetchone("SELECT COUNT(*) AS n FROM events WHERE torrent_id=?", (transfer.id,))
+            published = await db.fetchone("SELECT COUNT(*) AS n FROM application_events WHERE transfer_id=?",
+                                          (transfer.id,))
+        return dict(row), events["n"], published["n"]
+
+    before = await lifecycle()
+    # Forensic evidence alone is no lifecycle change: no rewrite, no event, no
+    # application event; the first snapshot stays the recorded one.
+    second = replace(first, diagnostic_evidence={"link_count": 5})
+    assert second == first
+    assert await core.repository.state(transfer.id, TransferState.FAILED, error=second)
+    assert await lifecycle() == before
+    assert codec.error(before[0]["normalized_error"]).diagnostic_evidence["link_count"] == 1
+    # A fact the lifecycle owner distinguished before still does.
+    changed = replace(second, diagnostic="a member link does not match its file")
+    assert await core.repository.state(transfer.id, TransferState.FAILED, error=changed)
+    row, events, published = await lifecycle()
+    assert (events, published) == (before[1] + 1, before[2] + 1)
+    assert codec.error(row["normalized_error"]).diagnostic == "a member link does not match its file"
 
 
 @pytest.mark.asyncio

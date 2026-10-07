@@ -62,6 +62,21 @@ _UNSETTLED_EXECUTION_STATES = frozenset({
 })
 
 
+def _lifecycle_error(stored: str | None) -> str | None:
+    """A durable normalized-error text as the lifecycle no-op test compares
+    it: unchanged, except that a ``diagnostic_evidence`` member is removed.
+    The text otherwise stays the prerequisite's exact comparison (a row
+    without evidence is returned as stored), so every fact it distinguished
+    still distinguishes and evidence alone never does."""
+    if not stored or '"diagnostic_evidence"' not in stored:
+        return stored
+    data = codec.load(stored)
+    if not isinstance(data, dict) or "diagnostic_evidence" not in data:
+        return stored
+    data.pop("diagnostic_evidence")
+    return codec.dump(data)
+
+
 async def _retire_transfer_auxiliary_state_in_db(db, transfer_id: int) -> None:
     """Transaction-local: retire a settled transfer's old pause intent and
     INPUT_REQUIRED challenge (FUNC-001). Called from inside every write path
@@ -1921,7 +1936,11 @@ class TransferRepository:
         Shared by ``state()`` and ``aggregate_lifecycle()`` /
         ``force_queued_for_autonomous_wait()`` so the two paths can never
         silently diverge on what "the same transition" durably records."""
-        if current_status == target and (progress is None or current_progress == progress) and current_normalized_error == (codec.dump(error) if error else None):
+        # The durable error text, compared exactly as ever, except for its
+        # diagnostics-only evidence: forensic facts are never a lifecycle change.
+        current_error = _lifecycle_error(current_normalized_error)
+        incoming_error = _lifecycle_error(codec.dump(error)) if error else None
+        if current_status == target and (progress is None or current_progress == progress) and current_error == incoming_error:
             return
         await db.execute("""UPDATE torrents SET status=?, progress=COALESCE(?,progress), normalized_error=?,
             error_message=?, updated_at=CURRENT_TIMESTAMP,
@@ -1930,7 +1949,7 @@ class TransferRepository:
             (target, progress, codec.dump(error) if error else None, error.message if error else None, target, target, transfer_id))
         if target in SIDE_STATE_RETIRING_TRANSFER_STATES:
             await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
-        if current_status != target or current_normalized_error != (codec.dump(error) if error else None):
+        if current_status != target or current_error != incoming_error:
             message = f"Transfer {target}" + (f": {error.message}" if error else "")
             await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
