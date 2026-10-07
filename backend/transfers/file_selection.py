@@ -39,9 +39,10 @@ Invariants enforced here:
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import StrEnum
 from pathlib import PurePosixPath
+from typing import Mapping
 from uuid import NAMESPACE_URL, uuid5
 
 from transfers.filesystem import safe_name
@@ -585,3 +586,106 @@ def reconcile_executable_subset(
             raise SelectionUnprovable("selected_size_conflict")
         proven.append(match)
     return tuple(proven)
+
+
+@dataclass(frozen=True)
+class InheritedMigration:
+    """An inherited selection proven across a replacement resource whose
+    paths differ from the established ones: ``logical`` are the executable
+    members to fan out -- the replacement's own material at the ESTABLISHED
+    logical coordinates -- and ``provenance`` the same members at the
+    replacement manifest's own coordinates, for its selection record."""
+    logical: tuple[SourceEntry, ...]
+    provenance: tuple[SourceEntry, ...]
+
+
+def _migration_keys(entries: list[tuple[str, int]]) -> dict[tuple[str, int], str]:
+    """``(basename, exact size) -> normalized path`` of one COMPLETE manifest,
+    or :class:`SelectionUnprovable` when that is not a unique identity of
+    every member."""
+    paths: set[str] = set()
+    keys: dict[tuple[str, int], str] = {}
+    for path, size in entries:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("fallback_unsafe_path") from None
+        if normalized in paths:
+            raise SelectionUnprovable("fallback_duplicate_path")
+        paths.add(normalized)
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable("fallback_unknown_size")
+        key = (PurePosixPath(normalized).name, size)
+        if key in keys:
+            raise SelectionUnprovable("fallback_duplicate_identity")
+        keys[key] = normalized
+    return keys
+
+
+def migrate_inherited_subset(
+    selected: list[tuple[str, int]],
+    predecessor: list[tuple[str, int]],
+    replacement: list[tuple[str, int]],
+    executable_entries: tuple[SourceEntry, ...],
+    *,
+    predecessor_fingerprints: frozenset[str],
+    replacement_fingerprints: frozenset[str],
+    established: Mapping[str, str],
+) -> InheritedMigration:
+    """Carry an inherited explicit selection onto a replacement resource that
+    reports the same files under different paths (one that lost the
+    directories, say), or raise :class:`SelectionUnprovable` with the
+    bounded reason it cannot.
+
+    Only after ``reconcile_executable_subset`` could not prove it by exact
+    path, and only on proof, never on likeness:
+
+    * the same source: each resource's own reported fingerprints are one
+      value, and the same value;
+    * the same COMPLETE member set: the predecessor's and the replacement's
+      whole manifests (``(path, size)``) are equally long and biject on
+      ``(case-sensitive basename, exact size > 0)``, every key unique;
+    * each selected member's replacement is in the replacement's executable
+      list at that manifest's own path with that exact size.
+
+    Never broader than ``selected``. ``established`` maps an already
+    fanned-out member's normalized path to its recorded path, which is kept
+    verbatim; otherwise the predecessor's path is the logical one."""
+    before = {value.strip().casefold() for value in predecessor_fingerprints if value.strip()}
+    after = {value.strip().casefold() for value in replacement_fingerprints if value.strip()}
+    if not before or not after:
+        raise SelectionUnprovable("fallback_missing_fingerprint")
+    if len(before) != 1 or before != after:
+        raise SelectionUnprovable("fallback_fingerprint_mismatch")
+    if not predecessor or not replacement:
+        raise SelectionUnprovable("fallback_manifest_missing")
+    old = _migration_keys(predecessor)
+    new = _migration_keys(replacement)
+    if len(old) != len(new):
+        raise SelectionUnprovable("fallback_manifest_count_mismatch")
+    if old.keys() != new.keys():
+        raise SelectionUnprovable("fallback_member_set_mismatch")
+    key_of = {path: key for key, path in old.items()}
+    executable: dict[str, SourceEntry] = {}
+    for entry in executable_entries:
+        try:
+            normalized = normalize_relative_path(entry.relative_path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("fallback_unsafe_path") from None
+        if normalized in executable:
+            raise SelectionUnprovable("fallback_duplicate_path")
+        executable[normalized] = entry
+    logical, provenance = [], []
+    for path, _size in selected:
+        try:
+            key = key_of[normalize_relative_path(path)]
+        except (ManifestInvalid, KeyError):
+            raise SelectionUnprovable("fallback_selected_not_in_predecessor") from None
+        entry = executable.get(new[key])
+        if entry is None:
+            raise SelectionUnprovable("fallback_executable_path_missing")
+        if isinstance(entry.expected_bytes, bool) or entry.expected_bytes != key[1]:
+            raise SelectionUnprovable("fallback_executable_size_conflict")
+        logical.append(replace(entry, relative_path=established.get(old[key], old[key])))
+        provenance.append(entry)
+    return InheritedMigration(tuple(logical), tuple(provenance))

@@ -912,3 +912,148 @@ async def test_a_created_torrent_whose_bootstrap_failed_stays_owned_resumes_and_
 
     await restarted.delete(transfer.id, remote=True)
     assert calls("delete_torrent") == [("delete_torrent", "T1")]
+
+
+# --------------------------------------------------------------------------- #
+# The whole bounded body
+# --------------------------------------------------------------------------- #
+#
+# One StreamReader.read(n) returns what has arrived, not the body: TorBox and
+# Debrid-Link were truncated exactly so (transfers 530/531). These run the real
+# aiohttp transport against a local server writing each answer in delayed
+# parts, cutting it off, trickling it, or streaming past the size bound.
+
+class LocalRealDebrid:
+    """Real-Debrid's API on 127.0.0.1: each route answers its scripted
+    ``(how, status, body)`` -- ``parts`` (three delayed writes), ``cut`` (a
+    prefix, then the connection dies), ``trickle`` (slowly) or ``flood``
+    (megabyte writes past the bound)."""
+
+    def __init__(self, script):
+        self.script = {key: list(value) for key, value in script.items()}
+        self.seen = []
+
+    async def __aenter__(self):
+        from aiohttp import web
+        app = web.Application()
+        app.router.add_route("*", "/{tail:.*}", self.handle)
+        self.runner = web.AppRunner(app)
+        await self.runner.setup()
+        site = web.TCPSite(self.runner, "127.0.0.1", 0)
+        await site.start()
+        self.origin = f"http://127.0.0.1:{site._server.sockets[0].getsockname()[1]}"
+        return self
+
+    async def __aexit__(self, *_exc):
+        await self.runner.cleanup()
+
+    def service(self, **options):
+        from providers.realdebrid.client import aiohttp_transport
+
+        async def local(method, url, **kwargs):
+            return await aiohttp_transport(method, url.replace("https://api.real-debrid.com", self.origin), **kwargs)
+        return RealDebridService(CREDENTIAL, rate_limiter=NoLimit(), transport=local, clock=lambda: 1000.0,
+                                 **options)
+
+    async def handle(self, request):
+        from aiohttp import web
+        self.seen.append((request.method, request.path))
+        how, status, body = self.script[(request.method, request.path)].pop(0)
+        response = web.StreamResponse(status=status, headers={"Content-Type": "application/json"})
+        await response.prepare(request)
+        third = max(1, len(body) // 3)
+        try:
+            if how == "flood":
+                for _ in range(24):
+                    await response.write(b" " * (1 << 20))
+                await response.write_eof()
+                return response
+            if how == "cut":
+                await response.write(body[:third])
+                await asyncio.sleep(0.05)
+                request.transport.close()
+                return response
+            step, pause = (8, 0.1) if how == "trickle" else (third, 0.05)
+            for start in range(0, len(body), step):
+                await response.write(body[start:start + step])
+                await asyncio.sleep(pause)
+            await response.write_eof()
+        except (ConnectionError, RuntimeError):
+            pass
+        return response
+
+
+REFRESHED = ("parts", 200, json.dumps(TOKEN[1]).encode())
+TOKEN_ROUTE = ("POST", "/oauth/v2/token")
+INFO_ROUTE = ("GET", "/rest/1.0/torrents/info/T1")
+ADD_ROUTE = ("POST", "/rest/1.0/torrents/addMagnet")
+
+
+def large_info():
+    files = [{"id": index, "path": f"/Show/S{index // 20 + 1}/e{index:03d}.mkv", "bytes": 1846517, "selected": 1}
+             for index in range(1, 201)]
+    return json.dumps({"id": "T1", "filename": "Show", "hash": "a" * 40, "bytes": 1846517 * 200,
+                       "status": "downloaded", "progress": 100, "files": files,
+                       "links": [f"https://real-debrid.com/d/{index}" for index in range(200)]}).encode()
+
+
+def added():
+    return json.dumps({"id": "T1", "uri": "https://api.real-debrid.com/rest/1.0/torrents/info/T1",
+                       "pad": "p" * 300}).encode()
+
+
+@pytest.mark.asyncio
+async def test_an_answer_written_in_parts_is_read_through_its_end():
+    """RD-R1: strictly valid JSON, longer than its first write."""
+    body = large_info()
+    assert len(json.loads(body)["files"]) == 200
+    async with LocalRealDebrid({TOKEN_ROUTE: [REFRESHED], INFO_ROUTE: [("parts", 200, body)]}) as remote:
+        info = await remote.service().torrent_info("T1")
+    assert info["id"] == "T1" and len(info["files"]) == 200
+
+
+@pytest.mark.asyncio
+async def test_an_oversized_streamed_answer_stays_bounded():
+    """RD-R2: the client stops once past the bound; nothing is decoded."""
+    async with LocalRealDebrid({TOKEN_ROUTE: [REFRESHED], INFO_ROUTE: [("flood", 200, b"")]}) as remote:
+        with pytest.raises(RealDebridProtocolError) as caught:
+            await remote.service().torrent_info("T1")
+    assert "oversized response" in str(caught.value)
+
+
+@pytest.mark.asyncio
+async def test_an_answer_cut_off_mid_body_is_a_transport_failure_never_a_partial_answer():
+    """RD-R3 / RD-R4: a create whose answer dies after the request was sent
+    stays UNCERTAIN and is not repeated; the same on a read is an ordinary
+    network failure with no mutation."""
+    async with LocalRealDebrid({TOKEN_ROUTE: [REFRESHED], ADD_ROUTE: [("cut", 200, added())],
+                                INFO_ROUTE: [("cut", 200, large_info())]}) as remote:
+        provider = RealDebridProvider(remote.service())
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40, "Show", "a" * 40))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(provider_resource())
+    assert creating.value.error.category == Category.CONNECTION_FAILED
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_FAILED
+    assert reading.value.error.mutation == MutationOutcome.NOT_COMMITTED
+    assert remote.seen.count(ADD_ROUTE) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_trickled_answer_is_bounded_by_the_total_timeout():
+    """RD-R5: the existing total timeout covers the whole body."""
+    import time
+    async with LocalRealDebrid({TOKEN_ROUTE: [REFRESHED], ADD_ROUTE: [("trickle", 200, added())],
+                                INFO_ROUTE: [("trickle", 200, large_info())]}) as remote:
+        provider = RealDebridProvider(remote.service(request_timeout_seconds=0.5))
+        started = time.monotonic()
+        with pytest.raises(TransferError) as creating:
+            await provider.resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40, "Show", "a" * 40))
+        with pytest.raises(TransferError) as reading:
+            await provider.observe(provider_resource())
+        elapsed = time.monotonic() - started
+    assert creating.value.error.category == Category.CONNECTION_TIMEOUT
+    assert creating.value.error.mutation == MutationOutcome.UNCERTAIN
+    assert reading.value.error.category == Category.CONNECTION_TIMEOUT
+    assert elapsed < 10

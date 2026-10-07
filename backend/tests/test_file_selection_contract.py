@@ -359,3 +359,93 @@ def test_provider_observation_manifest_is_pure_facts():
     )
     for entry in observation.file_manifest.entries:
         assert set(type(entry).__dataclass_fields__) == {"name", "relative_path", "expected_bytes"}
+
+
+# --------------------------------------------------------------------------- #
+# An inherited selection across a replacement that lost the directories
+# --------------------------------------------------------------------------- #
+#
+# Exact normalized path is the proof and stays the proof. Only an inherited
+# explicit selection whose replacement resource is the same source (equal
+# fingerprints) may cross lossy coordinates, and only when the two COMPLETE
+# manifests biject on (case-sensitive basename, exact positive size).
+
+SAME = frozenset({"a" * 40})
+SEASONS = (("S1/A.mkv", 100), ("S2/B.mkv", 200), ("S3/C.mkv", 300))
+FLAT = (("A.mkv", 100), ("B.mkv", 200), ("C.mkv", 300))
+CHOSEN = (("S1/A.mkv", 100), ("S3/C.mkv", 300))
+
+
+def executable(pairs):
+    from pathlib import PurePosixPath
+    from transfers.models import SourceEntry, TransferRequest
+    return tuple(SourceEntry(PurePosixPath(path).name, size, path, TransferRequest("member", "new:" + path))
+                 for path, size in pairs)
+
+
+def migrate(*, selected=CHOSEN, predecessor=SEASONS, replacement=FLAT, executable_pairs=None, before=SAME,
+            after=SAME, established=None):
+    return fs.migrate_inherited_subset(
+        list(selected), list(predecessor), list(replacement),
+        executable(replacement if executable_pairs is None else executable_pairs),
+        predecessor_fingerprints=before, replacement_fingerprints=after, established=established or {})
+
+
+def test_a_complete_flattened_replacement_carries_exactly_the_selected_members():
+    """M-C2 / M-C11: established logical paths, the replacement's material and
+    its own manifest coordinates for provenance; B is never added."""
+    migration = migrate()
+    assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
+    assert [entry.request.payload for entry in migration.logical] == ["new:A.mkv", "new:C.mkv"]
+    assert [entry.relative_path for entry in migration.provenance] == ["A.mkv", "C.mkv"]
+
+
+def test_the_established_member_coordinate_is_carried_verbatim():
+    migration = migrate(established={"S1/A.mkv": "S1/A.mkv", "S3/C.mkv": "S3/C.mkv"})
+    assert [entry.relative_path for entry in migration.logical] == ["S1/A.mkv", "S3/C.mkv"]
+
+
+@pytest.mark.parametrize("case, overrides, reason", [
+    ("M-C3 duplicate identity in the predecessor",
+     dict(predecessor=(("S1/A.mkv", 100), ("S2/A.mkv", 100), ("S3/C.mkv", 300))), "fallback_duplicate_identity"),
+    ("M-C4 duplicate identity in the replacement",
+     dict(replacement=(("A.mkv", 100), ("x/A.mkv", 100), ("C.mkv", 300))), "fallback_duplicate_identity"),
+    ("M-C5 same basename, different size",
+     dict(replacement=(("A.mkv", 101), ("B.mkv", 200), ("C.mkv", 300))), "fallback_member_set_mismatch"),
+    ("M-C6 unknown size in the replacement",
+     dict(replacement=(("A.mkv", 0), ("B.mkv", 200), ("C.mkv", 300))), "fallback_unknown_size"),
+    ("M-C6 unknown size in the predecessor",
+     dict(predecessor=(("S1/A.mkv", 100), ("S2/B.mkv", 0), ("S3/C.mkv", 300))), "fallback_unknown_size"),
+    ("M-C7 missing member", dict(replacement=(("A.mkv", 100), ("C.mkv", 300))), "fallback_manifest_count_mismatch"),
+    ("M-C8 extra member",
+     dict(replacement=(*FLAT, ("D.mkv", 400))), "fallback_manifest_count_mismatch"),
+    ("M-C9 equal count, different member set",
+     dict(replacement=(("A.mkv", 100), ("B.mkv", 200), ("D.mkv", 300))), "fallback_member_set_mismatch"),
+    ("unsafe path", dict(predecessor=(("S1/A.mkv", 100), ("../B.mkv", 200), ("S3/C.mkv", 300))),
+     "fallback_unsafe_path"),
+    ("duplicate normalized path", dict(replacement=(("A.mkv", 100), ("A.mkv", 200), ("C.mkv", 300))),
+     "fallback_duplicate_path"),
+    ("selection outside the predecessor manifest", dict(selected=(("S9/Z.mkv", 5),)),
+     "fallback_selected_not_in_predecessor"),
+    ("M-C12 executable entry missing from the replacement coordinate",
+     dict(executable_pairs=(("A.mkv", 100), ("B.mkv", 200), ("other/C.mkv", 300))),
+     "fallback_executable_path_missing"),
+    ("M-C12 executable entry of another size",
+     dict(executable_pairs=(("A.mkv", 100), ("B.mkv", 200), ("C.mkv", 301))), "fallback_executable_size_conflict"),
+    ("M-C12 executable entry of unknown size",
+     dict(executable_pairs=(("A.mkv", 100), ("B.mkv", 200), ("C.mkv", 0))), "fallback_executable_size_conflict"),
+    ("M-C16 missing predecessor fingerprint", dict(before=frozenset()), "fallback_missing_fingerprint"),
+    ("M-C17 missing replacement fingerprint", dict(after=frozenset()), "fallback_missing_fingerprint"),
+    ("M-C18 mismatched fingerprints", dict(after=frozenset({"b" * 40})), "fallback_fingerprint_mismatch"),
+    ("disagreeing fingerprints of one resource", dict(before=frozenset({"a" * 40, "b" * 40})),
+     "fallback_fingerprint_mismatch"),
+    ("missing replacement manifest", dict(replacement=()), "fallback_manifest_missing"),
+])
+def test_every_unprovable_migration_fails_closed_with_its_bounded_reason(case, overrides, reason):
+    with pytest.raises(fs.SelectionUnprovable) as caught:
+        migrate(**overrides)
+    assert caught.value.reason == reason, case
+
+
+def test_equal_fingerprints_differing_only_in_case_are_the_same_source():
+    assert migrate(after=frozenset({"A" * 40})).provenance

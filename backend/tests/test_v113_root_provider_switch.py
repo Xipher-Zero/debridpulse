@@ -28,6 +28,7 @@ from transfers.models import (
     ExecutionState,
     ProviderResource,
     ResourceState,
+    SourceEntry,
     TransferRequest,
 )
 from transfers.policy import TransferPolicy
@@ -657,3 +658,142 @@ def test_every_operator_pause_control_and_the_switch_enter_the_one_boundary():
     service = (root / "application" / "service.py").read_text(encoding="utf-8")
     inside = [block for block in service.split("async with self.operator_controls")[1:]]
     assert inside and not any("operator_controls" in block.split("\n    async def ")[0] for block in inside)
+
+
+# -- a replacement that reports the same files without their directories ------------------------------------------
+#
+# Transfer 531: the established route kept each season's folder, Debrid-Link
+# reported the same files flat, and an inherited explicit selection could not
+# be proven by exact path. Proven the same source (equal fingerprints) and the
+# same complete member set (a unique basename+size bijection), it is carried:
+# the established logical paths stay, the replacement supplies the material.
+
+SEASONS = [("A.mkv", "S1/A.mkv", 100), ("B.mkv", "S2/B.mkv", 200), ("C.mkv", "S3/C.mkv", 300)]
+FLAT = [("A.mkv", "A.mkv", 100), ("B.mkv", "B.mkv", 200), ("C.mkv", "C.mkv", 300)]
+SOURCE = "a" * 40
+
+
+def offer_source(provider, files, fingerprint):
+    """``offer``, with the source fingerprint the provider reports for it."""
+    resource = offer(provider, files)
+    observed = replace(provider.resources[resource.id], fingerprint=fingerprint)
+    provider.resources[resource.id] = observed
+    provider.responses[-1] = replace(provider.responses[-1], observation=observed)
+    return resource
+
+
+async def chosen_then_switched(tmp_path, monkeypatch, *, target=FLAT, before=SOURCE, after=SOURCE,
+                               chosen=("S1/A.mkv", "S3/C.mkv"), conflict=False):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
+    await database.init_db()
+    repository, registry = TransferRepository(), IntegrationRegistry()
+    providers = {identity: magnet_provider(identity) for identity in ("parcel-a", "parcel-b")}
+    for provider in providers.values():
+        registry.register_provider(provider)
+    executor = MemoryExecutor(repository.authorize_execution)
+    registry.register_executor(executor)
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "dl"),
+                            policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
+    await engine.initialize()
+    offer_source(providers["parcel-a"], SEASONS, before)
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=False)
+    for _ in range(3):
+        await engine.tick()
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    await repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [entry["entry_id"] for entry in view["entries"]
+                                           if entry["relative_path"] in chosen], now=engine.clock())
+    await settle(engine, 4)
+    offer_source(providers["parcel-b"], target, after)
+    await switch_root_provider(engine, transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    error = await first_conflict(repository, engine, transfer.id) if conflict else await settle(engine)
+    return repository, engine, transfer, error
+
+
+async def first_conflict(repository, engine, transfer_id, ticks=8):
+    """The first state conflict the root records after the switch."""
+    for _ in range(ticks):
+        engine.clock.now += 30
+        await engine.tick()
+        root = await root_of(repository, transfer_id)
+        if root.error is not None and root.error.category == Category.RESOURCE_STATE_CONFLICT:
+            return root.error
+    return None
+
+
+async def members_of(repository, transfer_id):
+    return sorted((item.entry.relative_path, item.request.payload)
+                  for item in await repository.requests(transfer_id) if item.parent_id)
+
+
+async def test_a_replacement_reporting_the_files_without_their_directories_carries_the_selection(
+        tmp_path, monkeypatch):
+    """M-C2 / M-C13 / M-C15 (transfer 531's shape)."""
+    from transfers import file_selection as fs
+    repository, _engine, transfer, _ = await chosen_then_switched(tmp_path, monkeypatch)
+    root = await root_of(repository, transfer.id)
+    assert root.resource.provider_id == "parcel-b"
+    assert root.error is None or root.error.category != Category.RESOURCE_STATE_CONFLICT
+    (generation,) = await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=? AND provider_id='parcel-b'",
+                               (transfer.id,))
+    assert (generation["decision"], generation["decision_reason"], generation["continuity"]) == (
+        "explicit", "inherited", "proven")
+    assert generation["manifest_committed_at"] is not None
+    # Established logical coordinates, the replacement's material, B never added.
+    assert await members_of(repository, transfer.id) == [("S1/A.mkv", "x:A.mkv"), ("S3/C.mkv", "x:C.mkv")]
+    # Provenance is the replacement manifest's own entries.
+    binding = await repository.resource_binding_id(transfer.id, root.resource.id)
+    recorded = {row["entry_id"] for row in await rows(
+        "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (generation["id"],))}
+    assert recorded == {fs.entry_identity(binding, "A.mkv"), fs.entry_identity(binding, "C.mkv")}
+
+
+@pytest.mark.parametrize("before, after, target, reason", [
+    ("", SOURCE, FLAT, "fallback_missing_fingerprint"),                       # M-C16
+    (SOURCE, "", FLAT, "fallback_missing_fingerprint"),                       # M-C17
+    (SOURCE, "b" * 40, FLAT, "fallback_fingerprint_mismatch"),                # M-C18
+    (SOURCE, SOURCE, [("A.mkv", "A.mkv", 100), ("B.mkv", "x/A.mkv", 100), ("C.mkv", "C.mkv", 300)],
+     "fallback_duplicate_identity"),                                          # M-C14
+    (SOURCE, SOURCE, [("A.mkv", "A.mkv", 100), ("B.mkv", "B.mkv", 200), ("D.mkv", "D.mkv", 300)],
+     "fallback_member_set_mismatch"),                                         # M-C14
+])
+async def test_an_unprovable_replacement_carries_nothing_and_says_why(tmp_path, monkeypatch, before, after, target,
+                                                                       reason):
+    repository, _engine, transfer, error = await chosen_then_switched(
+        tmp_path, monkeypatch, target=target, before=before, after=after, conflict=True)
+    assert error is not None and error.stage.value == "reconciliation" and error.diagnostic == reason
+    assert "A.mkv" not in error.diagnostic and "S1" not in error.diagnostic
+    assert not await rows("SELECT 1 FROM transfer_file_selections WHERE transfer_id=? AND provider_id='parcel-b' "
+                          "AND manifest_committed_at IS NOT NULL", (transfer.id,))
+    assert await members_of(repository, transfer.id) == [("S1/A.mkv", "x:S1/A.mkv"), ("S3/C.mkv", "x:S3/C.mkv")]
+
+
+async def test_a_selection_of_the_current_generation_never_crosses_coordinates(tmp_path, monkeypatch):
+    """M-C10 / M-C14: no inherited predecessor -- an executable manifest that
+    moved a selected member is the existing conflict, now naming its reason."""
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
+    await database.init_db()
+    repository, registry = TransferRepository(), IntegrationRegistry()
+    provider = magnet_provider("parcel-a")
+    registry.register_provider(provider)
+    registry.register_executor(MemoryExecutor(repository.authorize_execution))
+    engine = TransferEngine(repository, registry, download_root=str(tmp_path / "dl"),
+                            policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
+    await engine.initialize()
+    resource = offer_source(provider, SEASONS, SOURCE)
+    provider.members[resource.id] = tuple(                 # executable list flattened, same source
+        SourceEntry(name, size, path, TransferRequest("parcel-member", f"x:{path}", name=name))
+        for name, path, size in FLAT)
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+                                   name="Show", deduplicate=False)
+    for _ in range(3):
+        await engine.tick()
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    await repository.confirm_file_selection(
+        transfer.id, view["manifest_id"], [entry["entry_id"] for entry in view["entries"]
+                                           if entry["relative_path"] in {"S1/A.mkv", "S3/C.mkv"}],
+        now=engine.clock())
+    error = await first_conflict(repository, engine, transfer.id)
+    assert error is not None and error.diagnostic == "selected_path_missing"
+    assert await members_of(repository, transfer.id) == []

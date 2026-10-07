@@ -2247,7 +2247,8 @@ class TransferRepository(_QualifiedTransferRepository):
                 if inherited and source is None:
                     await db.rollback()
                     raise TransferError(NormalizedError(
-                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
+                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                        diagnostic="missing_inherited_predecessor"))
                 selected = await db.fetchall(
                     """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
                        FROM transfer_file_selection_entries s
@@ -2259,17 +2260,29 @@ class TransferRepository(_QualifiedTransferRepository):
                 if not selected:
                     await db.rollback()
                     raise TransferError(NormalizedError(
-                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION))
-                try:
-                    authorized = fs.reconcile_executable_subset(
-                        [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected],
-                        full_entries,
-                    )
-                except fs.SelectionUnprovable as exc:
-                    await db.rollback()
-                    raise TransferError(NormalizedError(
                         Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                    )) from exc
+                        diagnostic="selection_empty"))
+                pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
+                try:
+                    authorized = fs.reconcile_executable_subset(pairs, full_entries)
+                    recorded = authorized
+                except fs.SelectionUnprovable as exc:
+                    # Exact path is the proof. Only an inherited selection whose
+                    # replacement reports a selected member under another path
+                    # may still be carried -- by the whole-manifest proof alone.
+                    try:
+                        if not (inherited and exc.reason == "selected_path_missing"):
+                            raise exc
+                        migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
+                                                                    full_entries)
+                    except fs.SelectionUnprovable as refused:
+                        await db.rollback()
+                        # The bounded reason only: never a path, name or payload.
+                        raise TransferError(NormalizedError(
+                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                            diagnostic=refused.reason,
+                        )) from exc
+                    authorized, recorded = migration.logical, migration.provenance
                 provenance = None
                 if not already:
                     held, provenance = await self._continuity(db, record, row, authorized, now)
@@ -2277,8 +2290,9 @@ class TransferRepository(_QualifiedTransferRepository):
                         return ManifestCommitResult((), first_commitment=False, selection_id=selection_id, held=held)
                 if inherited and not already and row["manifest_id"]:
                     # The carried subset, recorded against this generation's own
-                    # manifest so it reads like any explicit selection.
-                    for entry in authorized:
+                    # manifest -- at that manifest's own paths -- so it reads
+                    # like any explicit selection.
+                    for entry in recorded:
                         entry_id = fs.entry_identity(binding_id, fs.normalize_relative_path(entry.relative_path))
                         await db.execute(
                             """INSERT OR IGNORE INTO transfer_file_selection_entries(selection_id,manifest_id,entry_id)
@@ -2293,6 +2307,49 @@ class TransferRepository(_QualifiedTransferRepository):
                     )
             await db.commit()
         return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id)
+
+    async def _inherited_migration(self, db, record, source, row, binding_id: str, selected,
+                                   full_entries) -> "fs.InheritedMigration":
+        """The whole-manifest proof (``fs.migrate_inherited_subset``) that an
+        inherited selection's members are this replacement's, read inside
+        ``commit_selected_manifest``'s transaction: both generations'
+        complete manifests, each binding's own reported source fingerprints,
+        and the members already established under the root."""
+        async def manifest(manifest_id):
+            if not manifest_id:
+                return []
+            return [(entry["relative_path"], int(entry["expected_bytes"] or 0)) for entry in await db.fetchall(
+                "SELECT relative_path,expected_bytes FROM transfer_file_manifest_entries WHERE manifest_id=?",
+                (manifest_id,))]
+
+        established = {}
+        for child in await db.fetchall(
+                "SELECT metadata FROM transfer_requests WHERE parent_id=? AND state!='skipped'", (record.id,)):
+            path = str((codec.load(child["metadata"], {}) or {}).get("relative_path") or "")
+            try:
+                established[fs.normalize_relative_path(path)] = path
+            except fs.ManifestInvalid:
+                continue
+        return fs.migrate_inherited_subset(
+            selected, await manifest(source["manifest_id"]), await manifest(row["manifest_id"]), tuple(full_entries),
+            predecessor_fingerprints=await self._binding_fingerprints(db, record.id, source["provider_resource_id"]),
+            replacement_fingerprints=await self._binding_fingerprints(db, record.id, binding_id),
+            established=established)
+
+    @staticmethod
+    async def _binding_fingerprints(db, request_id: str, binding_id: str) -> frozenset[str]:
+        """The source fingerprints the provider itself reported for the
+        resource behind ``binding_id`` when it resolved ``request_id`` -- its
+        recorded route results' observations. Empty when none was reported."""
+        binding = await db.fetchone("SELECT resource_key FROM provider_resources WHERE id=?", (binding_id,))
+        resource_key = (binding["resource_key"] if binding and binding["resource_key"] else binding_id)
+        found = set()
+        for attempt in await db.fetchall(
+                "SELECT result FROM resolution_attempts WHERE request_id=? AND result IS NOT NULL", (request_id,)):
+            observation = (codec.load(attempt["result"], {}) or {}).get("observation") or {}
+            if (observation.get("resource") or {}).get("id") == resource_key and observation.get("fingerprint"):
+                found.add(str(observation["fingerprint"]))
+        return frozenset(found)
 
     # The one compatibility crossing a pre-3a0 decomposition may make into the
     # generation model (see ``_continuity``). Recorded as the committed
