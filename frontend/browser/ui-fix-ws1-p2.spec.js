@@ -57,14 +57,15 @@ function fixture(base, {adEnabled = true, adConfigured = false, adVerified = fal
     options: {},
   };
   // The fixture owns its whole provider universe (AllDebrid, General Downloads
-  // and explicit extras); later live providers such as FTP & SFTP and Usenet
-  // are not inherited.
+  // and explicit extras); later live providers such as FTP & SFTP, Usenet and
+  // Media Downloads are not inherited.
   delete result.integrations.general_ftp;
   delete result.integrations.general_scp;
   delete result.integrations.general_rsync;
   delete result.integrations.general_webdav;
   delete result.integrations.multimeta;
   delete result.integrations.usenet;
+  delete result.integrations.media;
   Object.assign(result.integrations, clone(extraProviders));
   result.full_sync_interval_minutes ??= 5;
   return result;

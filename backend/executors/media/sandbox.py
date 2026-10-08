@@ -56,7 +56,7 @@ class MediaTools:
     deno: str = ""
 
     @classmethod
-    def discover(cls) -> "MediaTools":
+    def installed(cls) -> "MediaTools":
         try:
             from deno import find_deno_bin
             deno = find_deno_bin()
@@ -93,7 +93,7 @@ class MediaSandbox:
     @property
     def tools(self) -> MediaTools:
         if self._tools is None:
-            self._tools = MediaTools.discover()
+            self._tools = MediaTools.installed()
         return self._tools
 
     def argv(self) -> list[str]:

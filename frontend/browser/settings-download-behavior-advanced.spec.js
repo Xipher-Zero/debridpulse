@@ -37,7 +37,7 @@ test.afterAll(async ({browser}) => {
   await page.close();
 });
 
-test('Advanced Settings is collapsed, its chevron sits beside the title, and four cards flow in the shared grid',
+test('Advanced Settings is collapsed, its chevron sits beside the title, and five cards flow in the shared grid',
   async ({page}) => {
     await resetPolicy(page);
     await page.setViewportSize({width: 1440, height: 1000});
@@ -74,7 +74,7 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
     await chevron.click();
     await expect(chevron).toHaveAttribute('aria-expanded', 'true');
     const grid = section(page).locator('.dp-settings-tuning-grid');
-    await expect(grid).toHaveAttribute('data-tuning-lanes', '4');
+    await expect(grid).toHaveAttribute('data-tuning-lanes', '5');
     // The two local-network cells are one shared tuning relation: outlined
     // while THAT pair is whole on one row, withdrawn only once the pair itself
     // has to split.
@@ -90,9 +90,10 @@ test('Advanced Settings is collapsed, its chevron sits beside the title, and fou
       const box = child.getBoundingClientRect();
       return {top: Math.round(box.top), left: box.left, width: box.width, text: child.textContent};
     }));
-    expect(cells).toHaveLength(4);
-    for (const label of ['Material Checkpoint Interval', 'Graceful Stop Timeout', 'Local Network Connections',
-      'Skip Local Connection Confirmation']) {
+    expect(cells).toHaveLength(5);
+    // The four transfer_policy cards plus the global Preferred Subtitle Language.
+    for (const label of ['Material Checkpoint Interval', 'Graceful Stop Timeout', 'Preferred Subtitle Language',
+      'Local Network Connections', 'Skip Local Connection Confirmation']) {
       expect(cells.some(cell => cell.text.includes(label)), label).toBe(true);
     }
     // Horizontal flow: at least two cards share the first row, left to right,

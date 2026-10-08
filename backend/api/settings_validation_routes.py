@@ -1025,10 +1025,9 @@ async def get_media_runtime_status(application: ApplicationService = Depends(get
     """Readiness for the neutral provider-status surface: Media Downloads is
     ready only while its executor's own health finds every packaged tool --
     never assumed from configuration, and nothing implementation-specific is
-    published."""
-    entry = (get_settings().integrations or {}).get("media")
-    if entry is not None and not getattr(entry, "enabled", True):
-        return {"state": "disabled"}
+    published. Readiness only: whether it participates is the settings
+    document's own fact, which the status surface already reads (it never asks
+    a disabled member's endpoint)."""
     executor = application.engine.registry.executors.get("yt_dlp")
     if executor is None:
         return {"state": "unavailable"}

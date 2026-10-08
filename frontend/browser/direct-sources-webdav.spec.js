@@ -114,7 +114,7 @@ test('the WebDAV Transfer Method card shares the identity and the canonical disc
   // It sits with its peers, after rsync and before Usenet.
   const order = await page.locator('#view-settings [data-executor-tuning]').evaluateAll(
     nodes => nodes.map(node => node.dataset.executorTuning));
-  expect(order).toEqual(['direct', 'rsync', 'webdav', 'usenet']);
+  expect(order).toEqual(['direct', 'rsync', 'webdav', 'usenet', 'media']);
   const disclosure = card.locator('.dp-settings-disclosure');
   await expect(disclosure).toHaveAttribute('aria-expanded', 'false');
   await expect(card.locator('.card-body')).toBeHidden();

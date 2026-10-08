@@ -59,6 +59,8 @@ const CARDS = [
    ['Direct downloads from', 'WebDAV files and folders.']],
   ['multimeta', '.dp-settings-provider-card--multimeta', 'Multimeta',
    ['Downloads described by', 'Metalink (.meta4) files.']],
+  ['media', '.dp-settings-provider-card--media', 'Media Downloads',
+   ['Downloads supported media from', 'compatible web pages and media sites.']],
 ];
 
 /* Protocols that do not exist yet. They appear when a real provider is

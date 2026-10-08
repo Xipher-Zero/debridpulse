@@ -9,15 +9,17 @@ const { test, expect } = require('@playwright/test');
  *
  * This file is the ONE spec file that writes `integrations.general_http.enabled`,
  * `integrations.general_scp.enabled`, `integrations.general_rsync.enabled`,
- * `integrations.general_webdav.enabled` and `integrations.multimeta.enabled`
- * (spec files share one backend and run concurrently); SCP, rsync, WebDAV and
- * Multimeta move with (S)FTP in every case below, so "every child" really is
- * every Network Sources member. The HTTP(S) Enable's persistence, reload and
+ * `integrations.general_webdav.enabled`, `integrations.multimeta.enabled` and
+ * `integrations.media.enabled` (spec files share one backend and run
+ * concurrently); SCP, rsync, WebDAV, Multimeta and Media Downloads move with
+ * (S)FTP in every case below, so "every child" really is every Network Sources
+ * member. The HTTP(S) Enable's persistence, reload and
  * independence proofs live here for that reason.
  */
 
 const GROUP = 'direct_sources';
-const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta'];
+const CHILDREN = ['general_http', 'general_ftp', 'general_scp', 'general_rsync', 'general_webdav', 'multimeta',
+  'media'];
 
 async function isolateExternalFonts(page) {
   await page.route('https://fonts.googleapis.com/**', route =>
@@ -26,13 +28,14 @@ async function isolateExternalFonts(page) {
 
 const canonical = page => page.request.get('/api/settings').then(r => r.json());
 
-async function setChildren(page, http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp) {
+async function setChildren(page, http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp, media = ftp) {
   await page.request.patch('/api/integrations/general_http/configuration', {data: {enabled: http}});
   await page.request.patch('/api/integrations/general_ftp/configuration', {data: {enabled: ftp}});
   await page.request.patch('/api/integrations/general_scp/configuration', {data: {enabled: scp}});
   await page.request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: rsync}});
   await page.request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: webdav}});
   await page.request.patch('/api/integrations/multimeta/configuration', {data: {enabled: multimeta}});
+  await page.request.patch('/api/integrations/media/configuration', {data: {enabled: media}});
 }
 
 async function setMaster(page, enabled) {
@@ -89,7 +92,8 @@ const groupState = page => page.evaluate(group => {
  * integration state to prove a colour would be racing every other spec that
  * owns that same state. The durable semantics below still use the real API --
  * they are about durability and have to. */
-async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp, master}) {
+async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = ftp, multimeta = ftp, media = ftp,
+  master}) {
   const live = await page.request.get('/api/settings').then(r => r.json());
   await page.goto('/');
   await page.evaluate(([entries, gates]) => {
@@ -101,7 +105,8 @@ async function renderStatus(page, {http, ftp, scp = ftp, rsync = ftp, webdav = f
      general_scp: {...live.integrations.general_scp, enabled: scp},
      general_rsync: {...live.integrations.general_rsync, enabled: rsync},
      general_webdav: {...live.integrations.general_webdav, enabled: webdav},
-     multimeta: {...live.integrations.multimeta, enabled: multimeta}},
+     multimeta: {...live.integrations.multimeta, enabled: multimeta},
+     media: {...live.integrations.media, enabled: media}},
     {[GROUP]: {enabled: master, label: 'Network Sources', members: CHILDREN}},
   ]);
   await page.evaluate(() => window.DPProviderStatus.refresh());
@@ -121,6 +126,7 @@ test.beforeAll(async ({request}) => {
     rsync: settings.integrations.general_rsync.enabled,
     webdav: settings.integrations.general_webdav.enabled,
     multimeta: settings.integrations.multimeta.enabled,
+    media: settings.integrations.media.enabled,
     master: settings.integration_groups?.[GROUP]?.enabled !== false,
   };
 });
@@ -133,6 +139,7 @@ test.afterAll(async ({request}) => {
   await request.patch('/api/integrations/general_rsync/configuration', {data: {enabled: original.rsync}});
   await request.patch('/api/integrations/general_webdav/configuration', {data: {enabled: original.webdav}});
   await request.patch('/api/integrations/multimeta/configuration', {data: {enabled: original.multimeta}});
+  await request.patch('/api/integrations/media/configuration', {data: {enabled: original.media}});
   await request.patch(`/api/integration-groups/${GROUP}/configuration`, {data: {enabled: original.master}});
 });
 
@@ -441,6 +448,10 @@ test.describe.serial('immediate Network Sources status convergence', () => {
     await flipChild(page, 'multimeta');
     await expect.poll(async () => (await canonical(page)).integrations.multimeta.enabled).toBe(false);
     await expect.poll(() => groupState(page), 'five members off did not converge').toBe('mixed');
+    // Media Downloads: the same group, the same control.
+    await flipChild(page, 'media');
+    await expect.poll(async () => (await canonical(page)).integrations.media.enabled).toBe(false);
+    await expect.poll(() => groupState(page), 'six members off did not converge').toBe('mixed');
 
     await flipChild(page, 'general_http');
     await expect.poll(async () => (await canonical(page)).integrations.general_http.enabled).toBe(false);

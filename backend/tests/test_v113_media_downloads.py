@@ -213,7 +213,7 @@ def test_one_paired_integration_one_enable_state_and_network_sources_membership(
 
 
 @pytest.mark.asyncio
-async def test_status_projects_disabled_and_missing_runtime_truthfully(monkeypatch):
+async def test_status_reports_runtime_readiness_truthfully():
     from types import SimpleNamespace
 
     from api import settings_validation_routes as status
@@ -228,10 +228,8 @@ async def test_status_projects_disabled_and_missing_runtime_truthfully(monkeypat
     def application(ready):
         return SimpleNamespace(engine=SimpleNamespace(registry=SimpleNamespace(executors={"yt_dlp": Executor(ready)})))
 
-    monkeypatch.setattr(status, "get_settings", lambda: AppSettings(
-        integrations={"media": IntegrationSettings(enabled=False)}))
-    assert await status.get_media_runtime_status(application(True)) == {"state": "disabled"}
-    monkeypatch.setattr(status, "get_settings", lambda: AppSettings())
+    # Readiness only: participation is the settings document's fact, which
+    # the status surface projects without asking a disabled member's endpoint.
     assert await status.get_media_runtime_status(application(True)) == {"state": "healthy"}
     assert await status.get_media_runtime_status(application(False)) == {"state": "unavailable"}
 
