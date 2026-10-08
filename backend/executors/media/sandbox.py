@@ -14,8 +14,8 @@ executor's acquisition alike -- runs here, the same way:
   the Media Downloads executor's one download budget;
 * with the packaged tools only (``MediaTools``): nothing is downloaded,
   updated or discovered at run time;
-* with every native helper the worker may start (ffmpeg, ffprobe, mkvmerge,
-  deno) reachable only through its confined wrapper (``executors.media
+* with every native helper the worker may start (ffmpeg, ffprobe, deno)
+  reachable only through its confined wrapper (``executors.media
   .netless``): the kernel refuses that helper, and anything it starts, every
   network socket, so the guarded worker stays the only network path.
 """
@@ -52,7 +52,6 @@ class MediaTools:
     JavaScript runtime yt-dlp's EJS challenge solver uses."""
     ffmpeg: str = ""
     ffprobe: str = ""
-    mkvmerge: str = ""
     deno: str = ""
 
     @classmethod
@@ -62,8 +61,7 @@ class MediaTools:
             deno = find_deno_bin()
         except (ImportError, FileNotFoundError):
             deno = shutil.which("deno") or ""
-        return cls(shutil.which("ffmpeg") or "", shutil.which("ffprobe") or "", shutil.which("mkvmerge") or "",
-                   deno)
+        return cls(shutil.which("ffmpeg") or "", shutil.which("ffprobe") or "", deno)
 
     def missing(self) -> tuple[str, ...]:
         absent = tuple(name for name, path in asdict(self).items() if not path)

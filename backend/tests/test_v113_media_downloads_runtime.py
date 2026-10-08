@@ -238,7 +238,7 @@ async def test_the_worker_reaches_the_network_only_through_the_guard(tmp_path):
 async def test_an_address_only_generic_handles_is_refused_by_the_real_worker_without_a_connection(tmp_path):
     guard = _guard({})
     sandbox = MediaSandbox(str(tmp_path / "runtime"), egress=guard,
-                           tools=MediaTools("/usr/bin/true", "/usr/bin/true", "/usr/bin/true", "/usr/bin/true"))
+                           tools=MediaTools("/usr/bin/true", "/usr/bin/true", "/usr/bin/true"))
     try:
         with pytest.raises(MediaFailure) as raised:
             await sandbox.extract("https://files.example.org/archive.zip", selection=planning.selection("best"),
@@ -285,7 +285,7 @@ class FakeSandbox:
     def __init__(self, runtime):
         self.processes = ProcessOwnership(runtime)
         self.egress = DownloaderEgressGuard()
-        self.tools = MediaTools("/bin/true", "/bin/true", "/bin/true", "/bin/true")
+        self.tools = MediaTools("/bin/true", "/bin/true", "/bin/true")
         self.revoked = []
 
     async def start(self, attempt_id, *, url, plan, workspace, target, result):
@@ -444,9 +444,11 @@ async def test_every_native_helper_runs_with_no_usable_network(tmp_path):
             return subprocess.run(argv, capture_output=True, text=True, timeout=60)
 
         assert run(confined["ffmpeg"], "-version").returncode == 0
-        assert run(confined["mkvmerge"], "--version").returncode == 0
         fetched = run(confined["ffmpeg"], "-hide_banner", "-i", f"http://{PUBLIC}:{port}/x", "-f", "null", "-")
-        assert fetched.returncode != 0 and "Permission denied" in fetched.stderr
+        # DebridPulse's FFmpeg has no network protocol at all; an FFmpeg that
+        # had one would still be refused by the kernel.
+        assert fetched.returncode != 0 and ("Protocol not found" in fetched.stderr
+                                            or "Permission denied" in fetched.stderr)
         script = tmp_path / "fetch.js"
         script.write_text(f"await fetch('http://{PUBLIC}:{port}/x');")
         denied = run(confined["deno"], "run", "--allow-all", "--no-remote", str(script))
@@ -466,50 +468,103 @@ async def test_every_native_helper_runs_with_no_usable_network(tmp_path):
 
 # -- the real finalizers and one whole acquisition ------------------------------------------
 
-def _media(path: Path, *arguments: str) -> None:
-    subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-y", *arguments, str(path)],
-                   check=True)
+FIXTURES = Path(__file__).with_name("fixtures") / "media"
+_SRT = "1\n00:00:00,000 --> 00:00:01,500\nHello\n"
+_VTT = "WEBVTT\n\n00:00:00.000 --> 00:00:01.500\nHello\n"
 
 
-def _stream_digest(path: Path, selector: str) -> str:
-    return subprocess.run([shutil.which("ffmpeg"), "-hide_banner", "-loglevel", "error", "-i", str(path),
-                           "-map", selector, "-c", "copy", "-f", "md5", "-"], check=True, capture_output=True,
-                          text=True).stdout.strip()
+def _probe(path: Path, *entries: str, selector: str | None = None) -> dict:
+    argv = [shutil.which("ffprobe"), "-v", "error", *(["-select_streams", selector] if selector else []),
+            *entries, "-of", "json", str(path)]
+    return json.loads(subprocess.run(argv, check=True, capture_output=True, text=True).stdout)
 
 
-def _codecs(path: Path) -> list[str]:
-    probe = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "stream=codec_name",
-                            "-of", "json", str(path)], check=True, capture_output=True, text=True)
-    return [item["codec_name"] for item in json.loads(probe.stdout)["streams"]]
+def _packets(path: Path, selector: str) -> list[str]:
+    """A hash of every packet payload of one stream, in order. Timestamps are
+    not compared: each container states them in its own time base."""
+    return [item["data_hash"] for item in _probe(
+        path, "-show_packets", "-show_data_hash", "sha256", "-show_entries", "packet=data_hash",
+        selector=selector)["packets"]]
+
+
+def _streams(path: Path) -> list[dict]:
+    return _probe(path, "-show_entries", "stream=codec_name,codec_type:stream_tags=language:stream_disposition=default")[
+        "streams"]
+
+
+def _tags(path: Path) -> dict:
+    found = dict(_probe(path, "-show_entries", "format_tags").get("format", {}).get("tags") or {})
+    for stream in _probe(path, "-show_entries", "stream_tags")["streams"]:  # Ogg: per-stream comments
+        found.update(stream.get("tags") or {})
+    return {key.lower(): value for key, value in found.items()}
+
+
+V, A = {"vcodec": "avc1", "acodec": "none"}, {"vcodec": "none", "acodec": "mp4a.40.2"}
+VP9, OPUS = {"vcodec": "vp9", "acodec": "none"}, {"vcodec": "none", "acodec": "opus"}
+AV = {"vcodec": "avc1", "acodec": "mp4a.40.2"}
+# (container, components, subtitle, {output stream: (fixture, its stream)}): every
+# shape the plan can choose -- native MP4/WebM/M4A/Opus, the HLS-style segment
+# stream reframed for MP4, and the MKV compatibility fallback for mismatched
+# streams and for each carriable subtitle format.
+SHAPES = {
+    "mp4": ("mp4", [("video.mp4", V), ("audio.m4a", A)], None, {"v:0": ("video.mp4", "v:0"), "a:0": ("audio.m4a", "a:0")}),
+    "hls_to_mp4": ("mp4", [("hls.ts", AV)], None, {"a:0": ("clip.mp4", "a:0")}),
+    "webm_vtt": ("webm", [("video.webm", VP9), ("audio.webm", OPUS)], ("vtt", "en"),
+                 {"v:0": ("video.webm", "v:0"), "a:0": ("audio.webm", "a:0")}),
+    "audio_m4a": ("m4a", [("audio.m4a", A)], None, {"a:0": ("audio.m4a", "a:0")}),
+    "audio_opus": ("opus", [("audio.opus", OPUS)], None, {"a:0": ("audio.opus", "a:0")}),
+    "mkv_srt": ("mkv", [("video.mp4", V), ("audio.m4a", A)], ("srt", "en"),
+                {"v:0": ("video.mp4", "v:0"), "a:0": ("audio.m4a", "a:0")}),
+    "mkv_vtt": ("mkv", [("video.mp4", V), ("audio.m4a", A)], ("vtt", "de"),
+                {"v:0": ("video.mp4", "v:0"), "a:0": ("audio.m4a", "a:0")}),
+    "mkv_mismatch": ("mkv", [("video.mp4", V), ("audio.webm", OPUS)], None,
+                     {"v:0": ("video.mp4", "v:0"), "a:0": ("audio.webm", "a:0")}),
+    "mkv_hls_srt": ("mkv", [("hls.ts", AV)], ("srt", "en"), {"a:0": ("clip.mp4", "a:0")}),
+}
 
 
 @pytest.mark.real_runtime
-def test_native_container_kept_and_mkv_fallback_both_copy_every_stream_unchanged(tmp_path):
-    video, audio, subtitle = tmp_path / "component-0.mp4", tmp_path / "component-1.m4a", tmp_path / "subtitle.srt"
-    _media(video, "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=10", "-c:v", "libx264", "-an")
-    _media(audio, "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "aac", "-vn")
-    subtitle.write_text("1\n00:00:00,000 --> 00:00:00,900\nHello\n", encoding="utf-8")
-    tools = {"ffmpeg": shutil.which("ffmpeg"), "mkvmerge": shutil.which("mkvmerge")}
-    components = [(str(video), {"vcodec": "avc1", "acodec": "none"}),
-                  (str(audio), {"vcodec": "none", "acodec": "mp4a.40.2"})]
-    metadata = {"title": "Clip", "description": "About the clip"}
+@pytest.mark.parametrize("shape", sorted(SHAPES))
+def test_every_finalization_shape_copies_every_selected_stream_unchanged(tmp_path, shape):
+    container, components, subtitle, copies = SHAPES[shape]
+    confined = MediaSandbox(str(tmp_path / "runtime")).confined_tools()
+    # DebridPulse's FFmpeg has no encoder: whatever it writes can only be a copy.
+    encoders = subprocess.run([confined["ffmpeg"], "-hide_banner", "-encoders"], check=True, capture_output=True,
+                              text=True).stdout
+    assert not encoders.split("------", 1)[1].strip(), "the finalizer can encode"
+    inputs = []
+    for name, fmt in components:
+        shutil.copy(FIXTURES / name, tmp_path / name)
+        inputs.append((str(tmp_path / name), fmt))
+    chosen = None
+    if subtitle is not None:
+        ext, language = subtitle
+        (tmp_path / f"subtitle.{ext}").write_text(_SRT if ext == "srt" else _VTT, encoding="utf-8")
+        chosen = (str(tmp_path / f"subtitle.{ext}"), language)
+    output = tmp_path / f"output.{container}"
+    argv = worker.finalization_argv(confined, container, inputs, chosen,
+                                    {"title": "Clip", "description": "About the clip"}, str(output))
+    completed = subprocess.run(argv, capture_output=True, text=True)
+    assert completed.returncode == 0, completed.stderr
 
-    native = tmp_path / "output.mp4"
-    subprocess.run(worker.finalization_argv(tools, "mp4", components, None, metadata, str(native), str(tmp_path)),
-                   check=True)
-    merged = tmp_path / "output.mkv"
-    result = subprocess.run(worker.finalization_argv(tools, "mkv", components, (str(subtitle), "en"), metadata,
-                                                     str(merged), str(tmp_path)))
-    assert result.returncode in {0, 1}
-
-    assert _codecs(native) == ["h264", "aac"]
-    assert sorted(_codecs(merged)) == ["aac", "h264", "subrip"]
-    for output in (native, merged):
-        assert _stream_digest(output, "0:v:0") == _stream_digest(video, "0:v:0")
-        assert _stream_digest(output, "0:a:0") == _stream_digest(audio, "0:a:0")
-    tags = subprocess.run([shutil.which("ffprobe"), "-v", "error", "-show_entries", "format_tags", "-of", "json",
-                           str(native)], check=True, capture_output=True, text=True).stdout
-    assert "About the clip" in tags
+    for stream, (fixture, source) in copies.items():
+        assert _packets(output, stream) == _packets(FIXTURES / fixture, source), (shape, stream)
+    if shape.endswith("hls_srt") or shape == "hls_to_mp4":
+        # The segment stream's video, reframed for its container (no encoder
+        # exists, proven above): every frame, none added or lost.
+        assert len(_packets(output, "v:0")) == len(_packets(FIXTURES / "hls.ts", "v:0"))
+    streams = _streams(output)
+    expected = sorted({"video" for _n, fmt in components if fmt["vcodec"] != "none"}
+                      | {"audio" for _n, fmt in components if fmt["acodec"] != "none"}
+                      | ({"subtitle"} if subtitle else set()))
+    assert sorted({item["codec_type"] for item in streams}) == expected
+    if subtitle is not None:
+        (track,) = [item for item in streams if item["codec_type"] == "subtitle"]
+        assert track["codec_name"] == {"srt": "subrip", "vtt": "webvtt"}[subtitle[0]]
+        assert track.get("tags", {}).get("language") == subtitle[1] and track["disposition"]["default"] == 1
+    tags = _tags(output)
+    assert tags.get("title") == "Clip"
+    assert "About the clip" in (tags.get("description"), tags.get("comment"))
 
 
 _PAGE = ('<html><script>registerStreamedPrefetch("x", "'
@@ -519,9 +574,7 @@ _PAGE = ('<html><script>registerStreamedPrefetch("x", "'
 @pytest.mark.real_runtime
 @pytest.mark.asyncio
 async def test_one_medium_resolved_planned_acquired_and_finalized_through_the_guard(tmp_path):
-    clip = tmp_path / "clip.mp4"
-    _media(clip, "-f", "lavfi", "-i", "testsrc=duration=1:size=320x240:rate=10", "-f", "lavfi", "-i",
-           "sine=duration=1", "-c:v", "libx264", "-c:a", "aac", "-shortest")
+    clip = FIXTURES / "clip.mp4"
     # DropboxIE's own address grammar admits no port: the origin is on 80.
     origin = await Origin({"/s/abc123/clip.mp4": (200, {"Content-Type": "text/html"}, _PAGE),
                            "/s/abc123/clip.mp4?dl=1": (200, {"Content-Type": "video/mp4"}, clip.read_bytes())},
@@ -554,6 +607,6 @@ async def test_one_medium_resolved_planned_acquired_and_finalized_through_the_gu
     assert done.state == ExecutionState.SUCCEEDED, done.error
     assert done.materialization.entries[0].relative_path == "clip [abc123].mp4"
     assert sorted(path.name for path in root.iterdir()) == ["clip [abc123].mp4"]
-    assert _stream_digest(target, "0:v:0") == _stream_digest(clip, "0:v:0")
+    assert _packets(target, "v:0") == _packets(clip, "v:0") and _packets(target, "a:0") == _packets(clip, "a:0")
     assert guard._public_scopes == set()
     assert origin.requests.count("GET /s/abc123/clip.mp4?dl=1 HTTP/1.1") == 1

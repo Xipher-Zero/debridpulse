@@ -128,7 +128,7 @@ def container_plan(formats: list[dict], subtitle: dict | None) -> tuple[str, dic
     ``subtitle`` is the chosen preferred-language track (``choose_subtitle``);
     ``None`` means no such track exists, and then nothing is embedded. The
     native container is kept when it carries every selected stream and that
-    track unchanged; otherwise the container is MKV (``mkvmerge``). A chosen
+    track unchanged; otherwise the container is MKV (Matroska). A chosen
     track that no container can carry without conversion is never dropped and
     never converted: planning fails (``subtitle_unembeddable``)."""
     native = native_container(formats)

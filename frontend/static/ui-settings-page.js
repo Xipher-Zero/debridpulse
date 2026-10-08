@@ -1249,7 +1249,12 @@
    *
    * Neither this nor the grid that arranges it knows which protocols exist:
    * identity, label, order and enable state all come from the integration's own
-   * published metadata, so a newly registered member appears by existing. */
+   * published metadata, so a newly registered member appears by existing.
+   *
+   * The title is set one word per line, so a multi-word name ("Media
+   * Downloads") is a centred two-line block beside its mark instead of a
+   * wrap the lane width decides; a one-word name is one line, as before. The
+   * words stay separated by a space, so the title's text is the name. */
   function sourceProtocolBox(identity, label, lines, entry) {
     const enabled = entry.enabled !== false;
     // The provider-card class family is hyphenated, so the durable identity's
@@ -1260,7 +1265,8 @@
       <section class="card dp-settings-card dp-settings-provider-card dp-settings-source-box dp-settings-provider-card--${slug}" data-provider-configured="${!!entry.configured}">
         <div class="dp-settings-source-box-head">
           ${protocolIcon(identity)}
-          <span class="card-title"><span class="dp-settings-card-title-text">${html(label)}</span></span>
+          <span class="card-title"><span class="dp-settings-card-title-text">${String(label).split(/\s+/).filter(Boolean)
+            .map(word => `<span class="dp-settings-source-box-title-line">${html(word)}</span>`).join(' ')}</span></span>
         </div>
         ${integrationHeaderToggle(identity, enabled, label, 'dp-settings-source-box-enable')}
         <p class="dp-settings-source-box-copy">${lines.map(line => `<span>${html(line)}</span>`).join('')}</p>

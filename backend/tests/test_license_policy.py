@@ -184,15 +184,21 @@ def test_container_runtime_declares_trixie_and_rar_codec_notices():
     # DP 1.0.12 leveling remediation (DEP-001): the base image is now pinned
     # by verified manifest digest (docs/SUPPLY_CHAIN_POLICY.md), so the tag
     # is followed by "@sha256:..." rather than ending the line outright.
-    # The runtime stage is the pinned Trixie base; the one stage before it is
-    # DebridPulse's aria2 package artifact (``AS aria2-packages``), consumed by
-    # its multi-arch manifest digest, never by a tag (SUPPLY_CHAIN_POLICY 4a).
+    # The runtime stage is the pinned Trixie base; the stages before it are
+    # DebridPulse's aria2 and FFmpeg package artifacts (``AS aria2-packages``,
+    # ``AS ffmpeg-packages``), each consumed by its multi-arch manifest digest,
+    # never by a tag (SUPPLY_CHAIN_POLICY 4a, 4b).
     stages = re.findall(r"^FROM (\S+)(?: AS (\S+))?$", dockerfile, re.M)
-    assert len(stages) == 2
+    assert len(stages) == 3
     assert re.fullmatch(r"ghcr\.io/xipher-zero/debridpulse-aria2@sha256:[0-9a-f]{64}", stages[0][0])
     assert stages[0][1] == "aria2-packages"
-    assert re.fullmatch(r"python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}", stages[1][0])
-    assert stages[1][1] == ""
+    assert re.fullmatch(r"ghcr\.io/xipher-zero/debridpulse-ffmpeg@sha256:[0-9a-f]{64}", stages[1][0])
+    assert stages[1][1] == "ffmpeg-packages"
+    assert re.fullmatch(r"python:3\.12\.14-slim-trixie@sha256:[0-9a-f]{64}", stages[2][0])
+    assert stages[2][1] == ""
+    # FFmpeg ships only as that package, verified where it is installed.
+    assert "/tmp/ffmpeg/ffmpeg_*.deb" in dockerfile and "mkvtoolnix" not in dockerfile
+    assert 'bash /usr/share/debridpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}"' in dockerfile
     assert "Components: main non-free" in dockerfile
     assert "    7zip" in dockerfile
     assert "    7zip-rar" in dockerfile

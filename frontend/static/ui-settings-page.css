@@ -1437,6 +1437,12 @@
   overflow-wrap: anywhere;
 }
 
+/* One word per line (sourceProtocolBox): the head's `align-items: center`
+   centres the whole block on the mark. */
+#view-settings .dp-settings-source-box-head .dp-settings-source-box-title-line {
+  display: block;
+}
+
 /* The toggle is the only action in the box, so it is centred on the box's own
    axis. The shared header-rail control places itself at the END of a card
    header, which is right there and wrong here: a box has no rail, so this is

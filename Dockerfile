@@ -7,6 +7,13 @@
 # one feature verifier are taken from it.
 FROM ghcr.io/xipher-zero/debridpulse-aria2@sha256:3734be43479c98b54419f821509a8fe142eb2a7fae0812ca7ccc79fda1cb44e5 AS aria2-packages
 
+# FFmpeg is likewise DebridPulse's own qualified package artifact (section 4b):
+# Debian's ffmpeg 7:7.1.5-0+deb13u1 source rebuilt by packaging/ffmpeg/ for
+# local stream copy only (file/pipe protocols, no encoder, device, network
+# protocol or external library), consumed by its multi-arch manifest DIGEST
+# (tag 7.1.5-0-deb13u1-dp1 is only a human alias). This build never compiles it.
+FROM ghcr.io/xipher-zero/debridpulse-ffmpeg@sha256:af2347255f46674e8259253d4f2b406b0d4c87b0ff848e2f0014666c9843a005 AS ffmpeg-packages
+
 FROM python:3.12.14-slim-trixie@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea
 
 WORKDIR /app
@@ -25,10 +32,10 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # zstd is the exact outer decoder for .tar.zst/.tzst composite archives.
 # rsync is the rsync executor's native client (rsync daemon and rsync over SSH;
 # the SSH transport is DebridPulse's own channel, so no OpenSSH client ships).
-# ffmpeg (ffmpeg, ffprobe) and mkvtoolnix (mkvmerge) are the Media Downloads
-# executor's local lossless finalizers: stream copy into the planned container,
-# never a re-encode, never a network input (its yt-dlp, yt-dlp-ejs and deno come
-# from the hashed Python lock below; nothing is fetched or updated at run time).
+# ffmpeg (ffmpeg, ffprobe) is the Media Downloads executor's one local lossless
+# finalizer: stream copy into the planned container (Matroska included), never
+# a re-encode, never a network input (its yt-dlp, yt-dlp-ejs and deno come from
+# the hashed Python lock below; nothing is fetched or updated at run time).
 # The slim base excludes most /usr/share/doc content, so explicitly re-include
 # the 7zip-rar notices needed to ship its licensing terms with the image. The
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
@@ -65,10 +72,15 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # resolve from the Debian archive exactly as the archive package's would. The
 # artifact's own verifier then checks the installed packages' exact version and
 # compiled feature set (no BitTorrent; HTTPS, SFTP, Metalink), and stays in the
-# image so image qualification runs the same check.
+# image so image qualification runs the same check. The ffmpeg package of the
+# ffmpeg-packages stage is installed and verified the same way (exact version,
+# recorded Debian source, file/pipe protocols only, no encoder, LGPL, libc/libm).
 ARG ARIA2_PACKAGE_VERSION=1.37.0+debian-3+dp2
+ARG FFMPEG_PACKAGE_VERSION=7:7.1.5-0+deb13u1+dp1
 COPY --from=aria2-packages /packages/ /tmp/aria2/
 COPY --from=aria2-packages /VERSION /verify-features.sh /usr/share/debridpulse/aria2/
+COPY --from=ffmpeg-packages /packages/ /tmp/ffmpeg/
+COPY --from=ffmpeg-packages /VERSION /verify-features.sh /usr/share/debridpulse/ffmpeg/
 RUN printf '%s\n' \
       'path-include=/usr/share/doc/7zip-rar/copyright' \
       'path-include=/usr/share/doc/unrar/copyright' \
@@ -87,6 +99,7 @@ RUN printf '%s\n' \
     apt-get install -y --no-install-recommends \
     /tmp/aria2/aria2_*.deb \
     /tmp/aria2/libaria2-0_*.deb \
+    /tmp/ffmpeg/ffmpeg_*.deb \
     rsync \
     curl \
     gosu \
@@ -94,12 +107,12 @@ RUN printf '%s\n' \
     par2 \
     unrar \
     7zip \
-    7zip-rar \
-    ffmpeg \
-    mkvtoolnix && \
+    7zip-rar && \
     test "$(cat /usr/share/debridpulse/aria2/VERSION)" = "${ARIA2_PACKAGE_VERSION}" && \
     bash /usr/share/debridpulse/aria2/verify-features.sh "${ARIA2_PACKAGE_VERSION}" && \
-    rm -rf /var/lib/apt/lists/* /tmp/aria2
+    test "$(cat /usr/share/debridpulse/ffmpeg/VERSION)" = "${FFMPEG_PACKAGE_VERSION}" && \
+    bash /usr/share/debridpulse/ffmpeg/verify-features.sh "${FFMPEG_PACKAGE_VERSION}" && \
+    rm -rf /var/lib/apt/lists/* /tmp/aria2 /tmp/ffmpeg
 
 # Python deps. DP 1.0.12 leveling remediation (DEP-001): requirements.txt is
 # hash-pinned (pip-compile --generate-hashes); --require-hashes makes pip

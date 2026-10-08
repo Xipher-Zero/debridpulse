@@ -178,8 +178,7 @@ recorded in the image's SBOM attestation.
 | zstd | BSD-3-Clause |
 | 7zip | LGPL-2.1-or-later and package-specific component terms |
 | 7zip-rar | Debian non-free RAR codec; UnRAR restricted freeware terms |
-| ffmpeg | LGPL-2.1-or-later with GPL-2.0-or-later components (Debian build) |
-| mkvtoolnix | GPL-2.0-or-later |
+| ffmpeg | LGPL-2.1-or-later (DebridPulse's `+dp1` build; no GPL component enabled) |
 
 Package copyright files and common license texts remain installed in the
 image. `SOURCE_OFFER.md` explains how to request corresponding source for
@@ -199,13 +198,17 @@ recorded here as a fact; what it means for the combined image is part of the
 same project/licence review the copyleft section above requires before
 release.
 
-`ffmpeg` (`ffmpeg` and `ffprobe`) and `mkvtoolnix` (`mkvmerge`) are the Media
-Downloads executor's local finalizers: DebridPulse runs them only as separate
-programs, over argv, on files already inside an attempt's private workspace, and
-only to copy native streams into the planned container (`-c copy`, or a
-`mkvmerge` merge) -- never to re-encode, and never with a network address. Both
-are GPL-covered programs shipped beside this GPL-2.0-or-later project and fall
-under the same project/licence review noted above.
+`ffmpeg` (`ffmpeg` and `ffprobe`, package `7:7.1.5-0+deb13u1+dp1`) is the
+Media Downloads executor's one local finalizer: DebridPulse runs it only as a
+separate program, over argv, on files already inside an attempt's private
+workspace, and only to copy native streams into the planned container (`-c
+copy`, Matroska included) -- never to re-encode, and never with a network
+address. It is Debian's ffmpeg source rebuilt by `packaging/ffmpeg/` with no
+encoder, device, network protocol, external library or GPL component (its
+configuration refuses `CONFIG_GPL`), so it is LGPL-2.1-or-later; Debian's
+copyright file stays installed at `/usr/share/doc/ffmpeg/copyright`, and the
+package image carries the exact corresponding source (Debian's source package
+plus the build script; `docs/SUPPLY_CHAIN_POLICY.md` section 4b).
 
 `7zip-rar` is installed from Debian's `non-free` component solely to provide
 RAR extraction through the external `7z` process. Because the slim base filters

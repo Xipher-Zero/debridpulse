@@ -3,9 +3,9 @@
 The sandboxed worker (``executors.media.worker``) is the only process of an
 acquisition that may reach the network, and only through the egress guard; its
 Python audit hook governs the worker's own code. The native helpers it may
-start -- ffmpeg/ffprobe (local finalization, version probes), mkvmerge (the
-MKV finalizer) and deno (yt-dlp's JavaScript challenge solver) -- are native
-code that hook cannot see. So each is started through this shim, which asks
+start -- ffmpeg/ffprobe (the lossless finalizer, version probes) and deno
+(yt-dlp's JavaScript challenge solver) -- are native code that hook cannot
+see. So each is started through this shim, which asks
 the KERNEL to take their network away before the helper's first instruction:
 
 * ``PR_SET_NO_NEW_PRIVS`` and a seccomp-BPF filter that refuses (``EACCES``)

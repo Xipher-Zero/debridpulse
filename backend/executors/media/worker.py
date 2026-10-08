@@ -27,8 +27,8 @@ its network and filesystem boundary for the rest of its life:
 yt-dlp is used for exactly two things: extraction (``mode: extract``, read-only
 facts for the provider's plan) and the native download of the components the
 plan names (``mode: acquire``). Its postprocessors are never run: the lossless
-finalization (``-c copy`` remux, or ``mkvmerge`` when the plan chose MKV) is
-this worker's own, into the container the plan fixed before materialization.
+finalization (one ``-c copy`` remux, into Matroska when the plan chose MKV)
+is this worker's own, into the container the plan fixed before materialization.
 Plugins, configuration files, caches, cookies, netrc and remote components are
 never loaded.
 """
@@ -43,7 +43,6 @@ import stat
 import subprocess
 import sys
 import time
-from xml.sax.saxutils import escape
 
 MAX_SPEC_BYTES = 1024 * 1024
 MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
@@ -400,15 +399,13 @@ class _Progress:
                "finished": finished})
 
 
-def _run(argv: list[str], failure: str) -> None:
+def _run(argv: list[str]) -> None:
     try:
         completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.PIPE, check=False)
     except OSError as exc:
         raise Failure("runtime_unavailable", str(exc)) from None
-    # mkvmerge exits 1 for warnings with a complete output; 2 is an error.
-    acceptable = {0, 1} if failure == "mkvmerge" else {0}
-    if completed.returncode not in acceptable:
+    if completed.returncode != 0:
         raise Failure("finalization_failed", completed.stderr.decode("utf-8", "replace")[-MAX_DETAIL_CHARS:])
 
 
@@ -423,27 +420,12 @@ def _metadata(info: dict) -> dict:
 
 
 def finalization_argv(tools: dict, container: str, components: list[tuple[str, dict]], subtitle: tuple | None,
-                      metadata: dict, output: str, workspace: str) -> list[str]:
-    """The ONE lossless finalization command for a plan: every stream copied
-    unchanged into the planned container (``-c copy``), or -- only when the
-    plan chose MKV -- merged by ``mkvmerge``, which never re-encodes."""
-    if container == "mkv":
-        tags = os.path.join(workspace, "tags.xml")
-        simple = "".join(f"<Simple><Name>{escape(key.upper())}</Name><String>{escape(value)}</String></Simple>"
-                         for key, value in metadata.items() if key != "date")
-        if metadata.get("date"):
-            simple += f"<Simple><Name>DATE_RELEASED</Name><String>{escape(metadata['date'])}</String></Simple>"
-        with open(tags, "w", encoding="utf-8") as handle:
-            handle.write('<?xml version="1.0" encoding="UTF-8"?>\n<Tags><Tag><Targets>'
-                         f"<TargetTypeValue>50</TargetTypeValue></Targets>{simple}</Tag></Tags>\n")
-        argv = [tools["mkvmerge"], "--quiet", "--output", output, "--global-tags", tags]
-        if metadata.get("title"):
-            argv += ["--title", metadata["title"]]
-        argv += [path for path, _fmt in components]
-        if subtitle is not None:
-            path, language = subtitle
-            argv += ["--language", f"0:{language}", path]
-        return argv
+                      metadata: dict, output: str) -> list[str]:
+    """The ONE lossless finalization command for a plan: every selected
+    stream, and the chosen subtitle, copied unchanged (``-c copy``) into the
+    planned container -- the native one, or Matroska when the plan chose MKV
+    -- with the core metadata written as container tags. Nothing is ever
+    re-encoded or filtered."""
     argv = [tools["ffmpeg"], "-nostdin", "-hide_banner", "-loglevel", "error", "-y"]
     inputs = [path for path, _fmt in components] + ([subtitle[0]] if subtitle is not None else [])
     for path in inputs:
@@ -469,7 +451,8 @@ def finalization_argv(tools: dict, container: str, components: list[tuple[str, d
     for key, value in metadata.items():
         argv += ["-metadata", f"{key}={value}"]
     if subtitle is not None:
-        argv += ["-metadata:s:s:0", f"language={subtitle[1]}"]
+        # The one preferred-language subtitle is the track players show.
+        argv += ["-metadata:s:s:0", f"language={subtitle[1]}", "-disposition:s:0", "default"]
     argv += ["-f", MUXERS[container], "file:" + output]
     return argv
 
@@ -536,8 +519,7 @@ def acquire(spec: dict, sandbox: Sandbox) -> int:
         if container in MUXERS or len(components) > 1 or subtitle is not None:
             if container not in MUXERS:
                 raise Failure("finalization_failed", "the planned container cannot be finalized losslessly")
-            argv = finalization_argv(tools, container, components, subtitle, _metadata(info), output, workspace)
-            _run(argv, "mkvmerge" if container == "mkv" else "ffmpeg")
+            _run(finalization_argv(tools, container, components, subtitle, _metadata(info), output))
         else:
             # A single native file in a container this worker does not rewrite:
             # it IS the final artifact, byte for byte.

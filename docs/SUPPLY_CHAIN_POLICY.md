@@ -313,7 +313,10 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   archive version), recording `Source: ffmpeg (<source version>)` and Debian's
   own `copyright` file, with `Depends` computed by `dpkg-shlibdeps` (libc
   only), so dpkg, the SBOM and vulnerability scanning resolve it as Debian's
-  FFmpeg. The `.deb` is reproducible: two clean builds produce the same bytes.
+  FFmpeg. Two clean builds produce bit-identical binaries and payload; only
+  the control file's `Installed-Size` follows the building filesystem's block
+  accounting (`du -sk`), so the published `.deb` (identified by its digest in
+  `/SHA256SUMS`) is the one artifact, never a local rebuild.
 - **Qualification (one verifier):** `packaging/ffmpeg/verify-features.sh`
   checks the INSTALLED package from the binaries' own reports: the exact
   version and recorded source, exactly the `file` and `pipe` protocols for

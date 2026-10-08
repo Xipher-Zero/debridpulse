@@ -96,6 +96,15 @@ async function assertProtocolBoxes(page) {
     const markRect = await mark.boundingBox();
     const titleRect = await box.locator('.card-title').boundingBox();
     expect(markRect.x).toBeLessThan(titleRect.x);
+    // One word per title line, the block centred on the mark and clear of it:
+    // "Media Downloads" is the two-line "Media / Downloads".
+    const words = await box.locator('.card-title .dp-settings-source-box-title-line').evaluateAll(
+      spans => spans.map(span => ({text: span.textContent, top: span.getBoundingClientRect().top})));
+    expect(words.map(word => word.text)).toEqual(title.split(' '));
+    expect(new Set(words.map(word => Math.round(word.top))).size).toBe(words.length);
+    expect(titleRect.x).toBeGreaterThanOrEqual(markRect.x + markRect.width);
+    expect(Math.abs((titleRect.y + titleRect.height / 2) - (markRect.y + markRect.height / 2)))
+      .toBeLessThanOrEqual(2);
     expect(Math.abs((titleRect.x + titleRect.width / 2) - (boxRect.x + boxRect.width / 2)))
       .toBeLessThanOrEqual(2);
 

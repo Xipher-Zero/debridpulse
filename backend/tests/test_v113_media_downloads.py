@@ -465,27 +465,28 @@ def test_the_executor_claims_only_media_plans_and_promises_only_a_restart(tmp_pa
     assert raised.value.error.category == Category.PATH_POLICY_VIOLATION
 
 
-def test_finalization_only_ever_copies_streams(tmp_path):
-    tools = {"ffmpeg": "/usr/bin/ffmpeg", "mkvmerge": "/usr/bin/mkvmerge"}
+def test_finalization_only_ever_copies_streams():
+    tools = {"ffmpeg": "/usr/bin/ffmpeg"}
     video = ("/w/component-0.mp4", {"vcodec": "avc1", "acodec": "none"})
     audio = ("/w/component-1.m4a", {"vcodec": "none", "acodec": "mp4a.40.2"})
     native = worker.finalization_argv(tools, "mp4", [video, audio], None, {"title": "Clip", "description": "D"},
-                                      "/w/output.mp4", "/w")
-    assert native[0] == tools["ffmpeg"] and native[native.index("-c") + 1] == "copy"
+                                      "/w/output.mp4")
+    webm = worker.finalization_argv(tools, "webm", [video], ("/w/subtitle.vtt", "en"), {}, "/w/output.webm")
+    merged = worker.finalization_argv(tools, "mkv", [video, audio], ("/w/subtitle.srt", "en"),
+                                      {"title": "Clip", "description": "D & <E>"}, "/w/output.mkv")
+    # One finalizer for every container, Matroska included.
+    for argv in (native, webm, merged):
+        assert argv[0] == tools["ffmpeg"] and argv[argv.index("-c") + 1] == "copy"
+        for forbidden in ("-c:v", "-c:a", "-c:s", "-vcodec", "-acodec", "-vf", "-af", "-filter_complex", "-s",
+                          "-b:v", "-b:a", "-r", "-crf", "mov_text"):
+            assert forbidden not in argv
     assert native.count("-protocol_whitelist") == 2 and native.count("-i") == 2
     assert native[native.index("-bsf:a") + 1] == "aac_adtstoasc"
     assert "description=D" in native and native[-2:] == ["mp4", "file:/w/output.mp4"]
-    for forbidden in ("-c:v", "-c:a", "-c:s", "-vcodec", "-acodec", "-vf", "-af", "-filter_complex", "-s", "-b:v",
-                      "-b:a", "-r", "-crf", "mov_text"):
-        assert forbidden not in native
-    webm = worker.finalization_argv(tools, "webm", [video], ("/w/subtitle.vtt", "en"), {}, "/w/output.webm", "/w")
-    assert webm[webm.index("-c") + 1] == "copy" and "-bsf:a" not in webm and "language=en" in webm
-    merged = worker.finalization_argv(tools, "mkv", [video, audio], ("/w/subtitle.srt", "en"),
-                                      {"title": "Clip", "description": "D & <E>"}, "/w/output.mkv", str(tmp_path))
-    assert "<String>D &amp; &lt;E&gt;</String>" in (tmp_path / "tags.xml").read_text()
-    assert merged[0] == tools["mkvmerge"]
-    assert merged[-3:] == ["--language", "0:en", "/w/subtitle.srt"]
-    assert "/w/component-0.mp4" in merged and "/w/component-1.m4a" in merged
+    assert "-bsf:a" not in webm and "language=en" in webm
+    assert merged[-2:] == ["matroska", "file:/w/output.mkv"] and "description=D & <E>" in merged
+    assert "file:/w/subtitle.srt" in merged and "language=en" in merged
+    assert merged[merged.index("-disposition:s:0") + 1] == "default"
 
 
 def test_badges_name_one_media_download_in_hot_rose_and_leave_others_as_they_were():
