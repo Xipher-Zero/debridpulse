@@ -13,6 +13,8 @@ included) because resolving or acquiring it failed.
 """
 from __future__ import annotations
 
+import re
+
 from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin, Retryability, Stage,
 )
@@ -41,6 +43,10 @@ _OUTCOMES = {
     "network": (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF, Origin.REMOTE_SOURCE),
     "rate_limited": (Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF,
                      Origin.REMOTE_SOURCE),
+    # The origin itself answered 403 to a planned component or subtitle (never
+    # the guard: its refusals stay egress_refused). Every attempt extracts
+    # afresh, so a later attempt asks with newly issued addresses.
+    "source_refused": (Domain.RESOLUTION, Category.CANDIDATE_REJECTED, Retryability.BACKOFF, Origin.REMOTE_SOURCE),
     "extractor_failed": (Domain.RESOLUTION, Category.RESOLUTION_FAILED, Retryability.BACKOFF, Origin.REMOTE_SOURCE),
     # The guard refused a destination (private, local, mixed or rebinding).
     "egress_refused": (Domain.SECURITY, Category.EGRESS_POLICY_VIOLATION, Retryability.NEVER,
@@ -76,16 +82,36 @@ class MediaFailure(Exception):
 _UNKNOWN = (Domain.EXECUTOR, Category.UNMAPPED_EXECUTOR_ERROR, Retryability.UNKNOWN, Origin.LOCAL_SYSTEM)
 
 OUTCOMES = frozenset(_OUTCOMES)
+# Where the worker's attempt was when it failed (``worker._Phase``): bounded
+# diagnostics carried in the error's context, never part of its identity.
+PHASES = frozenset({"extract", "component", "subtitle", "finalize", "install"})
+# A format identifier as the worker bounds it (``worker._FORMAT_ID``), applied
+# again here: a record value outside it is dropped, never shortened.
+FORMAT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
 
 
-def outcome_error(code: str, stage: Stage, *, detail: str = "", integration_id: str = INTEGRATION_ID
-                  ) -> NormalizedError:
+def phase_context(value) -> dict:
+    """The worker's failure phase as error context: only the known phase, a
+    component index and a format identifier within ``FORMAT_ID``."""
+    value = value if isinstance(value, dict) else {}
+    if value.get("phase") not in PHASES:
+        return {}
+    context = {"phase": value["phase"]}
+    if isinstance(value.get("component"), int) and not isinstance(value["component"], bool):
+        context["component"] = value["component"]
+    if isinstance(value.get("format_id"), str) and FORMAT_ID.fullmatch(value["format_id"]):
+        context["format_id"] = value["format_id"]
+    return context
+
+
+def outcome_error(code: str, stage: Stage, *, detail: str = "", integration_id: str = INTEGRATION_ID,
+                  context=None) -> NormalizedError:
     """The normalized error for one outcome; an unknown code is unmapped."""
     domain, category, retryability, origin = _OUTCOMES.get(str(code or ""), _UNKNOWN)
     known = code in _OUTCOMES
     return NormalizedError(
         domain, category, stage, retryability=retryability, origin=origin, integration_id=integration_id,
-        native_code=str(code or "unknown")[:64], diagnostic=detail,
+        native_code=str(code or "unknown")[:64], diagnostic=detail, context=phase_context(context),
         confidence=Confidence.HIGH if known else Confidence.LOW,
         evidence_basis=EvidenceBasis.STRUCTURED if known else EvidenceBasis.UNKNOWN,
     )

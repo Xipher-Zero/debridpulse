@@ -166,15 +166,17 @@ spec = json.loads(sys.stdin.read())
 sandbox = worker.Sandbox(tuple(spec["guard"]), {"ffmpeg": spec["ffmpeg"]}, (spec["workspace"],), (), None)
 sys.addaudithook(sandbox)
 from yt_dlp import YoutubeDL
+from yt_dlp.postprocessor.ffmpeg import FFmpegPostProcessor
 ydl = YoutubeDL(worker._params(spec, worker._Log()))
 found = {}
 
 def attempt(name, action):
-    sandbox.refused.clear()
+    # Every refusal stays raised and handled in this one process: nothing is
+    # reset between attempts, as nothing is within one acquisition.
     try:
         found[name] = action()
     except Exception as exc:
-        found[name] = "refused:" + worker.classify(exc, sandbox, acquire=True).code
+        found[name] = "refused:" + worker.classify(exc, acquire=True, phase="component").code
 
 def download(url, name):
     path = os.path.join(spec["workspace"], name)
@@ -182,6 +184,9 @@ def download(url, name):
     return open(path, "rb").read().decode()
 
 attempt("guarded", lambda: download(spec["file"], "a.bin"))
+# yt-dlp's HLS downloader asks this, for the PATH's ffmpeg: refused, handled.
+attempt("ffmpeg_probe", lambda: FFmpegPostProcessor().available)
+attempt("remote_403", lambda: download(spec["forbidden"], "e.bin"))
 attempt("redirect", lambda: download(spec["redirect"], "b.bin"))
 attempt("rebinding_first", lambda: download(spec["rebind"], "c.bin"))
 attempt("rebinding_second", lambda: download(spec["rebind"], "d.bin"))
@@ -199,19 +204,21 @@ print(json.dumps(found))
 
 @pytest.mark.asyncio
 async def test_the_worker_reaches_the_network_only_through_the_guard(tmp_path):
-    origin = await Origin({"/file": (200, {}, b"guarded bytes")}).start()
+    origin = await Origin({"/file": (200, {}, b"guarded bytes"), "/forbidden": (403, {}, b"no")}).start()
     origin.routes["/hop"] = (302, {"Location": f"http://private.test:{origin.port}/file"}, b"")
     guard = _guard({"media.test": [PUBLIC], "private.test": [PRIVATE], "rebind.test": [[PUBLIC], [PRIVATE]]})
     await guard.ensure_started()
     workspace = tmp_path / "workspace"
     workspace.mkdir()
-    ffmpeg = shutil.which("ffmpeg") or "/usr/bin/ffmpeg"
+    # The confined wrapper is the only ffmpeg the worker is ever given.
+    ffmpeg = MediaSandbox(str(tmp_path / "runtime")).confined_tools()["ffmpeg"]
     try:
         host, port, user, token = guard.public_route("c" * 32)
         spec = {"proxy": f"http://{user}:{token}@{host}:{port}", "guard": [host, port], "ffmpeg": ffmpeg,
                 "workspace": str(workspace), "outside": str(tmp_path / "outside.txt"),
                 "origin_port": origin.port, "socket_timeout": 10,
                 "file": f"http://media.test:{origin.port}/file", "redirect": f"http://media.test:{origin.port}/hop",
+                "forbidden": f"http://media.test:{origin.port}/forbidden",
                 "rebind": f"http://rebind.test:{origin.port}/file", "ftp": f"ftp://media.test:{origin.port}/file"}
         process = await asyncio.create_subprocess_exec(
             sys.executable, "-I", "-B", "-c", _PROBE, str(WORKER), stdin=asyncio.subprocess.PIPE,
@@ -224,6 +231,9 @@ async def test_the_worker_reaches_the_network_only_through_the_guard(tmp_path):
     assert process.returncode == 0, stderr.decode()[-2000:]
     found = json.loads(stdout.decode().strip().splitlines()[-1])
     assert found["guarded"] == "guarded bytes"
+    # The probe's refusal was handled; the origin's own 403 that follows is
+    # classified from its own chain, never from that earlier refusal.
+    assert found["ffmpeg_probe"] is False and found["remote_403"] == "refused:source_refused"
     assert found["redirect"] == "refused:egress_refused"
     assert found["rebinding_first"] == "guarded bytes" and found["rebinding_second"] == "refused:egress_refused"
     assert found["direct"] == found["dns"] == found["udp"] == "refused:egress_refused"
@@ -231,7 +241,8 @@ async def test_the_worker_reaches_the_network_only_through_the_guard(tmp_path):
     assert found["write_outside"] == "refused:path_refused" and not (tmp_path / "outside.txt").exists()
     assert found["file_scheme"].startswith("refused:") and found["ftp_scheme"].startswith("refused:")
     # Every byte that reached the origin came through the guard's relays.
-    assert origin.requests == ["GET /file HTTP/1.1", "GET /hop HTTP/1.1", "GET /file HTTP/1.1"]
+    assert origin.requests == ["GET /file HTTP/1.1", "GET /forbidden HTTP/1.1", "GET /hop HTTP/1.1",
+                               "GET /file HTTP/1.1"]
 
 
 @pytest.mark.asyncio
@@ -610,3 +621,98 @@ async def test_one_medium_resolved_planned_acquired_and_finalized_through_the_gu
     assert _packets(target, "v:0") == _packets(clip, "v:0") and _packets(target, "a:0") == _packets(clip, "a:0")
     assert guard._public_scopes == set()
     assert origin.requests.count("GET /s/abc123/clip.mp4?dl=1 HTTP/1.1") == 1
+
+
+async def _acquired(tmp_path, host: str, url: str, routes: dict, *, occupied_target: bool = False):
+    """One medium resolved, planned and acquired by the real worker through
+    the production guard, from a loopback origin on port 80 (the explicit
+    extractors' address grammars admit no port)."""
+    origin = await Origin(routes, port=80).start()
+    guard = _guard({host: [PUBLIC]})
+    runtime, root = tmp_path / "runtime", tmp_path / "downloads"
+    root.mkdir()
+    sandbox = MediaSandbox(str(runtime), egress=guard)
+    try:
+        provider = MediaProvider(sandbox.extract, target_resolution="1080", subtitle_language="en")
+        (candidate,) = (await provider.resolve(TransferRequest("http", url))).candidates
+        target = root / candidate.name
+        if occupied_target:
+            (target / "occupied").mkdir(parents=True)
+        executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox)
+        work = ExecutionWork(ExecutionSubject.of(candidate), MaterializationPlan(
+            MaterializationKind.FILE, str(root), str(target)), "attempt-e2e")
+        request = ExecutionRequest(work, "attempt-e2e")
+        handle = executor.prepare(request)
+        assert (await executor.start(request, handle)).state == ExecutionState.RUNNING
+        done = await _settled(executor, handle, timeout=120)
+    finally:
+        await guard.stop()
+        await origin.stop()
+    assert guard._public_scopes == set()
+    return done, candidate, target, origin
+
+
+_DESCRIPTION = "The full set: https://example.org/watch?v=1&t=2s -- notes at rtmp://live.example.org/x"
+_MASTER = (b'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=320x240,CODECS="avc1.42c01e,mp4a.40.2"\n'
+           b'media.m3u8\n')
+_MEDIA = b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n#EXTINF:10.0,\nsegment-0.ts\n#EXT-X-ENDLIST\n"
+
+
+def _screenrec_routes(description: str) -> dict:
+    page = (b'<html><head><meta property="og:title" content="Put them in the box">'
+            b'<meta property="og:description" content="' + description.replace("&", "&amp;").encode() + b'">'
+            b'</head><body><script>player({customUrl: "http://screenrec.com/hls/master.m3u8"})</script>'
+            b'</body></html>')
+    return {"/share/AbCdEfGhIj": (200, {"Content-Type": "text/html"}, page),
+            "/hls/master.m3u8": (200, {"Content-Type": "application/vnd.apple.mpegurl"}, _MASTER),
+            "/hls/media.m3u8": (200, {"Content-Type": "application/vnd.apple.mpegurl"}, _MEDIA),
+            "/hls/segment-0.ts": (200, {"Content-Type": "video/mp2t"}, (FIXTURES / "hls.ts").read_bytes())}
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_an_hls_medium_whose_description_quotes_links_is_finalized_with_it(tmp_path):
+    # yt-dlp's HLS downloader probes the PATH's ffmpeg (refused, handled);
+    # the confined finalizer then writes the description, links included.
+    done, candidate, target, origin = await _acquired(
+        tmp_path, "screenrec.com", "http://screenrec.com/share/AbCdEfGhIj", _screenrec_routes(_DESCRIPTION))
+    assert done.state == ExecutionState.SUCCEEDED, done.error
+    assert candidate.context[PLAN_KEY]["formats"] and target.is_file()
+    tags = _tags(target)
+    assert _DESCRIPTION in (tags.get("description"), tags.get("comment")) and tags.get("title") == "Put them in the box"
+    assert _packets(target, "a:0") == _packets(FIXTURES / "clip.mp4", "a:0")
+    assert len(_packets(target, "v:0")) == len(_packets(FIXTURES / "hls.ts", "v:0"))
+    assert "GET /hls/segment-0.ts HTTP/1.1" in origin.requests
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_a_failure_after_the_handled_probe_is_its_own_and_names_its_phase(tmp_path):
+    # An HLS acquisition (its probe refused and handled), failing only where
+    # the finished file is installed: that failure, in that phase -- never
+    # the earlier, handled refusal.
+    done, _candidate, target, _origin = await _acquired(
+        tmp_path, "screenrec.com", "http://screenrec.com/share/AbCdEfGhIj", _screenrec_routes("A recording"),
+        occupied_target=True)
+    assert done.state == ExecutionState.FAILED
+    assert done.error.native_code not in {"transport_unsupported", "egress_refused", "path_refused"}, done.error
+    assert dict(done.error.context) == {"phase": "install"}
+    assert (target / "occupied").is_dir()
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_an_origin_refusing_a_planned_component_is_retried_never_final(tmp_path):
+    from transfers.errors import Origin as ErrorOrigin
+    from transfers.errors import Retryability
+    done, _candidate, _target, _origin = await _acquired(
+        tmp_path, "www.dropbox.com", "http://www.dropbox.com/s/abc123/clip.mp4",
+        {"/s/abc123/clip.mp4": (200, {"Content-Type": "text/html"}, _PAGE),
+         "/s/abc123/clip.mp4?dl=1": (403, {"Content-Type": "text/plain"}, b"Forbidden")})
+    assert done.state == ExecutionState.FAILED
+    error = done.error
+    assert (error.native_code, error.origin, error.retryability) == (
+        "source_refused", ErrorOrigin.REMOTE_SOURCE, Retryability.BACKOFF)
+    assert dict(error.context) == {"phase": "component", "component": 0, "format_id": "original"}
+    assert "http" not in error.diagnostic.replace("HTTP Error", "")
+

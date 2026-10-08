@@ -281,7 +281,7 @@ class MediaExecutor:
         if state == "failed":
             return ExecutionObservation(handle, ExecutionState.FAILED, error=outcome_error(
                 str(record.get("outcome") or ""), Stage.EXECUTION, detail=str(record.get("detail") or ""),
-                integration_id=self.descriptor.id))
+                integration_id=self.descriptor.id, context=record.get("context")))
         if state != "completed" or target is None:
             return None
         try:

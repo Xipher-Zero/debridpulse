@@ -489,6 +489,152 @@ def test_finalization_only_ever_copies_streams():
     assert merged[merged.index("-disposition:s:0") + 1] == "default"
 
 
+def _http_error(status: int, headers: dict | None = None):
+    import io
+
+    from yt_dlp.networking import Response
+    from yt_dlp.networking.exceptions import HTTPError
+    return HTTPError(Response(io.BytesIO(b""), "https://media.test/videoplayback", headers or {}, status=status))
+
+
+def test_a_refusal_is_the_cause_only_of_the_failure_it_raised():
+    box = worker.Sandbox(("127.0.0.1", 9), {"ffmpeg": "/opt/dp/tools/ffmpeg"}, ("/w",), (), None)
+    # yt-dlp's HLS downloader probes the PATH's ffmpeg (not the confined one);
+    # it is refused, yt-dlp handles that and downloads natively.
+    with pytest.raises(PermissionError) as probe:
+        box("subprocess.Popen", (None, ["/usr/bin/ffmpeg", "-bsfs"], None, None))
+    assert isinstance(probe.value, worker.SandboxRefusal) and probe.value.event == "subprocess"
+    # A later, unrelated failure is classified from its own chain only.
+    assert worker.classify(_http_error(403), acquire=True, phase="component").code == "source_refused"
+    assert worker.classify(_http_error(503), acquire=True, phase="component").code == "network"
+    # A refusal that IS the failure's cause, however deeply wrapped, still is
+    # the policy refusal it was.
+    for event, code in (("socket.connect", "egress_refused"), ("subprocess", "transport_unsupported"),
+                        ("open", "path_refused")):
+        try:
+            try:
+                box._refuse(event)
+            except PermissionError as refused:
+                try:
+                    raise OSError("wrapped once") from refused
+                except OSError as wrapped:
+                    raise RuntimeError("wrapped twice") from wrapped
+        except RuntimeError as failure:
+            assert worker.classify(failure, acquire=True, phase="component").code == code, event
+
+
+def test_a_remote_403_is_the_origins_refusal_only_while_fetching_planned_media():
+    from yt_dlp.networking.exceptions import ProxyError
+
+    from transfers.errors import Origin, Retryability
+    from transfers.policy import (
+        Recovery,
+        RecoveryAction,
+        RecoveryContext,
+        TransferPolicy,
+        recovery_action,
+    )
+    for phase in ("component", "subtitle"):
+        assert worker.classify(_http_error(403), acquire=True, phase=phase).code == "source_refused"
+    error = outcome_error("source_refused", Stage.EXECUTION, detail="HTTP Error 403: Forbidden")
+    assert (error.origin, error.retryability, error.category) == (
+        Origin.REMOTE_SOURCE, Retryability.BACKOFF, Category.CANDIDATE_REJECTED)
+    # Core's existing bounded recovery: a timed retry (a fresh extraction and
+    # acquisition), never a terminal verdict on the first refusal.
+    assert recovery_action(error) == Recovery.BACKOFF
+    decision = TransferPolicy().recover(error, RecoveryContext(execution_attempts=1), 1000.0)
+    assert decision.action == RecoveryAction.BACKOFF and decision.retry_at > 1000.0
+    # The guard's own refusals keep their meaning: a plain-HTTP answer says
+    # so (Proxy-Status), an HTTPS refusal is the CONNECT tunnel's.
+    guarded = _http_error(403, {"Proxy-Status": "debridpulse; error=destination_ip_prohibited"})
+    assert worker.classify(guarded, acquire=True, phase="component").code == "egress_refused"
+    tunnel = ProxyError("Tunnel connection failed: 403 Forbidden")
+    assert worker.classify(tunnel, acquire=True, phase="subtitle").code == "egress_refused"
+    # Only status 403 is the origin's refusal: every other status keeps the
+    # mapping it has outside the media-fetch phases.
+    for status in (401, 404, 407, 410, 429, 500, 503):
+        for phase in ("component", "subtitle"):
+            during = worker.classify(_http_error(status), acquire=True, phase=phase).code
+            assert during == worker.classify(_http_error(status), acquire=True, phase="extract").code, status
+            assert during != "source_refused", status
+    assert worker.classify(_http_error(404), acquire=True, phase="component").code == "unavailable"
+    assert worker.classify(_http_error(429), acquire=True, phase="component").code == "rate_limited"
+    assert worker.classify(_http_error(503), acquire=True, phase="subtitle").code == "network"
+    # Extraction keeps its existing handling.
+    assert worker.classify(_http_error(403), acquire=True, phase="extract").code == "extractor_failed"
+    assert worker.classify(_http_error(403), acquire=False).code == "extractor_failed"
+
+
+def test_a_tag_may_quote_a_link_but_no_operand_reaches_the_network():
+    tools = {"ffmpeg": "/opt/dp/tools/ffmpeg", "ffprobe": "/opt/dp/tools/ffprobe"}
+    box = worker.Sandbox(("127.0.0.1", 9), tools, ("/w",), (), None)
+    # Transfer 552's shape: HLS video + Opus audio + generated VTT into WebM,
+    # with a description quoting links.
+    components = [("/w/component-0.mp4", {"format_id": "616", "vcodec": "vp09.00.40.08", "acodec": "none"}),
+                  ("/w/component-1.webm", {"format_id": "251", "vcodec": "none", "acodec": "opus"})]
+    metadata = {"title": "Put them in the box", "artist": "Channel", "date": "2026-10-08",
+                "description": "Full set: https://example.org/watch?v=1&t=2 -- also rtmp://live.example.org/x"}
+    argv = worker.finalization_argv(tools, "webm", components, ("/w/subtitle.vtt", "en"), metadata,
+                                    "/w/output.webm")
+    box("subprocess.Popen", (None, argv, None, None))
+    assert f"description={metadata['description']}" in argv  # written unchanged
+
+    def refused(candidate, program=None):
+        with pytest.raises(worker.SandboxRefusal):
+            box("subprocess.Popen", (None, [program or candidate[0], *candidate[1:]], None, None))
+
+    first_input = argv.index("file:/w/component-0.mp4")
+    refused(argv[:first_input] + ["https://media.test/video.m3u8"] + argv[first_input + 1:])  # network -i
+    refused(argv[:-1] + ["https://media.test/upload"])                                    # network output
+    refused(argv[:-2] + ["-metadata", "https://media.test/x", *argv[-2:]])                # not a tag
+    refused(argv[:-2] + ["-metadata:s:s:0", "rtmp://media.test/x", *argv[-2:]])
+    refused(argv[:-2] + ["-i", "-metadata", "https://media.test/x", *argv[-2:]])
+    # Only the finalizer's grammar is read this way.
+    refused([tools["ffprobe"], "-metadata", "x=https://media.test/x"])
+
+
+def test_the_failure_phase_is_bounded_context_never_identity(tmp_path):
+    from services.transfer_trace import _exported, _Sanitizer
+    from transfers.errors import NormalizedError
+    from transfers.policy import failure_signature, recovery_action
+    executor = MediaExecutor(str(tmp_path), str(tmp_path / "runtime"), _Repository().authorize_execution)
+    handle = None
+    record = {"state": "failed", "outcome": "source_refused", "detail": "HTTP Error 403: Forbidden",
+              "context": {"phase": "component", "component": 1, "format_id": "251"}}
+    error = executor._from_record(handle, record, None).error
+    assert dict(error.context) == {"phase": "component", "component": 1, "format_id": "251"}
+    bare = outcome_error("source_refused", Stage.EXECUTION, detail="HTTP Error 403: Forbidden")
+    assert failure_signature(error) == failure_signature(bare) and recovery_action(error) == recovery_action(bare)
+    # Durable: the stored encoding, its decoding and the trace export keep it.
+    stored = json.dumps(error.as_dict(diagnostics=True))
+    assert dict(NormalizedError.from_dict(json.loads(stored)).context) == dict(error.context)
+    assert json.loads(_exported(_Sanitizer(), "normalized_error", stored))["context"] == dict(error.context)
+    # Only the known phase vocabulary and bounded scalars ever cross.
+    for context, expected in (({"phase": "finalize", "url": "https://media.test/x", "component": True},
+                               {"phase": "finalize"}),
+                              ({"phase": "somewhere", "component": 0}, {}), ("install", {})):
+        failed = dict(record, context=context)
+        assert dict(executor._from_record(handle, failed, None).error.context) == expected
+    # A malformed record is read with the same allowlist: an identifier
+    # outside it is dropped whole, never shortened into a valid-looking one.
+    from integrations.media.outcomes import FORMAT_ID
+    assert FORMAT_ID.pattern == worker._FORMAT_ID.pattern
+    for format_id in ("https://media.test/x", "x" * 65, "251 x", "../251", "-251", "", 251, None):
+        failed = dict(record, context={"phase": "component", "component": 0, "format_id": format_id})
+        assert dict(executor._from_record(handle, failed, None).error.context) == {
+            "phase": "component", "component": 0}, format_id
+    longest = "f" * 64
+    failed = dict(record, context={"phase": "component", "component": 0, "format_id": longest})
+    assert executor._from_record(handle, failed, None).error.context["format_id"] == longest
+    phase = worker._Phase()
+    for format_id, expected in (("251", "251"), ("hls-1080p+dash", "hls-1080p+dash"),
+                                ("https://media.test/x", ""), ("x" * 65, ""), (None, "")):
+        phase.enter("component", 0, format_id)
+        assert phase.context().get("format_id", "") == expected
+    phase.enter("finalize")
+    assert phase.context() == {"phase": "finalize"}
+
+
 def test_badges_name_one_media_download_in_hot_rose_and_leave_others_as_they_were():
     from api.routes import _public_transfer_presentation
     media = _public_transfer_presentation({"id": 1, "origin_provider_id": "media", "current_provider_id": "media"},

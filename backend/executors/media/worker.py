@@ -63,6 +63,16 @@ EXIT_FAILED = 3
 _URL = re.compile(r"(?i)\b[a-z][a-z0-9+.-]*:(?://|\?)\S*")
 _NETWORK_ARGUMENT = re.compile(r"(?i)^[a-z][a-z0-9+.-]*:(//|[a-z0-9]{1,8}:)|://")
 _LOCAL_FILE_ARGUMENT = re.compile(r"^file:(?!//)")
+# ffmpeg's tag options and their one "key=value" operand: data written into the
+# output, never opened. A token starting "key=" has no URL scheme for ffmpeg
+# ("=" is not a scheme character), so even read as a file name it is local.
+_FFMPEG_TAG_OPTION = re.compile(r"^-metadata(:[A-Za-z0-9:]+)?$")
+_FFMPEG_TAG = re.compile(r"^[A-Za-z0-9_]+=")
+# The one format-identifier allowlist; ``integrations.media.outcomes.FORMAT_ID``
+# applies the same pattern again where the record is read.
+_FORMAT_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.+-]{0,63}")
+# The phases in which a remote answer is about the planned media itself.
+_MEDIA_FETCH_PHASES = frozenset({"component", "subtitle"})
 
 
 def _detail(value) -> str:
@@ -83,9 +93,21 @@ class Failure(Exception):
 # ── the boundary ──────────────────────────────────────────────────────────
 
 
+class SandboxRefusal(PermissionError):
+    """The audit hook's refusal of one operation, raised at that operation.
+    A failure is a policy refusal only when this exception is in its own
+    causal chain: a refusal yt-dlp caught and handled (an executable probe it
+    then does without) is never the cause of a later, unrelated failure."""
+
+    def __init__(self, event: str):
+        super().__init__(f"DebridPulse sandbox refused {event}")
+        self.event = event
+
+
 class Sandbox:
-    """The audit hook. Decisions are recorded so a refused attempt is
-    reported as the policy refusal it was, never as a generic failure."""
+    """The audit hook. Every refusal is raised as ``SandboxRefusal``, so a
+    refused operation is reported as the policy refusal it was, never as a
+    generic failure."""
 
     _FILE_EVENTS = frozenset({"os.remove", "os.rmdir", "os.mkdir", "shutil.rmtree", "os.truncate", "os.chmod",
                               "os.chown", "os.utime"})
@@ -94,14 +116,14 @@ class Sandbox:
                  files: tuple[str, ...], deno: str | None):
         self.guard = (str(guard[0]), int(guard[1]))
         self.executables = {os.path.realpath(path) for path in executables.values() if path}
+        self.ffmpeg = os.path.realpath(executables["ffmpeg"]) if executables.get("ffmpeg") else None
         self.deno = os.path.realpath(deno) if deno else None
         self.writable = tuple(os.path.realpath(path) for path in writable)
         self.files = {os.path.realpath(path) for path in files}
-        self.refused: list[str] = []
 
-    def _refuse(self, event: str):
-        self.refused.append(event)
-        raise PermissionError(f"DebridPulse sandbox refused {event}")
+    @staticmethod
+    def _refuse(event: str):
+        raise SandboxRefusal(event)
 
     def _inside(self, path) -> bool:
         if isinstance(path, int):
@@ -125,8 +147,14 @@ class Sandbox:
                     item == "-A" or item.startswith(("--allow", "--unsafely")) for item in arguments)):
                 self._refuse("subprocess")
             return
-        if any(_NETWORK_ARGUMENT.search(item) and not _LOCAL_FILE_ARGUMENT.match(item) for item in arguments):
-            self._refuse("subprocess")
+        for index, item in enumerate(arguments):
+            if (path == self.ffmpeg and index and _FFMPEG_TAG_OPTION.match(arguments[index - 1])
+                    and _FFMPEG_TAG.match(item)):
+                # A tag value (a description may well quote a link): ffmpeg
+                # writes it into the output and never opens it.
+                continue
+            if _NETWORK_ARGUMENT.search(item) and not _LOCAL_FILE_ARGUMENT.match(item):
+                self._refuse("subprocess")
 
     def __call__(self, event: str, args) -> None:
         if event == "socket.connect":
@@ -242,19 +270,20 @@ _GONE = re.compile(r"(?i)unavailable|not available|removed|deleted|does not exis
 _NO_FORMATS = re.compile(r"(?i)requested format is not available|no video formats|no formats found")
 
 
-def classify(exc, sandbox: Sandbox | None, *, acquire: bool) -> Failure:
-    """One yt-dlp failure, as the shared outcome vocabulary."""
+def classify(exc, *, acquire: bool, phase: str = "") -> Failure:
+    """One yt-dlp failure, as the shared outcome vocabulary, read from that
+    failure's own causal chain. ``phase`` is the attempt's phase when it
+    failed (``_Phase``)."""
     if isinstance(exc, Failure):
         return exc
     from yt_dlp.networking.exceptions import HTTPError, ProxyError, TransportError
     from yt_dlp.utils import GeoRestrictedError, UnsupportedError
     message = str(exc)
-    if sandbox is not None and sandbox.refused:
-        refused = sandbox.refused[0]
-        code = ("egress_refused" if refused.startswith("socket.")
-                else "transport_unsupported" if refused == "subprocess" else "path_refused")
-        return Failure(code, message)
     for item in _chain(exc):
+        if isinstance(item, SandboxRefusal):
+            code = ("egress_refused" if item.event.startswith("socket.")
+                    else "transport_unsupported" if item.event == "subprocess" else "path_refused")
+            return Failure(code, message)
         if isinstance(item, (ProxyError, TransportError)) and re.search(r"(?i)tunnel connection failed: 407",
                                                                           str(item)):
             return Failure("route_revoked", str(item))
@@ -270,6 +299,12 @@ def classify(exc, sandbox: Sandbox | None, *, acquire: bool) -> Failure:
                 return Failure("route_revoked", str(item))
             if "debridpulse" in str(headers.get("Proxy-Status") or ""):
                 return Failure("egress_refused", str(item))
+            if int(item.status) == 403 and phase in _MEDIA_FETCH_PHASES:
+                # The origin itself refused a planned component or subtitle
+                # (an HTTPS refusal by the guard never arrives as a response).
+                # Every attempt extracts afresh, so a later attempt asks with
+                # newly issued addresses.
+                return Failure("source_refused", str(item))
         if isinstance(item, GeoRestrictedError):
             return Failure("geo_restricted", str(item))
         if isinstance(item, UnsupportedError):
@@ -338,7 +373,7 @@ def bounded_entries(info: dict, bound: int) -> list:
     return entries
 
 
-def extract(spec: dict, sandbox: Sandbox) -> dict:
+def extract(spec: dict) -> dict:
     """Read-only facts for the provider's plan: one medium, or a complete
     bounded collection whose every member was itself planned (or failed)."""
     from yt_dlp import YoutubeDL
@@ -351,7 +386,7 @@ def extract(spec: dict, sandbox: Sandbox) -> dict:
         try:
             info = ydl.extract_info(spec["url"], download=False)
         except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
-            raise classify(exc, sandbox, acquire=False) from None
+            raise classify(exc, acquire=False) from None
         if not isinstance(info, dict):
             raise Failure("extractor_failed", "no information")
         if info.get("_type") not in {"playlist", "multi_video"}:
@@ -370,7 +405,7 @@ def extract(spec: dict, sandbox: Sandbox) -> dict:
                     raise Failure("unsupported", "nested collection")
                 member.update(_facts(detail))
             except Exception as exc:  # noqa: BLE001 -- the member's own outcome
-                failure = classify(exc, sandbox, acquire=False)
+                failure = classify(exc, acquire=False)
                 if failure.code in {"egress_refused", "transport_unsupported", "network", "rate_limited"}:
                     raise failure from None
                 member["outcome"] = failure.code
@@ -399,10 +434,36 @@ class _Progress:
                "finished": finished})
 
 
+class _Phase:
+    """Where an acquisition attempt is: entered immediately before the
+    operation it names, so a failure is recorded with the operation it ended.
+    Bounded scalars only -- never an address, header or native payload."""
+
+    def __init__(self):
+        self.name = ""
+        self.component: int | None = None
+        self.format_id = ""
+
+    def enter(self, name: str, component: int | None = None, format_id=None) -> None:
+        self.name, self.component = name, component
+        value = str(format_id or "")
+        self.format_id = value if _FORMAT_ID.fullmatch(value) else ""
+
+    def context(self) -> dict:
+        context = {"phase": self.name} if self.name else {}
+        if self.component is not None:
+            context["component"] = self.component
+        if self.format_id:
+            context["format_id"] = self.format_id
+        return context
+
+
 def _run(argv: list[str]) -> None:
     try:
         completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.PIPE, check=False)
+    except SandboxRefusal:
+        raise  # a policy refusal, classified as one -- never a missing runtime
     except OSError as exc:
         raise Failure("runtime_unavailable", str(exc)) from None
     if completed.returncode != 0:
@@ -457,7 +518,7 @@ def finalization_argv(tools: dict, container: str, components: list[tuple[str, d
     return argv
 
 
-def acquire(spec: dict, sandbox: Sandbox) -> int:
+def acquire(spec: dict, phase: _Phase) -> int:
     from yt_dlp import YoutubeDL
     plan = spec["plan"]
     workspace, target, tools = spec["workspace"], spec["target"], spec.get("tools") or {}
@@ -467,10 +528,11 @@ def acquire(spec: dict, sandbox: Sandbox) -> int:
     params = _params(spec, log, format="+".join(plan["formats"]), progress_hooks=[progress])
     os.makedirs(workspace, mode=0o700, exist_ok=True)
     with YoutubeDL(params) as ydl:
+        phase.enter("extract")
         try:
             info = ydl.extract_info(spec["url"], download=False)
         except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
-            raise classify(exc, sandbox, acquire=True) from None
+            raise classify(exc, acquire=True, phase=phase.name) from None
         if not isinstance(info, dict) or info.get("_type") in {"playlist", "multi_video"} or (
                 str(info.get("extractor_key") or ""), str(info.get("id") or "")) != (plan["extractor"], plan["id"]):
             raise Failure("identity_changed", "the source now identifies a different medium")
@@ -488,15 +550,17 @@ def acquire(spec: dict, sandbox: Sandbox) -> int:
             item.update(fmt)
             path = os.path.join(workspace, f"component-{index}.{fmt.get('ext') or 'bin'}")
             progress.component = index
+            phase.enter("component", index, fmt.get("format_id"))
             try:
                 ydl.dl(path, item)
             except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
-                raise classify(exc, sandbox, acquire=True) from None
+                raise classify(exc, acquire=True, phase=phase.name) from None
             if not os.path.isfile(path):
                 raise Failure("output_missing", "a component was not written")
             components.append((path, fmt))
         subtitle = None
         if plan.get("subtitle"):
+            phase.enter("subtitle")
             chosen = plan["subtitle"]
             table = info.get("subtitles" if chosen["kind"] == "authored" else "automatic_captions") or {}
             track = next((item for item in table.get(chosen["language"]) or ()
@@ -507,13 +571,14 @@ def acquire(spec: dict, sandbox: Sandbox) -> int:
                 with ydl.urlopen(track["url"]) as response:
                     data = response.read(MAX_SUBTITLE_BYTES + 1)
             except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
-                raise classify(exc, sandbox, acquire=True) from None
+                raise classify(exc, acquire=True, phase=phase.name) from None
             if not data or len(data) > MAX_SUBTITLE_BYTES:
                 raise Failure("format_unavailable", "the planned subtitle could not be read")
             path = os.path.join(workspace, f"subtitle.{chosen['ext']}")
             with open(path, "wb") as handle:
                 handle.write(data)
             subtitle = (path, chosen["language"])
+        phase.enter("finalize")
         _emit({"event": "phase", "phase": "finalize"})
         output = os.path.join(workspace, f"output.{container}")
         if container in MUXERS or len(components) > 1 or subtitle is not None:
@@ -530,6 +595,7 @@ def acquire(spec: dict, sandbox: Sandbox) -> int:
             raise Failure("output_missing", "finalization produced no file") from None
         if not stat.S_ISREG(result.st_mode) or result.st_size <= 0:
             raise Failure("output_missing", "finalization produced no file")
+        phase.enter("install")
         os.replace(output, target)
         size = os.lstat(target).st_size
     _record(spec, {"state": "completed", "bytes": size, "container": container})
@@ -557,22 +623,23 @@ def main() -> int:
     writable = tuple(path for path in (spec.get("workspace"),) if path)
     files = tuple(path for path in (spec.get("target"), spec.get("result"),
                                      spec.get("result") and spec["result"] + ".tmp") if path)
-    sandbox = Sandbox(tuple(spec["guard"]), tools, writable, files, tools.get("deno"))
-    sys.addaudithook(sandbox)
+    sys.addaudithook(Sandbox(tuple(spec["guard"]), tools, writable, files, tools.get("deno")))
     # The same switch as yt-dlp's own ``--no-plugin-dirs``: no plugin directory
     # is ever searched (the parent also sets ``YTDLP_NO_PLUGINS``).
     from yt_dlp.globals import plugin_dirs
     plugin_dirs.value = []
+    phase = _Phase()
     try:
         if spec.get("mode") == "extract":
-            _emit({"event": "result", "facts": extract(spec, sandbox)})
+            _emit({"event": "result", "facts": extract(spec)})
             return 0
-        return acquire(spec, sandbox)
+        return acquire(spec, phase)
     except Exception as exc:  # noqa: BLE001 -- every failure leaves its classified truth
-        failure = classify(exc, sandbox, acquire=spec.get("mode") != "extract")
+        failure = classify(exc, acquire=spec.get("mode") != "extract", phase=phase.name)
         if spec.get("mode") != "extract":
             try:
-                _record(spec, {"state": "failed", "outcome": failure.code, "detail": failure.detail})
+                _record(spec, {"state": "failed", "outcome": failure.code, "detail": failure.detail,
+                               "context": phase.context()})
             except OSError:
                 pass
         _emit({"event": "failure", "outcome": failure.code, "detail": failure.detail})
