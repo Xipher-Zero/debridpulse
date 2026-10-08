@@ -11,9 +11,10 @@ class TorBoxOptions(BaseModel):
     # The account's API token, as TorBox's device authorization issued it.
     # Never typed by an operator and never returned to the browser.
     api_token: str = Field(default="", repr=False)
-    # "Usenet via TorBox": whether TorBox takes part in NZB work. Native
-    # Usenet is never affected by it.
-    usenet_enabled: bool = False
+    # "Use TorBox Before Usenet": whether TorBox is tried before native Usenet
+    # for NZB downloads. A preference only -- TorBox takes NZBs either way,
+    # when its plan includes them -- and native Usenet is never affected by it.
+    use_before_usenet: bool = False
     # TorBox documents 300 requests per minute per token; the default leaves
     # headroom and the ceiling is the service's own.
     rate_limit_per_minute: int = Field(default=240, ge=1, le=SERVICE_LIMIT_PER_MINUTE)
@@ -41,7 +42,7 @@ def canonical_options(settings) -> TorBoxOptions:
 
 def credential_material(options: TorBoxOptions) -> dict:
     """What the TorBox Test proves: the saved API token. Tunables and the
-    Usenet participation decide nothing about authentication."""
+    Usenet preference decide nothing about authentication."""
     return {"api_token": str(options.api_token or "")}
 
 
@@ -62,7 +63,7 @@ def build(options, environment):
     client = TorBoxService(options.api_token, rate_limit_per_minute=options.rate_limit_per_minute,
                            request_timeout_seconds=options.request_timeout_seconds,
                            upload_timeout_seconds=options.upload_timeout_seconds)
-    provider = TorBoxProvider(client, usenet=options.usenet_enabled,
+    provider = TorBoxProvider(client, use_before_usenet=options.use_before_usenet,
                               staged_input=getattr(environment, "staged_input", None),
                               prepare_backup_torrents=options.prepare_backup_torrents,
                               max_active_torrents=options.max_active_torrents)
@@ -94,9 +95,11 @@ definition = IntegrationDefinition(
     # uses TorBox is not reported as an unconfigured provider.
     default_enabled=False,
     verification_subjects=_verification_subjects,
-    # "Usenet via TorBox" offers NZBs, which only a plan with Usenet takes
-    # (``providers.torbox.account.PLAN_ENTITLEMENT``: Pro).
-    entitlement_options=(EntitlementOption("usenet_enabled", frozenset({"nzb"}), "Requires TorBox Pro."),),
+    # "Use TorBox Before Usenet" prefers TorBox for NZBs, which only a plan
+    # with Usenet takes (``providers.torbox.account.PLAN_ENTITLEMENT``: Pro).
+    entitlement_options=(EntitlementOption("use_before_usenet", frozenset({"nzb"}), "Requires TorBox Pro."),),
+    # The preference was first saved as "usenet_enabled" (participation).
+    renamed_options=(("usenet_enabled", "use_before_usenet"),),
     presentation=IntegrationPresentation(
         status_name="TorBox",
         premium=True,

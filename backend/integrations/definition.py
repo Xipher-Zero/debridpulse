@@ -305,11 +305,11 @@ class IntegrationPresentation:
 
 @dataclass(frozen=True)
 class EntitlementOption:
-    """An option whose ``True`` makes the integration offer ``request_types``
-    -- something only an account entitled to them can do. Declared by the
-    integration; ``requirement`` is its own short reason (the plan it needs),
-    shown wherever the option is not available. The account owner's own
-    truth decides availability (``integrations.account_entitlement``)."""
+    """An option that may be ``True`` only while the connected account is
+    entitled to ``request_types``. Declared by the integration;
+    ``requirement`` is its own short reason (the plan or account it needs),
+    returned wherever turning it on is refused. The account owner's own truth
+    decides availability (``integrations.account_entitlement``)."""
     option: str
     request_types: frozenset[str]
     requirement: str
@@ -329,6 +329,13 @@ class IntegrationDefinition:
     # Optional integration-owned adjustment of option values that were taken
     # from legacy input: ``(legacy_options, existing_options) -> legacy_options``.
     legacy_upgrade: Optional[Callable[[dict, dict], dict]] = None
+    # ``(former option, option)`` pairs: an option of this integration's own
+    # canonical namespace that was renamed. Not legacy flat input -- the name
+    # evolved inside an already-canonical namespace -- so it is applied where
+    # every namespace is validated (``integrations.configuration
+    # .normalize_settings``): the former name's value moves to the new name
+    # unless the new name is already present, and is never written again.
+    renamed_options: tuple[tuple[str, str], ...] = ()
     ownership_fields: frozenset[str] = frozenset()
     required_options: frozenset[str] = frozenset()
     # Whether this integration participates before an operator has ever said

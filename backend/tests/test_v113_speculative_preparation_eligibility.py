@@ -96,7 +96,7 @@ async def test_t3_1_prepare_backup_torrents_is_off_by_default():
 
 
 async def test_t3_5_on_allows_torrents_and_magnets_and_nothing_else():
-    provider = built("torbox", api_token=TOKEN, prepare_backup_torrents=True, usenet_enabled=True)
+    provider = built("torbox", api_token=TOKEN, prepare_backup_torrents=True, use_before_usenet=True)
     assert [allowed(provider, request) for request in EVERY_KIND] == [True, True, False, False]
     # A member TorBox already decomposed is not a torrent root either.
     assert allowed(provider, TransferRequest("https", "torbox://torrent/5/0")) is False
@@ -138,15 +138,15 @@ async def test_t3_7_existing_torbox_options_are_unchanged():
     defaults = TorBoxOptions().model_dump()
     assert {key: value for key, value in defaults.items()
             if key not in {"prepare_backup_torrents", "max_active_torrents"}} == {
-        "api_token": "", "usenet_enabled": False, "rate_limit_per_minute": 240,
+        "api_token": "", "use_before_usenet": False, "rate_limit_per_minute": 240,
         "request_timeout_seconds": 30, "upload_timeout_seconds": 120, "host_refresh_interval_hours": 24}
-    stored = {"api_token": TOKEN, "usenet_enabled": True, "rate_limit_per_minute": 100,
+    stored = {"api_token": TOKEN, "use_before_usenet": True, "rate_limit_per_minute": 100,
               "request_timeout_seconds": 60, "upload_timeout_seconds": 300, "host_refresh_interval_hours": 12}
     loaded = canonical_options(SimpleNamespace(integrations={"torbox": SimpleNamespace(options=dict(stored))}))
     assert {key: getattr(loaded, key) for key in stored} == stored    # a pre-existing save reads back unchanged
     assert loaded.prepare_backup_torrents is False
     provider = built("torbox", **stored)
-    assert "nzb" in provider.descriptor.request_types                 # usenet_enabled still means what it meant
+    assert provider.descriptor.priority_for("nzb") == 1                # the Usenet preference still means what it meant
     assert (provider.client.request_timeout.total, provider.client.upload_timeout.total) == (60, 300)
 
 

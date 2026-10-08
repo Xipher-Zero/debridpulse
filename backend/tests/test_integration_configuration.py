@@ -144,3 +144,44 @@ def test_public_integration_metadata_exposes_canonical_provider_names():
     assert public["alldebrid"]["name"] == "AllDebrid"
     assert public["general_http"]["name"] == "HTTP(S)"
     assert public["general_http"]["options"] == {}
+
+
+# -- an option renamed inside a canonical namespace (TorBox usenet_enabled -> use_before_usenet) ---
+
+import copy
+import json
+
+import pytest
+
+
+def _torbox(options: dict) -> AppSettings:
+    return normalize_settings(AppSettings(integrations={"torbox": {"options": options}}), definitions)
+
+
+@pytest.mark.parametrize("stored, expected", [
+    ({"usenet_enabled": True}, True),                                  # 1: only the former key
+    ({"usenet_enabled": False}, False),                                # 2
+    ({"use_before_usenet": True}, True),                               # 3: only the current key
+    ({"usenet_enabled": False, "use_before_usenet": True}, True),      # 4: both -- the current key wins
+    ({"usenet_enabled": True, "use_before_usenet": False}, False),
+], ids=["old-true", "old-false", "new-only", "both-new-true", "both-new-false"])
+def test_a_renamed_option_moves_once_and_the_current_name_wins(stored, expected):
+    """E: canonical field-name evolution, applied by normalize_settings."""
+    normalized = _torbox(stored)
+    options = normalized.integrations["torbox"].options
+    assert options["use_before_usenet"] is expected and "usenet_enabled" not in options
+    assert normalize_settings(normalized, definitions) == normalized                  # 6: idempotent
+    # 7: what a canonical save writes carries the current name only.
+    assert "usenet_enabled" not in json.dumps(normalized.model_dump(mode="json"))
+
+
+def test_a_restored_pre_change_document_is_accepted_and_never_mutated():
+    """E5: a backup written before the rename is canonical, not legacy: the
+    side-effect-free check accepts it and the document itself is untouched."""
+    from core.config import validate_settings_document
+    document = {"integrations": {"torbox": {"enabled": True, "options": {"usenet_enabled": True}}}}
+    snapshot = copy.deepcopy(document)
+    settings = validate_settings_document(document)
+    assert settings.integrations["torbox"].options["use_before_usenet"] is True
+    assert document == snapshot
+    assert migrate_legacy_settings(copy.deepcopy(document), definitions) is False    # never legacy input

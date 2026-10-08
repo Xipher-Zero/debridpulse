@@ -679,3 +679,89 @@ async def test_g_the_name_survives_restart_and_refresh_from_the_retained_fact():
     assert entry.relative_path == "Release.Name.vol-01.mp4"
     (candidate,) = (await restarted.resolve(entry.request)).candidates            # refresh: item/details(file id)
     assert candidate.endpoints[0].address == "https://cdn.premiumize.example/f1"
+
+
+# -- "Use Premiumize Before Usenet" is an entitlement-gated preference (G) ------------------------
+
+class _Saved:
+    """One in-memory saved configuration holding the Premiumize namespace."""
+
+    def __init__(self, **options):
+        from core.config import AppSettings
+        from integrations.definition import IntegrationSettings
+        self.cfg = AppSettings(integrations={"premiumize": IntegrationSettings(enabled=True, options=options)})
+
+    def read(self):
+        return self.cfg.model_copy(deep=True)
+
+    def write(self, cfg):
+        self.cfg = cfg
+
+
+async def premium_application(premium_until):
+    """A real application over a Premiumize provider whose real account owner
+    holds ``premium_until``'s account truth."""
+    from unittest.mock import AsyncMock
+
+    from application.service import ApplicationService
+    from integrations.account_entitlement import AccountEntitlementMaintenance
+    from integrations.runtime_state import ScopedRuntimeStateStore
+    from providers.premiumize.account import PremiumizeAccountTranslation
+    from test_v113_account_entitlement import Store
+    from transfers.registry import IntegrationRegistry
+
+    account = {"status": "success", "premium_until": premium_until}
+    transport = Transport({("GET", "account/info"): [ok(**{k: v for k, v in account.items() if k != "status"})] * 8})
+    provider = PremiumizeProvider(PremiumizeService(KEY, transport=transport))
+    provider.account = AccountEntitlementMaintenance(
+        provider, PremiumizeAccountTranslation(provider.client, clock=lambda: NOW),
+        ScopedRuntimeStateStore(Store(), credential_scope("premiumize", KEY)), integration_id="premiumize",
+        clock=lambda: NOW)
+    provider.lifecycle = provider.account
+    await provider.account.refresh_now()
+    registry = IntegrationRegistry()
+    registry.register_provider(provider)
+    application = ApplicationService(SimpleNamespace(registry=registry, repository=None))
+    application.definitions = (definition,)
+    application.configure = lambda: None
+    application.apply_integration_configuration = AsyncMock(return_value=None)
+    return application, provider, transport
+
+
+@pytest.mark.parametrize("premium_until, entitled", [(NOW + 86400, True), (None, False), (NOW - 1, False)],
+                         ids=["premium", "free", "expired"])
+async def test_g_the_usenet_preference_needs_an_active_premium_account(premium_until, entitled):
+    from fastapi import HTTPException
+
+    from api.routes import IntegrationConfigurationUpdate, patch_integration_configuration
+    from test_v113_torbox_routes import _settings_owner
+    application, provider, _transport = await premium_application(premium_until)
+    saved = _Saved(api_key=KEY)
+    with _settings_owner(saved):
+        change = patch_integration_configuration("premiumize", IntegrationConfigurationUpdate(
+            options={"use_before_usenet": True}), application)
+        if entitled:
+            await change
+        else:
+            with pytest.raises(HTTPException) as refused_on:
+                await change
+            assert (refused_on.value.status_code, refused_on.value.detail) == (
+                409, "Requires an active Premiumize premium account.")
+    assert saved.cfg.integrations["premiumize"].options.get("use_before_usenet", False) is entitled
+    assert provider.descriptor.priority_for("nzb") == -1        # +1/-1 routing itself is unchanged
+
+
+async def test_g_a_lapsed_premium_turns_the_preference_off_and_renewal_never_restores_it():
+    application, provider, transport = await premium_application(NOW + 86400)
+    saved = _Saved(api_key=KEY, use_before_usenet=True)
+    from test_v113_torbox_routes import _settings_owner
+    with _settings_owner(saved):
+        assert await application.converge_entitled_options() == ()
+        transport.script[("GET", "account/info")] = [ok(premium_until=None)] * 4      # lapsed
+        await application.refresh_account_entitlement("premiumize")
+        assert await application.converge_entitled_options() == ("premiumize",)
+        assert saved.cfg.integrations["premiumize"].options["use_before_usenet"] is False
+        transport.script[("GET", "account/info")] = [ok(premium_until=NOW + 86400)] * 4   # renewed
+        await application.refresh_account_entitlement("premiumize")
+        await application.converge_entitled_options()
+    assert saved.cfg.integrations["premiumize"].options["use_before_usenet"] is False

@@ -8,6 +8,13 @@ Pre-canonical flat configuration names (``aria2_*``, ``max_concurrent_downloads`
 input of ``migrate_legacy_settings``, which runs once while a persisted file is
 loaded and folds them into the canonical namespaces. Nothing else reads them, and
 nothing regenerates them.
+
+An option RENAMED inside an already-canonical integration namespace is a
+different thing: canonical field-name evolution, declared by its integration
+(``IntegrationDefinition.renamed_options``) and applied by
+``normalize_settings``, which every load, mutation and backup-document check
+passes through -- so a document written before the rename is still canonical,
+and is never treated as legacy input.
 """
 from integrations.definition import (
     IntegrationGroupSettings, IntegrationSettings, supersede_verification_proofs,
@@ -233,6 +240,11 @@ def normalize_settings(settings, definitions, *, previous=None):
         older = getattr(previous, "integrations", {}).get(definition.id) if previous is not None else None
         old_options = older.options if isinstance(older, IntegrationSettings) else dict((older or {}).get("options", {}))
         options = {**old_options, **entry.options}
+        for former, current in definition.renamed_options:
+            # The current name wins; the former one is never carried on.
+            if former in options:
+                value = options.pop(former)
+                options.setdefault(current, value)
         clears = set(entry.clear_secrets)
         unknown_clears = clears - definition.secret_fields
         if unknown_clears:

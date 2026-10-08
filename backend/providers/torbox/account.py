@@ -88,9 +88,10 @@ def entitlement(facts: Mapping[str, Any], *, offered: frozenset[str], contracted
     paid = plan != FREE_PLAN
     current = paid and until is not None and until > now
     allowed = PLAN_ENTITLEMENT[plan] if current else PLAN_ENTITLEMENT[FREE_PLAN]
-    # "Usenet via TorBox" is the operator enabling an optional family: when it
-    # is on, this account is expected to take NZBs whatever its plan says.
-    expected = PLAN_ENTITLEMENT[plan] | (USENET & offered)
+    # What the plan includes, and nothing else: TorBox always offers NZBs, so a
+    # plan without Usenet is not degraded for lacking them, and no routing
+    # preference changes what an account can do.
+    expected = PLAN_ENTITLEMENT[plan]
     return account_entitlements(
         offered=offered, expected=expected, entitled=allowed - contracted,
         service_class=AccountServiceClass.PREMIUM if current else AccountServiceClass.STANDARD,

@@ -353,7 +353,7 @@ class FakeClient:
 async def test_resolution_creates_and_observes_each_family(tmp_path):
     client = FakeClient()
     staged = StagedInputStore(str(tmp_path / "staged"))
-    provider = TorBoxProvider(client, usenet=True, staged_input=staged)
+    provider = TorBoxProvider(client, staged_input=staged)
     magnet = await provider.resolve(TransferRequest("magnet", MAGNET, "Show", "a" * 40))
     webdl = await provider.resolve(TransferRequest("https", "https://hoster.example/f/1", "file.bin"))
     usenet = await provider.resolve(TransferRequest("nzb", staged.stage_bytes(NZB), "show.nzb"))
@@ -367,7 +367,7 @@ async def test_resolution_creates_and_observes_each_family(tmp_path):
 async def test_the_canonical_nzb_is_one_path_whatever_its_representation(tmp_path):
     client = FakeClient()
     staged = StagedInputStore(str(tmp_path / "staged"))
-    provider = TorBoxProvider(client, usenet=True, staged_input=staged)
+    provider = TorBoxProvider(client, staged_input=staged)
     await provider.resolve(TransferRequest("nzb", staged.stage_bytes(NZB), "show.nzb"))
     await provider.resolve(TransferRequest("nzb", NZB, "show.nzb"))
     uploads = [call for call in client.calls if call[0] == "create_usenet"]
@@ -681,9 +681,9 @@ async def test_the_catalogue_carries_no_account_truth():
 
 # -- routing through the existing neutral owners ---------------------------------------
 
-def nzb_registry(*, torbox_usenet: bool, torbox_enabled: bool = True, native: bool = True, staged=None):
+def nzb_registry(*, before: bool = False, torbox_enabled: bool = True, native: bool = True, staged=None):
     registry = IntegrationRegistry()
-    provider = TorBoxProvider(FakeClient(token=TOKEN if torbox_enabled else ""), usenet=torbox_usenet,
+    provider = TorBoxProvider(FakeClient(token=TOKEN if torbox_enabled else ""), use_before_usenet=before,
                               staged_input=staged)
     TorBoxHostMaintenance(provider, MemoryStore())
     registry.register_provider(provider)
@@ -692,22 +692,30 @@ def nzb_registry(*, torbox_usenet: bool, torbox_enabled: bool = True, native: bo
     return registry, provider
 
 
-@pytest.mark.parametrize("torbox_enabled, toggle, native, expected", [
+@pytest.mark.parametrize("torbox_enabled, before, native, expected", [
     (True, True, True, ["torbox", "usenet"]),
     (True, True, False, ["torbox"]),
-    (True, False, True, ["usenet"]),
-    (True, False, False, []),
+    (True, False, True, ["usenet", "torbox"]),
+    (True, False, False, ["torbox"]),
     (False, True, True, ["usenet"]),
     (False, False, False, []),
 ])
-async def test_the_nzb_route_matrix_emerges_from_participation(torbox_enabled, toggle, native, expected):
-    registry, _ = nzb_registry(torbox_usenet=toggle, torbox_enabled=torbox_enabled, native=native)
-    eligible = registry.eligible_providers(TransferRequest("nzb", NZB, "show.nzb"))
-    assert [provider.descriptor.id for provider in eligible] == expected
+async def test_the_nzb_route_order_is_the_preference_and_both_stay_eligible(torbox_enabled, before, native, expected):
+    """C: "Use TorBox Before Usenet" is order only (NZB priority +1 / -1
+    against native Usenet's 0, through the neutral request-kind seam): ON
+    puts TorBox first, OFF native Usenet first, and either way the other
+    stays the next route; exhausting the first reaches it."""
+    registry, provider = nzb_registry(before=before, torbox_enabled=torbox_enabled, native=native)
+    request = TransferRequest("nzb", NZB, "show.nzb")
+    assert [item.descriptor.id for item in registry.eligible_providers(request)] == expected
+    if len(expected) == 2:
+        route = registry.provider_route(request, exhausted=frozenset({expected[0]}))
+        assert route.provider.descriptor.id == expected[1]
+    assert "nzb" in provider.descriptor.request_types                      # D: capability in both states
 
 
 async def test_torbox_claims_magnets_and_positively_listed_hosts_only():
-    registry, provider = nzb_registry(torbox_usenet=False, native=False)
+    registry, provider = nzb_registry(native=False)
     assert registry.provider_for(TransferRequest("magnet", MAGNET, "Show", "a" * 40)) is provider
     store = MemoryStore()
     maintenance = TorBoxHostMaintenance(provider, store, clock=lambda: 1000.0)
@@ -725,7 +733,7 @@ async def test_a_torbox_failure_reaches_native_usenet_through_neutral_failover(t
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
     await database.init_db()
     staged = StagedInputStore(str(tmp_path / "staged"))
-    registry, torbox = nzb_registry(torbox_usenet=True, staged=staged)
+    registry, torbox = nzb_registry(before=True, staged=staged)
     registry.register_executor(MemoryExecutor(TransferRepository().authorize_execution))
     repository = TransferRepository()
     engine = TransferEngine(repository, registry, download_root=str(tmp_path / "downloads"),
@@ -759,14 +767,17 @@ async def test_definition_and_registration_contract():
     assert definition.presentation.premium and definition.presentation.status_tier_label == "Premium Services"
     assert definition.presentation.status_endpoint == "/integration-status/torbox"
     options = TorBoxOptions()
-    assert (options.usenet_enabled, options.rate_limit_per_minute) == (False, 240)
+    assert (options.use_before_usenet, options.rate_limit_per_minute) == (False, 240)
     with pytest.raises(Exception):
         TorBoxOptions(rate_limit_per_minute=301)
-    entry = SimpleNamespace(options={"api_token": TOKEN, "usenet_enabled": True}, enabled=True, priority=0)
+    entry = SimpleNamespace(options={"api_token": TOKEN, "use_before_usenet": True}, enabled=True, priority=0)
     built = definition.build(entry, SimpleNamespace(staged_input=None, commands=None))
     assert "nzb" in built.descriptor.request_types and built.descriptor.enabled
-    plain = SimpleNamespace(options={"api_token": TOKEN}, enabled=True, priority=0)
-    assert "nzb" not in definition.build(plain, SimpleNamespace()).descriptor.request_types
+    plain = definition.build(SimpleNamespace(options={"api_token": TOKEN}, enabled=True, priority=0), SimpleNamespace())
+    assert "nzb" in plain.descriptor.request_types                   # D: the preference is not capability
+    assert (built.descriptor.priority_for("nzb"), plain.descriptor.priority_for("nzb")) == (1, -1)
+    # H: every other kind keeps the integration's ordinary priority either way.
+    assert {item.descriptor.priority_for(kind) for item in (built, plain) for kind in ("https", "magnet")} == {0}
 
 
 # -- web-download cache first -------------------------------------------------------

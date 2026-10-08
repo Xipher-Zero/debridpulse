@@ -21,9 +21,9 @@ _AUTH_REQUIRED = frozenset({Category.CREDENTIAL_INVALID, Category.CREDENTIAL_MIS
                             Category.CREDENTIAL_EXPIRED, Category.AUTHENTICATION_FAILED})
 # TorBox states its own poll interval; never poll faster than this floor.
 _MINIMUM_POLL_SECONDS = 5
-# What a TorBox connection takes part in: always torrents and web downloads,
-# and NZBs only with "Usenet via TorBox".
-_FAMILIES = plans.TORRENTS | plans.WEB_DOWNLOADS
+# What a TorBox connection takes part in: torrents, web downloads and NZBs
+# (which of them its account may begin is the plan's).
+_FAMILIES = plans.TORRENTS | plans.WEB_DOWNLOADS | plans.USENET
 
 
 # -- device authorization ------------------------------------------------------
@@ -157,8 +157,7 @@ async def verify(options) -> dict:
     client = TorBoxService(options.api_token, rate_limit_per_minute=options.rate_limit_per_minute,
                            request_timeout_seconds=options.request_timeout_seconds,
                            upload_timeout_seconds=options.upload_timeout_seconds)
-    offered = _FAMILIES | (plans.USENET if options.usenet_enabled else frozenset())
-    return account_facts(await client.user(), offered=offered)
+    return account_facts(await client.user(), offered=_FAMILIES)
 
 
 async def runtime_status(provider, *, enabled: bool) -> dict:

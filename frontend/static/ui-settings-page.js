@@ -133,7 +133,7 @@
     realdebrid_host_refresh_interval_hours: {scope: 'integration:realdebrid', option: 'host_refresh_interval_hours'},
     realdebrid_prepare_backup_torrents: {scope: 'integration:realdebrid', option: 'prepare_backup_torrents', commit: 'immediate'},
     realdebrid_max_active_torrents: {scope: 'integration:realdebrid', option: 'max_active_torrents', blank: null},
-    torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'},
+    torbox_use_before_usenet: {scope: 'integration:torbox', option: 'use_before_usenet', commit: 'immediate'},
     torbox_prepare_backup_torrents: {scope: 'integration:torbox', option: 'prepare_backup_torrents', commit: 'immediate'},
     // Empty is "no ceiling of my own": it commits null and follows the plan's maximum.
     torbox_max_active_torrents: {scope: 'integration:torbox', option: 'max_active_torrents', blank: null},
@@ -1729,16 +1729,18 @@
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${tuningCells(
+            tuningGroup(
+              tuningToggle('alldebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
+                'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
+                allDebridOf(s).prepare_backup_torrents === true),
+              input('alldebrid_max_active_torrents', 'Maximum Active Torrents', allDebridOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, max: 30, placeholder: 'AllDebrid maximum (30)',
+                hint: 'Leave empty to follow AllDebrid (30 active magnets). A lower number keeps fewer torrents active on AllDebrid; it never goes above 30.'
+              }),
+            ),
             input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
               type: 'number', min: 0, max: 300,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
-            }),
-            tuningToggle('alldebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
-              allDebridOf(s).prepare_backup_torrents === true),
-            input('alldebrid_max_active_torrents', 'Maximum Active Torrents', allDebridOf(s).max_active_torrents ?? '', {
-              type: 'number', min: 1, max: 30, placeholder: 'AllDebrid maximum (30)',
-              hint: 'Leave empty to follow AllDebrid (30 active magnets). A lower number keeps fewer torrents active on AllDebrid; it never goes above 30.'
             }),
             input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
               type: 'number', min: 10,
@@ -1778,6 +1780,15 @@
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${tuningCells(
+            tuningGroup(
+              tuningToggle('realdebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
+                'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
+                realDebridOf(s).prepare_backup_torrents === true),
+              input('realdebrid_max_active_torrents', 'Maximum Active Torrents', realDebridOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, placeholder: 'Account maximum',
+                hint: 'Leave empty to follow your Real-Debrid account limit. A lower number keeps fewer torrents active on Real-Debrid; it never goes above your account limit.'
+              }),
+            ),
             input('realdebrid_rate_limit_per_minute', 'API Calls per Minute', realDebridOf(s).rate_limit_per_minute ?? 240, {
               type: 'number', min: 1, max: 250,
               hint: 'Limits how many requests DebridPulse sends to Real-Debrid each minute. Real-Debrid allows at most 250.'
@@ -1793,13 +1804,6 @@
             input('realdebrid_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', realDebridOf(s).host_refresh_interval_hours ?? 24, {
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Real-Debrid supports.'
-            }),
-            tuningToggle('realdebrid_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
-              realDebridOf(s).prepare_backup_torrents === true),
-            input('realdebrid_max_active_torrents', 'Maximum Active Torrents', realDebridOf(s).max_active_torrents ?? '', {
-              type: 'number', min: 1, placeholder: 'Account maximum',
-              hint: 'Leave empty to follow your Real-Debrid account limit. A lower number keeps fewer torrents active on Real-Debrid; it never goes above your account limit.'
             }),
           )}
         </div>
@@ -1818,28 +1822,24 @@
     // Absent means OFF: TorBox participates only once an operator turns it on,
     // exactly as its definition declares.
     const torBox = integrations.torbox || {enabled: false};
-    // An option the connected account is not entitled to (the backend's
-    // `option_availability`, decided from account truth) is off and cannot
-    // be turned on; its requirement replaces the hint.
-    const usenetGate = torBox.option_availability?.usenet_enabled;
-    const usenetUnavailable = usenetGate?.available === false;
     const torBoxCard = providerCard('torbox', 'TorBox', `
       <div class="dp-settings-account-connection" data-torbox-connection>${deviceConnectionMarkup('torbox')}</div>
       <details class="dp-settings-additional">
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${tuningCells(
-            tuningToggle('torbox_usenet_enabled', 'Usenet via TorBox',
-              usenetUnavailable ? usenetGate.requirement
-                : 'Let TorBox process NZB downloads remotely. Native Usenet stays available whenever it is set up.',
-              !usenetUnavailable && torBoxOf(s).usenet_enabled === true, {disabled: usenetUnavailable}),
-            tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
-              torBoxOf(s).prepare_backup_torrents === true),
-            input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? '', {
-              type: 'number', min: 1, max: 10, placeholder: 'Plan maximum',
-              hint: 'Leave empty to follow your TorBox plan (Free 1, Essential 3, Standard 5, Pro 10). A lower number keeps fewer torrents active on TorBox; it never goes above your plan.'
-            }),
+            tuningGroup(
+              tuningToggle('torbox_prepare_backup_torrents', 'Prepare Backup Torrents',
+                'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
+                torBoxOf(s).prepare_backup_torrents === true),
+              input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? '', {
+                type: 'number', min: 1, max: 10, placeholder: 'Plan maximum',
+                hint: 'Leave empty to follow your TorBox plan (Free 1, Essential 3, Standard 5, Pro 10). A lower number keeps fewer torrents active on TorBox; it never goes above your plan.'
+              }),
+            ),
+            tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet',
+              'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
+              torBoxOf(s).use_before_usenet === true),
             input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
               type: 'number', min: 1, max: 300,
               hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'
@@ -1892,6 +1892,9 @@
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${tuningCells(
+            tuningToggle('debridlink_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to your Debrid-Link seedbox as backup sources while another provider delivers them.',
+              debridLinkOf(s).prepare_backup_torrents === true),
             input('debridlink_request_timeout_seconds', 'Request Timeout (seconds)', debridLinkOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
               hint: 'How long DebridPulse waits for an ordinary Debrid-Link API answer before treating the request as failed.'
@@ -1904,9 +1907,6 @@
               type: 'number', min: 1, max: 168,
               hint: 'How often DebridPulse refreshes the list of hosts Debrid-Link supports.'
             }),
-            tuningToggle('debridlink_prepare_backup_torrents', 'Prepare Backup Torrents',
-              'Also add torrents to your Debrid-Link seedbox as backup sources while another provider delivers them.',
-              debridLinkOf(s).prepare_backup_torrents === true),
           )}
         </div>
       </details>
@@ -1931,12 +1931,12 @@
         <summary><span>Additional Settings</span></summary>
         <div class="dp-settings-additional-body">
           ${tuningCells(
-            tuningToggle('premiumize_use_before_usenet', 'Use Premiumize Before Usenet',
-              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
-              premiumizeOf(s).use_before_usenet === true),
             tuningToggle('premiumize_prepare_backup_torrents', 'Prepare Backup Torrents',
               'Also add torrents to your Premiumize cloud as backup sources while another provider delivers them. Uses your Premiumize account resources.',
               premiumizeOf(s).prepare_backup_torrents === true),
+            tuningToggle('premiumize_use_before_usenet', 'Use Premiumize Before Usenet',
+              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
+              premiumizeOf(s).use_before_usenet === true),
             input('premiumize_request_timeout_seconds', 'Request Timeout (seconds)', premiumizeOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
               hint: 'How long DebridPulse waits for an ordinary Premiumize API answer before treating the request as failed.'

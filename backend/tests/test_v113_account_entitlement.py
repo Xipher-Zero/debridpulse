@@ -336,18 +336,18 @@ async def test_malformed_account_answers_change_nothing():
 TB_OFFERED = frozenset({"magnet", "torrent", "http", "https"})
 
 
-@pytest.mark.parametrize("plan, until, usenet, service, kinds, degraded, label", [
+@pytest.mark.parametrize("plan, until, nzb, service, kinds, degraded, label", [
     (0, None, False, "standard", set(), True, "Free"),                         # Free: nothing DP can use
     (1, LATER, False, "premium", TB_OFFERED, False, "Essential"),
     (3, LATER, False, "premium", TB_OFFERED, False, "Standard"),
     (2, LATER, False, "premium", TB_OFFERED, False, "Pro"),
     (2, LATER, True, "premium", TB_OFFERED | {"nzb"}, False, "Pro"),
-    (1, LATER, True, "premium", TB_OFFERED, True, "Essential"),                # Usenet toggle, plan lacks it
+    (1, LATER, True, "premium", TB_OFFERED, False, "Essential"),               # NZB offered, plan lacks it: not degraded
     (0, None, True, "standard", set(), True, "Free"),
     (2, EARLIER, False, "standard", set(), True, "Free"),                      # lapsed paid plan
 ])
-async def test_torbox_plans_translate_to_neutral_entitlement(plan, until, usenet, service, kinds, degraded, label):
-    offered = TB_OFFERED | ({"nzb"} if usenet else set())
+async def test_torbox_plans_translate_to_neutral_entitlement(plan, until, nzb, service, kinds, degraded, label):
+    offered = TB_OFFERED | ({"nzb"} if nzb else set())
     value = torbox.entitlement({"plan": plan, "premium_until": until}, offered=offered, now=NOW)
     assert (value.service_class.value, value.request_types, value.degraded, value.plan) == (
         service, frozenset(kinds), degraded, label)
@@ -368,8 +368,8 @@ async def test_torbox_only_a_plan_refusal_contracts_and_only_its_family(code, ki
     assert torbox.refused_family(TorBoxAPIError(code, "", 403), kind) == frozenset(contracted)
 
 
-def torbox_with_account(client, store, *, usenet=False, clock=lambda: NOW):
-    provider = TorBoxProvider(client, usenet=usenet)
+def torbox_with_account(client, store, *, clock=lambda: NOW):
+    provider = TorBoxProvider(client)
     TorBoxHostMaintenance(provider, Store())
     provider.account = AccountEntitlementMaintenance(
         provider, torbox.TorBoxAccountTranslation(client),
@@ -388,7 +388,7 @@ def torbox_with_account(client, store, *, usenet=False, clock=lambda: NOW):
 async def test_a_torbox_free_account_claims_nothing_and_another_provider_wins(request_value):
     client = FakeClient()
     client.user = lambda: _answer({"plan": 0, "premium_expires_at": None})
-    provider = torbox_with_account(client, Store(), usenet=True)
+    provider = torbox_with_account(client, Store())
     await TorBoxHostMaintenance(provider, Store(), clock=lambda: NOW).maintain()
     await provider.account.maintain()
     assert provider.entitlements.request_types == frozenset()
@@ -449,17 +449,17 @@ async def test_torbox_web_downloads_need_both_entitlement_and_a_usable_supported
         routes.provider_for(TransferRequest("https", "https://unlisted.example/f/1"))
 
 
-async def test_torbox_usenet_needs_the_toggle_and_the_plan():
-    def nzb_provider(plan, usenet):
+async def test_torbox_usenet_needs_the_plan_alone():
+    def nzb_provider(plan):
         client = FakeClient()
-        provider = torbox_with_account(client, Store(), usenet=usenet)
+        provider = torbox_with_account(client, Store())
         provider.account._facts = torbox.account_facts({"plan": plan, "premium_expires_at": "2099-01-01T00:00:00Z"})
         return provider
 
     nzb = TransferRequest("nzb", "staged", "show.nzb")
-    assert IntegrationRegistry.entitlement_for(nzb_provider(2, True), nzb) is True
-    assert IntegrationRegistry.entitlement_for(nzb_provider(1, True), nzb) is False
-    assert registry(nzb_provider(2, False)).eligible_providers(nzb) == ()
+    assert IntegrationRegistry.entitlement_for(nzb_provider(2), nzb) is True
+    assert IntegrationRegistry.entitlement_for(nzb_provider(1), nzb) is False
+    assert registry(nzb_provider(1)).eligible_providers(nzb) == ()        # out by entitlement, not a toggle
 
 
 async def _answer(value):

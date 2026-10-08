@@ -21,7 +21,7 @@ const ACCOUNT = {email: 'alice@example.com', plan: 2, plan_name: 'Pro', premium:
 function projection(connected) {
   return {
     enabled: true, configured: connected, verified: connected,
-    options: {api_token: '', api_token_configured: connected, usenet_enabled: false, rate_limit_per_minute: 240},
+    options: {api_token: '', api_token_configured: connected, use_before_usenet: false, rate_limit_per_minute: 240},
     presentation: {status_name: 'TorBox', premium: true, status_endpoint: '/integration-status/torbox',
                    display_order: 12, status_tier: 'premium_service', status_tier_label: 'Premium Services'},
   };
@@ -111,12 +111,13 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
   await expect(tuning.locator('[data-setting]')).toHaveCount(7);
-  const toggle = tuning.locator('[data-setting="torbox_usenet_enabled"]');
+  const toggle = tuning.locator('[data-setting="torbox_use_before_usenet"]');
   await expect(toggle).not.toBeChecked();
   await expect(toggle).toHaveAttribute('data-commit', 'immediate');
   await expect(toggle).toHaveAttribute('data-commit-scope', 'integration:torbox');
-  await expect(tuning).toContainText('Usenet via TorBox');
-  await expect(tuning).toContainText('Let TorBox process NZB downloads remotely.');
+  await expect(tuning).toContainText('Use TorBox Before Usenet');
+  await expect(tuning).toContainText(
+    'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as fallback.');
   const backups = tuning.locator('[data-setting="torbox_prepare_backup_torrents"]');
   await expect(backups).not.toBeChecked();
   await expect(backups).toHaveAttribute('data-commit', 'immediate');
@@ -142,19 +143,27 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   }
 });
 
-test('Usenet via TorBox is off and cannot be turned on while the account lacks Usenet', async ({page}) => {
-  // The backend's account-derived option availability (here: a plan without
-  // Usenet, with a stale saved "on") decides the control, never the saved bit.
+test('Use TorBox Before Usenet stays interactive and a refused ON reverts and toasts the requirement', async ({page}) => {
+  // Plan entitlement is the backend's: the control is never disabled for it.
+  // ON flips at once, the canonical mutation refuses it, and the one generic
+  // immediate-commit owner rolls the control back and toasts the reason.
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.route(url => url.pathname === '/api/settings', async route => {
     if (route.request().method() !== 'GET') return route.fallback();
     const response = await route.fetch();
     const settings = await response.json();
-    const torbox = {...projection(true), options: {...projection(true).options, usenet_enabled: true},
-                    option_availability: {usenet_enabled: {available: false, requirement: 'Requires TorBox Pro.'}}};
-    settings.integrations = {...settings.integrations, torbox};
+    settings.integrations = {...settings.integrations, torbox: projection(true)};
     return route.fulfill({response, json: settings});
+  });
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const sent = [];
+  await page.route(url => url.pathname === '/api/integrations/torbox/configuration', async route => {
+    sent.push(route.request().postDataJSON());
+    await held;
+    return route.fulfill({status: 409, contentType: 'application/json',
+                          body: JSON.stringify({detail: 'Requires TorBox Pro.'})});
   });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
@@ -163,11 +172,17 @@ test('Usenet via TorBox is off and cannot be turned on while the account lacks U
   await card.locator('.dp-settings-disclosure').click();
   await card.locator('.dp-settings-additional > summary').click();
   const tuning = card.locator('.dp-settings-additional-body');
-  const toggle = tuning.locator('[data-setting="torbox_usenet_enabled"]');
-  await expect(toggle).not.toBeChecked();
-  await expect(toggle).toBeDisabled();
-  await expect(tuning).toContainText('Requires TorBox Pro.');
-  await expect(tuning).not.toContainText('Let TorBox process NZB downloads remotely.');
+  const toggle = tuning.locator('[data-setting="torbox_use_before_usenet"]');
+  await expect(toggle).toBeEnabled();
+  await toggle.locator('xpath=following-sibling::span[contains(@class, "ttrack")]').click();   // the visible hit target
+  await expect(toggle).toBeChecked();                                  // optimistic
+  await expect.poll(() => sent.length).toBe(1);
+  expect(sent[0].options).toEqual({use_before_usenet: true});
+  release();
+  await expect(toggle).not.toBeChecked();                              // rolled back to canonical
+  await expect(page.locator('.toast.error').last()).toContainText('Requires TorBox Pro.');
+  await expect(toggle).toBeEnabled();
+  await expect(tuning).toContainText('Try TorBox first when resolving NZB downloads.');   // hint unchanged
 });
 
 test('authorization opens in the operator browser, polls, connects, enables and disconnects', async ({page}) => {

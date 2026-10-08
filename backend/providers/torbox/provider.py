@@ -78,7 +78,7 @@ class TorBoxProvider:
     # snapshot the provider is an unresolved specialized competitor.
     applicability = ProviderApplicability(specialized=True, readiness=ApplicabilityReadiness.UNRESOLVED)
 
-    def __init__(self, client: TorBoxService, *, usenet: bool = False, staged_input=None,
+    def __init__(self, client: TorBoxService, *, use_before_usenet: bool = False, staged_input=None,
                  clock=time.time, prepare_backup_torrents: bool = False,
                  max_active_torrents: int | None = None):
         self.client = client
@@ -86,13 +86,12 @@ class TorBoxProvider:
         self._clock = clock
         self._prepare_backup_torrents = bool(prepare_backup_torrents)
         self._max_active_torrents = max_active_torrents
-        kinds = {"magnet", "torrent", "http", "https"}
-        # "Usenet via TorBox" is TorBox's own participation in NZB work and
-        # nothing more: it never disables, inspects or replaces native Usenet.
-        # When both claim an NZB the one canonical competition prefers TorBox
-        # and keeps native Usenet as the next provider if TorBox is exhausted.
-        if usenet:
-            kinds.add("nzb")
+        # TorBox takes NZBs whenever its plan does (account entitlement);
+        # "Use TorBox Before Usenet" is only its order against native Usenet
+        # (priority 0) for NZBs: before it (+1) or after it (-1), both staying
+        # in the one canonical competition. Every other kind keeps the
+        # integration's ordinary priority.
+        kinds = {"magnet", "torrent", "http", "https", "nzb"}
         self.descriptor = IntegrationDescriptor(
             INTEGRATION_ID, "TorBox",
             frozenset({Capability.RESOLVE, Capability.AVAILABILITY, Capability.REFRESH, Capability.METADATA,
@@ -101,6 +100,7 @@ class TorBoxProvider:
                        Capability.CLEANUP, Capability.HEALTH}),
             request_types=frozenset(kinds),
             enabled=client.configured,
+            request_priority=(("nzb", 1 if use_before_usenet else -1),),
         )
 
     def speculative_preparation_allowed(self, request: TransferRequest) -> bool:

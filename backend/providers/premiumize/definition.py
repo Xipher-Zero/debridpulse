@@ -1,7 +1,9 @@
 """Premiumize registration and provider-owned settings schema."""
 from pydantic import BaseModel, Field
 
-from integrations.definition import IntegrationDefinition, IntegrationPresentation, VerificationSubject
+from integrations.definition import (
+    EntitlementOption, IntegrationDefinition, IntegrationPresentation, VerificationSubject,
+)
 
 
 class PremiumizeOptions(BaseModel):
@@ -84,6 +86,10 @@ definition = IntegrationDefinition(
     # uses Premiumize is not reported as an unconfigured provider.
     default_enabled=False,
     verification_subjects=_verification_subjects,
+    # "Use Premiumize Before Usenet" prefers Premiumize for NZBs, which only an
+    # active premium account takes (``providers.premiumize.account``).
+    entitlement_options=(EntitlementOption("use_before_usenet", frozenset({"nzb"}),
+                                           "Requires an active Premiumize premium account."),),
     presentation=IntegrationPresentation(
         status_name="Premiumize",
         premium=True,

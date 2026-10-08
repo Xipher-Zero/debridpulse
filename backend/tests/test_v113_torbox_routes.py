@@ -127,22 +127,23 @@ async def test_disconnect_forgets_the_token():
     assert result["integration"]["configured"] is False
 
 
-async def test_the_usenet_participation_is_an_ordinary_persisted_option():
+async def test_the_usenet_preference_is_an_ordinary_persisted_option():
     from api.routes import IntegrationConfigurationUpdate, patch_integration_configuration
     stored = _Stored(api_token=TOKEN)
     with _settings_owner(stored):
         await patch_integration_configuration("torbox", IntegrationConfigurationUpdate(
-            options={"usenet_enabled": True}), _application())
+            options={"use_before_usenet": True}), _application())
     options = stored.cfg.integrations["torbox"].options
-    assert options["usenet_enabled"] is True and options["api_token"] == TOKEN
+    assert options["use_before_usenet"] is True and options["api_token"] == TOKEN
+    assert "usenet_enabled" not in options
 
 
-# -- "Usenet via TorBox" follows the account's plan ----------------------------------------
+# -- "Use TorBox Before Usenet" follows the account's plan ----------------------------------
 
 PLAN_EXPIRY = "2099-01-01T00:00:00Z"
 
 
-async def _plan_application(plan, *, usenet=False):
+async def _plan_application(plan, *, before=False):
     """A real application over a TorBox provider whose real account owner
     holds ``plan``'s current account truth; reconfiguring rebuilds nothing."""
     from application.service import ApplicationService
@@ -160,7 +161,7 @@ async def _plan_application(plan, *, usenet=False):
         return dict(account)
 
     client.user = user
-    provider = TorBoxProvider(client, usenet=usenet)
+    provider = TorBoxProvider(client, use_before_usenet=before)
     provider.account = AccountEntitlementMaintenance(
         provider, TorBoxAccountTranslation(client), ScopedRuntimeStateStore(Store(), credential_scope("torbox", TOKEN)),
         integration_id="torbox")
@@ -176,7 +177,7 @@ async def _plan_application(plan, *, usenet=False):
 
 
 @pytest.mark.parametrize("plan, entitled", [(1, False), (3, False), (2, True)], ids=["essential", "standard", "pro"])
-async def test_usenet_via_torbox_can_be_turned_on_only_by_a_plan_with_usenet(plan, entitled):
+async def test_torbox_before_usenet_can_be_turned_on_only_by_a_plan_with_usenet(plan, entitled):
     """C-T1, C-T2, C-T3: what Settings shows and what the canonical mutation
     accepts are the account's own plan -- a direct API call cannot turn on
     what the plan lacks."""
@@ -187,48 +188,69 @@ async def test_usenet_via_torbox_can_be_turned_on_only_by_a_plan_with_usenet(pla
     stored = _Stored(enabled=True, api_token=TOKEN)
     with _settings_owner(stored):
         shown = (await get_settings_ep(application))["integrations"]["torbox"]["option_availability"]
-        assert shown == {"usenet_enabled": {"available": entitled,
-                                            "requirement": "" if entitled else "Requires TorBox Pro."}}
+        assert shown == {"use_before_usenet": {"available": entitled,
+                                               "requirement": "" if entitled else "Requires TorBox Pro."}}
         change = patch_integration_configuration("torbox", IntegrationConfigurationUpdate(
-            options={"usenet_enabled": True}), application)
+            options={"use_before_usenet": True}), application)
         if entitled:
             await change
         else:
             with pytest.raises(HTTPException) as refused:
                 await change
             assert (refused.value.status_code, refused.value.detail) == (409, "Requires TorBox Pro.")
-    assert stored.cfg.integrations["torbox"].options.get("usenet_enabled", False) is entitled
+    options = stored.cfg.integrations["torbox"].options
+    assert options.get("use_before_usenet", False) is entitled and "usenet_enabled" not in options
 
 
-async def test_a_plan_that_loses_usenet_turns_the_saved_option_off_and_the_account_is_healthy_again():
-    """C-T4, C-T5: Pro with "Usenet via TorBox" on, then the plan becomes
-    Essential. Refreshed account truth proves Usenet is gone, so the saved
-    option converges off through the canonical write -- and the account
-    offered only what it can do is no longer degraded. A refusal TorBox gives
-    a plan that should include a family stays truthful degradation (C5)."""
-    application, provider, account = await _plan_application(2, usenet=True)
-    stored = _Stored(enabled=True, api_token=TOKEN, usenet_enabled=True)
+@pytest.mark.parametrize("plan, nzb", [(1, False), (3, False), (2, True)], ids=["essential", "standard", "pro"])
+async def test_torbox_always_offers_nzb_and_its_plan_alone_decides_and_degrades(plan, nzb):
+    """D: NZB is offered whatever the preference; Essential and Standard are
+    not NZB-entitled and not degraded for it, Pro is entitled -- and a plan
+    without NZB is out of NZB acquisition by entitlement, not by a toggle."""
+    from transfers.models import TransferRequest
+    from transfers.registry import IntegrationRegistry
+    for before in (False, True):
+        _application, provider, _account = await _plan_application(plan, before=before)
+        assert "nzb" in provider.descriptor.request_types
+        assert ("nzb" in provider.entitlements.request_types, provider.entitlements.degraded) == (nzb, False)
+        assert IntegrationRegistry.entitlement_for(provider, TransferRequest("nzb", b"x", "x.nzb")) is nzb
+
+
+async def test_a_plan_that_loses_usenet_turns_the_saved_preference_off_and_renewal_never_restores_it():
+    """C-T4, C-T5: Pro with "Use TorBox Before Usenet" on, then the plan
+    becomes Essential. Refreshed account truth proves Usenet is gone, so the
+    saved preference converges off through the canonical write; the account
+    is never degraded by a preference. Renewing Pro does not turn it back on.
+    A refusal TorBox gives a plan that should include NZBs stays truthful
+    degradation (C5)."""
+    application, provider, account = await _plan_application(2, before=True)
+    stored = _Stored(enabled=True, api_token=TOKEN, use_before_usenet=True)
     with _settings_owner(stored):
         await application.converge_entitled_options()                 # Pro: nothing to converge
-        assert stored.cfg.integrations["torbox"].options["usenet_enabled"] is True
+        assert stored.cfg.integrations["torbox"].options["use_before_usenet"] is True
         assert provider.entitlements.degraded is False
 
         account["plan"] = 1                                           # downgraded on TorBox
         await application.refresh_account_entitlement("torbox")
-        assert provider.entitlements.degraded is True                 # yellow, truthfully, for now
+        assert provider.entitlements.degraded is False                # what Essential includes, it can do
         await application.converge_entitled_options()
-    assert stored.cfg.integrations["torbox"].options["usenet_enabled"] is False
-    application.apply_integration_configuration.assert_awaited_once_with("torbox")
+        assert stored.cfg.integrations["torbox"].options["use_before_usenet"] is False
+        application.apply_integration_configuration.assert_awaited_once_with("torbox")
 
-    rebuilt, offered_now, _account = await _plan_application(1, usenet=False)   # the reconfigured provider
+        account["plan"] = 2                                           # renewed on TorBox
+        await application.refresh_account_entitlement("torbox")
+        await application.converge_entitled_options()
+    assert stored.cfg.integrations["torbox"].options["use_before_usenet"] is False   # not silently restored
+
+    rebuilt, offered_now, _account = await _plan_application(1)       # the reconfigured provider
     public = offered_now.entitlements.public()
     assert (public["functional"], public["service_class"], public["entitlement"]) == ("usable", "premium", "ready")
-    assert rebuilt.option_availability(definition)["usenet_enabled"]["available"] is False
+    assert rebuilt.option_availability(definition)["use_before_usenet"]["available"] is False
 
-    _pro, drifted, _account = await _plan_application(2, usenet=True)
+    _pro, drifted, _account = await _plan_application(2, before=True)
     await drifted.account.contract(frozenset({"nzb"}))               # Pro refused NZBs: real drift
     assert drifted.entitlements.degraded is True
-    assert _pro.option_availability(definition)["usenet_enabled"]["available"] is True   # never forced off
+    assert _pro.option_availability(definition)["use_before_usenet"]["available"] is True   # never forced off
 
 
 # -- one NZB path, whatever the ingress -------------------------------------------------
@@ -271,7 +293,7 @@ async def test_an_uploaded_and_a_linked_nzb_reach_the_same_torbox_path(tmp_path,
         await database.init_db()
         staged = StagedInputStore(str(tmp_path / "staged"))
         registry = IntegrationRegistry()
-        torbox = TorBoxProvider(FakeClient(token=TOKEN), usenet=True, staged_input=staged)
+        torbox = TorBoxProvider(FakeClient(token=TOKEN), staged_input=staged)
         TorBoxHostMaintenance(torbox, MemoryStore())
         registry.register_provider(torbox)
         engine = TransferEngine(TransferRepository(), registry, download_root=str(tmp_path / "downloads"),

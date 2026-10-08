@@ -55,12 +55,16 @@ def test_the_connection_language_is_account_oriented_and_shared():
         assert forbidden not in owner
 
 
-def test_usenet_via_torbox_is_one_precise_persisted_toggle():
+def test_use_torbox_before_usenet_is_one_precise_interactive_persisted_toggle():
     torbox = card("torbox")
-    assert "tuningToggle('torbox_usenet_enabled', 'Usenet via TorBox'," in torbox
-    assert "Let TorBox process NZB downloads remotely." in torbox
-    assert "torbox_usenet_enabled: {scope: 'integration:torbox', option: 'usenet_enabled', commit: 'immediate'}" \
+    assert "tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet'," in torbox
+    assert ("Try TorBox first when resolving NZB downloads. "
+            "Your configured Usenet service remains available as fallback.") in torbox
+    assert "torbox_use_before_usenet: {scope: 'integration:torbox', option: 'use_before_usenet', commit: 'immediate'}" \
         in SETTINGS_JS
+    # F: never disabled for a plan; the canonical mutation refuses and the
+    # generic immediate path rolls back and toasts the requirement.
+    assert "option_availability" not in torbox and "disabled:" not in torbox and "usenet_enabled" not in SETTINGS_JS
     assert "'torbox'" in SETTINGS_JS[SETTINGS_JS.index("const INTEGRATION_SCOPES"):][:200]
 
 
