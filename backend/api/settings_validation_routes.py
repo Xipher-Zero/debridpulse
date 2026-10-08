@@ -1020,6 +1020,22 @@ def _usenet_admin(application: ApplicationService):
         raise HTTPException(503, "The Usenet integration is not available") from None
 
 
+@router.get("/integration-status/media")
+async def get_media_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Readiness for the neutral provider-status surface: Media Downloads is
+    ready only while its executor's own health finds every packaged tool --
+    never assumed from configuration, and nothing implementation-specific is
+    published."""
+    entry = (get_settings().integrations or {}).get("media")
+    if entry is not None and not getattr(entry, "enabled", True):
+        return {"state": "disabled"}
+    executor = application.engine.registry.executors.get("yt_dlp")
+    if executor is None:
+        return {"state": "unavailable"}
+    health = await executor.health()
+    return {"state": "healthy" if health.ready else "unavailable"}
+
+
 @router.get("/integration-status/usenet")
 async def get_usenet_runtime_status(application: ApplicationService = Depends(get_application)):
     """Readiness for the neutral provider-status surface.

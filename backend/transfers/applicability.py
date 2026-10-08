@@ -61,6 +61,14 @@ class ProviderApplicability:
     would otherwise always take it, so within one class a specific claim
     competes before the unconditional scheme-wide ones (after the conditional
     ones, which need their probe).
+
+    ``collection_authority``: whether a specialized claim on one root speaks
+    for the whole submission it arrived in (``IntegrationRegistry
+    .collection_route_authority``). The default -- every claimant that does
+    not say otherwise -- keeps that meaning. ``False`` declares a claim that
+    speaks only for the object it names: it still takes that root through the
+    ordinary specialized competition, but says nothing about the independent
+    roots submitted beside it, which keep their own claimants.
     """
 
     generic_schemes: frozenset[str] = frozenset()
@@ -69,6 +77,7 @@ class ProviderApplicability:
     readiness: ApplicabilityReadiness = ApplicabilityReadiness.READY
     conditional: bool = False
     specific: bool = False
+    collection_authority: bool = True
 
     @property
     def is_specialized(self) -> bool:
@@ -99,6 +108,7 @@ class ApplicabilityMatch:
     classification: ApplicabilityClass
     conditional: bool = False
     specific: bool = False
+    collection_authority: bool = True
 
 
 @dataclass(frozen=True)
@@ -295,7 +305,8 @@ def assess_provider_applicability(
             continue
         if any(_specialized_match(view, claim) for claim in facts.specialized_hosts):
             specialized.append(
-                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED, facts.conditional, facts.specific)
+                ApplicabilityMatch(item.provider_id, ApplicabilityClass.SPECIALIZED, facts.conditional, facts.specific,
+                                   facts.collection_authority)
             )
         elif _generic_match(view, item):
             generic.append(ApplicabilityMatch(item.provider_id, ApplicabilityClass.GENERIC, facts.conditional,

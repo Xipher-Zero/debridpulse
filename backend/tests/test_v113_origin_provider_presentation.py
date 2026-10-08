@@ -22,6 +22,7 @@ import pytest
 import pytest_asyncio
 
 import db.database as database
+from integrations.definition import IntegrationPresentation
 from test_v113_post_probe_provider_fallthrough import PlainSource, ProbeTransport, ProbingSource
 from test_v113_transfer_auth_context import CountingVault
 from transfers.applicability import ProviderApplicability
@@ -84,7 +85,8 @@ class MemberSource:
             accepted_input_methods=(InputMethod.USERNAME_PASSWORD,)),))
 
 
-DEFINITIONS = [SimpleNamespace(id=identity, name=name) for identity, name in (
+DEFINITIONS = [SimpleNamespace(id=identity, name=name, presentation=IntegrationPresentation())
+               for identity, name in (
     ("collection-source", "Collection"), ("member-source", "Member"),
     ("probe-source", "Probing"), ("plain-source", "Plain"))]
 

@@ -64,6 +64,7 @@
   const rsyncOf = s => s?.integrations?.rsync?.options || {};
   const rsyncSourceOf = s => s?.integrations?.general_rsync?.options || {};
   const webdavOf = s => s?.integrations?.general_webdav?.options || {};
+  const mediaOf = s => s?.integrations?.media?.options || {};
   // A form control whose stored value is an integration-owned secret is
   // written, and cleared, through that integration's own scoped surface.
   // ``converge`` is the row that has to change because the ACCEPTED state
@@ -107,7 +108,7 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox', 'aria2', 'usenet', 'media', 'rsync', 'general_rsync',
     'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
@@ -179,6 +180,9 @@
     webdav_collection_scan_timeout_seconds: {scope: 'integration:general_webdav',
                                              option: 'collection_scan_timeout_seconds', blank: 0},
 
+    // Downloads -> Media Downloads tuning
+    media_target_resolution: {scope: 'integration:media', option: 'target_resolution'},
+
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
     // Downloads -> Download Behavior & Limits -> Advanced Settings
@@ -194,6 +198,9 @@
     download_folder: {scope: 'settings-document', option: 'download_folder'},
     min_free_disk_gb: {scope: 'settings-document', option: 'min_free_disk_gb'},
     disk_guard_resume_hysteresis_gb: {scope: 'settings-document', option: 'disk_guard_resume_hysteresis_gb'},
+    // A global Downloads preference that Media Downloads consumes; never a
+    // Media Downloads option.
+    preferred_subtitle_language: {scope: 'settings-document', option: 'preferred_subtitle_language'},
 
     // Extraction -- ordinary settings-document values, on exactly the same two
     // boundaries every other Settings control uses. ``redacted`` says only that
@@ -1037,6 +1044,7 @@
     general_rsync: 'folder-sync',
     general_webdav: 'cloud-sync',
     multimeta: 'network',
+    media: 'monitor-down',
     usenet: 'newspaper',
   });
 
@@ -1059,6 +1067,7 @@
     general_rsync: ['Direct downloads from', 'rsync sources.'],
     general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],
     multimeta: ['Downloads described by', 'Metalink (.meta4) files.'],
+    media: ['Downloads supported media from', 'compatible web pages and media sites.'],
   });
 
   function groupHeaderToggle(groupId, label, value) {
@@ -2140,6 +2149,33 @@
       </p>`;
   }
 
+  // Target Resolution: "Best Available" is no target at all.
+  const TARGET_RESOLUTIONS = Object.freeze([
+    ['best', 'Best Available'],
+    ['2160', '2160p'],
+    ['1440', '1440p'],
+    ['1080', '1080p'],
+    ['720', '720p'],
+    ['480', '480p'],
+    ['360', '360p'],
+  ]);
+
+  function mediaTuning(s) {
+    // One question only: which resolution to look for. Everything else about
+    // a media download -- one final file, its subtitle and metadata, no
+    // transcoding -- is DebridPulse policy, not a setting.
+    const options = mediaOf(s);
+    return tuningCells(
+      selectField('media_target_resolution', 'Target Resolution', options.target_resolution || 'best',
+        TARGET_RESOLUTIONS,
+        'The resolution DebridPulse looks for. When it is not offered, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available takes the highest resolution offered.'),
+    ) + `
+      <p class="dp-settings-tuning-footer">
+        Subtitles follow Preferred Subtitle Language under Download Behavior
+        &amp; Limits.
+      </p>`;
+  }
+
   function executorTuningCard(id, label, copy, body, protocol = '') {
     const bodyId = `dp-executor-tuning-${id}`;
     const identity = protocolIcon(protocol);
@@ -2262,7 +2298,7 @@
           })}
         </div>
       </div>
-      ${downloadBehaviorAdvanced(policy)}
+      ${downloadBehaviorAdvanced(policy, s)}
     `, {
       className: 'dp-settings-download-engine-card',
       wrapTitle: true,
@@ -2281,7 +2317,10 @@
       executorTuningCard('webdav', 'WebDAV',
         'Which files DebridPulse collects from WebDAV folders.', webdavTuning(s), 'general_webdav') +
       executorTuningCard('usenet', 'Usenet',
-        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet'), {
+        'Global download behavior shared by all Usenet servers.', usenetTuning(s), 'usenet') +
+      executorTuningCard('media', 'Media Downloads',
+        'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),
+        'media'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
     });
 
@@ -2320,7 +2359,7 @@
   /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
    * continuation and local-network policy, four ordinary tuning cells in the
    * one tuning grammar. Collapsed by default; expansion is presentation only. */
-  function downloadBehaviorAdvanced(policy) {
+  function downloadBehaviorAdvanced(policy, s) {
     return disclosureSection('Advanced Settings', 'download-behavior-advanced', tuningCells(
       input('material_checkpoint_interval_seconds', 'Material Checkpoint Interval (seconds)',
         policy.material_checkpoint_interval_seconds ?? 5, {
@@ -2332,6 +2371,9 @@
           type: 'number', min: 1, max: 60,
           hint: 'How long DebridPulse allows an active download engine to finish and preserve current work before forcing it to stop.',
         }),
+      input('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en', {
+        hint: 'Language code (for example en, de or pt-br) of the subtitle embedded in media downloads. A subtitle written for the media is preferred; an automatically generated one in the same language is used otherwise.',
+      }),
       // The two local-network cells are one relationship (the second depends
       // on the first): the shared tuning relation, drawn only while the set
       // holds all its lanes.

@@ -4,7 +4,7 @@ import logging
 import os
 from pathlib import Path
 from typing import List, Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
@@ -182,6 +182,18 @@ class AppSettings(BaseModel):
     min_free_disk_gb: float = 0
     disk_guard_interval_seconds: int = 60
     disk_guard_resume_hysteresis_gb: float = 0.5
+
+    # ── Acquisition preferences ──────────────────────────────────────────────
+    # The operator's Preferred Subtitle Language: one language code (a primary
+    # language subtag, optionally with one region or script subtag -- "en",
+    # "pt-br", "zh-hans"), stored lowercase. Global Downloads preference: an
+    # integration that acquires subtitled media reads it and keeps no copy.
+    preferred_subtitle_language: str = Field(default="en", pattern=r"^[a-z]{2,3}(-[a-z0-9]{2,8})?$")
+
+    @field_validator("preferred_subtitle_language", mode="before")
+    @classmethod
+    def _normalized_language(cls, value):
+        return str(value or "").strip().casefold() if isinstance(value, str) or value is None else value
 
 
 _settings: AppSettings = AppSettings()

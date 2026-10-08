@@ -31,6 +31,9 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         # current account is of the standard service class.
         "standard_status_tier": "general_family",
         "standard_status_tier_label": "Standard Services",
+        # Neither declares its own transfer badge label or theme.
+        "transfer_label": None,
+        "transfer_theme": None,
     }
     assert alldebrid["options"]["api_key"] == ""
     assert alldebrid["options"]["api_key_configured"] is False
@@ -50,6 +53,8 @@ def test_provider_presentation_metadata_is_neutral_safe_and_deterministic():
         "status_tier_label": "Standard Services",
         "standard_status_tier": None,
         "standard_status_tier_label": None,
+        "transfer_label": None,
+        "transfer_theme": None,
     }
 
 

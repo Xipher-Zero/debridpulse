@@ -128,6 +128,11 @@
       "license": "MIT"
     },
     {
+      "name": "deno",
+      "version": "2.9.5",
+      "license": "MIT"
+    },
+    {
       "name": "fastapi",
       "version": "0.141.1",
       "license": "MIT"
@@ -381,6 +386,16 @@
       "name": "yarl",
       "version": "1.23.0",
       "license": "Apache-2.0"
+    },
+    {
+      "name": "yt-dlp",
+      "version": "2026.8.19",
+      "license": "Unlicense"
+    },
+    {
+      "name": "yt-dlp-ejs",
+      "version": "0.8.0",
+      "license": "Unlicense AND MIT AND ISC"
     },
     {
       "name": "zc-lockfile",

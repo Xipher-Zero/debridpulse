@@ -333,7 +333,7 @@ layers, each collected test exactly once:
   continuation, recovery, consolidation, provenance, fencing, persistence, parsers, neutral
   provider/executor contracts, API and presentation. It needs no external executable.
 - **Runtime layer** (`-m real_runtime`): every test that drives a real external executable --
-  rsync, aria2c, the openssl CLI. It runs against the product's supported runtime: rsync is the
+  rsync, aria2c, the openssl CLI, ffmpeg/ffprobe and mkvmerge. It runs against the product's supported runtime: rsync is the
   pinned, digest-verified release the shipped image carries (never the runner's own, and never a
   relaxed product minimum), rsync's default ports are bindable, and the prerequisites are
   asserted before any test runs. A runtime test proves that a concrete adapter implements the

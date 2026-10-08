@@ -33,6 +33,7 @@ the lock file and `licenses/python-runtime.json`.
 | configobj | 5.0.9 | BSD-3-Clause |
 | cryptography | 50.0.0 | Apache-2.0 OR BSD-3-Clause |
 | ct3 | 3.4.0.post5 | MIT |
+| deno | 2.9.5 | MIT |
 | fastapi | 0.141.1 | MIT |
 | feedparser | 6.0.12 | BSD-2-Clause |
 | frozenlist | 1.8.0 | Apache-2.0 |
@@ -84,6 +85,8 @@ the lock file and `licenses/python-runtime.json`.
 | uvicorn | 0.52.4 | BSD-3-Clause |
 | uvloop | 0.22.1 | MIT OR Apache-2.0 |
 | yarl | 1.23.0 | Apache-2.0 |
+| yt-dlp | 2026.8.19 | Unlicense |
+| yt-dlp-ejs | 0.8.0 | Unlicense AND MIT AND ISC |
 | zc-lockfile | 4.0 | ZPL-2.1 |
 
 The 1.0.6 native-authentication work directly depends on `argon2-cffi` for
@@ -102,6 +105,14 @@ reviewed copyleft runtime dependency named in `backend/tests/test_license_policy
 `bcrypt` (Apache-2.0, no Python dependencies) is `asyncssh`'s own backend for
 passphrase-encrypted OpenSSH-format private keys -- the default format of
 `ssh-keygen` -- which the generalized `username_private_key` sign-in accepts.
+The 1.0.13 Media Downloads integration directly depends on `yt-dlp` (Unlicense,
+installed without extras: its HTTP dependencies were already locked) for the
+explicit extractor registry and native HTTP(S)/HLS/DASH downloaders it runs in
+its sandboxed worker, on `yt-dlp-ejs` (Unlicense AND MIT AND ISC) for the
+JavaScript challenge-solver scripts yt-dlp would otherwise fetch remotely, and on
+`deno` (MIT), the wheel that ships the Deno binary those scripts run in, with no
+network, file or remote-module permission. None of them is updated or extended
+at run time.
 Their transitive cryptographic/HTTP dependencies are included in the table and
 machine-readable runtime manifest above. Package/license pairs are cross-checked
 against the corresponding upstream/PyPI metadata when the lock is generated.
@@ -167,6 +178,8 @@ recorded in the image's SBOM attestation.
 | zstd | BSD-3-Clause |
 | 7zip | LGPL-2.1-or-later and package-specific component terms |
 | 7zip-rar | Debian non-free RAR codec; UnRAR restricted freeware terms |
+| ffmpeg | LGPL-2.1-or-later with GPL-2.0-or-later components (Debian build) |
+| mkvtoolnix | GPL-2.0-or-later |
 
 Package copyright files and common license texts remain installed in the
 image. `SOURCE_OFFER.md` explains how to request corresponding source for
@@ -185,6 +198,14 @@ a GPL-3.0-or-later program now ships beside this GPL-2.0-or-later project is
 recorded here as a fact; what it means for the combined image is part of the
 same project/licence review the copyleft section above requires before
 release.
+
+`ffmpeg` (`ffmpeg` and `ffprobe`) and `mkvtoolnix` (`mkvmerge`) are the Media
+Downloads executor's local finalizers: DebridPulse runs them only as separate
+programs, over argv, on files already inside an attempt's private workspace, and
+only to copy native streams into the planned container (`-c copy`, or a
+`mkvmerge` merge) -- never to re-encode, and never with a network address. Both
+are GPL-covered programs shipped beside this GPL-2.0-or-later project and fall
+under the same project/licence review noted above.
 
 `7zip-rar` is installed from Debian's `non-free` component solely to provide
 RAR extraction through the external `7z` process. Because the slim base filters

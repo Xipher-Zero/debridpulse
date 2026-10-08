@@ -160,6 +160,10 @@ class IntegrationEnvironment:
     # integration whose request class carries a large submitted payload borrows
     # it to READ that payload; it owns no part of its lifecycle.
     staged_input: object = None
+    # The operator's global Preferred Subtitle Language (``AppSettings
+    # .preferred_subtitle_language``): owned by the global Downloads settings,
+    # only ever READ by an integration that acquires subtitled media.
+    preferred_subtitle_language: str = "en"
 
 
 @runtime_checkable
@@ -286,6 +290,13 @@ class IntegrationPresentation:
     # inherently static service class.
     standard_status_tier: Optional[str] = None
     standard_status_tier_label: Optional[str] = None
+    # How ONE transfer names and themes this integration on its provider badge
+    # when that differs from the integration's own name (a plural family name
+    # such as "Media Downloads" badges a single transfer as "Media Download"),
+    # and the badge's theme token. Absent: the badge is the integration's name
+    # in the shared neutral badge treatment, exactly as before.
+    transfer_label: Optional[str] = None
+    transfer_theme: Optional[str] = None
 
     def public(self) -> dict:
         return {
@@ -300,6 +311,8 @@ class IntegrationPresentation:
             "status_tier_label": self.status_tier_label,
             "standard_status_tier": self.standard_status_tier,
             "standard_status_tier_label": self.standard_status_tier_label,
+            "transfer_label": self.transfer_label,
+            "transfer_theme": self.transfer_theme,
         }
 
 

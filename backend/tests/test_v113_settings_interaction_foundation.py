@@ -142,7 +142,7 @@ def test_the_lower_tier_keeps_its_identity_and_changes_only_its_label():
     what the operator reads changed."""
     members = [d for d in definitions if d.presentation.status_tier == GENERAL_FAMILY]
     assert {d.id for d in members} == {"general_http", "general_ftp", "general_scp", "general_rsync", "general_webdav",
-                                       "multimeta"}
+                                       "multimeta", "media"}
     for definition in members:
         assert definition.presentation.status_tier_label == "Standard Services", definition.id
 
@@ -206,7 +206,8 @@ def test_the_transfer_list_badge_label_has_exactly_one_owner():
     the integration definition; neither renderer owns a protocol label map."""
     routes = (BACKEND / "api" / "routes.py").read_text(encoding="utf-8")
     assert "def _provider_display_name(" in routes
-    assert "definition.name for definition in definitions" in routes
+    # The one label: an integration's own transfer label, else its name.
+    assert "definition.presentation.transfer_label or definition.name" in routes
     app_js = read("app.js")
     presentation = app_js[app_js.index("function transferProviderPresentation("):]
     presentation = presentation[:presentation.index("\nfunction ", 1)]

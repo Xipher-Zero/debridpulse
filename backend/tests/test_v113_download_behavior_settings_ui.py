@@ -24,7 +24,7 @@ def _function(name: str) -> str:
 def test_card_is_renamed_and_hosts_the_advanced_subsection_below_its_primary_row():
     panel = _function("downloadsPanel")
     assert "card('Download Behavior & Limits'" in panel and "Download Location & Limits" not in PAGE
-    row, advanced = panel.index("dp-settings-download-engine-row"), panel.index("downloadBehaviorAdvanced(policy)")
+    row, advanced = panel.index("dp-settings-download-engine-row"), panel.index("downloadBehaviorAdvanced(policy, s)")
     assert row < advanced < panel.index("className: 'dp-settings-download-engine-card'")
 
 

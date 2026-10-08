@@ -103,6 +103,10 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-protocol='multimeta'] {
   --dp-protocol-color: #E879F9;
 }
+/* Media Downloads: Hot Rose. */
+#view-settings .dp-settings-protocol-chip[data-protocol='media'] {
+  --dp-protocol-color: #EF137F;
+}
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: #CBD5E1;
 }

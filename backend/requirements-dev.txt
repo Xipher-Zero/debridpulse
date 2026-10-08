@@ -73,6 +73,8 @@ cryptography==50.0.0
     #   joserfc
 ct3==3.4.0.post5
     # via -r requirements.in
+deno==2.9.5
+    # via -r requirements.in
 fastapi==0.141.1
     # via -r requirements.in
 feedparser==6.0.12
@@ -194,7 +196,9 @@ python-multipart==0.0.32
 pytz==2026.2
     # via -r requirements.in
 pyyaml==6.0.3
-    # via apprise
+    # via
+    #   -r requirements.in
+    #   apprise
 rarfile==4.3
     # via -r requirements.in
 rebulk==6.0.1
@@ -248,6 +252,10 @@ uvloop==0.22.1 ; sys_platform != "win32"
     # via -r requirements.in
 yarl==1.23.0
     # via aiohttp
+yt-dlp==2026.8.19
+    # via -r requirements.in
+yt-dlp-ejs==0.8.0
+    # via -r requirements.in
 zc-lockfile==4.0
     # via
     #   -r requirements.in

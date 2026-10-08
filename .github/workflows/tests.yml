@@ -139,7 +139,10 @@ jobs:
           done
           if [ -e /etc/apt/sources.list ]; then sudo sed -ri 's/^# ?deb-src /deb-src /' /etc/apt/sources.list; fi
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot patch
+          # ffmpeg/ffprobe and mkvmerge: the Media Downloads executor's local
+          # lossless finalizers, as the image ships them.
+          sudo apt-get install -y --no-install-recommends openssl dpkg-dev build-essential fakeroot patch \
+            ffmpeg mkvtoolnix
           sudo apt-get build-dep -y --no-install-recommends aria2
           bash "$GITHUB_WORKSPACE/packaging/aria2/build-package.sh" "$RUNNER_TEMP/aria2-src" "$RUNNER_TEMP/aria2" > "$RUNNER_TEMP/aria2-build.log" 2>&1 \
             || { tail -60 "$RUNNER_TEMP/aria2-build.log"; exit 1; }
@@ -172,6 +175,7 @@ jobs:
           test "$(command -v aria2c)" = /usr/bin/aria2c
           bash "$GITHUB_WORKSPACE/packaging/aria2/verify-features.sh" "$ARIA2_PATCHED_VERSION"
           openssl version
+          command -v ffmpeg ffprobe mkvmerge
           python3 - <<'PY'
           import socket
 

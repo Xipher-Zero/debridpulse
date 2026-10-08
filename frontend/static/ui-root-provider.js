@@ -76,11 +76,17 @@
   function badgeMarkup(item, surface) {
     const label = providerLabel(item && item.route_provider_name, item && item.route_provider_id);
     const known = Boolean(item && item.route_provider_id);
+    const theme = known ? themeAttribute(item.route_provider_theme) : '';
     if (!known || !(item && item.route_switch_available)) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
-        (known ? 'known' : 'pending') + '">' + esc(label) + '</span>' + switchingMarkup(item && item.id);
+        (known ? 'known' : 'pending') + '"' + theme + '>' + esc(label) + '</span>' + switchingMarkup(item && item.id);
     }
-    return launcherMarkup(item.id, item.route_provider_id, label, surface);
+    return launcherMarkup(item.id, item.route_provider_id, label, surface, theme);
+  }
+
+  // The committed provider's declared badge theme, if it has one.
+  function themeAttribute(theme) {
+    return theme ? ' data-provider-theme="' + esc(theme) + '"' : '';
   }
 
   function switchingMarkup(transferId) {
@@ -89,11 +95,11 @@
       'data-dp-switching-transfer="' + esc(transferId) + '">' + esc('Switching to ' + target + '…') + '</span>';
   }
 
-  function launcherMarkup(transferId, providerId, label, surface) {
+  function launcherMarkup(transferId, providerId, label, surface, theme) {
     const busy = switching.has(Number(transferId));
     return '<button type="button" class="dp-provider-chip dp-root-provider-launcher" ' + TRIGGER_ATTR + ' ' +
       'data-dp-transfer-id="' + esc(transferId) + '" data-dp-provider-id="' + esc(providerId) + '" ' +
-      'data-dp-surface="' + esc(surface || '') + '" data-provider-state="known" ' +
+      'data-dp-surface="' + esc(surface || '') + '" data-provider-state="known"' + (theme || '') + ' ' +
       'aria-haspopup="dialog" aria-expanded="false"' + (busy ? ' aria-disabled="true"' : '') + ' ' +
       'aria-label="' + esc('Provider: ' + label + (busy ? '. A provider switch is in progress' :
         '. Choose another provider')) + '">' +
@@ -135,14 +141,16 @@
     }
     const label = providerLabel(transfer.route_provider_name, transfer.route_provider_id);
     mount.innerHTML = badgeMarkup({id: transfer.id, route_provider_id: transfer.route_provider_id,
-      route_provider_name: transfer.route_provider_name, route_switch_available: false}, 'details');
+      route_provider_name: transfer.route_provider_name, route_provider_theme: transfer.route_provider_theme,
+      route_switch_available: false}, 'details');
     if (!transfer.route_provider_id) return;
     try {
       const status = await readStatus(transfer.id);
       const live = document.querySelector('#modal-body ' + MOUNT_SELECTOR);
       if (live && Number(transfer.id) === detailTransferId && status.switchable &&
           status.current_provider_id === transfer.route_provider_id) {
-        live.innerHTML = launcherMarkup(transfer.id, transfer.route_provider_id, label, 'details');
+        live.innerHTML = launcherMarkup(transfer.id, transfer.route_provider_id, label, 'details',
+          themeAttribute(transfer.route_provider_theme));
       }
     } catch (_) { /* informational badge stays */ }
   }

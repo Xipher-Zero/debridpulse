@@ -312,7 +312,7 @@ def test_no_scp_executor_and_no_native_scp_transport_exist() -> None:
     assert SUPPORTED_SCHEMES == frozenset({"http", "https", "ftp", "sftp"})
     # The rsync executor runs rsync (over its own SSH channel), never scp or ssh.
     assert [item.id for item in definitions if item.kind in {"executor", "provider_executor"}] == [
-        "usenet", "aria2", "rsync"]
+        "usenet", "media", "aria2", "rsync"]
     # Nothing ever spawns a native scp/ssh client: every process launch in the
     # backend names a program, and none of them is one.
     for path in (ROOT / "backend").rglob("*.py"):

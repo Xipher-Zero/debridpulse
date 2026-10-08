@@ -7,9 +7,9 @@ guards cannot replace the process-wide ``aiosqlite`` module and leak a fake
 
 It also owns the suite's two layers (docs/QUALIFICATION_DETERMINISM.md):
 ``real_runtime`` marks a test that drives a real external executable -- rsync
-(>= 3.4.0, the product minimum), aria2c or the openssl CLI -- and runs in the
-runtime layer, ``-m real_runtime``; everything else is the deterministic
-contract layer, ``-m "not real_runtime"``. ``DP_TEST_SHARD=k/n`` keeps only
+(>= 3.4.0, the product minimum), aria2c, the openssl CLI, ffmpeg/ffprobe or
+mkvmerge -- and runs in the runtime layer, ``-m real_runtime``; everything
+else is the deterministic contract layer, ``-m "not real_runtime"``. ``DP_TEST_SHARD=k/n`` keeps only
 the modules of shard ``k`` of ``n``: a fixed partition by module path, so the
 shards of one layer together run each of its tests exactly once.
 """

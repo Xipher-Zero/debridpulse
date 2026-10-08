@@ -15,8 +15,20 @@ Each job credential is signed for one route scope. ``RouteScope.ENDPOINT`` (the
 default) admits exactly the authorized hostname and port. ``RouteScope.SAME_HOST``
 admits the same hostname on the authorized port plus server-selected
 unprivileged ports, for native transports whose one job opens a second
-connection the server chooses (a passive FTP data channel). No scope ever admits
-another hostname or skips this guard's own resolution and address policy.
+connection the server chooses (a passive FTP data channel). Neither ever admits
+another hostname. ``RouteScope.PUBLIC`` is the one scope that names no
+hostname: it admits whatever PUBLIC destination its one live acquisition
+discovers (a page, then its API, manifest and CDN hosts, each redirect a new
+connection), for exactly as long as that acquisition holds it
+(``public_route`` / ``revoke_public_route``), on the web ports only (80, 443
+and unprivileged ports), and never under a private-LAN grant. No scope ever
+skips this guard's own resolution and address policy.
+
+A client that speaks plain HTTP through a proxy sends an absolute-form request
+(``GET http://host/path``) rather than ``CONNECT``. Such a request is admitted
+by exactly the same credential, resolution and address checks as a ``CONNECT``
+to the same authority, and is then relayed to the approved address as one
+origin-form request on its own connection.
 
 A credential may additionally carry a private-LAN grant (signed into the
 credential itself, domain-separated from ungranted credentials). Such a job may
@@ -66,11 +78,18 @@ class RouteScope(StrEnum):
     """Which CONNECT authorities one signed job credential admits."""
     ENDPOINT = "endpoint"
     SAME_HOST = "same-host"
+    PUBLIC = "public"
 
 
 _SAME_HOST_USER = re.compile(
     re.escape(f"{_PROXY_USER}.") + r"(lan\.)?" + re.escape(f"{RouteScope.SAME_HOST.value}.") + r"([0-9]{1,5})"
 )
+# A public-destination route names its acquisition, never a host; it has no
+# private-LAN form at all.
+_PUBLIC_SCOPE = re.compile(r"[a-z0-9]{1,64}")
+_PUBLIC_USER = re.compile(re.escape(f"{_PROXY_USER}.{RouteScope.PUBLIC.value}.") + r"([a-z0-9]{1,64})")
+# The web ports a public-destination route may reach.
+_PUBLIC_WELL_KNOWN_PORTS = frozenset({80, 443})
 # The marker a private-LAN-granted credential's username carries.
 _LAN = "lan"
 
@@ -105,6 +124,28 @@ def _authority_target(authority: str) -> tuple[str, int]:
     if not host or parsed.port is None:
         raise ValueError("CONNECT target must include host and port")
     return host, int(parsed.port)
+
+
+def _absolute_target(target: str) -> tuple[str, int, str]:
+    """``(host, port, origin-form path)`` of an absolute-form plain-HTTP target."""
+    parsed = urlsplit(str(target or ""))
+    host = str(parsed.hostname or "").rstrip(".").casefold()
+    if parsed.scheme.casefold() != "http" or not host or parsed.username is not None or parsed.password is not None:
+        raise ValueError("Unsupported proxy request target")
+    port = int(parsed.port or default_destination_port("http"))
+    path = parsed.path or "/"
+    return host, port, path + (f"?{parsed.query}" if parsed.query else "")
+
+
+# Hop-by-hop proxy headers never reach the origin; the relayed request always
+# ends its connection, so one connection never carries a second authority.
+_HOP_HEADERS = frozenset({"proxy-authorization", "proxy-connection", "connection", "keep-alive"})
+
+
+def _origin_request(method: str, origin: str, version: str, headers: list[str]) -> bytes:
+    kept = [line for line in headers if line and line.split(":", 1)[0].strip().casefold() not in _HOP_HEADERS]
+    head = "\r\n".join([f"{method} {origin} {version}", *kept, "Connection: close", "", ""])
+    return head.encode("iso-8859-1", errors="replace")
 
 
 class _UpstreamRefused(OSError):
@@ -193,6 +234,8 @@ class DownloaderEgressGuard:
         # CONNECT: turning it off stops granted jobs from reaching LAN too.
         self._private_lan = False
         self._budgets: dict[str, EgressBudget] = {}
+        # The public-destination routes that exist right now, by acquisition.
+        self._public_scopes: set[str] = set()
 
     def budget(self, name: str) -> EgressBudget:
         """The named download budget routes may carry (created unlimited)."""
@@ -270,6 +313,12 @@ class DownloaderEgressGuard:
                    f"{str(host).rstrip('.').casefold()}:{int(port)}")
         return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    def _public_token(self, scope: str) -> str:
+        # Domain-separated from every host-scoped message: a hostname never
+        # contains "|", and no host-scoped message starts with this marker.
+        message = f"{RouteScope.PUBLIC.value}|{scope}"
+        return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
+
     def _terms(self, token: str, connect_timeout_seconds: float | None, budget: str | None) -> str:
         """A route token that also carries the route's own terms -- its connect
         bound (milliseconds, ``0`` = none) and the download budget it draws on
@@ -320,6 +369,17 @@ class DownloaderEgressGuard:
             if username == (f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER):
                 terms = self._verified(password, self._token(host, port, lan))
                 return None if terms is None else (lan, *terms)
+        public = _PUBLIC_USER.fullmatch(username)
+        if public is not None:
+            # Any public destination of the one live acquisition this route
+            # was issued to; never a private-LAN grant, whatever the setting.
+            scope = public.group(1)
+            if scope not in self._public_scopes:
+                return None
+            if port not in _PUBLIC_WELL_KNOWN_PORTS and port < _SERVER_SELECTED_PORT_FLOOR:
+                return None
+            terms = self._verified(password, self._public_token(scope))
+            return None if terms is None else (False, *terms)
         match = _SAME_HOST_USER.fullmatch(username)
         if match is None:
             return None
@@ -386,6 +446,28 @@ class DownloaderEgressGuard:
         user, token = self._credential(host, port, RouteScope(scope), bool(private_lan), connect_timeout_seconds,
                                        budget)
         return _LOOPBACK, self._bound_port, user, token
+
+    def public_route(self, scope: str, *, budget: str | None = None,
+                     connect_timeout_seconds: float | None = None) -> tuple[str, int, str, str]:
+        """``(proxy host, proxy port, user, token)`` of a public-destination
+        route for one live acquisition ``scope``: it admits any destination
+        whose WHOLE answer set this guard itself judges public at each
+        connection -- every hop and redirect separately -- on the web ports,
+        never a private-LAN address, and only until ``revoke_public_route``.
+        ``budget`` and ``connect_timeout_seconds`` are signed route terms,
+        exactly as for every other route."""
+        scope = str(scope or "")
+        if not _PUBLIC_SCOPE.fullmatch(scope):
+            raise ValueError("Invalid public route scope")
+        self._proxy_url()
+        self._public_scopes.add(scope)
+        user = f"{_PROXY_USER}.{RouteScope.PUBLIC.value}.{scope}"
+        return _LOOPBACK, self._bound_port, user, self._terms(self._public_token(scope), connect_timeout_seconds,
+                                                              budget)
+
+    def revoke_public_route(self, scope: str) -> None:
+        """End a public-destination route: its credential admits nothing more."""
+        self._public_scopes.discard(str(scope or ""))
 
     async def open_tunnel(
         self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT, port: int | None = None,
@@ -569,11 +651,18 @@ class DownloaderEgressGuard:
                 return
             lines = raw.decode("iso-8859-1", errors="replace").split("\r\n")
             request = lines[0].split()
-            if len(request) != 3 or request[0].upper() != "CONNECT":
+            origin = None
+            if len(request) == 3 and request[0].upper() == "CONNECT":
+                host, port = _authority_target(request[1])
+            elif (len(request) == 3 and request[0].isalpha() and request[2].startswith("HTTP/1.")
+                  and request[1][:7].casefold() == "http://"):
+                # A plain-HTTP absolute-form request: the same authority checks
+                # as a CONNECT to it, then one origin-form request upstream.
+                host, port, origin = _absolute_target(request[1])
+            else:
                 writer.write(b"HTTP/1.1 405 Method Not Allowed\r\nConnection: close\r\n\r\n")
                 await writer.drain()
                 return
-            host, port = _authority_target(request[1])
             username, password = self._proxy_credentials(lines[1:])
             admitted = self._admits(username, password, host, port)
             if admitted is None:
@@ -604,12 +693,20 @@ class DownloaderEgressGuard:
                 await writer.drain()
                 return
             except (ValueError, OSError):
-                writer.write(b"HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n")
+                # Proxy-Status (RFC 9209) says the refusal is this guard's own,
+                # so a client can never mistake it for the origin's answer.
+                writer.write(b"HTTP/1.1 403 Forbidden\r\n"
+                             b"Proxy-Status: debridpulse; error=destination_ip_prohibited\r\n"
+                             b"Connection: close\r\n\r\n")
                 await writer.drain()
                 return
 
-            writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
-            await writer.drain()
+            if origin is None:
+                writer.write(b"HTTP/1.1 200 Connection Established\r\n\r\n")
+                await writer.drain()
+            else:
+                upstream_writer.write(_origin_request(request[0], origin, request[2], lines[1:]))
+                await upstream_writer.drain()
 
             async def relay(source: asyncio.StreamReader, destination: asyncio.StreamWriter,
                             paced: EgressBudget | None = None) -> None:

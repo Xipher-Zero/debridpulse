@@ -13,10 +13,11 @@ from providers.premiumize.definition import definition as premiumize
 from providers.realdebrid.definition import definition as realdebrid
 from providers.torbox.definition import definition as torbox
 from integrations.configuration import effective_integration_settings
+from integrations.media.definition import definition as media
 from integrations.usenet.definition import definition as usenet
 
 definitions = (alldebrid, debridlink, premiumize, realdebrid, torbox, usenet, general_http, general_ftp, general_scp, general_rsync, general_webdav,
-               multimeta, aria2, rsync)
+               multimeta, media, aria2, rsync)
 
 
 def register(registry, settings, environment, selected=definitions):

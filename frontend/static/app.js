@@ -274,15 +274,18 @@ function transferProviderPresentation(t) {
   // live route-state indicator, never an origin or a child file's provider.
   if (t && Object.prototype.hasOwnProperty.call(t, 'route_provider_id')) {
     return t.route_provider_id
-      ? {label: String(t.route_provider_name || t.route_provider_id), state: 'known'}
+      ? {label: String(t.route_provider_name || t.route_provider_id), state: 'known', theme: t.route_provider_theme}
       : {label: 'Pending', state: 'pending'};
   }
   const completed = String(t?.status || '') === 'completed';
   // The backend's origin projection (the provider owning the transfer's root
   // route) is what the compact chip names; current/delivering stay the
-  // fallback. Nothing here derives an origin.
+  // fallback. Nothing here derives an origin. The badge theme, when the
+  // provider declares one, is that same provider's.
   const name = t?.origin_provider_name || (completed ? t?.delivering_provider_name : t?.current_provider_name);
-  if (name) return {label: String(name), state: 'known'};
+  const theme = t?.origin_provider_name ? t?.origin_provider_theme
+    : (completed ? t?.delivering_provider_theme : t?.current_provider_theme);
+  if (name) return {label: String(name), state: 'known', theme};
   if (completed && t?.provider_provenance_status === 'unknown_legacy') {
     return {label: 'Unknown', state: 'unknown'};
   }
@@ -297,7 +300,8 @@ function providerChip(t, surface) {
     return window.DPRootProvider.badgeMarkup(t, surface);
   }
   const provider = transferProviderPresentation(t);
-  return `<span class="dp-provider-chip" data-provider-state="${provider.state}">${esc(provider.label)}</span>`;
+  const theme = provider.theme ? ` data-provider-theme="${esc(provider.theme)}"` : '';
+  return `<span class="dp-provider-chip" data-provider-state="${provider.state}"${theme}>${esc(provider.label)}</span>`;
 }
 
 function routeOutcomePresentation(value) {

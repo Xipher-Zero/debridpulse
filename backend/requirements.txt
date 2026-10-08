@@ -733,6 +733,14 @@ ct3==3.4.0.post5 \
     --hash=sha256:fba0d4810a3c300b3768840abcd34c557965d67c7248cbbd70b734efef425685 \
     --hash=sha256:fed4a83fad12c8dd891d411198a91f85096dfce88635825eb976ca86108b7f85
     # via -r requirements.in
+deno==2.9.5 \
+    --hash=sha256:2f9681d7d2118a5e92e18915d1d88a6966fd6173ba4a8fb772f04080057e5a6a \
+    --hash=sha256:570d4ee6f1ddb16d14848d36dac6cd2f586d8a0c94cf9c3e6b5da130da2597d5 \
+    --hash=sha256:696dffb666d6336a3527857b2f9b665db33b07883bb6adc3595dbb3b78748cf1 \
+    --hash=sha256:bccec0965917b6daa323f9ce6ad8e884e0854506b0cdaec9de41bdac7620109a \
+    --hash=sha256:d321f54f82cb535904a108afd970c1c3e1db23716db1ab0cda5e0ca993dbf824 \
+    --hash=sha256:e5aec0419739fd0359663a78765d4feda19d1d0b60a682d25add9b78e19f95b4
+    # via -r requirements.in
 fastapi==0.141.1 \
     --hash=sha256:bfb91aa2d334c61cb35ba9a116fc123b3d3df31640b801cf57a7a78ec3f603b3 \
     --hash=sha256:e8822fc40db1e1858054d7a949a888695bc9bdce70139178e33bd2871a453ca1
@@ -2029,6 +2037,14 @@ yarl==1.23.0 \
     --hash=sha256:fe8f8f5e70e6dbdfca9882cd9deaac058729bcf323cf7a58660901e55c9c94f6 \
     --hash=sha256:fffc45637bcd6538de8b85f51e3df3223e4ad89bccbfca0481c08c7fc8b7ed7d
     # via aiohttp
+yt-dlp==2026.8.19 \
+    --hash=sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf \
+    --hash=sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1
+    # via -r requirements.in
+yt-dlp-ejs==0.8.0 \
+    --hash=sha256:79300e5fca7f937a1eeede11f0456862c1b41107ce1d726871e0207424f4bdb4 \
+    --hash=sha256:d5fa1639f63b5c4af8d932495f60689d5370f1a095782c944f7f62a303eb104e
+    # via -r requirements.in
 zc-lockfile==4.0 \
     --hash=sha256:aa3aa295257bebaa09ea9ad5cb288bf9f98f88de6932f96b6659f62715d83581 \
     --hash=sha256:d3ab0f53974296a806db3219b9191ba0e6d5cbbd1daa2e0d17208cb9b29d2102

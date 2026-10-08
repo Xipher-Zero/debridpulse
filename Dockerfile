@@ -25,6 +25,10 @@ LABEL org.opencontainers.image.licenses="GPL-2.0-or-later"
 # zstd is the exact outer decoder for .tar.zst/.tzst composite archives.
 # rsync is the rsync executor's native client (rsync daemon and rsync over SSH;
 # the SSH transport is DebridPulse's own channel, so no OpenSSH client ships).
+# ffmpeg (ffmpeg, ffprobe) and mkvtoolnix (mkvmerge) are the Media Downloads
+# executor's local lossless finalizers: stream copy into the planned container,
+# never a re-encode, never a network input (its yt-dlp, yt-dlp-ejs and deno come
+# from the hashed Python lock below; nothing is fetched or updated at run time).
 # The slim base excludes most /usr/share/doc content, so explicitly re-include
 # the 7zip-rar notices needed to ship its licensing terms with the image. The
 # zz- prefix ensures these last-match-wins dpkg rules sort after the base image's
@@ -90,7 +94,9 @@ RUN printf '%s\n' \
     par2 \
     unrar \
     7zip \
-    7zip-rar && \
+    7zip-rar \
+    ffmpeg \
+    mkvtoolnix && \
     test "$(cat /usr/share/debridpulse/aria2/VERSION)" = "${ARIA2_PACKAGE_VERSION}" && \
     bash /usr/share/debridpulse/aria2/verify-features.sh "${ARIA2_PACKAGE_VERSION}" && \
     rm -rf /var/lib/apt/lists/* /tmp/aria2

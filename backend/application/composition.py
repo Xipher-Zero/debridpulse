@@ -53,7 +53,9 @@ def configure(application):
     registry = IntegrationRegistry()
     register(registry, settings, IntegrationEnvironment(application.repository, settings.download_folder,
                                                         commands=application,
-                                                        staged_input=application.staged_input))
+                                                        staged_input=application.staged_input,
+                                                        preferred_subtitle_language=(
+                                                            settings.preferred_subtitle_language)))
     application.engine.registry = registry
     application.engine.root = settings.download_folder
     policy = settings.transfer_policy

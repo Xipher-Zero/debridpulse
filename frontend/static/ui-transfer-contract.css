@@ -183,23 +183,30 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   text-shadow: none !important;
 }
 
-/* Roadmap Item 10: durable provider provenance presentation. */
+/* Roadmap Item 10: durable provider provenance presentation. The accent is
+   the one per-badge datum: a provider that declares a badge theme
+   (``data-provider-theme``) changes it and nothing else. */
 .dp-provider-chip {
+  --dp-provider-accent: var(--dp-accent-purple-bright, var(--accent));
   display: inline-flex;
   align-items: center;
   max-width: 100%;
   min-height: 20px;
   padding: 2px 8px;
-  border: 1px solid color-mix(in srgb, var(--dp-accent-purple-bright, var(--accent)) 34%, var(--dp-divider, var(--border)));
+  border: 1px solid color-mix(in srgb, var(--dp-provider-accent) 34%, var(--dp-divider, var(--border)));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--dp-accent-purple-bright, var(--accent)) 9%, transparent);
-  color: var(--dp-accent-purple-bright, var(--accent));
+  background: color-mix(in srgb, var(--dp-provider-accent) 9%, transparent);
+  color: var(--dp-provider-accent);
   font-size: 10px;
   font-weight: 650;
   line-height: 1.25;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+/* Hot Rose. */
+.dp-provider-chip[data-provider-theme="hot-rose"] {
+  --dp-provider-accent: #EF137F;
 }
 .dp-provider-chip[data-provider-state="pending"],
 .dp-provider-chip[data-provider-state="unknown"] {

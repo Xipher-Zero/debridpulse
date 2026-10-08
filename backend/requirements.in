@@ -21,6 +21,20 @@ joserfc==1.7.4
 # shipped with apprise, declared here because DebridPulse imports it itself.
 pyyaml==6.0.3
 
+# --- Media Downloads (yt-dlp) -------------------------------------------------
+# The extractor registry and native downloaders the Media Downloads integration
+# runs in its sandboxed worker. No extras: requests/urllib3/certifi are already
+# locked below, websockets and curl_cffi are deliberately absent (no websocket
+# or impersonated transport is in scope), and the image never updates any of it.
+yt-dlp==2026.8.19
+# yt-dlp's JavaScript challenge-solver scripts, read from this package so no
+# remote component is ever fetched at run time.
+yt-dlp-ejs==0.8.0
+# The sandboxed JavaScript runtime those scripts run in (the deno binary,
+# shipped as a wheel): yt-dlp runs it with no network, file or remote-module
+# permission.
+deno==2.9.5
+
 # --- Usenet acquisition service (SABnzbd 5.1.3) runtime closure -------------
 # The acquisition service is bundled INSIDE this image, so its Python runtime
 # dependencies are DebridPulse runtime dependencies and must participate in the

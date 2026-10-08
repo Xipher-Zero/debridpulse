@@ -224,10 +224,25 @@ def _public_settings(settings: AppSettings, definitions=()) -> dict:
     return data
 
 
-def _provider_display_name(identity: str | None, definitions) -> str | None:
+def _provider_definition(identity: str | None, definitions):
     if not identity:
         return None
-    return next((definition.name for definition in definitions if definition.id == identity), None)
+    return next((definition for definition in definitions if definition.id == identity), None)
+
+
+def _provider_display_name(identity: str | None, definitions) -> str | None:
+    """How one transfer names its provider: the integration's own transfer
+    label when it declares one, otherwise its name."""
+    definition = _provider_definition(identity, definitions)
+    if definition is None:
+        return None
+    return definition.presentation.transfer_label or definition.name
+
+
+def _provider_theme(identity: str | None, definitions) -> str | None:
+    """The provider badge's declared theme token, if the integration has one."""
+    definition = _provider_definition(identity, definitions)
+    return definition.presentation.transfer_theme if definition is not None else None
 
 
 def _safe_original_resource(request_payload) -> str | None:
@@ -272,6 +287,12 @@ def _public_transfer_presentation(value, definitions) -> dict:
         result["origin_provider_name"] = _provider_display_name(result.get("origin_provider_id"), definitions)
     if "route_provider_id" in result:
         result["route_provider_name"] = _provider_display_name(result.get("route_provider_id"), definitions)
+    # Only a provider that declares a badge theme carries one, beside its name,
+    # so every other badge stays exactly as it was.
+    for role in ("current", "delivering", "origin", "route"):
+        theme = _provider_theme(result.get(f"{role}_provider_id"), definitions)
+        if theme:
+            result[f"{role}_provider_theme"] = theme
 
     for attempt in result.get("route_attempts", []) or []:
         attempt["provider_name"] = _provider_display_name(attempt.get("provider_id"), definitions)

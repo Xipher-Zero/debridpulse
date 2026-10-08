@@ -409,7 +409,10 @@ class IntegrationRegistry:
         provider.
 
         An authoritative specialized claimant of ANY root closes generic
-        competition for EVERY root. Which specialized provider takes a root
+        competition for EVERY root -- unless its claim declares that it speaks
+        only for the object it names (``ProviderApplicability
+        .collection_authority``), in which case it routes that root and leaves
+        the others to their own claimants. Which specialized provider takes a root
         stays that root's own competition (``provider_route`` with
         ``generic_closed``): a per-root union, so no provider has to claim the
         whole collection, a provider that cannot claim one root still competes
@@ -424,7 +427,7 @@ class IntegrationRegistry:
             providers, assessment, unknown = self._provider_selection(request)
             specialized_ids = {
                 match.provider_id for match in assessment.matches
-                if match.classification == ApplicabilityClass.SPECIALIZED
+                if match.classification == ApplicabilityClass.SPECIALIZED and match.collection_authority
             }
             claimants = {provider.descriptor.id for provider in providers} & specialized_ids
             if claimants - unknown:
