@@ -1914,7 +1914,7 @@
       className: 'dp-settings-provider-card dp-settings-provider-card--debridlink',
       titlePrefix: `
       <span class="dp-settings-provider-chip dp-settings-provider-chip--debridlink" aria-hidden="true">
-        <span class="dp-settings-provider-monogram dp-settings-provider-monogram--debridlink">DL</span>
+        <img class="dp-settings-provider-logo dp-settings-provider-logo--debridlink" src="/icons/providers/debrid-link.svg" alt="">
       </span>`,
       displayName: 'Debrid-Link',
       headerCopy: 'Resolve supported links and torrents through your Debrid-Link account.',
