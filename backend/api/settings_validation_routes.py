@@ -33,6 +33,10 @@ from providers.debridlink import admin as debridlink_admin
 from providers.debridlink.definition import (
     canonical_options as debridlink_canonical_options, credential_material as debridlink_credential_material,
 )
+from providers.premiumize import admin as premiumize_admin
+from providers.premiumize.definition import (
+    canonical_options as premiumize_canonical_options, credential_material as premiumize_credential_material,
+)
 from providers.realdebrid import admin as realdebrid_admin
 from providers.realdebrid.definition import (
     canonical_options as realdebrid_canonical_options, credential_material as realdebrid_credential_material,
@@ -87,6 +91,10 @@ class AllDebridValidationRequest(BaseModel):
 
 
 class DebridLinkValidationRequest(BaseModel):
+    api_key: str = Field(default="", max_length=4096)
+
+
+class PremiumizeValidationRequest(BaseModel):
     api_key: str = Field(default="", max_length=4096)
 
 
@@ -860,6 +868,52 @@ async def validate_debridlink(payload: DebridLinkValidationRequest,
     accepted = await _record_verification_outcome(application, DEBRIDLINK_NAMESPACE, fingerprint, True)
     return {"ok": True, **account, "verification": verification_proof(fingerprint),
             **_accepted(DEBRIDLINK_NAMESPACE, accepted)}
+
+
+# --- Premiumize ----------------------------------------------------------------
+#
+# The connection is the operator's own Premiumize API key, written and erased
+# through the canonical integration-configuration mutation like Debrid-Link's.
+# Its Test exercises the key the operator is looking at -- the draft in the
+# field, or the saved one -- and records the outcome only when that IS the
+# saved key.
+
+PREMIUMIZE_NAMESPACE = "premiumize"
+
+
+def _premiumize_enabled() -> bool:
+    entry = (get_settings().integrations or {}).get(PREMIUMIZE_NAMESPACE)
+    return bool(getattr(entry, "enabled", False))
+
+
+@router.get("/integration-status/premiumize")
+async def get_premiumize_runtime_status(application: ApplicationService = Depends(get_application)):
+    """Return Premiumize-specific status without inferring from generic health."""
+    provider = application.engine.registry.providers.get(PREMIUMIZE_NAMESPACE)
+    return await premiumize_admin.runtime_status(provider, enabled=_premiumize_enabled())
+
+
+@router.post("/settings/validate-premiumize")
+async def validate_premiumize(payload: PremiumizeValidationRequest,
+                              application: ApplicationService = Depends(get_application)):
+    """The Premiumize Test: prove the entered (or saved) key against the
+    account. It enables nothing and creates nothing on Premiumize."""
+    options = premiumize_canonical_options(get_settings())
+    api_key = payload.api_key.strip() or str(options.api_key or "").strip()
+    if not api_key:
+        raise HTTPException(400, "No API key configured or entered")
+    # Exactly what this request authenticates with, in the shape the
+    # Premiumize definition declares as its verification material.
+    fingerprint = verification_fingerprint(premiumize_credential_material(options.model_copy(
+        update={"api_key": api_key})))
+    try:
+        account = await premiumize_admin.verify(api_key, options)
+    except Exception as exc:
+        await _record_verification_outcome(application, PREMIUMIZE_NAMESPACE, fingerprint, False)
+        raise HTTPException(502, _safe_failure(exc)) from exc
+    accepted = await _record_verification_outcome(application, PREMIUMIZE_NAMESPACE, fingerprint, True)
+    return {"ok": True, **account, "verification": verification_proof(fingerprint),
+            **_accepted(PREMIUMIZE_NAMESPACE, accepted)}
 
 
 @router.post("/settings/validate-discord")

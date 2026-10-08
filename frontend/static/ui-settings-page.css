@@ -698,8 +698,9 @@
   padding-right: calc(var(--dp-key-status-reserve) + 20px);
 }
 
-/* The Debrid-Link credential row: the AllDebrid row's island, exactly. */
-#view-settings .dp-settings-debridlink-key-row {
+/* The Debrid-Link and Premiumize credential rows: the AllDebrid row's island, exactly. */
+#view-settings .dp-settings-debridlink-key-row,
+#view-settings .dp-settings-premiumize-key-row {
   box-sizing: border-box;
   justify-content: center;
   gap: 18px;
@@ -711,27 +712,32 @@
   padding: 16px 22px 17px;
 }
 
-#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info {
+#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
+#view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
   flex: 0 1 auto;
   max-width: 240px;
 }
 
-#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-control {
+#view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-control,
+#view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-control {
   flex: 1 1 auto;
   position: relative;
 }
 
-#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .input {
+#view-settings .dp-settings-debridlink-key-row .dp-settings-inline-field-control > .input,
+#view-settings .dp-settings-premiumize-key-row .dp-settings-inline-field-control > .input {
   width: 100%;
   min-width: 0;
   box-sizing: border-box;
 }
 
-#view-settings .dp-settings-debridlink-key-row.is-configured {
+#view-settings .dp-settings-debridlink-key-row.is-configured,
+#view-settings .dp-settings-premiumize-key-row.is-configured {
   --dp-key-status-reserve: 88px;
 }
 
-#view-settings .dp-settings-debridlink-key-row.is-configured .dp-settings-inline-field-control > .input {
+#view-settings .dp-settings-debridlink-key-row.is-configured .dp-settings-inline-field-control > .input,
+#view-settings .dp-settings-premiumize-key-row.is-configured .dp-settings-inline-field-control > .input {
   padding-right: calc(var(--dp-key-status-reserve) + 20px);
 }
 
@@ -1273,14 +1279,16 @@
     max-width: none;
   }
 
-  #view-settings .dp-settings-debridlink-key-row {
+  #view-settings .dp-settings-debridlink-key-row,
+  #view-settings .dp-settings-premiumize-key-row {
     width: 100%;
     align-items: stretch;
     flex-direction: column;
     gap: 10px;
   }
 
-  #view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info {
+  #view-settings .dp-settings-debridlink-key-row > .dp-settings-inline-field-info,
+  #view-settings .dp-settings-premiumize-key-row > .dp-settings-inline-field-info {
     max-width: none;
   }
 

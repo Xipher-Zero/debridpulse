@@ -358,6 +358,16 @@ class IntegrationDescriptor:
     request_types: frozenset[str] = frozenset()
     enabled: bool = True
     priority: int = 0
+    # ``(request kind, priority)`` pairs that replace ``priority`` when
+    # providers already admitted to one competition are ordered for a request
+    # of that kind -- for example a provider's own option to be tried before
+    # another for one kind only. Empty (the default) orders every kind by
+    # ``priority``, exactly as before. It decides no eligibility.
+    request_priority: tuple[tuple[str, int], ...] = ()
+
+    def priority_for(self, kind: str) -> int:
+        """The ordering priority for a request of ``kind``."""
+        return next((value for named, value in self.request_priority if named == kind), self.priority)
 
 
 @dataclass(frozen=True)

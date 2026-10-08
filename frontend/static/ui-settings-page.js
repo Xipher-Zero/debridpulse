@@ -56,6 +56,7 @@
   const aria2Of = s => s?.integrations?.aria2?.options || {};
   const allDebridOf = s => s?.integrations?.alldebrid?.options || {};
   const debridLinkOf = s => s?.integrations?.debridlink?.options || {};
+  const premiumizeOf = s => s?.integrations?.premiumize?.options || {};
   const realDebridOf = s => s?.integrations?.realdebrid?.options || {};
   const torBoxOf = s => s?.integrations?.torbox?.options || {};
   const policyOf = s => s?.transfer_policy || {};
@@ -72,6 +73,8 @@
                         converge: dispatched => renderAllDebridCredential(dispatched)},
     debridlink_api_key: {integration: 'debridlink', option: 'api_key',
                          converge: dispatched => renderApiKeyCredential('debridlink', dispatched)},
+    premiumize_api_key: {integration: 'premiumize', option: 'api_key',
+                         converge: dispatched => renderApiKeyCredential('premiumize', dispatched)},
   });
 
   /* EVERY editable Settings control, and the field boundary each commits at.
@@ -104,7 +107,7 @@
    * SCOPE does with the accepted value -- see registerCommitScopes(). */
   // Every integration namespace a declared control can belong to. Each one is
   // written by the SAME generic scope; nothing about them differs here.
-  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'debridlink', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
+  const INTEGRATION_SCOPES = Object.freeze(['alldebrid', 'debridlink', 'premiumize', 'realdebrid', 'torbox', 'aria2', 'usenet', 'rsync', 'general_rsync',
     'general_webdav']);
 
   const COMMIT_FIELDS = Object.freeze({
@@ -118,6 +121,12 @@
     debridlink_torrent_upload_timeout_seconds: {scope: 'integration:debridlink', option: 'torrent_upload_timeout_seconds'},
     debridlink_host_refresh_interval_hours: {scope: 'integration:debridlink', option: 'host_refresh_interval_hours'},
     debridlink_prepare_backup_torrents: {scope: 'integration:debridlink', option: 'prepare_backup_torrents', commit: 'immediate'},
+    premiumize_api_key: {scope: 'integration:premiumize', option: 'api_key'},
+    premiumize_use_before_usenet: {scope: 'integration:premiumize', option: 'use_before_usenet', commit: 'immediate'},
+    premiumize_prepare_backup_torrents: {scope: 'integration:premiumize', option: 'prepare_backup_torrents', commit: 'immediate'},
+    premiumize_request_timeout_seconds: {scope: 'integration:premiumize', option: 'request_timeout_seconds'},
+    premiumize_upload_timeout_seconds: {scope: 'integration:premiumize', option: 'upload_timeout_seconds'},
+    premiumize_host_refresh_interval_hours: {scope: 'integration:premiumize', option: 'host_refresh_interval_hours'},
     realdebrid_rate_limit_per_minute: {scope: 'integration:realdebrid', option: 'rate_limit_per_minute'},
     realdebrid_request_timeout_seconds: {scope: 'integration:realdebrid', option: 'request_timeout_seconds'},
     realdebrid_torrent_upload_timeout_seconds: {scope: 'integration:realdebrid', option: 'torrent_upload_timeout_seconds'},
@@ -781,7 +790,7 @@
   }
 
   /* An API-key account credential row, for a premium provider whose account
-   * connects by a key the operator pastes (Debrid-Link). It is the AllDebrid
+   * connects by a key the operator pastes (Debrid-Link, Premiumize). It is the AllDebrid
    * row's grammar exactly -- the same inline field, in-field "Key present"
    * status, always-present destructive Remove action, changed-blur commit
    * through the integration's own scope and one canonical confirmation for
@@ -790,6 +799,7 @@
    * (window.DPPremiumAccount), fed by the provider-status owner. */
   const API_KEY_ACCOUNTS = Object.freeze({
     debridlink: {name: 'Debrid-Link', configured: s => !!debridLinkOf(s).api_key_configured},
+    premiumize: {name: 'Premiumize', configured: s => !!premiumizeOf(s).api_key_configured},
   });
 
   const apiKeyPlaceholder = (id, configured) =>
@@ -823,6 +833,7 @@
   const API_KEY_ACCOUNT_LINES = Object.freeze({
     alldebrid: s => !!allDebridOf(s).api_key_configured,
     debridlink: API_KEY_ACCOUNTS.debridlink.configured,
+    premiumize: API_KEY_ACCOUNTS.premiumize.configured,
   });
 
   // The connected account as the provider-status owner established it: the
@@ -1910,9 +1921,51 @@
       headerAction: providerTestAction('test-debridlink'),
     });
 
+    // Absent means OFF: Premiumize participates only once an operator turns
+    // it on, exactly as its definition declares.
+    const premiumize = integrations.premiumize || {enabled: false};
+    const premiumizeCard = providerCard('premiumize', 'Premiumize', `
+      <div data-premiumize-account>${apiKeyAccountLine('premiumize')}</div>
+      ${apiKeyField('premiumize', API_KEY_ACCOUNTS.premiumize.configured(s))}
+      <details class="dp-settings-additional">
+        <summary><span>Additional Settings</span></summary>
+        <div class="dp-settings-additional-body">
+          ${tuningCells(
+            tuningToggle('premiumize_use_before_usenet', 'Use Premiumize Before Usenet',
+              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
+              premiumizeOf(s).use_before_usenet === true),
+            tuningToggle('premiumize_prepare_backup_torrents', 'Prepare Backup Torrents',
+              'Also add torrents to your Premiumize cloud as backup sources while another provider delivers them. Uses your Premiumize account resources.',
+              premiumizeOf(s).prepare_backup_torrents === true),
+            input('premiumize_request_timeout_seconds', 'Request Timeout (seconds)', premiumizeOf(s).request_timeout_seconds ?? 30, {
+              type: 'number', min: 5, max: 300,
+              hint: 'How long DebridPulse waits for an ordinary Premiumize API answer before treating the request as failed.'
+            }),
+            input('premiumize_upload_timeout_seconds', 'Upload Timeout (seconds)', premiumizeOf(s).upload_timeout_seconds ?? 120, {
+              type: 'number', min: 30, max: 900,
+              hint: 'How long DebridPulse waits while uploading a torrent or NZB file to Premiumize.'
+            }),
+            input('premiumize_host_refresh_interval_hours', 'Supported Host Refresh Interval (hours)', premiumizeOf(s).host_refresh_interval_hours ?? 24, {
+              type: 'number', min: 1, max: 168,
+              hint: 'How often DebridPulse refreshes the list of hosts Premiumize supports.'
+            }),
+          )}
+        </div>
+      </details>
+`, premiumize, {
+      className: 'dp-settings-provider-card dp-settings-provider-card--premiumize',
+      titlePrefix: `
+      <span class="dp-settings-provider-chip dp-settings-provider-chip--premiumize" aria-hidden="true">
+        <img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt="">
+      </span>`,
+      displayName: 'Premiumize',
+      headerCopy: 'Resolve supported links, torrents and NZBs through your Premiumize account.',
+      headerAction: providerTestAction('test-premiumize'),
+    });
+
     const {families, providers} = premiumServiceOrder([
       ['usenet', usenetCard], ['alldebrid', provider], ['debridlink', debridLinkCard],
-      ['realdebrid', realDebridCard], ['torbox', torBoxCard],
+      ['premiumize', premiumizeCard], ['realdebrid', realDebridCard], ['torbox', torBoxCard],
     ].map(([id, markup]) => ({id, markup, presentation: integrations[id]?.presentation || {}})));
     const premiumServices = groupCard('Premium Services',
       families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
@@ -3672,6 +3725,8 @@
       if (action === 'test-alldebrid') testConnection('alldebrid', button);
       else if (action === 'test-debridlink') testConnection('debridlink', button);
       else if (action === 'clear-debridlink-key') clearApiKey('debridlink', button);
+      else if (action === 'test-premiumize') testConnection('premiumize', button);
+      else if (action === 'clear-premiumize-key') clearApiKey('premiumize', button);
       else if (deviceAccountAction(action, button)) return;
       else if (action === 'test-usenet') testUsenet(button);
       else if (action === 'clear-alldebrid-key') clearAllDebridKey(button);
@@ -4116,6 +4171,7 @@
       return {api_key: valueOf('alldebrid_api_key')};
     }
     if (kind === 'debridlink') return {api_key: valueOf('debridlink_api_key')};
+    if (kind === 'premiumize') return {api_key: valueOf('premiumize_api_key')};
     throw new Error(`Unsupported connection test: ${kind}`);
   }
 
@@ -4126,8 +4182,9 @@
     const endpoints = {
       alldebrid: '/settings/validate-alldebrid',
       debridlink: '/settings/validate-debridlink',
+      premiumize: '/settings/validate-premiumize',
     };
-    const labels = {alldebrid: 'AllDebrid', debridlink: 'Debrid-Link'};
+    const labels = {alldebrid: 'AllDebrid', debridlink: 'Debrid-Link', premiumize: 'Premiumize'};
     setBusy(button, true, 'Testing…');
     try {
       const result = await request('POST', endpoints[kind], connectionTestPayload(kind), 20000);

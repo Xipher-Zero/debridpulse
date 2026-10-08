@@ -198,12 +198,15 @@ class IntegrationRegistry:
         unconditional claims of its class: they can never yield to it, so
         after them it would never get its probe. A specific claim
         (``ProviderApplicability.specific``) then competes before the
-        scheme-wide ones, which would otherwise always win over it."""
+        scheme-wide ones, which would otherwise always win over it. Priority
+        is the provider's for this request's kind
+        (``IntegrationDescriptor.priority_for``): it only orders the providers
+        already admitted here."""
         return (
             provider.descriptor.id != request.preferred_provider,
             not conditional,
             not specific,
-            -provider.descriptor.priority,
+            -provider.descriptor.priority_for(request.kind),
             provider.descriptor.id,
         )
 

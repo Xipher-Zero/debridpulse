@@ -96,7 +96,8 @@ def test_provider_status_order_is_unchanged_and_debridlink_takes_the_default_slo
     providers among them alphabetically -- test_v113_provider_status_hierarchy.)"""
     premium = sorted((item.presentation.display_order, item.id) for item in definitions
                      if item.presentation.status_tier == "premium_service")
-    assert premium == [(10, "alldebrid"), (11, "realdebrid"), (12, "torbox"), (100, "debridlink"), (900, "usenet")]
+    assert premium == [(10, "alldebrid"), (11, "realdebrid"), (12, "torbox"), (100, "debridlink"), (100, "premiumize"),
+                       (900, "usenet")]
     status_js = (STATIC / "ui-provider-status.js").read_text(encoding="utf-8")
     assert not re.search(r"debrid-?link|usenet", status_js, re.IGNORECASE)
 
@@ -122,7 +123,8 @@ def _catalog_cards():
 
 @needs_node
 def test_settings_services_keeps_usenet_first_then_named_providers_alphabetically():
-    assert _settings_order(_catalog_cards()) == [["usenet"], ["alldebrid", "debridlink", "realdebrid", "torbox"]]
+    assert _settings_order(_catalog_cards()) == [["usenet"], ["alldebrid", "debridlink", "premiumize", "realdebrid",
+                                                              "torbox"]]
 
 
 @needs_node
@@ -132,7 +134,7 @@ def test_a_future_named_provider_sorts_into_place_by_its_name_alone():
               {"id": "aa_new", "presentation": {"status_name": "Zebra", "standard_status_tier": "general_family"}}]
     families, providers = _settings_order(_catalog_cards() + future)
     assert families == ["usenet"]
-    assert providers == ["alldebrid", "zz_new", "debridlink", "realdebrid", "torbox", "aa_new"]
+    assert providers == ["alldebrid", "zz_new", "debridlink", "premiumize", "realdebrid", "torbox", "aa_new"]
 
 
 def test_the_services_order_is_metadata_not_identity_or_routing_priority():

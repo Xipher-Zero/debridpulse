@@ -150,9 +150,9 @@ def test_usenet_is_off_until_an_operator_turns_it_on():
     """The normal state is OFF: enabling is what makes BOTH halves participate."""
     assert usenet_definition.default_enabled is False
     # Every pre-existing integration keeps its participating default; Real-Debrid,
-    # TorBox and Debrid-Link, added later, are opt-in like Usenet.
+    # TorBox, Debrid-Link and Premiumize, added later, are opt-in like Usenet.
     for item in definitions:
-        if item.id not in {"usenet", "realdebrid", "torbox", "debridlink"}:
+        if item.id not in {"usenet", "realdebrid", "torbox", "debridlink", "premiumize"}:
             assert item.default_enabled is True
 
 

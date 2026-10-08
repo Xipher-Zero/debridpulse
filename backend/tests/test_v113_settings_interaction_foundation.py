@@ -158,7 +158,7 @@ def test_the_premium_tier_reserves_its_last_position_for_usenet():
     """
     premium = {d.id: d.presentation.display_order for d in definitions
                if d.presentation.status_tier == PREMIUM_SERVICE}
-    assert set(premium) == {"alldebrid", "debridlink", "realdebrid", "torbox", "usenet"}
+    assert set(premium) == {"alldebrid", "debridlink", "premiumize", "realdebrid", "torbox", "usenet"}
     ordinary = [order for identity, order in premium.items() if identity != "usenet"]
     assert max(ordinary) <= DEFAULT_ORDER
     # Debrid-Link is that integration: it declares no order and lands before Usenet.
@@ -678,9 +678,9 @@ def test_the_header_action_slot_is_neutral_and_optional():
     assert "alldebrid" not in card.lower(), "the generic card names a provider"
     panel = block(SETTINGS_JS, "function sourcesPanel(")
     # Exactly the cards that HAVE a provider-level action ask for the slot:
-    # AllDebrid, Debrid-Link, Real-Debrid, TorBox and Usenet. The Network
+    # AllDebrid, Debrid-Link, Premiumize, Real-Debrid, TorBox and Usenet. The Network
     # Sources group card does not.
-    assert panel.count("headerAction:") == 5, \
+    assert panel.count("headerAction:") == 6, \
         "the rail was applied to a card that did not ask for it"
 
 

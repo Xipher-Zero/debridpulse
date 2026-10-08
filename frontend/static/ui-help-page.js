@@ -315,6 +315,15 @@
           </article>
 
           <article class="dp-help-inset">
+            <h3>Premiumize Usenet (NNTP)</h3>
+            <div class="dp-help-copy dp-help-prose">
+              <p>A Premiumize account also includes direct Usenet access. To download NZBs through it with DebridPulse's own Usenet engine, add it as an ordinary news server under <b>Settings → Services → Usenet</b> with <b>Add Server</b>.</p>
+              <p>Use Host <code>usenet.premiumize.me</code>, Port <code>563</code> with <b>SSL</b> on, your Premiumize <b>Customer ID</b> as the Username, and your Premiumize <b>API key</b> as the Password.</p>
+              <p>This is separate from the Premiumize card: the card resolves links, torrents and NZBs through your Premiumize account, while this server lets the Usenet engine download NZB articles directly.</p>
+            </div>
+          </article>
+
+          <article class="dp-help-inset">
             <h3>Prometheus Metrics</h3>
             <div class="dp-help-copy dp-help-prose">
               <p>DebridPulse exposes Prometheus-compatible metrics at <code>GET /api/metrics</code>. Configure your Prometheus job with <code>metrics_path: /api/metrics</code> and the DebridPulse host and port as the scrape target.</p>

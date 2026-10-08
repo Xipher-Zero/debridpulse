@@ -318,6 +318,40 @@ body.light #view-settings .dp-settings-provider-monogram--debridlink {
   color: #123a5e;
 }
 
+/* Premiumize's identity block: the same chip grammar, in the red and amber of
+   Premiumize's own mark. The mark itself is used as shipped. */
+#view-settings .dp-settings-provider-chip--premiumize {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: grid;
+  place-items: center;
+  overflow: visible;
+  border: 1px solid #c8443a;
+  border-radius: 9px;
+  background: linear-gradient(145deg, #2e0d0b 0%, #4f1612 52%, #6e2219 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(250,214,190,.30),
+    inset 0 -1px 0 rgba(36,8,6,.34),
+    0 1px 3px rgba(0,0,0,.18);
+}
+
+body.light #view-settings .dp-settings-provider-chip--premiumize {
+  border-color: #c24a36;
+  background: linear-gradient(145deg, #fbe3c8 0%, #f6cb98 54%, #f0b46a 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255,250,240,.68),
+    inset 0 -1px 0 rgba(110,34,25,.22),
+    0 1px 3px rgba(60,20,10,.16);
+}
+
+#view-settings .dp-settings-provider-logo--premiumize {
+  width: 28px;
+  height: 28px;
+  display: block;
+  object-fit: contain;
+}
+
 /* The provider-test control uses the same chip-before-copy grammar as tabs,
    and remains a secondary action within its card's header rail. The treatment
    belongs to the CONTROL, so every provider-level Test renders identically and
