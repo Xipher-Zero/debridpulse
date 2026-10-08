@@ -14,7 +14,7 @@ from db.database import get_db
 from transfers import codec
 from transfers import material as mat
 from transfers._repository_base import (
-    active_execution_percentage, active_execution_progress_sql, is_canonical_artifact_row,
+    active_execution_progress_sql, active_execution_projection, is_canonical_artifact_row,
 )
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
@@ -749,8 +749,8 @@ class TransferRepository(_CanonicalTransferRepository):
             current_resource_state=current_resource_state,
         ))
         result["retained_bytes"] = total_retained
-        result["active_execution_progress"] = active_execution_percentage(
-            (execution_row or {}).get("execution_completed"), (execution_row or {}).get("execution_total"))
+        result["active_execution_progress"], result["active_execution_basis"] = active_execution_projection(
+            execution_row)
         if str(result.get("status") or "").lower() == "completed":
             result["progress"] = 100.0
         elif size_unknown:

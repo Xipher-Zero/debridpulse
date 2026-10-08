@@ -8,6 +8,7 @@ the executor's process lifecycle and the real finalizers are proven in
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import socket
 
@@ -714,3 +715,272 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
         text = (STATIC / renderer).read_text(encoding="utf-8")
         for literal in ("'media'", '"media"', "Media Download", "hot-rose", "#EF137F", "yt_dlp"):
             assert literal not in text, (renderer, literal)
+
+
+# -- unified progress: the attempt's total is known as soon as yt-dlp knows it ---------
+
+class _PlannedYoutubeDL:
+    """yt-dlp's surface ``acquire`` drives, with two planned components: a
+    video whose exact size is known and an audio track offered only with an
+    estimate (``filesize_approx`` is never a total)."""
+
+    info = {"extractor_key": "Youtube", "id": "abc", "title": "Clip", "requested_formats": [
+        {"format_id": "137", "ext": "mp4", "protocol": "https", "url": "https://v.example/137", "filesize": 3000},
+        {"format_id": "140", "ext": "m4a", "protocol": "https", "url": "https://v.example/140",
+         "filesize_approx": 1000}]}
+    fetched = (3000, 1000)
+
+    def __init__(self, params):
+        self.hooks = params["progress_hooks"]
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def extract_info(self, _url, download=False):
+        return dict(self.info)
+
+    def urlopen(self, url):
+        import io
+        self.opened = url
+        return io.BytesIO(b"WEBVTT\n\n")
+
+    def dl(self, path, item):
+        size = self.fetched[["137", "140"].index(item["format_id"])]
+        total = item.get("filesize")
+        for done, status in ((size // 2, "downloading"), (size, "finished")):
+            for hook in self.hooks:
+                hook({"status": status, "downloaded_bytes": done, "total_bytes": total})
+        with open(path, "wb") as handle:
+            handle.write(b"x" * size)
+
+
+def test_the_worker_reports_every_planned_components_exact_size_before_fetching(tmp_path, monkeypatch):
+    import yt_dlp
+    events = []
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", _PlannedYoutubeDL)
+    monkeypatch.setattr(worker, "_emit", events.append)
+    monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
+    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
+            "target": str(tmp_path / "Clip.mp4"), "tools": {"ffmpeg": "/bin/true"},
+            "plan": {"container": "mp4", "formats": ["137", "140"], "extractor": "Youtube", "id": "abc",
+                     "subtitle": None}}
+    assert worker.acquire(spec, worker._Phase()) == 0
+    progress = [event for event in events if event.get("event") == "progress"]
+    # Before any byte: the exact size where yt-dlp has one, and no guess where it has an estimate.
+    assert progress[:2] == [
+        {"event": "progress", "component": 0, "downloaded": 0, "total": 3000, "units": None, "unit_total": None,
+         "finished": False},
+        {"event": "progress", "component": 1, "downloaded": 0, "total": None, "units": None, "unit_total": None,
+         "finished": False}]
+    assert events.index(progress[1]) < events.index(progress[2])
+    assert events[-1] == {"event": "completed", "bytes": len(b"muxed")}
+
+
+def _media_run(components):
+    from types import SimpleNamespace
+    from executors.media.executor import _Run
+    reader = asyncio.StreamReader()
+    run = _Run(SimpleNamespace(process=SimpleNamespace(stdout=reader)), None, None, components, 0.0)
+    return run, reader
+
+
+async def _observed(run, reader, *events):
+    from transfers.models import ExecutionHandle
+    executor = MediaExecutor.__new__(MediaExecutor)
+    for event in events:
+        reader.feed_data((json.dumps(event) + "\n").encode())
+    follower = asyncio.ensure_future(executor._follow(run))
+    await asyncio.sleep(0.01)
+    follower.cancel()
+    return executor._running(ExecutionHandle("media", "a", {}), run)
+
+
+def _progress(component, downloaded, total):
+    return {"event": "progress", "component": component, "downloaded": downloaded, "total": total}
+
+
+@pytest.mark.asyncio
+async def test_a_multi_component_attempt_has_a_total_from_its_first_byte():
+    run, reader = _media_run(2)
+    first = await _observed(run, reader, _progress(0, 0, 3000), _progress(1, 0, 1000))
+    assert (first.progress.total_bytes, first.progress.completed_bytes) == (4000, 0)     # known 0, not unknown
+    moving = await _observed(run, reader, _progress(0, 1500, 3000))
+    assert (moving.progress.total_bytes, moving.progress.completed_bytes) == (4000, 1500)
+    assert moving.progress.percentage == pytest.approx(37.5)                           # visibly advances
+    # A later event that omits the total does not withdraw a known one.
+    later = await _observed(run, reader, _progress(0, 3000, None), _progress(1, 400, None))
+    assert (later.progress.total_bytes, later.progress.completed_bytes) == (4000, 3400)
+    assert later.activity.network_active
+
+
+@pytest.mark.asyncio
+async def test_an_estimated_component_keeps_the_total_unknown_until_it_reports_its_own():
+    run, reader = _media_run(2)
+    planned = await _observed(run, reader, _progress(0, 0, 3000), _progress(1, 0, None))
+    assert planned.progress.total_bytes == 0                                           # unknown: no fabricated %
+    video = await _observed(run, reader, _progress(0, 3000, 3000))
+    assert video.progress.total_bytes == 0 and video.progress.completed_bytes == 3000
+    audio = await _observed(run, reader, _progress(1, 10, 900))
+    assert (audio.progress.total_bytes, audio.progress.completed_bytes) == (3900, 3010)
+
+
+@pytest.mark.asyncio
+async def test_finalization_is_local_work_with_no_acquisition_rate():
+    from transfers._engine_base import TransferEngine
+    run, reader = _media_run(1)
+    await _observed(run, reader, _progress(0, 0, 10))
+    finalizing = await _observed(run, reader, _progress(0, 10, 10), {"event": "phase", "phase": "finalize"})
+    assert (finalizing.progress.total_bytes, finalizing.progress.completed_bytes) == (10, 10)
+    assert not finalizing.activity.network_active
+    assert TransferEngine._acquired_bytes(finalizing) is None                          # no speed while muxing
+
+
+# -- segmented media (HLS): what yt-dlp actually reports, through the real path -------
+
+@pytest.mark.asyncio
+async def test_a_segmented_download_reports_exact_bytes_but_no_total_until_it_finishes(tmp_path, monkeypatch):
+    """Real yt-dlp HLS (``m3u8_native``) over a local playlist of uneven
+    segments: its hooks carry exact cumulative bytes and an exact fragment
+    count, but ``total_bytes`` only on the final event (``total_bytes_estimate``
+    is an average-fragment extrapolation and is never a total). Through the
+    worker's hook and the executor's reader, the attempt therefore has moving
+    acquired bytes (speed) and no percentage until the component is done."""
+    import http.server
+    import threading
+    from yt_dlp import YoutubeDL
+    segments = [b"a" * 1000, b"b" * 9000, b"c" * 3000, b"d" * 500]
+    playlist = ("#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-MEDIA-SEQUENCE:0\n"
+                + "".join(f"#EXTINF:2.0,\n{index}.ts\n" for index in range(len(segments))) + "#EXT-X-ENDLIST\n")
+
+    class Origin(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            name = self.path.strip("/")
+            body = playlist.encode() if name == "media.m3u8" else segments[int(name.split(".")[0])]
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Origin)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    events = []
+    monkeypatch.setattr(worker, "_emit", events.append)
+    monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
+    hook = worker._Progress()
+    try:
+        url = f"http://127.0.0.1:{server.server_address[1]}/media.m3u8"
+        with YoutubeDL({"quiet": True, "noprogress": True, "progress_hooks": [hook]}) as ydl:
+            ydl.dl(str(tmp_path / "component-0.ts"), {"id": "x", "url": url, "protocol": "m3u8_native",
+                                                      "ext": "mp4", "http_headers": {}})
+    finally:
+        server.shutdown()
+    progress = [event for event in events if event["event"] == "progress"]
+    downloaded = [event["downloaded"] for event in progress]
+    assert downloaded == sorted(downloaded) and downloaded[-1] == sum(map(len, segments))
+    assert all(event["total"] is None for event in progress[:-1])        # no total while it downloads
+    assert progress[-1]["total"] == sum(map(len, segments))              # only once it has finished
+    # Its units are COMPLETED segments of the exact segment count: never ahead
+    # of the segments its bytes have covered, never backwards, all at the end.
+    ends = [sum(map(len, segments[:count])) for count in range(len(segments) + 1)]
+    units = [event["units"] for event in progress]
+    assert all(event["unit_total"] == len(segments) for event in progress)
+    assert units == sorted(units) and units[-1] == len(segments)
+    assert all(ends[unit] <= event["downloaded"] for unit, event in zip(units, progress))
+    run, reader = _media_run(1)
+    seen = [await _observed(run, reader, {**event, "event": "progress"}) for event in progress]
+    assert all(item.progress.total_bytes == 0 for item in seen[:-1])     # no byte total: never a byte percentage
+    assert [item.progress.completed_bytes for item in seen] == downloaded  # yet the bytes move (speed)
+    assert [(item.progress.completed_units, item.progress.total_units) for item in seen[:-1]] == [
+        (unit, len(segments)) for unit in units[:-1]]                    # the part percentage advances
+    # Finished, its exact byte total is known: the one scope is bytes, complete.
+    assert (seen[-1].progress.total_bytes, seen[-1].progress.completed_bytes) == (13500, 13500)
+
+
+def _parts(component, downloaded=0, total=None, units=None, unit_total=None):
+    return {"event": "progress", "component": component, "downloaded": downloaded, "total": total,
+            "units": units, "unit_total": unit_total}
+
+
+@pytest.mark.asyncio
+async def test_mixed_byte_and_segment_components_have_no_aggregate_percentage():
+    """Exact-size video beside segmented audio: no coherent scope, so no
+    percentage at any boundary -- only moving bytes."""
+    run, reader = _media_run(2)
+    for events in ([_parts(0, 0, 3000), _parts(1)], [_parts(0, 3000, 3000)], [_parts(1, 100, None, 1, 4)],
+                   [_parts(1, 400, None, 4, 4)]):
+        seen = await _observed(run, reader, *events)
+        assert seen.progress.total_bytes == 0 and seen.progress.total_units is None
+    assert seen.progress.completed_bytes == 3400
+
+
+@pytest.mark.asyncio
+async def test_a_subtitle_is_a_planned_part_of_either_coherent_scope():
+    bytes_run, bytes_reader = _media_run(3)                            # video, audio, subtitle
+    seen = await _observed(bytes_run, bytes_reader, _parts(2, 50, 50, 1, 1), _parts(0, 0, 3000), _parts(1, 0, 1000))
+    assert (seen.progress.total_bytes, seen.progress.completed_bytes) == (4050, 50)
+    seen = await _observed(bytes_run, bytes_reader, _parts(0, 3000, 3000))
+    assert seen.progress.percentage == pytest.approx(3050 / 4050 * 100)  # no reset at the boundary
+    parts_run, parts_reader = _media_run(2)                            # one segmented stream, subtitle
+    seen = await _observed(parts_run, parts_reader, _parts(1, 50, 50, 1, 1), _parts(0, 0, None, 0, 9))
+    assert (seen.progress.completed_units, seen.progress.total_units) == (1, 10)
+    seen = await _observed(parts_run, parts_reader, _parts(0, 900, None, 4, 9))
+    assert (seen.progress.total_bytes, seen.progress.completed_units, seen.progress.total_units) == (0, 5, 10)
+
+
+@pytest.mark.asyncio
+async def test_a_stream_that_has_not_started_keeps_the_part_scope_unknown():
+    run, reader = _media_run(2)                                        # two segmented streams
+    first = await _observed(run, reader, _parts(0, 10, None, 1, 8), _parts(1))
+    assert first.progress.total_units is None                          # the audio's count is not known yet
+    later = await _observed(run, reader, _parts(0, 80, None, 8, 8), _parts(1, 5, None, 0, 2))
+    assert (later.progress.completed_units, later.progress.total_units) == (8, 10)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", [_parts(0, 30, None, 3, 9), _parts(0, 30, None, 1, 8), _parts(0, 30, None, 9, 8)])
+async def test_changing_backward_or_overrunning_units_are_never_trusted_again(bad):
+    run, reader = _media_run(1)
+    seen = await _observed(run, reader, _parts(0, 20, None, 2, 8), bad, _parts(0, 40, None, 4, 8))
+    assert seen.progress.completed_units is None and seen.progress.total_units is None
+    assert seen.progress.completed_bytes == 40
+
+
+def test_the_planned_subtitle_is_fetched_first_as_one_complete_part(tmp_path, monkeypatch):
+    import yt_dlp
+
+    class Subtitled(_PlannedYoutubeDL):
+        info = {**_PlannedYoutubeDL.info,
+                "subtitles": {"en": [{"ext": "vtt", "url": "https://v.example/en.vtt"}]}}
+    events = []
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", Subtitled)
+    monkeypatch.setattr(worker, "_emit", events.append)
+    monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
+    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
+            "target": str(tmp_path / "Clip.mkv"), "tools": {"ffmpeg": "/bin/true"},
+            "plan": {"container": "mkv", "formats": ["137", "140"], "extractor": "Youtube", "id": "abc",
+                     "subtitle": {"kind": "authored", "language": "en", "ext": "vtt"}}}
+    assert worker.acquire(spec, worker._Phase()) == 0
+    progress = [event for event in events if event.get("event") == "progress"]
+    size = len(b"WEBVTT\n\n")
+    assert progress[0] == {"event": "progress", "component": 2, "downloaded": size, "total": size,
+                           "units": 1, "unit_total": 1, "finished": True}
+    assert [event["component"] for event in progress[1:3]] == [0, 1]    # then every stream's plan
+    assert all(event["downloaded"] == 0 for event in progress[1:3])     # before any stream byte
+
+
+@pytest.mark.asyncio
+async def test_only_planned_components_contribute_to_the_denominator():
+    """The scope is exactly the plan: its streams plus a planned subtitle
+    (``_Run.components``); an event for any other index counts for nothing."""
+    run, reader = _media_run(1)
+    seen = await _observed(run, reader, _parts(0, 10, 100), _parts(1, 50, 50, 1, 1), _parts(7, 9, 9))
+    assert (seen.progress.total_bytes, seen.progress.completed_bytes) == (100, 10)
+    assert seen.progress.total_units is None

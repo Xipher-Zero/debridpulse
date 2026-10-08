@@ -1,27 +1,24 @@
-"""DP 1.0.13 post-Usenet corrective pass, work item G.
-
-ONE neutral aggregate download-throughput fact, owned by core, consumed
+"""DP 1.0.13: ONE download-throughput fact, owned by core, consumed
 identically by the topbar and the browser tab.
 
-Gate-1 characterization decided the model. The aria2 executor reports a
-truthful rate per execution (``downloadSpeed`` of that gid). The bundled
-SABnzbd 5.1.3 does NOT: ``build_queue()`` publishes no per-slot rate at all and
-only one service-wide meter (``queue.kbpersec`` from ``BPSMeter.bps``). Per-job
-rates must therefore never be fabricated from it, so the smallest neutral
-executor-aggregate seam is added -- with an explicit precedence rule that makes
-counting the same throughput twice structurally impossible.
+Unified speed presentation: a rate is never read from an executor. Every
+acquiring execution's cumulative acquired-byte counter is sampled with the time
+it was observed, and the meter presents byte deltas over the actual elapsed time
+of a trailing four-second window -- per execution and, summed once per
+execution, in aggregate. A coarse counter (SAB's queue reports megabytes with
+limited precision) is smoothed by the same window, never by any executor's own
+figure, so no executor-level rate seam remains.
 """
-import asyncio
 import re
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
-from sab_fakes import staged_store
-
-from transfers import contracts, models
-from transfers.models import ExecutionActivity, ExecutorCapabilities, TransferProgress
+from transfers.models import (
+    ExecutionActivity, ExecutionHandle, ExecutionObservation, ExecutionState, ExecutorCapabilities, TransferProgress,
+)
+from transfers.runtime_telemetry import WINDOW_SECONDS, ExecutionThroughputMeter
 
 BACKEND = Path(__file__).resolve().parents[1]
 STATIC = BACKEND.parent / "frontend" / "static"
@@ -29,40 +26,18 @@ APP_JS = (STATIC / "app.js").read_text(encoding="utf-8")
 INDEX = (STATIC / "index.html").read_text(encoding="utf-8")
 
 CORE = (BACKEND / "transfers",)
+MIB = 1024 * 1024
 
 
 # --- the neutral contract ---------------------------------------------------
 
-def test_a_neutral_executor_aggregate_throughput_contract_exists():
-    assert hasattr(models, "ExecutorThroughput")
-    assert hasattr(contracts, "ExecutorAggregateThroughput")
-    value = models.ExecutorThroughput()
-    assert value.bytes_per_second == 0 and value.observed is False
-    assert ExecutorCapabilities().aggregate_throughput is False
-
-
-def test_the_capability_promises_the_operation_at_registration():
+def test_no_executor_level_rate_seam_remains():
+    from transfers import contracts, models
     from transfers.registry import _EXECUTOR_CAPABILITIES
-    assert _EXECUTOR_CAPABILITIES["aggregate_throughput"] == (contracts.ExecutorAggregateThroughput,)
-
-
-def test_registration_refuses_an_undeclared_aggregate_throughput_implementation():
-    from tests.executor_fakes import LedgerExecutor, ledger_capabilities
-    from transfers.registry import IntegrationRegistry
-
-    async def _authorize(*_args):
-        return True
-
-    class _Liar(LedgerExecutor):
-        aggregate_download_throughput = None
-
-    executor = _Liar(_authorize, capabilities=ledger_capabilities(aggregate_throughput=True))
-    with pytest.raises(TypeError):
-        IntegrationRegistry().register_executor(executor)
-
-    # ...and an honest one registers.
-    honest = LedgerExecutor(_authorize, capabilities=ledger_capabilities(aggregate_throughput=True))
-    IntegrationRegistry().register_executor(honest)
+    assert not hasattr(models, "ExecutorThroughput")
+    assert not hasattr(contracts, "ExecutorAggregateThroughput")
+    assert "aggregate_throughput" not in _EXECUTOR_CAPABILITIES
+    assert not hasattr(ExecutorCapabilities(), "aggregate_throughput")
 
 
 def test_the_neutral_seam_carries_no_integration_vocabulary():
@@ -72,174 +47,191 @@ def test_the_neutral_seam_carries_no_integration_vocabulary():
         assert not banned.search(source), name
 
 
-# --- the core-owned meter ---------------------------------------------------
+# --- the core-owned meter: byte deltas over the trailing window -------------
 
-def _meter(**kwargs):
-    from transfers.runtime_telemetry import ExecutionThroughputMeter
-    return ExecutionThroughputMeter(**kwargs)
+class Clock:
+    def __init__(self, now=100.0):
+        self.now = now
+
+    def __call__(self):
+        return self.now
+
+
+def _meter(clock, **kwargs):
+    return ExecutionThroughputMeter(clock=clock, **kwargs)
+
+
+def _feed(meter, clock, counters, *, step=0.5):
+    """One complete pass per entry of ``counters`` (``{attempt: bytes|None}``),
+    ``step`` seconds apart; returns the aggregate after every pass."""
+    seen = []
+    for counter in counters:
+        clock.now += step
+        meter.record({key: (clock.now, value) for key, value in counter.items()})
+        seen.append(meter.current())
+    return seen
 
 
 def test_an_idle_meter_reports_zero():
-    assert _meter().current() == 0
+    assert _meter(Clock()).current() == 0
 
 
-def test_the_meter_sums_every_contributing_executor():
-    meter = _meter()
-    meter.record({"aria2": 1500, "other": 2500})
-    assert meter.current() == 4000
+def test_one_sample_is_no_elapsed_time_and_shows_no_rate():
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"a": 10 * MIB}])
+    assert meter.current() == 0 and meter.rate("a") == 0
 
 
-def test_the_meter_is_rebuilt_from_scratch_each_cycle_and_never_retains_a_stale_rate():
-    meter = _meter()
-    meter.record({"aria2": 9000})
-    assert meter.current() == 9000
-    meter.record({})
+def test_a_partial_window_shows_speed_at_the_next_sample():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": 0}, {"a": MIB // 2}])
+    assert seen == [0, MIB]                                # 0.5 MiB in 0.5 s, before any full window
+
+
+def test_a_steady_counter_is_its_true_rate_at_every_update():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": index * MIB} for index in range(20)])
+    assert all(value == 2 * MIB for value in seen[1:])     # 1 MiB per 0.5 s
+
+
+def test_a_brief_chunk_gap_keeps_the_trailing_rate():
+    clock = Clock()
+    meter = _meter(clock)
+    burst = [{"a": index * MIB} for index in range(9)]     # 4 s at 2 MiB/s
+    gap = [{"a": 8 * MIB}, {"a": 8 * MIB}]                 # one second without bytes
+    seen = _feed(meter, clock, burst + gap + [{"a": 9 * MIB}])
+    assert seen[8] == 2 * MIB
+    # The window's start keeps sliding over the burst: 7 then 6 MiB in 4 s.
+    assert seen[9] == int(7 * MIB / WINDOW_SECONDS) and seen[10] == int(6 * MIB / WINDOW_SECONDS)
+    assert min(seen[1:]) > 0                               # never collapses to zero between chunks
+
+
+def test_sustained_idle_decays_to_zero_at_the_window():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": index * MIB} for index in range(9)] + [{"a": 8 * MIB}] * 9)
+    idle = seen[9:]
+    assert all(later < earlier for earlier, later in zip(idle, idle[1:-1]))   # decays with elapsed time
+    assert idle[6] > 0 and idle[7] == 0                    # gone 4 s after the last byte, not held
+
+
+def test_unobserved_elapsed_time_decays_the_rate_too():
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"a": index * MIB} for index in range(9)])
+    assert meter.current() == 2 * MIB
+    clock.now += 3.0
+    assert 0 < meter.current() < 2 * MIB                   # no new sample is not a held rate
+    clock.now += 2.5
     assert meter.current() == 0
 
 
-def test_the_meter_reports_zero_once_its_sample_is_older_than_the_permitted_age():
-    now = [100.0]
-    meter = _meter(clock=lambda: now[0], max_age_seconds=5.0)
-    meter.record({"aria2": 4096})
-    now[0] = 104.0
-    assert meter.current() == 4096
-    now[0] = 106.0
+def test_a_counter_reset_starts_a_new_segment_without_a_spike():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": index * MIB} for index in range(9)] + [{"a": 0}, {"a": MIB // 2}])
+    assert seen[9] == 0                                    # a restart is a discontinuity, never negative
+    assert seen[10] == MIB                                 # and measured afresh
+
+
+@pytest.mark.parametrize("stop", ["paused", "finished", "gone"])
+def test_a_discontinuity_shows_no_stale_rate(stop):
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"a": index * MIB} for index in range(9)])
+    final = {"paused": {"a": None}, "finished": {"a": None}, "gone": {}}[stop]
+    seen = _feed(meter, clock, [final])
+    assert seen == [0] and meter.rate("a") == 0
+
+
+def test_resume_is_measured_from_its_own_samples():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": 0}, {"a": 4 * MIB}, {"a": None}, {"a": 4 * MIB}, {"a": 4 * MIB + MIB // 4}])
+    assert seen == [0, 8 * MIB, 0, 0, MIB // 2]           # no rate spans the pause
+
+
+def test_a_failover_to_a_new_attempt_is_a_new_identity():
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"old": index * MIB} for index in range(9)])
+    seen = _feed(meter, clock, [{"new": 0}, {"new": MIB}])
+    assert seen == [0, 2 * MIB] and meter.rate("old") == 0
+
+
+def test_the_aggregate_counts_each_execution_once():
+    clock = Clock()
+    meter = _meter(clock)
+    seen = _feed(meter, clock, [{"a": index * MIB, "b": index * MIB // 2} for index in range(9)])
+    assert seen[-1] == 3 * MIB == meter.rate("a") + meter.rate("b")
+
+
+def test_a_late_pass_is_ignored_rather_than_read_as_a_rollback():
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"a": index * MIB} for index in range(9)])
+    before = meter.current()
+    meter.record({"a": (clock.now - 1.0, 6 * MIB)})        # an older observation, recorded late
+    assert meter.current() == before
+    meter.record({"a": (clock.now - 1.0, None)})           # a late "stopped" cannot retire newer truth
+    assert meter.current() == before
+    meter.record({})                                       # a pass that started before it, also late
+    assert meter.current() == before
+
+
+def test_coarse_quantized_counters_are_stabilized_by_the_window():
+    """SAB's queue counter moves in whole articles at irregular intervals."""
+    clock = Clock()
+    meter = _meter(clock)
+    article = 768 * 1024
+    counters, total, seen = [], 0, []
+    for index in range(40):                                # ~1.5 MiB/s in article-sized steps
+        total += article * (index % 2 + (1 if index % 5 == 0 else 0))
+        counters.append({"a": total})
+    seen = _feed(meter, clock, counters)
+    steady = seen[9:]
+    assert max(steady) - min(steady) < 0.25 * max(steady)  # the 0.5 s deltas swing 0..2 articles
+    assert all(value > 0 for value in steady)
+
+
+def test_history_is_bounded():
+    clock = Clock()
+    meter = _meter(clock)
+    _feed(meter, clock, [{"a": index} for index in range(500)], step=0.01)
+    assert len(meter._series["a"]) <= 64
+
+
+def test_the_meter_reports_zero_once_observation_itself_stops():
+    clock = Clock()
+    meter = _meter(clock, max_age_seconds=5.0)
+    _feed(meter, clock, [{"a": index * MIB} for index in range(9)])
+    clock.now += 6.0
     assert meter.current() == 0
 
 
-def test_the_meter_never_reports_a_negative_rate():
-    meter = _meter()
-    meter.record({"aria2": -10})
-    assert meter.current() == 0
+# --- the engine feeds counters, never an executor's rate --------------------
+
+def _observation(state=ExecutionState.RUNNING, completed=10, rate=999_999, network_active=True, error=None):
+    return ExecutionObservation(ExecutionHandle("x", "a", "c"), state, TransferProgress(100, completed, rate),
+                                error=error, activity=ExecutionActivity(network_active=network_active))
 
 
-# --- precedence: one contribution per executor, never two -------------------
-
-class _Observation:
-    def __init__(self, rate, network_active=True):
-        self.progress = TransferProgress(100, 10, rate)
-        self.activity = ExecutionActivity(network_active=network_active)
-
-
-class _PerExecution:
-    def __init__(self):
-        self.capabilities = ExecutorCapabilities()
-
-
-class _Aggregating:
-    def __init__(self, value=None, error=None):
-        # Constructed lazily so the module still imports before the neutral
-        # capability exists (this file is written RED).
-        self.capabilities = ExecutorCapabilities(aggregate_throughput=True)
-        self._value, self._error = value, error
-        self.calls = 0
-
-    async def aggregate_download_throughput(self):
-        self.calls += 1
-        if self._error:
-            raise self._error
-        return self._value
-
-
-async def _contribution(executor, observations):
+def test_only_an_acquiring_execution_contributes_its_counter():
     from transfers._engine_base import TransferEngine
-    return await TransferEngine._executor_throughput(executor, observations)
+    assert TransferEngine._acquired_bytes(_observation()) == 10
+    for observation in (_observation(ExecutionState.PAUSED), _observation(ExecutionState.QUEUED),
+                        _observation(ExecutionState.SUCCEEDED), _observation(ExecutionState.UNKNOWN),
+                        _observation(network_active=False)):                 # e.g. post-processing
+        assert TransferEngine._acquired_bytes(observation) is None
 
 
-@pytest.mark.asyncio
-async def test_a_per_execution_executor_contributes_the_sum_of_its_active_executions():
-    assert await _contribution(_PerExecution(), [_Observation(1000), _Observation(2000)]) == 3000
-
-
-@pytest.mark.asyncio
-async def test_a_per_execution_executor_never_counts_an_idle_or_paused_execution():
-    observations = [_Observation(1000), _Observation(5000, network_active=False)]
-    assert await _contribution(_PerExecution(), observations) == 1000
-
-
-@pytest.mark.asyncio
-async def test_an_aggregating_executor_is_counted_exactly_once_whatever_its_job_count():
-    executor = _Aggregating(models.ExecutorThroughput(7000, True))
-    observations = [_Observation(1000), _Observation(2000), _Observation(3000)]
-    assert await _contribution(executor, observations) == 7000
-    assert executor.calls == 1
-
-
-@pytest.mark.asyncio
-async def test_an_unreachable_aggregating_executor_contributes_zero_not_its_last_value():
-    assert await _contribution(_Aggregating(error=RuntimeError("unreachable")), [_Observation(9)]) == 0
-    assert await _contribution(_Aggregating(models.ExecutorThroughput(5000, False)), [_Observation(9)]) == 0
-
-
-@pytest.mark.asyncio
-async def test_an_aggregating_executor_that_answers_with_the_wrong_shape_contributes_zero():
-    assert await _contribution(_Aggregating("fast"), [_Observation(9)]) == 0
-
-
-# --- the bundled acquisition executor ---------------------------------------
-
-def test_the_usenet_backed_executor_declares_the_neutral_aggregate_capability():
-    from executors.sabnzbd.executor import SabnzbdExecutor
-    assert SabnzbdExecutor.capabilities.aggregate_throughput is True
-
-
-def test_the_direct_transfer_executor_keeps_its_truthful_per_execution_rates():
-    from executors.aria2.executor import Aria2Executor
-    assert Aria2Executor.capabilities.aggregate_throughput is False
-
-
-@pytest.mark.asyncio
-async def test_the_acquisition_client_normalizes_the_native_unit_once():
-    from executors.sabnzbd.client import SabnzbdClient, SabEndpoint
-
-    class _Session:
-        def __init__(self, payload):
-            self.payload = payload
-
-        def __call__(self):
-            return self
-
-        async def __aenter__(self):
-            return self
-
-        async def __aexit__(self, *exc):
-            return False
-
-        def post(self, *args, **kwargs):
-            payload = self.payload
-
-            class _Response:
-                status = 200
-
-                async def text(self):
-                    return payload
-
-                async def __aenter__(self_inner):
-                    return self_inner
-
-                async def __aexit__(self_inner, *exc):
-                    return False
-            return _Response()
-
-    client = SabnzbdClient(SabEndpoint("http://127.0.0.1:8090", "k"),
-                           session_factory=_Session('{"queue": {"kbpersec": "1024.00"}}'))
-    assert await client.download_throughput() == 1024 * 1024
-
-
-@pytest.mark.asyncio
-async def test_the_acquisition_executor_reports_unobserved_when_the_service_cannot_answer():
-    from executors.sabnzbd.executor import SabnzbdConfiguration, SabnzbdExecutor
-    from tests.sab_fakes import FakeSab
-
-    sab = FakeSab()
-    executor = SabnzbdExecutor(sab, SabnzbdConfiguration("/d", "/d/w", "/d/c"), lambda *a: asyncio.sleep(0, True),
-        staged_input=staged_store(),
-    )
-    sab.download_bytes_per_second = 2048
-    assert (await executor.aggregate_download_throughput()) == models.ExecutorThroughput(2048, True)
-    sab.reachable = False
-    assert (await executor.aggregate_download_throughput()).observed is False
-    assert (await executor.aggregate_download_throughput()).bytes_per_second == 0
+def test_the_engine_never_reads_an_executor_reported_rate():
+    source = (BACKEND / "transfers" / "_engine_base.py").read_text(encoding="utf-8")
+    body = source[source.index("def _acquired_bytes"):source.index("async def _release_runtime_reservations")]
+    assert "bytes_per_second" not in body and "completed_bytes" in body
 
 
 # --- the neutral presentation route -----------------------------------------

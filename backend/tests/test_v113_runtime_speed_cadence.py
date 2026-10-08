@@ -8,7 +8,7 @@ once per execution reconcile cycle (the 2 s policy interval plus ~150 ms of
 cycle work). The meter was rebuilt only at the end of each whole
 repository-backed cycle, so the volatile fact was hostage to it.
 
-The one core owner now also samples that same counting rule between cycles,
+The one core owner now also samples that same rule between cycles,
 from the live writers alone (bounded by the execution width), without waiting
 for the cycle; the same observation persists only factual nonterminal
 activity, guarded. The presentation read of it is pure memory and never waits
@@ -26,7 +26,7 @@ import pytest_asyncio
 import db.database as database
 from executor_fakes import LedgerExecutor, LedgerProvider
 from transfers.convergence_engine import TransferEngine
-from transfers.models import TransferRequest
+from transfers.models import ExecutionState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
@@ -55,34 +55,46 @@ async def acquiring(tmp_path, monkeypatch):
     return SimpleNamespace(engine=engine, repository=repository, executor=executor)
 
 
-def _rate(executor, bytes_per_second):
-    for job in executor.jobs.values():
-        job.progress = job.progress.__class__(job.progress.total_bytes, job.progress.completed_bytes,
-                                              bytes_per_second)
+class SteppedClock:
+    def __init__(self, start):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+
+async def _moving(acquiring, bytes_per_second, observe, seconds=4.0):
+    """The job acquires at ``bytes_per_second`` -- counter evidence, one
+    observation pass every half second -- for a whole trailing window."""
+    meter = acquiring.engine.throughput
+    if not isinstance(meter.clock, SteppedClock):
+        meter.clock = SteppedClock(meter.clock() + 1)
+    for _ in range(int(seconds / 0.5)):
+        for job in acquiring.executor.jobs.values():
+            job.state = ExecutionState.RUNNING
+            job.progress = job.progress.__class__(64 * MIB, job.progress.completed_bytes + bytes_per_second // 2, 1)
+        meter.clock.now += 0.5
+        await observe()
 
 
 @pytest.mark.asyncio
 async def test_the_throughput_fact_follows_the_executor_between_reconcile_cycles(acquiring):
-    _rate(acquiring.executor, 2 * MIB)
-    await acquiring.engine.reconcile_executions()
+    await _moving(acquiring, 2 * MIB, acquiring.engine.reconcile_executions)
     assert acquiring.engine.throughput.current() == 2 * MIB
-    # The executor's rate changes; no reconcile cycle runs.
-    _rate(acquiring.executor, 7 * MIB)
-    await acquiring.engine.sample_throughput()
+    # The executor's pace changes; no reconcile cycle runs.
+    await _moving(acquiring, 7 * MIB, acquiring.engine.sample_throughput)
     assert acquiring.engine.throughput.current() == 7 * MIB, "speed stayed hostage to the reconcile cycle"
 
 
 @pytest.mark.asyncio
 async def test_sampling_reads_only_the_live_writers_never_the_decomposition(acquiring, monkeypatch):
-    _rate(acquiring.executor, 1 * MIB)
-    await acquiring.engine.reconcile_executions()
+    await _moving(acquiring, 1 * MIB, acquiring.engine.reconcile_executions)
 
     async def forbidden(*_args, **_kwargs):
         raise AssertionError("throughput sampling walked transfers or artifacts")
     for name in ("active", "artifacts", "occupied_execution_slots", "executions"):
         monkeypatch.setattr(acquiring.repository, name, forbidden)
-    _rate(acquiring.executor, 3 * MIB)
-    await acquiring.engine.sample_throughput()
+    await _moving(acquiring, 3 * MIB, acquiring.engine.sample_throughput)
     assert acquiring.engine.throughput.current() == 3 * MIB
 
 
@@ -99,11 +111,9 @@ async def test_sampling_never_revives_an_executor_the_cycle_found_idle(acquiring
 
 @pytest.mark.asyncio
 async def test_sampling_never_waits_for_the_reconcile_cycle(acquiring):
-    _rate(acquiring.executor, 1 * MIB)
-    await acquiring.engine.reconcile_executions()
-    _rate(acquiring.executor, 5 * MIB)
+    await _moving(acquiring, 1 * MIB, acquiring.engine.reconcile_executions)
     async with acquiring.engine._execution_cycle_lock:               # a long cycle is running
-        await asyncio.wait_for(acquiring.engine.sample_throughput(), 1)
+        await asyncio.wait_for(_moving(acquiring, 5 * MIB, acquiring.engine.sample_throughput), 1)
         assert acquiring.engine.throughput.current() == 5 * MIB
 
 
@@ -161,3 +171,30 @@ async def test_the_scheduler_samples_throughput_at_presentation_cadence(monkeypa
     task.cancel()
     gaps = [b - a for a, b in zip(calls, calls[1:])]
     assert len(calls) >= 3 and max(gaps) <= 0.6
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("path", ["sample_throughput", "reconcile_executions"])
+async def test_a_slow_observation_is_timed_when_its_counters_were_read(acquiring, monkeypatch, path):
+    """1 MiB/s, observed through an answer that takes 1.5 s to arrive: the
+    counter is as of the answer, so the elapsed time must be too -- timing it
+    from the request would report 4 MiB/s."""
+    meter = acquiring.engine.throughput
+    clock = meter.clock = SteppedClock(meter.clock() + 1)
+    began = clock.now
+    observe_many = acquiring.executor.observe_many
+    latency = [0.0]
+
+    async def slow(handles):
+        clock.now += latency[0]                                       # the answer arrives later...
+        for job in acquiring.executor.jobs.values():                  # ...with the counter as of then
+            job.state = ExecutionState.RUNNING
+            job.progress = job.progress.__class__(64 * MIB, int((clock.now - began) * MIB), 1)
+        return await observe_many(handles)
+
+    monkeypatch.setattr(acquiring.executor, "observe_many", slow)
+    await getattr(acquiring.engine, path)()
+    clock.now += 0.5
+    latency[0] = 1.5
+    await getattr(acquiring.engine, path)()
+    assert meter.current() == MIB

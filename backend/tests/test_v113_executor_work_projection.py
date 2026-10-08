@@ -20,11 +20,13 @@ from fake_integrations import MemoryExecutor, ParcelProvider
 from fastapi import HTTPException
 from transfers.convergence_engine import TransferEngine
 from transfers.models import (
-    ExecutionControl, ExecutionObservation, ExecutionState, TransferProgress, TransferRequest,
+    ExecutionActivity, ExecutionControl, ExecutionObservation, ExecutionState, TransferProgress, TransferRequest,
 )
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+
+MIB = 1024 * 1024
 
 
 class Commands:
@@ -62,10 +64,9 @@ async def work(tmp_path, monkeypatch):
     registry.register_provider(ParcelProvider())
     registry.register_provider(LedgerProvider())
     copier = MemoryExecutor(repository.authorize_execution)
-    # The other executor measures throughput for ITSELF and publishes no
-    # per-job rate -- the SABnzbd shape.
-    service = LedgerExecutor(repository.authorize_execution,
-                             capabilities=ledger_capabilities(aggregate_throughput=True))
+    # The other executor reports no meaningful rate of its own -- the
+    # SABnzbd shape; core measures every execution from its byte counter.
+    service = LedgerExecutor(repository.authorize_execution, capabilities=ledger_capabilities())
     registry.register_executor(copier)
     registry.register_executor(service)
     now = [1000.0]
@@ -142,27 +143,47 @@ async def test_state_filters_are_mapped_from_the_neutral_execution_state(work):
     assert set(executor_work.FILTER_GROUPS) == set(ExecutionState)
 
 
+class SteppedClock:
+    def __init__(self, start):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+
+async def measured(work):
+    """Both executions acquire 1 MiB/s by their byte counters for a whole
+    window, each reporting a different -- ignored -- rate of its own."""
+    await two_executions(work)
+    meter = work.engine.throughput
+    meter.clock = SteppedClock(meter.clock() + 1)
+    for _ in range(9):
+        for attempt, job in list(work.copier.jobs.items()):
+            work.copier.jobs[attempt] = replace(
+                job, state=ExecutionState.RUNNING, activity=ExecutionActivity(network_active=True),
+                progress=TransferProgress(64 * MIB, job.progress.completed_bytes + MIB // 2, 77))
+        for job in work.service.jobs.values():
+            job.state = ExecutionState.RUNNING
+            job.progress = TransferProgress(64 * MIB, job.progress.completed_bytes + MIB // 2, 0)
+        meter.clock.now += 0.5
+        await work.engine.sample_throughput()
+    return await executor_work.list_executor_work(work.application)
+
+
 @pytest.mark.asyncio
-async def test_per_job_speed_is_unavailable_for_an_aggregate_throughput_executor(work):
-    payload = await two_executions(work)
-    by_executor = {row["executor_id"]: row for row in payload["items"]}
-    service_row = by_executor["ledger-copy"]
-    assert service_row["bytes_per_second"] is None
-    assert service_row["speed_measured_per_execution"] is False
-    copier_row = by_executor["memory-copy"]
-    assert isinstance(copier_row["bytes_per_second"], int)
-    assert copier_row["speed_measured_per_execution"] is True
+async def test_per_job_speed_is_the_core_measured_rate_for_every_executor(work):
+    payload = await measured(work)
+    for row in payload["items"]:
+        assert row["bytes_per_second"] == MIB, row["executor_id"]       # never the executor's own figure
+        assert row["speed_measured_per_execution"] is True
 
 
 @pytest.mark.asyncio
 async def test_aggregate_speed_comes_from_core_telemetry_and_is_never_double_counted(work):
-    work.service.aggregate_throughput = 4096
-    payload = await two_executions(work)
+    payload = await measured(work)
     assert payload["summary"]["download_speed"] == work.engine.throughput.current()
-    # Not a re-derivation from the rows: the aggregate-throughput executor's
-    # own figure is counted once, and its rows contribute nothing.
-    per_row = sum(row["bytes_per_second"] or 0 for row in payload["items"])
-    assert payload["summary"]["download_speed"] != per_row or per_row == 0
+    # The aggregate is exactly its executions' rates, each counted once.
+    assert payload["summary"]["download_speed"] == sum(row["bytes_per_second"] for row in payload["items"]) == 2 * MIB
 
 
 @pytest.mark.asyncio

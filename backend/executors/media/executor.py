@@ -88,6 +88,28 @@ class _Run:
     terminal: ExecutionObservation | None = None
 
 
+def _count(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
+def _component(previous, event: dict) -> tuple:
+    """One component's ``(downloaded, byte total, completed units, unit
+    total)`` after a worker progress event. A total, once known, is not
+    withdrawn by an event that omits it; a unit total that changes, or units
+    that run backwards or past it, make the component's units unknown for the
+    rest of the attempt (0) rather than a figure that cannot be trusted."""
+    _downloaded, total, units, unit_total = previous or (0, None, None, None)
+    reported = _count(event.get("total"))
+    total = reported or total
+    count, done = _count(event.get("unit_total")), _count(event.get("units"))
+    if count:
+        unit_total = count if unit_total is None else (unit_total if unit_total == count else 0)
+    if unit_total and done is not None:
+        units = done if done <= unit_total and done >= (units or 0) else None
+        unit_total = unit_total if units is not None else 0
+    return max(0, int(event.get("downloaded") or 0)), total, units, unit_total
+
+
 class MediaExecutor:
     descriptor = IntegrationDescriptor(EXECUTOR_ID, "Media Downloads", frozenset())
     capabilities = ExecutorCapabilities(
@@ -212,7 +234,9 @@ class MediaExecutor:
                                                  result=self._record_path(handle.attempt_id))
             except ProcessGroupAlive:
                 return await self.observe(handle)
-            run = _Run(owned, target, workspace, len(media["formats"]), time.monotonic())
+            # The acquisition's whole scope: every planned stream and a planned subtitle.
+            run = _Run(owned, target, workspace, len(media["formats"]) + bool(media.get("subtitle")),
+                       time.monotonic())
             self._runs[handle.attempt_id] = run
             run.tasks = [asyncio.ensure_future(self._follow(run)), asyncio.ensure_future(self._pump_stderr(run))]
             return self._running(handle, run)
@@ -237,9 +261,7 @@ class MediaExecutor:
             if not isinstance(event, dict):
                 continue
             if event.get("event") == "progress" and isinstance(event.get("component"), int):
-                total = event.get("total")
-                run.progress[event["component"]] = (max(0, int(event.get("downloaded") or 0)),
-                                                    int(total) if isinstance(total, int) and total > 0 else None)
+                run.progress[event["component"]] = _component(run.progress.get(event["component"]), event)
             elif event.get("event") == "phase" and event.get("phase") == "finalize":
                 run.finalizing = True
 
@@ -253,20 +275,24 @@ class MediaExecutor:
     # ── observation ────────────────────────────────────────────────────────
 
     def _running(self, handle: ExecutionHandle, run: _Run) -> ExecutionObservation:
-        completed = sum(downloaded for downloaded, _total in run.progress.values())
-        totals = [total for _downloaded, total in run.progress.values()]
-        # A total is known only when every planned component reported its own.
-        total = sum(totals) if len(totals) == run.components and all(totals) else 0
+        parts = [run.progress.get(index) for index in range(run.components)]
+        completed = sum(part[0] for part in parts if part)
+        whole = all(parts)
+        # One coherent scope or none: the whole plan in exact bytes, else the
+        # whole plan in completed units; a mix is no total at all.
+        total = sum(part[1] for part in parts) if whole and all(part[1] for part in parts) else 0
+        units = (sum(part[2] for part in parts), sum(part[3] for part in parts)) if (
+            not total and whole and all(part[3] and part[2] is not None for part in parts)) else (None, None)
         now = time.monotonic()
         then, before = run.sample
         rate = int((completed - before) / (now - then)) if then and now > then and completed >= before else 0
         run.sample = (now, completed)
         if run.finalizing:
             # Lossless finalization is local work: no network, no progress.
-            return ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(total, completed, 0),
+            return ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(total, completed, 0, *units),
                                         activity=ExecutionActivity())
         return ExecutionObservation(
-            handle, ExecutionState.RUNNING, TransferProgress(total, completed, max(0, rate)),
+            handle, ExecutionState.RUNNING, TransferProgress(total, completed, max(0, rate), *units),
             activity=ExecutionActivity(network_active=True, bandwidth_reservation_required=True,
                                        progress_expected=bool(run.progress)))
 

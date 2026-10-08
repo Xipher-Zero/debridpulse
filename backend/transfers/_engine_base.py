@@ -144,7 +144,7 @@ from transfers.models import (
     DeliveryKind, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, RemoteObjectKind,
     ExecutionActivity, ExecutionAttempt, ExecutionControl, ExecutionFootprint, ExecutionHandle, ExecutionObservation,
     ExecutionRequest, ExecutionSnapshot, ExecutionState, ExecutionSubject, ExecutionWork, ExecutorRuntimeCapability,
-    ExecutorThroughput, FingerprintKind, InputChallenge,
+    FingerprintKind, InputChallenge,
     InputOrigin, InputReason, InputRequirement, MaterializationAdmissionKind, MaterializationKind, OutcomeKind,
     Ownership, ProviderObservation,
     RequestRecord, ResolutionAttempt, ResolutionResult, ResourceState, SizeKnowledge,
@@ -398,10 +398,10 @@ class TransferEngine:
         # The one core owner of executor runtime limits (global download
         # bandwidth split across reserved executors).
         self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository)
-        # The one core owner of current aggregate download throughput. Rebuilt
-        # from scratch each reconcile cycle, so it can never retain a stale rate,
-        # and sampled between cycles (``sample_throughput``) from exactly the
-        # executions the last cycle found live.
+        # The one core owner of download throughput, per execution and
+        # aggregate: fed every acquiring execution's byte counter by each
+        # complete observation pass -- the reconcile cycle and, between cycles,
+        # ``sample_throughput`` -- so a retired execution leaves no rate behind.
         self.throughput = ExecutionThroughputMeter()
         # Succeeded executions awaiting their stability-delayed verification,
         # and the one tracked verification task per attempt (``_verify_pending``).
@@ -1024,7 +1024,7 @@ class TransferEngine:
                         grouped.setdefault(artifact.execution.executor_id, []).append(artifact.execution)
             observations = ObservationBatch()
             reservation_facts = {}
-            throughput_contributions = {}
+            throughput_samples = {}
             for executor_id, handles in grouped.items():
                 # Batched observation of work that already exists: resolved
                 # through the bound-execution seam, never the claim router.
@@ -1034,6 +1034,8 @@ class TransferEngine:
                 observations.writes.update((handle.attempt_id, self.repository.execution_writes(handle.attempt_id))
                                            for handle in handles)
                 snapshot = await self._observe_batch(executor, tuple(handles))
+                # The counters are as of the executor's answer, not the request.
+                observed_at = self.throughput.clock()
                 certain = snapshot.error is None
                 for handle, observation in zip(handles, snapshot.observations):
                     try:
@@ -1041,17 +1043,16 @@ class TransferEngine:
                     except TransferError as exc:
                         observation = ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
                     observations[handle.attempt_id] = observation
+                    throughput_samples[handle.attempt_id] = (observed_at, self._acquired_bytes(observation))
                     certain = certain and observation.error is None and observation.state != ExecutionState.UNKNOWN
                 observed = [observations[handle.attempt_id] for handle in handles]
                 reservation_facts[executor_id] = (certain, any(
                     item.resumable and item.activity.bandwidth_reservation_required
                     for item in observed))
-                throughput_contributions[executor_id] = await self._executor_throughput(executor, observed)
             await self.runtime.observe(reservation_facts)
-            # Rebuilt every cycle from the executors that actually hold live
-            # handles: an executor with none contributes nothing at all, so a
-            # finished or paused acquisition cannot leave a live rate behind.
-            self.throughput.record(throughput_contributions)
+            # A complete pass over the executions that actually hold live
+            # handles: one that is gone, paused or finished leaves no rate.
+            self.throughput.record(throughput_samples)
             for transfer in transfers:
                 challenge = challenges[transfer.id]
                 # A pre-writer question (provider or evidence origin) concerns a
@@ -1080,7 +1081,7 @@ class TransferEngine:
         the one batched observation per executor and the one acceptance
         point, and from that one observation:
 
-        * the throughput fact, by the cycle's own counting rule;
+        * the throughput samples, by the cycle's own rule;
         * factual nonterminal activity (queued, running, paused) persisted by
           the one execution owner, guarded in its own transaction
           (``live_only``) so it never overwrites terminal or newer truth; a
@@ -1095,7 +1096,7 @@ class TransferEngine:
         grouped: dict[str, list] = {}
         for transfer_id, status, handle in await self.repository.live_execution_handles():
             grouped.setdefault(handle.executor_id, []).append((transfer_id, status, handle))
-        contributions, moved = {}, set()
+        samples, moved = {}, set()
         for executor_id, live in grouped.items():
             executor = self.registry.executor_for_handle(live[0][2])
             if executor is None:
@@ -1103,11 +1104,12 @@ class TransferEngine:
             writes = {handle.attempt_id: self.repository.execution_writes(handle.attempt_id)
                       for _transfer, _status, handle in live}
             snapshot = await self._observe_batch(executor, tuple(handle for _transfer, _status, handle in live))
-            observed = []
+            # The counters are as of the executor's answer, not the request.
+            observed_at = self.throughput.clock()
             for (transfer_id, status, handle), observation in zip(live, snapshot.observations):
                 try:
                     observation = await self._accept_observation(handle, observation)
-                    observed.append(observation)
+                    samples[handle.attempt_id] = (observed_at, self._acquired_bytes(observation))
                     lock = self._convergence_lock(handle.attempt_id)
                     if observation.state not in statuses or observation.error is not None or lock.locked():
                         continue                           # a control owner is deciding this writer now
@@ -1118,33 +1120,19 @@ class TransferEngine:
                             moved.add(transfer_id)
                 except TransferError:
                     continue
-            contributions[executor_id] = await self._executor_throughput(executor, observed)
-        self.throughput.record(contributions)
+        self.throughput.record(samples)
         for transfer_id in sorted(moved):
             await self._aggregate(transfer_id)
 
     @staticmethod
-    async def _executor_throughput(executor, observations) -> int:
-        """One executor's contribution to the aggregate download throughput.
-
-        Exactly one path per executor, which is what makes counting the same
-        bytes twice impossible: an executor that can only measure ITSELF
-        reports that single figure (counted once, whatever its job count) and
-        none of its per-execution rates is added; any other executor
-        contributes the sum of the rates its network-active executions report.
-        An error, a wrong shape or an unobserved answer contributes nothing --
-        never a previous value.
-        """
-        if getattr(executor.capabilities, "aggregate_throughput", False):
-            try:
-                reported = await executor.aggregate_download_throughput()
-            except Exception:
-                return 0
-            if not isinstance(reported, ExecutorThroughput) or not reported.observed:
-                return 0
-            return max(0, int(reported.bytes_per_second or 0))
-        return sum(max(0, int(item.progress.bytes_per_second or 0))
-                   for item in observations if item.activity.network_active)
+    def _acquired_bytes(observation) -> int | None:
+        """An execution's cumulative acquired-byte counter while it is
+        acquiring, else ``None``: a paused, post-processing, terminal, unknown
+        or erroring execution has no rate, whatever it last reported."""
+        if (observation.state == ExecutionState.RUNNING and observation.error is None
+                and observation.activity.network_active):
+            return max(0, int(observation.progress.completed_bytes or 0))
+        return None
 
     async def _release_runtime_reservations(self):
         """Positive durable truth that an executor holds no live native work

@@ -21,6 +21,7 @@ from dataclasses import replace
 from pathlib import Path
 
 import pytest
+
 from fake_integrations import MemoryExecutor
 from test_v113_collection_route_generic_closure import Clock
 from test_v113_root_provider_switch import (
@@ -51,6 +52,7 @@ from transfers.policy import TransferPolicy
 from transfers.recovery_execution import RecoveryTrigger
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from transfers.runtime_telemetry import WINDOW_SECONDS
 
 pytestmark = pytest.mark.asyncio
 
@@ -87,6 +89,33 @@ class WaitingFirstExecutor(ParkingExecutor):
                                              progress=TransferProgress(4, 2, rate),
                                              activity=ExecutionActivity(network_active=True,
                                                                         bandwidth_reservation_required=True))
+
+
+class SteppedClock:
+    """The throughput meter's clock, moved only by the test -- from ``start``,
+    so samples it already holds stay in its past."""
+
+    def __init__(self, start):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+
+async def moving(engine, executor, rate, observe):
+    """``rate`` bytes/second for every running writer, sustained over the
+    meter's whole trailing window, as the counter evidence it measures (it
+    never reads an executor's own rate): an observation pass every half
+    second, each running writer half a second's bytes further on."""
+    clock = engine.throughput.clock = SteppedClock(engine.throughput.clock() + 1)
+    await observe()
+    for _step in range(int(WINDOW_SECONDS / 0.5)):
+        for attempt, job in list(executor.jobs.items()):
+            if job.state == ExecutionState.RUNNING:
+                executor.jobs[attempt] = replace(job, progress=TransferProgress(
+                    job.progress.total_bytes, job.progress.completed_bytes + rate // 2, rate))
+        clock.now += 0.5
+        await observe()
 
 
 def offer(provider, *, native="x", files=FILES):
@@ -603,10 +632,12 @@ async def test_one_reconcile_cycle_aggregates_the_transfer_once_and_persists_run
     assert await repository.occupied_execution_slots(engine.clock()) == len(live)        # 8.6 slot truth
     listed = await bounded_row(engine, transfer.id)
     assert listed["status"] == "downloading" and listed.get("active_execution_progress")
-    assert engine.throughput.current() > 0                                              # 8.7 telemetry
+    await moving(engine, executor, 1024, engine.sample_throughput)
+    assert engine.throughput.current() == len(live) * 1024                              # 8.7 telemetry
 
     for artifact in live:
         executor.finish(artifact.execution)
+    engine.throughput.clock.now += 0.5
     await engine.reconcile_executions()
     await engine.sample_throughput()
     assert engine.throughput.current() == 0                                             # work stopped: zero
@@ -646,6 +677,7 @@ async def test_the_live_overlay_and_a_fresh_reload_agree_on_running_work(tmp_pat
     assert live["progress"] == pytest.approx(float(fresh["progress"]))
     assert live["active_execution_progress"] == pytest.approx(float(fresh["active_execution_progress"]))
     assert fresh.get("route_provider_id") == "parcel-a"
+    await moving(engine, executor, 2048, application.observe_live_executions)
     assert (await application.execution_throughput())["download_bytes_per_second"] > 0
 
 
@@ -702,8 +734,8 @@ async def test_three_succeeded_writers_verify_concurrently_off_the_cycle_lock_wh
         await engine.sample_throughput()                             # the fast observation, at its cadence
         samples.append((sampled, time.monotonic() - sampled))
         if moved is None and engine._verifications and not lock.locked():   # verifications in flight
-            executor.transferring(rate=3000)                         # another writer moves bytes mid-verification
-            await engine.sample_throughput()
+            executor.transferring(rate=4096)                         # another writer moves bytes mid-verification
+            await moving(engine, executor, 4096, engine.sample_throughput)
             moved = await live_rows(transfer.id)
             projected = next(item for item in await repository.active() if item.id == transfer.id)
             moved = (moved, projected.state.value, engine.throughput.current())
@@ -754,11 +786,12 @@ async def test_one_fast_observation_projects_a_running_writer_without_any_reconc
         began = time.monotonic()
         await engine.sample_throughput()                              # ONE fast observation
         cost = time.monotonic() - began
+        await moving(engine, executor, 4096, engine.sample_throughput)   # and the speed it measures
     for name, reader in readers.items():
         setattr(repository, name, reader)
     print(f"\n[B fast observation] members={MEMBERS} live_handles={sum(observed_handles)} cost={cost:.3f}s")
 
-    assert observed_handles == [3]                                    # live width, not 222 members
+    assert set(observed_handles) == {3}                               # live width, not 222 members
     executions = {row["id"]: row["state"] for row in await rows(
         "SELECT id,state FROM execution_attempts WHERE transfer_id=?", (transfer.id,))}
     assert all(executions[artifact.execution.attempt_id] == "running" for artifact in writers)
@@ -814,7 +847,7 @@ async def test_the_live_page_learns_of_running_work_from_the_fast_observation_al
 
     monkeypatch.setattr("application.service.publish", publish)
     executor.transferring(rate=2048)
-    await application.observe_live_executions()
+    await moving(engine, executor, 2048, application.observe_live_executions)
     overlay = [item for kind, payload in published if kind == "torrent_updated"
                for item in payload["items"] if item["id"] == transfer.id]
     assert overlay and not [kind for kind, _payload in published if kind == "stats_changed"]

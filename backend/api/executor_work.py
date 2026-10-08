@@ -113,7 +113,7 @@ def _controls(observation, *, cancellable: bool) -> list[str]:
     return controls
 
 
-def _row(attempt, observation, executor, name: str, *, cancellable: bool) -> dict:
+def _row(attempt, observation, executor, name: str, *, cancellable: bool, rate: int) -> dict:
     """One neutral row. Everything in it is a DebridPulse fact."""
     progress = observation.progress
     total = int(progress.total_bytes or 0)
@@ -122,11 +122,6 @@ def _row(attempt, observation, executor, name: str, *, cancellable: bool) -> dic
     # there is no remaining figure to state, and inventing one would be a lie
     # about how much work is left.
     remaining = max(0, total - completed) if total > 0 else None
-    # An executor that measures throughput only for ITSELF publishes no
-    # per-execution rate, so this row simply has none -- rather than core
-    # splitting one aggregate figure across jobs or, worse, reporting it both
-    # here and as the aggregate and counting the same bytes twice.
-    aggregate_only = bool(getattr(executor.capabilities, "aggregate_throughput", False))
     return {
         # The durable DebridPulse identity this row is addressed by.
         "attempt_id": attempt.handle.attempt_id,
@@ -141,8 +136,10 @@ def _row(attempt, observation, executor, name: str, *, cancellable: bool) -> dic
         "completed_bytes": completed,
         "total_bytes": total if total > 0 else None,
         "remaining_bytes": remaining,
-        "bytes_per_second": None if aggregate_only else max(0, int(progress.bytes_per_second or 0)),
-        "speed_measured_per_execution": not aggregate_only,
+        # The core meter's rate for this execution (``rate``), never the
+        # executor's own figure: the summary below is the sum of these rates.
+        "bytes_per_second": max(0, int(rate)),
+        "speed_measured_per_execution": True,
         "error": observation.error.as_dict() if observation.error else None,
         "controls": _controls(observation, cancellable=cancellable),
     }
@@ -199,13 +196,12 @@ async def list_executor_work(application: ApplicationService = Depends(get_appli
         for attempt, observation in zip(owned, snapshot.observations):
             cancellable = await application.repository.authorize_execution(attempt.handle, "cancel")
             rows.append(_row(attempt, observation, executor,
-                             names.get(attempt.artifact_id, ""), cancellable=cancellable))
+                             names.get(attempt.artifact_id, ""), cancellable=cancellable,
+                             rate=engine.throughput.rate(attempt.handle.attempt_id)))
 
     # Aggregate throughput has one owner: the core runtime telemetry meter,
-    # which already counts each executor exactly once (an executor that measures
-    # only itself contributes that one figure; any other contributes the sum of
-    # its own executions). Nothing is re-derived from the rows above, so the
-    # same bytes can never be counted twice.
+    # which counts each execution exactly once by its attempt identity -- the
+    # same per-execution rates the rows above carry, never re-derived here.
     speed = int(engine.throughput.current())
     # A total is stated only when EVERY row knows its own. A partial sum would
     # read as complete truth while being smaller than reality.

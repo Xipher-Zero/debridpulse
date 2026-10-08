@@ -33,8 +33,8 @@ def test_terminal_failure_progress_has_one_renderer_and_truthful_geometry():
     # The bar's geometry is the actual figure; only a RUNNING row with no
     # verified percentage leads with its execution activity, so a failed row
     # always paints its actual progress.
-    for fragment in ("function progress(pct, status, activePct)", "const visual = activeOnly ? activeValue : actual;",
-                     "const activeOnly = inFlight && unknown;", "!== 'downloading') return null;", "dp-terminal-error-progress", "dp-terminal-error-rail", "data-dp-actual-progress", "data-dp-visual-progress", "actual.toFixed(0) + '%'", "background:var(--dp-state-error)!important", "background-image:none!important"):
+    for fragment in ("function progress(pct, status, activePct, basis)", "const visual = activeOnly ? activeValue : actual;",
+                     "const activeOnly = inFlight && (unknown || actual === 0);", "!== 'downloading') return null;", "dp-terminal-error-progress", "dp-terminal-error-rail", "data-dp-actual-progress", "data-dp-visual-progress", "actual.toFixed(0) + '%'", "background:var(--dp-state-error)!important", "background-image:none!important"):
         assert fragment in app
     assert "paintFailedProgress" not in runtime
     assert "window.progress =" not in runtime

@@ -52,7 +52,8 @@ async function downloads(page, items) {
 async function event(page, items) {
   for (const update of items) {
     const current = served.find(entry => entry.id === update.id);
-    if (current) Object.assign(current, {progress: update.progress, active_execution_progress: update.active_execution_progress});
+    if (current) Object.assign(current, {progress: update.progress, active_execution_progress: update.active_execution_progress,
+                                         active_execution_basis: update.active_execution_basis ?? null});
   }
   await page.evaluate(items => patchProgressOnlyTransferEvent({progress_only: true, items}), items);
 }
@@ -292,4 +293,105 @@ test('Recent Activity and Details follow the same priority', async ({ page }) =>
   await page.evaluate(() => showDetail(9734));
   await expect(detail).toHaveText('31.0%');
   expect(errors).toEqual([]);
+});
+
+
+// --- Nothing verified yet: acquisition leads, worded as such --------------------
+// Usenet and Media Downloads acquire privately: nothing is verified material
+// until import. While verified progress is exactly 0% (or unknown), the
+// execution's acquisition percentage leads the primary bar as "in progress /
+// not yet verified"; what it counts comes from ``active_execution_basis``
+// (bytes, or completed parts such as media segments), never from an executor.
+
+const at = (id, progress, active, basis, status = 'downloading') => ({
+  ...item(id, progress, active), active_execution_basis: basis, status, presentation_status: status,
+  presentation_badge_status: status,
+});
+
+test('at exactly 0% verified the acquisition leads the primary bar, not yet verified', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const errors = observeRuntime(page);
+  await downloads(page, [at(9740, 0, 42.5, 'bytes')]);
+  const row = cell(page, 9740);
+  await expect(row.locator('.prog-pct')).toHaveText('42.5% in progress');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(primary(row)).toHaveAttribute('style', /^width:42\.5%$/);
+  await expect(primary(row)).toHaveAttribute('data-progress-basis', 'execution');
+  await expect(await lane(row)).toHaveCount(0);                     // one claim of the value
+  await event(page, [{id: 9740, progress: 0, active_execution_progress: 57, active_execution_basis: 'bytes'}]);
+  await expect(row.locator('.prog-pct')).toHaveText('57.0% in progress');
+  await expect(row).not.toContainText('verified 57');
+  expect(errors).toEqual([]);
+});
+
+test('nonzero verified progress keeps priority over any acquisition figure', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [at(9748, 12, 60, 'bytes'), at(9749, 12, 37.5, 'units')]);
+  await expect(cell(page, 9748).locator('.prog-pct')).toHaveText('12% verified');
+  await expect(primary(cell(page, 9748))).toHaveAttribute('style', /^width:12%$/);
+  await expect(cell(page, 9748).locator('[data-role="execution-progress"]')).toHaveText('in progress 60.0%');
+  await expect(cell(page, 9749).locator('[data-role="execution-progress"]')).toHaveText('in progress 37.5% of parts');
+});
+
+test('completed parts are labelled as parts, never as bytes or completion', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [at(9750, null, 37.5, 'units'), at(9751, 0, 100, 'units')]);
+  await expect(cell(page, 9750).locator('.prog-pct')).toHaveText('37.5% of parts');
+  await expect(cell(page, 9750).locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(cell(page, 9751).locator('.prog-pct')).toHaveText('100.0% of parts');
+  await expect(primary(cell(page, 9751))).not.toHaveClass(/done/);
+  await expect(cell(page, 9751)).not.toContainText(/Done|Completed|100% verified/);
+});
+
+test('acquisition hands over to processing, then to completion, without a verified rollback', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [at(9752, 0, 98, 'bytes')]);
+  const row = cell(page, 9752);
+  await expect(row.locator('.prog-pct')).toHaveText('98.0% in progress');
+  // Repair, unpack, remux or finalization: the acquisition figure is retired.
+  await event(page, [{id: 9752, progress: 0, active_execution_progress: null, active_execution_basis: 'processing'}]);
+  await expect(row.locator('.prog-pct')).toHaveText('processing');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await expect(primary(row)).toHaveClass(/is-indeterminate/);
+  await expect(primary(row)).toHaveCSS('animation-name', 'dp-prog-indeterminate');
+  await expect(row).not.toContainText(/0%|98/);
+  // Processing beside verified material keeps the verified figure.
+  await downloads(page, [at(9753, 40, null, 'processing'), at(9754, 100, null, null, 'completed')]);
+  await expect(cell(page, 9753).locator('.prog-pct')).toHaveText('40% verified');
+  await expect(cell(page, 9753).locator('[data-role="execution-processing"]')).toHaveText('processing');
+  await expect(cell(page, 9754).locator('.prog-pct')).toHaveText('100%');
+});
+
+test('an unknown or untrustworthy total is indeterminate and never a fabricated 0%', async ({ page }) => {
+  await isolateExternalFonts(page);
+  // No basis and no percentage: mixed, changing or unknown totals project nothing.
+  await downloads(page, [at(9741, null, null, null), at(9742, 0, null, null)]);
+  await expect(cell(page, 9741).locator('.prog-pct')).toHaveText('—');
+  await expect(primary(cell(page, 9741))).toHaveClass(/is-indeterminate/);
+  // A known total with no bytes yet (an aria2 start) is a known 0%.
+  await expect(cell(page, 9742).locator('.prog-pct')).toHaveText('0%');
+  await expect(primary(cell(page, 9742))).toHaveClass(/is-indeterminate/);
+});
+
+test('determinate, paused, failed and completed rows are never indeterminate', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await downloads(page, [at(9743, 40, null, null), at(9744, 0, 30, 'bytes', 'paused'), at(9745, 0, null, null, 'error'),
+                         at(9746, 100, null, null, 'completed')]);
+  // The aria2 baseline: verified material is the bar, unchanged.
+  await expect(cell(page, 9743).locator('.prog-pct')).toHaveText('40%');
+  await expect(primary(cell(page, 9743))).toHaveAttribute('style', /^width:40%$/);
+  for (const id of [9743, 9744, 9745, 9746]) {
+    await expect(primary(cell(page, id))).not.toHaveClass(/is-indeterminate/);
+    await expect(primary(cell(page, id))).toHaveCSS('animation-name', 'none');
+  }
+  await expect(cell(page, 9744)).not.toContainText('in progress');
+  await expect(cell(page, 9746).locator('.prog-pct')).toHaveText('100%');
+});
+
+test('reduced motion keeps the indeterminate state but stops its movement', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await downloads(page, [at(9747, null, null, null)]);
+  await expect(primary(cell(page, 9747))).toHaveClass(/is-indeterminate/);
+  await expect(primary(cell(page, 9747))).toHaveCSS('animation-name', 'none');
 });

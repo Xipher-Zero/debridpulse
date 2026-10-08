@@ -30,7 +30,7 @@ from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    _ENDED_ROUTE_STATES, active_execution_percentage, active_execution_progress_sql,
+    _ENDED_ROUTE_STATES, active_execution_progress_sql, active_execution_projection,
     canonical_artifact_membership_sql,
 )
 from transfers.display_name import normalized_transfer_display_name
@@ -1353,6 +1353,12 @@ async def list_operational_torrents(
             COALESCE(pause_intent.paused, 0) AS _paused_intent,
             page_active_execution.execution_completed AS _execution_completed,
             page_active_execution.execution_total AS _execution_total,
+            page_active_execution.execution_writers AS _execution_writers,
+            page_active_execution.execution_acquiring AS _execution_acquiring,
+            page_active_execution.execution_bytes_known AS _execution_bytes_known,
+            page_active_execution.execution_units_known AS _execution_units_known,
+            page_active_execution.execution_units_completed AS _execution_units_completed,
+            page_active_execution.execution_units_total AS _execution_units_total,
             root_request.payload AS _source_request_payload,
             root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
@@ -1450,8 +1456,11 @@ async def list_operational_torrents(
         # The modal acts on this: the same canonical public projection the
         # single-transfer API returns -- descriptors and facts, never input.
         projected["input_required"] = public_challenge(challenge_row) if input_required else None
-        projected["active_execution_progress"] = active_execution_percentage(
-            projected.pop("_execution_completed", None), projected.pop("_execution_total", None))
+        projected["active_execution_progress"], projected["active_execution_basis"] = active_execution_projection(
+            projected, prefix="_")
+        for name in ("completed", "total", "writers", "acquiring", "bytes_known", "units_known",
+                     "units_completed", "units_total"):
+            projected.pop(f"_execution_{name}", None)
         file_presentations = _bounded_child_presentations(
             projected.pop("_artifact_presentation_facts", None),
             paused=paused, input_required=input_required,

@@ -532,6 +532,10 @@ textarea.input { resize: vertical; }
   transition: width .28s ease;
 }
 .prog-fill.done { background: var(--dp-progress-complete); }
+/* Active with no primary percentage (unknown total, or nothing verified yet):
+   the hatching moves, so running work never reads as a stalled bar. */
+.prog-fill.is-indeterminate { animation: dp-prog-indeterminate 1s linear infinite; }
+@keyframes dp-prog-indeterminate { to { background-position: 16px 0; } }
 .prog-pct {
   display: block;
   margin-top: 3px;
@@ -628,6 +632,7 @@ td { padding: 11px 16px; vertical-align: middle; }
   :is(.dp-btn, .btn, .dp-tab, .ftab, .stab, .prog-fill) {
     transition: none;
   }
+  .prog-fill.is-indeterminate { animation: none; }
   :is(.dp-btn, .btn):not(:disabled):active {
     transform: none;
   }

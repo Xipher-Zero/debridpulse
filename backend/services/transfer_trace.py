@@ -684,7 +684,6 @@ async def _observe_executors(application, collector: _Collector) -> tuple[dict, 
 
     for executor, handles, (answered, result) in await asyncio.gather(
             *(observe(executor, handles) for executor, handles in batches.values())):
-        aggregate_only = bool(getattr(executor.capabilities, "aggregate_throughput", False))
         for index, handle in enumerate(handles):
             entry = entries[handle.attempt_id]
             if not answered:
@@ -702,8 +701,9 @@ async def _observe_executors(application, collector: _Collector) -> tuple[dict, 
                 # does not exist; UNKNOWN is no answer at all.
                 "native_exists": None if item.state == ExecutionState.UNKNOWN else item.state != ExecutionState.ABSENT,
                 "completed_bytes": progress.completed_bytes, "total_bytes": progress.total_bytes,
-                "bytes_per_second": None if aggregate_only else progress.bytes_per_second,
-                "speed_measured_per_execution": not aggregate_only,
+                # The core meter's measured rate, as every presentation shows it.
+                "bytes_per_second": engine.throughput.rate(handle.attempt_id),
+                "speed_measured_per_execution": True,
                 "error": _error(item.error),
             }
     counts = {}

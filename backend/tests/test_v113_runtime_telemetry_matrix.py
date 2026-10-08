@@ -23,7 +23,7 @@ import pytest_asyncio
 
 import db.database as database
 from transfers.convergence_engine import TransferEngine
-from transfers.models import TransferRequest
+from transfers.models import ExecutionState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
@@ -33,6 +33,7 @@ from sab_fakes import FakeSab, staged_store
 
 FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
 APP_JS = (FRONTEND / "static" / "app.js").read_text()
+MIB = 1024 * 1024
 
 VALID_NZB = b"""<?xml version="1.0" encoding="utf-8" ?>
 <nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
@@ -144,21 +145,53 @@ def test_b2_the_count_is_computed_without_naming_any_executor():
 
 # --- B3/B5/B6: the aggregate rate -------------------------------------------
 
-@pytest.mark.asyncio
-async def test_b3_the_aggregate_is_the_sum_of_every_executor(mixed):
-    from transfers.runtime_telemetry import ExecutionThroughputMeter
-    meter = ExecutionThroughputMeter()
-    meter.record({"sabnzbd": 3 * 1024 * 1024, "ledger-copy": 2 * 1024 * 1024})
-    assert meter.current() == 5 * 1024 * 1024
+class SteppedClock:
+    def __init__(self, start):
+        self.now = float(start)
+
+    def __call__(self):
+        return self.now
+
+
+async def _acquire_both(mixed, seconds=6.0):
+    """Both executors acquire at a steady pace, observed by the fast pass every
+    half second: the queue service's job by its coarse megabyte counter (two
+    decimals, as SAB reports it), the other executor's job by bytes."""
+    await mixed.engine.submit((TransferRequest("nzb", VALID_NZB, name="posting.nzb"),),
+                              name="posting", deduplicate=False)
+    await mixed.engine.submit((TransferRequest("ledger", "elsewhere", name="elsewhere"),),
+                              name="elsewhere", deduplicate=False)
+    await converge(mixed)
+    [job] = mixed.sab.queue.values()
+    job.mb = job.mbleft = 100.0
+    [other] = mixed.other.jobs.values()
+    other.state = ExecutionState.RUNNING
+    other.progress = other.progress.__class__(64 * MIB, 0, 123)        # its own rate is never read
+    clock = mixed.engine.throughput.clock = SteppedClock(mixed.engine.throughput.clock() + 1)
+    for _ in range(int(seconds / 0.5)):
+        await mixed.engine.sample_throughput()
+        clock.now += 0.5
+        job.mbleft = round(job.mbleft - 0.75, 2)                      # 1.5 MiB/s in megabyte units
+        other.progress = other.progress.__class__(64 * MIB, other.progress.completed_bytes + MIB // 2, 123)
+    await mixed.engine.sample_throughput()
 
 
 @pytest.mark.asyncio
-async def test_b5_an_idle_cycle_clears_the_rate_rather_than_holding_it():
-    from transfers.runtime_telemetry import ExecutionThroughputMeter
-    meter = ExecutionThroughputMeter()
-    meter.record({"sabnzbd": 9_000_000})
-    meter.record({})
-    assert meter.current() == 0, "a stale rate must never survive a cycle"
+async def test_b3_the_aggregate_is_the_sum_of_every_execution_measured_from_counters(mixed):
+    await _acquire_both(mixed)
+    rates = {attempt: mixed.engine.throughput.rate(attempt) for attempt in mixed.engine.throughput._series}
+    assert sorted(rates.values()) == [MIB, int(1.5 * MIB)]
+    assert mixed.engine.throughput.current() == sum(rates.values())   # each execution counted once
+
+
+@pytest.mark.asyncio
+async def test_b5_an_idle_pass_decays_the_rate_rather_than_holding_it(mixed):
+    await _acquire_both(mixed)
+    assert mixed.engine.throughput.current() > 0
+    for _ in range(9):                                                # counters stop moving
+        mixed.engine.throughput.clock.now += 0.5
+        await mixed.engine.sample_throughput()
+    assert mixed.engine.throughput.current() == 0, "a stale rate must never survive the window"
 
 
 @pytest.mark.asyncio
@@ -176,14 +209,28 @@ async def test_b6_a_paused_execution_contributes_no_throughput(mixed):
     assert mixed.engine.throughput.current() == 0
 
 
-# --- B4: the acquisition executor reports a real neutral rate ---------------
+# --- B4: the acquisition executor's coarse counter becomes a real rate ------
 
 @pytest.mark.asyncio
-async def test_b4_the_acquisition_executor_reports_neutral_bytes_per_second(mixed):
-    mixed.sab.download_bytes_per_second = 7 * 1024 * 1024
-    reported = await mixed.acquisition.aggregate_download_throughput()
-    assert reported.observed is True
-    assert reported.bytes_per_second == 7 * 1024 * 1024
+async def test_b4_a_coarse_megabyte_counter_is_smoothed_into_a_truthful_rate(mixed):
+    """SAB's queue moves its counter in whole articles at irregular intervals;
+    the window measures it without any service-wide figure."""
+    await mixed.engine.submit((TransferRequest("nzb", VALID_NZB, name="posting.nzb"),),
+                              name="posting", deduplicate=False)
+    await converge(mixed)
+    [job] = mixed.sab.queue.values()
+    job.mb = job.mbleft = 500.0
+    clock = mixed.engine.throughput.clock = SteppedClock(mixed.engine.throughput.clock() + 1)
+    seen = []
+    for step in range(24):
+        await mixed.engine.sample_throughput()
+        seen.append(mixed.engine.throughput.current())
+        clock.now += 0.5
+        job.mbleft = round(job.mbleft - 0.75 * (step % 3 == 0) - 1.5 * (step % 3 == 2), 2)   # 0, 0.75 or 1.5 MB
+    steady = seen[9:]
+    assert all(value > 0 for value in steady)                         # no chunk-boundary zeros
+    assert max(steady) - min(steady) <= 0.25 * max(steady)            # the swings are absorbed
+    assert abs(sum(steady) / len(steady) - 1.5 * MIB) < 0.1 * MIB     # and the mean is the real rate
 
 
 # --- B7: generic presentation knows no executor -----------------------------

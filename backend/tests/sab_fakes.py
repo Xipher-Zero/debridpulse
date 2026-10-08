@@ -108,9 +108,6 @@ class FakeSab:
     cache_limit: str = "1G"
     direct_write: int = 1
     max_art_tries: int = 3
-    # The one service-wide download meter SAB publishes (queue.kbpersec). There
-    # is deliberately no per-slot rate: the real service has none.
-    download_bytes_per_second: int = 0
     # When set, a bulk snapshot reports FEWER slots than exist, exactly as a
     # paginated SAB listing would. Absence must never be inferred from one.
     truncate_queue_to: int | None = None
@@ -230,11 +227,6 @@ class FakeSab:
         entry.update({"name": keyword, **clamped})
         self.servers[keyword] = entry
         return {"servers": list(self.servers.values())}
-
-    async def download_throughput(self) -> int:
-        """One service-wide instantaneous rate, in bytes/second."""
-        self._guard()
-        return max(0, int(self.download_bytes_per_second))
 
     async def del_config(self, section: str, keyword: str):
         self._guard()

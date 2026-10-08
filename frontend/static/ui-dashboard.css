@@ -1456,10 +1456,12 @@ body.light #view-dashboard .dp-dashboard-activity .dash-activity-table-wrap {
 /* Consolidated from ui-dashboard-polish-final.css. */
 /* Final cascade guard for the v1.0.11 polish pass.
    Keep legacy indeterminate/striped progress rendering intact while the new
-   semantic glow applies to ordinary determinate progress bars. */
+   semantic glow applies to ordinary determinate progress bars. The image
+   alone is pinned, so the indeterminate hatching can still move. */
 #dash-tbody .prog-fill[style*="repeating-linear-gradient"],
 #t-tbody .prog-fill[style*="repeating-linear-gradient"] {
-  background: repeating-linear-gradient(
+  background-color: transparent !important;
+  background-image: repeating-linear-gradient(
     90deg,
     var(--accent) 0,
     var(--accent) 8px,

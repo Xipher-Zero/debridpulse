@@ -524,14 +524,28 @@ function badge(s, detail) {
 // no status is derived here from extraction or source-failure fields.
 // The Details progress line: the list's rule in words -- verified material
 // first; current execution activity, only while the row is running, leads
-// only when there is no verified percentage, and is never completion.
+// while nothing is verified yet, and is never completion.
 function dpDetailProgress(t) {
-  const active = inFlightExecutionPercent(transferDisplayStatus(t), t.active_execution_progress);
-  const execution = active === null ? '' : 'in progress ' + active.toFixed(1) + '% (not yet verified)';
-  if (t.progress == null) {
+  const status = transferDisplayStatus(t);
+  const active = inFlightExecutionPercent(status, t.active_execution_progress);
+  const execution = active !== null
+    ? executionProgressWords(active, t.active_execution_basis) + ' (not yet verified)'
+    : (executionProcessing(status, t.active_execution_basis) ? 'processing (not yet verified)' : '');
+  if (t.progress == null || (execution && Number(t.progress) === 0)) {
     return execution || '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '');
   }
   return Number(t.progress).toFixed(1) + '%' + (execution ? ' · ' + execution : '');
+}
+// What an execution percentage counts (``active_execution_basis``): acquired
+// bytes, or completed acquisition units (parts such as media segments) --
+// never logical completion.
+function executionProgressWords(value, basis) {
+  return 'in progress ' + value.toFixed(1) + '%' + (basis === 'units' ? ' of parts' : '');
+}
+// The running row's writers are past acquisition (repair, unpack, remux,
+// finalization): no acquisition percentage, and nothing yet verified by it.
+function executionProcessing(status, basis) {
+  return String(status || '').toLowerCase() === 'downloading' && basis === 'processing';
 }
 function transferDisplayStatus(t) {
   const projected = String(t && t.presentation_status || '').trim().toLowerCase();
@@ -548,7 +562,8 @@ function inFlightExecutionPercent(status, activePct) {
 }
 // ``activePct``: in-flight execution activity on the current source that is
 // not yet DP material, from any executor; shown beside, never as, completion.
-function progress(pct, status, activePct) {
+// ``basis`` (``active_execution_basis``) says what it counts.
+function progress(pct, status, activePct, basis) {
   const state = String(status || '').toLowerCase();
   const done = state === 'completed';
   const failed = state === 'error';
@@ -559,13 +574,17 @@ function progress(pct, status, activePct) {
   const actual = done ? 100 : Math.min(Math.max(Number.isFinite(raw) ? raw : 0, 0), 100);
   const activeValue = inFlightExecutionPercent(state, activePct);
   const inFlight = activeValue !== null;
-  // With no verified percentage beside it, current execution activity is the
-  // most useful truthful progress, so it is the primary bar -- worded as not
-  // yet verified, and never completion. Beside a verified percentage it stays
-  // secondary: nothing proves the two share a denominator, so they are never
-  // compared, and only verified material is durable across a replaced
-  // execution (no high-water mark).
-  const activeOnly = inFlight && unknown;
+  // While nothing is verified (no verified percentage, or exactly 0%), current
+  // execution activity is the most useful truthful progress, so it is the
+  // primary bar -- worded as not yet verified, and never completion. Beside a
+  // nonzero verified percentage it stays secondary: nothing proves the two
+  // share a denominator, so they are never compared, and only verified
+  // material is durable across a replaced execution (no high-water mark).
+  const activeOnly = inFlight && (unknown || actual === 0);
+  const processing = executionProcessing(state, basis);
+  // Running with no primary percentage to show -- an unknown total, nothing
+  // verified and no measurable acquisition, or writers past acquisition -- is
+  // the one moving indeterminate state: active, never a fabricated figure.
   const showStripe = active && !activeOnly && (unknown || actual === 0);
   const visual = activeOnly ? activeValue : actual;
   let fillStyle = showStripe
@@ -574,7 +593,7 @@ function progress(pct, status, activePct) {
   if (failed) {
     fillStyle += ';opacity:1;background:var(--dp-state-error)!important;background-color:var(--dp-state-error)!important;background-image:none!important;box-shadow:0 0 8px color-mix(in srgb,var(--dp-state-error) 88%,transparent),0 0 17px color-mix(in srgb,var(--dp-state-error) 46%,transparent)!important;filter:saturate(1.12) brightness(1.08)';
   }
-  const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : '');
+  const cls = done ? 'done' : (failed ? 'error dp-terminal-error-progress' : (showStripe ? 'is-indeterminate' : ''));
   const trackCls = failed ? 'prog dp-terminal-error-rail' : 'prog';
   const attrs = failed
     ? ' data-dp-actual-progress="' + actual + '" data-dp-visual-progress="' + visual + '"'
@@ -583,20 +602,22 @@ function progress(pct, status, activePct) {
   // material; in-flight execution activity that is not yet material (from
   // any executor) gets its own thinner lane and label beneath, and the
   // verified figure says so.
-  const label = done ? '100%' : (activeOnly ? activeValue.toFixed(1) + '% in progress' : (unknown ? '—'
-    : (showStripe ? '…' : actual.toFixed(0) + '%' + (inFlight ? ' verified' : ''))));
+  const label = done ? '100%' : (activeOnly
+    ? activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress')
+    : (showStripe && processing ? 'processing' : (unknown ? '—'
+      : actual.toFixed(0) + '%' + (inFlight || processing ? ' verified' : ''))));
   const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
   const lane = inFlight && !activeOnly
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
       ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
-  const activityLabel = activeOnly
+  const activityLabel = activeOnly || (showStripe && processing)
     ? '<span class="prog-activity" data-role="execution-unverified" title="' + inFlightTitle + '">not yet verified</span>'
     : (inFlight
-      ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">in progress ' +
-        activeValue.toFixed(1) + '%</span>'
-      : '');
+      ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">' +
+        executionProgressWords(activeValue, basis) + '</span>'
+      : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
          lane + '<span class="prog-pct">' + label + '</span>' + activityLabel;
 }
@@ -629,6 +650,7 @@ function patchProgressOnlyTransferEvent(data) {
     const id = Number(update?.id ?? update?.torrent_id);
     const nextProgress = update?.progress == null ? null : Number(update.progress);
     const nextActivity = update?.active_execution_progress == null ? null : Number(update.active_execution_progress);
+    const nextBasis = update?.active_execution_basis ?? null;
 
     if (!Number.isFinite(id) || (nextProgress !== null && !Number.isFinite(nextProgress))) {
       continue;
@@ -646,7 +668,7 @@ function patchProgressOnlyTransferEvent(data) {
 
         if (progressCell) {
           progressCell.innerHTML =
-            progress(nextProgress, status, nextActivity);
+            progress(nextProgress, status, nextActivity, nextBasis);
         }
 
         const dashFill =

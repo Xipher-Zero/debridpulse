@@ -362,13 +362,17 @@ def test_the_aggregate_throughput_seam_carries_no_integration_vocabulary():
 
 
 def test_throughput_cannot_be_counted_twice():
-    """Exactly one contribution path per executor, chosen by capability."""
+    """Every execution reaches the meter once, by its attempt identity, as its
+    byte counter -- never as an executor's own rate beside it."""
     from transfers._engine_base import TransferEngine
-    source = inspect.getsource(TransferEngine._executor_throughput)
-    assert "aggregate_throughput" in source
-    assert source.count("return") == 4          # aggregate x3 guards + per-execution sum
-    # The aggregate branch returns before any per-execution rate is considered.
-    assert source.index("aggregate_download_throughput") < source.index("progress.bytes_per_second")
+    from transfers.runtime_telemetry import ExecutionThroughputMeter
+    cycle = inspect.getsource(TransferEngine.reconcile_executions)
+    fast = inspect.getsource(TransferEngine.sample_throughput)
+    assert "throughput_samples[handle.attempt_id] = (observed_at, self._acquired_bytes(observation))" in cycle
+    assert "samples[handle.attempt_id] = (observed_at, self._acquired_bytes(observation))" in fast
+    assert "bytes_per_second" not in inspect.getsource(TransferEngine._acquired_bytes)
+    assert "self._rate(series, now) for series in self._series.values()" in inspect.getsource(
+        ExecutionThroughputMeter.current)
 
 
 def test_there_is_exactly_one_bandwidth_owner_and_one_admission_owner():

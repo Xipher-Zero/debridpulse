@@ -306,7 +306,10 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
     ``reconstruction_only`` keeps the DESTINATION_AWARE writers alone (what a
     source switch abandons). ``transfer_scope`` is a SQL predicate over
     ``f.torrent_id``; one row per transfer: ``transfer_id``,
-    ``execution_completed``, ``execution_total``.
+    ``execution_completed``, ``execution_total``, and the facts
+    ``active_execution_projection`` decides a percentage from: how many
+    writers, how many still acquiring, how many state an exact byte total, and
+    how many state a consistent unit total with their unit sums.
 
     The capability test is an anti-join, never a per-row subquery: the left
     join matches only an ``export_material_ranges`` element of a writer that
@@ -318,9 +321,20 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
           ON NOT ({destination_aware}) AND c.value = '{ContinuationCapability.EXPORT_MATERIAL_RANGES.value}'"""
     not_yet_material = destination_aware if reconstruction_only else f"""({destination_aware}
               OR (json_type(e.continuation, '$.capabilities') = 'array' AND c.key IS NULL))"""
+    units_known = ("(COALESCE(json_extract(e.progress, '$.total_units'), 0) > 0"
+                   " AND json_extract(e.progress, '$.completed_units') BETWEEN 0"
+                   " AND json_extract(e.progress, '$.total_units'))")
     return f"""SELECT f.torrent_id AS transfer_id,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
-            SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total
+            SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total,
+            COUNT(*) AS execution_writers,
+            SUM(COALESCE(json_extract(e.progress, '$.acquiring'), 1) != 0) AS execution_acquiring,
+            SUM(COALESCE(json_extract(e.progress, '$.total_bytes'), 0) > 0) AS execution_bytes_known,
+            SUM({units_known}) AS execution_units_known,
+            SUM(CASE WHEN {units_known} THEN json_extract(e.progress, '$.completed_units') ELSE 0 END)
+                AS execution_units_completed,
+            SUM(CASE WHEN {units_known} THEN json_extract(e.progress, '$.total_units') ELSE 0 END)
+                AS execution_units_total
         FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id{exporter_join}
         WHERE e.state = 'running' AND e.authorized = 1
           AND {not_yet_material}
@@ -328,13 +342,26 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
         GROUP BY f.torrent_id"""
 
 
-def active_execution_percentage(completed, total) -> float | None:
-    """Active execution progress of ``active_execution_progress_sql``'s row:
-    ``None`` without a known total (unavailable, never a fabricated 0%)."""
-    total = int(total or 0)
-    if total <= 0:
-        return None
-    return min(100.0, max(0, int(completed or 0)) / total * 100.0)
+def active_execution_projection(row, prefix: str = "") -> tuple[float | None, str | None]:
+    """``(percentage, basis)`` of ``active_execution_progress_sql``'s row (its
+    columns under ``prefix``). One coherent scope or none: bytes when every
+    counted writer states an exact byte total, else completed units when every
+    one states a consistent unit total; a mix, or anything unknown, is no
+    percentage (indeterminate, never a fabricated figure). Writers all past
+    acquisition (repair, unpack, remux, finalization) are ``"processing"``:
+    their acquisition percentage is retired, not shown at 100%."""
+    def fact(name):
+        return int((row or {}).get(prefix + name) or 0)
+    writers = fact("execution_writers")
+    if writers <= 0:
+        return None, None
+    if fact("execution_acquiring") <= 0:
+        return None, "processing"
+    if fact("execution_bytes_known") == writers and fact("execution_total") > 0:
+        return min(100.0, fact("execution_completed") / fact("execution_total") * 100.0), "bytes"
+    if fact("execution_units_known") == writers and fact("execution_units_total") > 0:
+        return min(100.0, fact("execution_units_completed") / fact("execution_units_total") * 100.0), "units"
+    return None, None
 
 
 def canonical_artifact_membership_sql(alias: str = "f") -> str:
@@ -1117,7 +1144,7 @@ class TransferRepository:
                         display_hash, str(row["source"] or ""), int(row["priority"] or 0),
                         bool(row.get("paused_intent")), None if row["progress"] is None else float(row["progress"]),
                         codec.error(row.get("normalized_error")), int(row.get("lifecycle_epoch") or 0),
-                        active_execution_percentage(row.get("execution_completed"), row.get("execution_total")),
+                        *active_execution_projection(row),
                         row.get("collection_root") or None, bool(row.get("collection_root_conflict")))
 
     async def get(self, transfer_id: int) -> Transfer | None:
@@ -1771,7 +1798,9 @@ class TransferRepository:
     async def active(self) -> tuple[Transfer, ...]:
         async with get_db() as db:
             rows = await db.fetchall(f"""SELECT t.*, COALESCE(p.paused,0) AS paused_intent,
-                x.execution_completed, x.execution_total FROM torrents t
+                x.execution_completed, x.execution_total, x.execution_writers, x.execution_acquiring,
+                x.execution_bytes_known, x.execution_units_known, x.execution_units_completed,
+                x.execution_units_total FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
                 LEFT JOIN ({active_execution_progress_sql("1=1")}) x ON x.transfer_id=t.id
                 WHERE t.status NOT IN ('completed','consolidated','deleted','cancelled')

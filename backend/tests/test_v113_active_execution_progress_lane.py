@@ -22,12 +22,15 @@ from application.service import ApplicationService
 from executors.sabnzbd.executor import SabnzbdExecutor
 from fake_integrations import MemoryExecutor, ParcelProvider
 from transfers import _repository_base
-from transfers.models import ContinuationCapability, ExecutionState, TransferProgress, TransferRequest
+from transfers.models import (
+    ContinuationCapability, ExecutionActivity, ExecutionState, TransferProgress, TransferRequest,
+)
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 # The production composition (``application.composition``).
 from transfers.convergence_engine import TransferEngine
 from transfers.recovery_repository import TransferRepository
+from test_v113_runtime_telemetry_matrix import mixed  # noqa: F401 -- the real SAB + Usenet fixture
 
 pytestmark = pytest.mark.asyncio
 
@@ -193,29 +196,120 @@ async def test_the_neutral_read_names_no_executor():
 def test_the_shared_progress_presentation_words_the_lane_for_any_executor():
     from pathlib import Path
     app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
-    renderer = app[app.index("function progress(pct, status, activePct)"):]
+    renderer = app[app.index("function progress(pct, status, activePct, basis)"):]
     renderer = renderer[:renderer.index("\n}\n")]
     details = app[app.index("function dpDetailProgress(t)"):]
     details = details[:details.index("\n}\n")]
     predicate = app[app.index("function inFlightExecutionPercent(status, activePct)"):]
     predicate = predicate[:predicate.index("\n}\n")]
+    words = app[app.index("function executionProgressWords(value, basis)"):]
+    words = words[:words.index("\n}\n")]
     # One active-state predicate gates both presentations.
     assert "inFlightExecutionPercent(state, activePct)" in renderer
-    assert "inFlightExecutionPercent(transferDisplayStatus(t), t.active_execution_progress)" in details
+    assert "inFlightExecutionPercent(status, t.active_execution_progress)" in details
     assert "!== 'downloading'" in predicate
-    for source in (renderer, details, predicate):
+    for source in (renderer, details, predicate, words):
         lowered = source.casefold()
         assert "reconstruct" not in lowered
         for name in ("sabnzbd", "rsync", "destination_aware", "strategy"):
             assert name not in lowered
-    assert "in progress ' +" in renderer and "in progress ' +" in details
+    # One wording of what the figure counts, from the neutral basis alone.
+    assert "'in progress ' +" in words and "basis === 'units' ? ' of parts'" in words
+    assert "executionProgressWords(activeValue, basis)" in renderer
+    assert "executionProgressWords(active, t.active_execution_basis)" in details
     # The lane stays secondary and explicit about what it is not.
     assert "not yet verified as DebridPulse material" in renderer
     assert "' verified'" in renderer                     # the canonical number keeps its meaning
-    # Active-only promotion: the execution value leads only with no verified
-    # percentage beside it, and the two percentages are never compared.
-    assert "const activeOnly = inFlight && unknown;" in renderer
-    assert "% in progress'" in renderer and ">not yet verified</span>" in renderer
+    # Promotion: the execution value leads only while nothing is verified (no
+    # verified percentage, or exactly 0%), and the two are never compared.
+    assert "const activeOnly = inFlight && (unknown || actual === 0);" in renderer
+    assert "'in progress'" in renderer and ">not yet verified</span>" in renderer
     assert not re.search(r"activeValue\s*[<>]=?\s*actual|actual\s*[<>]=?\s*activeValue", renderer)
     for smoothing in ("highest", "high_water", "highWater", "floor", "max_seen", "maxSeen"):
         assert smoothing not in renderer
+
+
+async def test_a_usenet_job_keeps_a_known_verified_zero_while_its_acquisition_lane_advances(mixed):  # noqa: F811
+    """The observed Usenet shape, on the real SAB executor and Usenet provider:
+    the NZB declares the payload size, so verified progress is a KNOWN 0% (not
+    unknown) until import, while SAB's acquisition counter -- over its own,
+    different denominator (posted article megabytes) -- is the lane."""
+    from api import operational_downloads as downloads
+    from test_v113_runtime_telemetry_matrix import VALID_NZB, converge
+    await mixed.engine.submit((TransferRequest("nzb", VALID_NZB, name="posting.nzb"),),
+                              name="posting", deduplicate=False)
+    await converge(mixed)
+    [job] = mixed.sab.queue.values()
+
+    async def listed(mbleft):
+        job.mb, job.mbleft = 1.0, mbleft
+        await mixed.engine.reconcile_executions()
+        result = await downloads.list_operational_torrents(
+            status=None, search=None, limit=0, offset=0,
+            application=SimpleNamespace(repository=mixed.repository, definitions=[]))
+        [row] = result["items"]
+        return row
+
+    early, later = await listed(0.75), await listed(0.25)
+    assert early["progress"] == 0.0 and later["progress"] == 0.0                 # known, verified, zero
+    assert early["active_execution_progress"] == pytest.approx(25.0)
+    assert later["active_execution_progress"] == pytest.approx(75.0)
+    assert early["active_execution_basis"] == later["active_execution_basis"] == "bytes"
+    # Not comparable: the transfer's denominator is the declared payload, the
+    # lane's is SAB's article total -- so the lane is never promoted.
+    assert later["size_bytes"] == 1024
+    [attempt] = await mixed.repository.live_execution_handles()
+    assert mixed.sab.queue and attempt[1] == "downloading"
+
+    # Repair / unpack: the acquisition figure is retired, verified stays 0.
+    job.status = "Extracting"
+    unpacking = await listed(0.0)
+    assert unpacking["active_execution_progress"] is None and unpacking["active_execution_basis"] == "processing"
+    assert unpacking["progress"] == 0.0
+
+
+async def _set(core, progress, *, network_active=True):
+    [attempt] = core.executor.jobs
+    core.executor.jobs[attempt] = replace(core.executor.jobs[attempt], progress=progress, activity=ExecutionActivity(
+        network_active=network_active, bandwidth_reservation_required=network_active, progress_expected=True))
+    await core.engine.reconcile_executions()
+
+
+async def test_completed_units_are_a_percentage_of_their_own_basis(tmp_path, monkeypatch):
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    await _set(core, TransferProgress(0, 700, 7, 3, 12))
+    active, listed = await _active(core), await _listed(core)
+    assert (active.active_execution_progress, active.active_execution_basis) == (pytest.approx(25.0), "units")
+    assert (listed["active_execution_progress"], listed["active_execution_basis"]) == (pytest.approx(25.0), "units")
+    details = await core.repository.presentation(core.transfer.id, details=True)
+    assert details["active_execution_basis"] == "units"
+    assert ApplicationService._active_overlay_item(active)["active_execution_basis"] == "units"
+
+
+@pytest.mark.parametrize("units", [(13, 12), (3, 0), (None, 12)])
+async def test_inconsistent_or_unknown_units_project_no_percentage(tmp_path, monkeypatch, units):
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    await _set(core, TransferProgress(0, 700, 7, *units))
+    listed = await _listed(core)
+    assert listed["active_execution_progress"] is None and listed["active_execution_basis"] is None
+
+
+async def test_a_writer_past_acquisition_retires_its_percentage(tmp_path, monkeypatch):
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    await _set(core, TransferProgress(4, 3))
+    assert (await _listed(core))["active_execution_basis"] == "bytes"
+    await _set(core, TransferProgress(4, 4), network_active=False)            # remux / finalization
+    active = await _active(core)
+    assert (active.active_execution_progress, active.active_execution_basis) == (None, "processing")
+    assert not active.progress                                               # verified material untouched
+
+
+async def test_a_mix_of_byte_and_unit_writers_is_no_scope():
+    row = {"execution_writers": 2, "execution_acquiring": 2, "execution_bytes_known": 1, "execution_total": 100,
+           "execution_completed": 50, "execution_units_known": 1, "execution_units_total": 8,
+           "execution_units_completed": 4}
+    assert _repository_base.active_execution_projection(row) == (None, None)
+    assert _repository_base.active_execution_projection({**row, "execution_bytes_known": 2})[1] == "bytes"
+    assert _repository_base.active_execution_projection({**row, "execution_units_known": 2}) == (50.0, "units")
+    assert _repository_base.active_execution_projection({**row, "execution_acquiring": 0}) == (None, "processing")
+    assert _repository_base.active_execution_projection({}) == (None, None)

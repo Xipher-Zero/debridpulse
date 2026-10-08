@@ -414,12 +414,21 @@ def extract(spec: dict) -> dict:
                 "id": str(info.get("id") or ""), "title": str(info.get("title") or "")[:512], "members": members}
 
 
+def _count(value) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
+
+
 class _Progress:
-    """yt-dlp progress, per component, emitted no more often than the interval."""
+    """yt-dlp progress, per component, emitted no more often than the interval.
+
+    A segmented download's units are its COMPLETED fragments: yt-dlp's
+    ``fragment_index`` counts the fragments already finished, out of the exact
+    ``fragment_count``. Its ``total_bytes_estimate`` is never a total."""
 
     def __init__(self):
         self.component = 0
         self.last = 0.0
+        self.unit_totals: dict[int, int] = {}
 
     def __call__(self, status: dict) -> None:
         now = time.monotonic()
@@ -428,10 +437,17 @@ class _Progress:
             return
         self.last = now
         total = status.get("total_bytes")
+        index, count = _count(status.get("fragment_index")), _count(status.get("fragment_count"))
+        if count and index is not None and index <= count:
+            self.unit_totals[self.component] = count
+        else:
+            count = index = None
+        if finished and self.component in self.unit_totals:
+            count = index = self.unit_totals[self.component]          # every fragment is done
         _emit({"event": "progress", "component": self.component,
                "downloaded": int(status.get("downloaded_bytes") or 0),
                "total": int(total) if isinstance(total, (int, float)) and total > 0 else None,
-               "finished": finished})
+               "units": index, "unit_total": count, "finished": finished})
 
 
 class _Phase:
@@ -543,21 +559,8 @@ def acquire(spec: dict, phase: _Phase) -> int:
             raise Failure("format_unavailable", "the planned formats are no longer offered")
         if any(str(item.get("protocol") or "") not in NATIVE_PROTOCOLS for item in requested):
             raise Failure("transport_unsupported", "a component needs a transport outside the guard")
-        components = []
-        for index, fmt in enumerate(requested):
-            item = dict(info)
-            item.pop("requested_formats", None)
-            item.update(fmt)
-            path = os.path.join(workspace, f"component-{index}.{fmt.get('ext') or 'bin'}")
-            progress.component = index
-            phase.enter("component", index, fmt.get("format_id"))
-            try:
-                ydl.dl(path, item)
-            except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
-                raise classify(exc, acquire=True, phase=phase.name) from None
-            if not os.path.isfile(path):
-                raise Failure("output_missing", "a component was not written")
-            components.append((path, fmt))
+        # The subtitle, small and planned, is fetched first: the acquisition's
+        # scope then has a known total from the start instead of only at its end.
         subtitle = None
         if plan.get("subtitle"):
             phase.enter("subtitle")
@@ -578,6 +581,35 @@ def acquire(spec: dict, phase: _Phase) -> int:
             with open(path, "wb") as handle:
                 handle.write(data)
             subtitle = (path, chosen["language"])
+            # One planned part, complete: its exact size is known before any
+            # stream is fetched, so the whole plan's total can be.
+            _emit({"event": "progress", "component": len(requested), "downloaded": len(data), "total": len(data),
+                   "units": 1, "unit_total": 1, "finished": True})
+        # Every planned component's exact size, and the exact fragment count of
+        # one planned as fragments, before any of it is fetched: without them
+        # the attempt's total stays unknown until the last component starts.
+        # Only yt-dlp's exact ``filesize`` -- never the ``filesize_approx``
+        # estimate -- is a total.
+        for index, fmt in enumerate(requested):
+            size, fragments = _count(fmt.get("filesize")), fmt.get("fragments")
+            planned = len(fragments) if isinstance(fragments, list) and fragments else None
+            _emit({"event": "progress", "component": index, "downloaded": 0, "total": size or None,
+                   "units": 0 if planned else None, "unit_total": planned, "finished": False})
+        components = []
+        for index, fmt in enumerate(requested):
+            item = dict(info)
+            item.pop("requested_formats", None)
+            item.update(fmt)
+            path = os.path.join(workspace, f"component-{index}.{fmt.get('ext') or 'bin'}")
+            progress.component = index
+            phase.enter("component", index, fmt.get("format_id"))
+            try:
+                ydl.dl(path, item)
+            except Exception as exc:  # noqa: BLE001 -- classified, never swallowed
+                raise classify(exc, acquire=True, phase=phase.name) from None
+            if not os.path.isfile(path):
+                raise Failure("output_missing", "a component was not written")
+            components.append((path, fmt))
         phase.enter("finalize")
         _emit({"event": "phase", "phase": "finalize"})
         output = os.path.join(workspace, f"output.{container}")

@@ -716,3 +716,130 @@ async def test_an_origin_refusing_a_planned_component_is_retried_never_final(tmp
     assert dict(error.context) == {"phase": "component", "component": 0, "format_id": "original"}
     assert "http" not in error.diagnostic.replace("HTTP Error", "")
 
+
+
+# -- a planned subtitle is acquired first, counted, and embedded losslessly -----------
+# TheHighWire's explicit extractor reads an HTML5 player: one progressive MP4 and
+# a ``<track kind="subtitles">``. MP4 carries no WebVTT unchanged, so the plan is
+# MKV with the English track; the subtitle is fetched before the stream.
+
+class GatedOrigin(Origin):
+    """The origin above, holding one path until ``gate`` opens."""
+
+    def __init__(self, routes, gated: str, **options):
+        super().__init__(routes, **options)
+        self.gated, self.gate = gated, asyncio.Event()
+
+    async def _serve(self, reader, writer):
+        head = await asyncio.wait_for(reader.readuntil(b"\r\n\r\n"), HANG_GUARD_SECONDS)
+        if head.split(b"\r\n", 1)[0].decode("latin-1").split(" ")[1] == self.gated:
+            await asyncio.wait_for(self.gate.wait(), HANG_GUARD_SECONDS)
+        replay = asyncio.StreamReader()
+        replay.feed_data(head)
+        replay.feed_eof()
+        await super()._serve(replay, writer)
+
+
+_HIGHWIRE_URL = "http://thehighwire.com/ark-videos/clip"
+_HIGHWIRE_PAGE = (b'<html><h1 class="section-header">Clip</h1>'
+                  b'<iframe class="ark-video-embed" src="http://thehighwire.com/embed/clip"></iframe></html>')
+_HIGHWIRE_TRACK = b'<track kind="subtitles" src="http://thehighwire.com/media/clip.en.vtt" srclang="en" label="English">'
+
+
+def _highwire_routes(subtitle=(200, {"Content-Type": "text/vtt"}, _VTT.encode()), embeds=None):
+    def embed():
+        track = embeds.pop(0) if embeds else _HIGHWIRE_TRACK
+        return b'<video controls><source src="http://thehighwire.com/media/clip.mp4" type="video/mp4">' + track + b'</video>'
+    return {"/ark-videos/clip": (200, {"Content-Type": "text/html"}, _HIGHWIRE_PAGE),
+            "/embed/clip": (200, {"Content-Type": "text/html"}, embed),
+            "/media/clip.en.vtt": subtitle,
+            "/media/clip.mp4": (200, {"Content-Type": "video/mp4"}, (FIXTURES / "clip.mp4").read_bytes())}
+
+
+async def _highwire(tmp_path, routes, *, observe=None):
+    origin = await GatedOrigin(routes, "/media/clip.mp4", port=80).start()
+    if observe is None:
+        origin.gate.set()
+    guard = _guard({"thehighwire.com": [PUBLIC]})
+    runtime, root = tmp_path / "runtime", tmp_path / "downloads"
+    root.mkdir()
+    sandbox = MediaSandbox(str(runtime), egress=guard)
+    try:
+        provider = MediaProvider(sandbox.extract, target_resolution="1080", subtitle_language="en")
+        (candidate,) = (await provider.resolve(TransferRequest("http", _HIGHWIRE_URL))).candidates
+        target = root / candidate.name
+        executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox)
+        work = ExecutionWork(ExecutionSubject.of(candidate), MaterializationPlan(
+            MaterializationKind.FILE, str(root), str(target)), "attempt-sub")
+        request = ExecutionRequest(work, "attempt-sub")
+        handle = executor.prepare(request)
+        assert (await executor.start(request, handle)).state == ExecutionState.RUNNING
+        if observe is not None:
+            await observe(executor, handle, origin)
+            origin.gate.set()
+        done = await _settled(executor, handle, timeout=120)
+    finally:
+        origin.gate.set()
+        await guard.stop()
+        await origin.stop()
+    assert guard._public_scopes == set()
+    return done, candidate, target, origin
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_a_planned_subtitle_is_acquired_first_counted_and_embedded_losslessly(tmp_path):
+    seen = {}
+
+    async def while_the_stream_is_held(executor, handle, origin):
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            observed = await executor.observe(handle)
+            if observed.progress.completed_bytes:
+                break
+            await asyncio.sleep(0.05)
+        seen["held"] = observed.progress
+        seen["requests"] = list(origin.requests)
+
+    done, candidate, target, origin = await _highwire(tmp_path, _highwire_routes(), observe=while_the_stream_is_held)
+    plan = candidate.context[PLAN_KEY]
+    assert (plan["extractor"], plan["container"], plan["subtitle"]) == (
+        "TheHighWire", "mkv", {"language": "en", "kind": "authored", "ext": "vtt"})
+    # Accounting while the stream is held: the subtitle part is acquired and
+    # counted; the stream's size was never planned, so there is no denominator.
+    assert seen["held"].completed_bytes == len(_VTT.encode())
+    assert seen["held"].total_bytes == 0 and seen["held"].total_units is None
+    assert "GET /media/clip.en.vtt HTTP/1.1" in seen["requests"]
+    assert "GET /media/clip.mp4 HTTP/1.1" not in seen["requests"]
+    assert done.state == ExecutionState.SUCCEEDED, done.error
+    assert origin.requests.index("GET /media/clip.en.vtt HTTP/1.1") < origin.requests.index("GET /media/clip.mp4 HTTP/1.1")
+    assert origin.requests.count("GET /media/clip.mp4 HTTP/1.1") == 1
+    clip = FIXTURES / "clip.mp4"
+    assert _packets(target, "v:0") == _packets(clip, "v:0") and _packets(target, "a:0") == _packets(clip, "a:0")
+    (track,) = [item for item in _streams(target) if item["codec_type"] == "subtitle"]
+    assert track["codec_name"] == "webvtt" and track.get("tags", {}).get("language") == "en"
+    assert sorted(path.name for path in target.parent.iterdir()) == [target.name]
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_a_refused_subtitle_fails_retryably_in_its_phase_before_any_stream_byte(tmp_path):
+    from transfers.errors import Origin as ErrorOrigin
+    from transfers.errors import Retryability
+    done, _candidate, target, origin = await _highwire(
+        tmp_path, _highwire_routes(subtitle=(403, {"Content-Type": "text/plain"}, b"Forbidden")))
+    assert done.state == ExecutionState.FAILED
+    assert (done.error.native_code, done.error.origin, done.error.retryability) == (
+        "source_refused", ErrorOrigin.REMOTE_SOURCE, Retryability.BACKOFF)
+    assert dict(done.error.context) == {"phase": "subtitle"}
+    assert "GET /media/clip.mp4 HTTP/1.1" not in origin.requests and not target.exists()
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+async def test_a_subtitle_withdrawn_after_planning_fails_its_plan_before_any_stream_byte(tmp_path):
+    # Planned with the English track; at acquisition the player no longer offers it.
+    done, _candidate, target, origin = await _highwire(tmp_path, _highwire_routes(embeds=[_HIGHWIRE_TRACK, b""]))
+    assert done.state == ExecutionState.FAILED
+    assert done.error.native_code == "format_unavailable" and dict(done.error.context) == {"phase": "subtitle"}
+    assert "GET /media/clip.mp4 HTTP/1.1" not in origin.requests and not target.exists()

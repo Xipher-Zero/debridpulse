@@ -487,6 +487,17 @@ class TransferProgress:
     total_bytes: int = 0
     completed_bytes: int = 0
     bytes_per_second: int = 0
+    # Acquisition work units, for an acquisition with no exact byte total:
+    # authoritative counts of COMPLETED units (e.g. media segments) out of a
+    # defensible total -- never bytes, never an estimate. ``None`` = not known.
+    completed_units: int | None = None
+    total_units: int | None = None
+    # Stamped by core when it persists an observation (never by an executor):
+    # whether the writer was acquiring then (``ExecutionActivity
+    # .network_active`` while RUNNING), so a writer in repair, unpack, remux or
+    # finalization has no acquisition percentage. ``None`` = recorded before
+    # this fact existed.
+    acquiring: bool | None = None
 
     @property
     def percentage(self) -> float:
@@ -963,7 +974,6 @@ class ExecutorCapabilities:
     per_execution_pause: bool = False
     acquisition_gate: bool = False
     aggregate_bandwidth_ceiling: bool = False
-    aggregate_throughput: bool = False
     native_assisted_retry: bool = False
     transient_input: bool = False
     # Read-only listing of one remote directory before any candidate exists,
@@ -1006,20 +1016,6 @@ class ExecutorHealth:
     ready: bool
     available_runtime_capabilities: frozenset[ExecutorRuntimeCapability] = frozenset()
     error: NormalizedError | None = None
-
-
-@dataclass(frozen=True)
-class ExecutorThroughput:
-    """One instantaneous acquisition rate measured for a whole executor.
-
-    Reported only by an executor whose measurement has no finer granularity
-    than itself, so core can never be tempted to split one figure across
-    executions or to add it to per-execution rates. ``observed`` is False
-    whenever no current measurement exists -- an unreachable executor is
-    unknown, never its last value.
-    """
-    bytes_per_second: int = 0
-    observed: bool = False
 
 
 @dataclass(frozen=True)
@@ -1209,8 +1205,12 @@ class Transfer:
     epoch: int = 0
     # In-flight execution progress that is not DP material (a destination-aware
     # reconstruction), as a percentage; ``None`` when there is none. Activity
-    # only -- ``progress`` alone is completion.
+    # only -- ``progress`` alone is completion. ``active_execution_basis``
+    # (``active_execution_projection``): what that percentage counts --
+    # ``"bytes"`` or ``"units"`` -- or ``"processing"`` when the writers are
+    # past acquisition (no percentage); ``None`` when there is none.
     active_execution_progress: float | None = None
+    active_execution_basis: str | None = None
     # The collection folder its members live under, frozen at its first
     # committed fan-out (``None`` before); never a later provider-reported
     # name. ``collection_root_conflict``: existing placement implied no single
