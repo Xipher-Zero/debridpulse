@@ -271,6 +271,75 @@ DebridPulse image digest  (Fork Image -> Container Security -> Candidate
   equivalent CONNECT fix and DebridPulse no longer needs BitTorrent removed
   at build time.
 
+## 4b. Rebuilt Debian package: FFmpeg
+
+`ffmpeg` (the `ffmpeg` and `ffprobe` tools) is Media Downloads' local
+finalizer: it copies already-acquired native streams into the one planned
+container and never acquires, decodes for output or encodes anything. Debian's
+own `ffmpeg` binary package also carries `ffplay`, links every encoder,
+filter, device and GPU library, and pulls a ~420 MB closure (LLVM and Mesa
+through SDL2 among it). DebridPulse therefore rebuilds it, like aria2 (§4a),
+as its own immutable supply-chain artifact:
+
+```
+packaging/ffmpeg/  (Debian source version, build configuration, base)
+        |  FFmpeg Package workflow: native amd64 + arm64 builds, qualified
+        v
+ghcr.io/xipher-zero/debridpulse-ffmpeg@sha256:<multi-arch manifest digest>
+        |  application Dockerfile: FROM ...@sha256 AS ffmpeg-packages
+        v
+DebridPulse image digest  (Fork Image -> Container Security -> Candidate
+                           Runtime Qualification -> Release Promotion)
+```
+
+- **Source:** Debian source package `ffmpeg` at the version named by
+  `FFMPEG_SOURCE_VERSION` in `packaging/ffmpeg/Dockerfile`
+  (`7:7.1.5-0+deb13u1`, the version Trixie serves for the pinned base),
+  fetched with `apt-get source` from the signed Debian repository
+  configuration the base image uses; apt verifies the `.dsc`, orig and
+  debian tarballs against the signed Sources index. Debian's own patches
+  are applied by `apt-get source`; DebridPulse adds none.
+- **Configuration (one build script):** `packaging/ffmpeg/build-package.sh`
+  owns the configuration and the `+dpN` suffix: `--disable-everything`, then
+  only the local `file` and `pipe` protocols (`--disable-network`: no network
+  protocol exists in the binary), the demuxers of the containers and subtitle
+  formats yt-dlp's native downloaders produce, the muxers of the planned
+  final containers, the stream families' parsers, every bitstream filter and
+  the native decoders of those stream families (probing never depends on a
+  parser alone). No encoder, device, GPU or external library; `ffplay` is not
+  built. Nothing GPL is enabled, so the build is LGPL-2.1-or-later.
+- **Package:** Debian's binary package name `ffmpeg`, version
+  `FFMPEG_PACKAGE_VERSION` (`7:7.1.5-0+deb13u1+dp1`, sorting after the
+  archive version), recording `Source: ffmpeg (<source version>)` and Debian's
+  own `copyright` file, with `Depends` computed by `dpkg-shlibdeps` (libc
+  only), so dpkg, the SBOM and vulnerability scanning resolve it as Debian's
+  FFmpeg. The `.deb` is reproducible: two clean builds produce the same bytes.
+- **Qualification (one verifier):** `packaging/ffmpeg/verify-features.sh`
+  checks the INSTALLED package from the binaries' own reports: the exact
+  version and recorded source, exactly the `file` and `pipe` protocols for
+  input and output, no encoder, the finalization containers, subtitle
+  demuxers and `aac_adtstoasc` present, an LGPL build, and no library beyond
+  libc/libm. It runs in the package build and wherever the package is
+  installed.
+- **Artifact and consumption:** exactly as §4a: a `scratch` package carrier
+  holding `/packages/` (the one `.deb`), `/source/` (Debian's source package
+  as fetched plus the build script: the complete corresponding source),
+  `/VERSION`, `/SHA256SUMS`, `/ffmpeg-version.txt` and `/verify-features.sh`,
+  built natively on `ubuntu-24.04` and `ubuntu-24.04-arm` with provenance and
+  SBOM, published write-once as
+  `ghcr.io/xipher-zero/debridpulse-ffmpeg:<version without epoch, + as ->`
+  annotated with a hash of every tracked file under `packaging/ffmpeg/`, and
+  consumed by the application Dockerfile by manifest DIGEST.
+- **Licensing:** LGPL-2.1-or-later; the package ships Debian's `copyright`
+  file and the artifact carries the complete corresponding source
+  (`SOURCE_OFFER.md`).
+- **Refresh:** when Trixie publishes a newer ffmpeg source (a security
+  update) or the configuration or base changes, bump
+  `FFMPEG_SOURCE_VERSION` and/or the `+dpN` package version in
+  `packaging/ffmpeg/` in the same change, let the FFmpeg Package workflow
+  publish the new artifact, pin its new digest in the application
+  Dockerfile, and requalify the new image digest (§6).
+
 ## 5. Python dependency lock and hash refresh procedure
 
 `backend/requirements.txt` is generated from `backend/requirements.in` with

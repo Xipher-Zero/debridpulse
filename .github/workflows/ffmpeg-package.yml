@@ -1,0 +1,257 @@
+name: FFmpeg Package
+
+# DebridPulse's FFmpeg package (docs/SUPPLY_CHAIN_POLICY.md section 4b) is an
+# immutable supply-chain artifact of its own: built once per architecture on a
+# NATIVE runner from packaging/ffmpeg/, published write-once to
+# ghcr.io/xipher-zero/debridpulse-ffmpeg:<package version>, and consumed by the
+# application Dockerfile by multi-arch manifest DIGEST. Application image
+# builds never compile FFmpeg. This workflow runs only when its inputs change.
+on:
+  push:
+    branches:
+      - main
+      - '1.0.13'
+      - 'staging/**'
+    paths:
+      - 'packaging/ffmpeg/**'
+      - '.github/workflows/ffmpeg-package.yml'
+  pull_request:
+    paths:
+      - 'packaging/ffmpeg/**'
+      - '.github/workflows/ffmpeg-package.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One package version is published at most once; runs are serialized so two
+# pushes cannot race through the existence check.
+concurrency:
+  group: ffmpeg-package
+  cancel-in-progress: false
+
+env:
+  IMAGE_NAME: ghcr.io/xipher-zero/debridpulse-ffmpeg
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  identity:
+    name: Resolve package identity
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: read
+    outputs:
+      version: ${{ steps.identity.outputs.version }}
+      tag: ${{ steps.identity.outputs.tag }}
+      inputs: ${{ steps.identity.outputs.inputs }}
+      exists: ${{ steps.existing.outputs.exists }}
+      digest: ${{ steps.existing.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+
+      - name: Read the package version and input digest
+        id: identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="$(sed -n 's/^ARG FFMPEG_PACKAGE_VERSION=//p' packaging/ffmpeg/Dockerfile | sort -u)"
+          if [[ ! "$version" =~ ^([0-9]+:)?[0-9][0-9A-Za-z.~+-]*\+dp[0-9]+$ ]]; then
+            echo "packaging/ffmpeg/Dockerfile must declare exactly one FFMPEG_PACKAGE_VERSION ending +dpN; got: ${version:-<none>}"
+            exit 1
+          fi
+          # A tag holds neither the epoch's ':' nor '+'.
+          tag="${version#*:}"
+          # Every tracked input of the build, content-addressed: a published
+          # version is bound to exactly these bytes.
+          inputs="sha256:$(git ls-files -z packaging/ffmpeg | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag//+/-}" >> "$GITHUB_OUTPUT"
+          echo "inputs=$inputs" >> "$GITHUB_OUTPUT"
+          echo "ffmpeg package $version, inputs $inputs"
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for an existing package image
+        id: existing
+        shell: bash
+        env:
+          REF: ${{ env.IMAGE_NAME }}:${{ steps.identity.outputs.tag }}
+          INPUTS: ${{ steps.identity.outputs.inputs }}
+        run: |
+          set -euo pipefail
+          if ! raw="$(docker buildx imagetools inspect --raw "$REF" 2>&1)"; then
+            # GHCR answers DENIED for a package that does not exist yet. That is
+            # never a licence to push over an existing tag: a token that cannot
+            # read a package cannot write it either, and the publish job checks
+            # again, with its write credentials, immediately before creating
+            # the tag.
+            if grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$raw"; then
+              echo "No package image $REF yet; it will be published once"
+              echo "exists=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            echo "Unable to determine whether $REF exists: $raw"
+            exit 1
+          fi
+          recorded="$(jq -r '.annotations["io.debridpulse.ffmpeg.inputs"] // empty' <<< "$raw")"
+          if [ "$recorded" != "$INPUTS" ]; then
+            echo "$REF is already published from different inputs (${recorded:-<none>}, now $INPUTS)."
+            echo "A published package version is never rebuilt: bump FFMPEG_PACKAGE_VERSION (+dpN) in packaging/ffmpeg/."
+            exit 1
+          fi
+          digest="$(docker buildx imagetools inspect "$REF" | awk '/^Digest:/ {print $2; exit}')"
+          echo "$REF already published from these exact inputs: $digest"
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+  build-amd64:
+    name: Build linux/amd64 (native)
+    needs: identity
+    if: needs.identity.outputs.exists != 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      # The build itself installs the package and verifies its exact version,
+      # recorded Debian source and compiled capability set
+      # (packaging/ffmpeg/verify-features.sh); a build that does not qualify
+      # publishes nothing.
+      - name: Build, qualify and push by digest
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: .
+          file: packaging/ffmpeg/Dockerfile
+          platforms: linux/amd64
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+  build-arm64:
+    name: Build linux/arm64 (native)
+    needs: identity
+    if: needs.identity.outputs.exists != 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    outputs:
+      digest: ${{ steps.build.outputs.digest }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build, qualify and push by digest
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: .
+          file: packaging/ffmpeg/Dockerfile
+          platforms: linux/arm64
+          outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=${{ github.event_name != 'pull_request' }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+          provenance: mode=max
+          sbom: true
+
+  publish:
+    name: Publish write-once multi-arch package image
+    needs: [identity, build-amd64, build-arm64]
+    if: github.event_name != 'pull_request' && needs.identity.outputs.exists != 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Log in to GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create the multi-arch manifest and verify it
+        shell: bash
+        env:
+          REF: ${{ env.IMAGE_NAME }}:${{ needs.identity.outputs.tag }}
+          VERSION: ${{ needs.identity.outputs.version }}
+          INPUTS: ${{ needs.identity.outputs.inputs }}
+          AMD64: ${{ needs.build-amd64.outputs.digest }}
+          ARM64: ${{ needs.build-arm64.outputs.digest }}
+        run: |
+          set -euo pipefail
+          for digest in "$AMD64" "$ARM64"; do
+            [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "invalid child digest: ${digest:-<empty>}"; exit 1; }
+          done
+          # Write-once: never create over a tag that exists by now.
+          if existing="$(docker buildx imagetools inspect "$REF" 2>&1)"; then
+            echo "$REF already exists; refusing to overwrite it: $existing"
+            exit 1
+          fi
+          grep -qiE 'not found|manifest unknown|no such manifest|name unknown|denied' <<< "$existing" || {
+            echo "Unable to determine whether $REF exists; refusing to publish: $existing"; exit 1; }
+          docker buildx imagetools create -t "$REF" \
+            --annotation "index:org.opencontainers.image.title=DebridPulse FFmpeg packages" \
+            --annotation "index:org.opencontainers.image.version=$VERSION" \
+            --annotation "index:org.opencontainers.image.revision=$GITHUB_SHA" \
+            --annotation "index:org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --annotation "index:org.opencontainers.image.licenses=LGPL-2.1-or-later" \
+            --annotation "index:io.debridpulse.ffmpeg.inputs=$INPUTS" \
+            "$IMAGE_NAME@$AMD64" "$IMAGE_NAME@$ARM64"
+          raw="$(docker buildx imagetools inspect --raw "$REF")"
+          test "$(jq -r '.annotations["io.debridpulse.ffmpeg.inputs"]' <<< "$raw")" = "$INPUTS"
+          test "$(jq -r '.annotations["org.opencontainers.image.version"]' <<< "$raw")" = "$VERSION"
+          # Each build pushed an INDEX (its image plus its provenance
+          # attestation); the published index lists the per-architecture IMAGE
+          # inside each one, so compare against that image, not the index.
+          for pair in "amd64 $AMD64" "arm64 $ARM64"; do
+            set -- $pair
+            built="$(docker buildx imagetools inspect --raw "$IMAGE_NAME@$2" \
+              | jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0] // empty')"
+            [[ "$built" =~ ^sha256:[0-9a-f]{64}$ ]] || { echo "no linux/$1 image inside $2"; exit 1; }
+            test "$(jq -r --arg a "$1" '[.manifests[] | select(.platform.os=="linux" and .platform.architecture==$a) | .digest][0]' <<< "$raw")" = "$built"
+          done
+          digest="$(docker buildx imagetools inspect "$REF" | awk '/^Digest:/ {print $2; exit}')"
+          {
+            echo "### FFmpeg package image published"
+            echo
+            echo "- version: \`$VERSION\`"
+            echo "- tag: \`$REF\`"
+            echo "- **manifest digest: \`$digest\`** (pin this in the application Dockerfile)"
+            echo "- linux/amd64: \`$AMD64\`"
+            echo "- linux/arm64: \`$ARM64\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "published $REF@$digest"
