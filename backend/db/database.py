@@ -641,6 +641,8 @@ TRANSFER_REPOSITORY_SCHEMA = (
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
         updated_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_route_provenance_transfer ON route_attempt_provenance(transfer_id,request_id,ordinal)",
+    # Origin resolution reads a request's routes by request identity alone.
+    "CREATE INDEX IF NOT EXISTS idx_route_provenance_request ON route_attempt_provenance(request_id)",
     "CREATE INDEX IF NOT EXISTS idx_execution_provenance_transfer ON execution_attempt_provenance(transfer_id,artifact_id,ordinal)",
     "CREATE INDEX IF NOT EXISTS idx_execution_provenance_route ON execution_attempt_provenance(route_attempt_id)",
     "CREATE INDEX IF NOT EXISTS idx_candidate_bindings_artifact ON canonical_candidate_bindings(canonical_artifact_id,candidate_order)",
@@ -756,6 +758,8 @@ TRANSFER_REPOSITORY_SCHEMA = (
         attempt_id TEXT, kind TEXT NOT NULL, payload TEXT NOT NULL,
         created_at DATETIME DEFAULT CURRENT_TIMESTAMP)""",
     "CREATE INDEX IF NOT EXISTS idx_requests_ready ON transfer_requests(state,retry_at,transfer_id)",
+    # A request's children, which consolidation reads to find a transfer's leaves.
+    "CREATE INDEX IF NOT EXISTS idx_requests_parent ON transfer_requests(parent_id)",
     "CREATE INDEX IF NOT EXISTS idx_attempts_artifact ON execution_attempts(artifact_id,state)",
     "CREATE INDEX IF NOT EXISTS idx_resources_transfer ON provider_resources(transfer_id,provider_id)",
     # Universal file-selection manifest overlay (additive 1.0.12 current schema).
@@ -1299,6 +1303,8 @@ async def _init_db_sqlite(path: Path):
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_queue ON download_files (status, download_client, blocked, torrent_id, id)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_download_id ON download_files (download_id)",
             "CREATE INDEX IF NOT EXISTS idx_dlfiles_mirror_group ON download_files (torrent_id, mirror_group_id, mirror_state, status)",
+            # A canonical artifact's standbys, which may belong to any transfer.
+            "CREATE INDEX IF NOT EXISTS idx_dlfiles_mirror_standbys ON download_files (mirror_group_id, mirror_state)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_alldebrid_id ON torrents (alldebrid_id)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status ON torrents (status)",
             "CREATE INDEX IF NOT EXISTS idx_torrents_status_alldebrid ON torrents (status, alldebrid_id)",

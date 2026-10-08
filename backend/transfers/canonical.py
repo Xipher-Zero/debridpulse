@@ -434,21 +434,27 @@ class CanonicalOwnership:
     # refresh and consolidation already move bindings through.
     _NON_CURRENT_ORDER = 100000
 
-    async def _realign_current_candidates(self, db, artifact_id: int) -> None:
+    async def _realign_current_candidates(self, db, artifact_id: int) -> tuple:
         """Inside the caller's transaction: make ``artifact_id``'s binding
         orders describe its current candidates again. Each current candidate's
         binding -- the one ``_binding_for`` resolves for it, exactly as every
         reader and the origin backfill do -- takes that candidate's position; a
         binding no current candidate resolves to leaves the active positions
         for the non-current band. Nothing is deleted, no origin moves, and an
-        aligned artifact is left untouched, so repeating it changes nothing."""
+        aligned artifact is left untouched, so repeating it changes nothing.
+
+        Returns each current candidate with the origin resolved for it. Origin
+        resolution reads no binding, so realignment never changes it: the
+        caller's backfill uses these rather than resolving each again."""
         row = await db.fetchone("SELECT candidates FROM download_files WHERE id=?", (artifact_id,))
         if not row:
-            return
+            return ()
         candidates = tuple(codec.candidate(item) for item in codec.load(row.get("candidates"), []))
+        resolved = []
         positions: dict[int, int] = {}
         for position, candidate in enumerate(candidates, start=1):
             origin = await self._p1_origin_for_candidate(db, artifact_id, candidate)
+            resolved.append((candidate, origin))
             binding = await self._binding_for(db, artifact_id, candidate, origin.source if origin else None)
             if binding and int(binding["id"]) not in positions:
                 positions[int(binding["id"])] = position
@@ -459,7 +465,7 @@ class CanonicalOwnership:
                      if (int(item["id"]) in positions and int(item["candidate_order"]) != positions[int(item["id"])])
                      or (int(item["id"]) not in positions and int(item["candidate_order"]) <= self._NON_CURRENT_ORDER)]
         if not misplaced:
-            return
+            return tuple(resolved)
         band = max([self._NON_CURRENT_ORDER, *(int(item["candidate_order"]) for item in bindings)]) + 1
         for offset, item in enumerate(misplaced):
             await db.execute("UPDATE canonical_candidate_bindings SET candidate_order=?,updated_at=CURRENT_TIMESTAMP "
@@ -468,6 +474,7 @@ class CanonicalOwnership:
             if int(item["id"]) in positions:
                 await db.execute("UPDATE canonical_candidate_bindings SET candidate_order=?,"
                                  "updated_at=CURRENT_TIMESTAMP WHERE id=?", (positions[int(item["id"])], item["id"]))
+        return tuple(resolved)
 
     async def realign_rebuilt(self, artifact_id: int) -> None:
         """An artifact rebuilt in place by a new acquisition generation (its
@@ -495,14 +502,12 @@ class CanonicalOwnership:
                         ORDER BY f.torrent_id,f.id"""
                 )
                 for row in primaries:
-                    candidates = tuple(codec.candidate(item) for item in codec.load(row.get("candidates"), []))
                     # A row rebuilt in place before rebuilds were realigned may
                     # still hold its earlier candidates' bindings at current
                     # positions: correct that durable state first.
-                    await self._realign_current_candidates(db, int(row["id"]))
+                    resolved = await self._realign_current_candidates(db, int(row["id"]))
                     next_order = 1
-                    for candidate in candidates:
-                        origin = await self._p1_origin_for_candidate(db, int(row["id"]), candidate)
+                    for candidate, origin in resolved:
                         if origin is None:
                             continue
                         binding = await self._binding_for(db, int(row["id"]), candidate, origin.source)

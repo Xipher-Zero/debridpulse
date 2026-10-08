@@ -1,4 +1,5 @@
 """Workspace 1 Phase 2 durable candidate provenance and consolidation qualification."""
+import sqlite3
 from dataclasses import replace
 from types import SimpleNamespace
 
@@ -398,3 +399,48 @@ async def test_established_winner_and_bindings_survive_restart(p2):
     assert primary_after.target == primary.target
     assert relation["consolidated_into"] == canonical.id
     assert [item["candidate_order"] for item in bindings] == [1, 2]
+
+
+@pytest.mark.asyncio
+async def test_restart_reconciliation_looks_up_every_artifact_by_index(p2, monkeypatch):
+    """``canonical.initialize`` runs at every start and looks up each primary
+    artifact's candidates one by one, so any lookup that scans a table makes
+    startup quadratic in the stored history (transfer 552's host: 137 s). Every
+    keyed lookup it issues must be an index search -- on a database created
+    before those indexes existed, once schema bootstrap has run."""
+    canonical_transfer = await admit(p2, p2.a, "submission-a")
+    await p2.engine.resolve_pending()
+    source_transfer = await admit(p2, p2.b, "submission-b")
+    await p2.engine.resolve_pending()
+    async with database.get_db() as db:
+        # The P1 handoff state, so realignment and origin backfill both work.
+        await db.execute("DELETE FROM canonical_candidate_origins")
+        await db.execute("DELETE FROM artifact_consolidations")
+        await db.execute("DELETE FROM canonical_candidate_bindings")
+        await db.execute("UPDATE torrents SET status='processing',progress=0 WHERE id=?", (source_transfer.id,))
+        await db.execute("DROP INDEX idx_route_provenance_request")
+        await db.execute("DROP INDEX idx_dlfiles_mirror_standbys")
+        await db.execute("DROP INDEX idx_requests_parent")
+        await db.commit()
+    await database.init_db()
+
+    lookups = []
+    for name in ("fetchone", "fetchall"):
+        original = getattr(database._DbConnection, name)
+
+        async def recorded(self, sql, params=(), _original=original):
+            if params:
+                lookups.append((sql, tuple(params)))
+            return await _original(self, sql, params)
+
+        monkeypatch.setattr(database._DbConnection, name, recorded)
+    restarted, repository = await restart(p2)
+
+    assert (await repository.get(source_transfer.id)).state == TransferState.CONSOLIDATED
+    assert len(await restarted.canonical.origins((await repository.artifacts(canonical_transfer.id))[0].id)) == 2
+    assert lookups
+    with sqlite3.connect(database.DB_PATH) as plain:
+        scans = {sql: steps for sql, params in lookups
+                 if (steps := [row[3] for row in plain.execute("EXPLAIN QUERY PLAN " + sql, params)
+                               if row[3].startswith("SCAN")])}
+    assert scans == {}
