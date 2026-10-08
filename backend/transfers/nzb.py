@@ -1,9 +1,18 @@
-"""Provider-local NZB validation and normalization.
+"""THE NZB source-fact owner: validation, normalization and naming facts.
 
-Knows nothing about any executor, SAB, NNTP transport or the download root: it
-turns an NZB manifest into neutral facts (a name, a declared byte total, the
-file and segment counts) or rejects it. Parsing is defensive -- an NZB is
-untrusted operator input -- and never resolves external entities.
+Neutral: any route an NZB can take (native Usenet, a provider that acquires it
+remotely) reads submitted NZB bytes through this one reader, and no route
+owns it. Knows nothing about any executor, SAB, NNTP transport, provider or
+the download root: it turns an NZB manifest into neutral facts (a name, a
+declared byte total, the file and segment counts) or rejects it. Parsing is
+defensive -- an NZB is untrusted operator input -- and never resolves
+external entities.
+
+It also owns the NZB naming facts a remotely acquired posting needs to be
+named as native Usenet names it (``useful_name``, ``dominant_member``,
+``is_probably_obfuscated``): the narrow subset of SABnzbd 5.1.3's
+deobfuscation -- the version DebridPulse bundles -- that decides when one
+dominant, obfuscated payload takes the posting's useful name.
 
 Parsing is bounded. A real posting's manifest is routinely tens or hundreds of
 megabytes of XML, and building a document tree for one costs multiples of its
@@ -17,8 +26,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import io
+import os
 import re
 from xml.etree import ElementTree
+
+from transfers.filesystem import safe_name
 
 # Structural ceilings. A manifest may legitimately be very large, so size alone
 # is a poor guard; these bound the shapes an abusive document can take without
@@ -145,3 +157,88 @@ def parse(payload: bytes, *, fallback_name: str = "") -> NzbManifest:
     if not isinstance(payload, (bytes, bytearray)) or not payload:
         raise InvalidNzb("NZB payload is empty")
     return read(io.BytesIO(bytes(payload)), fallback_name=fallback_name)
+
+
+# -- naming facts: SABnzbd 5.1.3 ``sabnzbd/deobfuscate_filenames.py`` and
+# ``sabnzbd/filesystem.py``, as bundled -- exactly this subset, nothing else of
+# SAB's post-processing (no content sniffing, PAR2, subtitles or lookalikes).
+
+# A work name ends in none of these (``filesystem.strip_extensions``).
+_WORK_NAME_SUFFIXES = (".nzb", ".par", ".par2")
+# A dominant payload with one of these extensions is never renamed
+# (``deobfuscate_filenames.EXCLUDED_FILE_EXTS``).
+DEOBFUSCATION_EXCLUDED_EXTENSIONS = frozenset({
+    ".vob", ".rar", ".par2", ".mts", ".m2ts", ".cpi", ".clpi", ".mpl", ".mpls", ".bdm", ".bdmv"})
+# The dominant payload is "much bigger" than the next only beyond this ratio,
+# strictly (``deobfuscate_filenames.get_biggest_file``: ``factor > 3``).
+DOMINANCE_RATIO = 3
+
+
+def useful_name(name: str) -> str:
+    """The posting's useful work name: ``name`` with every terminal ``.nzb``,
+    ``.par`` or ``.par2`` removed (case-insensitive), made safe as one path
+    component; ``""`` when nothing useful remains."""
+    stem = str(name or "").strip()
+    base, extension = os.path.splitext(stem)
+    while extension.lower() in _WORK_NAME_SUFFIXES:
+        stem = base
+        base, extension = os.path.splitext(stem)
+    stem = stem.strip()
+    return safe_name(stem) if stem else ""
+
+
+def dominant_member(sizes) -> int | None:
+    """The index of the dominant payload among exact positive ``sizes``: the
+    only one, or the largest when it is more than ``DOMINANCE_RATIO`` times
+    the next largest. ``None`` when none is dominant -- order never decides."""
+    sizes = list(sizes)
+    if len(sizes) == 1:
+        return 0
+    ranked = sorted(range(len(sizes)), key=lambda index: sizes[index], reverse=True)
+    if len(ranked) < 2 or sizes[ranked[1]] <= 0:
+        return None
+    return ranked[0] if sizes[ranked[0]] / sizes[ranked[1]] > DOMINANCE_RATIO else None
+
+
+def is_probably_obfuscated(basename: str) -> bool:
+    """SABnzbd 5.1.3 ``is_probably_obfuscated`` for a basename WITHOUT its
+    extension: certain obfuscation patterns first, then the human-readable
+    signals that establish a meaningful name, obfuscated by default."""
+    name = str(basename or "")
+    if not name:
+        return True
+    if re.findall(r"^[a-f0-9]{32}$", name):
+        return True
+    if re.findall(r"^[a-f0-9.]{40,}$", name):
+        return True
+    if re.findall(r"[a-f0-9]{30}", name) and len(re.findall(r"\[\w+\]", name)) >= 2:
+        return True
+    if re.findall(r"^abc\.xyz", name):
+        return True
+    decimals = sum(1 for c in name if c.isnumeric())
+    upperchars = sum(1 for c in name if c.isupper())
+    lowerchars = sum(1 for c in name if c.islower())
+    spacesdots = sum(1 for c in name if c in " ._")
+    if upperchars >= 2 and lowerchars >= 2 and spacesdots >= 1:
+        return False
+    if spacesdots >= 3:
+        return False
+    if (upperchars + lowerchars >= 4) and decimals >= 4 and spacesdots >= 1:
+        return False
+    if name[0].isupper() and lowerchars > 2 and upperchars / lowerchars <= 0.25:
+        return False
+    return True
+
+
+def deobfuscated_name(work_name: str, filename: str) -> str | None:
+    """The name a dominant payload ``filename`` takes from the posting's
+    ``work_name``: the useful work name plus the payload's own (lower-cased)
+    extension -- only when that extension is not excluded and the payload's
+    basename is probably obfuscated. ``None`` keeps ``filename``."""
+    useful = useful_name(work_name)
+    base, extension = os.path.splitext(str(filename or ""))
+    extension = extension.lower()
+    if not useful or extension in DEOBFUSCATION_EXCLUDED_EXTENSIONS or not is_probably_obfuscated(base):
+        return None
+    renamed = useful + extension
+    return renamed if renamed != filename else None

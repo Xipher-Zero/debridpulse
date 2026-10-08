@@ -21,7 +21,7 @@ from fastapi import HTTPException
 import db.database as database
 import services.network_safety as safety
 from application.service import ApplicationService
-from providers.usenet.nzb import read as read_nzb
+from transfers.nzb import read as read_nzb
 from providers.usenet.provider import UsenetProvider
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, Stage, TransferError
@@ -191,7 +191,7 @@ async def test_an_nzb_link_becomes_the_canonical_nzb_request(tmp_path, monkeypat
     assert isinstance(record.request.payload, StagedPayload)
     assert record.request.name == "posting.nzb"
     # Named exactly as the existing NZB reader names the posting.
-    from providers.usenet.nzb import parse
+    from transfers.nzb import parse
     assert (await repository.get(result["id"])).name == parse(POSTING, fallback_name="posting.nzb").name
     assert len(seen) == 1  # one fetch: never once to look and again to stage
     assert leftovers(store) == [f"{record.request.payload.id}.input"]

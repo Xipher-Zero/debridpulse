@@ -561,3 +561,121 @@ async def test_status_makes_no_call_while_disabled_or_unconfigured_and_registers
         assert state == ("disabled" if not enabled else "unconfigured") and transport.calls == []
     assert [item.id for item in definitions].count("premiumize") == 1
     assert definition.default_enabled is False and definition.secret_fields == frozenset({"api_key"})
+
+
+# -- NZB cloud filename recovery (transfers 549/550) ----------------------------------------------
+#
+# A synthetic posting shaped like the live one: its first file a clean PAR2
+# (the useful name), its payload posted under an obfuscated name.
+
+HASHED = "85d29188f4f2beb2d3aefd6add70bfe3fcc13c61.mp4"
+
+
+def posting(*subjects):
+    from html import escape
+    files = "".join(f'<file subject="{escape(subject, quote=True)}" poster="p" date="1"><groups><group>a.b</group></groups>'
+                    f'<segments><segment bytes="10" number="1">m{index}@x</segment></segments></file>'
+                    for index, subject in enumerate(subjects))
+    return f'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">{files}</nzb>'.encode()
+
+
+LIVE_SHAPE = posting('[2/3] - "Release.Name.vol-01.par2" yEnc (1/1)',
+                     '[1/3] - "3yUxAde1oJ2keIb4gKg1A40k32KEgF6l.mp4" yEnc (1/9)')
+
+
+def nzb_transfer(*content, single=None, folders=None, payload=LIVE_SHAPE, created=True):
+    """Upload ``payload`` as an NZB and finish its cloud transfer as one file
+    (``single``: name, size), a folder holding ``content``, or the scripted
+    ``folders`` listings."""
+    finished = {"id": "N1", "status": "finished", **({"file_id": "f1"} if single else {"folder_id": "F0"})}
+    script = {("POST", "transfer/create"): [ok(id="N1")],
+              ("GET", "transfer/list"): [ok(transfers=[{"id": "N1", "status": "queued"}])] * created
+              + [ok(transfers=[finished])] * 4}
+    if single:
+        script[("GET", "item/details")] = [ok(id="f1", name=single[0], size=single[1],
+                                              link="https://cdn.premiumize.example/f1")] * 4
+    else:
+        script[("GET", "folder/list")] = folders or [ok(folder_id="F0", content=list(content))] * 4
+    provider, transport = provider_with(script)
+    return provider, transport, payload
+
+
+async def resolved_nzb(provider, payload):
+    return (await provider.resolve(TransferRequest("nzb", payload, "Some.Upload.nzb"))).observation.resource
+
+
+def opaque(file_id, name, size):
+    return {"type": "file", "id": file_id, "name": name, "size": size}
+
+
+async def test_a_the_dominant_obfuscated_payload_takes_the_postings_useful_name():
+    """A (transfer 549): the hash-named cloud file is named as native Usenet names it."""
+    provider, _transport, payload = nzb_transfer(single=(HASHED, 4_035_560_403))
+    resource = await resolved_nzb(provider, payload)
+    assert resource.context["nzb_name"] == "Release.Name.vol-01"
+    (entry,) = await provider.manifest(resource)
+    assert (entry.relative_path, entry.name, entry.expected_bytes) == ("Release.Name.vol-01.mp4",
+                                                                       "Release.Name.vol-01.mp4", 4_035_560_403)
+    assert parse_member_address(entry.request.payload) == ("cloud", "f1")          # identity unchanged
+
+
+async def test_b_a_meaningful_cloud_name_is_kept():
+    provider, _transport, payload = nzb_transfer(single=("Episode.One.1080p.mkv", 900))
+    (entry,) = await provider.manifest(await resolved_nzb(provider, payload))
+    assert entry.relative_path == "Episode.One.1080p.mkv"
+
+
+async def test_c_a_non_nzb_cloud_transfer_keeps_the_hash_name():
+    from providers.premiumize.translation import cloud_resource
+    provider, _transport = provider_with({
+        ("GET", "transfer/list"): [ok(transfers=[{"id": "T1", "status": "finished", "file_id": "f1"}])],
+        ("GET", "item/details"): [ok(id="f1", name=HASHED, size=7, link="https://cdn.premiumize.example/f1")]})
+    (entry,) = await provider.manifest(cloud_resource("T1"))
+    assert entry.relative_path == HASHED
+
+
+@pytest.mark.parametrize("sizes", [(300, 100), (101, 100), (100, 100)], ids=["exactly-3x", "one-byte", "equal"])
+async def test_d_without_a_strictly_dominant_payload_every_name_is_kept(sizes):
+    provider, _transport, payload = nzb_transfer(opaque("a1", HASHED, sizes[0]),
+                                                 opaque("b2", "0f1e2d3c4b5a69788796a5b4c3d2e1f0aa.mkv", sizes[1]))
+    entries = await provider.manifest(await resolved_nzb(provider, payload))
+    assert sorted(entry.relative_path for entry in entries) == sorted([HASHED, "0f1e2d3c4b5a69788796a5b4c3d2e1f0aa.mkv"])
+
+
+async def test_e_only_the_dominant_payload_is_renamed_and_sidecars_keep_their_names():
+    provider, _transport, payload = nzb_transfer(folders=[
+        ok(folder_id="F0", content=[{"type": "folder", "id": "S", "name": "Sub"}, opaque("b2", "a1b2c3.nfo", 100)]),
+        ok(folder_id="S", content=[opaque("a1", HASHED, 301)])])
+    entries = await provider.manifest(await resolved_nzb(provider, payload))
+    assert {entry.relative_path: parse_member_address(entry.request.payload)[1] for entry in entries} == {
+        "Sub/Release.Name.vol-01.mp4": "a1", "a1b2c3.nfo": "b2"}      # at its own location; sidecar kept
+
+
+async def test_f_a_name_that_would_collide_keeps_every_cloud_name():
+    provider, _transport, payload = nzb_transfer(opaque("a1", HASHED, 1000), opaque("b2", "Release.Name.vol-01.mp4", 10))
+    entries = await provider.manifest(await resolved_nzb(provider, payload))
+    assert sorted(entry.relative_path for entry in entries) == sorted([HASHED, "Release.Name.vol-01.mp4"])
+
+
+async def test_f_a_name_that_would_share_a_normalized_destination_keeps_every_cloud_name():
+    """``Release_Name`` is distinct from ``Release?Name`` as raw text, but both
+    materialize at ``Release_Name``: the rename is abandoned, not a conflict."""
+    sibling = "Release?Name.vol-01.mp4"
+    provider, _transport, payload = nzb_transfer(
+        opaque("a1", HASHED, 1000), opaque("b2", sibling, 10),
+        payload=posting('[2/3] - "Release_Name.vol-01.par2" yEnc (1/1)', '[1/3] - "x.mp4" yEnc (1/9)'))
+    entries = await provider.manifest(await resolved_nzb(provider, payload))
+    assert sorted(entry.relative_path for entry in entries) == sorted([HASHED, sibling])
+
+
+async def test_g_the_name_survives_restart_and_refresh_from_the_retained_fact():
+    provider, _transport, payload = nzb_transfer(single=(HASHED, 4096))
+    # What a restart reloads: the persisted resource, read by a new provider.
+    resource = codec.resource(codec.load(codec.dump(await resolved_nzb(provider, payload))))
+    restarted, _transport, _payload = nzb_transfer(single=(HASHED, 4096), created=False)
+    observed = await restarted.observe(resource)
+    assert [entry.relative_path for entry in observed.file_manifest.entries] == ["Release.Name.vol-01.mp4"]
+    (entry,) = await restarted.manifest(observed.resource)
+    assert entry.relative_path == "Release.Name.vol-01.mp4"
+    (candidate,) = (await restarted.resolve(entry.request)).candidates            # refresh: item/details(file id)
+    assert candidate.endpoints[0].address == "https://cdn.premiumize.example/f1"

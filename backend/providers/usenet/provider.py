@@ -8,7 +8,7 @@ output.
 """
 from __future__ import annotations
 
-from providers.usenet.nzb import InvalidNzb, parse, read
+from transfers.nzb import InvalidNzb, parse, read
 from transfers.applicability import ProviderApplicability
 from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError,

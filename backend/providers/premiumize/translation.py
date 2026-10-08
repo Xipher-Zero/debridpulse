@@ -23,6 +23,8 @@ from transfers.errors import (
     Permanence, Retryability, Stage, TransferError, safe_diagnostic,
 )
 from transfers.file_selection import collection_member_paths
+from transfers.filesystem import relative_destination
+from transfers.nzb import deobfuscated_name, dominant_member
 from transfers.models import (
     CachePresence, FileManifest, FileManifestEntry, Ownership, ProviderObservation, ProviderResource,
     ResourceState, TransferRequest,
@@ -165,11 +167,20 @@ def creation_error(exc: Exception, *, secrets: tuple[str, ...] = ()) -> Normaliz
 CLOUD, IMMEDIATE = "cloud", "immediate"
 
 
-def cloud_resource(transfer_id: str, *, ownership: Ownership = Ownership.CREATED) -> ProviderResource:
+def cloud_resource(transfer_id: str, *, ownership: Ownership = Ownership.CREATED,
+                   nzb_name: str = "") -> ProviderResource:
+    """A cloud transfer's durable identity: its transfer id. A transfer
+    acquired from an NZB also keeps that posting's useful work name
+    (``nzb_name``, ``transfers.nzb.useful_name``) -- a bounded, non-secret
+    naming fact, never the NZB itself -- so its files are named the same way
+    after any restart (``named_cloud_members``)."""
     if native_id(transfer_id) != transfer_id:
         raise TransferError(NormalizedError(Domain.PROVIDER, Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION,
                                             integration_id=INTEGRATION_ID))
-    return ProviderResource(INTEGRATION_ID, {"mode": CLOUD, "transfer_id": transfer_id}, ownership,
+    context = {"mode": CLOUD, "transfer_id": transfer_id}
+    if nzb_name:
+        context["nzb_name"] = nzb_name
+    return ProviderResource(INTEGRATION_ID, context, ownership,
                             uuid5(NAMESPACE_URL, f"premiumize:transfer:{transfer_id}").hex)
 
 
@@ -253,6 +264,38 @@ def cloud_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
     paths = collection_member_paths(root_name, [parts for parts, _size, _id in records])
     return tuple(NativeMember(path.rsplit("/", 1)[-1], path, size, file_id)
                  for path, (_parts, size, file_id) in zip(paths, records, strict=True))
+
+
+def named_cloud_members(members: tuple[NativeMember, ...], nzb_name) -> tuple[NativeMember, ...]:
+    """The logical names of an NZB-acquired transfer's files. Premiumize's
+    cloud filename is naming evidence, not identity: when exactly one payload
+    is dominant (``transfers.nzb.dominant_member``) and its name is
+    obfuscated, it takes the posting's useful name with its own extension
+    (``transfers.nzb.deobfuscated_name``) at its own location. Every other
+    file, every non-NZB transfer, no dominant payload, a meaningful name, or
+    a name whose destination (``filesystem.relative_destination``, compared
+    case-insensitively as fan-out compares it) would be another member's
+    keeps every name exactly as Premiumize gave it. The file id never
+    changes."""
+    if not isinstance(nzb_name, str) or not nzb_name:
+        return members
+    index = dominant_member([member.expected_bytes for member in members])
+    if index is None:
+        return members
+    member = members[index]
+    renamed = deobfuscated_name(nzb_name, member.name)
+    if renamed is None:
+        return members
+    parent = member.relative_path.rsplit("/", 1)[0] if "/" in member.relative_path else ""
+    path = f"{parent}/{renamed}" if parent else renamed
+    try:
+        proposed = str(relative_destination(path)).casefold()
+        others = {str(relative_destination(other.relative_path)).casefold() for other in members if other is not member}
+    except TransferError:
+        return members              # an unusable path is the manifest's own fact, not this rename's
+    if proposed in others:
+        return members
+    return members[:index] + (replace(member, name=renamed, relative_path=path),) + members[index + 1:]
 
 
 def file_manifest(members: tuple[NativeMember, ...]) -> FileManifest:

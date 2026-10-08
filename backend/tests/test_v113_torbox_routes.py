@@ -20,7 +20,7 @@ import db.database as database
 from providers.torbox import admin
 from providers.torbox.client import TorBoxAPIError, USENET
 from providers.torbox.definition import definition
-from providers.usenet.nzb import read as read_nzb
+from transfers.nzb import read as read_nzb
 from transfers.staged_input import StagedInputStore
 
 pytestmark = pytest.mark.asyncio

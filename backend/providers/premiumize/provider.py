@@ -18,6 +18,7 @@ cloud is never managed here beyond the transfer DebridPulse created.
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import replace
 from functools import wraps
 import re
@@ -29,7 +30,7 @@ from providers.premiumize.client import (
     immediate_member_address, native_id, parse_member_address,
 )
 from providers.premiumize.translation import (
-    IMMEDIATE, INTEGRATION_ID, NativeMember, cloud_members, cloud_resource, creation_error, file_manifest,
+    IMMEDIATE, INTEGRATION_ID, NativeMember, cloud_members, named_cloud_members, cloud_resource, creation_error, file_manifest,
     immediate_members, immediate_resource, observation, protocol_error, resource_mode, translate_error,
 )
 from services.network_safety import validate_provider_download_url
@@ -37,6 +38,7 @@ from transfers.applicability import ApplicabilityReadiness, ProviderApplicabilit
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
+from transfers import nzb
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind,
@@ -187,7 +189,8 @@ class PremiumizeProvider:
             raise TransferError(NormalizedError(Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION,
                                                 Retryability.NEVER, origin=Origin.PROVIDER,
                                                 integration_id=INTEGRATION_ID))
-        return await self._owned(cloud_resource(await self._create(request)), request)
+        nzb_name = await self._nzb_name(request) if request.kind == "nzb" else ""
+        return await self._owned(cloud_resource(await self._create(request), nzb_name=nzb_name), request)
 
     async def _try_immediate(self, request: TransferRequest) -> ResolutionResult | None:
         """The immediate result, ``None`` when there is no basis to ask for
@@ -261,6 +264,28 @@ class PremiumizeProvider:
     def _invalid() -> TransferError:
         return TransferError(NormalizedError(Domain.REQUEST, Category.INVALID_REQUEST, Stage.RESOLUTION,
                                              Retryability.NEVER, integration_id=INTEGRATION_ID))
+
+    async def _nzb_name(self, request: TransferRequest) -> str:
+        """The posting's useful work name, read once from the canonical staged
+        NZB through the one NZB reader (``transfers.nzb``) before anything is
+        created: the naming evidence its cloud files are named by. ``""`` when
+        it names none -- the cloud's own names then stand."""
+        payload = request.payload
+
+        def posted_name() -> str:
+            if isinstance(payload, StagedPayload):
+                if self.staged_input is None:
+                    return ""
+                with self.staged_input.opened(payload) as stream:
+                    return nzb.read(stream, fallback_name=request.name or "").name
+            data = payload.encode("utf-8") if isinstance(payload, str) else payload
+            return nzb.parse(data, fallback_name=request.name or "").name if isinstance(
+                data, (bytes, bytearray)) and data else ""
+
+        try:
+            return nzb.useful_name(await asyncio.to_thread(posted_name))
+        except (nzb.InvalidNzb, StagedInputError, OSError):
+            return ""
 
     async def _create_nzb(self, request: TransferRequest) -> str:
         """Upload the canonical staged NZB -- the bytes DebridPulse already
@@ -398,16 +423,20 @@ class PremiumizeProvider:
                 return record
         return None
 
-    async def _cloud_files(self, native: dict, *, stage: Stage) -> tuple[NativeMember, ...]:
+    async def _cloud_files(self, native: dict, resource_value: ProviderResource, *,
+                           stage: Stage) -> tuple[NativeMember, ...]:
         """Every file of a finished transfer, from its one file or its whole
         folder tree, with exact paths, sizes and stable file ids -- complete
-        or not at all."""
+        or not at all -- logically named (``named_cloud_members``) from the
+        naming evidence the resource retained."""
+        nzb_name = resource_value.context.get("nzb_name")
         file_id = native_id(native.get("file_id"))
         if file_id:
             details = await self._call(self.client.item_details, file_id, stage=stage)
             if native_id(details.get("id")) != file_id:
                 raise TransferError(protocol_error(stage, "cloud file identity mismatch"))
-            return cloud_members([([details.get("name")], details.get("size"), file_id)])
+            return named_cloud_members(cloud_members([([details.get("name")], details.get("size"), file_id)]),
+                                       nzb_name)
         files, pending, seen = [], [((), native_id(native.get("folder_id")), 0)], set()
         while pending:
             prefix, folder_id, depth = pending.pop()
@@ -434,7 +463,7 @@ class PremiumizeProvider:
                     raise TransferError(protocol_error(stage, "cloud folder entry is malformed"))
                 if len(files) > _MAX_CLOUD_FILES:
                     raise TransferError(protocol_error(stage, "cloud folder tree is too large"))
-        return cloud_members(sorted(files, key=lambda item: item[0]))
+        return named_cloud_members(cloud_members(sorted(files, key=lambda item: item[0])), nzb_name)
 
     @normalized_boundary(Stage.RECONCILIATION)
     async def observe(self, resource_value: ProviderResource) -> ProviderObservation:
@@ -454,7 +483,7 @@ class PremiumizeProvider:
         if observed.state != ResourceState.AVAILABLE:
             return observed
         try:
-            members = await self._cloud_files(native, stage=Stage.RECONCILIATION)
+            members = await self._cloud_files(native, resource_value, stage=Stage.RECONCILIATION)
         except (ManifestInvalid, TypeError, ValueError):
             raise TransferError(protocol_error(Stage.RECONCILIATION, "cloud files are not a safe tree")) from None
         return replace(observed, file_manifest=file_manifest(members))
@@ -475,7 +504,7 @@ class PremiumizeProvider:
         if native is None or observation(native, resource_value).state != ResourceState.AVAILABLE:
             raise TransferError(protocol_error(stage, "transfer files are not available"))
         try:
-            members = await self._cloud_files(native, stage=stage)
+            members = await self._cloud_files(native, resource_value, stage=stage)
         except ManifestInvalid:
             raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, stage,
                                                 integration_id=INTEGRATION_ID)) from None

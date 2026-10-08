@@ -28,7 +28,7 @@ import textwrap
 
 import pytest
 
-from providers.usenet.nzb import InvalidNzb, read
+from transfers.nzb import InvalidNzb, read
 from providers.usenet.provider import CONTEXT_STAGED_INPUT, UsenetProvider
 from transfers import codec
 from transfers.models import TransferRequest
@@ -102,7 +102,7 @@ def test_c3_no_16_mib_nzb_assumption_survives_anywhere():
     route = (backend / "api" / "routes.py").read_text()
     nzb_route = route.split("async def add_usenet_file")[1].split("@router.post")[0]
     assert "16 * 1024 * 1024" not in nzb_route
-    parser = (backend / "providers" / "usenet" / "nzb.py").read_text()
+    parser = (backend / "transfers" / "nzb.py").read_text()
     assert "MAX_NZB_BYTES" not in parser and "16 * 1024 * 1024" not in parser
     browser = (backend.parent / "frontend" / "static" / "app.js").read_text()
     upload = browser.split("async function uploadTransferFile")[1][:1500]
@@ -265,7 +265,7 @@ def test_c9_reader_memory_does_not_scale_with_the_manifest(megabytes, tmp_path):
     programme = textwrap.dedent(f"""
         import resource, sys
         sys.path.insert(0, {str(_backend_dir())!r})
-        from providers.usenet.nzb import read
+        from transfers.nzb import read
         before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
         with open({str(path)!r}, "rb") as handle:
             manifest = read(handle)
@@ -287,7 +287,7 @@ def _backend_dir():
 
 def test_c9_no_whole_payload_representation_survives_in_the_maintained_path():
     backend = _backend_dir()
-    parser = (backend / "providers" / "usenet" / "nzb.py").read_text()
+    parser = (backend / "transfers" / "nzb.py").read_text()
     assert "iterparse" in parser, "the reader must stream"
     assert "fromstring" not in parser, "no whole-document parse may remain"
     assert "element.clear()" in parser, "elements must be released as they are consumed"

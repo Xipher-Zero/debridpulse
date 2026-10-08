@@ -43,12 +43,20 @@ def validate_target(root: str, target: str) -> Path:
     return path
 
 
-def destination(root: str, relative: str) -> Path:
+def relative_destination(relative: str) -> PurePosixPath:
+    """The coordinate a member path is materialized at beneath any root:
+    every segment made safe (``safe_name``). Raises for a path that would
+    leave the root. Two member paths share a destination exactly when these
+    agree (case-insensitively, as fan-out compares them)."""
     raw = PurePosixPath(str(relative).replace("\\", "/"))
     if raw.is_absolute() or ".." in raw.parts or not raw.parts:
         raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, Stage.CANDIDATE_PREPARATION))
+    return PurePosixPath(*(safe_name(part) for part in raw.parts))
+
+
+def destination(root: str, relative: str) -> Path:
     base = Path(root).resolve()
-    path = base.joinpath(*(safe_name(part) for part in raw.parts))
+    path = base.joinpath(*relative_destination(relative).parts)
     return validate_target(root, str(path))
 
 
