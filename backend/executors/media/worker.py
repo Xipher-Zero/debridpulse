@@ -341,6 +341,33 @@ def _tracks(table) -> dict:
     return result
 
 
+# Bounds the offered-format facts a plan may choose a Video Quality among.
+MAX_OFFERED_FORMATS = 256
+
+
+def _bitrate(value):
+    """A provider-supplied bitrate (kbit/s), or ``None``: never estimated."""
+    return float(value) if isinstance(value, (int, float)) and not isinstance(value, bool) and value > 0 else None
+
+
+def _offered(info: dict) -> list:
+    """Every video format the site offers, in yt-dlp's own preference order
+    (least preferred first), with only the facts a Video Quality choice reads:
+    never an address, header or manifest."""
+    formats = [item for item in info.get("formats") or () if isinstance(item, dict)
+               and str(item.get("vcodec") or "none") != "none"]
+    return [{
+        "format_id": str(item.get("format_id") or ""),
+        "ext": str(item.get("ext") or ""),
+        "vcodec": str(item.get("vcodec") or ""),
+        "acodec": str(item.get("acodec") or ""),
+        "protocol": str(item.get("protocol") or ""),
+        "height": item.get("height") if isinstance(item.get("height"), int) else None,
+        "tbr": _bitrate(item.get("tbr")),
+        "drm": bool(item.get("has_drm")),
+    } for item in formats[-MAX_OFFERED_FORMATS:]]
+
+
 def _facts(info: dict) -> dict:
     requested = info.get("requested_formats") or [info]
     return {
@@ -360,6 +387,7 @@ def _facts(info: dict) -> dict:
         } for item in requested],
         "subtitles": _tracks(info.get("subtitles")),
         "automatic_captions": _tracks(info.get("automatic_captions")),
+        "offered": _offered(info),
     }
 
 

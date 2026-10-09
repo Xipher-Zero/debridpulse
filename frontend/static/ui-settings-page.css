@@ -109,6 +109,61 @@
   scrollbar-gutter: stable;
 }
 
+/* ── Services: two independent list viewports ───────────────────────────
+   Network Sources shows exactly one full row of its protocol boxes and
+   scrolls the rest inside itself, at every width. The row height is measured
+   from the rendered grid (fitNetworkSourcesRow); until it is, the body is
+   simply as tall as its content. */
+#view-settings [data-panel="sources"] > .dp-settings-general-sources > .dp-settings-group-body {
+  box-sizing: border-box;
+  height: var(--dp-settings-source-row-viewport, auto);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* With a bounded deck (the desktop layout) the Services tab is a fixed
+   viewport rather than a long page, as Extraction is: Premium Services takes
+   the room the pinned Network Sources leaves and scrolls its own provider
+   list. Neither card scrolls the deck. A viewport too short for both headers,
+   a minimum Premium list and Network's row is the one case the deck itself
+   scrolls -- by exactly that shortfall, never unboundedly. */
+@media (min-width: 901px) {
+  #view-settings .dp-settings-scroll:has([data-panel="sources"]:not([hidden])) .dp-settings-panels {
+    min-height: 100%;
+    max-height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #view-settings [data-panel="sources"]:not([hidden]) {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  #view-settings [data-panel="sources"] > .dp-settings-debrid-services {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Never below one full provider card (measured, fitServicesRows). */
+  #view-settings [data-panel="sources"] > .dp-settings-debrid-services > .dp-settings-group-body {
+    flex: 1 1 auto;
+    min-height: var(--dp-settings-premium-row-min, 0);
+    overflow-x: hidden;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  #view-settings [data-panel="sources"] > .dp-settings-general-sources {
+    flex: 0 0 auto;
+  }
+}
+
 /* Inset the tab content so nested shared-card contact shadows have paint room
    inside the scroll viewport. The master card itself owns the outer frame. */
 #view-settings .dp-settings-panels {

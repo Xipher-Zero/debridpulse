@@ -190,7 +190,9 @@ def test_one_paired_integration_one_enable_state_and_network_sources_membership(
     provider, executor = media_definition.build(effective_integration_settings(settings, media_definition),
                                                 environment)
     assert not provider.descriptor.enabled and not executor.descriptor.enabled
-    assert settings.integrations["media"].options == {"target_resolution": "720"}
+    # An installation that never stored a Video Quality reads the default, High.
+    assert settings.integrations["media"].options == {"target_resolution": "720", "video_quality": "high",
+                                                      "video_codec": "auto"}
     registry = _registry(provider, http_definition.build(IntegrationSettings(), None))
     assert [item.descriptor.id for item in registry.eligible_providers(TransferRequest("https", VIDEO))] == [
         "general_http"]
@@ -285,7 +287,7 @@ async def test_live_and_authenticated_media_are_refused_without_any_credential_f
     assert raised.value.error.category == Category.SOURCE_UNAVAILABLE
     # Nothing can ask for, carry or store a cookie or login.
     assert not hasattr(private, "resolve_with_input")
-    assert set(media_definition.options_model.model_fields) == {"target_resolution"}
+    assert set(media_definition.options_model.model_fields) == {"target_resolution", "video_quality", "video_codec"}
     params = worker._params({"proxy": "http://p"}, worker._Log())
     assert (params["cookiefile"], params["usenetrc"], params["remote_components"]) == (None, False, [])
 
@@ -665,11 +667,13 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     glyph = (STATIC / "icons" / "lucide" / "monitor-down.svg").read_text(encoding="utf-8")
 
     # Services -> Network Sources and Downloads -> Transfer Method Settings: the
-    # one protocol chip, the exact Lucide MonitorDown glyph, Hot Rose declared
-    # once as that chip's canonical colour.
+    # one protocol chip, the exact Lucide MonitorDown glyph, the Media
+    # Downloads accent #FF56AE declared once as that chip's canonical colour --
+    # and Multimeta keeps its own, distinct violet.
     assert "    media: 'monitor-down'," in page
-    assert "Lucide monitor-down @ 23f9abc4ed0146cffededd3d7f94c1018bfdf693" in glyph and 'stroke="#EF137F"' in glyph
-    assert re.search(r"\[data-protocol='media'\] \{\s*--dp-protocol-color: #EF137F;\s*\}", chips)
+    assert "Lucide monitor-down @ 23f9abc4ed0146cffededd3d7f94c1018bfdf693" in glyph and 'stroke="#FF56AE"' in glyph
+    assert re.search(r"\[data-protocol='media'\] \{\s*--dp-protocol-color: #FF56AE;\s*\}", chips)
+    assert re.search(r"\[data-protocol='multimeta'\] \{\s*--dp-protocol-color: #E879F9;\s*\}", chips)
     assert "    media: ['Downloads supported media from', 'compatible web pages and media sites.']," in page
     panel = _function(page, "downloadsPanel")
     cards = re.findall(r"executorTuningCard\('(\w+)', '([^']+)'", panel)
@@ -678,11 +682,36 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),\n" \
            "        'media')" in panel
 
-    # Its one tuning: Target Resolution, exactly the backend's values, in the
-    # integration's own namespace; no raw yt-dlp control.
+    # Exactly three acquisition preferences: Target Resolution and Video
+    # Quality in the integration's own namespace, and the ONE global Preferred
+    # Subtitle Language key surfaced here too; no raw yt-dlp control, and no
+    # subtitle acquisition or embedding switch.
     tuning = _function(page, "mediaTuning")
-    assert "selectField('media_target_resolution', 'Target Resolution'" in tuning
-    assert "preferred_subtitle_language" not in tuning and "yt-dlp" not in tuning
+    assert re.findall(r"(selectField|input)\('(\w+)'", tuning) == [
+        ("selectField", "media_target_resolution"), ("selectField", "media_video_quality"),
+        ("selectField", "media_video_codec"), ("input", "preferred_subtitle_language")]
+    # The two video preferences are ONE related group (the shared tuningGroup outline).
+    group = tuning[tuning.index("tuningGroup("):]
+    group = group[:group.index("      input('preferred_subtitle_language'")]
+    assert "'media_video_quality'" in group and "'media_video_codec'" in group
+    assert "never re-encodes media" in group
+    assert "id: 'dp-settings-field-media-preferred-subtitle-language'" in tuning
+    assert "yt-dlp" not in tuning
+    for absent in ("embed", "Embed", "sidecar", "Off'", "Subtitle Acquisition"):
+        assert absent not in tuning.replace("embedded in the one file", "")
+    qualities = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_QUALITIES = Object.freeze([", 1)[1]
+                           .split("]);", 1)[0])
+    from integrations.media.definition import VideoQuality
+    assert qualities == [("high", "High"), ("normal", "Normal"), ("low", "Low")]
+    assert [value for value, _label in qualities] == list(typing.get_args(VideoQuality)) == list(
+        planning.VIDEO_QUALITIES)
+    assert "media_video_quality: {scope: 'integration:media', option: 'video_quality'}," in page
+    assert "media_video_codec: {scope: 'integration:media', option: 'video_codec'}," in page
+    codecs = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_CODECS = Object.freeze([", 1)[1]
+                        .split("]);", 1)[0])
+    from integrations.media.definition import VideoCodec
+    assert codecs == [("auto", "Auto"), ("av1", "AV1"), ("hevc", "HEVC (H.265)"), ("h264", "H.264")]
+    assert [value for value, _label in codecs] == list(typing.get_args(VideoCodec)) == list(planning.VIDEO_CODECS)
     choices = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const TARGET_RESOLUTIONS = Object.freeze([", 1)[1]
                          .split("]);", 1)[0])
     from integrations.media.definition import TargetResolution
@@ -704,7 +733,7 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     base = base[:base.index("}")]
     assert "--dp-provider-accent: var(--dp-accent-purple-bright, var(--accent));" in base
     assert "color: var(--dp-provider-accent);" in base
-    assert re.search(r'\.dp-provider-chip\[data-provider-theme="hot-rose"\] \{\s*--dp-provider-accent: #EF137F;\s*\}',
+    assert re.search(r'\.dp-provider-chip\[data-provider-theme="hot-rose"\] \{\s*--dp-provider-accent: #FF56AE;\s*\}',
                      badges)
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     chip = app[app.index("function providerChip("):]
@@ -713,7 +742,7 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     # No renderer names this provider to rename or recolour it.
     for renderer in ("app.js", "ui-root-provider.js", "ui-downloads.js", "ui-dashboard-transfer-presentation.js"):
         text = (STATIC / renderer).read_text(encoding="utf-8")
-        for literal in ("'media'", '"media"', "Media Download", "hot-rose", "#EF137F", "yt_dlp"):
+        for literal in ("'media'", '"media"', "Media Download", "hot-rose", "#FF56AE", "yt_dlp"):
             assert literal not in text, (renderer, literal)
 
 
@@ -999,3 +1028,145 @@ def test_every_reconfiguration_builds_a_new_executor_on_the_same_live_attempts(t
     (_provider, first), (_again, second) = build(MediaOptions(), environment), build(MediaOptions(), environment)
     assert first is not second and first.binding == second.binding
     assert first._runs is second._runs
+
+
+# -- Video Preferences: codec family first, then a bitrate rank within it -------------
+
+def _fmt(format_id, *, tbr=None, height=1080, ext="mp4", vcodec="avc1.640028", acodec="none", protocol="https",
+         drm=False):
+    return {"format_id": format_id, "ext": ext, "vcodec": vcodec, "acodec": acodec, "protocol": protocol,
+            "height": height, "tbr": tbr, "drm": drm}
+
+
+AUDIO = {"format_id": "140", "ext": "m4a", "vcodec": "none", "acodec": "mp4a.40.2", "protocol": "https",
+         "height": None}
+
+# A YouTube-shaped 1080p offer, least preferred first (yt-dlp's own order).
+# yt-dlp's codec-first sort picks the AV1 stream ("399") at 2100 kbit/s over
+# the H.264 one ("137") at 4400: Auto + High must keep exactly that.
+H264_HI, H264_MID, H264_LO = (_fmt("137", tbr=4400), _fmt("137b", tbr=3000), _fmt("137c", tbr=1200))
+HEVC = _fmt("hev", tbr=2600, vcodec="hev1.1.6.L120.90")
+AV1_HI, AV1_LO = _fmt("399", tbr=2100, vcodec="av01.0.08M.08"), _fmt("399b", tbr=800, vcodec="av01.0.08M.08")
+OFFER = [H264_LO, H264_MID, H264_HI, HEVC, AV1_LO, AV1_HI]
+NATIVE = AV1_HI
+
+
+def _pick(level, codec="auto", offered=OFFER, native=NATIVE, subtitle=None):
+    chosen = planning.quality_formats([native, AUDIO], offered, level, subtitle, codec)
+    assert chosen[1] is AUDIO                                     # the audio is never touched
+    return chosen[0]["format_id"]
+
+
+def test_codec_families_come_from_codec_metadata_alone():
+    family = planning.codec_family
+    assert [family(c) for c in ("av01.0.08M.08", "AV1", "hev1.1.6.L120.90", "hvc1.2.4", "h265", "avc1.640028",
+                                "avc3.4d401f", "h264", "vp09.00.40.08", "vp9")] == [
+        "av1", "av1", "hevc", "hevc", "hevc", "h264", "h264", "h264", "vp9", "vp9"]
+    for unknown in ("", "none", "theora", "mp4", "137", "av011", "vp8"):
+        assert family(unknown) is None
+
+
+def test_auto_high_is_exactly_the_native_selection():
+    formats = [dict(NATIVE), dict(AUDIO)]
+    for offered in (OFFER, [], [dict(H264_HI)]):
+        assert planning.quality_formats(formats, offered, "high", None, "auto") is formats
+    facts = {"extractor": "Youtube", "id": "x", "formats": [NATIVE, AUDIO], "offered": OFFER}
+    planned = planning.plan(facts, url="https://www.youtube.com/watch?v=x", target="1080", subtitle_language="en")
+    # The lower-bitrate AV1 stream yt-dlp chose stays chosen over 4400 kbit/s H.264.
+    assert (planned["formats"], planned["video_quality"], planned["video_codec"]) == (["399", "140"], "high", "auto")
+
+
+def test_auto_normal_and_low_rank_only_within_the_native_codec_family():
+    assert _pick("normal") == "399"                               # AV1 pair: ceil(2/2) = 1
+    assert _pick("low") == "399b"
+    three_av1 = OFFER + [_fmt("399c", tbr=1500, vcodec="av01.0.08M.08")]
+    assert _pick("normal", offered=three_av1) == "399c"            # ceil(3/2) = 2 within AV1
+    # Never across families: H.264's higher bitrates are not "better AV1".
+    for level in ("normal", "low"):
+        assert planning.codec_family(OFFER[[f["format_id"] for f in OFFER].index(_pick(level))]["vcodec"]) == "av1"
+
+
+@pytest.mark.parametrize("codec, high, normal, low", [
+    ("h264", "137", "137b", "137c"),                               # three: ranks 1, 2, 3
+    ("hevc", "hev", "hev", "hev"),                                 # the one HEVC member, whatever the level
+    ("av1", "399", "399", "399b"),                                 # two: ranks 1, 1, 2
+])
+def test_an_explicit_codec_selects_its_family_and_ranks_within_it(codec, high, normal, low):
+    assert [_pick(level, codec) for level in ("high", "normal", "low")] == [high, normal, low]
+
+
+def test_ties_and_even_counts_use_the_upper_middle_and_native_order():
+    offered = [_fmt("a", tbr=2000), _fmt("b", tbr=2000), _fmt("c", tbr=1000), _fmt("d", tbr=500)]
+    # "b" is preferred over "a" at equal bitrate; four members: Normal is rank 2.
+    assert [_pick(level, "h264", offered) for level in ("high", "normal", "low")] == ["b", "a", "d"]
+
+
+@pytest.mark.parametrize("codec, offered", [
+    ("hevc", [H264_HI, AV1_HI]),                                   # requested codec not offered
+    ("h264", [_fmt("x"), _fmt("y")]),                              # several, none rankable by bitrate
+    ("h264", [_fmt("720p", tbr=900, height=720), AV1_HI]),         # only at another resolution tier
+    ("h264", [_fmt("drm", tbr=900, drm=True), AV1_HI]),            # only protected
+    ("h264", [_fmt("rtmp", tbr=900, protocol="rtmp"), AV1_HI]),    # only outside the guard
+    ("h264", [_fmt("18", tbr=900, acodec="mp4a.40.2"), AV1_HI]),   # only another stream shape
+    ("auto", [_fmt("t1", tbr=900, vcodec="theora"), _fmt("t2", tbr=500, vcodec="theora")]),  # unknown family
+])
+def test_an_unsatisfiable_preference_keeps_the_native_selection(codec, offered):
+    for level in planning.VIDEO_QUALITIES:
+        assert _pick(level, codec, offered) == NATIVE["format_id"]
+    unknown = _fmt("t0", tbr=1000, vcodec="theora")
+    assert _pick("low", "auto", offered + [unknown], native=unknown) == "t0"   # unknown native: kept
+
+
+def test_a_codec_whose_stream_no_container_carries_with_the_subtitle_is_not_eligible():
+    # Whatever the preference, the chosen subtitle stays embedded: a stream
+    # the final container could not carry losslessly with it is never
+    # eligible, so every choice leaves a valid plan with the same subtitle.
+    subtitle = {"language": "en", "kind": "authored", "exts": ("vtt",)}
+    vp9 = _fmt("248", tbr=2500, ext="webm", vcodec="vp09.00.40.08")
+    opus = {**AUDIO, "format_id": "251", "ext": "webm", "acodec": "opus"}
+    for codec in planning.VIDEO_CODECS:
+        for level in planning.VIDEO_QUALITIES:
+            chosen = planning.quality_formats([vp9, opus], OFFER + [vp9], level, subtitle, codec)
+            container, carried = planning.container_plan(chosen, subtitle)
+            assert chosen[1] is opus and carried == {"language": "en", "kind": "authored", "ext": "vtt"}
+            assert container in {"webm", "mkv"}
+
+
+def test_plan_records_the_preferences_and_reads_unrecognized_ones_as_auto_high():
+    from integrations.media.definition import MediaOptions
+    facts = {"extractor": "Youtube", "id": "x", "formats": [NATIVE, AUDIO], "offered": OFFER}
+    odd = planning.plan(facts, url="https://www.youtube.com/watch?v=x", target="1080", subtitle_language="en",
+                        video_quality="ultra", video_codec="vp8")
+    assert (odd["video_quality"], odd["video_codec"], odd["formats"]) == ("high", "auto", ["399", "140"])
+    h264 = planning.plan(facts, url="https://www.youtube.com/watch?v=x", target="1080", subtitle_language="en",
+                         video_codec="h264")
+    assert (h264["formats"], h264["selected_height"], h264["container"]) == (["137", "140"], 1080, "mp4")
+    assert (MediaOptions().video_quality, MediaOptions().video_codec) == ("high", "auto")
+    for stored, read in (("LOW", "low"), ("normal", "normal"), ("max", "high"), ("", "high"), (None, "high")):
+        assert MediaOptions(video_quality=stored).video_quality == read
+    for stored, read in (("AV1", "av1"), ("hevc", "hevc"), ("h264", "h264"), ("vp9", "auto"), (None, "auto")):
+        assert MediaOptions(video_codec=stored).video_codec == read
+
+
+def test_the_worker_reports_only_provider_bitrates_and_no_address():
+    info = {"formats": [
+        {"format_id": "140", "vcodec": "none", "acodec": "mp4a.40.2", "tbr": 129, "url": "https://x/a"},
+        {"format_id": "137", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "height": 1080, "tbr": 4400.5,
+         "url": "https://x/v", "protocol": "https"},
+        {"format_id": "299", "ext": "mp4", "vcodec": "avc1", "acodec": "none", "height": 1080, "filesize": 9_000_000,
+         "protocol": "https", "url": "https://x/w", "has_drm": True},
+    ]}
+    offered = worker._offered(info)
+    assert [item["format_id"] for item in offered] == ["137", "299"]             # video formats only
+    assert [item["tbr"] for item in offered] == [4400.5, None]                    # never from a size
+    assert offered[1]["drm"] is True
+    assert not any("url" in item or "://" in repr(item) for item in offered)
+
+
+def test_any_level_finalizes_by_stream_copy_with_no_encoder():
+    argv = worker.finalization_argv({"ffmpeg": "/ffmpeg"}, "mkv", [("/w/v.mp4", _fmt("299", tbr=3100)),
+                                                                  ("/w/a.m4a", AUDIO)],
+                                    ("/w/s.vtt", "en"), {}, "/w/out.mkv")
+    assert "copy" in argv and argv[argv.index("copy") - 1] in {"-c", "-codec"}
+    for encoder in ("libx264", "libx265", "libvpx", "libaom", "libopus", "aac", "-b:v", "-crf", "-preset"):
+        assert encoder not in argv

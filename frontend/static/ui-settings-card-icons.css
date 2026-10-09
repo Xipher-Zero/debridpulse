@@ -103,9 +103,9 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-protocol='multimeta'] {
   --dp-protocol-color: #E879F9;
 }
-/* Media Downloads: Hot Rose. */
+/* Media Downloads. Kept apart from Multimeta's violet (#E879F9) by hue. */
 #view-settings .dp-settings-protocol-chip[data-protocol='media'] {
-  --dp-protocol-color: #EF137F;
+  --dp-protocol-color: #FF56AE;
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
   --dp-protocol-color: #CBD5E1;

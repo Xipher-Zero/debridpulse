@@ -204,9 +204,9 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Hot Rose. */
+/* Media Downloads (theme identifier "hot-rose"). */
 .dp-provider-chip[data-provider-theme="hot-rose"] {
-  --dp-provider-accent: #EF137F;
+  --dp-provider-accent: #FF56AE;
 }
 .dp-provider-chip[data-provider-state="pending"],
 .dp-provider-chip[data-provider-state="unknown"] {

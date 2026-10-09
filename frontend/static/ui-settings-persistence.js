@@ -258,7 +258,15 @@
         const value = result === undefined || result === null ? draft : result;
         // Canonical knowledge, recorded unconditionally: the server holds this
         // now, whatever the operator has typed since.
+        const previous = baselines.get(key);
         baselines.set(key, String(value));
+        // One setting may be shown by more than one control. Each other one
+        // still showing the previously accepted value now shows this one, so
+        // it is never left looking dirty and writing the old value back; one
+        // holding its own unsaved edit keeps it.
+        for (const twin of controls(document)) {
+          if (twin !== control && identity(twin) === key && signature(twin) === previous) present(twin, value);
+        }
         // Presentation only while this is still the newest write AND the
         // control still shows what it sent.
         if (tokens.get(key) === token && control.isConnected && signature(control) === draft) {

@@ -58,11 +58,14 @@ class MediaProvider:
         request_types=frozenset({*_PLAIN, MEMBER_KIND}),
     )
 
-    def __init__(self, extract, *, target_resolution: str = "best", subtitle_language: str = "en"):
+    def __init__(self, extract, *, target_resolution: str = "best", video_quality: str = "high",
+                 video_codec: str = "auto", subtitle_language: str = "en"):
         # ``extract(url, selection=..., collection_bound=...)``: the worker's
         # read-only extraction, raising ``MediaFailure``.
         self.extract = extract
         self.target_resolution = target_resolution
+        self.video_quality = video_quality
+        self.video_codec = video_codec
         self.subtitle_language = subtitle_language
 
     # -- applicability ----------------------------------------------------------------
@@ -111,7 +114,8 @@ class MediaProvider:
             raise MediaFailure("live_unsupported", "live media")
         try:
             return planning.plan(facts, url=address, target=self.target_resolution,
-                                 subtitle_language=self.subtitle_language)
+                                 subtitle_language=self.subtitle_language, video_quality=self.video_quality,
+                                 video_codec=self.video_codec)
         except ValueError as exc:
             raise MediaFailure(str(exc)) from None
 

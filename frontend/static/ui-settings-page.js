@@ -182,6 +182,8 @@
 
     // Downloads -> Media Downloads tuning
     media_target_resolution: {scope: 'integration:media', option: 'target_resolution'},
+    media_video_quality: {scope: 'integration:media', option: 'video_quality'},
+    media_video_codec: {scope: 'integration:media', option: 'video_codec'},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -199,7 +201,8 @@
     min_free_disk_gb: {scope: 'settings-document', option: 'min_free_disk_gb'},
     disk_guard_resume_hysteresis_gb: {scope: 'settings-document', option: 'disk_guard_resume_hysteresis_gb'},
     // A global Downloads preference that Media Downloads consumes; never a
-    // Media Downloads option.
+    // Media Downloads option. Shown in both places, it is still this one key:
+    // the persistence owner keeps every control of it on the accepted value.
     preferred_subtitle_language: {scope: 'settings-document', option: 'preferred_subtitle_language'},
 
     // Extraction -- ordinary settings-document values, on exactly the same two
@@ -380,10 +383,20 @@
   }
 
 
+  // Services' two independent list viewports (sourcesPanel): Premium Services
+  // and Network Sources each scroll their own body, never the deck.
+  const SERVICES_LISTS = Object.freeze({
+    premiumTop: '[data-panel="sources"] > .dp-settings-debrid-services > .dp-settings-group-body',
+    networkTop: '[data-panel="sources"] > .dp-settings-general-sources > .dp-settings-group-body',
+  });
+
   function captureSettingsViewport() {
     const settingsScroller = root()?.querySelector('.dp-settings-scroll');
     const shellScroller = document.getElementById('content');
+    const lists = Object.fromEntries(Object.entries(SERVICES_LISTS).map(([name, selector]) =>
+      [name, Number(root()?.querySelector(selector)?.scrollTop || 0)]));
     return {
+      ...lists,
       settingsTop: Number(settingsScroller?.scrollTop || 0),
       shellTop: Number(shellScroller?.scrollTop || 0),
       windowTop: Number(window.scrollY || 0),
@@ -396,12 +409,50 @@
     const shellScroller = document.getElementById('content');
     if (settingsScroller) settingsScroller.scrollTop = snapshot.settingsTop;
     if (shellScroller) shellScroller.scrollTop = snapshot.shellTop;
+    for (const [name, selector] of Object.entries(SERVICES_LISTS)) {
+      const list = root()?.querySelector(selector);
+      if (list) list.scrollTop = snapshot[name] || 0;
+    }
     if (typeof window.scrollTo === 'function') {
       try {
         window.scrollTo({top: snapshot.windowTop, left: window.scrollX || 0, behavior: 'auto'});
       } catch (_) {
         window.scrollTo(0, snapshot.windowTop);
       }
+    }
+  }
+
+  /* Services' two lists, each with one full row it always shows: Network
+   * Sources exactly one row of its protocol boxes (the rest scroll inside it),
+   * Premium Services at least its first provider card (its minimum; below the
+   * room both need, the deck scrolls by the shortfall). Both are MEASURED from
+   * the rendered layout -- track count, box and card heights, padding -- and
+   * kept current as it is resized, shown or re-wrapped; no size is assumed.
+   * The geometry itself is CSS's (ui-settings-page.css). */
+  let servicesRowObserver = null;
+
+  function fitServicesRows() {
+    servicesRowObserver?.disconnect();
+    servicesRowObserver = null;
+    const network = root()?.querySelector(SERVICES_LISTS.networkTop);
+    const premium = root()?.querySelector(SERVICES_LISTS.premiumTop);
+    const grid = network?.querySelector('.dp-settings-source-box-grid');
+    const padded = (node, height) => {
+      const style = getComputedStyle(node);
+      return Math.ceil(height + (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0));
+    };
+    const fit = () => {
+      const tile = grid?.firstElementChild;
+      const row = tile ? tile.getBoundingClientRect().height : 0;
+      if (row) network.style.setProperty('--dp-settings-source-row-viewport', `${padded(network, row)}px`);
+      const card = premium?.firstElementChild;
+      const first = card ? card.getBoundingClientRect().height : 0;
+      if (first) premium.style.setProperty('--dp-settings-premium-row-min', `${padded(premium, first)}px`);
+    };
+    fit();
+    if (typeof ResizeObserver === 'function') {
+      servicesRowObserver = new ResizeObserver(fit);
+      for (const node of [grid, premium?.firstElementChild]) if (node) servicesRowObserver.observe(node);
     }
   }
 
@@ -454,7 +505,8 @@
   }
 
   function input(key, label, value, options = {}) {
-    const id = fieldId(key);
+    // ``id``: a second control of the same setting elsewhere on the page.
+    const id = options.id || fieldId(key);
     const type = options.type || 'text';
     // The control declares its commit class; the canonical persistence owner
     // supplies the behaviour (COMMIT_FIELDS).
@@ -2166,20 +2218,41 @@
     ['360', '360p'],
   ]);
 
+  const VIDEO_QUALITIES = Object.freeze([
+    ['high', 'High'],
+    ['normal', 'Normal'],
+    ['low', 'Low'],
+  ]);
+
+  const VIDEO_CODECS = Object.freeze([
+    ['auto', 'Auto'],
+    ['av1', 'AV1'],
+    ['hevc', 'HEVC (H.265)'],
+    ['h264', 'H.264'],
+  ]);
+
   function mediaTuning(s) {
-    // One question only: which resolution to look for. Everything else about
-    // a media download -- one final file, its subtitle and metadata, no
-    // transcoding -- is DebridPulse policy, not a setting.
+    // Acquisition preferences only. Everything else about a media download --
+    // one final file with its subtitle and metadata, no transcoding -- is
+    // DebridPulse policy, not a setting. The two video preferences are one
+    // related group; the subtitle language is the global Downloads preference
+    // itself, surfaced here: one setting, two places.
     const options = mediaOf(s);
     return tuningCells(
       selectField('media_target_resolution', 'Target Resolution', options.target_resolution || 'best',
         TARGET_RESOLUTIONS,
         'The resolution DebridPulse looks for. When it is not offered, the largest lower resolution is used, or the smallest higher one when there is no lower one. Best Available takes the highest resolution offered.'),
-    ) + `
-      <p class="dp-settings-tuning-footer">
-        Subtitles follow Preferred Subtitle Language under Download Behavior
-        &amp; Limits.
-      </p>`;
+      tuningGroup(
+        selectField('media_video_quality', 'Video Quality', options.video_quality || 'high', VIDEO_QUALITIES,
+          'Within the chosen codec, picks among the bitrates a site offers at that resolution: High the highest, Low the lowest, Normal one in between.'),
+        selectField('media_video_codec', 'Preferred Video Codec', options.video_codec || 'auto', VIDEO_CODECS,
+          'Prefers this codec when the site offers it at that resolution; Auto keeps the site\u2019s usual choice. Both apply only where the source offers alternatives, and DebridPulse never re-encodes media.'),
+      ),
+      input('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en', {
+        id: 'dp-settings-field-media-preferred-subtitle-language',
+        hint: 'Language code (for example en, de or pt-br). The same setting as in Download Behavior &amp; Limits; a subtitle written for the media is preferred, an automatically generated one used otherwise, embedded in the one file.',
+      }),
+    );
   }
 
   function executorTuningCard(id, label, copy, body, protocol = '') {
@@ -3539,6 +3612,7 @@
       </section>`;
 
     activateTab(state.activeTab);
+    fitServicesRows();
     bindEvents(view);
     updateOidcCallbackPreview();
     snapshotProviderControls(view);
