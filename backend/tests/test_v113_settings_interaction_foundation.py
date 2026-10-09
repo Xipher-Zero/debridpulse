@@ -1287,44 +1287,42 @@ def test_test_is_never_a_credential_save_action():
 # --- Item 10 (glow): one master-card outer-glow owner ----------------------
 
 def test_the_master_card_outer_glow_has_exactly_one_owner():
-    """The Network Sources master chip had no external glow at all. Rather
-    than a second copy of the existing master treatment, both masters derive
-    the same two-stop omnidirectional glow from ONE per-instance colour datum,
-    declared once and covering both selectors."""
-    icons = read("ui-settings-card-icons.css")
+    """Every Settings subsection header -- each family header and the Network
+    Sources master -- derives the same two-stop omnidirectional glow from its
+    chip's ONE colour datum, declared once for every header chip."""
+    icons = re.sub(r"/\*.*?\*/", "", read("ui-settings-card-icons.css"), flags=re.S)
     chrome = read("ui-settings-chrome.css")
     owner = enclosing_rule(
-        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%")
-    assert ".dp-settings-debrid-services > .card-header > .card-title::before" in owner
-    assert "[data-integration-group] > .card-header .dp-settings-protocol-chip" in owner
-    # The previously hard-coded debrid-services filter is gone from the other
-    # stylesheet: it now supplies only its colour.
-    debrid = enclosing_rule(chrome, "url('/icons/lucide/crown.svg')")
-    assert "drop-shadow" not in debrid, "a second outer-glow owner survives"
-    assert "--dp-settings-master-glow: #D657FF;" in debrid
+        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 78%")
+    assert icons.count("drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 78%") == 1
+    assert owner.lstrip().startswith("#view-settings .dp-settings-header-chip {")
+    # The premium master's pseudo-element picture and its colour-only datum are
+    # retired: it is a header chip like every other.
+    assert "url('/icons/lucide/crown.svg')" not in chrome
     assert "rgba(184,102,245,.78)" not in chrome
-    # Exactly two stylesheets mention the datum: the one owner, and the one
-    # master that is not a protocol chip stating its colour.
     owners = [p.name for p in MAINTAINED_CSS
               if "--dp-settings-master-glow" in p.read_text(encoding="utf-8")]
-    assert sorted(owners) == ["ui-settings-card-icons.css", "ui-settings-chrome.css"], owners
+    assert owners == [], owners
 
 
 def test_the_network_sources_master_glow_is_selected_structurally():
-    """The master chip is addressed through the group attribute groupCard()
-    already emits -- no integration is named, and the Downloads executor-tuning
-    cards are deliberately not matched."""
+    """A header chip is declared by the one chip emitter (identityChip's
+    ``header``): every family header through familyIcon(), and the Network
+    Sources master through its group card -- the glow rule names no
+    integration and no family, and provider cards and source boxes are not
+    header chips."""
     icons = re.sub(r"/\*.*?\*/", "", read("ui-settings-card-icons.css"), flags=re.S)
     owner = enclosing_rule(
-        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%")
+        icons, "drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 78%")
     selectors = owner[:owner.index("{")]
-    assert "[data-integration-group]" in selectors
-    # The glow names no integration and no family: it is selected by the group
-    # attribute groupCard() already emits.
     for named in ("direct_sources", "direct-sources", "general-sources",
                   "network-sources", "general_http", "general_ftp", "usenet",
-                  "data-executor-tuning"):
+                  "data-executor-tuning", "data-section", "data-protocol", "data-integration-group"):
         assert named not in selectors, named
+    settings = read("ui-settings-page.js")
+    assert "return identityChip('section', section, glyph, true);" in settings
+    assert "titlePrefix: protocolIcon(groupId, true)," in settings
+    assert settings.count("protocolIcon(groupId, true)") == 1
 
 
 def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():

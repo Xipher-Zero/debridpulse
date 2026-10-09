@@ -101,7 +101,7 @@ const blocks = (page, tab) => page.evaluate(tab => {
       src: image ? new URL(image.getAttribute('src'), location.origin).pathname : null,
       alt: image ? image.getAttribute('alt') : null,
       hidden: node.getAttribute('aria-hidden'),
-      colour: style.getPropertyValue('--dp-settings-inner-icon-color').trim(),
+      colour: style.getPropertyValue('--dp-protocol-color').trim(),
       filter: image ? getComputedStyle(image).filter : '',
       width: Math.round(box.width), height: Math.round(box.height),
     };
@@ -252,7 +252,12 @@ test('Sources and Downloads consume one shared chip primitive', async ({page}) =
     const a = sources[protocol], b = downloads[protocol];
     expect(a, `Sources ${protocol} chip missing`).toBeTruthy();
     expect(b, `Downloads ${protocol} chip missing`).toBeTruthy();
-    expect(b.classes, `${protocol}: Downloads uses different classes`).toBe(a.classes);
+    // One primitive; only the Network Sources master in Services is also a
+    // subsection-header chip (the outer glow), which a tuning card is not.
+    const primitive = classes => classes.split(/\s+/).filter(name => name !== 'dp-settings-header-chip').join(' ');
+    expect(primitive(b.classes), `${protocol}: Downloads uses different classes`).toBe(primitive(a.classes));
+    expect(a.classes.includes('dp-settings-header-chip'), `${protocol}: Services header role`).toBe(protocol === 'direct_sources');
+    expect(b.classes, `${protocol}: a Downloads tuning card is not a header`).not.toContain('dp-settings-header-chip');
     for (const property of ['borderWidth', 'borderColour', 'radius', 'background',
                             'boxShadow', 'width', 'height', 'glyphWidth']) {
       expect(b[property], `${protocol}: ${property} differs between Sources and Downloads`)

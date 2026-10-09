@@ -128,29 +128,6 @@ body.light #view-settings .dp-settings-tab-glyph {
   gap: 10px;
 }
 
-/* Download Engine uses the supplied purple artwork directly. The artwork owns
-
-/* The premium master group. The supplied artwork already owns its
-   rounded-square frame, so CSS adds only layout and the COLOUR its
-   omnidirectional master-card outer glow is derived from; the glow itself has
-   one owner, in ui-settings-card-icons.css, shared with the Network Sources
-   master. */
-#view-settings .dp-settings-debrid-services > .card-header > .card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-#view-settings .dp-settings-debrid-services > .card-header > .card-title::before {
-  content: '';
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: block;
-  background: url('/icons/lucide/crown.svg') center / 34px 34px no-repeat;
-  --dp-settings-master-glow: #D657FF;
-}
-
 /* Keep provider/engine disclosures visually subordinate to their primary rows:
    labels are inset from the card datum, chevrons remain immediately after the
    label, and revealed controls step in one level farther. */

@@ -679,31 +679,10 @@
 
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
 
-  /* Inner-card title icons, keyed by the card's title. The Downloads
-   * subsections are not here: each carries its glyph in the Downloads family
-   * chip (familyIcon), the one Transfer Method Settings already wears. */
-  const CARD_ICONS = Object.freeze({
-    'Automatic Extraction': ['extraction', '/icons/lucide/archive-restore.svg'],
-    'Authentication Status': ['authentication', '/icons/lucide/shield-check.svg'],
-    'Username & Password': ['authentication', '/icons/lucide/user-lock.svg'],
-    'OpenID Connect': ['authentication', '/icons/lucide/id-card.svg'],
-    'API Access': ['authentication', '/icons/lucide/key-round.svg'],
-    'Discord Notifications': ['notifications', '/icons/lucide/message-square.svg'],
-    'Statistics Reporting': ['notifications', '/icons/lucide/chart-line.svg'],
-    'Backups & Retention': ['maintenance', '/icons/lucide/archive.svg'],
-    'Database Reset Controls': ['maintenance', '/icons/lucide/database-x.svg'],
-  });
-
   function card(title, body, options = {}) {
-    const icon = CARD_ICONS[title];
     let titleClass = 'card-title';
-    let titleAttrs = '';
     let titleMarkup = html(title);
-    if (icon) {
-      titleClass = 'card-title dp-settings-card-title--with-icon dp-settings-inner-card-title';
-      titleAttrs = ` data-dp-settings-icon-section="${icon[0]}"`;
-      titleMarkup = `<span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="${icon[0]}"><img src="${icon[1]}" alt="" decoding="async"></span>${html(title)}`;
-    } else if (options.titlePrefix) {
+    if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
       titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
     }
@@ -722,7 +701,7 @@
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
         <div class="card-header">
-          <span class="${titleClass}"${titleAttrs}>${titleMarkup}</span>
+          <span class="${titleClass}">${titleMarkup}</span>
           ${options.headerCenter ? `<div class="${centerClass}">${options.headerCenter}</div>` : ''}
           ${rail}
         </div>
@@ -1091,21 +1070,22 @@
   const PROTOCOL_GLYPHS = window.DPTransferSourcePresentation.PROTOCOL_GLYPHS;
 
   /* The ONE emitter of the Settings identity chip: a protocol (data-protocol),
-   * or a Settings family identity on a group card that has no protocol
-   * (data-section). The chip's colour is that datum's
-   * (ui-settings-card-icons.css). */
-  function identityChip(datum, value, glyph) {
-    return `<span class="dp-settings-protocol-chip" aria-hidden="true" data-${datum}="${html(value)}">`
+   * or a Settings family identity (data-section). The chip's colour is that
+   * datum's (ui-settings-card-icons.css). ``header`` marks a Settings
+   * subsection header's chip, which alone carries the outer glow: every family
+   * header, and the Network Sources group master. */
+  function identityChip(datum, value, glyph, header = false) {
+    return `<span class="dp-settings-protocol-chip${header ? ' dp-settings-header-chip' : ''}" aria-hidden="true" data-${datum}="${html(value)}">`
       + `<img src="/icons/lucide/${html(glyph)}.svg" alt="" decoding="async"></span>`;
   }
 
   function familyIcon(section, glyph) {
-    return identityChip('section', section, glyph);
+    return identityChip('section', section, glyph, true);
   }
 
-  function protocolIcon(protocol) {
+  function protocolIcon(protocol, header = false) {
     const glyph = PROTOCOL_GLYPHS[protocol];
-    return glyph ? identityChip('protocol', protocol, glyph) : '';
+    return glyph ? identityChip('protocol', protocol, glyph, header) : '';
   }
 
   /* What enabling one Network Source allows, as the two lines its protocol box
@@ -2039,6 +2019,7 @@
       families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
         + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
+      titlePrefix: familyIcon('sources', 'crown'),
     });
     // Group identity, label and gate all come from metadata the members
     // already publish -- there is no second list of who is in this family.
@@ -2058,7 +2039,7 @@
       `<div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
         sourceProtocolBox(id, entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
-      titlePrefix: protocolIcon(groupId),
+      titlePrefix: protocolIcon(groupId, true),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
       collapsible: true,
@@ -2506,6 +2487,7 @@
       ${archivePasswordField(s.extraction_password_configured)}
     `, {
       className: 'dp-settings-extraction-card',
+      titlePrefix: familyIcon('extraction', 'archive-restore'),
       headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
       action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
           <input id="${enableId}" data-setting="extract_enabled" type="checkbox" ${commitAttributes('extract_enabled')} ${checked(s.extract_enabled)}>
@@ -2681,6 +2663,7 @@
       ))}
     `, {
       className: 'dp-settings-discord-card',
+      titlePrefix: familyIcon('notifications', 'message-square'),
       headerCenter: 'Configure notification identity, delivery destinations, and event alerts.',
       headerCenterClass: 'dp-settings-notifications-header-copy',
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
@@ -2710,6 +2693,7 @@
       </div>
     `, {
       className: 'dp-settings-statistics-reporting-card',
+      titlePrefix: familyIcon('notifications', 'chart-line'),
       headerCenter: 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
       headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
       headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
@@ -3247,7 +3231,7 @@
           </span>`,
           {className: 'dp-settings-auth-session-lifetime'})}
       </div>
-    `, {className: 'dp-settings-auth-status-card'});
+    `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check')});
   }
 
   function authenticationPanel(a) {
@@ -3285,6 +3269,7 @@
       <div class="dp-settings-auth-credentials-row">${usernameField}${passwordField}</div>
     `, {
       className: 'dp-settings-username-password-card',
+      titlePrefix: familyIcon('authentication', 'user-lock'),
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
       action: headerEnableToggle('auth_password_enabled', a.password_enabled),
@@ -3397,6 +3382,7 @@
       </section>
     `, {
       className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
+      titlePrefix: familyIcon('authentication', 'id-card'),
       headerCenter: 'Configure an external identity provider for browser sign-in.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
       // Test is a provider-level action proving provider-level state, so it
@@ -3434,6 +3420,7 @@
       </div>
     `, {
       className: 'dp-settings-api-access-card',
+      titlePrefix: familyIcon('authentication', 'key-round'),
       headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
       headerStatus: tokenReadyStatus(a),
@@ -3525,6 +3512,7 @@
       ))}
     `, {
       className: 'dp-settings-backups-retention-card',
+      titlePrefix: familyIcon('maintenance', 'archive'),
       headerCenter: 'Configure automated backups and retention for backups, statistics snapshots, and event logs.',
       headerCenterClass: 'dp-settings-backups-header-copy',
       headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
@@ -3553,6 +3541,7 @@
       </div>
     `, {
       className: 'dp-settings-database-wipe-card',
+      titlePrefix: familyIcon('maintenance', 'database-x'),
       headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
     });

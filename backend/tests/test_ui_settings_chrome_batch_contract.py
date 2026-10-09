@@ -240,19 +240,14 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert "<image" not in raw.lower()
     assert "data:image" not in raw.lower()
 
-    icon_rule = chrome.split(".dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
-    assert "url('/icons/lucide/crown.svg')" in icon_rule
-    assert "width: 34px;" in icon_rule
-    assert "height: 34px;" in icon_rule
-    # DP 1.0.13: the omnidirectional master-card outer glow has ONE owner,
-    # shared with the Network Sources master. This master states only the
-    # colour that owner derives both of its stops from, in both themes.
-    assert icon_rule.count("drop-shadow") == 0
-    assert "--dp-settings-master-glow: #D657FF;" in icon_rule
+    # It wears that glyph in the one Settings header chip (familyIcon), not a
+    # pseudo-element picture, so it shares the chip's box, inner and outer glow.
+    assert "titlePrefix: familyIcon('sources', 'crown')," in sources
+    assert ".dp-settings-debrid-services > .card-header > .card-title::before" not in chrome
     glow = read(ICONS)
-    owner = glow.split("#view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {", 1)[1].split("}", 1)[0]
+    owner = glow.split("#view-settings .dp-settings-header-chip {", 1)[1].split("}", 1)[0]
     assert owner.count("drop-shadow") == 2
-    light_owner = glow.split("body.light #view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {", 1)[1].split("}", 1)[0]
+    light_owner = glow.split("body.light #view-settings .dp-settings-header-chip {", 1)[1].split("}", 1)[0]
     assert light_owner.count("drop-shadow") == 2
 
 

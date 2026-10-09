@@ -44,9 +44,9 @@ for (const theme of ['dark', 'light']) {
       await expect(button.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
     }
     // Services: Premium Services' Crown, Network Sources' upright Network, Multimeta's inverted one.
-    const crown = await page.locator('.dp-settings-debrid-services > .card-header > .card-title')
-      .evaluate(node => getComputedStyle(node, '::before').backgroundImage);
-    expect(crown).toContain('/icons/lucide/crown.svg');
+    const crown = page.locator('.dp-settings-debrid-services > .card-header .dp-settings-protocol-chip[data-section="sources"]');
+    expect(await prop(crown, '--dp-protocol-color')).toBe('#D657FF');
+    await expect(crown.locator('img')).toHaveAttribute('src', '/icons/lucide/crown.svg');
     const chip = protocol => page.locator(`[data-panel="sources"] .dp-settings-protocol-chip[data-protocol="${protocol}"]`).first();
     expect(await prop(chip('direct_sources'), '--dp-protocol-color')).toBe('#D657FF');
     await expect(chip('direct_sources').locator('img')).toHaveAttribute('src', '/icons/lucide/network-services.svg');
@@ -68,10 +68,10 @@ for (const theme of ['dark', 'light']) {
     for (const [title, [section, glyph]] of Object.entries(CARDS)) {
       const tab = section === 'downloads' ? 'downloads' : section;
       await page.locator(`#view-settings [data-tab="${tab}"]`).click();
-      const icon = page.locator('#view-settings .dp-settings-inner-card-title', {hasText: title})
-        .locator('.dp-settings-inner-card-icon');
+      const icon = page.locator('#view-settings .card-header .card-title', {hasText: title})
+        .locator(`.dp-settings-header-chip[data-section="${section}"]`);
       await expect(icon.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
-      expect((await prop(icon, '--dp-settings-inner-icon-color')).toUpperCase()).toBe(FAMILY[section][0]);
+      expect((await prop(icon, '--dp-protocol-color')).toUpperCase()).toBe(FAMILY[section][0]);
     }
   });
 }
@@ -124,6 +124,124 @@ for (const [theme, width] of [['dark', 1440], ['light', 1440], ['dark', 390], ['
       expect(fact.overflow, `${title}: no overflow at ${width}px`).toBe(false);
     });
     expect(facts[0].geometry.startsWith('38 | 38 | 1px | solid')).toBe(true);
+  });
+}
+
+// Every Settings subsection header: its glyph inside the one header chip, in
+// its family colour, with the chip's inner glow and the outer glow around it --
+// the treatment the Network Sources master established. The glows are proven
+// in pixels: each is switched off on the rendered page and the screenshot must
+// change in the ring around (outer) or inside (inner) the chip.
+const HEADERS = [
+  ['sources', 'Premium Services', '.dp-settings-debrid-services', 'sources', 'crown'],
+  ['sources', 'Network Sources', '.dp-settings-general-sources', null, 'network-services'],
+  ['downloads', 'Download Behavior & Limits', '.dp-settings-download-engine-card', 'downloads', 'gauge'],
+  ['downloads', 'Transfer Method Settings', '.dp-executor-tuning-group', 'downloads', 'arrow-left-right'],
+  ['downloads', 'Disk Space & Recovery', '.dp-settings-download-recovery-card', 'downloads', 'shield-alert'],
+  ['downloads', 'Download Engine Activity', '.dp-executor-work-card', 'downloads', 'activity'],
+  ['extraction', 'Automatic Extraction', '.dp-settings-extraction-card', 'extraction', 'archive-restore'],
+  ['authentication', 'Authentication Status', '.dp-settings-auth-status-card', 'authentication', 'shield-check'],
+  ['authentication', 'Username & Password', '.dp-settings-username-password-card', 'authentication', 'user-lock'],
+  ['authentication', 'OpenID Connect', '.dp-settings-oidc-card', 'authentication', 'id-card'],
+  ['authentication', 'API Access', '.dp-settings-api-access-card', 'authentication', 'key-round'],
+  ['notifications', 'Discord Notifications', '.dp-settings-discord-card', 'notifications', 'message-square'],
+  ['notifications', 'Statistics Reporting', '.dp-settings-statistics-reporting-card', 'notifications', 'chart-line'],
+  ['maintenance', 'Backups & Retention', '.dp-settings-backups-retention-card', 'maintenance', 'archive'],
+  ['maintenance', 'Database Reset Controls', '.dp-settings-database-wipe-card', 'maintenance', 'database-x'],
+];
+
+/* Mean per-pixel RGB difference between two PNG screenshots of the same clip,
+ * over the pixels selected by ``where(x, y)``. Decoded by the page's own canvas. */
+async function pixelDelta(page, before, after, where) {
+  return page.evaluate(async ({before, after, where}) => {
+    const select = new Function('x', 'y', `return ${where};`);
+    const decode = async data => {
+      const image = await createImageBitmap(await (await fetch(`data:image/png;base64,${data}`)).blob());
+      const canvas = new OffscreenCanvas(image.width, image.height);
+      const context = canvas.getContext('2d');
+      context.drawImage(image, 0, 0);
+      return context.getImageData(0, 0, image.width, image.height);
+    };
+    const [a, b] = [await decode(before), await decode(after)];
+    let total = 0;
+    let count = 0;
+    for (let y = 0; y < a.height; y += 1) {
+      for (let x = 0; x < a.width; x += 1) {
+        if (!select(x, y)) continue;
+        const i = (y * a.width + x) * 4;
+        total += Math.abs(a.data[i] - b.data[i]) + Math.abs(a.data[i + 1] - b.data[i + 1]) + Math.abs(a.data[i + 2] - b.data[i + 2]);
+        count += 1;
+      }
+    }
+    return total / count / 3;
+  }, {before: before.toString('base64'), after: after.toString('base64'), where});
+}
+
+for (const theme of ['dark', 'light']) {
+  test(`all fifteen Settings subsection headers wear the one header chip with inner and outer glow (${theme}, 1440px)`, async ({page}) => {
+    await openSettings(page, 'sources');
+    if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
+    const facts = [];
+    for (const [tab, title, card, section, glyph] of HEADERS) {
+      await page.locator(`#view-settings [data-tab="${tab}"]`).click();
+      const heading = page.locator(`.dp-settings-panel[data-panel="${tab}"] ${card} > .card-header .card-title`).first();
+      await heading.scrollIntoViewIfNeeded();
+      const chip = heading.locator(':scope > .dp-settings-protocol-chip');
+      await expect(chip, title).toHaveCount(1);
+      await expect(heading.locator('img'), `${title}: one glyph`).toHaveCount(1);
+      await expect(heading.locator('.dp-settings-card-title-text')).toHaveText(title);
+      await expect(chip).toHaveClass(/\bdp-settings-header-chip\b/);
+      await expect(chip.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
+      if (section) await expect(chip).toHaveAttribute('data-section', section);
+      const fact = await heading.evaluate(node => {
+        const chipNode = node.querySelector(':scope > .dp-settings-protocol-chip');
+        const style = getComputedStyle(chipNode);
+        const box = chipNode.getBoundingClientRect();
+        const image = chipNode.querySelector('img');
+        const glyphBox = image.getBoundingClientRect();
+        const text = node.querySelector('.dp-settings-card-title-text').getBoundingClientRect();
+        const neutral = value => value.replace(/color\([^)]*\)|rgba?\([^)]*\)/g, 'C');
+        return {
+          colour: style.getPropertyValue('--dp-protocol-color').trim(),
+          geometry: [box.width, box.height, style.borderTopWidth, style.borderTopStyle, style.borderTopLeftRadius,
+            glyphBox.width, glyphBox.height, glyphBox.left - box.left, glyphBox.top - box.top].join(' | '),
+          material: [neutral(style.backgroundImage), neutral(style.boxShadow), neutral(style.filter),
+            neutral(getComputedStyle(image).filter)].join(' | '),
+          gap: Math.round(text.left - box.right),
+          centre: Math.abs((box.top + box.height / 2) - (text.top + text.height / 2)),
+          clip: {x: box.x - 14, y: box.y - 14, width: box.width + 28, height: box.height + 28},
+        };
+      });
+      // Outer glow, in pixels: the ring 1-9px outside the chip changes when the
+      // glow is switched off, so it is painted and not clipped or occluded.
+      const shot = () => page.screenshot({clip: fact.clip, animations: 'disabled'});
+      const lit = await shot();
+      await chip.evaluate(node => { node.style.filter = 'none'; });
+      const unlit = await shot();
+      await chip.evaluate(node => { node.style.filter = ''; });
+      const ring = 'Math.max(14 - x, x - (' + (fact.clip.width - 15) + '), 14 - y, y - (' + (fact.clip.height - 15) + ')) >= 1 && '
+        + 'Math.max(14 - x, x - (' + (fact.clip.width - 15) + '), 14 - y, y - (' + (fact.clip.height - 15) + ')) <= 9';
+      fact.outer = await pixelDelta(page, lit, unlit, ring);
+      // Inner glow, in pixels: the glyph's own glow inside the chip.
+      await chip.locator('img').evaluate(node => { node.style.filter = 'none'; });
+      const flat = await shot();
+      await chip.locator('img').evaluate(node => { node.style.filter = ''; });
+      fact.inner = await pixelDelta(page, lit, flat, `x > 15 && x < ${fact.clip.width - 16} && y > 15 && y < ${fact.clip.height - 16}`);
+      facts.push({title, ...fact});
+    }
+    const reference = facts[1];
+    const report = facts.map(f => `${f.title}: outer ${f.outer.toFixed(1)} inner ${f.inner.toFixed(1)}`).join('\n');
+    for (const fact of facts) {
+      const family = HEADERS.find(([, title]) => title === fact.title)[0];
+      expect(fact.colour.toUpperCase(), fact.title).toBe(FAMILY[family][0]);
+      expect(fact.geometry, `${fact.title}: the Network Sources chip geometry`).toBe(reference.geometry);
+      expect(fact.material, `${fact.title}: the Network Sources chip material`).toBe(reference.material);
+      expect(fact.gap, `${fact.title}: label spacing`).toBe(reference.gap);
+      expect(fact.centre, `${fact.title}: chip and label share a centre line`).toBeLessThanOrEqual(1);
+      expect(fact.outer, `${fact.title}: visible outer glow\n${report}`).toBeGreaterThan(3);
+      expect(fact.inner, `${fact.title}: visible inner glow\n${report}`).toBeGreaterThan(1);
+    }
+    test.info().annotations.push({type: 'glow', description: report});
   });
 }
 

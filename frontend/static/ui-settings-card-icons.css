@@ -1,35 +1,4 @@
-/* DebridPulse v1.0.11 Settings inner-card icon presentation. */
-
-#view-settings .dp-settings-inner-card-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* The Settings family colours (the same datums as each family's tab,
-   ui-settings-chrome.css); Services is the default. */
-#view-settings .dp-settings-inner-card-icon {
-  --dp-settings-inner-icon-color: #D657FF;
-  width: 34px;
-  height: 34px;
-  flex: 0 0 34px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-}
-
-#view-settings .dp-settings-inner-card-icon[data-section='extraction'] {
-  --dp-settings-inner-icon-color: #FF9D00;
-}
-#view-settings .dp-settings-inner-card-icon[data-section='authentication'] {
-  --dp-settings-inner-icon-color: #1DDB69;
-}
-#view-settings .dp-settings-inner-card-icon[data-section='notifications'] {
-  --dp-settings-inner-icon-color: #04D7FE;
-}
-#view-settings .dp-settings-inner-card-icon[data-section='maintenance'] {
-  --dp-settings-inner-icon-color: #6366F1;
-}
+/* DebridPulse v1.0.11 Settings identity chip presentation. */
 
 /* ── The ONE Settings protocol identity chip ──────────────────────────────
  *
@@ -43,14 +12,9 @@
  * protocol chip has several and must not become several copies of the same
  * declarations, so the whole treatment is derived from ONE per-instance
  * datum -- --dp-protocol-color -- and every protocol contributes nothing but
- * that colour. --dp-settings-inner-icon-color is kept in step with it so the
- * glyph glow keeps its single source. */
+ * that colour. */
 #view-settings .dp-settings-protocol-chip {
   --dp-protocol-color: #b866f5;
-  --dp-settings-inner-icon-color: var(--dp-protocol-color);
-  /* The colour this chip contributes to the master-card outer glow below.
-     Only a GROUP MASTER's chip actually receives that glow. */
-  --dp-settings-master-glow: var(--dp-protocol-color);
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
@@ -87,10 +51,25 @@ body.light #view-settings .dp-settings-protocol-chip {
 /* The one per-instance datum. Each protocol states its canonical colour --
    its identity token (design-tokens.css) -- and nothing else; the chip above
    derives border, surface and glow from it. */
-/* A family identity on a card that has no protocol (familyIcon): the
-   Downloads subsection headers. */
+/* A Settings family identity (familyIcon): its subsection headers wear the
+   family colour, the same datum as the family's tab (ui-settings-chrome.css). */
+#view-settings .dp-settings-protocol-chip[data-section='sources'] {
+  --dp-protocol-color: #D657FF;
+}
 #view-settings .dp-settings-protocol-chip[data-section='downloads'] {
   --dp-protocol-color: #2563EB;
+}
+#view-settings .dp-settings-protocol-chip[data-section='extraction'] {
+  --dp-protocol-color: #FF9D00;
+}
+#view-settings .dp-settings-protocol-chip[data-section='authentication'] {
+  --dp-protocol-color: #1DDB69;
+}
+#view-settings .dp-settings-protocol-chip[data-section='notifications'] {
+  --dp-protocol-color: #04D7FE;
+}
+#view-settings .dp-settings-protocol-chip[data-section='maintenance'] {
+  --dp-protocol-color: #6366F1;
 }
 /* Network Sources is the Services family's own identity (upright Network). */
 #view-settings .dp-settings-protocol-chip[data-protocol='direct_sources'] {
@@ -142,48 +121,22 @@ body.light #view-settings .dp-settings-protocol-chip img {
     drop-shadow(0 0 7px color-mix(in srgb, var(--dp-protocol-color) 28%, transparent));
 }
 
-#view-settings .dp-settings-inner-card-icon img {
-  width: 34px;
-  height: 34px;
-  display: block;
-  object-fit: contain;
-  filter:
-    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-inner-icon-color) 78%, transparent))
-    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-inner-icon-color) 34%, transparent));
-}
-
-body.light #view-settings .dp-settings-inner-card-icon img {
-  filter:
-    saturate(1.08)
-    contrast(1.04)
-    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-inner-icon-color) 88%, transparent))
-    drop-shadow(0 0 10px color-mix(in srgb, var(--dp-settings-inner-icon-color) 44%, transparent));
-}
-
-/* ── The ONE master-card outer glow ───────────────────────────────────────
+/* ── The ONE subsection-header outer glow ────────────────────────────────
  *
- * A master group card carries an omnidirectional glow AROUND its artwork, on
- * top of whatever inner material that artwork owns. It existed only for the
- * premium master, hard-coded to one colour, and the Network Sources master had
- * none at all. Both now derive the same two-stop pair from ONE per-instance
- * datum -- --dp-settings-master-glow -- so there is exactly one owner and each
- * master contributes nothing but its colour.
- *
- * The Network Sources master is addressed STRUCTURALLY, through the group
- * attribute groupCard() already emits: nothing here names an integration, and
- * the Downloads executor-tuning cards (data-executor-tuning) are deliberately
- * not group masters and so are deliberately not matched. Chip geometry, glyph,
- * blue colour, inner glyph glow and status logic are untouched. */
-#view-settings .dp-settings-debrid-services > .card-header > .card-title::before,
-#view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {
+ * A Settings subsection header's chip (identityChip's ``header``: every
+ * family header, and the Network Sources group master) carries an
+ * omnidirectional glow AROUND the chip, on top of the chip's own inner
+ * treatment. It derives from the same one datum, --dp-protocol-color, so each
+ * header contributes nothing but its colour. Chips inside provider cards and
+ * source boxes are not headers and are deliberately not matched. */
+#view-settings .dp-settings-header-chip {
   filter:
-    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 78%, transparent))
-    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-master-glow) 34%, transparent));
+    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 78%, transparent))
+    drop-shadow(0 0 9px color-mix(in srgb, var(--dp-protocol-color) 34%, transparent));
 }
 
-body.light #view-settings .dp-settings-debrid-services > .card-header > .card-title::before,
-body.light #view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {
+body.light #view-settings .dp-settings-header-chip {
   filter:
-    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-settings-master-glow) 88%, transparent))
-    drop-shadow(0 0 10px color-mix(in srgb, var(--dp-settings-master-glow) 44%, transparent));
+    drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 88%, transparent))
+    drop-shadow(0 0 10px color-mix(in srgb, var(--dp-protocol-color) 44%, transparent));
 }

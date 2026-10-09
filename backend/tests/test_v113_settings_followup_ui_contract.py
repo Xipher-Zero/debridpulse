@@ -302,13 +302,13 @@ def test_the_chip_glow_is_declared_once_per_theme_not_per_protocol():
 
 def test_every_protocol_identity_uses_the_same_block():
     """One composer emits every Settings identity chip, and it is the only emitter:
-    a protocol through protocolIcon(), a family identity on a group card that has
-    no protocol through familyIcon(), both through identityChip().
+    a protocol through protocolIcon(), a Settings family identity through
+    familyIcon(), both through identityChip().
 
     Which six places render one is proven where it is visible, in
     frontend/browser/settings-protocol-icons.spec.js.
     """
-    assert SETTINGS.count('class="dp-settings-protocol-chip"') == 1, \
+    assert SETTINGS.count('class="dp-settings-protocol-chip') == 1, \
         "an identity chip is emitted somewhere other than identityChip()"
     assert SETTINGS.count("identityChip(") == 3                     # the emitter and its two callers
     # The one protocol glyph table lives with the transfer identity owner, which

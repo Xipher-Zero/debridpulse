@@ -53,9 +53,9 @@ def test_download_safety_recovery_has_vector_header_artwork_and_established_glow
     # nothing prepends it later.
     assert "titlePrefix: familyIcon('downloads', 'shield-alert')" in runtime
     assert "ensureRecoveryIdentity" not in runtime and "dp-settings-download-recovery-icon" not in runtime
-    assert ".dp-settings-inner-card-icon" in css
-    assert "width: 34px;" in css
-    assert "height: 34px;" in css
+    assert ".dp-settings-header-chip" in css
+    assert "width: 38px;" in css
+    assert "height: 38px;" in css
 
     assert 'viewBox="0 0 256 256"' in icon
     assert icon.count("<path") >= 10
