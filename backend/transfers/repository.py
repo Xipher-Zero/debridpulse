@@ -55,7 +55,9 @@ from enum import StrEnum
 from types import SimpleNamespace
 
 from db.database import get_db
+from db.event_journal import record as journal
 from transfers import codec
+from transfers import journal_events as je
 from transfers import file_selection as fs
 from transfers._repository_base import (
     _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, _established_children_in_db, _release_selection_poll_wait_in_db,
@@ -957,7 +959,7 @@ class TransferRepository(_QualifiedTransferRepository):
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             try:
-                binding_id = await self._resource(db, transfer_id, resource, state)
+                binding_id = await self._resource(db, transfer_id, resource, state, journaled=False)
                 if cleanup:
                     await self.cleanup_intent(transfer_id, resource.id, cleanup, db=db)
             except Exception:
@@ -966,6 +968,8 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.execute(
                 """UPDATE standby_resources SET state='bound',binding_id=?,error=NULL,observed_at=?,updated_at=?
                    WHERE id=?""", (binding_id, now, now, standby_id))
+            await journal(db, je.standby("bound", transfer_id=transfer_id, standby_id=standby_id,
+                                         provider_id=resource.provider_id))
             await db.commit()
         return binding_id
 
@@ -1023,9 +1027,13 @@ class TransferRepository(_QualifiedTransferRepository):
     async def fail_standby(self, standby_id: str, error: NormalizedError, now: float) -> None:
         """This preparation ended without a usable resource; only it is affected."""
         async with get_db() as db:
-            await db.execute(
+            failed = await db.execute(
                 """UPDATE standby_resources SET state='failed',error=?,attempts=attempts+1,updated_at=?
                    WHERE id=? AND state='creating'""", (codec.dump(error), now, standby_id))
+            if failed.rowcount:
+                row = await db.fetchone("SELECT transfer_id,provider_id FROM standby_resources WHERE id=?", (standby_id,))
+                await journal(db, je.standby("failed", transfer_id=row["transfer_id"], standby_id=standby_id,
+                                             provider_id=row["provider_id"], error=error))
             await db.commit()
 
     async def promotable_standby(self, request_id: str, provider_id: str) -> tuple[str, ProviderResource] | None:
@@ -1087,6 +1095,10 @@ class TransferRepository(_QualifiedTransferRepository):
         async with get_db() as db:
             await db.execute("UPDATE standby_resources SET promoted_at=COALESCE(promoted_at, ?),updated_at=? WHERE id=?",
                              (now, now, standby_id))
+            row = await db.fetchone("SELECT transfer_id,provider_id FROM standby_resources WHERE id=?", (standby_id,))
+            if row:
+                await journal(db, je.standby("promoted", transfer_id=row["transfer_id"], standby_id=standby_id,
+                                             provider_id=row["provider_id"]))
             await db.commit()
 
     async def primary_resolution_runnable(self, now: float) -> bool:
@@ -1236,6 +1248,13 @@ class TransferRepository(_QualifiedTransferRepository):
                               revoked, handle.attempt_id))
             await db.execute("UPDATE execution_attempt_provenance SET outcome=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=?",
                              (self._execution_outcome(observation.state), handle.attempt_id))
+            # Only an attempt's arrival at a failed, lost or stopped state is an
+            # occurrence; every other observation is a sample.
+            ended = str(observation.state)
+            if ended in {"failed", "absent", "cancelled"} and row.get("state") != ended:
+                await journal(db, je.execution_ended(
+                    ended, transfer_id=row["transfer_id"], artifact_id=row["artifact_id"],
+                    attempt_id=handle.attempt_id, executor_id=handle.executor_id, error=observation.error))
             states = {ExecutionState.RUNNING: "downloading", ExecutionState.QUEUED: "queued", ExecutionState.PAUSED: "paused",
                       ExecutionState.SUCCEEDED: "verifying", ExecutionState.FAILED: "error", ExecutionState.CANCELLED: "cancelled",
                       ExecutionState.ABSENT: "lost", ExecutionState.UNKNOWN: "unknown"}
@@ -1283,7 +1302,8 @@ class TransferRepository(_QualifiedTransferRepository):
             previous = int(row.get("size_bytes") or 0)
             cursor = await db.execute("UPDATE download_files SET size_bytes=?,updated_at=CURRENT_TIMESTAMP WHERE id=? AND execution_attempt_id=?", (total_bytes, artifact_id, handle.attempt_id))
             if cursor.rowcount and previous != total_bytes:
-                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'warning','Final verified materialization refined execution-observed artifact size')", (row["torrent_id"],))
+                await journal(db, je.size_refined(transfer_id=row["torrent_id"], artifact_id=artifact_id,
+                                                  previous=previous, total=total_bytes))
             await db.commit()
         return cursor.rowcount == 1
 
@@ -1945,6 +1965,8 @@ class TransferRepository(_QualifiedTransferRepository):
                     "INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,0)",
                     (sel["transfer_id"], "file_selection_available", None),
                 )
+                await journal(db, je.selection("offered", transfer_id=sel["transfer_id"], selection_id=sel["id"],
+                                               provider_id=sel["provider_id"]))
             await db.commit()
         return canonical
 
@@ -2025,6 +2047,9 @@ class TransferRepository(_QualifiedTransferRepository):
                        WHERE id=? AND decision='pending' AND manifest_committed_at IS NULL""",
                     (str(evaluation.resolve_decision), str(evaluation.resolve_reason), now, now, row["id"]),
                 )
+                await journal(db, je.selection(
+                    "decided", transfer_id=row["transfer_id"], selection_id=row["id"], provider_id=row["provider_id"],
+                    detail=f"{evaluation.resolve_decision} ({str(evaluation.resolve_reason).replace('_', ' ')})"))
                 if evaluation.resolve_reason == fs.DecisionReason.DECISION_TIMEOUT:
                     # The operator's decision window on a usable multi-file
                     # manifest ran out: ALL, as the concrete member set it is.
@@ -2167,6 +2192,9 @@ class TransferRepository(_QualifiedTransferRepository):
             if cursor.rowcount != 1:
                 await db.rollback()
                 return fs.SelectionCommandResult(str(fs.SelectionOutcome.CONFLICT), "materialization_won")
+            await journal(db, je.selection("confirmed", transfer_id=row["transfer_id"], selection_id=row["id"],
+                                           provider_id=row["provider_id"],
+                                           detail=f"{len(requested)} file(s) selected"))
             await self._settle_selection_intent(db, row, now, entry_ids=requested)
             # The decision is settled; the 120s hold is no longer active. Release
             # the file-selection gate wait in the SAME transaction so the next
@@ -2225,6 +2253,8 @@ class TransferRepository(_QualifiedTransferRepository):
                     (str(fs.DecisionReason.CLOSED), now, now, now, row["id"]),
                 )
                 if cursor.rowcount == 1:
+                    await journal(db, je.selection("dismissed", transfer_id=row["transfer_id"], selection_id=row["id"],
+                                                   provider_id=row["provider_id"]))
                     await self._settle_selection_intent(db, row, now)
                     # Close/X settled the decision to default ALL; the 120s hold
                     # is over. Release the file-selection gate wait in the same
@@ -2575,6 +2605,11 @@ class TransferRepository(_QualifiedTransferRepository):
             """UPDATE transfer_file_selections SET continuity=?, continuity_reason=?, updated_at=?
                WHERE id=? AND manifest_committed_at IS NULL""",
             (str(fs.Continuity.HELD), reason, now, row["id"]))
+        # Re-proven on every pass while held: only the first hold, or a new
+        # reason, is an occurrence.
+        if row["continuity"] != str(fs.Continuity.HELD) or row["continuity_reason"] != reason:
+            await journal(db, je.selection("held", transfer_id=record.transfer_id, selection_id=row["id"],
+                                           provider_id=row["provider_id"], detail=str(reason).replace("_", " ")))
         await db.commit()
         return reason, None
 

@@ -256,7 +256,7 @@ test('handled Event Log API failure stays inside the UI error lifecycle', async 
   await page.goto('/');
 
   let injected = 0;
-  await page.route('**/api/events?limit=500', route => {
+  await page.route('**/api/events?limit=100*', route => {
     injected += 1;
     return route.fulfill({
       status: 503,
@@ -269,7 +269,7 @@ test('handled Event Log API failure stays inside the UI error lifecycle', async 
   await expect.poll(() => injected).toBeGreaterThan(0);
   await expect(page.locator('.toast.error .dp-toast-copy')).toContainText('browser gate injected failure');
   await expect(page.locator('#view-events')).toHaveClass(/\bactive\b/);
-  expect(runtime.badResponses.some(item => item.includes('503') && item.includes('/api/events?limit=500'))).toBeTruthy();
+  expect(runtime.badResponses.some(item => item.includes('503') && item.includes('/api/events?limit=100'))).toBeTruthy();
   const unexpectedErrors = runtime.errors.filter(
     error => error !== 'console: Failed to load resource: the server responded with a status of 503 (Service Unavailable)'
   );

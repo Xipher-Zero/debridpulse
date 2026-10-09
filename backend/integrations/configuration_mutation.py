@@ -138,6 +138,9 @@ async def mutate_integration_configuration(
             # inside the same lock, through the generic seam. No integration is
             # named: composition discovered which namespaces have appliers.
             applied = await application.apply_integration_configuration(integration_id)
+            from core.config import journal_configuration_change
+
+            await journal_configuration_change(previous, clean)
     # A canonical configuration change can alter which sources are routable and
     # whether an integration's managed lifecycle component is still required.
     # Waking the neutral maintenance/resolution signals here is what makes an

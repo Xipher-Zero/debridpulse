@@ -136,8 +136,10 @@ class AppSettings(BaseModel):
     # ``services.notification_service``.
     notification_verification: dict[str, str] = Field(default_factory=dict, repr=False)
 
-    # ── Event log TTL ─────────────────────────────────────────────────────────
-    events_keep_days: int = 30
+    # ── Event logging ─────────────────────────────────────────────────────────
+    # How many events one Activity Log page shows (50, 100 or 250). It selects
+    # a page size only: the event journal itself is kept indefinitely.
+    activity_log_page_size: int = 100
 
     # ── Authentication ────────────────────────────────────────────────────────
     auth_password_enabled: bool = False
@@ -358,6 +360,65 @@ def save_settings(s: AppSettings):
 def apply_settings(s: AppSettings):
     global _settings
     _settings = s
+
+
+# Metadata about configuration, never an operator's configuration change.
+_UNJOURNALED_SETTINGS = frozenset({"notification_verification", "integrations", "integration_groups"})
+_SECRET_ATTRIBUTES = ("auth_password_hash", "oidc_client_secret")
+
+
+def configuration_changes(previous: AppSettings, current: AppSettings) -> tuple[list[str], list[tuple[str, bool]]]:
+    """The NAMES of what a configuration write changed -- never a value, so a
+    secret's change is visible while the secret is not -- and the integrations
+    whose enablement it flipped."""
+    before, after = previous.model_dump(), current.model_dump()
+    changed = []
+    for key in sorted(set(before) | set(after)):
+        if key in _UNJOURNALED_SETTINGS or before.get(key) == after.get(key):
+            continue
+        if isinstance(before.get(key), dict) and isinstance(after.get(key), dict):
+            inner_before, inner_after = before[key], after[key]
+            changed.extend(f"{key}.{name}" for name in sorted(set(inner_before) | set(inner_after))
+                           if inner_before.get(name) != inner_after.get(name))
+        else:
+            changed.append(key)
+    changed.extend(name for name in _SECRET_ATTRIBUTES
+                   if str(getattr(previous, name, "") or "") != str(getattr(current, name, "") or ""))
+    toggled = []
+    for integration_id in sorted(set(previous.integrations) | set(current.integrations)):
+        old, new = previous.integrations.get(integration_id), current.integrations.get(integration_id)
+        old_enabled, new_enabled = bool(getattr(old, "enabled", False)), bool(getattr(new, "enabled", False))
+        if old_enabled != new_enabled:
+            toggled.append((integration_id, new_enabled))
+        old_options = dict(getattr(old, "options", None) or {})
+        new_options = dict(getattr(new, "options", None) or {})
+        changed.extend(f"integrations.{integration_id}.{name}" for name in sorted(set(old_options) | set(new_options))
+                       if old_options.get(name) != new_options.get(name))
+        if getattr(old, "priority", None) != getattr(new, "priority", None) and old is not None and new is not None:
+            changed.append(f"integrations.{integration_id}.priority")
+    for group in sorted(set(previous.integration_groups or {}) | set(current.integration_groups or {})):
+        if (previous.integration_groups or {}).get(group) != (current.integration_groups or {}).get(group):
+            changed.append(f"integration_groups.{group}")
+    return changed, toggled
+
+
+async def journal_configuration_change(previous: AppSettings, current: AppSettings) -> None:
+    """Record an operator's committed configuration change in the event
+    journal, after it was saved (a settings document is a file, not a database
+    transition): one event per integration enabled or disabled, and one naming
+    every other changed setting. Nothing is recorded when nothing changed."""
+    from db.event_journal import JournalEvent, record_now
+
+    changed, toggled = configuration_changes(previous, current)
+    for integration_id, enabled in toggled:
+        await record_now(JournalEvent(
+            "configuration", "configuration.integration_enabled" if enabled else "configuration.integration_disabled",
+            "info", "Integration enabled" if enabled else "Integration disabled", "integration",
+            subject_id=integration_id, integration_id=integration_id))
+    if changed:
+        await record_now(JournalEvent(
+            "configuration", "configuration.settings_changed", "info",
+            f"Settings changed ({len(changed)})", "settings", detail=", ".join(changed)))
 
 
 _settings = load_settings()

@@ -90,8 +90,10 @@ async def _database_digest():
         tables = [row["name"] for row in await db.fetchall(
             "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")]
         for table in tables:
-            for row in await db.fetchall(f"SELECT * FROM {table} ORDER BY rowid"):
-                digest.update(repr((table, sorted(row.items()))).encode())
+            # Every table, including WITHOUT ROWID ones (the search index's
+            # own configuration), in a deterministic order of its own rows.
+            for row in sorted(repr(sorted(row.items())) for row in await db.fetchall(f"SELECT * FROM {table}")):
+                digest.update(repr((table, row)).encode())
     return digest.hexdigest()
 
 
@@ -108,7 +110,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     inventory = {item["table"]: item for item in trace["inventory"]}
     for table in ("torrents", "transfer_requests", "resolution_attempts", "route_attempt_provenance",
                   "download_files", "canonical_candidate_bindings", "canonical_candidate_origins",
-                  "artifact_consolidations", "deferred_provider_submissions", "application_events", "events"):
+                  "artifact_consolidations", "deferred_provider_submissions", "application_events", "event_journal"):
         assert inventory[table]["status"] == "populated", table
         assert inventory[table]["rows"] == len(trace["data"][table])
     assert inventory["transfer_file_manifests"]["status"] == "empty"

@@ -133,6 +133,14 @@ async def _reopen(application, *, stopped_integrations, paused_by_restore: bool,
         await scheduler.start_scheduler(application)
 
 
+async def _journal_restore(event_type: str, severity: str, message: str, point_id: str, *,
+                           detail: str | None = None) -> bool:
+    from db.event_journal import JournalEvent, record_now
+
+    return await record_now(JournalEvent("administration", event_type, severity, message, "backup",
+                                         subject_id=point_id, detail=detail))
+
+
 async def restore_backup(state, point_id: str) -> dict:
     """Replace the current DebridPulse state with one restore point.
 
@@ -198,6 +206,11 @@ async def restore_backup(state, point_id: str) -> dict:
                     if not was_paused:
                         await previous.resume_all()
                     state.application = previous
+                    # The pre-restore database is active again: the failure is
+                    # recorded there, the only journal that now exists.
+                    await _journal_restore("administration.restore_failed", "error",
+                                           "Restore failed after activation; the previous state was reinstated",
+                                           point_id)
                     raise RestoreFailed(400) from None
                 staged.commit()
                 state.application = restored
@@ -206,9 +219,17 @@ async def restore_backup(state, point_id: str) -> dict:
             # so the restarted scheduler cannot bounce off the maintenance gate.
             await _reopen(current, stopped_integrations=stopped_integrations,
                           paused_by_restore=not was_paused, scheduler_was_running=scheduler_was_running)
+            await _journal_restore("administration.restore_refused", "warning",
+                                   "Restore refused; nothing was replaced", point_id)
             raise refused
         # Authentication is part of the restored state: no session issued
         # under the replaced configuration survives it.
         session_store.clear()
         logger.warning("Backup restored: %s (safety backup %s)", point_id, safety.id)
-        return {"ok": True, "restored": staged.point.public(), "safety_backup": safety.public(), "drain": drain}
+        # Written only now, into the restored database that is active: the
+        # replaced database is gone, and the restored journal is exactly the
+        # one the backup held (nothing recorded after it was taken survives).
+        recorded = await _journal_restore("administration.backup_restored", "warning", "Backup restored", point_id,
+                                          detail=f"Safety backup {safety.id} holds the replaced state")
+        return {"ok": True, "restored": staged.point.public(), "safety_backup": safety.public(), "drain": drain,
+                "journal_recorded": recorded}

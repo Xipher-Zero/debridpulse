@@ -26,8 +26,8 @@
 @import url('/ui-dashboard-transfer-presentation.css?v=2');
 @import url('/ui-utility-controls.css?v=25');
 @import url('/ui-statistics-page.css?v=23');
-@import url('/ui-activity-log-page.css?v=31');
-@import url('/ui-activity-log-controls.css?v=2');
+@import url('/ui-activity-log-page.css?v=32');
+@import url('/ui-activity-log-controls.css?v=3');
 @import url('/ui-downloads-page.css?v=30');
 @import url('/ui-settings-page.css?v=3');
 @import url('/auth-ux.css?v=3');
@@ -51,7 +51,7 @@
 @import url('/ui-settings-directory-browser.css?v=2');
 @import url('/ui-settings-form-layout.css?v=3');
 @import url('/ui-settings-executor-work.css?v=1');
-@import url('/ui-settings-maintenance-wipe.css?v=3');
+@import url('/ui-settings-maintenance-wipe.css?v=4');
 @import url('/ui-settings-notifications.css?v=3');
 @import url('/ui-settings-authentication.css?v=3');
 @import url('/ui-settings-card-icons.css?v=4');

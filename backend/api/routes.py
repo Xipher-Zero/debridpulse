@@ -27,6 +27,7 @@ from core.config import (
     apply_settings,
     config_write_lock,
     get_settings,
+    journal_configuration_change,
     load_settings,
     save_settings,
 )
@@ -476,6 +477,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
         _revoke_stale_authentication_state(previous, clean)
         application.configure()
         await _apply_aria2_settings(application)
+        await journal_configuration_change(previous, clean)
         data = _public_settings(clean, application.definitions)
         _with_option_availability(data["integrations"], application)
         data["ok"] = True
@@ -1332,8 +1334,11 @@ async def get_stats_detail(period: str = "all"):
         file_status = await db.fetchall(
             f"SELECT status, COUNT(*) as count, COALESCE(SUM(size_bytes),0) as size_bytes "
             f"FROM download_files {where_files} GROUP BY status ORDER BY count DESC")
-        event_levels = await db.fetchall(
-            f"SELECT level, COUNT(*) as count FROM events {where_ts} GROUP BY level")
+        from db.event_journal import severity_counts
+        event_since = (time.time() - {"1h": 3600, "24h": 86400, "7d": 7 * 86400, "30d": 30 * 86400,
+                                      "1y": 365 * 86400}[period_label]) if cutoff else None
+        event_levels = [{"level": level, "count": count}
+                        for level, count in (await severity_counts(db, event_since)).items()]
         sources = await db.fetchall(
             f"SELECT source, COUNT(*) as count FROM torrents {where_ts} "
             f"GROUP BY source ORDER BY count DESC LIMIT 10")
@@ -1494,6 +1499,7 @@ async def remove_backup(backup_id: str):
         await asyncio.to_thread(backup_store.remove_restore_point, backup_id)
     except backup_store.BackupRejected as exc:
         raise _backup_refusal(exc) from None
+    await backup_store.journal_backup("administration.backup_removed", "Backup removed", backup_id)
     return {"ok": True}
 
 
@@ -1803,6 +1809,7 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
         # observable configured != effective divergence (section 2.7), never
         # a silent split between executors and disk.
         async with config_write_lock():
+            previous = get_settings()
             current = load_settings()
             current.execution_runtime_limits = ExecutionRuntimeLimits(max_download_bytes_per_second=value)
             from integrations.configuration import normalize_settings
@@ -1810,6 +1817,7 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
             save_settings(current)
             apply_settings(current)
             application.configure()
+            await journal_configuration_change(previous, current)
             return await application.execution_runtime_limits()
 
 
@@ -1861,6 +1869,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
         # other settings-mutation route: no namespace may lose another
         # namespace's newer value to a concurrent read-modify-write.
         async with config_write_lock():
+            previous = get_settings()
             current = load_settings()
             base = current.transfer_policy or TransferSettings()
             try:
@@ -1887,6 +1896,7 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
             # corresponds to the just-persisted revision, never a stale
             # interleaving (specification section 13.8).
             application.configure()
+            await journal_configuration_change(previous, current)
 
             # ``max_concurrent_executions`` is the one global concurrency
             # policy and core admission (``occupied_execution_slots``) its only
@@ -2023,6 +2033,7 @@ async def patch_integration_group_configuration(
             save_settings(clean)
             apply_settings(clean)
             application.configure()
+            await journal_configuration_change(previous, clean)
     # Which sources are routable just changed for every member of this group.
     for member in public_integration_groups(clean, application.definitions)[group_id]["members"]:
         application.notify_applicability_changed(member)
@@ -2397,6 +2408,7 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
             save_settings(clean)
             apply_settings(clean)
             application.configure()
+            await journal_configuration_change(previous, clean)
             applied = await application.apply_integration_configuration(USENET_NAMESPACE)
     public = public_integrations(clean, application.definitions).get(USENET_NAMESPACE, {})
     # The accepted canonical public projection of this integration, published

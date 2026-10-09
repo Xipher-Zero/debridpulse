@@ -289,7 +289,7 @@
     backup_keep_days: {scope: 'settings-document', option: 'backup_keep_days'},
     stats_snapshot_interval_minutes: {scope: 'settings-document', option: 'stats_snapshot_interval_minutes'},
     stats_snapshot_keep_days: {scope: 'settings-document', option: 'stats_snapshot_keep_days'},
-    events_keep_days: {scope: 'settings-document', option: 'events_keep_days'},
+    activity_log_page_size: {scope: 'settings-document', option: 'activity_log_page_size'},
     db_wipe_enabled: {scope: 'settings-document', option: 'db_wipe_enabled', commit: 'immediate'},
   });
 
@@ -3456,7 +3456,7 @@
 
   /* ── Data & Maintenance ───────────────────────────────────────────────────
    *
-   * Two cards in exactly the grammar every other migrated Settings page uses:
+   * Three cards in exactly the grammar every other migrated Settings page uses:
    * the operational actions in the card's own right-aligned header rail, the
    * one setting the page is actually about as a centred bordered island, and
    * the policy numbers behind the canonical disclosure. Every editable control
@@ -3469,6 +3469,22 @@
    * values the server has accepted rather than on a draft the operator left in
    * a field. That settle is the one shared owner's, not a Maintenance timer. */
   function maintenancePanel(s) {
+    /* Event Logging selects only how many events one Activity Log page shows;
+     * the journal itself is kept indefinitely, so nothing here retains, prunes
+     * or enables anything and the header rail stays empty. */
+    const eventLogging = card('Event Logging', `
+      <div class="dp-settings-event-logging-island">
+        ${selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,
+          [[50, '50 events'], [100, '100 events'], [250, '250 events']],
+          'Number of events displayed per page in the Activity Log.',
+          {inline: true, className: 'dp-settings-event-logging-field'})}
+      </div>
+    `, {
+      className: 'dp-settings-event-logging-card',
+      titlePrefix: familyIcon('maintenance', 'file-text'),
+      headerCenter: 'Configure how many activity log entries are displayed per page.',
+      headerCenterClass: 'dp-settings-event-logging-header-copy',
+    });
     const backupEnabledId = fieldId('backup_enabled');
     const backups = card('Backups & Retention', `
       <div class="dp-settings-backup-folder-island">
@@ -3504,16 +3520,11 @@
             embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
           }),
         ),
-        input('events_keep_days', 'Event Log Retention', s.events_keep_days ?? 30, {
-          type: 'number', min: 1,
-          hint: 'Delete event log entries older than the configured number of days.',
-          embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
-        }),
       ))}
     `, {
       className: 'dp-settings-backups-retention-card',
       titlePrefix: familyIcon('maintenance', 'archive'),
-      headerCenter: 'Configure automated backups and retention for backups, statistics snapshots, and event logs.',
+      headerCenter: 'Configure automated backups and retention for backups and statistics snapshots.',
       headerCenterClass: 'dp-settings-backups-header-copy',
       headerAction: `<button class="btn btn-ghost btn-sm" type="button" data-action="backups">Backups</button>
           <button class="btn btn-sm dp-settings-run-backup-success" type="button" data-action="run-backup">Run Backup</button>`,
@@ -3545,7 +3556,7 @@
       headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
     });
-    return backups + reset;
+    return eventLogging + backups + reset;
   }
 
   function panel(name, body) {

@@ -107,7 +107,10 @@ async def test_a_plain_rsync_path_that_the_daemon_does_not_provide_resolves_over
             tables = [row["name"] for row in await db.fetchall(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
             durable = json.dumps([dict(row) for table in tables
-                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')])  # nosec B608
+                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')],
+                                 # Blob columns (the event journal's search index) as their raw
+                                 # bytes, so a secret stored in one would still be found.
+                                 default=lambda value: value.decode("latin-1"))  # nosec B608
         assert passphrase not in durable and "PRIVATE KEY" not in durable
     finally:
         await runtime.close()

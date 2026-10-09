@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
 from core.branding import APP_SHORT_NAME
@@ -81,19 +82,19 @@ async def collect_all_metrics(
     # Per-table time filters (each table has a different timestamp column)
     tf_t  = ""   # torrents.created_at
     tf_f  = ""   # download_files.updated_at
-    tf_ev = ""   # events.created_at
+    event_since: Optional[float] = None   # event_journal occurrence time
     p: tuple = ()   # query params (only used when since= is given)
 
     if since:
         tf_t  = "AND created_at >= ?"
         tf_f  = "AND updated_at >= ?"
-        tf_ev = "AND created_at >= ?"
+        event_since = since.timestamp()
         p = (since,)
     elif hours:
         h = int(hours)
         tf_t  = f"AND created_at >= datetime('now', '-{h} hours')"
         tf_f  = f"AND updated_at >= datetime('now', '-{h} hours')"
-        tf_ev = f"AND created_at >= datetime('now', '-{h} hours')"
+        event_since = time.time() - h * 3600
         # no params needed — datetime() is in the SQL string, converted by _adapt()
 
     trend_days = min(hours // 24, 14) if hours else 14
@@ -158,12 +159,9 @@ async def collect_all_metrics(
             p,
         ) or {}
 
-        # ── Event counts (events.created_at) ─────────────────────────────────
-        event_rows = await db.fetchall(
-            f"SELECT level, COUNT(*) AS cnt FROM events WHERE 1=1 {tf_ev} GROUP BY level",
-            p,
-        )
-        event_counts = {r["level"]: _i(r["cnt"]) for r in event_rows}
+        # ── Event counts (the event journal, by severity) ─────────────────────
+        from db.event_journal import severity_counts
+        event_counts = await severity_counts(db, event_since)
 
         # ── Source + label distribution (torrents.created_at) ────────────────
         source_rows = await db.fetchall(
@@ -262,7 +260,7 @@ async def generate_report(hours: int = 24) -> Dict[str, Any]:
                 "blocked_files":      f["blocked"],
                 "total_retries":      f["retry_total"],
                 "error_events":       metrics["events"].get("error", 0),
-                "warn_events":        metrics["events"].get("warn", 0),
+                "warn_events":        metrics["events"].get("warning", 0),
             },
         },
         "raw": metrics,

@@ -47,7 +47,7 @@ from auth.policy import (
 from auth.sessions import session_cookie_token, session_store, set_session_cookie
 from auth.throttle import oidc_verify_rate_limiter
 from auth.transitions import authentication_configuration_lock, oidc_critical_change
-from core.config import apply_settings, get_settings, save_settings
+from core.config import apply_settings, get_settings, journal_configuration_change, save_settings
 from core.config_validator import validate_and_sanitise
 
 
@@ -491,6 +491,7 @@ async def update_authentication_config(request: Request, update: AuthenticationC
 
     save_settings(clean)
     apply_settings(clean)
+    await journal_configuration_change(current, clean)
 
     if password_changed:
         basic_verification_cache.clear()

@@ -5,7 +5,7 @@ async function ready(page){await page.goto('/');await page.waitForFunction(marke
 
 test('Activity Log keeps search, Time Window dropdown, Severity label, and Severity dropdown in order',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
- await page.route('**/api/events*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],truncated:false,limit:500})}));
+ await page.route('**/api/events*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})}));
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await page.waitForFunction(()=>document.querySelector('#ev-timeframe')?._dpDropdownShell&&document.querySelector('#ev-level')?._dpDropdownShell);
  const geometry=await page.locator('#view-events .dp-activity-search-row').evaluate(row=>{
@@ -34,7 +34,7 @@ test('Activity Log keeps search, Time Window dropdown, Severity label, and Sever
 test('Activity Log search keeps focus across debounced refreshes and other controls still initialize exactly once',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
  let requestCount=0;
- await page.route('**/api/events*',route=>{requestCount+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],truncated:false,limit:500})});});
+ await page.route('**/api/events*',route=>{requestCount+=1;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})});});
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await page.waitForFunction(()=>document.querySelector('#ev-timeframe')?._dpDropdownShell&&document.querySelector('#ev-level')?._dpDropdownShell);
  const search=page.locator('#ev-search');
@@ -47,10 +47,10 @@ test('Activity Log search keeps focus across debounced refreshes and other contr
  await expect.poll(()=>page.evaluate(()=>document.activeElement?.id)).toBe('ev-search');
  await expect(search).toHaveValue('abc');
  await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(3);
- // Severity/timeframe/reset controls initialize exactly once (one dropdown
- // shell each) and remain interactive after the repeated debounced refreshes.
+ // Severity/timeframe/Event Type/reset controls initialize exactly once (one
+ // dropdown shell each) and remain interactive after the repeated debounced refreshes.
  const shellCount=await page.evaluate(()=>document.querySelectorAll('#view-events .dp-dropdown-shell').length);
- expect(shellCount).toBe(2);
+ expect(shellCount).toBe(3);
  await page.selectOption('#ev-level','error');
  await expect.poll(()=>requestCount).toBeGreaterThanOrEqual(4);
 });

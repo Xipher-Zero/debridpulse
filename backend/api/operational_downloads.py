@@ -5,27 +5,29 @@ explicit CONSOLIDATED lifecycle state, but the normal operational list excludes
 it alongside soft-deleted history. Pagination and totals therefore reflect the
 same canonical lifecycle rule as the visible rows.
 
-Activity Log filtering lives here so optional search, severity, and timeframe
-predicates are applied before the result ceiling. This module is the sole
-declaring owner of GET /api/events; api.routes no longer declares an unfiltered
-variant. The default response remains the historical JSON list; the UI opts into
-metadata when it needs an explicit truncation signal.
+The Activity Log reads the durable event journal (``db.event_journal``) here:
+time window, severity, Event Type and search apply before the page limit, and
+pages are navigated by cursor across the whole retained history. This module is
+the sole declaring owner of GET /api/events; api.routes declares no variant.
 """
 import asyncio
 import json
+import logging
+import sqlite3
+import time
 from typing import Annotated, Literal, Optional
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from api.routes import _provider_display_name, _public_transfer_presentation
-from api.serializers import public_payload
 from application import dispatch_admission as live_admission
 from application.dependencies import get_application
 from application.manual_candidate_failover import preview_switch, switch_candidate
 from application.manual_route_switch import root_route_providers, switch_route_provider
 from transfers.manual_route_switch import switch_available, torrent_root
 from application.service import ApplicationService
+from db import event_journal
 from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
@@ -50,6 +52,7 @@ from transfers.presentation_repository import (
 )
 from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
 
+logger = logging.getLogger("debridpulse.api.operational_downloads")
 router = APIRouter()
 
 # The bounded list's remaining-work signal (Section 10 of the DP 1.0.12
@@ -182,16 +185,17 @@ def _disabled_provider_ids(application) -> frozenset[str]:
     return live_admission.disabled_provider_ids(getattr(application, "engine", None))
 
 
-_EVENT_TIMEFRAME_MODIFIERS = {
-    "1h": "-1 hour",
-    "12h": "-12 hours",
-    "24h": "-24 hours",
-    "72h": "-72 hours",
-    "7d": "-7 days",
-    "30d": "-30 days",
+_EVENT_TIMEFRAME_SECONDS = {
+    "1h": 3600,
+    "12h": 12 * 3600,
+    "24h": 24 * 3600,
+    "72h": 72 * 3600,
+    "7d": 7 * 86400,
+    "30d": 30 * 86400,
 }
 EventTimeframe = Literal["all", "1h", "12h", "24h", "72h", "7d", "30d"]
 EventLevel = Literal["info", "warning", "warn", "error"]
+EventCategory = Literal[event_journal.CATEGORIES]
 _SOURCE_PROJECTION_FIELDS = (
     "_source_request_payload",
     "_root_request_kinds",
@@ -402,68 +406,54 @@ async def replace_root_route(
 
 @router.get("/events")
 async def list_activity_events(
-    search: Optional[str] = None,
+    search: Annotated[Optional[str], Query(max_length=event_journal.SEARCH_MAX_TEXT)] = None,
     level: Optional[EventLevel] = None,
+    category: Optional[EventCategory] = None,
     timeframe: EventTimeframe = "all",
-    limit: Annotated[int, Query(ge=1, le=500)] = 200,
-    include_meta: bool = False,
+    limit: Annotated[int, Query(ge=1, le=event_journal.MAX_PAGE_SIZE)] = event_journal.DEFAULT_PAGE_SIZE,
+    before: Annotated[Optional[int], Query(ge=1)] = None,
+    snapshot: Annotated[Optional[int], Query(ge=0)] = None,
 ):
-    """Return newest matching events with filters applied before LIMIT.
+    """One newest-first page of the durable event journal, across its whole
+    retained history.
 
-    ``limit + 1`` is fetched after every predicate so a metadata caller can
-    distinguish an exact-limit result from a capped result. ``instr`` keeps the
-    browser's literal substring semantics for ``%`` and ``_`` while all user
-    supplied values remain SQL parameters.
-    """
+    Every filter -- time window, severity, Event Type (category) and search --
+    applies before the page limit. ``before`` (the previous page's
+    ``next_before``) walks older; ``snapshot`` (returned by the first page)
+    freezes the newest edge, so events recorded meanwhile never shift an
+    investigation (``newer_available`` reports them). Search is literal and
+    case-insensitive over message, detail and transfer name through the
+    derived FTS5 index, plus the exact transfer id for a bare number or
+    ``#number``; ``search.complete`` is false while the index has not yet
+    caught up with every event, never silently."""
+    since = time.time() - _EVENT_TIMEFRAME_SECONDS[timeframe] if timeframe != "all" else None
+    try:
+        terms = event_journal.search_terms(search)
+    except event_journal.SearchRejected as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    if terms is not None and terms.text is not None and event_journal.fts_supported():
+        try:
+            # Bounded, idempotent: a search first covers what it can of the
+            # unindexed tail, and reports whatever remains.
+            await event_journal.catch_up()
+        except Exception as exc:
+            logger.warning("Event index catch-up before search failed: %s", type(exc).__name__)
+    severity = "warning" if level == "warn" else level
     async with get_db() as db:
-        clauses = []
-        params = []
-
-        if timeframe != "all":
-            clauses.append("datetime(e.created_at) >= datetime('now', ?)")
-            params.append(_EVENT_TIMEFRAME_MODIFIERS[timeframe])
-
-        if level:
-            normalized_level = str(level).lower()
-            if normalized_level in {"warn", "warning"}:
-                clauses.append("LOWER(COALESCE(e.level, 'info')) IN ('warn', 'warning')")
-            else:
-                clauses.append("LOWER(COALESCE(e.level, 'info')) = ?")
-                params.append(normalized_level)
-
-        if search is not None and search.strip():
-            needle = search.strip().lower()
-            clauses.append(
-                """(
-                    instr(LOWER(COALESCE(e.message, '')), ?) > 0
-                    OR instr(LOWER(COALESCE(t.name, '')), ?) > 0
-                )"""
-            )
-            params.extend([needle, needle])
-
-        where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
-        rows = await db.fetchall(
-            f"""
-            SELECT
-                e.level,
-                e.message,
-                e.created_at,
-                t.name AS torrent_name
-            FROM events e
-            LEFT JOIN torrents t ON t.id = e.torrent_id
-            {where}
-            ORDER BY e.created_at DESC, e.id DESC
-            LIMIT ?
-            """,
-            [*params, limit + 1],
-        )
-        # Match the browser-facing serialization the generic router applied to
-        # this collection before it moved here: naive SQLite UTC timestamps gain
-        # an explicit "Z" designator and known capability fields are stripped.
-        items = public_payload(rows[:limit])
-        if include_meta:
-            return {"items": items, "truncated": len(rows) > limit, "limit": limit}
-        return items
+        try:
+            return await event_journal.page(db, limit=limit, before=before, snapshot=snapshot, category=category,
+                                            severity=severity, since=since, terms=terms)
+        except event_journal.SearchUnavailable as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from None
+        except sqlite3.DatabaseError as exc:
+            if terms is None or terms.text is None:
+                raise
+            # The derived index is unreadable: drop it for a bounded rebuild
+            # by the maintenance cadence. Nothing authoritative is touched.
+            logger.warning("Event search index failed and will be rebuilt: %s", type(exc).__name__)
+            await event_journal.reset_index()
+            raise HTTPException(status_code=503, detail="The Activity Log search index is being rebuilt. "
+                                                       "Try the search again shortly.") from None
 
 
 _ACTIVITY_ORDER = "activity"

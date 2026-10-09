@@ -38,7 +38,9 @@ from typing import Any, Awaitable, Callable, Mapping, Protocol
 
 from core.logging_utils import sanitize_exception
 from integrations.runtime_state import RuntimeStateConflict
-from transfers.entitlement import CONNECTION_FAILED_ENTITLEMENTS, UNRESOLVED_ENTITLEMENTS, ProviderEntitlements
+from transfers.entitlement import (
+    CONNECTION_FAILED_ENTITLEMENTS, UNRESOLVED_ENTITLEMENTS, EntitlementReadiness, ProviderEntitlements,
+)
 
 logger = logging.getLogger("integrations.account")
 
@@ -138,7 +140,8 @@ class AccountEntitlementMaintenance:
         current = self.entitlements
         if current == self._published:
             return
-        self._published = current
+        previous, self._published = self._published, current
+        await self._journal(previous, current)
         if self._notify is not None:
             self._notify(self._integration_id)
         if self._notify_status is not None:
@@ -146,6 +149,27 @@ class AccountEntitlementMaintenance:
                 await self._notify_status()
             except Exception as exc:  # presentation must never break routing truth
                 logger.debug("account status invalidation failed: %s", sanitize_exception(exc))
+
+    async def _journal(self, previous: ProviderEntitlements | None, current: ProviderEntitlements) -> None:
+        """Record a change of the account's standing in the event journal:
+        readiness, service class or degradation -- not every re-derivation.
+        The first truth this process publishes is no transition: nothing
+        before it is known here."""
+        if previous is None or (previous.readiness, previous.service_class, previous.degraded) == (
+                current.readiness, current.service_class, current.degraded):
+            return
+        from db.event_journal import JournalEvent, record_now
+
+        healthy = current.readiness == EntitlementReadiness.READY and not current.degraded
+        standing = str(current.readiness.value).replace("_", " ")
+        if current.service_class is not None:
+            standing += f", {current.service_class.value}"
+        if current.degraded:
+            standing += ", degraded"
+        await record_now(JournalEvent(
+            "integration", "integration.account_status_changed", "info" if healthy else "warning",
+            f"Account status changed: {standing}", "integration", subject_id=self._integration_id,
+            integration_id=self._integration_id))
 
     # -- lifecycle -----------------------------------------------------------------
 

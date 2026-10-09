@@ -3250,12 +3250,18 @@ _NEW_COLUMNS = (("transfer_requests", "equivalence_target_artifact_id"), ("execu
 async def _table_snapshot(db) -> dict:
     """Every table's rows (by rowid) restricted to the pre-change columns, plus the schema object inventory."""
     snapshot = {}
-    names = [row["name"] for row in await db.fetchall(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")]
-    for table in names:
+    tables = await db.fetchall(
+        "SELECT name,sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+    for table, sql in ((row["name"], row["sql"] or "") for row in tables):
         columns = [row["name"] for row in await db.fetchall(f'PRAGMA table_info("{table}")')
                    if (table, row["name"]) not in _NEW_COLUMNS]
         listed = ",".join(f'"{column}"' for column in columns)
+        if "WITHOUT ROWID" in sql.upper():
+            # No rowid (the event journal's derived search-index configuration):
+            # its rows in a deterministic order of their own.
+            rows = await db.fetchall(f'SELECT {listed} FROM "{table}"')
+            snapshot[table] = sorted(tuple(row[key] for key in columns) for row in rows)
+            continue
         rows = await db.fetchall(f'SELECT rowid AS _rowid,{listed} FROM "{table}" ORDER BY rowid')
         snapshot[table] = [tuple(row[key] for key in ("_rowid", *columns)) for row in rows]
     snapshot["__objects__"] = sorted(

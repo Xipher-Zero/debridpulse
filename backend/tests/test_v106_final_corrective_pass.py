@@ -66,16 +66,11 @@ def test_event_and_snapshot_routes_use_public_timestamp_serialization():
     assert "return _public_transfer_presentation(item, application.definitions)" in detail
     assert 'return {"snapshots": public_payload(rows)}' in snapshots
 
-    # GET /api/events is owned by api.operational_downloads.list_activity_events;
-    # it must keep the same browser-facing serialization (naive SQLite UTC ->
-    # explicit "Z") the generic router applied before the route moved there.
-    events_source = (
-        Path(__file__).parents[1] / "api" / "operational_downloads.py"
-    ).read_text()
-    events = events_source.split("async def list_activity_events(", 1)[1].split(
-        "async def list_operational_torrents(", 1
-    )[0]
-    assert "public_payload(rows[:limit])" in events
+    # GET /api/events (api.operational_downloads.list_activity_events) reads
+    # the event journal, whose one projection states every timestamp as an
+    # explicit UTC instant ("Z").
+    journal = (Path(__file__).parents[1] / "db" / "event_journal.py").read_text()
+    assert journal.count("strftime('%Y-%m-%dT%H:%M:%fZ'") == 2
 
 
 def test_public_payload_normalizes_event_timestamp():

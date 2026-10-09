@@ -338,7 +338,7 @@
         </div>
         <div class="dp-activity-search-band">
           <div class="ev-search-row dp-activity-search-row">
-            <input class="input" id="ev-search" placeholder="Search by torrent name or message…"/>
+            <input class="input" id="ev-search" type="search" maxlength="200" aria-label="Search events" placeholder="Search events, names or #transfer ID…"/>
             <label class="dp-activity-filter-field dp-activity-filter-field--time">
               <span class="dp-activity-filter-label"><span>Time</span><span>Window</span></span>
               <select class="input" id="ev-timeframe">
@@ -360,11 +360,38 @@
                 <option value="error">Error</option>
               </select>
             </label>
+            <label class="dp-activity-filter-field dp-activity-filter-field--type">
+              <span class="dp-activity-filter-label"><span>Event</span><span>Type</span></span>
+              <select class="input" id="ev-category">
+                <option value="" selected>All</option>
+                <option value="transfer">Transfers</option>
+                <option value="routing">Routing</option>
+                <option value="resource">Provider Resources</option>
+                <option value="selection">File Selection</option>
+                <option value="consolidation">Consolidation</option>
+                <option value="execution">Downloads</option>
+                <option value="recovery">Recovery</option>
+                <option value="storage">Storage</option>
+                <option value="extraction">Extraction</option>
+                <option value="input">Input Required</option>
+                <option value="integration">Integrations</option>
+                <option value="configuration">Configuration</option>
+                <option value="administration">Administration</option>
+              </select>
+            </label>
             <button type="button" id="ev-reset" class="btn btn-ghost btn-sm" hidden>Reset Filters</button>
           </div>
         </div>
-        <div id="dp-activity-result-note" class="dp-activity-result-note" hidden></div>
-        <div id="event-list" class="dp-activity-list"><div class="empty">Loading…</div></div>
+        <div id="dp-activity-result-note" class="dp-activity-result-note" role="status" hidden></div>
+        <div id="event-list" class="dp-activity-list" aria-live="polite"><div class="empty">Loading…</div></div>
+        <nav id="dp-activity-pagination" class="dp-pagination dp-activity-pagination" aria-label="Activity Log pages" hidden>
+          <span id="dp-activity-page-info" class="dp-activity-page-info"></span>
+          <div class="dp-pagination__controls">
+            <button type="button" id="ev-newest" class="btn btn-ghost btn-sm dp-activity-newest" hidden>Show newest events</button>
+            <button type="button" id="ev-newer" class="dp-page-btn" aria-label="Previous page (newer events)">Previous</button>
+            <button type="button" id="ev-older" class="dp-page-btn" aria-label="Next page (older events)">Next</button>
+          </div>
+        </nav>
       </div>
     </div>
 
@@ -470,7 +497,7 @@
 <script src="/ui-file-selection.js?v=1" defer></script>
 <script src="/ui-downloads.js?v=1" defer></script>
 <script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
-<script src="/ui-activity-log-runtime.js?v=2" defer></script>
+<script src="/ui-activity-log-runtime.js?v=3" defer></script>
 <script src="/ui-settings-archive-passwords.js?v=2" defer></script>
 <script id="dp-provider-status-script" src="/ui-provider-status.js?v=5" defer></script>
 <script id="dp-premium-account-status-script" src="/ui-premium-account-status.js?v=1" defer></script>
@@ -479,7 +506,7 @@
 <script src="/ui-help-page.js?v=3" defer></script>
 <script src="/ui-help-license-documents.js?v=4" defer></script>
 <script src="/ui-settings-persistence.js?v=1" defer></script>
-<script src="/ui-settings-page.js?v=4" defer></script>
+<script src="/ui-settings-page.js?v=5" defer></script>
 <script src="/ui-settings-directory-picker.js?v=1" defer></script>
 <script src="/ui-settings-backup-manager.js?v=1" defer></script>
 <script src="/ui-settings-executor-work.js?v=1" defer></script>

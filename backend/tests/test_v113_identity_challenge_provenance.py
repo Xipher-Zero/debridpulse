@@ -179,7 +179,7 @@ async def test_the_438_shape_settles_once_with_one_writer_and_one_question_per_r
                 (pair.id,))
             failures = await db.fetchall("SELECT error FROM transfer_requests WHERE transfer_id=? AND error IS NOT NULL",
                                          (pair.id,))
-            events = await db.fetchall("SELECT message FROM events WHERE torrent_id=?", (pair.id,))
+            events = await db.fetchall("SELECT message FROM event_journal WHERE transfer_id=?", (pair.id,))
         # Both roots are standby contributions of the one canonical writer.
         assert {row["mirror_state"] for row in rows} == {"standby"} and len(rows) == 2
         assert {row["mirror_group_id"] for row in rows} == {primary.id}

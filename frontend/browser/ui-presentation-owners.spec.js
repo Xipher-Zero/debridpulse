@@ -267,9 +267,9 @@ test('Downloads pager: a shrink-triggered clamp refetches the clamped page inste
 });
 
 test('Activity Log filter interaction reaches server with filter metadata',async({page})=>{
- const requests=[];await page.route('**/api/events*',async route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams.entries()));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{level:'warning',message:'Retry delayed',torrent_name:'example.iso',created_at:'2026-09-06 08:30:00'}],truncated:false,limit:500})});});
+ const requests=[];await page.route('**/api/events*',async route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams.entries()));await route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[{id:1,severity:'warning',category:'routing',type:'routing.request_failed',message:'Retry delayed',name:'example.iso',transfer_id:4,occurred_at:'2026-09-06T08:30:00Z'}],limit:100,snapshot:1,has_more:false,next_before:null,newer_available:false,search:{text:'indexed',pending:0,complete:true}})});});
  await ready(page);await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));await page.locator('#ev-timeframe').selectOption('72h');await page.locator('#ev-level').selectOption('warning');await page.locator('#ev-search').fill('Retry');await page.waitForTimeout(325);await expect.poll(()=>requests.length).toBeGreaterThan(0);
- const filtered=requests.find(item=>item.search==='Retry');expect(filtered).toEqual({limit:'500',include_meta:'true',timeframe:'72h',level:'warning',search:'Retry'});await expect(page.locator('#ev-reset')).toBeVisible();
+ const filtered=requests.find(item=>item.search==='Retry');expect(filtered).toEqual({limit:'100',timeframe:'72h',level:'warning',search:'Retry'});await expect(page.locator('#ev-reset')).toBeVisible();
 });
 
 test('Archive Password owner uses click reveal and line-aware editing',async({page})=>{
@@ -290,19 +290,18 @@ test('Activity Log has one owner: explicit API, no compatibility globals, contro
   inline:['ev-search','ev-level','ev-timeframe'].map(id=>document.getElementById(id)?.getAttribute('oninput')||document.getElementById(id)?.getAttribute('onchange')||null),
   fields:document.querySelectorAll('#view-events .dp-activity-search-row > *').length,
  }));
- expect(shape).toEqual({loadEvents:'undefined',filterEvents:'undefined',api:['formatTimestamp','load'],frozen:true,inline:[null,null,null],fields:4});
+ expect(shape).toEqual({loadEvents:'undefined',filterEvents:'undefined',api:['formatTimestamp','load'],frozen:true,inline:[null,null,null],fields:5});
 });
 
 test('Activity Log refresh, reset, empty state and single render',async({page})=>{
  await ready(page);
  const requests=[];
  await page.route('**/api/events*',route=>{const url=new URL(route.request().url());requests.push(Object.fromEntries(url.searchParams));
-  const filtered=url.searchParams.has('include_meta');
-  const items=filtered&&url.searchParams.get('search')==='nothing'?[]:[{level:'info',message:'Started',torrent_name:'Alpha',created_at:'2026-09-08 17:00:00'},{level:'warn',message:'Slow',created_at:'2026-09-08 17:01:00'}];
-  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(filtered?{items,truncated:false}:items)});});
+  const items=url.searchParams.get('search')==='nothing'?[]:[{id:2,severity:'info',category:'transfer',type:'transfer.accepted',message:'Started',name:'Alpha',transfer_id:1,occurred_at:'2026-09-08T17:00:00Z'},{id:1,severity:'warning',category:'execution',type:'execution.attempt_failed',message:'Slow',occurred_at:'2026-09-08T17:01:00Z'}];
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,limit:100,snapshot:2,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})});});
  await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(2);
- expect(requests.at(-1)).toEqual({limit:'500'});
+ expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all'});
  await page.evaluate(()=>{window.__renders=0;document.addEventListener('debridpulse:activity-rendered',()=>window.__renders++);});
  await page.locator('.dp-activity-refresh').click();
  await expect.poll(()=>page.evaluate(()=>window.__renders)).toBe(1);
@@ -316,4 +315,50 @@ test('Activity Log refresh, reset, empty state and single render',async({page})=
  await expect(page.locator('#ev-search')).toHaveValue('');
  await expect(page.locator('#ev-reset')).toBeHidden();
  expect(await page.evaluate(()=>DPActivityLog.formatTimestamp('2026-09-08 17:00:00'))).toMatch(/Sep 8, 2026/);
+});
+
+test('Activity Log pages through history by cursor and never jumps off a historical page',async({page})=>{
+ await ready(page);
+ const requests=[];let total=260;
+ await page.route('**/api/events*',route=>{const url=new URL(route.request().url());const q=Object.fromEntries(url.searchParams);requests.push(q);
+  if(q.category==='storage')return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'The Activity Log search index is being rebuilt. Try the search again shortly.'})});
+  const snapshot=q.snapshot?Number(q.snapshot):total,limit=Number(q.limit),top=q.before?Number(q.before)-1:snapshot;
+  const items=[];for(let id=top;id>0&&items.length<limit;id--)items.push({id,severity:id%7?'info':'error',category:'transfer',type:'transfer.synthetic',message:`Event ${id}`,name:`transfer-${id}`,transfer_id:id,detail:id===snapshot?'Safe diagnostic detail':null,occurred_at:'2026-10-09T12:00:00Z'});
+  const last=items.at(-1)?.id??0;
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,limit,snapshot,has_more:last>1,next_before:last>1?last:null,newer_available:total>snapshot,search:{text:'none',pending:0,complete:true}})});});
+ await page.evaluate(()=>{settingsData.activity_log_page_size=100;nav(document.querySelector('[data-view="events"]'));});
+ const rows=page.locator('#event-list .dp-activity-row');
+ await expect(rows).toHaveCount(100);await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');
+ await expect(page.locator('#dp-activity-page-info')).toHaveText('Page 1');await expect(page.locator('#ev-newer')).toBeDisabled();
+ // Safe detail is disclosed on demand, never inline.
+ const detail=rows.first().locator('details.dp-activity-detail');await expect(detail).not.toHaveAttribute('open','');await detail.locator('summary').click();await expect(detail).toContainText('Safe diagnostic detail');
+ total=300; // events recorded during the investigation
+ await page.locator('#ev-older').focus();await page.keyboard.press('Enter');
+ await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 160');await expect(page.locator('#dp-activity-page-info')).toHaveText('Page 2');
+ expect(requests.at(-1)).toMatchObject({limit:'100',snapshot:'260',before:'161'});
+ await expect(page.locator('#ev-newest')).toBeVisible(); // newer events are announced, not forced on the operator
+ await page.locator('#ev-older').click();await expect(rows).toHaveCount(60);await expect(page.locator('#ev-older')).toBeDisabled();
+ await page.locator('#ev-newer').click();await page.locator('#ev-newer').click();
+ await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');await expect(page.locator('#ev-newer')).toBeDisabled();
+ await page.locator('#ev-newest').click();await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 300');
+ // A filter change starts a new investigation; a failure is shown as a failure, not as an empty history.
+ await page.locator('#ev-category').selectOption('storage');
+ await expect(page.locator('#event-list .empty')).toContainText('Events could not be loaded');await expect(page.locator('#dp-activity-pagination')).toBeHidden();
+ expect(requests.at(-1).snapshot).toBeUndefined();expect(requests.at(-1).before).toBeUndefined();
+});
+
+test('Activity Log never presents an incomplete search as "no matches"',async({page})=>{
+ await ready(page);
+ let search={text:'indexed',pending:12,complete:false};
+ await page.route('**/api/events*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:40,has_more:false,next_before:null,newer_available:false,search})}));
+ await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
+ await page.locator('#ev-search').fill('needle');
+ await expect(page.locator('#event-list .empty')).toHaveText('No matches in the searchable history yet. Recent events are still being indexed and may match; try again shortly.');
+ await expect(page.locator('#dp-activity-result-note')).toContainText('still catching up with 12 recent event(s)');
+ search={text:'unavailable',pending:0,complete:false};
+ await page.locator('#ev-search').fill('#4242');
+ await expect(page.locator('#event-list .empty')).toHaveText('No events for this transfer ID. Text search is unavailable on this installation, so text matches could not be checked.');
+ search={text:'indexed',pending:0,complete:true};
+ await page.locator('#ev-search').fill('nothing');
+ await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
 });

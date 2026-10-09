@@ -170,7 +170,7 @@ async def event_counts():
     async with get_db() as db:
         kinds = {row["kind"]: row["n"] for row in await db.fetchall(
             "SELECT kind,COUNT(*) AS n FROM application_events GROUP BY kind")}
-        legacy = (await db.fetchone("SELECT COUNT(*) AS n FROM events"))["n"]
+        legacy = (await db.fetchone("SELECT COUNT(*) AS n FROM event_journal"))["n"]
     return collections.Counter(kinds), legacy
 
 

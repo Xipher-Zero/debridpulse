@@ -109,7 +109,7 @@ def test_card_paint_boundary_page_layers_are_loaded_after_universal_language():
 
     universal = overlay.index("/ui-universal-language.css?v=21")
     stats = overlay.index("/ui-statistics-page.css?v=23")
-    activity = overlay.index("/ui-activity-log-page.css?v=31")
+    activity = overlay.index("/ui-activity-log-page.css?v=32")
     downloads = overlay.index("/ui-downloads-page.css?v=30")
     settings = overlay.index("/ui-settings-page.css?v=3")
     help_page = overlay.index("/ui-help-page.css?v=23")

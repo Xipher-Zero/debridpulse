@@ -17,6 +17,8 @@ claim.
 from __future__ import annotations
 
 from db.database import get_db
+from db.event_journal import record as journal
+from transfers import journal_events as je
 from transfers.errors import NormalizedError
 from transfers.manual_repository import TransferRepository as _QualifiedRepository
 from transfers.models import new_identity
@@ -339,6 +341,7 @@ class TransferRepository(_QualifiedRepository):
                    WHERE id=?""",
                 (state, retry_at, claim.artifact_id),
             )
+            entered = snapshot.get("quiescence_reason") != str(reason)
             snapshot["quiescence_reason"] = str(reason)
             snapshot["wake_condition"] = str(wake_condition)
             snapshot["blocked_retry_at"] = max(
@@ -354,6 +357,9 @@ class TransferRepository(_QualifiedRepository):
                 reason=str(reason), wake_condition=str(wake_condition),
                 durable_target=str(row.get("local_path") or ""), partial_state_preserved=True,
             )
+            if entered:
+                await journal(db, je.recovery_quiesced(transfer_id=int(row["torrent_id"]),
+                                                       artifact_id=claim.artifact_id, reason=str(reason)))
             await db.commit()
         return True
 
@@ -518,6 +524,9 @@ class TransferRepository(_QualifiedRepository):
             await self._append_recovery_audit(
                 db, int(row["torrent_id"]), claim.artifact_id, "decision", **audit_fields,
             )
+            await journal(db, je.recovery_decided(
+                transfer_id=int(row["torrent_id"]), artifact_id=claim.artifact_id, decision_id=decision_id,
+                action=action, reason=reason, error=error if isinstance(error, NormalizedError) else None))
             await db.commit()
         return True
 

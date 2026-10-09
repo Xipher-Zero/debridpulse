@@ -47,22 +47,3 @@ async def test_runtime_state_participates_in_canonical_backup_and_explicit_datab
     wiped = await db_maintenance.wipe_database(verified_quiesced=True)
     assert "integration_runtime_state" in wiped["wiped_tables"]
     assert await store.load("parcel-lab", "calibration") is None
-
-
-@pytest.mark.asyncio
-async def test_runtime_state_is_not_implicitly_pruned_by_database_event_cleanup(tmp_path, monkeypatch):
-    db_path = tmp_path / "cleanup.sqlite3"
-    monkeypatch.setattr(database, "DB_PATH", db_path)
-
-    await database.init_db()
-    store = ProviderRuntimeStateStore()
-    await store.replace(
-        "parcel-lab",
-        b"retain-me",
-        schema_version="parcel-maintenance-v1",
-        observed_at=1200.0,
-    )
-
-    result = await db_maintenance.cleanup_old_events(keep_days=1)
-    assert result["keep_days"] == 1
-    assert (await store.load("parcel-lab")).payload == b"retain-me"

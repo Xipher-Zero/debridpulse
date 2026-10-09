@@ -42,7 +42,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
         "/ui-file-selection.js?v=1",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
-        "/ui-activity-log-runtime.js?v=2",
+        "/ui-activity-log-runtime.js?v=3",
         "/ui-settings-archive-passwords.js?v=2",
     )
     positions = []
@@ -69,7 +69,7 @@ def test_bounded_runtime_owners_are_present() -> None:
     assert "window.DPProcessingPresentation" in read("ui-processing-presentation.js")
     assert "window.DPTransferSourcePresentation" in read("ui-transfer-source-presentation.js")
     activity = read("ui-activity-log-runtime.js")
-    assert "window.DPActivityLog" in activity and "EVENT_LIMIT=500" in activity and "include_meta" in activity
+    assert "window.DPActivityLog" in activity and "activity_log_page_size" in activity and "next_before" in activity
     archive = read("ui-settings-archive-passwords.js")
     assert "window.DPArchivePasswords" in archive
     assert all(token in archive for token in ("Show all passwords", "Hide all passwords", "Escape", "Enter", "clipboardData"))
@@ -284,7 +284,7 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
         "/ui-file-selection.js?v=1",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
-        "/ui-activity-log-runtime.js?v=2",
+        "/ui-activity-log-runtime.js?v=3",
         "/ui-settings-archive-passwords.js?v=2",
     )
     positions = [index.index(item) for item in ordered]

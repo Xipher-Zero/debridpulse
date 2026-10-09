@@ -1,5 +1,11 @@
 """
-Database maintenance helpers for the explicit database wipe and event-log retention.
+Database maintenance: the explicit whole-database wipe.
+
+The event journal has no retention pruning: only this explicit, operator-
+confirmed reset clears it (``db.event_journal.clear``), together with its
+derived search index, and the reset itself is the first event of the cleared
+journal -- written in the same transaction, into the same database file, so it
+exists exactly when the reset committed.
 
 Backups of any kind -- the pre-wipe safety backup included -- belong to the one
 restore-point owner, ``services.backup``.
@@ -8,6 +14,7 @@ from __future__ import annotations
 
 import logging
 
+from db import event_journal
 from db.database import get_db
 
 logger = logging.getLogger("debridpulse.db_maintenance")
@@ -16,6 +23,15 @@ TABLES = [
     "torrents",
     "download_files",
     "events",
+    "event_journal",
+    "event_journal_index",
+    # The journal's derived FTS5 search index (present when the runtime
+    # supports it), cleared with the journal by ``event_journal.clear``.
+    "event_journal_fts",
+    "event_journal_fts_data",
+    "event_journal_fts_idx",
+    "event_journal_fts_docsize",
+    "event_journal_fts_config",
     "stats_snapshots",
     "transfer_pause_intents",
     "deferred_provider_submissions",
@@ -94,6 +110,7 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         await db.execute("DELETE FROM deferred_provider_submissions")
         await db.execute("DELETE FROM download_files")
         await db.execute("DELETE FROM events")
+        await event_journal.clear(db)
         await db.execute("DELETE FROM stats_snapshots")
         await db.execute("DELETE FROM torrents")
         try:
@@ -102,35 +119,12 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             )
         except Exception as exc:
             logger.debug("sqlite_sequence reset skipped: %s", exc)
+        await event_journal.record(db, event_journal.JournalEvent(
+            "administration", "administration.database_reset", "warning",
+            "Database reset: transfers and event history were cleared", "installation",
+            detail="A safety backup was created before the reset"))
         await db.commit()
 
     logger.warning("Database wipe completed")
-    return {"ok": True, "wiped_tables": [table for table in TABLES if table not in {"transfer_controls", "schema_migrations"}]}
-
-
-async def cleanup_old_events(keep_days: int = 30) -> dict:
-    """Delete events older than ``keep_days`` days.
-
-    IMPORTANT: Only the *events* table is pruned — torrents and download_files
-    are never touched. Old events are audit-log entries; their removal does not
-    affect torrent state, duplicate-prevention logic, or download tracking.
-    """
-    keep_days = max(1, int(keep_days))
-    cutoff_expr = f"datetime('now', '-{keep_days} days')"
-
-    async with get_db() as db:
-        result = await db.execute(
-            f"DELETE FROM events WHERE created_at < {cutoff_expr}"
-        )
-        try:
-            deleted = result.rowcount if hasattr(result, "rowcount") else -1
-        except Exception:
-            deleted = -1
-        await db.commit()
-
-    if deleted > 0:
-        logger.info("Events TTL cleanup: deleted %d event(s) older than %d days", deleted, keep_days)
-    else:
-        logger.debug("Events TTL cleanup: no events older than %d days", keep_days)
-
-    return {"deleted": deleted, "keep_days": keep_days}
+    return {"ok": True, "wiped_tables": [table for table in TABLES
+                                         if table not in {"transfer_controls", "schema_migrations", "event_journal_index"}]}

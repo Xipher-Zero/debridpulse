@@ -115,6 +115,10 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
         elif val > hi:
             warn(field, f"value {val} above maximum {hi} — clamped", val, hi)
 
+    page_size = getattr(cfg, "activity_log_page_size", 100)
+    if page_size not in (50, 100, 250):
+        warn("activity_log_page_size", "must be 50, 100 or 250 — reset to 100", page_size, 100)
+
     # ── String sanity ─────────────────────────────────────────────────────────
 
     if getattr(cfg, "download_folder", "") == "/app/data/downloads":

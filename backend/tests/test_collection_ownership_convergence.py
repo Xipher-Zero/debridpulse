@@ -211,10 +211,11 @@ async def test_member_resolution_inversion_converges_collection_on_earliest_tran
 async def _convergence_events(transfer_id):
     async with database.get_db() as db:
         rows = await db.fetchall(
-            "SELECT message FROM events WHERE torrent_id=? AND message LIKE 'Collection member ownership%'",
-            (transfer_id,),
+            "SELECT detail FROM event_journal WHERE event_type='consolidation.ownership_converged' "
+            "AND (transfer_id=? OR related_transfer_id=?)",
+            (transfer_id, transfer_id),
         )
-    return [row["message"] for row in rows]
+    return [row["detail"] for row in rows]
 
 
 @pytest.mark.asyncio
@@ -231,7 +232,12 @@ async def test_multiple_member_inversions_converge_including_one_before_collecti
     early = next(row for row in decisions if row["name"] == "part01.rar")
     assert (early["equivalence_disposition"], early["equivalence_reason"]) == ("independent", "logical_pairing_mismatch")
     assert await _convergence_events(second.id) == [f"Collection member ownership converged into transfer {first.id}"]
-    assert await _convergence_events(first.id) == [f"Collection member ownership converged from transfer {second.id}"]
+    # One occurrence, one journal record, correlated to both transfers -- and
+    # both transfers' Details show it.
+    assert await _convergence_events(first.id) == [f"Collection member ownership converged into transfer {first.id}"]
+    for transfer in (first, second):
+        details = await collection.repository.presentation(transfer.id, details=True)
+        assert "Collection member ownership converged" in [event["message"] for event in details["events"]]
 
 
 @pytest.mark.asyncio

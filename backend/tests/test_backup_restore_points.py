@@ -892,6 +892,43 @@ async def test_the_pinned_pre_change_backup_is_upgraded_on_a_private_copy_and_re
         conn.close()
 
 
+# Written by the pinned baseline's own backup service (8b009d04), immediately
+# before the event journal existed: one transfer and its legacy "events" row.
+PRE_JOURNAL_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-8b009d04.zip"
+
+
+async def test_the_pinned_pre_journal_backup_restores_an_empty_journal_holding_only_its_restore(served):
+    """Validated by its own recorded schema, upgraded on the private staged
+    copy only, and activated: the restored journal starts empty -- the legacy
+    row is kept, never converted -- the replaced database's history is gone
+    with it, and the restore itself is recorded only in the restored database,
+    after activation."""
+    from db import event_journal
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    await event_journal.record_now(event_journal.JournalEvent(
+        "administration", "administration.marker", "info", "recorded before the restore", "installation"))
+    added = await client.post("/api/admin/backups", content=PRE_JOURNAL_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) in backup._UPGRADABLE_SCHEMAS and backup._fingerprint(conn) != live
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+    assert restored.status_code == 200, restored.text
+    assert restored.json()["journal_recorded"] is True
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert conn.execute("SELECT message FROM events").fetchall() == [("Transfer accepted",)]
+        assert conn.execute("SELECT event_type, subject_id FROM event_journal").fetchall() == [
+            ("administration.backup_restored", point.id)]
+        assert conn.execute("SELECT name FROM torrents").fetchall() == [("pre-journal.bin",)]
+    finally:
+        conn.close()
+
+
 async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(
         served, monkeypatch):
     app, client, _composed, _calls = served

@@ -17,7 +17,9 @@ from uuid import NAMESPACE_URL, uuid5
 
 from core.presentation_safety import safe_public_host, safe_route_endpoint
 from db.database import get_db, validate_transfer_repository_schema
+from db.event_journal import JournalEvent, record as journal, transfer_events as journal_transfer_events
 from transfers import codec
+from transfers import journal_events as je
 from transfers import material as mat
 from transfers.cohorts import (
     _FAILED_CONTRIBUTION_DISPOSITION, _HELD_DISPOSITIONS, _PROVEN_DISTINCT_DISPOSITIONS, _UNVERIFIED_DISPOSITION,
@@ -1004,14 +1006,15 @@ class TransferRepository:
         async with get_db() as db:
             cursor = await db.execute("UPDATE postprocess_attempts SET state='processing' WHERE transfer_id=? AND processor_id=? AND state='pending'", (transfer_id, processor_id))
             await db.execute("UPDATE torrents SET extraction_status='extracting' WHERE id=? AND status='extracting'", (transfer_id,))
+            if cursor.rowcount:
+                await journal(db, je.extraction("started", transfer_id=transfer_id, processor_id=processor_id))
             await db.commit()
             return bool(cursor.rowcount)
 
     async def finish_postprocessing(self, transfer_id, processor_id, outcome):
         async with get_db() as db:
             await db.execute("UPDATE postprocess_attempts SET state='finished',outcome=? WHERE transfer_id=? AND processor_id=?", (codec.dump(outcome), transfer_id, processor_id))
-            message = f"Post-processing {processor_id}: " + (outcome.error.message if outcome.error else outcome.detail or outcome.kind)
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if outcome.error else "info", message))
+            await journal(db, je.extraction("finished", transfer_id=transfer_id, processor_id=processor_id, outcome=outcome))
             jobs = await db.fetchall("SELECT state,outcome FROM postprocess_attempts WHERE transfer_id=?", (transfer_id,))
             finished = all(job["state"] == "finished" for job in jobs)
             if finished:
@@ -1184,6 +1187,10 @@ class TransferRepository:
             candidate_summary,outcome,history_quality,routing_decision) VALUES(?,?,?,?,?,?,?,?,?,'started','recorded',?)""",
             (attempt_id, transfer_id, request_id, ordinal, operation, previous_id, transition_kind, transition_reason, codec.dump([]),
              routing_decision))
+        await journal(db, je.route_started(
+            transfer_id=transfer_id, request_id=request_id, attempt_id=attempt_id, provider_id=provider_id,
+            operation=operation, transition_kind=transition_kind, transition_reason=transition_reason,
+            previous_provider_id=previous["provider_id"] if previous else None))
 
     @staticmethod
     def _transfer(row) -> Transfer | None:
@@ -1265,7 +1272,7 @@ class TransferRepository:
             contributed_routes, lineage_routes, lineage_requests = (
                 await self._canonical_object_routes(db, transfer_id) if details else ((), (), ())
             )
-            events = await db.fetchall("SELECT id,torrent_id,level,message,created_at FROM events WHERE torrent_id=? ORDER BY id DESC LIMIT 50", (transfer_id,)) if details else []
+            events = await journal_transfer_events(db, transfer_id) if details else []
             input_challenge = await db.fetchone("SELECT * FROM transfer_input_challenges WHERE transfer_id=?", (transfer_id,))
         def normalized(item, field="normalized_error"):
             error = codec.error(item.pop(field, None))
@@ -1813,10 +1820,6 @@ class TransferRepository:
                             "INSERT INTO transfer_outcomes(transfer_id,attempt_id,kind,payload) VALUES(?,?,?,?)",
                             (transfer_id, None, skip_outcome.kind, codec.dump(skip_outcome)),
                         )
-                        await db.execute(
-                            "INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)",
-                            (transfer_id, "info", str(skip_outcome.kind)),
-                        )
             elif not any(str(item.get("state")) in _UNSETTLED_EXECUTION_STATES for item in execution_rows):
                 # DP 1.0.12 canonical lifecycle/recovery/completion rework,
                 # Section 7.2: durable paused truth folded into this SAME
@@ -2006,7 +2009,7 @@ class TransferRepository:
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload) VALUES(?,?,?,?)",
                                      (new_identity(), transfer_id, ordinal, codec.dump(request)))
             if created:
-                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer accepted')", (transfer_id,))
+                await journal(db, je.accepted(transfer_id))
                 await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))
             await db.commit()
         return await self.get(transfer_id), created
@@ -2036,8 +2039,7 @@ class TransferRepository:
         if target in SIDE_STATE_RETIRING_TRANSFER_STATES:
             await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
         if current_status != target or current_error != incoming_error:
-            message = f"Transfer {target}" + (f": {error.message}" if error else "")
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)", (transfer_id, "error" if error else "info", message))
+            await journal(db, je.lifecycle(transfer_id, current_status, target, error))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)", (transfer_id, target, error.message if error else None))
 
     async def state(self, transfer_id: int, target: TransferState, *, progress=None, error=None, operator=False, expected_epoch=None, verified=False) -> bool:
@@ -2080,10 +2082,7 @@ class TransferRepository:
             # going through _write_lifecycle_transition, so it must invoke the
             # same transaction-local auxiliary-state retirement directly.
             await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
-            await db.execute(
-                "INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer cancelled')",
-                (transfer_id,),
-            )
+            await journal(db, je.lifecycle(transfer_id, row["status"], TransferState.CANCELLED))
             await db.execute(
                 "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'cancelled',NULL)",
                 (transfer_id,),
@@ -2357,6 +2356,8 @@ class TransferRepository:
                              "updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, reentry_at, latest["id"]))
             await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP "
                              "WHERE resolution_attempt_id=?", (latest["id"],))
+            await journal(db, je.route_ended("exhausted", transfer_id=row["transfer_id"], request_id=request_id,
+                                             attempt_id=latest["id"], provider_id=provider_id, error=error))
             if (resource is not None and resource.provider_id == provider_id
                     and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}):
                 binding = await db.fetchone(
@@ -2393,7 +2394,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone(
-                """SELECT r.resource,t.status FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                """SELECT r.resource,r.transfer_id,t.status FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                    WHERE r.id=? AND r.state IN ('resolving','input_required')""", (attempt.request_id,))
             if not row or row["status"] in {"deleted", "completed", "consolidated", "cancelled"}:
                 await db.rollback()
@@ -2408,6 +2409,8 @@ class TransferRepository:
                              "WHERE id=? AND provider_id=?", (attempt.id, attempt.provider_id))
             await db.execute("UPDATE route_attempt_provenance SET outcome='declined',updated_at=CURRENT_TIMESTAMP "
                              "WHERE resolution_attempt_id=?", (attempt.id,))
+            await journal(db, je.route_ended("declined", transfer_id=row["transfer_id"], request_id=attempt.request_id,
+                                             attempt_id=attempt.id, provider_id=attempt.provider_id))
             await db.execute("UPDATE transfer_requests SET state='pending',retry_at=0,error=NULL,"
                              "attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
             await db.commit()
@@ -2494,10 +2497,14 @@ class TransferRepository:
                 await db.rollback()
                 return False
             error_blob = codec.dump(error)
-            await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP "
-                             "WHERE id=? AND state='started'", (error_blob, attempt.id))
+            ended = await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP "
+                                     "WHERE id=? AND state='started'", (error_blob, attempt.id))
             await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP "
                              "WHERE resolution_attempt_id=?", (attempt.id,))
+            if ended.rowcount:
+                owner = await db.fetchone("SELECT transfer_id FROM transfer_requests WHERE id=?", (attempt.request_id,))
+                await journal(db, je.route_ended("failed", transfer_id=owner["transfer_id"], request_id=attempt.request_id,
+                                                 attempt_id=attempt.id, provider_id=attempt.provider_id, error=error))
             await db.execute("UPDATE transfer_requests SET state='skipped',retry_at=0,error=NULL WHERE id=?",
                              (attempt.request_id,))
             await self._admit_next_alternative(db, attempt.request_id)
@@ -2589,7 +2596,8 @@ class TransferRepository:
         return existing or self._resource_binding_id(transfer_id, resource_key)
 
     @classmethod
-    async def _resource(cls, db, transfer_id: int, resource: ProviderResource, state: ResourceState) -> str:
+    async def _resource(cls, db, transfer_id: int, resource: ProviderResource, state: ResourceState, *,
+                        journaled: bool = True) -> str:
         """Persist/refresh the (transfer, canonical-resource) binding row.
 
         ``resource.id`` is the canonical, transfer-independent DP resource identity
@@ -2615,7 +2623,7 @@ class TransferRepository:
                 raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION))
             binding_id = cls._resource_binding_id(transfer_id, resource_key)
         existing = await db.fetchone(
-            "SELECT transfer_id, provider_id, payload FROM provider_resources WHERE id=?", (binding_id,),
+            "SELECT transfer_id, provider_id, payload, state FROM provider_resources WHERE id=?", (binding_id,),
         )
         if existing and (existing["transfer_id"] != transfer_id or existing["provider_id"] != resource.provider_id):
             raise TransferError(NormalizedError(Domain.LIFECYCLE, Category.OWNERSHIP_CONFLICT, Stage.RESOLUTION))
@@ -2630,6 +2638,10 @@ class TransferRepository:
                    updated_at=CURRENT_TIMESTAMP""",
             (binding_id, transfer_id, resource.provider_id, codec.dump(resource), state, resource_key),
         )
+        previous = existing["state"] if existing else None
+        if journaled and previous != str(state):
+            await journal(db, je.resource_state(transfer_id=transfer_id, binding_id=binding_id,
+                                                provider_id=resource.provider_id, previous=previous, state=state))
         return binding_id
 
     async def resolution(self, attempt: ResolutionAttempt, result: ResolutionResult) -> bool:
@@ -2663,6 +2675,9 @@ class TransferRepository:
             await db.execute("""UPDATE route_attempt_provenance SET outcome=?,candidate_summary=?,updated_at=CURRENT_TIMESTAMP
                 WHERE resolution_attempt_id=?""",
                 ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
+            await journal(db, je.route_ended("failed" if result.error else "resolved", transfer_id=row["transfer_id"],
+                                             request_id=attempt.request_id, attempt_id=attempt.id,
+                                             provider_id=attempt.provider_id, error=result.error))
             resource = codec.dump(result.observation.resource) if result.observation else None
             request_state = "failed" if result.error else "waiting" if result.observation and not result.candidates else "materializing" if result.candidates else "resolved"
             if row["status"] not in {"deleted", "completed", "consolidated", "cancelled"}:
@@ -2822,13 +2837,20 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             error_blob = codec.dump(error)
-            started = await db.fetchall("SELECT id FROM resolution_attempts WHERE request_id=? AND state='started'", (request_id,))
+            started = await db.fetchall("""SELECT a.id,a.provider_id,r.transfer_id FROM resolution_attempts a
+                JOIN transfer_requests r ON r.id=a.request_id WHERE a.request_id=? AND a.state='started'""", (request_id,))
             for item in started:
                 await db.execute("UPDATE resolution_attempts SET state='failed',error=?,updated_at=CURRENT_TIMESTAMP WHERE id=?", (error_blob, item["id"]))
                 await db.execute("UPDATE route_attempt_provenance SET outcome='failed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (item["id"],))
-            await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
+                await journal(db, je.route_ended("failed", transfer_id=item["transfer_id"], request_id=request_id,
+                                                 attempt_id=item["id"], provider_id=item["provider_id"], error=error))
+            failed = await db.execute("""UPDATE transfer_requests SET state=?,error=?,retry_at=?,attempts=attempts+? WHERE id=?
                 AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
+            if failed.rowcount:
+                owner = await db.fetchone("SELECT transfer_id FROM transfer_requests WHERE id=?", (request_id,))
+                await journal(db, je.request_failed(transfer_id=owner["transfer_id"], request_id=request_id, error=error,
+                                                    retrying=retry_at is not None))
             if retry_at is None and advance_alternative:
                 await self._admit_next_alternative(db, request_id)
             await db.commit()
@@ -3283,6 +3305,9 @@ class TransferRepository:
             status=CASE WHEN ? THEN 'queued' ELSE status END,normalized_error=NULL,
             continuation_reservation_expires_at=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
             (handle.attempt_id, handle.executor_id, int(from_input_required), artifact.id))
+        await journal(db, je.execution_started(
+            transfer_id=artifact.transfer_id, artifact_id=artifact.id, attempt_id=handle.attempt_id,
+            executor_id=handle.executor_id, provider_id=candidate.provider_id if candidate else None))
         # DP 1.0.12 recovery leveling, Section 29: durably link this new
         # execution back to the candidate-activation record that selected
         # it, if any -- a committed activation cannot know the replacement
@@ -3338,6 +3363,8 @@ class TransferRepository:
     async def record_material_event(self, transfer_id: int, artifact_id: int, event: str, **fields) -> None:
         async with get_db() as db:
             await self._material_audit(db, transfer_id, artifact_id, event, **fields)
+            await journal(db, je.continuation(event, transfer_id=transfer_id, artifact_id=artifact_id,
+                                              detail=str(fields.get("boundary") or "").replace("_", " ") or None))
             await db.commit()
 
     @staticmethod
@@ -3404,6 +3431,9 @@ class TransferRepository:
             invalidated=mat.summary(mat.subtract(previous, valid)), valid_bytes=mat.total(valid)
             + sum(mat.total(ranges) for _member, ranges in members), **facts,
         )
+        if advance and lost:
+            await journal(db, je.material_invalidated(transfer_id=row["transfer_id"], artifact_id=row["artifact_id"],
+                                                      reason=reason))
 
     @staticmethod
     def _reconciled(valid, identity: str, facts, end_of_file):
@@ -4027,7 +4057,8 @@ class TransferRepository:
         row back as KNOWN_POSITIVE or UNKNOWN from the byte count alone."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            current = await db.fetchone("SELECT execution_attempt_id FROM download_files WHERE id=?", (artifact_id,))
+            current = await db.fetchone("SELECT execution_attempt_id,torrent_id,status,filename FROM download_files WHERE id=?",
+                                        (artifact_id,))
             # Section 13: artifact_state() is never used to hold a continuation
             # reservation across a writer-replacement handoff -- only
             # transition_recovery()'s explicit continuation_reservation_until
@@ -4054,6 +4085,13 @@ class TransferRepository:
                 if route and route.get("route_attempt_id"):
                     await db.execute("UPDATE route_attempt_provenance SET outcome='completed',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?",
                                      (route["route_attempt_id"],))
+            if cursor.rowcount and current and current["status"] != state and state in {"completed", "error"}:
+                if state == "completed":
+                    await journal(db, je.artifact_completed(transfer_id=current["torrent_id"], artifact_id=artifact_id,
+                                                            filename=current["filename"]))
+                else:
+                    await journal(db, je.artifact_failed(transfer_id=current["torrent_id"], artifact_id=artifact_id,
+                                                         filename=current["filename"], error=error))
             await db.commit()
 
     async def executions(self, transfer_id: int | None = None) -> tuple[ExecutionAttempt, ...]:
@@ -4257,7 +4295,7 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             row = await db.fetchone(
-                "SELECT transfer_id FROM provider_resources WHERE id=? AND cleanup_claim_token=?",
+                "SELECT transfer_id,provider_id FROM provider_resources WHERE id=? AND cleanup_claim_token=?",
                 (binding_id, token),
             )
             if not row:
@@ -4269,7 +4307,10 @@ class TransferRepository:
                 (binding_id,),
             )
             if absent is not None:
-                await self._resource(db, row["transfer_id"], absent, ResourceState.ABSENT)
+                await self._resource(db, row["transfer_id"], absent, ResourceState.ABSENT, journaled=False)
+            await journal(db, je.resource_cleanup_completed(transfer_id=row["transfer_id"], binding_id=binding_id,
+                                                            provider_id=row["provider_id"], token=token,
+                                                            absent=absent is not None))
             await db.commit()
         return True
 
@@ -4286,6 +4327,10 @@ class TransferRepository:
                 "WHERE id=? AND cleanup_claim_token=?",
                 (codec.dump(error) if error else None, retry_at or 0, int(terminal), binding_id, token),
             )
+            if terminal and result.rowcount == 1:
+                row = await db.fetchone("SELECT transfer_id,provider_id FROM provider_resources WHERE id=?", (binding_id,))
+                await journal(db, je.resource_cleanup_abandoned(transfer_id=row["transfer_id"], binding_id=binding_id,
+                                                                provider_id=row["provider_id"], error=error, token=token))
             await db.commit()
         return result.rowcount == 1
 
@@ -4293,9 +4338,6 @@ class TransferRepository:
         async with get_db() as db:
             await db.execute("INSERT INTO transfer_outcomes(transfer_id,attempt_id,kind,payload) VALUES(?,?,?,?)",
                              (transfer_id, attempt_id, outcome.kind, codec.dump(outcome)))
-            message = outcome.error.message if outcome.error else str(outcome.kind)
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,?,?)",
-                             (transfer_id, "error" if outcome.error else "info", message))
             await db.commit()
 
     async def retry_requests(self, transfer_id: int, *, request_id=None, reset_budget=False):
@@ -4352,8 +4394,14 @@ class TransferRepository:
 
     async def global_pause(self, paused: bool):
         async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone("SELECT value FROM transfer_controls WHERE key='paused'")
             await db.execute("""INSERT INTO transfer_controls(key,value) VALUES('paused',?)
                 ON CONFLICT(key) DO UPDATE SET value=excluded.value""", ("1" if paused else "0",))
+            if bool(row and row["value"] == "1") != paused:
+                await journal(db, JournalEvent(
+                    "administration", "administration.processing_paused" if paused else "administration.processing_resumed",
+                    "info", "Processing paused" if paused else "Processing resumed", "installation"))
             await db.commit()
 
     async def delete(self, transfer_id: int, *, remote: bool, now: float = 0) -> None:
@@ -4369,7 +4417,9 @@ class TransferRepository:
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
-            row = await db.fetchone("SELECT id,hash,source_fingerprint FROM torrents WHERE id=?", (transfer_id,))
+            row = await db.fetchone("SELECT id,hash,source_fingerprint,status FROM torrents WHERE id=?", (transfer_id,))
+            if row and row["status"] != "deleted":
+                await journal(db, je.deleted(transfer_id, remote=remote))
             if row:
                 current_hash = str(row["hash"] or "")
                 original = str(row["source_fingerprint"] or current_hash)

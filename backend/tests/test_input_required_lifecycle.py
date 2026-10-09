@@ -957,7 +957,7 @@ async def test_server_identity_challenge_is_durable_public_fenced_and_continues_
     assert "ab" * 20 not in executor.continued[0][3]
     async with database.get_db() as db:
         events = await db.fetchall("SELECT detail FROM application_events WHERE transfer_id=? AND kind='input_required'", (transfer.id,))
-        messages = await db.fetchall("SELECT message FROM events WHERE torrent_id=?", (transfer.id,))
+        messages = await db.fetchall("SELECT message FROM event_journal WHERE transfer_id=?", (transfer.id,))
     assert [row["detail"] for row in events] == ["server_identity_required"]
     assert any("server identity" in row["message"].lower() for row in messages)
 

@@ -40,11 +40,13 @@ from urllib.parse import unquote, urlsplit, urlunsplit
 
 from core.presentation_safety import safe_route_endpoint
 from db.database import get_db
+from db.event_journal import record as journal
 from transfers.models import (
     Artifact, InputChallenge, InputFact, InputFactName, InputField, InputFieldDescriptor, InputMethod,
     InputMethodDescriptor, InputOrigin, InputReason, InputRequirement,
     ResolutionAttempt, new_identity,
 )
+from transfers import journal_events as je
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES
 from transfers.requests import AuthScope
 
@@ -1047,7 +1049,8 @@ class InputChallengeStore:
             await db.execute("UPDATE resolution_attempts SET state='input_required',error=NULL,result=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (attempt.id,))
             await db.execute("UPDATE transfer_requests SET state='input_required',retry_at=0,error=NULL,attempts=MAX(0,attempts-1) WHERE id=?", (attempt.request_id,))
             await db.execute("UPDATE torrents SET status='input_required',normalized_error=NULL,error_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (challenge.transfer_id,))
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)", (challenge.transfer_id, _EVENT_MESSAGES[challenge.reason]))
+            await journal(db, je.input_requested(transfer_id=challenge.transfer_id, challenge_id=challenge.id, generation=challenge.generation,
+                                                 integration_id=challenge.integration_id, message=_EVENT_MESSAGES[challenge.reason]))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (challenge.transfer_id, challenge.reason.value))
             await db.commit()
             return challenge
@@ -1089,6 +1092,8 @@ class InputChallengeStore:
                              "WHERE id=? AND state='input_required'", (challenge.operation_id,))
             await db.execute("UPDATE transfer_requests SET state='resolving' WHERE id=? AND state='input_required'",
                              (challenge.request_id,))
+            await journal(db, je.input_accepted(transfer_id=challenge.transfer_id, challenge_id=challenge.id,
+                                                generation=challenge.generation, integration_id=challenge.integration_id))
             await db.commit()
         await self._retired(challenge.transfer_id)
         return True
@@ -1147,7 +1152,8 @@ class InputChallengeStore:
                  challenge.integration_id, challenge.operation_id, challenge.request_id, None, _methods_payload(challenge.methods),
                  _facts_payload(challenge.facts), challenge.authority, now, now))
             await db.execute("UPDATE torrents SET status='input_required',normalized_error=NULL,error_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (transfer_id,))
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)", (transfer_id, _EVENT_MESSAGES[challenge.reason]))
+            await journal(db, je.input_requested(transfer_id=transfer_id, challenge_id=challenge.id, generation=challenge.generation,
+                                                 integration_id=challenge.integration_id, message=_EVENT_MESSAGES[challenge.reason]))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (transfer_id, challenge.reason.value))
             await db.commit()
             return challenge
@@ -1177,7 +1183,8 @@ class InputChallengeStore:
                  _methods_payload(challenge.methods), _facts_payload(challenge.facts), challenge.authority, now, now))
             await db.execute("UPDATE download_files SET status='input_required',normalized_error=NULL WHERE id=?", (artifact.id,))
             await db.execute("UPDATE torrents SET status='input_required',normalized_error=NULL,error_message=NULL,updated_at=CURRENT_TIMESTAMP WHERE id=?", (artifact.transfer_id,))
-            await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)", (artifact.transfer_id, _EVENT_MESSAGES[challenge.reason]))
+            await journal(db, je.input_requested(transfer_id=artifact.transfer_id, challenge_id=challenge.id, generation=challenge.generation,
+                                                 integration_id=challenge.integration_id, message=_EVENT_MESSAGES[challenge.reason]))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'input_required',?)", (artifact.transfer_id, challenge.reason.value))
             await db.commit()
             return challenge

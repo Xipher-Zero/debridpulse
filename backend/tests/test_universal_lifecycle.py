@@ -670,7 +670,7 @@ async def test_an_error_differing_only_in_diagnostic_evidence_is_the_same_lifecy
         async with database.get_db() as db:
             row = await db.fetchone("SELECT status,progress,normalized_error,error_message,updated_at "
                                     "FROM torrents WHERE id=?", (transfer.id,))
-            events = await db.fetchone("SELECT COUNT(*) AS n FROM events WHERE torrent_id=?", (transfer.id,))
+            events = await db.fetchone("SELECT COUNT(*) AS n FROM event_journal WHERE transfer_id=?", (transfer.id,))
             published = await db.fetchone("SELECT COUNT(*) AS n FROM application_events WHERE transfer_id=?",
                                           (transfer.id,))
         return dict(row), events["n"], published["n"]

@@ -60,10 +60,15 @@ _RESTORE_PREFIX = ".dp-restore-"
 _JOURNAL_NAME = ".dp-restore-journal.json"
 _COPY_CHUNK = 1024 * 1024
 # Schemas the canonical bootstrap (``db.database.init_db``) upgrades to the
-# running one: exactly the v1.0.13 schema before transfer-owned file-selection
-# intent (6b691ef7), which that bootstrap extends with the intent tables alone.
+# running one, each exactly as a pinned DebridPulse build recorded it:
+# * the v1.0.13 schema before transfer-owned file-selection intent (6b691ef7),
+#   which that bootstrap extends with the intent tables and the event journal;
+# * the v1.0.13 schema immediately before the event journal (8b009d04), which
+#   it extends with the journal alone -- an empty journal: legacy ``events``
+#   rows are kept as they are and never converted into journal history.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
+    "sha256:8c1f182d8be7c67c4d3b7a471c0878e8dd9304e5b9b2a704a393a7d7cbc7dc1a",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"
@@ -180,6 +185,16 @@ def schema_version(db_path: Path) -> str:
     with closing(sqlite3.connect(str(db_path), timeout=30)) as conn:
         conn.execute("PRAGMA query_only=1")
         return _fingerprint(conn)
+
+
+async def journal_backup(event_type: str, message: str, point_id: str, detail: str | None = None) -> bool:
+    """A backup operation that has already succeeded, recorded after the fact
+    through the journal's standalone path (a restore point is files, not a
+    database transition). The event is not inside the restore point it names."""
+    from db.event_journal import JournalEvent, record_now
+
+    return await record_now(JournalEvent("administration", event_type, "info", message, "backup",
+                                         subject_id=point_id, detail=detail))
 
 
 # ── validation ──────────────────────────────────────────────────────────────
@@ -448,6 +463,8 @@ async def run_backup() -> dict:
     keep_days = max(1, int(getattr(cfg, "backup_keep_days", 7)))
     async with _BACKUP_RUN_LOCK:
         removed = _rotate_backups(point.path.parent, keep_days)
+    await journal_backup("administration.backup_created", "Backup created", point.id,
+                   f"{removed} older backup(s) removed by retention" if removed else None)
     files = sorted(entry.name for entry in point.path.iterdir() if entry.name != _MANIFEST_NAME)
     return {
         "timestamp": point.id,
@@ -610,6 +627,7 @@ async def add_backup(chunks) -> RestorePoint:
             shutil.rmtree(staging, ignore_errors=True)
     point = _restore_point(target)
     logger.info("Backup added: %s", point.id)
+    await journal_backup("administration.backup_added", "Backup added", point.id)
     return point
 
 

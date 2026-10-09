@@ -113,13 +113,14 @@ body.light #view-events .dp-activity-search-band {
   flex: 0 0 160px;
 }
 
-/* P4 Activity filters add two labeled projected selects plus a conditional
-   Reset control. Own the desktop geometry here so shared compact-control rules
-   cannot collapse the selected-value text. */
+/* P4 Activity filters add three labeled projected selects (Time Window,
+   Severity, Event Type) plus a conditional Reset control. Own the desktop
+   geometry here so shared compact-control rules cannot collapse the
+   selected-value text. */
 @media (min-width: 901px) {
   #view-events .dp-activity-search-row {
     display: grid;
-    grid-template-columns: minmax(260px, 1fr) minmax(170px, 190px) minmax(170px, 190px) auto;
+    grid-template-columns: minmax(240px, 1fr) minmax(170px, 190px) minmax(150px, 170px) minmax(190px, 220px) auto;
     align-items: end;
     gap: 12px;
   }
@@ -220,6 +221,49 @@ body.light #view-events .dp-activity-search-band {
 
 #view-events .dp-activity-list > .empty {
   background: transparent;
+}
+
+/* Optional safe diagnostic detail: disclosed on demand, never in the row. */
+#view-events .dp-activity-detail {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--dp-text-muted);
+}
+
+#view-events .dp-activity-detail > summary {
+  width: max-content;
+  cursor: pointer;
+}
+
+#view-events .dp-activity-detail > summary:focus-visible {
+  outline: 2px solid var(--dp-focus-ring, var(--accent));
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+#view-events .dp-activity-detail-text {
+  margin-top: 3px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* Page navigation through the journal: the shared pagination grammar. */
+#view-events .dp-activity-pagination {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
+  padding: 10px 16px;
+  border-top: 1px solid var(--dp-table-row-border);
+}
+
+#view-events .dp-activity-pagination[hidden],
+#view-events .dp-activity-newest[hidden] {
+  display: none;
+}
+
+#view-events .dp-activity-pagination .dp-page-btn {
+  width: auto;
+  padding-inline: 12px;
 }
 
 /* ── Full-height desktop workspace ───────────────────────────────────── */

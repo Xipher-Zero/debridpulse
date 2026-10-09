@@ -1103,6 +1103,11 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'standby_resources': {'id', 'transfer_id', 'request_id', 'provider_id', 'generation', 'state', 'binding_id', 'error',
                           'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at', 'promoted_at'},
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
+    'event_journal': {'id', 'occurrence_key', 'occurred_at', 'category', 'event_type', 'severity', 'outcome',
+                      'subject_kind', 'subject_id', 'transfer_id', 'related_transfer_id', 'integration_id',
+                      'subject_name', 'message', 'detail', 'error_domain', 'error_category', 'error_origin',
+                      'error_mutation', 'provenance'},
+    'event_journal_index': {'id', 'indexed_through', 'started_at'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
@@ -1304,6 +1309,9 @@ async def _init_db_sqlite(path: Path):
         )
 
         await backfill_decomposition_generations(db)
+        from db import event_journal
+
+        await event_journal.ensure_schema(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

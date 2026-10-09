@@ -286,7 +286,10 @@ async def test_an_encrypted_openssh_key_answers_the_challenge_and_is_never_store
             tables = [row["name"] for row in await db.fetchall(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
             durable = json.dumps([dict(row) for table in tables
-                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')])  # nosec B608
+                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')],
+                                 # Blob columns (the event journal's search index) as their raw
+                                 # bytes, so a secret stored in one would still be found.
+                                 default=lambda value: value.decode("latin-1"))  # nosec B608
         trace = json.dumps(await transfer_trace.build(
             transfer.id, SimpleNamespace(engine=runtime.engine, repository=runtime.repository)))
         logged = "\n".join(record.getMessage() for record in caplog.records)
@@ -340,7 +343,10 @@ async def test_a_wrong_passphrase_returns_to_the_challenge_and_never_downgrades_
             tables = [row["name"] for row in await db.fetchall(
                 "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")]
             durable = json.dumps([dict(row) for table in tables
-                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')])  # nosec B608
+                                  for row in await db.fetchall(f'SELECT * FROM "{table}"')],
+                                 # Blob columns (the event journal's search index) as their raw
+                                 # bytes, so a secret stored in one would still be found.
+                                 default=lambda value: value.decode("latin-1"))  # nosec B608
         logged = "\n".join(record.getMessage() for record in caplog.records)
         for text in (durable, logged):
             for secret in (passphrase, wrong, exported.splitlines()[1]):

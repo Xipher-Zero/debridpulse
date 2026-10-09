@@ -42,7 +42,7 @@ async function canonical(page) {
 
 async function openRetention(page) {
   if ((await retention(page).getAttribute('aria-expanded')) !== 'true') await retention(page).click();
-  await expect(field(page, 'events_keep_days')).toBeVisible();
+  await expect(field(page, 'stats_snapshot_keep_days')).toBeVisible();
 }
 
 /* Put back exactly the values this case changed, against FRESHLY read
@@ -172,6 +172,93 @@ test('Backup Folder is a centred island at roughly 70% with Browse inside the fi
     expect(grammar.centred).toBeLessThan(2);
   });
 
+test('Event Logging is the first card: family chip, file-text glyph, centred hint, empty rail, one island',
+  async ({page}) => {
+    await openMaintenance(page);
+    for (const width of [1440, 1024, 820, 390]) {
+      await page.setViewportSize({width, height: 900});
+      await page.waitForTimeout(150);
+      const facts = await page.evaluate(() => {
+        const panel = document.querySelector('.dp-settings-panel[data-panel="maintenance"]');
+        const cards = Array.from(panel.querySelectorAll(':scope > .dp-settings-card'),
+          card => card.querySelector('.card-title').textContent.trim());
+        const card = panel.querySelector('.dp-settings-event-logging-card');
+        const chip = card.querySelector('.card-title .dp-settings-protocol-chip.dp-settings-header-chip');
+        const style = getComputedStyle(chip);
+        const reference = getComputedStyle(
+          panel.querySelector('.dp-settings-backups-retention-card .dp-settings-header-chip'));
+        const island = card.querySelector('.dp-settings-event-logging-island');
+        const body = island.closest('.card-body');
+        const bodyStyle = getComputedStyle(body);
+        const inner = body.getBoundingClientRect().width - parseFloat(bodyStyle.paddingLeft)
+          - parseFloat(bodyStyle.paddingRight);
+        const i = island.getBoundingClientRect(), b = body.getBoundingClientRect();
+        return {
+          cards,
+          section: chip.dataset.section,
+          glyph: chip.querySelector('img').getAttribute('src'),
+          color: style.getPropertyValue('--dp-protocol-color').trim(),
+          glow: style.filter, referenceGlow: reference.filter,
+          background: style.backgroundImage, referenceBackground: reference.backgroundImage,
+          hint: card.querySelector('.dp-settings-card-header-center').textContent.trim(),
+          rail: card.querySelectorAll('.card-header .dp-settings-card-header-controls, .card-header button, .card-header input').length,
+          islands: card.querySelectorAll('.card-body > *').length,
+          share: i.width / inner,
+          leftGap: i.left - (b.left + parseFloat(bodyStyle.paddingLeft)),
+          rightGap: (b.right - parseFloat(bodyStyle.paddingRight)) - i.right,
+          bordered: parseFloat(getComputedStyle(island).borderTopWidth) > 0,
+          label: island.querySelector('.form-label').textContent.trim(),
+          fieldHint: island.querySelector('.form-hint').textContent.trim(),
+          options: Array.from(island.querySelectorAll('select option'), o => [o.value, o.textContent.trim()]),
+          overflow: document.documentElement.scrollWidth > window.innerWidth,
+        };
+      });
+      expect(facts.cards).toEqual(['Event Logging', 'Backups & Retention', 'Database Reset Controls']);
+      expect(facts.section).toBe('maintenance');
+      expect(facts.glyph).toBe('/icons/lucide/file-text.svg');
+      expect(facts.color.toUpperCase()).toBe('#6366F1');
+      // The family's own chip material and glow, not an approximation.
+      expect(facts.glow).toBe(facts.referenceGlow);
+      expect(facts.background).toBe(facts.referenceBackground);
+      expect(facts.hint).toBe('Configure how many activity log entries are displayed per page.');
+      expect(facts.rail).toBe(0);
+      expect(facts.islands).toBe(1);
+      expect(facts.bordered).toBe(true);
+      expect(Math.abs(facts.leftGap - facts.rightGap)).toBeLessThan(2);
+      if (width > 700) expect(facts.share).toBeLessThan(0.9);
+      expect(facts.label).toBe('Activity Log Page Size');
+      expect(facts.fieldHint).toBe('Number of events displayed per page in the Activity Log.');
+      expect(facts.options).toEqual([['50', '50 events'], ['100', '100 events'], ['250', '250 events']]);
+      expect(facts.overflow).toBe(false);
+    }
+    // Not a control of the Activity Log itself.
+    expect(await page.locator('#view-events [data-setting="activity_log_page_size"]').count()).toBe(0);
+  });
+
+test('Activity Log Page Size persists through the canonical owner and sizes the Activity Log page',
+  async ({page}) => {
+    const before = await keep(page, 'activity_log_page_size');
+    try {
+      await openMaintenance(page);
+      const control = field(page, 'activity_log_page_size');
+      const next = Number(before.activity_log_page_size) === 250 ? 50 : 250;
+      const writes = await observeWrites(page, async () => {
+        await control.selectOption(String(next));
+        await page.waitForResponse(r => r.url().includes('/api/settings')
+          && r.request().method() === 'PUT', {timeout: 10000});
+      });
+      expect(writes).toHaveLength(1);
+      // The select's value on the wire; the server accepts it as the number.
+      expect(Number(writes[0].sent.activity_log_page_size)).toBe(next);
+      expect(writes[0].accepted.activity_log_page_size).toBe(next);
+      const request = page.waitForRequest(r => r.url().includes('/api/events?'));
+      await page.locator('#sidebar .nav-item[data-view="events"]').click();
+      expect(new URL((await request).url()).searchParams.get('limit')).toBe(String(next));
+    } finally {
+      await restore(page, before);
+    }
+  });
+
 test('opening or closing the disclosure never moves the Backup Folder island',
   async ({page}) => {
     await openMaintenance(page);
@@ -190,7 +277,7 @@ test('opening or closing the disclosure never moves the Backup Folder island',
 
 // --- the disclosure and the five policy values -----------------------------
 
-test('the disclosure exposes its state and holds exactly the five retention settings',
+test('the disclosure exposes its state and holds exactly the four retention settings',
   async ({page}) => {
     await openMaintenance(page);
     const chip = retention(page);
@@ -213,21 +300,19 @@ test('the disclosure exposes its state and holds exactly the five retention sett
     expect(inside.controls).toEqual([
       'backup_interval_hours', 'backup_keep_days',
       'stats_snapshot_interval_minutes', 'stats_snapshot_keep_days',
-      'events_keep_days',
     ]);
-    // The #2 compact-card collection, with the two related pairs grouped and
-    // event-log retention standing alone.
+    // The #2 compact-card collection, with the two related pairs grouped. The
+    // event journal is kept indefinitely, so no event-log retention exists.
     expect(inside.grids).toBe(1);
     expect(inside.groups).toBe(2);
     expect(inside.titles).toEqual([
       'Backup Interval', 'Backup Retention',
       'Statistics Snapshot Interval', 'Statistics Snapshot Retention',
-      'Event Log Retention',
     ]);
     // The unit is carried inside each field, so the title no longer repeats it.
     const units = await page.locator(`#${bodyId} .dp-settings-field-unit`)
       .evaluateAll(nodes => nodes.map(n => n.textContent.trim()));
-    expect(units).toEqual(['hours', 'days', 'minutes', 'days', 'days']);
+    expect(units).toEqual(['hours', 'days', 'minutes', 'days']);
   });
 
 // --- persistence -----------------------------------------------------------
@@ -261,7 +346,7 @@ async function observeWrites(page, act) {
 
 const RETENTION_VALUES = [
   'backup_interval_hours', 'backup_keep_days', 'stats_snapshot_interval_minutes',
-  'stats_snapshot_keep_days', 'events_keep_days',
+  'stats_snapshot_keep_days',
 ];
 
 test('every Data & Maintenance value commits at its own boundary, with no Apply',
@@ -276,7 +361,6 @@ test('every Data & Maintenance value commits at its own boundary, with no Apply'
         stats_snapshot_interval_minutes:
           Number(before.stats_snapshot_interval_minutes) === 45 ? 50 : 45,
         stats_snapshot_keep_days: Number(before.stats_snapshot_keep_days) === 21 ? 22 : 21,
-        events_keep_days: Number(before.events_keep_days) === 31 ? 32 : 31,
       };
       for (const [key, value] of Object.entries(probes)) {
         const control = field(page, key);

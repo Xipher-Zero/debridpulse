@@ -264,32 +264,33 @@ async def update_check_loop() -> None:
         await asyncio.sleep(max(3600, interval_h * 3600))
 
 
-async def events_ttl_loop() -> None:
-    """Prune old event log entries once per day.
+async def event_index_loop() -> None:
+    """Keep the event journal's derived search index caught up.
 
-    Only the ``events`` table is pruned — torrents and download_files are never
-    touched, so duplicate-download prevention (based on the torrent hash and
-    status columns) is not affected.
-    """
-    await asyncio.sleep(3600)  # 1-hour initial delay so startup isn't noisy
+    The journal row itself is committed with the transition it records; only
+    its search index is maintained here, in bounded idempotent batches behind
+    a durable watermark (``db.event_journal.catch_up``). A pass that fails
+    leaves the watermark where it was and is simply repeated; nothing waits on
+    it, and a search reports any rows it does not yet cover."""
+    from db import event_journal
+
+    await asyncio.sleep(15)  # let startup settle; startup never waits on indexing
+    verified_at = None
     while True:
         if _application_storage_ready():
             try:
-                cfg = get_settings()
-                keep_days = int(getattr(cfg, "events_keep_days", 30) or 30)
-                if keep_days > 0:
-                    from services.db_maintenance import cleanup_old_events
-                    result = await cleanup_old_events(keep_days=keep_days)
-                    if result.get("deleted", 0) > 0:
-                        logger.info(
-                            "events_ttl_loop: pruned %d event(s) older than %d days",
-                            result["deleted"], keep_days,
-                        )
+                # The index's own structural check, once at start and daily:
+                # a corrupt index is dropped and rebuilt below, never trusted.
+                if verified_at is None or time.monotonic() - verified_at >= 86400:
+                    await event_journal.verify_index()
+                    verified_at = time.monotonic()
+                while await event_journal.catch_up() >= event_journal.INDEX_BATCH:
+                    await asyncio.sleep(0)
             except asyncio.CancelledError:
                 return
             except Exception as exc:
-                logger.warning("events_ttl_loop error: %s", sanitize_exception(exc))
-        await asyncio.sleep(86400)  # run once every 24 hours
+                logger.warning("event_index_loop error: %s", sanitize_exception(exc))
+        await asyncio.sleep(30)
 
 
 async def staged_input_reclaim_loop() -> None:
@@ -359,7 +360,7 @@ async def start_scheduler(service=None):
     _tasks.append(asyncio.create_task(stats_snapshot_loop()))
     _tasks.append(asyncio.create_task(stats_report_loop()))
     _tasks.append(asyncio.create_task(update_check_loop()))
-    _tasks.append(asyncio.create_task(events_ttl_loop()))
+    _tasks.append(asyncio.create_task(event_index_loop()))
     _tasks.append(asyncio.create_task(staged_input_reclaim_loop()))
     _tasks.append(asyncio.create_task(disk_guard_loop()))
     logger.info("Scheduler started")

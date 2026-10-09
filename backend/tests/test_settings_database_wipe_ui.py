@@ -1,6 +1,6 @@
 """Data & Maintenance: the terminal Settings page contract.
 
-Backups & Retention and Database Reset Controls in the canonical Settings
+Event Logging, Backups & Retention and Database Reset Controls in the canonical Settings
 grammar -- the operational actions in the card's own right-aligned header rail,
 the one setting each card is about as a centred bordered island, the policy
 numbers behind the canonical disclosure as compact tuning cells, and every
@@ -56,7 +56,8 @@ def test_run_backup_now_and_the_old_body_action_row_are_gone():
 def test_backups_retention_header_copy_and_enable_control_are_locked():
     js = source(RUNTIME)
     assert "Backups & Retention" in js
-    assert "Configure automated backups and retention for backups, statistics snapshots, and event logs." in js
+    # The event journal has no retention: only backups and snapshots do.
+    assert "Configure automated backups and retention for backups and statistics snapshots." in js
     header = js.split("dp-settings-backups-header-toggle", 1)[1].split("</label>", 1)[0]
     assert '<span class="tl">Enable</span>' in header and 'data-setting="backup_enabled"' in header
     assert "dpBackupsRetentionPolished" not in js
@@ -157,9 +158,10 @@ def test_the_disclosure_is_the_canonical_one_with_the_exact_label():
     assert 'aria-expanded="${expanded}"' in js
 
 
-def test_all_five_remaining_settings_moved_inside_using_the_compact_cell_treatment():
+def test_all_four_remaining_settings_moved_inside_using_the_compact_cell_treatment():
     body = panel()
-    disclosure = body[body.index("${disclosureSection("):body.index("    `, {")]
+    start = body.index("${disclosureSection(")
+    disclosure = body[start:body.index("    `, {", start)]
     # The #2 compact treatment from Downloads -> Disk Space & Recovery: the same
     # collection and the same relationship primitive, not a lookalike grid.
     assert "tuningCells(" in disclosure
@@ -169,16 +171,17 @@ def test_all_five_remaining_settings_moved_inside_using_the_compact_cell_treatme
         "input('backup_keep_days', 'Backup Retention'",
         "input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval'",
         "input('stats_snapshot_keep_days', 'Statistics Snapshot Retention'",
-        "input('events_keep_days', 'Event Log Retention'",
     ]
     positions = [disclosure.index(call) for call in order]
     assert positions == sorted(positions)
-    # The backup pair and the snapshot pair are grouped; event-log stands alone.
+    # The backup pair and the snapshot pair are grouped. The event journal is
+    # kept indefinitely: no event-log retention setting exists any more.
     first, second = [m.start() for m in re.finditer(r"tuningGroup\(", disclosure)]
-    assert first < positions[0] < positions[1] < second < positions[2] < positions[3] < positions[4]
+    assert first < positions[0] < positions[1] < second < positions[2] < positions[3]
+    assert "events_keep_days" not in source(RUNTIME)
 
 
-def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
+def test_the_four_settings_keep_every_unit_range_and_hint_they_had():
     disclosure = panel()
     expected = (
         ("backup_interval_hours", "min: 1, max: 168", "hours",
@@ -189,8 +192,6 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
          "Set how often DebridPulse records a statistics snapshot."),
         ("stats_snapshot_keep_days", "min: 1, max: 365", "days",
          "Delete statistics snapshots older than the configured number of days."),
-        ("events_keep_days", "min: 1,", "days",
-         "Delete event log entries older than the configured number of days."),
     )
     for key, bounds, unit, hint in expected:
         cell = disclosure.split(f"input('{key}'", 1)[1].split("}),", 1)[0]
@@ -202,6 +203,31 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
         assert f"embedAction: fieldUnit('{unit}')" in cell, key
     for verbose in ("(Hours Between Backups)", "(Days to Keep)", "(Minutes Between Snapshots)"):
         assert verbose not in source(RUNTIME), verbose
+
+
+# ── Event Logging ──────────────────────────────────────────────────────────
+
+def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_island():
+    body = panel()
+    assert "return eventLogging + backups + reset;" in body
+    card = body[body.index("const eventLogging = card('Event Logging',"):body.index("const backupEnabledId")]
+    # The standard Data & Maintenance chipblock, with the Lucide file-text glyph.
+    assert "titlePrefix: familyIcon('maintenance', 'file-text')" in card
+    assert "headerCenter: 'Configure how many activity log entries are displayed per page.'" in card
+    # Nothing on the right: no Test, action, toggle or Enable.
+    assert "headerAction" not in card and "action:" not in card and "toggle(" not in card
+    # Exactly one centred island holding exactly one selector.
+    assert card.count('class="dp-settings-event-logging-island"') == 1 and card.count("selectField(") == 1
+    assert ("selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,\n"
+            "          [[50, '50 events'], [100, '100 events'], [250, '250 events']],\n"
+            "          'Number of events displayed per page in the Activity Log.',") in card
+    row = re.search(r"^    activity_log_page_size: \{(.+)\},$", source(RUNTIME), re.M).group(1)
+    assert "scope: 'settings-document'" in row and "commit:" not in row  # the changed-blur boundary
+    glyph = source(STATIC / "icons" / "lucide" / "file-text.svg")
+    assert 'stroke="#6366F1"' in glyph
+    # The Backup Folder island's own geometry, extended -- not a second layout.
+    css = source(STYLE)
+    assert "#view-settings .dp-settings-event-logging-island,\n#view-settings .dp-settings-backup-folder-island {" in css
 
 
 # ── Database Reset Controls ────────────────────────────────────────────────

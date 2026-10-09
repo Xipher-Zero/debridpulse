@@ -107,7 +107,7 @@ async def test_the_canonical_owner_trace_carries_every_direct_contributor(compon
     for name in ("b", "c", "d"):
         assert _scoped(trace, "torrents", "id", ids[name]) == {"component"}
         # Each contributor's OWN transfer-scoped rows, not just a reference to it.
-        assert _scoped(trace, "events", "torrent_id", ids[name]) == {"component"}
+        assert _scoped(trace, "event_journal", "transfer_id", ids[name]) == {"component"}
         assert "component" in _scoped(trace, "transfer_requests", "transfer_id", ids[name])
     closure = trace["metadata"]["closure"]["component"]
     assert closure["type"] == "consolidation_component" and closure["truncated"] is False
@@ -125,7 +125,7 @@ async def test_a_contributor_trace_carries_the_owner_and_its_sibling_contributor
     assert _scoped(trace, "torrents", "id", ids["c"]) == {"primary"}
     for name in ("owner", "b", "d"):
         assert _scoped(trace, "torrents", "id", ids[name]) == {"component"}
-        assert _scoped(trace, "events", "torrent_id", ids[name]) == {"component"}
+        assert _scoped(trace, "event_journal", "transfer_id", ids[name]) == {"component"}
     assert trace["metadata"]["closure"]["component"]["canonical_artifact_ids"] == [component.canonical.id]
 
 

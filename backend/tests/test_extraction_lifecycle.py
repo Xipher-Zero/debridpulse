@@ -73,7 +73,7 @@ def _events(db_path: Path, torrent_id: int) -> list[str]:
         return [
             row[0]
             for row in conn.execute(
-                "SELECT message FROM events WHERE torrent_id=? ORDER BY id",
+                "SELECT message FROM event_journal WHERE transfer_id=? ORDER BY id",
                 (torrent_id,),
             ).fetchall()
         ]

@@ -13,7 +13,9 @@ import asyncio
 from dataclasses import dataclass, replace
 
 from db.database import get_db
+from db.event_journal import record as journal
 from transfers import codec
+from transfers import journal_events as je
 from transfers._repository_base import (
     _durable_canonical_targets_for_request, _logical_slot_key_for_artifact, _logical_slot_key_for_request,
     _retire_transfer_auxiliary_state_in_db, terminal_unverified_association,
@@ -364,10 +366,7 @@ class CanonicalOwnership:
         # going through TransferRepository._write_lifecycle_transition, so it
         # must invoke the same transaction-local auxiliary-state retirement.
         await _retire_transfer_auxiliary_state_in_db(db, transfer_id)
-        await db.execute(
-            "INSERT INTO events(torrent_id,level,message) VALUES(?,'info','Transfer consolidated into canonical artifacts')",
-            (transfer_id,),
-        )
+        await journal(db, je.consolidation("consolidated", transfer_id=transfer_id))
         await db.execute(
             "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'consolidated',NULL)",
             (transfer_id,),
@@ -406,9 +405,9 @@ class CanonicalOwnership:
             await db.execute(
                 """UPDATE torrents SET status='queued',normalized_error=NULL,error_message=NULL,
                     updated_at=CURRENT_TIMESTAMP WHERE id=? AND status='consolidated'""", (int(transfer_id),))
-            await db.execute(
-                "INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)",
-                (int(transfer_id), "A contributed source proved independent; the transfer resumes on its own"))
+            await journal(db, je.consolidation(
+                "reopened", transfer_id=int(transfer_id),
+                detail="A contributed source proved independent; the transfer resumes on its own"))
             await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'consolidation_reopened',NULL)",
                              (int(transfer_id),))
             await db.commit()
@@ -863,12 +862,9 @@ class CanonicalOwnership:
                     WHERE canonical_artifact_id=?""",
                 (contributor_id, canonical_id),
             )
-            for transfer_id, message in (
-                (later_transfer_id, f"Collection member ownership converged into transfer {owner_transfer_id}"),
-                (owner_transfer_id, f"Collection member ownership converged from transfer {later_transfer_id}"),
-            ):
-                await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(?,'info',?)",
-                                 (transfer_id, message))
+            await journal(db, je.consolidation(
+                "ownership_converged", transfer_id=later_transfer_id, related_transfer_id=owner_transfer_id,
+                detail=f"Collection member ownership converged into transfer {owner_transfer_id}"))
             await self._finalize_transfer(db, later_transfer_id)
             await db.commit()
         if self.on_attached is not None:

@@ -122,7 +122,7 @@ _TABLES = (
     "transfer_file_selection_entries", "download_files", "canonical_candidate_bindings",
     "canonical_candidate_origins", "artifact_consolidations", "execution_attempts", "execution_attempt_provenance",
     "artifact_recovery_state", "artifact_material_state", "transfer_outcomes", "postprocess_attempts", "transfer_pause_intents",
-    "transfer_input_challenges", "deferred_provider_submissions", "events", "application_events",
+    "transfer_input_challenges", "deferred_provider_submissions", "events", "event_journal", "application_events",
     "transfer_controls",
 )
 # Durable tables deliberately outside a transfer trace, with the reason.
@@ -131,6 +131,12 @@ _OMITTED = {
     "stats_snapshots": "application-wide statistics history, not transfer-scoped",
     "schema_migrations": "reported as schema identity in metadata",
     "sqlite_sequence": "SQLite internal allocation state",
+    "event_journal_index": "derived search-index watermark, not transfer-scoped",
+    "event_journal_fts": "derived search index over event_journal",
+    "event_journal_fts_data": "derived search index storage",
+    "event_journal_fts_idx": "derived search index storage",
+    "event_journal_fts_docsize": "derived search index storage",
+    "event_journal_fts_config": "derived search index storage",
 }
 # (table, column, target table, target column): the durable references the
 # closure audit checks against the exported row set.
@@ -335,6 +341,8 @@ async def _transfer_rows(collector: _Collector, transfer_id: int, scope: str) ->
                   "artifact_recovery_state", "transfer_outcomes", "postprocess_attempts",
                   "transfer_input_challenges", "application_events"):
         await select(table, "transfer_id=?", (transfer_id,), scope=scope)
+    # Its journal: events correlated to it, as subject or as related transfer.
+    await select("event_journal", "transfer_id=? OR related_transfer_id=?", (transfer_id, transfer_id), scope=scope)
     for table in ("download_files", "transfer_pause_intents", "deferred_provider_submissions", "events"):
         await select(table, "torrent_id=?", (transfer_id,), scope=scope)
     await select("artifact_material_state", "artifact_id IN (SELECT id FROM download_files WHERE torrent_id=?)",

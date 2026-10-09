@@ -257,7 +257,7 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "backup_keep_days",
         "stats_snapshot_interval_minutes",
         "stats_snapshot_keep_days",
-        "events_keep_days",
+        "activity_log_page_size",
         "db_wipe_enabled",
     ):
         assert key in maintenance

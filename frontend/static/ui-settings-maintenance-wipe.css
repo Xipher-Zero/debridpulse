@@ -5,6 +5,7 @@
    tuning cell and its group, the canonical disclosure, the shared toggle row,
    the right-aligned card-header rail -- and this sheet states only where this
    page puts them. */
+#view-settings .dp-settings-event-logging-card > .card-header,
 #view-settings .dp-settings-database-wipe-card > .card-header,
 #view-settings .dp-settings-backups-retention-card > .card-header {
   display: grid;
@@ -13,11 +14,13 @@
   gap: 18px;
 }
 
+#view-settings .dp-settings-event-logging-card > .card-header > .card-title,
 #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
 #view-settings .dp-settings-backups-retention-card > .card-header > .card-title {
   justify-self: start;
 }
 
+#view-settings .dp-settings-event-logging-header-copy,
 #view-settings .dp-settings-database-wipe-header-copy,
 #view-settings .dp-settings-backups-header-copy {
   justify-self: center;
@@ -73,6 +76,7 @@
    FRACTION of the card body, so it is the same island whether the disclosure
    beneath it is open or closed -- that disclosure is a sibling block in the
    flow and can neither resize nor rebalance this. */
+#view-settings .dp-settings-event-logging-island,
 #view-settings .dp-settings-backup-folder-island {
   box-sizing: border-box;
   width: 70%;
@@ -88,16 +92,19 @@
    centred against the control -- the shared inline-field grammar. The field
    takes the room the island has left over, and Browse is INSIDE it (the shared
    embedded-action primitive), so path text ends where the button begins. */
+#view-settings .dp-settings-event-logging-field,
 #view-settings .dp-settings-backup-folder-field {
   margin: 0;
   gap: 26px;
 }
 
+#view-settings .dp-settings-event-logging-field > .dp-settings-inline-field-info,
 #view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-info {
   flex: 0 1 auto;
   max-width: 340px;
 }
 
+#view-settings .dp-settings-event-logging-field > .dp-settings-inline-field-control,
 #view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-control {
   flex: 1 1 auto;
   min-width: 0;
@@ -295,11 +302,13 @@
 }
 
 @media (max-width: 1180px) {
+  #view-settings .dp-settings-event-logging-card > .card-header,
   #view-settings .dp-settings-database-wipe-card > .card-header,
   #view-settings .dp-settings-backups-retention-card > .card-header {
     grid-template-columns: minmax(200px, 1fr) minmax(260px, 1fr) minmax(260px, 1fr);
   }
 
+  #view-settings .dp-settings-event-logging-island,
   #view-settings .dp-settings-backup-folder-island {
     width: 82%;
   }
@@ -310,14 +319,17 @@
 }
 
 @media (max-width: 900px) {
+  #view-settings .dp-settings-event-logging-card > .card-header,
   #view-settings .dp-settings-database-wipe-card > .card-header,
   #view-settings .dp-settings-backups-retention-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
   }
 
+  #view-settings .dp-settings-event-logging-card > .card-header > .card-title,
   #view-settings .dp-settings-database-wipe-card > .card-header > .card-title,
   #view-settings .dp-settings-backups-retention-card > .card-header > .card-title,
+  #view-settings .dp-settings-event-logging-header-copy,
   #view-settings .dp-settings-database-wipe-header-copy,
   #view-settings .dp-settings-backups-header-copy,
   #view-settings .dp-settings-backups-header-toggle,
@@ -332,11 +344,13 @@
 
 @media (max-width: 700px) {
   /* One control per line; each keeps its own title/hint + control. */
+  #view-settings .dp-settings-event-logging-island,
   #view-settings .dp-settings-backup-folder-island {
     width: auto;
     padding: 14px 16px 15px;
   }
 
+  #view-settings .dp-settings-event-logging-field,
   #view-settings .dp-settings-backup-folder-field {
     gap: 12px;
   }

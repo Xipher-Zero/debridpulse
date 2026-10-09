@@ -247,7 +247,7 @@ async def test_the_decision_that_lost_to_consolidation_never_resurrects_the_sett
     assert rows[0]["mirror_state"] == "standby" and consolidations
     assert repository.results[-1] == (late.id, None)
     async with database.get_db() as db:
-        events = await db.fetchall("SELECT message FROM events WHERE torrent_id=?", (second.id,))
+        events = await db.fetchall("SELECT message FROM event_journal WHERE transfer_id=?", (second.id,))
     assert not any("StopIteration" in json.dumps(dict(row)) for row in events)
     # The transfer goes on from settled truth.
     await _ticks(engine)
