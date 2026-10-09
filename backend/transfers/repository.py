@@ -54,6 +54,7 @@ from dataclasses import dataclass, replace
 from enum import StrEnum
 from types import SimpleNamespace
 
+from core.presentation_safety import safe_public_host
 from db.database import get_db
 from db.event_journal import record as journal
 from transfers import codec
@@ -1399,10 +1400,11 @@ class TransferRepository(_QualifiedTransferRepository):
             if cursor.rowcount:
                 await self._save_recovery_snapshot(db, int(row["torrent_id"]), artifact_id, snapshot)
                 if activation_provenance is not None:
-                    await db.execute(
+                    record_id = await db.execute_returning_id(
                         "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
                         (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)),
                     )
+                    await self._journal_source_switch(db, activation_provenance, "switched", record_id)
                 elif candidate_switched:
                     # Defensive fallback (Section 18/29): the canonical committed
                     # path (transfers.candidate_activation.activate_candidate)
@@ -1419,6 +1421,30 @@ class TransferRepository(_QualifiedTransferRepository):
                     await self._append_recovery_audit(db, int(row["torrent_id"]), artifact_id, "operator_retry")
             await db.commit()
         return cursor.rowcount == 1
+
+    @staticmethod
+    async def _journal_source_switch(db, provenance: dict, stage: str, record_id: int) -> None:
+        """The journal record of a committed source change, in its commit's
+        transaction: each side named by its provider and, where the canonical
+        binding holds one, its safe public host. ``record_id`` is the
+        candidate-activation record this same commit wrote -- the one identity
+        every committed activation has and no refused or rolled-back one
+        does."""
+        async def source(candidate_id, provider_id):
+            if not candidate_id:
+                return None
+            binding = await db.fetchone(
+                """SELECT source_scope,source_key FROM canonical_candidate_bindings
+                   WHERE canonical_artifact_id=? AND candidate_id=? ORDER BY id LIMIT 1""",
+                (int(provenance["artifact_id"]), str(candidate_id)))
+            host = safe_public_host(binding["source_key"]) if binding and binding["source_scope"] == "host" else None
+            return f"{provider_id} ({host})" if provider_id and host else (provider_id or host)
+
+        await journal(db, je.source_switch(
+            provenance, stage,
+            old_source=await source(provenance.get("old_candidate_id"), provenance.get("old_provider_id")),
+            new_source=await source(provenance.get("new_candidate_id"), provenance.get("new_provider_id")),
+            activation_record_id=record_id))
 
     async def select_desired_source(self, artifact_id: int, writer, selected: int, *, activation_provenance: dict,
                                     transition: dict, claim=None) -> bool:
@@ -1454,8 +1480,13 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback(); return False
             await db.execute("UPDATE download_files SET selected_candidate=?,updated_at=CURRENT_TIMESTAMP WHERE id=?",
                              (int(selected), artifact_id))
-            await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
-                             (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)))
+            record_id = await db.execute_returning_id(
+                "INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,?,?)",
+                (int(row["torrent_id"]), "candidate_activation", codec.dump(activation_provenance)))
+            await self._journal_source_switch(
+                db, activation_provenance,
+                "withdrawn" if activation_provenance.get("admission_decision") == "source_transition_withdrawn"
+                else "pending", record_id)
             material = await db.fetchone("SELECT material_generation FROM artifact_material_state WHERE artifact_id=?",
                                          (artifact_id,))
             await self._material_audit(db, row["torrent_id"], artifact_id, "source_transition", **transition,

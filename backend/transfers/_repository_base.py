@@ -2826,6 +2826,24 @@ class TransferRepository:
                              (codec.dump(interpretation), request_id))
             await db.commit()
 
+    @staticmethod
+    def _request_label(row) -> str | None:
+        """Which of its transfer's inputs a request is, safely: a root's
+        position as submitted, and the public host its link names."""
+        try:
+            target = (codec.load(row["payload"], {}) or {}).get("payload")
+        except (TypeError, ValueError, AttributeError):
+            target = None
+        host = None
+        if isinstance(target, str) and target.lower().startswith(("http://", "https://", "ftp://", "sftp://")):
+            from urllib.parse import urlsplit
+            try:
+                host = safe_public_host(urlsplit(target).hostname)
+            except ValueError:
+                host = None
+        position = f"source {int(row['ordinal']) + 1}" if row["parent_id"] is None else None
+        return ", ".join(part for part in (position, host) if part) or None
+
     async def request_failure(self, request_id: str, error: NormalizedError, retry_at: float | None, *, retry_state="pending",
                               consume_attempt=False, advance_alternative=False) -> None:
         """``advance_alternative``: the failure owner's decided terminal
@@ -2848,9 +2866,10 @@ class TransferRepository:
                 AND transfer_id IN (SELECT id FROM torrents WHERE status NOT IN ('deleted','completed','consolidated','cancelled'))""",
                 (retry_state if retry_at is not None else "failed", error_blob, retry_at or 0, int(consume_attempt), request_id))
             if failed.rowcount:
-                owner = await db.fetchone("SELECT transfer_id FROM transfer_requests WHERE id=?", (request_id,))
+                owner = await db.fetchone("SELECT transfer_id,parent_id,ordinal,payload FROM transfer_requests WHERE id=?",
+                                          (request_id,))
                 await journal(db, je.request_failed(transfer_id=owner["transfer_id"], request_id=request_id, error=error,
-                                                    retrying=retry_at is not None))
+                                                    retrying=retry_at is not None, source=self._request_label(owner)))
             if retry_at is None and advance_alternative:
                 await self._admit_next_alternative(db, request_id)
             await db.commit()

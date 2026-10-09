@@ -110,13 +110,15 @@ def route_ended(outcome: str, *, transfer_id, request_id, attempt_id, provider_i
                   error=error, occurrence_key=f"route:{attempt_id}:{outcome}")
 
 
-def request_failed(*, transfer_id, request_id, error, retrying: bool) -> JournalEvent:
+def request_failed(*, transfer_id, request_id, error, retrying: bool, source: str | None = None) -> JournalEvent:
     """A source request's failure as its failure owner decided it: retried
     later (warning) or terminal for that request (error). Never the
-    transfer's own outcome, which its lifecycle records."""
+    transfer's own outcome, which its lifecycle records. ``source`` names
+    which of the transfer's inputs failed (its safe position and host)."""
     return JournalEvent(
         "routing", "routing.request_failed", "warning" if retrying else "error",
-        _with_error("Source request failed" + (", retry scheduled" if retrying else ""), error),
+        _with_error("Source request failed" + (f" ({source})" if source else "")
+                    + (", retry scheduled" if retrying else ""), error),
         "request", subject_id=request_id, transfer_id=transfer_id, outcome="retrying" if retrying else "failed",
         error=error, provenance=f"transfer_requests:{request_id}")
 
@@ -193,15 +195,17 @@ def selection(event: str, *, transfer_id, selection_id, provider_id=None, detail
 
 # ── consolidation ───────────────────────────────────────────────────────────
 
-def consolidation(event: str, *, transfer_id, related_transfer_id=None, detail=None) -> JournalEvent:
+def consolidation(event: str, *, transfer_id, related_transfer_id=None, detail=None,
+                  occurrence_key=None) -> JournalEvent:
     message = {
         "consolidated": "Transfer consolidated into canonical artifacts",
         "reopened": "Consolidated transfer reopened",
         "ownership_converged": "Collection member ownership converged",
+        "source_merged": "Equivalent source merged as an alternate for a file",
     }[event]
     return JournalEvent("consolidation", f"consolidation.{event}", "info", message, "transfer",
                         subject_id=transfer_id, transfer_id=transfer_id, related_transfer_id=related_transfer_id,
-                        detail=detail, provenance=f"torrents:{transfer_id}")
+                        detail=detail, provenance=f"torrents:{transfer_id}", occurrence_key=occurrence_key)
 
 
 # ── execution ───────────────────────────────────────────────────────────────
@@ -240,6 +244,36 @@ def artifact_completed(*, transfer_id, artifact_id, filename) -> JournalEvent:
 def artifact_failed(*, transfer_id, artifact_id, filename, error) -> JournalEvent:
     return _artifact("execution.file_failed", "error", _with_error("File failed", error), transfer_id=transfer_id,
                      artifact_id=artifact_id, outcome="failed", error=error, detail=filename)
+
+
+_SWITCH_STAGES = {
+    "switched": ("execution.source_switched", None),
+    "pending": ("execution.source_switch_pending", "Download source selected; it takes effect when the download resumes"),
+    "withdrawn": ("execution.source_switch_withdrawn", "Pending download source change withdrawn"),
+}
+
+
+def source_switch(provenance: dict, stage: str, *, old_source: str | None, new_source: str | None,
+                  activation_record_id: int) -> JournalEvent:
+    """A committed change of an artifact's download source, from the one
+    candidate-activation record its commit writes. ``authority`` says who
+    initiated it; ``partial_decision`` what happened to the partial data.
+    Identity is that record (``activation_record_id``): one per committed
+    activation, so switching back and forth between the same candidates is
+    as many occurrences as commits, and none for a refused switch."""
+    event_type, message = _SWITCH_STAGES[stage]
+    operator = provenance.get("authority") == "user_candidate_switch"
+    if message is None:
+        message = "Download source switched by the operator" if operator else "Download source switched automatically"
+    detail = f"{old_source or 'unknown source'} -> {new_source or 'unknown source'}"
+    if provenance.get("partial_decision"):
+        detail += f"; partial download {str(provenance['partial_decision']).replace('_', ' ')}"
+    artifact_id = int(provenance["artifact_id"])
+    return JournalEvent(
+        "execution", event_type, "info", message, "artifact", subject_id=artifact_id,
+        transfer_id=int(provenance["transfer_id"]), integration_id=provenance.get("new_provider_id") or None,
+        detail=detail, provenance=f"application_events:{int(activation_record_id)}",
+        occurrence_key=f"activation:{int(activation_record_id)}")
 
 
 def size_refined(*, transfer_id, artifact_id, previous, total) -> JournalEvent:

@@ -42,7 +42,7 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
         "/ui-file-selection.js?v=1",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
-        "/ui-activity-log-runtime.js?v=3",
+        "/ui-activity-log-runtime.js?v=4",
         "/ui-settings-archive-passwords.js?v=2",
     )
     positions = []
@@ -284,7 +284,7 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
         "/ui-file-selection.js?v=1",
         "/ui-downloads.js?v=1",
         "/ui-dashboard-transfer-presentation.js?v=4",
-        "/ui-activity-log-runtime.js?v=3",
+        "/ui-activity-log-runtime.js?v=4",
         "/ui-settings-archive-passwords.js?v=2",
     )
     positions = [index.index(item) for item in ordered]

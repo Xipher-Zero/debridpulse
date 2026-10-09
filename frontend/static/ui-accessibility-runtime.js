@@ -582,7 +582,10 @@
 
     window.DPDropdowns = {
       refresh: function () { enhanceSelectTree(document); },
-      close: function () { closeProjectedSelect(false); }
+      close: function () { closeProjectedSelect(false); },
+      // A native value assigned programmatically raises no change/input event
+      // and no attribute mutation: its owner redraws the projected label here.
+      sync: function (select) { syncProjectedSelect(select); }
     };
   }
 

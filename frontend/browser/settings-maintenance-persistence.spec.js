@@ -193,7 +193,17 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
         const inner = body.getBoundingClientRect().width - parseFloat(bodyStyle.paddingLeft)
           - parseFloat(bodyStyle.paddingRight);
         const i = island.getBoundingClientRect(), b = body.getBoundingClientRect();
+        const info = island.querySelector('.dp-settings-inline-field-info').getBoundingClientRect();
+        const control = island.querySelector('.dp-settings-inline-field-control').getBoundingClientRect();
+        const select = island.querySelector('.dp-dropdown__trigger') || island.querySelector('select');
         return {
+          islandWidth: i.width, inner,
+          valueText: (island.querySelector('.dp-dropdown__value') || {}).textContent?.trim(),
+          valueClipped: (() => { const v = island.querySelector('.dp-dropdown__value'); return !v || v.scrollWidth > v.clientWidth + 1; })(),
+          sideBySide: info.right <= control.left + 1,
+          centredRow: Math.abs((info.top + info.height / 2) - (control.top + control.height / 2)),
+          controlInside: control.left >= i.left - 1 && control.right <= i.right + 1
+            && select.getBoundingClientRect().right <= i.right + 1,
           cards,
           section: chip.dataset.section,
           glyph: chip.querySelector('img').getAttribute('src'),
@@ -225,7 +235,18 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
       expect(facts.islands).toBe(1);
       expect(facts.bordered).toBe(true);
       expect(Math.abs(facts.leftGap - facts.rightGap)).toBeLessThan(2);
-      if (width > 700) expect(facts.share).toBeLessThan(0.9);
+      // A quarter of the card body, centred; the label and hint stay to the
+      // left of the selector, centred against it, and nothing leaves the island.
+      if (width > 700) {
+        // 25% of the card body, floored at the 360px the row needs.
+        expect(Math.abs(facts.islandWidth - Math.max(0.25 * facts.inner, Math.min(facts.inner, 360)))).toBeLessThan(2);
+        expect(facts.sideBySide).toBe(true);
+        expect(facts.centredRow).toBeLessThan(2);
+      }
+      expect(facts.controlInside).toBe(true);
+      // The selector keeps its size: its value is shown whole.
+      expect(facts.valueText).toBe('100 events');
+      expect(facts.valueClipped).toBe(false);
       expect(facts.label).toBe('Activity Log Page Size');
       expect(facts.fieldHint).toBe('Number of events displayed per page in the Activity Log.');
       expect(facts.options).toEqual([['50', '50 events'], ['100', '100 events'], ['250', '250 events']]);

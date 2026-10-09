@@ -88,6 +88,14 @@
   padding: 16px 22px 17px;
 }
 
+/* Event Logging's island holds one compact selector: the same island at a
+   quarter of the card body, never narrower than its row needs to keep the
+   title and hint beside a full-size selector. */
+#view-settings .dp-settings-event-logging-island {
+  width: 25%;
+  min-width: min(100%, 360px);
+}
+
 /* Title over hint on the left, field on the right, the descriptive block
    centred against the control -- the shared inline-field grammar. The field
    takes the room the island has left over, and Browse is INSIDE it (the shared
@@ -104,10 +112,14 @@
   max-width: 340px;
 }
 
-#view-settings .dp-settings-event-logging-field > .dp-settings-inline-field-control,
 #view-settings .dp-settings-backup-folder-field > .dp-settings-inline-field-control {
   flex: 1 1 auto;
   min-width: 0;
+}
+
+/* The selector keeps its own size; the title and hint take what is left. */
+#view-settings .dp-settings-event-logging-field > .dp-settings-inline-field-control {
+  flex: 0 0 auto;
 }
 
 /* Additional Backup & Retention Settings renders the five policy numbers as
@@ -308,7 +320,6 @@
     grid-template-columns: minmax(200px, 1fr) minmax(260px, 1fr) minmax(260px, 1fr);
   }
 
-  #view-settings .dp-settings-event-logging-island,
   #view-settings .dp-settings-backup-folder-island {
     width: 82%;
   }

@@ -238,6 +238,19 @@ async def test_duplicate_activation_and_stale_callback_cannot_restore_old_owner(
     successes = [item for item in (await repository.presentation(canonical.id, details=True))["manual_candidate_failovers"]
                  if item["outcome"] == "success"]
     assert len(successes) == 1
+    # The committed switch is one journal occurrence with its full context;
+    # the refused duplicate records none.
+    async with database.get_db() as db:
+        switches = await db.fetchall(
+            "SELECT * FROM event_journal WHERE transfer_id=? AND event_type LIKE 'execution.source_switch%'",
+            (canonical.id,))
+    assert len(switches) == 1
+    switch = switches[0]
+    assert switch["event_type"] == "execution.source_switched"
+    assert switch["message"] == "Download source switched by the operator"
+    assert switch["detail"].startswith("provider-a (provider-a.example) -> provider-b (provider-b.example); partial download ")
+    assert (switch["integration_id"], switch["subject_id"]) == ("provider-b", str(artifact.id))
+    assert switch["occurrence_key"] and "original-a" not in str(switch) and "original-b" not in str(switch)
 
 
 # ── DP 1.0.12 Manual Source Switch Queued Presentation corrective task ────
@@ -625,3 +638,30 @@ def test_switch_eligible_lifecycle_states_delegate_to_the_canonical_owner():
     assert _SWITCHABLE_STATES_SQL == ", ".join(
         f"'{state}'" for state in sorted(SWITCH_ELIGIBLE_LIFECYCLE_STATES)
     )
+
+
+@pytest.mark.asyncio
+async def test_switching_back_and_forth_is_one_journal_occurrence_per_committed_activation(tmp_path, monkeypatch):
+    """A -> B -> A -> B: every committed activation is its own occurrence --
+    two to the same candidate stay distinct -- identified by the activation
+    record its commit wrote; a refused duplicate writes neither."""
+    engine, repository, first, second, executor = await build_engine(tmp_path, monkeypatch)
+    canonical, _source, artifact = await attach_two(engine, repository, first, second)
+    a, b = (str(item.id) for item in artifact.candidates)
+    for wanted in (b, a, b):
+        await engine.reconcile_executions()
+        await manual_candidate_failover(engine, canonical.id, artifact.id, wanted)
+    with pytest.raises(TransferError):
+        await manual_candidate_failover(engine, canonical.id, artifact.id, b)  # already the active candidate
+
+    async with database.get_db() as db:
+        switches = await db.fetchall(
+            "SELECT * FROM event_journal WHERE transfer_id=? AND event_type='execution.source_switched' ORDER BY id",
+            (canonical.id,))
+        records = await db.fetchall(
+            "SELECT id,detail FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id",
+            (canonical.id,))
+    assert [row["integration_id"] for row in switches] == ["provider-b", "provider-a", "provider-b"]
+    assert [row["occurrence_key"] for row in switches] == [f"activation:{row['id']}" for row in records]
+    assert len({row["occurrence_key"] for row in switches}) == 3
+    assert [row["provenance"] for row in switches] == [f"application_events:{row['id']}" for row in records]

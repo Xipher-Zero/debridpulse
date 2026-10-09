@@ -304,6 +304,23 @@ async def test_ten_identical_mirrors_converge_within_one_transfer(tmp_path, monk
             )
         assert int(row["n"]) == 0  # Invariant 9/Example A: no same-transfer artifact_consolidations rows.
 
+        # Each sibling source that resolved by joining the canonical file as an
+        # alternate is one journal occurrence -- no more, no fewer -- and it
+        # never claims the transfer was consolidated.
+        async with database.get_db() as db:
+            standbys = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM download_files WHERE torrent_id=? AND mirror_state='standby'", (transfer.id,))
+            merged = await db.fetchall(
+                "SELECT occurrence_key,detail FROM event_journal WHERE transfer_id=? AND event_type=?",
+                (transfer.id, "consolidation.source_merged"))
+            consolidated = await db.fetchone(
+                "SELECT COUNT(*) AS n FROM event_journal WHERE transfer_id=? AND event_type='consolidation.consolidated'",
+                (transfer.id,))
+        assert len(merged) == int(standbys["n"]) > 0
+        assert len({row["occurrence_key"] for row in merged}) == len(merged)
+        assert all(row["detail"].startswith(MIRROR_FILENAME) for row in merged)
+        assert int(consolidated["n"]) == 0
+
         final_transfer = await runtime.repository.get(transfer.id)
         assert final_transfer.state != TransferState.CONSOLIDATED  # Invariant 4: sibling convergence != transfer consolidation.
     finally:

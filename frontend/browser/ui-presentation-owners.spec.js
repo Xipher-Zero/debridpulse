@@ -362,3 +362,28 @@ test('Activity Log never presents an incomplete search as "no matches"',async({p
  await page.locator('#ev-search').fill('nothing');
  await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
 });
+
+test('Activity Log Reset Filters restores every visible filter label, value and the unfiltered request at once',async({page})=>{
+ await ready(page);
+ const requests=[];
+ await page.route('**/api/events*',route=>{requests.push(Object.fromEntries(new URL(route.request().url()).searchParams));return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:0,has_more:false,next_before:null,newer_available:false,search:{text:'none',pending:0,complete:true}})});});
+ await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
+ await page.waitForFunction(()=>['ev-timeframe','ev-level','ev-category'].every(id=>document.getElementById(id)?._dpDropdownTrigger));
+ const shown=()=>page.evaluate(()=>Object.fromEntries(['ev-timeframe','ev-level','ev-category'].map(id=>{const select=document.getElementById(id);return [id,{value:select.value,label:select._dpDropdownTrigger.querySelector('.dp-dropdown__value').textContent.trim()}];})));
+ // Chosen through the visible projected menus, exactly as an operator does.
+ for(const [id,label] of [['ev-timeframe','Last 3 days'],['ev-level','Error'],['ev-category','Downloads']]){
+  await page.locator(`#${id}`).evaluate(select=>select._dpDropdownTrigger.click());
+  await page.getByRole('option',{name:label,exact:true}).click();
+ }
+ await page.locator('#ev-search').fill('needle');
+ await expect.poll(()=>requests.at(-1)?.search).toBe('needle');
+ expect(await shown()).toEqual({'ev-timeframe':{value:'72h',label:'Last 3 days'},'ev-level':{value:'error',label:'Error'},'ev-category':{value:'execution',label:'Downloads'}});
+ const before=requests.length;
+ await page.locator('#ev-reset').click();
+ // Immediately, with no further interaction: labels, values, search and the request agree.
+ expect(await shown()).toEqual({'ev-timeframe':{value:'all',label:'Available history'},'ev-level':{value:'',label:'All'},'ev-category':{value:'',label:'All'}});
+ await expect(page.locator('#ev-search')).toHaveValue('');
+ await expect.poll(()=>requests.length).toBe(before+1);
+ expect(requests.at(-1)).toEqual({limit:'100',timeframe:'all'});
+ await expect(page.locator('#ev-reset')).toBeHidden();
+});

@@ -353,6 +353,34 @@ async def test_switching_back_while_paused_withdraws_the_desired_source(tmp_path
 
 
 @pytest.mark.asyncio
+async def test_each_paused_source_selection_is_its_own_journal_occurrence(tmp_path, monkeypatch):
+    """B, back to A, B again while paused: three committed selections --
+    pending, withdrawn, pending to the SAME candidate -- three journal
+    occurrences, each identified by the activation record its commit wrote."""
+    ctx = await build(tmp_path, monkeypatch, continuation=SPARSE_NATIVE)
+    transfer, _first = await running_sparse(ctx)
+    artifact, source_b = await attach(ctx, transfer, "src-b")
+    source_a = next(item for item in artifact.candidates if item.provider_id == "src-a")
+    await ctx.engine.pause(transfer.id)
+    for wanted in (source_b, source_a, source_b):
+        await manual_candidate_failover(ctx.engine, transfer.id, artifact.id, str(wanted.id))
+    assert [item["transition"] for item in await audit(ctx, transfer.id, "source_transition")] == [
+        "pending", "withdrawn", "pending"]
+    async with database.get_db() as db:
+        selections = await db.fetchall(
+            "SELECT * FROM event_journal WHERE transfer_id=? AND event_type LIKE 'execution.source_switch%' ORDER BY id",
+            (transfer.id,))
+        records = await db.fetchall(
+            "SELECT id FROM application_events WHERE transfer_id=? AND kind='candidate_activation' ORDER BY id",
+            (transfer.id,))
+    assert [row["event_type"] for row in selections] == [
+        "execution.source_switch_pending", "execution.source_switch_withdrawn", "execution.source_switch_pending"]
+    assert [row["integration_id"] for row in selections] == ["src-b", "src-a", "src-b"]
+    assert [row["occurrence_key"] for row in selections] == [f"activation:{row['id']}" for row in records]
+    assert len({row["occurrence_key"] for row in selections}) == 3
+
+
+@pytest.mark.asyncio
 async def test_a_paused_switch_that_would_discard_at_resume_keeps_the_parked_writer_and_reports_it(
         tmp_path, monkeypatch):
     ctx = await build(tmp_path, monkeypatch, continuation=SPARSE_NATIVE)

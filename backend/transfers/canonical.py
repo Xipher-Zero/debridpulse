@@ -1056,6 +1056,13 @@ class CanonicalOwnership:
                 # A same-transfer member proved the cohort's object: its dead
                 # siblings may now be associated with it.
                 await self._associate_failed_contributions(db, int(record.transfer_id))
+                # This source resolved by joining an existing file as an
+                # alternate: its own transfer records no other occurrence of it.
+                providers = sorted({str(provider) for _attempt, provider, _source in origin_meta if provider})
+                await journal(db, je.consolidation(
+                    "source_merged", transfer_id=int(record.transfer_id),
+                    detail=f"{alternatives[0].name}" + (f"; via {', '.join(providers)}" if providers else ""),
+                    occurrence_key=f"merge:{record.id}:{int(primary.id)}"))
             await db.commit()
         if self.on_attached is not None:
             await self.on_attached(record.transfer_id)

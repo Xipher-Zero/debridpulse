@@ -32,7 +32,7 @@ c.search.addEventListener('input',()=>{syncReset(c);if(timer)clearTimeout(timer)
 c.timeframe.addEventListener('change',()=>changed(c));
 c.severity.addEventListener('change',()=>changed(c));
 c.category.addEventListener('change',()=>changed(c));
-c.reset.addEventListener('click',()=>{if(timer){clearTimeout(timer);timer=null;}c.search.value='';c.timeframe.value='all';c.severity.value='';c.category.value='';changed(c);});
+c.reset.addEventListener('click',()=>{if(timer){clearTimeout(timer);timer=null;}c.search.value='';c.timeframe.value='all';c.severity.value='';c.category.value='';for(const select of [c.timeframe,c.severity,c.category]){try{window.DPDropdowns?.sync(select);}catch(_){}}changed(c);});
 c.older?.addEventListener('click',()=>{if(next===null)return;cursor.stack.push(cursor.before);cursor.before=next;void fetchPage();});
 c.newer?.addEventListener('click',()=>{if(!cursor.stack.length)return;cursor.before=cursor.stack.pop();void fetchPage();});
 c.newest?.addEventListener('click',()=>{restart();void fetchPage();});

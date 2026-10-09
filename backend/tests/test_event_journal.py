@@ -14,7 +14,9 @@ import db.database as database
 from core.config import AppSettings, configuration_changes
 from db import event_journal
 from services import db_maintenance
-from test_v113_provider_exhaustion_failover import PROVIDER_FINAL, RouteLab, lab
+from test_v113_provider_exhaustion_failover import MALFORMED, PROVIDER_FINAL, RouteLab, lab
+from transfers import codec
+from transfers.repository import TransferRepository
 from transfers import journal_events as je
 from transfers.models import ExecutionState, TransferRequest, TransferState
 
@@ -145,3 +147,28 @@ async def test_configuration_events_name_what_changed_never_its_value():
     assert changed == ["activity_log_page_size", "discord_webhook_url"] and toggled == []
     assert not any("secret-token" in name or "other" in name for name in changed)
     assert configuration_changes(previous, previous) == ([], [])
+
+
+async def test_each_failed_source_of_one_transfer_is_named_not_one_generic_failure(tmp_path, monkeypatch):
+    provider = RouteLab("alpha-route")
+    provider.always = MALFORMED  # the request's own, terminal failure through every provider
+    repository, engine = await lab(tmp_path, monkeypatch, provider)
+    transfer = await engine.submit((TransferRequest("parcel", "first", name="a.bin"),
+                                    TransferRequest("parcel", "second", name="b.bin")),
+                                   name="two sources", deduplicate=False)
+    for _ in range(6):
+        await engine.resolve_pending()
+    failures = await _events("transfer_id=? AND event_type='routing.request_failed'", (transfer.id,))
+    assert sorted(row["message"] for row in failures) == [
+        "Source request failed (source 1): Invalid request", "Source request failed (source 2): Invalid request"]
+    assert {row["error_category"] for row in failures} == {"invalid_request"}
+    assert {row["severity"] for row in failures} == {"error"}
+
+    # A link names its public host; anything that is not a safe host name is
+    # left out rather than repaired.
+    def label(payload, ordinal=2, parent=None):
+        return TransferRepository._request_label({"payload": codec.dump({"payload": payload}), "ordinal": ordinal,
+                                                  "parent_id": parent})
+    assert label("https://www.1fichier.com/?abc&token=secret") == "source 3, 1fichier.com"
+    assert label("https://user:pw@[::1]:8443/x") == "source 3"
+    assert label("https://rapidgator.net/file/x", parent="root") == "rapidgator.net"
