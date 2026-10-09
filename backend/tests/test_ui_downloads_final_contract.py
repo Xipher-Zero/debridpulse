@@ -96,16 +96,39 @@ def test_downloads_header_uses_download_art_not_recent_activity_art() -> None:
 
 def test_downloads_desktop_columns_preserve_provider_identity_status_progress_and_actions() -> None:
     # DP 1.0.12 canonical flattening: ui-downloads-desktop.css was folded
-    # into ui-downloads-page.css.
+    # into ui-downloads-page.css. 1.0.13: Actions holds both button slots at
+    # every desktop width. In every band the visible weighted columns'
+    # percentages sum to exactly 100%, so the fixed layout never takes width
+    # from a px column and the table never outgrows its viewport. Where the
+    # full composition cannot fit whole, Size and Date (and, narrowest,
+    # Progress) step aside rather than squeezing the rest; at full width
+    # Status holds every badge and Date its widest one-line value.
+    import re
+
     css = read("ui-downloads-page.css")
-    expected = (
-        "nth-child(2) { width: 25%; }", "nth-child(3) { width: 13%; }",
-        "nth-child(4) { width: 13%; }", "nth-child(5) { width: 20%; }",
-        "nth-child(6) { width: 6%; }", "nth-child(7) { width: 8%; }",
-        "nth-child(8) { width: 190px; }", "gap: 7px;",
-    )
-    for fragment in expected:
-        assert fragment in css
+    assert "nth-child(8) { width: 190px; }" in css and "gap: 7px;" in css
+
+    def block(query):
+        return css.split(query + " {", 1)[1].split("\n}", 1)[0]
+
+    def weights(query):
+        return dict(re.findall(r"nth-child\((\d)\) \{ width: ([\d.]+(?:%|px)); \}", block(query)))
+
+    hidden_below_full = block("@media (min-width: 901px) and (width < 1440px)")
+    assert ":is(:nth-child(6), :nth-child(7)) { display: none; }" in hidden_below_full
+    assert "nth-child(5) { display: none; }" in block("@media (min-width: 901px) and (width <= 1050px)")
+    bands = {
+        "@media (min-width: 901px) and (width <= 1050px)": {"2", "3", "4"},
+        "@media (width > 1050px) and (width < 1180px)": {"2", "3", "4", "5"},
+        "@media (min-width: 1180px) and (width < 1440px)": {"2", "3", "4", "5"},
+        "@media (min-width: 1440px)": {"2", "3", "4", "5", "6", "7"},
+    }
+    for query, columns in bands.items():
+        widths = weights(query)
+        assert set(widths) == columns, query
+        assert sum(float(value[:-1]) for value in widths.values() if value.endswith("%")) == 100, query
+    full = weights("@media (min-width: 1440px)")
+    assert full["4"] == "180px" and full["7"] == "178px"
 
 
 def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> None:

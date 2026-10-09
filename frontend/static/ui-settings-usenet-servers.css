@@ -46,7 +46,7 @@
 .dp-usenet-add {
   min-width: 0;
   box-sizing: border-box;
-  border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
+  border: 1px solid var(--dp-border-nested);
   border-radius: 12px;
   padding: 14px;
   background: var(--dp-surface-2, rgba(255, 255, 255, .03));

@@ -981,7 +981,7 @@
   margin-top: 0;
   margin-inline: calc((var(--dp-tuning-lane) - var(--dp-tuning-card)) / 2);
   box-sizing: border-box;
-  border: 1px solid var(--dp-border, rgba(255, 255, 255, .12));
+  border: 1px solid var(--dp-border-nested);
   border-radius: 10px;
   padding: 10px 10px 9px;
   background: var(--dp-surface-2, rgba(255, 255, 255, .03));

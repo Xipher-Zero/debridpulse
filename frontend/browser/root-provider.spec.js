@@ -13,7 +13,8 @@ async function ready(page) {
 function torrentItem(id, opts = {}) {
   return {
     id, name: `Root fixture ${id}`, display_name: `Root fixture ${id}`, hash: `magnet:${id}`,
-    status: 'downloading', progress: 40, size_bytes: 4096, created_at: '2026-10-05 10:00:00',
+    status: opts.status || 'downloading', progress: opts.status === 'completed' ? 100 : 40, size_bytes: 4096,
+    created_at: '2026-10-05 10:00:00',
     current_source_identity: { kind: 'magnet', host: '' }, request_kinds: ['magnet'], source: 'manual',
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
     origin_provider_id: 'alldebrid', origin_provider_name: 'AllDebrid', provider_provenance_status: 'pending',
@@ -81,7 +82,10 @@ async function routeApis(page, state) {
     status: 200, contentType: 'application/json', body: JSON.stringify(detail(30, state.current)) }));
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({
     status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
-      torrentItem(30, { provider: state.current[0], name: state.current[1] }),
+      // A terminal transfer is projected exactly as the backend projects it:
+      // its provider kept, ``route_switch_available`` false.
+      torrentItem(30, { provider: state.current[0], name: state.current[1],
+        ...(state.terminal ? { status: state.terminal, switchable: false } : {}) }),
       torrentItem(31, { switchable: false }), hosterItem(32)], total: 3 }) }));
 }
 
@@ -216,4 +220,51 @@ test('a list refresh while the picker is open keeps it open on the re-rendered r
   await expect(page.locator('#t-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher')).toHaveAttribute('aria-expanded', 'true');
   await menu.locator('.dp-root-provider-row', { hasText: 'Debrid-Link' }).locator('.dp-root-provider-switch').click();
   await expect.poll(() => state.posts).toEqual([{ provider_id: 'debridlink', expected_provider_id: 'alldebrid' }]);
+});
+
+for (const terminal of ['completed', 'cancelled']) {
+  test(`a transfer that becomes ${terminal} keeps its provider as a static badge on both lists, and an open picker closes`, async ({ page }) => {
+    const state = freshState();
+    await routeApis(page, state);
+    await ready(page);
+    const recentRow = page.locator('#dash-tbody tr[data-torrent-id="30"]');
+    await recentRow.locator('.dp-root-provider-launcher').click();
+    const menu = page.locator('.dp-root-provider-menu');
+    await expect(menu).toBeVisible();
+
+    // The transfer ends while its picker is open: the ordinary refresh
+    // re-renders the row without a launcher, so the picker cannot be used.
+    state.terminal = terminal;
+    await page.evaluate(async () => { await loadRecent(); });
+    await expect(menu).toBeHidden();
+    for (const row of [recentRow, null]) {
+      const target = row || page.locator('#t-tbody tr[data-torrent-id="30"]');
+      if (!row) await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
+      const badge = target.locator('.dp-root-provider-badge');
+      await expect(badge).toHaveText('AllDebrid');
+      await expect(badge).toHaveAttribute('data-provider-id', 'alldebrid');            // identity and colour kept
+      await expect(badge).toHaveAttribute('style', /--dp-provider-identity: var\(--dp-identity-alldebrid\)/);
+      await expect(target.locator('.dp-root-provider-launcher, .dp-root-provider-caret, [data-dp-root-provider-trigger]'))
+        .toHaveCount(0);
+      expect(await badge.evaluate(node => [node.tagName, node.getAttribute('aria-haspopup')])).toEqual(['SPAN', null]);
+      await expect(menu).toBeHidden();
+    }
+    expect(state.posts).toEqual([]);
+  });
+}
+
+test('an actionable transfer beside a finished one still switches', async ({ page }) => {
+  const state = freshState();
+  await routeApis(page, state);
+  await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify({ items: [
+      torrentItem(30, { provider: state.current[0], name: state.current[1] }),
+      torrentItem(33, { status: 'completed', switchable: false })], total: 2 }) }));
+  await ready(page);
+  await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
+  await expect(page.locator('#t-tbody tr[data-torrent-id="33"] .dp-root-provider-launcher')).toHaveCount(0);
+  await expect(page.locator('#t-tbody tr[data-torrent-id="33"] .dp-root-provider-badge')).toHaveText('AllDebrid');
+  await page.locator('#t-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher').click();
+  await page.locator('.dp-root-provider-menu [data-dp-provider-status="prepared"] .dp-root-provider-switch').click();
+  await expect.poll(() => state.posts).toEqual([{ provider_id: 'realdebrid', expected_provider_id: 'alldebrid' }]);
 });

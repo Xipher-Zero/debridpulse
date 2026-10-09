@@ -344,20 +344,21 @@ body.light #view-torrents .empty-icon {
 /* ── Desktop composition refinements (folded from the retired
    ui-downloads-desktop.css, DP 1.0.12 canonical flattening) ──────────── */
 @media (min-width: 901px) {
-  /* Reclaim Source / Label slack for long transfer states while preserving the
-     reviewed Name, Progress and trailing control geometry. */
+  /* The column allocation. The percentages are weights: in every band they
+     sum to exactly 100% of what the px columns leave, so the fixed layout
+     gives each px column its exact width and the table never grows past its
+     viewport. Actions is reserved for both 72px button slots and their gap
+     whether one or both are present. Below the width where every column's
+     content fits whole, Size and Date step aside (the table's existing
+     column-hide idiom, as at 700px) rather than squeezing Name, Provider,
+     Status or Progress until they overlap. Progress's weight keeps its bar at
+     least as wide as before. */
   #view-torrents .t-table {
     width: 100%;
     table-layout: fixed;
   }
 
   #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
-  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 13%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 13%; }
-  #view-torrents .t-table :is(th, td):nth-child(5) { width: 20%; }
-  #view-torrents .t-table :is(th, td):nth-child(6) { width: 6%; }
-  #view-torrents .t-table :is(th, td):nth-child(7) { width: 8%; }
   #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
 
   #view-torrents .t-table td:nth-child(8) .actions {
@@ -378,6 +379,54 @@ body.light #view-torrents .empty-icon {
     min-width: 64px;
     padding-inline: 14px;
   }
+}
+
+/* Below the full composition: Name, Provider, Status, Progress and Actions,
+   with Size and Date set aside. */
+@media (min-width: 901px) and (width < 1440px) {
+  #view-torrents .t-table :is(th, td):is(:nth-child(6), :nth-child(7)) { display: none; }
+}
+
+/* The compact shell also sets the hash line aside (as at 700px). */
+@media (min-width: 901px) and (width < 1180px) {
+  #view-torrents .t-hash { display: none; }
+}
+
+/* Narrowest of all, Progress steps aside too (as at 700px): Name, the whole
+   provider identity, Status and Actions remain. */
+@media (min-width: 901px) and (width <= 1050px) {
+  #view-torrents .t-table :is(th, td):nth-child(5) { display: none; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 22.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 37.3%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 40%; }
+}
+
+@media (width > 1050px) and (width < 1180px) {
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 19.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 27.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 29.3%; }
+  #view-torrents .t-table :is(th, td):nth-child(5) { width: 23.6%; }
+}
+
+/* The full desktop shell: every badge, the hash line and the widest provider
+   block fit whole. */
+@media (min-width: 1180px) and (width < 1440px) {
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 25%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 26%; }
+  #view-torrents .t-table :is(th, td):nth-child(5) { width: 23.6%; }
+}
+
+/* The full composition. Status holds every badge whole and Date the widest
+   date the one formatter writes -- Friendly 12-hour with a year,
+   "Dec 28, 2025 10:54 PM" -- on one line. */
+@media (min-width: 1440px) {
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 23.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 25%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 180px; }
+  #view-torrents .t-table :is(th, td):nth-child(5) { width: 38.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(6) { width: 12.9%; }
+  #view-torrents .t-table :is(th, td):nth-child(7) { width: 178px; }
 }
 
 /* ── Pause shim, date menu, and provider/candidate row material (folded

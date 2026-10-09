@@ -311,6 +311,62 @@ async def test_a_root_with_one_legitimate_provider_offers_no_switch(tmp_path, mo
     assert (await surfaces(repository, engine, transfer.id))[2] is False
 
 
+# -- a terminal transfer keeps its provider as history and offers no switch ------------------------------------
+
+@pytest.mark.parametrize("ending", ["finished", "cancelled"])
+async def test_a_terminal_root_keeps_its_provider_and_offers_no_switch(tmp_path, monkeypatch, ending):
+    repository, engine, providers, executor, transfer = await lab(tmp_path, monkeypatch, "parcel-a", "parcel-b")
+    offer(providers["parcel-b"])
+    assert (await surfaces(repository, engine, transfer.id))[2] is True        # live: a real alternative
+    if ending == "finished":
+        for artifact in await repository.artifacts(transfer.id):
+            executor.finish(artifact.execution)
+        await settle(engine)
+    else:
+        await engine.cancel(transfer.id)
+    assert (await repository.get(transfer.id)).state == ("completed" if ending == "finished" else "cancelled")
+    root = await root_of(repository, transfer.id)
+    history = await route_attempts(root.id)
+
+    # Downloads and Recent Activity name the provider it ran on, with no launcher.
+    assert await surfaces(repository, engine, transfer.id) == ("parcel-a", "parcel-a", False)
+    assert await surfaces(repository, engine, transfer.id, recent=True) == ("parcel-a", "parcel-a", False)
+    status = await route_providers(engine, transfer.id)
+    assert status["switchable"] is False and status["current_provider_id"] == "parcel-a"
+
+    # A stale client or a direct request is refused by the switch's own guard,
+    # and nothing changes.
+    with pytest.raises(TransferError) as refused:
+        await switch_root_provider(engine, transfer.id, "parcel-b", expected_provider_id="parcel-a")
+    assert refused.value.error.category == Category.RESOURCE_STATE_CONFLICT
+    assert await route_attempts(root.id) == history
+    assert (await repository.get(transfer.id)).state == ("completed" if ending == "finished" else "cancelled")
+
+
+async def test_the_switch_offer_and_the_switch_guard_agree_on_every_lifecycle_state(tmp_path, monkeypatch):
+    """The offer (list ``route_switch_available``, picker ``switchable``) and
+    the switch's own root-state guard are separate boundaries; on every
+    lifecycle state a transfer can hold, an offer is made exactly when the
+    guard would not refuse the root as ``gone``."""
+    from transfers.manual_route_switch import switch_available
+    from transfers.models import TransferState
+
+    repository, engine, providers, _executor, transfer = await lab(tmp_path, monkeypatch, "parcel-a", "parcel-b")
+    offer(providers["parcel-b"])
+    root = await root_of(repository, transfer.id)
+    latest = await repository.latest_root_route(root.id)
+    for state in TransferState:
+        async with get_db() as db:
+            await db.execute("UPDATE torrents SET status=? WHERE id=?", (state.value, transfer.id))
+            await db.commit()
+        facts = await repository.root_route_facts(transfer.id)
+        offered = switch_available(engine.registry, facts)
+        assert (await route_providers(engine, transfer.id))["switchable"] is offered, state
+        refusal = await repository.root_route_replacement_refusal(
+            root.id, expected_attempt_id=str(latest["id"]), expected_provider_id="parcel-a")
+        assert offered is (refusal != "gone"), (state, refusal)
+
+
 # -- 29.17: an explicit selection is carried and proven (TASK3c/D2), never broadened -----------------------------
 
 async def test_an_explicit_selection_crosses_a_switch_through_the_existing_proof(tmp_path, monkeypatch):

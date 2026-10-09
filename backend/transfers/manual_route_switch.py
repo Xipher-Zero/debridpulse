@@ -139,10 +139,21 @@ def torrent_root(facts: dict | None) -> bool:
     return bool(facts) and facts["kind"] in BITTORRENT_REQUEST_KINDS
 
 
+def root_actionable(facts: dict) -> bool:
+    """Whether the root's transfer still has work a route could do: not in a
+    terminal lifecycle state (the route facts' ``terminal``, from
+    ``policy.TERMINAL_TRANSFER_STATES``). A finished, cancelled or deleted
+    transfer keeps its provider as history, but no provider can be switched
+    to -- the switch itself refuses such a root
+    (``root_route_replacement_refusal``: ``gone``), so nothing offers it."""
+    return not facts["terminal"]
+
+
 def switch_available(registry, facts: dict | None) -> bool:
-    """Whether at least one provider other than the current one is
-    legitimately selectable for this root now (``provider_choices``)."""
-    return torrent_root(facts) and bool(facts["current"]) and any(
+    """Whether the root is actionable (``root_actionable``) and at least one
+    provider other than the current one is legitimately selectable for it now
+    (``provider_choices``)."""
+    return torrent_root(facts) and bool(facts["current"]) and root_actionable(facts) and any(
         entry["selectable"] for entry in provider_choices(registry, facts))
 
 
@@ -185,7 +196,9 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
     and the switch's own preflight both read this one answer (the bounded
     list's launcher reads ``switch_available``, which no backup narrows: a
     root whose only alternative is still preparing opens a picker that says
-    so). ``None`` for a transfer that is not one torrent root."""
+    so). A root that is not actionable (``root_actionable``) is never
+    ``switchable``; its providers' statuses stay as the history they are.
+    ``None`` for a transfer that is not one torrent root."""
     facts = await engine.repository.root_route_facts(int(transfer_id))
     if not torrent_root(facts):
         return None
@@ -197,7 +210,7 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
         if entry["status"] == AVAILABLE and standby:
             entry["status"], entry["selectable"] = standby_choice(standby)
     return {"transfer_id": int(transfer_id), "current_provider_id": facts["current"], "providers": providers,
-            "switchable": any(entry["selectable"] for entry in providers)}
+            "switchable": root_actionable(facts) and any(entry["selectable"] for entry in providers)}
 
 
 async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, expected_provider_id: str) -> dict:

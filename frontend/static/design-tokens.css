@@ -25,6 +25,10 @@
   --dp-border-subtle: #19233a;
   --dp-border-default: #26324d;
   --dp-border-strong: #3a496a;
+  /* The edge of a secondary container nested inside a card (a tuning card,
+     a Usenet server card): drawn over its own raised surface, plainly
+     separating it from the card it sits in, below the card's own edge. */
+  --dp-border-nested: rgba(255, 255, 255, .12);
   --dp-divider: rgba(128, 148, 190, .15);
 
   /* Brand / interaction */
@@ -168,6 +172,7 @@ body.light,
   --dp-border-subtle: #edf1f8;
   --dp-border-default: #dce4f1;
   --dp-border-strong: #c4cee0;
+  --dp-border-nested: var(--dp-border-strong);
   --dp-divider: rgba(77, 96, 137, .13);
 
   --dp-accent-purple: #8428ed;

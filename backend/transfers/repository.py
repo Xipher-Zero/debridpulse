@@ -68,7 +68,7 @@ from transfers.models import (
     CleanupAuthority, ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership,
     ProviderResource, ResolutionAttempt, ResourceState, TransferProgress, new_identity,
 )
-from transfers.policy import failure_signature, meaningful_progress_threshold
+from transfers.policy import TERMINAL_TRANSFER_STATES, failure_signature, meaningful_progress_threshold
 
 
 class RecoveryResetAuthority(StrEnum):
@@ -2591,9 +2591,11 @@ class TransferRepository(_QualifiedTransferRepository):
         from -- the root (``root_id``, its submitted ``kind``, its
         ``resolvable``), its committed route provider (``current``, the one
         rule of ``_bound_route_providers``), the providers that ``declined``
-        it or were ``exhausted`` for it, and whether collection route
-        authority closed ``generic`` competition. A bounded number of queries
-        for any number of transfers; other transfers are absent."""
+        it or were ``exhausted`` for it, whether collection route
+        authority closed ``generic`` competition, and whether the transfer's
+        lifecycle is ``terminal`` (``policy.TERMINAL_TRANSFER_STATES``: no
+        work remains for any route to do). A bounded number of queries for
+        any number of transfers; other transfers are absent."""
         ids = list(dict.fromkeys(int(item) for item in transfer_ids))
         facts: dict[int, dict] = {}
         for start in range(0, len(ids), 500):
@@ -2616,11 +2618,12 @@ class TransferRepository(_QualifiedTransferRepository):
                     WHERE request_id IN ({root_marks}) AND state IN ('declined','exhausted')""", tuple(root_ids)):
                 competition.setdefault(str(row["request_id"]), {}).setdefault(row["state"], set()).add(
                     str(row["provider_id"]))
-            authority = {int(row["id"]): bool(row.get("collection_route_authority"))
+            torrents = {int(row["id"]): row for row in await db.fetchall(
+                f"""SELECT id,status,collection_route_authority,collection_route_provider_id FROM torrents
+                WHERE id IN ({marks})""", tuple(chunk))}
+            authority = {transfer_id: bool(row.get("collection_route_authority"))
                          or bool(str(row.get("collection_route_provider_id") or "").strip())
-                         for row in await db.fetchall(
-                             f"""SELECT id,collection_route_authority,collection_route_provider_id FROM torrents
-                             WHERE id IN ({marks})""", tuple(chunk))}
+                         for transfer_id, row in torrents.items()}
             for transfer_id, row in single.items():
                 request = codec.request(codec.load(row["payload"]))
                 interpretation = codec.request(codec.load(row["interpretation"])) if row.get("interpretation") else None
@@ -2630,6 +2633,7 @@ class TransferRepository(_QualifiedTransferRepository):
                     "resolvable": interpretation or request, "current": current.get(str(row["id"])),
                     "declined": frozenset(own.get("declined", ())), "exhausted": frozenset(own.get("exhausted", ())),
                     "generic_closed": authority.get(transfer_id, False),
+                    "terminal": transfer_id in torrents and torrents[transfer_id]["status"] in TERMINAL_TRANSFER_STATES,
                 }
         return facts
 
