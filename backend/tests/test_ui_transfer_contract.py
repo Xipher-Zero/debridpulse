@@ -138,7 +138,7 @@ def test_recent_activity_reclaims_only_added_column_slack_for_actions() -> None:
     assert ".t-table th:nth-child(5)" in canonical_calibration
     assert ".t-table td:nth-child(5)" in canonical_calibration
     assert (
-        "width: calc(17cqw - var(--dp-dashboard-action-track) - 2.89px) !important"
+        "width: calc(21cqw - var(--dp-dashboard-action-track) - 3.57px) !important"
         in canonical_calibration
     )
     assert ".t-table th:nth-child(6)" in canonical_calibration

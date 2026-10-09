@@ -8,9 +8,6 @@ STATIC = ROOT / 'frontend' / 'static'
 FAMILY_COLOURS = {'downloads': '#2563EB', 'extraction': '#FF9D00', 'authentication': '#1DDB69',
                   'notifications': '#04D7FE', 'maintenance': '#6366F1'}
 EXPECTED = {
-    'Download Behavior & Limits': ('downloads', 'gauge.svg'),
-    'Disk Space & Recovery': ('downloads', 'shield-alert.svg'),
-    'Download Engine Activity': ('downloads', 'activity.svg'),
     'Automatic Extraction': ('extraction', 'archive-restore.svg'),
     'Authentication Status': ('authentication', 'shield-check.svg'),
     'Username & Password': ('authentication', 'user-lock.svg'),
@@ -33,6 +30,22 @@ def test_settings_inner_card_icon_map_covers_reviewed_headers_and_assets():
         assert '<image' not in text.lower()
         assert 'data:image' not in text.lower()
         assert 'base64' not in text.lower()
+
+
+# The four Downloads subsection headers wear their glyph inside the Downloads
+# family chip (familyIcon), the one Transfer Method Settings established.
+DOWNLOADS_CHIPS = {'Download Behavior & Limits': 'gauge', 'Transfer Method Settings': 'arrow-left-right',
+                   'Disk Space & Recovery': 'shield-alert', 'Download Engine Activity': 'activity'}
+
+
+def test_downloads_subsection_headers_share_the_family_chip():
+    source = (STATIC / 'ui-settings-page.js').read_text()
+    for title, glyph in DOWNLOADS_CHIPS.items():
+        assert f"'{title}': ['downloads'" not in source, f'{title} still renders the naked inner-card icon'
+        assert f"familyIcon('downloads', '{glyph}')" in source
+        text = (STATIC / 'icons' / 'lucide' / f'{glyph}.svg').read_text()
+        assert f'stroke="{FAMILY_COLOURS["downloads"]}"' in text
+    assert "data-section=\"downloads\"" not in source
 
 
 def test_settings_inner_card_icons_use_section_tab_color_families_and_shared_footprint():

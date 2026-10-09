@@ -268,7 +268,7 @@
               <th>Status</th>
               <th>Progress</th>
               <th class="sz">Size</th>
-              <th class="sz">Added</th>
+              <th class="sz">Date Added</th>
               <th class="dp-dashboard-action-column">Action</th>
             </tr>
           </thead>
@@ -461,13 +461,15 @@
      direct application dependencies, no longer dynamically injected by
      Provider Status. ui-file-selection.js must precede
      ui-dashboard-transfer-presentation.js and ui-downloads.js -- both call
-     window.DPFileSelection.chipMarkup() while building row markup. -->
+     window.DPFileSelection.chipMarkup() while building row markup -- and
+     ui-downloads.js precedes ui-dashboard-transfer-presentation.js, whose
+     Recent rows draw its date cell (window.downloadsDateMarkup). -->
 <script src="/ui-toast-contract.js?v=2" defer></script>
 <script src="/ui-processing-presentation.js?v=4" defer></script>
 <script src="/ui-transfer-source-presentation.js?v=1" defer></script>
 <script src="/ui-file-selection.js?v=1" defer></script>
-<script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
 <script src="/ui-downloads.js?v=1" defer></script>
+<script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
 <script src="/ui-activity-log-runtime.js?v=2" defer></script>
 <script src="/ui-settings-archive-passwords.js?v=2" defer></script>
 <script id="dp-provider-status-script" src="/ui-provider-status.js?v=5" defer></script>

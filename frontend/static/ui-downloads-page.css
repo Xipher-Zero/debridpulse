@@ -393,14 +393,14 @@ body.light #view-torrents .empty-icon {
 .dp-pager-placeholder{display:block}
 .dp-pager-current,.dp-pager-btn{display:inline-flex!important;align-items:center;justify-content:center;padding:0!important}
 .dp-pager-current{pointer-events:none}
-#view-torrents th:has(.dp-date-menu-trigger){position:relative;white-space:nowrap}
+:is(#view-torrents, #view-dashboard) th:has(.dp-date-menu-trigger){position:relative;white-space:nowrap}
 .dp-date-menu-trigger{appearance:none;width:22px;height:22px;margin-left:3px;padding:0;display:inline-grid;place-items:center;border:1px solid transparent;border-radius:5px;color:var(--text3);background:transparent;cursor:pointer}
 .dp-date-menu-trigger:hover,.dp-date-menu-trigger:focus-visible{color:var(--text);border-color:var(--border);background:var(--surface2)}
 .dp-date-menu-trigger svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2}
 .dp-date-menu{position:absolute;z-index:30;top:calc(100% + 4px);right:0;width:184px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.24)}
 .dp-date-menu[hidden]{display:none}
 .dp-date-menu-title{padding:5px 7px 3px;color:var(--text3);font-size:9px;font-weight:700;text-transform:uppercase}
-#view-torrents .dp-date-menu button{position:relative;display:block;width:100%;padding:6px 8px 6px 28px;text-align:left;border:0;border-radius:5px;color:var(--text2);background:transparent;cursor:pointer}
+:is(#view-torrents, #view-dashboard) .dp-date-menu button{position:relative;display:block;width:100%;padding:6px 8px 6px 28px;text-align:left;border:0;border-radius:5px;color:var(--text2);background:transparent;cursor:pointer}
 .dp-date-menu button[aria-checked="true"]::before{content:'✓';position:absolute;left:9px}
 .dp-date-menu button:hover,.dp-date-menu button:focus-visible,.dp-date-menu button[aria-checked="true"]{color:var(--text);background:var(--surface2)}
 .dp-downloads-date-value:focus-visible{outline:2px solid var(--accent);outline-offset:2px}

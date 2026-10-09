@@ -241,7 +241,7 @@ def test_the_relocated_test_button_lives_in_the_alldebrid_header_rail():
 
 # --- G. protocol iconography ---------------------------------------------------
 
-PROTOCOL_COLOURS = {"globe": "#3B82F6", "arrow-up-down": "#2DD4BF", "newspaper": "#FFA34E",
+PROTOCOL_COLOURS = {"globe": "#3B82F6", "arrow-up-down": "#2DD4BF", "newspaper": "#C547FF",
                     "network-services": "#D657FF"}
 
 

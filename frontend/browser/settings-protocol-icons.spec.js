@@ -13,7 +13,7 @@ const PROTOCOLS = {
   general_rsync: {glyph: 'folder-sync', colour: 'rgb(124, 58, 237)'},
   general_webdav: {glyph: 'cloud-sync', colour: 'rgb(56, 189, 248)'},
   multimeta: {glyph: 'network', colour: 'rgb(232, 121, 249)'},
-  usenet: {glyph: 'newspaper', colour: 'rgb(255, 163, 78)'},
+  usenet: {glyph: 'newspaper', colour: 'rgb(197, 71, 255)'},
 };
 
 const CHIP = '[data-protocol]';

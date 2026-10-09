@@ -11,14 +11,13 @@ const FAMILY = {
   authentication: ['#1DDB69', 'shield-user'], notifications: ['#04D7FE', 'bell-ring'], maintenance: ['#6366F1', 'database'],
 };
 const CARDS = {
-  'Download Behavior & Limits': ['downloads', 'gauge'], 'Disk Space & Recovery': ['downloads', 'shield-alert'],
-  'Download Engine Activity': ['downloads', 'activity'], 'Automatic Extraction': ['extraction', 'archive-restore'],
+  'Automatic Extraction': ['extraction', 'archive-restore'],
   'Authentication Status': ['authentication', 'shield-check'], 'Username & Password': ['authentication', 'user-lock'],
   'OpenID Connect': ['authentication', 'id-card'], 'API Access': ['authentication', 'key-round'],
   'Discord Notifications': ['notifications', 'message-square'], 'Statistics Reporting': ['notifications', 'chart-line'],
   'Backups & Retention': ['maintenance', 'archive'], 'Database Reset Controls': ['maintenance', 'database-x'],
 };
-const PROVIDERS = {alldebrid: '#DB9C15', debridlink: '#418DD5', premiumize: '#A43C8E', realdebrid: '#7EAC56',
+const PROVIDERS = {alldebrid: '#FFA34E', debridlink: '#418DD5', premiumize: '#A43C8E', realdebrid: '#7EAC56',
                    torbox: '#0FBD88'};
 
 async function isolateExternalFonts(page) {
@@ -65,7 +64,7 @@ for (const theme of ['dark', 'light']) {
     await expect(transfer.locator('img')).toHaveAttribute('src', '/icons/lucide/arrow-left-right.svg');
     await expect(page.locator('.dp-executor-tuning-group > .card-header .card-title')).toContainText('Transfer Method Settings');
     const usenet = page.locator('[data-panel="downloads"] .dp-settings-protocol-chip[data-protocol="usenet"]').first();
-    expect(await prop(usenet, '--dp-protocol-color')).toBe('#FFA34E');
+    expect(await prop(usenet, '--dp-protocol-color')).toBe('#C547FF');
     for (const [title, [section, glyph]] of Object.entries(CARDS)) {
       const tab = section === 'downloads' ? 'downloads' : section;
       await page.locator(`#view-settings [data-tab="${tab}"]`).click();
@@ -74,6 +73,57 @@ for (const theme of ['dark', 'light']) {
       await expect(icon.locator('img')).toHaveAttribute('src', `/icons/lucide/${glyph}.svg`);
       expect((await prop(icon, '--dp-settings-inner-icon-color')).toUpperCase()).toBe(FAMILY[section][0]);
     }
+  });
+}
+
+// The four Downloads subsection headers: each glyph inside the one Downloads
+// family chip Transfer Method Settings established -- same geometry, surface,
+// border and glow -- in both themes, wide and narrow.
+const DOWNLOADS_HEADERS = [
+  ['.dp-settings-download-engine-card', 'Download Behavior & Limits', 'gauge'],
+  ['.dp-executor-tuning-group', 'Transfer Method Settings', 'arrow-left-right'],
+  ['.dp-settings-download-recovery-card', 'Disk Space & Recovery', 'shield-alert'],
+  ['.dp-executor-work-card', 'Download Engine Activity', 'activity'],
+];
+for (const [theme, width] of [['dark', 1440], ['light', 1440], ['dark', 390], ['light', 390]]) {
+  test(`Downloads subsection headers share the family chip (${theme}, ${width}px)`, async ({page}) => {
+    await openSettings(page, 'downloads');
+    await page.setViewportSize({width, height: 1000});
+    if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
+    const facts = await page.evaluate(headers => headers.map(([card, title]) => {
+      const heading = document.querySelector(`.dp-settings-panel[data-panel="downloads"] ${card} > .card-header .card-title`);
+      const chip = heading.querySelector(':scope > .dp-settings-protocol-chip');
+      const style = getComputedStyle(chip);
+      const box = chip.getBoundingClientRect();
+      const text = heading.querySelector('.dp-settings-card-title-text').getBoundingClientRect();
+      const image = chip.querySelector('img');
+      const glyph = image.getBoundingClientRect();
+      return {
+        title: heading.textContent.trim(), expected: title, section: chip.dataset.section, src: image.getAttribute('src'),
+        naked: heading.querySelectorAll('.dp-settings-inner-card-icon').length,
+        colour: style.getPropertyValue('--dp-protocol-color').trim(),
+        geometry: [box.width, box.height, style.borderTopWidth, style.borderTopStyle, style.borderTopColor,
+          style.borderTopLeftRadius, style.backgroundImage, style.boxShadow, glyph.width, glyph.height,
+          getComputedStyle(image).filter].join(' | '),
+        glyphInside: glyph.left >= box.left && glyph.right <= box.right && glyph.top >= box.top && glyph.bottom <= box.bottom,
+        gap: Math.round(text.left - box.right), centre: Math.abs((box.top + box.height / 2) - (text.top + text.height / 2)),
+        overflow: heading.scrollWidth > heading.clientWidth + 1 || box.right > document.documentElement.clientWidth,
+      };
+    }), DOWNLOADS_HEADERS);
+    DOWNLOADS_HEADERS.forEach(([, title, glyph], index) => {
+      const fact = facts[index];
+      expect(fact.title).toBe(title);
+      expect(fact.section, title).toBe('downloads');
+      expect(fact.colour, title).toBe('#2563EB');
+      expect(fact.src, title).toBe(`/icons/lucide/${glyph}.svg`);
+      expect(fact.naked, `${title}: no free-floating glyph`).toBe(0);
+      expect(fact.glyphInside, `${title}: glyph inside the chip`).toBe(true);
+      expect(fact.geometry, `${title}: the Transfer Method Settings chip`).toBe(facts[1].geometry);
+      expect(fact.gap, title).toBe(facts[1].gap);
+      expect(fact.centre, `${title}: chip and title share a centre line`).toBeLessThanOrEqual(1);
+      expect(fact.overflow, `${title}: no overflow at ${width}px`).toBe(false);
+    });
+    expect(facts[0].geometry.startsWith('38 | 38 | 1px | solid')).toBe(true);
   });
 }
 
@@ -94,10 +144,10 @@ const NETWORK = [
   ['general_http', 'HTTP(S)', '#3B82F6', 'globe'], ['general_ftp', '(S)FTP', '#2DD4BF', 'arrow-up-down'],
   ['general_scp', 'SCP', '#A78BFA', 'file-down'], ['general_rsync', 'rsync', '#7C3AED', 'folder-sync'],
   ['general_webdav', 'WebDAV', '#38BDF8', 'cloud-sync'], ['multimeta', 'Multimeta', '#E879F9', 'network'],
-  ['usenet', 'Usenet', '#FFA34E', 'newspaper'], ['media', 'Media Download', '#FF56AE', 'monitor-down'],
+  ['usenet', 'Usenet', '#C547FF', 'newspaper'], ['media', 'Media Download', '#FF56AE', 'monitor-down'],
 ];
 const PREMIUM = [
-  ['alldebrid', 'AllDebrid', '#DB9C15', {kind: 'host', host: 'rapidgator.net'}],
+  ['alldebrid', 'AllDebrid', '#FFA34E', {kind: 'host', host: 'rapidgator.net'}],
   ['debridlink', 'Debrid-Link', '#418DD5', {kind: 'link'}],
   ['premiumize', 'Premiumize', '#A43C8E', {kind: 'torrent_file'}],
   ['realdebrid', 'Real-Debrid', '#7EAC56', {kind: 'host', host: 'mega.nz'}],
@@ -171,7 +221,15 @@ async function rowFacts(page, scope) {
           && glyphBox.left - chipBox.left < chipBox.width / 3 : null,
         slot: slot ? (slot.querySelector('img')?.getAttribute('src') || [...(slot.querySelector('svg')?.classList || [])].join(' ')) : '',
         magnet: (magnet => magnet ? {colour: srgb(getComputedStyle(magnet).color),
-          contrast: contrast(getComputedStyle(magnet).color, magnet, getComputedStyle(slot).backgroundColor)} : null)(
+          contrast: contrast(getComputedStyle(magnet).color, magnet, getComputedStyle(slot).backgroundColor),
+          // Where the magnet's two pole ticks are DRAWN, from the glyph's centre
+          // (screen degrees, y down: 270 = poles up).
+          facing: (() => {
+            const centre = node => { const box = node.getBoundingClientRect(); return [box.left + box.width / 2, box.top + box.height / 2]; };
+            const [poleA, , poleB] = magnet.querySelectorAll('path');
+            const [gx, gy] = centre(magnet), [ax, ay] = centre(poleA), [bx, by] = centre(poleB);
+            return Math.round((Math.atan2((ay + by) / 2 - gy, (ax + bx) / 2 - gx) * 180 / Math.PI + 360) % 360);
+          })()} : null)(
           slot?.querySelector('.dp-source-magnet')),
         slotLeftOfChip: slot ? slot.getBoundingClientRect().right <= chipBox.left + 1 : null,
         rowHeight: Math.round(tr.getBoundingClientRect().height),
@@ -236,6 +294,8 @@ for (const [label, open, scope] of [
       for (const id of ['9834', '9840']) {
         const magnet = facts[id].magnet;
         if (theme === 'dark') expect(magnet.colour, id).toBe(rgb('#14FF8C'));
+        // Upright: poles up. The retired 315deg turn drew them down (90).
+        expect(magnet.facing, `${id}: magnet poles as drawn`).toBe(270);
         expect(magnet.contrast, `${id}: magnet glyph contrast ${magnet.contrast}`).toBeGreaterThanOrEqual(3);
       }
       expect(facts['9840'].images).toBe(0);

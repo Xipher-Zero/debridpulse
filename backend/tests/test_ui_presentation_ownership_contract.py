@@ -40,8 +40,8 @@ def test_bounded_presentation_boot_is_ordered_and_loader_free() -> None:
         "/ui-processing-presentation.js?v=4",
         "/ui-transfer-source-presentation.js?v=1",
         "/ui-file-selection.js?v=1",
-        "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-downloads.js?v=1",
+        "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=2",
         "/ui-settings-archive-passwords.js?v=2",
     )
@@ -274,15 +274,16 @@ def test_file_selection_boot_entry_follows_the_bounded_owner_list() -> None:
     # DP 1.0.12 canonical flattening: ui-file-selection.js must load before
     # ui-dashboard-transfer-presentation.js and ui-downloads.js, since both
     # call window.DPFileSelection.chipMarkup() while building each row's
-    # markup. All are now direct, explicit <script defer> tags in index.html,
+    # markup; ui-downloads.js precedes Dashboard Recent, which draws its date
+    # cell (window.downloadsDateMarkup). All are now direct, explicit <script defer> tags in index.html,
     # in dependency order -- not a dynamically-injected boot chain.
     index = read("index.html")
     ordered = (
         "/ui-toast-contract.js?v=2",
         "/ui-processing-presentation.js?v=4",
         "/ui-file-selection.js?v=1",
-        "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-downloads.js?v=1",
+        "/ui-dashboard-transfer-presentation.js?v=4",
         "/ui-activity-log-runtime.js?v=2",
         "/ui-settings-archive-passwords.js?v=2",
     )

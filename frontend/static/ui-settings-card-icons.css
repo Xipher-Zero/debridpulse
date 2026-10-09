@@ -18,9 +18,6 @@
   overflow: visible;
 }
 
-#view-settings .dp-settings-inner-card-icon[data-section='downloads'] {
-  --dp-settings-inner-icon-color: #2563EB;
-}
 #view-settings .dp-settings-inner-card-icon[data-section='extraction'] {
   --dp-settings-inner-icon-color: #FF9D00;
 }
@@ -42,7 +39,7 @@
  * restrained inset/drop dimensional treatment, and the glyph centred inside
  * it. A free-floating glowing SVG is not that, which is what this replaces.
  *
- * AllDebrid hand-writes its gold ramp because it has exactly one colour. A
+ * AllDebrid's block derives its ramp from its one identity colour. A
  * protocol chip has several and must not become several copies of the same
  * declarations, so the whole treatment is derived from ONE per-instance
  * datum -- --dp-protocol-color -- and every protocol contributes nothing but
@@ -90,7 +87,8 @@ body.light #view-settings .dp-settings-protocol-chip {
 /* The one per-instance datum. Each protocol states its canonical colour --
    its identity token (design-tokens.css) -- and nothing else; the chip above
    derives border, surface and glow from it. */
-/* A family identity on a group card that has no protocol (familyIcon). */
+/* A family identity on a card that has no protocol (familyIcon): the
+   Downloads subsection headers. */
 #view-settings .dp-settings-protocol-chip[data-section='downloads'] {
   --dp-protocol-color: #2563EB;
 }

@@ -74,8 +74,8 @@
 
   function sourceSvg(kind) {
     // Torrent / Magnet: the Lucide Magnet glyph, its identity colour and its
-    // clockwise 315° turn on .dp-source-magnet
-    // (ui-dashboard-transfer-presentation.css).
+    // 135° turn on .dp-source-magnet (ui-dashboard-transfer-presentation.css),
+    // which draws the magnet upright: poles up.
     const magnet = '<path d="m12 15 4 4"/><path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/><path d="m5 8 4 4"/>';
     const paths = {
       link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',

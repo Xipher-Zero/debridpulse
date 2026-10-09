@@ -34,10 +34,10 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     assert "aria2 Delivery" not in downloads
     # Operator-facing tuning labels name capabilities, never daemons.
     assert "card('Download Engine'" not in downloads
-    # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
-    assert "wrapTitle: true" in downloads
+    # The card's glyph sits in the Downloads family chip; no separate legacy icon is emitted.
+    assert "titlePrefix: familyIcon('downloads', 'gauge')" in downloads
     assert "dp-settings-download-engine-icon" not in downloads
-    assert "'Download Behavior & Limits': ['downloads', '/icons/lucide/gauge.svg']" in source(SETTINGS_PAGE_JS)
+    assert "'Download Behavior & Limits':" not in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
     assert "Where DebridPulse saves downloads and how many it runs at once." in downloads

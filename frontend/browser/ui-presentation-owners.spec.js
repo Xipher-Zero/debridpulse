@@ -83,7 +83,64 @@ test('Downloads owner exposes fixed three-slot pager and date options',async({pa
  await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
  const release=await parkDownloadsList(page);
  const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();await release();expect(Math.abs(group.width-116)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
- const trigger=page.locator('.dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.getByRole('menuitemradio',{name})).toBeVisible();
+ const trigger=page.locator('#view-torrents .dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.locator('#view-torrents').getByRole('menuitemradio',{name})).toBeVisible();
+});
+
+/* Dashboard Recent Activity's Date Added heading carries the SAME date menu,
+   formatter and persisted preference as the Downloads Date heading: a choice
+   in either list redraws both, survives a reload, and changes only how the
+   original added timestamp reads -- never which rows show or their order. */
+test('Recent Activity Date Added shares the Downloads date preference, formatter and menu',async({page})=>{
+ await page.setViewportSize({width:1440,height:1000});
+ await page.route('https://fonts.googleapis.com/**',route=>route.fulfill({status:200,contentType:'text/css',body:''}));
+ const row=(id,created_at)=>({id,name:`Dated ${id}`,status:'completed',presentation_status:'completed',progress:100,size_bytes:1,created_at,current_source_identity:{kind:'link'},providers:[],historical_providers:[],delivering_provider_ids:[]});
+ const items=[row(7703,'2026-03-04T05:06:00Z'),row(7701,'2025-12-31T23:59:00Z'),row(7702,'2024-07-08T12:30:00Z')];
+ await page.route(url=>url.pathname==='/api/torrents',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
+ await ready(page);await page.evaluate(()=>localStorage.removeItem('debridpulse.downloads.date-presentation.v1'));await ready(page);
+ const recent=page.locator('#view-dashboard .dash-activity-table-wrap');
+ await expect(recent.locator('#dash-tbody tr[data-torrent-id="7702"]')).toBeVisible();
+ const heading=recent.locator('thead th:has(.dp-date-menu-trigger)');
+ await expect(heading).toHaveCount(1);await expect(heading.locator('span').first()).toHaveText('Date Added');
+ await expect(heading).toHaveCSS('text-transform','uppercase');
+ const cells=scope=>page.locator(`${scope} tr[data-torrent-id]`).evaluateAll(rows=>rows.map(tr=>{const v=tr.querySelector('.dp-downloads-date-value');return {id:tr.dataset.torrentId,text:v?.textContent,exact:v?.getAttribute('title')};}));
+ const before=await cells('#dash-tbody');
+ expect(before.map(c=>c.id)).toEqual(['7703','7701','7702']);
+ // Keyboard: the trigger opens the shared menu with the current choices checked.
+ const trigger=heading.locator('.dp-date-menu-trigger');
+ await expect(trigger).toHaveAttribute('aria-haspopup','menu');
+ await trigger.focus();await page.keyboard.press('Enter');
+ await expect(trigger).toHaveAttribute('aria-expanded','true');
+ const menu=heading.locator('.dp-date-menu[role="menu"]');
+ for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(menu.getByRole('menuitemradio',{name})).toBeVisible();
+ await expect(menu.getByRole('menuitemradio',{name:'Friendly'})).toHaveAttribute('aria-checked','true');
+ await expect(menu.getByRole('menuitemradio',{name:'24-hour'})).toHaveAttribute('aria-checked','true');
+ await page.keyboard.press('Tab');await expect(menu.getByRole('menuitemradio',{name:'Friendly'})).toBeFocused();
+ await page.keyboard.press('Escape');await expect(menu).toBeHidden();await expect(trigger).toBeFocused();
+ // Choosing ISO in Recent redraws Recent AND Downloads, and checks it in both menus.
+ await trigger.click();await menu.getByRole('menuitemradio',{name:'ISO'}).click();await expect(menu).toBeHidden();
+ await expect.poll(async()=>(await cells('#dash-tbody')).every(c=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(c.text))).toBe(true);
+ await expect.poll(async()=>(await cells('#t-tbody')).every(c=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(c.text))).toBe(true);
+ const iso=await cells('#dash-tbody');
+ expect(iso.map(c=>c.id)).toEqual(['7703','7701','7702']);
+ expect(iso.map(c=>c.exact)).toEqual(before.map(c=>c.exact));
+ expect(Object.fromEntries((await cells('#t-tbody')).map(c=>[c.id,c.text]))).toEqual(Object.fromEntries(iso.map(c=>[c.id,c.text])));
+ await expect(page.locator('#view-torrents .dp-date-menu [data-date-format="iso"]')).toHaveAttribute('aria-checked','true');
+ expect(await page.evaluate(()=>JSON.parse(localStorage.getItem('debridpulse.downloads.date-presentation.v1')))).toEqual({format:'iso',hour12:false});
+ // It persists across a reload, in both lists.
+ await ready(page);await expect(page.locator('#dash-tbody tr[data-torrent-id="7702"]')).toBeVisible();
+ expect((await cells('#dash-tbody')).map(c=>c.text)).toEqual(iso.map(c=>c.text));
+ // Choosing 12-hour in Downloads redraws Recent too.
+ await page.evaluate(async()=>{nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]'));await loadTorrents();});
+ const downloadsMenu=page.locator('#view-torrents .dp-date-menu');
+ await page.locator('#view-torrents .dp-date-menu-trigger').click();
+ await expect(downloadsMenu.getByRole('menuitemradio',{name:'ISO'})).toHaveAttribute('aria-checked','true');
+ await downloadsMenu.getByRole('menuitemradio',{name:'12-hour'}).click();
+ await expect.poll(async()=>(await cells('#dash-tbody')).every(c=>/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} (AM|PM)$/.test(c.text))).toBe(true);
+ await expect(page.locator('#view-dashboard .dp-date-menu [data-hour12="true"]')).toHaveAttribute('aria-checked','true');
+ // The Date Added column holds its heading and trigger without spilling into Action.
+ await page.evaluate(()=>nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
+ const fit=await heading.evaluate(th=>{const t=th.getBoundingClientRect(),b=th.querySelector('.dp-date-menu-trigger').getBoundingClientRect(),hit=document.elementFromPoint(b.left+b.width/2,b.top+b.height/2);return {inside:b.right<=t.right,hit:th.contains(hit)};});
+ expect(fit).toEqual({inside:true,hit:true});
 });
 
 test('Downloads pager: a stale in-flight refresh cannot overwrite a newer page click (race regression)',async({page})=>{

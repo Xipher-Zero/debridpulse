@@ -1719,7 +1719,7 @@ body.light #view-dashboard #dash-error-card {
      percentage. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(1),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(1) {
-    width: calc(40cqw - 6.80px) !important;
+    width: calc(36cqw - 6.12px) !important;
   }
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(2),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(2) {
@@ -1733,20 +1733,21 @@ body.light #view-dashboard #dash-error-card {
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(4) {
     width: calc(9cqw - 1.53px) !important;
   }
-  /* Correction 3: Added absorbs whatever the fixed action track (below)
+  /* Correction 3: Date Added absorbs whatever the fixed action track (below)
      does not use, expressed as a calc() complement of the OTHER four
-     columns' percentages (40 + 13 + 21 + 9 = 83%) rather than its own
+     columns' percentages (36 + 13 + 21 + 9 = 79%) rather than its own
      independent percentage. Combined with the Action column's fixed px
      width, every column's declared width now sums to exactly 100% of the
      table's width algebraically, at any viewport width -- not just at one
      coincidental width -- so the action track never gets rescaled by the
      browser's fixed-table-layout column-width reconciliation the way a
      plain "8%" alongside a fixed px column previously could. The trailing
-     "- 2.89px" is 17% of the recovered inset, keeping Added's absolute
-     width identical to what it was against the narrower table. */
+     "- 3.57px" is 21% of the recovered inset. Its 21% (four points taken
+     from Name) is what lets the Date Added heading carry its label and the
+     date-presentation trigger side by side at 1440px. */
   #view-dashboard .dp-dashboard-activity .t-table th:nth-child(5),
   #view-dashboard .dp-dashboard-activity .t-table td:nth-child(5) {
-    width: calc(17cqw - var(--dp-dashboard-action-track) - 2.89px) !important;
+    width: calc(21cqw - var(--dp-dashboard-action-track) - 3.57px) !important;
   }
   /* The Action column keeps the same shared action track as Recover All and
      Add, but now also carries the recovered inset -- entirely as extra

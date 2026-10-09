@@ -679,11 +679,10 @@
 
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
 
-  // Inner-card title icons, keyed by the card's title.
+  /* Inner-card title icons, keyed by the card's title. The Downloads
+   * subsections are not here: each carries its glyph in the Downloads family
+   * chip (familyIcon), the one Transfer Method Settings already wears. */
   const CARD_ICONS = Object.freeze({
-    'Download Behavior & Limits': ['downloads', '/icons/lucide/gauge.svg'],
-    'Disk Space & Recovery': ['downloads', '/icons/lucide/shield-alert.svg'],
-    'Download Engine Activity': ['downloads', '/icons/lucide/activity.svg'],
     'Automatic Extraction': ['extraction', '/icons/lucide/archive-restore.svg'],
     'Authentication Status': ['authentication', '/icons/lucide/shield-check.svg'],
     'Username & Password': ['authentication', '/icons/lucide/user-lock.svg'],
@@ -703,8 +702,7 @@
     if (icon) {
       titleClass = 'card-title dp-settings-card-title--with-icon dp-settings-inner-card-title';
       titleAttrs = ` data-dp-settings-icon-section="${icon[0]}"`;
-      titleMarkup = `<span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="${icon[0]}"><img src="${icon[1]}" alt="" decoding="async"></span>${
-        options.wrapTitle ? `<span class="dp-settings-card-title-text">${html(title)}</span>` : html(title)}`;
+      titleMarkup = `<span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="${icon[0]}"><img src="${icon[1]}" alt="" decoding="async"></span>${html(title)}`;
     } else if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
       titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
@@ -2084,7 +2082,7 @@
     return `
       <section class="card dp-settings-card dp-executor-work-card" data-dp-executor-work-card="1" aria-label="Download Engine Activity">
         <div class="card-header">
-          <span class="card-title dp-settings-card-title--with-icon dp-settings-inner-card-title" data-dp-settings-icon-section="downloads"><span class="dp-settings-inner-card-icon" aria-hidden="true" data-section="downloads"><img src="${CARD_ICONS['Download Engine Activity'][1]}" alt="" decoding="async"></span><span class="dp-settings-card-title-text">Download Engine Activity</span></span>
+          <span class="card-title dp-settings-card-title--with-icon">${familyIcon('downloads', 'activity')}<span class="dp-settings-card-title-text">Download Engine Activity</span></span>
           <div class="dp-settings-card-header-center">
             <span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span>
           </div>
@@ -2383,7 +2381,7 @@
       ${downloadBehaviorAdvanced(policy, s)}
     `, {
       className: 'dp-settings-download-engine-card',
-      wrapTitle: true,
+      titlePrefix: familyIcon('downloads', 'gauge'),
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
     });
 
@@ -2434,7 +2432,7 @@
         type: 'number', min: 0, max: 168,
         hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
       }),
-    ), {className: 'dp-settings-download-recovery-card'});
+    ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert')});
 
     return delivery + tuning + recovery + executorWorkCard();
   }

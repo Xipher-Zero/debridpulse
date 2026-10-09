@@ -90,13 +90,22 @@ function dateMarkup(value) {
   return `<span class="dp-downloads-date-value" tabindex="0" title="${esc(exactDate(value))}">${esc(formatDownloadsDate(value))}</span>`;
 }
 
-function ensureDateMenu() {
-  const table = document.querySelector('#view-torrents .dp-downloads-table-wrap table');
-  const heading = table ? Array.from(table.querySelectorAll('thead th')).find(n => ['Added', 'Date'].includes(n.textContent.trim())) : null;
+/* Every list whose date column presents formatDownloadsDate: Downloads and
+ * Dashboard Recent Activity. Each heading carries the ONE menu below, writing
+ * the ONE preference above, so a choice in either list re-renders both. */
+const DATE_HEADINGS = Object.freeze([
+  ['#view-torrents .dp-downloads-table-wrap table', ['Added', 'Date'], 'Date'],
+  ['#view-dashboard .dash-activity-table-wrap table', ['Date Added'], 'Date Added'],
+]);
+const dateMenuSyncs = [];
+function ensureDateMenus() { DATE_HEADINGS.forEach(heading => ensureDateMenu(...heading)); }
+function ensureDateMenu(tableSelector, headings, text) {
+  const table = document.querySelector(tableSelector);
+  const heading = table ? Array.from(table.querySelectorAll('thead th')).find(n => headings.includes(n.textContent.trim())) : null;
   if (!heading || heading.querySelector('.dp-date-menu-trigger')) return;
   heading.textContent = '';
   const label = document.createElement('span');
-  label.textContent = 'Date';
+  label.textContent = text;
   const trigger = document.createElement('button');
   trigger.type = 'button';
   trigger.className = 'dp-date-menu-trigger';
@@ -116,13 +125,14 @@ function ensureDateMenu() {
   const close = () => { menu.hidden = true; trigger.setAttribute('aria-expanded', 'false'); };
   heading.append(label, trigger, menu);
   sync();
+  dateMenuSyncs.push(sync);
   trigger.addEventListener('click', e => { e.preventDefault(); e.stopPropagation(); menu.hidden = !menu.hidden; trigger.setAttribute('aria-expanded', menu.hidden ? 'false' : 'true'); });
   menu.addEventListener('click', e => {
     const b = e.target.closest('button');
     if (!b) return;
     if (b.dataset.dateFormat) pref.format = b.dataset.dateFormat;
     if (b.dataset.hour12 != null) pref.hour12 = b.dataset.hour12 === 'true';
-    savePref(); sync(); close(); loadTorrents();
+    savePref(); dateMenuSyncs.forEach(each => each()); close(); loadTorrents(); loadRecent();
   });
   menu.addEventListener('keydown', e => { if (e.key === 'Escape') { e.preventDefault(); close(); trigger.focus(); } });
   document.addEventListener('click', e => { if (!heading.contains(e.target)) close(); });
@@ -435,13 +445,13 @@ async function fetchAndRenderTorrents() {
 
 async function loadTorrents() {
   await fetchAndRenderTorrents();
-  ensureDateMenu();
+  ensureDateMenus();
   if (!busy) {
     const size = measuredSize();
     if (applySize(size)) {
       const focus = captureFocus();
       busy = true;
-      try { await fetchAndRenderTorrents(); ensureDateMenu(); }
+      try { await fetchAndRenderTorrents(); ensureDateMenus(); }
       finally { busy = false; restoreFocus(focus); }
     }
   }
@@ -541,7 +551,7 @@ async function setLabel(id) {
 
 // ── Init/wiring ──────────────────────────────────────────────────────────
 function init() {
-  ensureDateMenu();
+  ensureDateMenus();
   observeResize();
   window.addEventListener('resize', scheduleCapacityCheck, {passive: true});
   document.addEventListener('debridpulse:navigation', e => {
@@ -550,6 +560,8 @@ function init() {
 }
 
 window.loadTorrents = loadTorrents;
+// The one date cell markup, also drawn by Dashboard Recent Activity.
+window.downloadsDateMarkup = dateMarkup;
 window.updateDownloadsTrackedCopy = updateDownloadsTrackedCopy;
 window.setFilter = setFilter;
 window.onTorrentSearchInput = onTorrentSearchInput;

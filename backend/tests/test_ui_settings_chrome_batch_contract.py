@@ -256,7 +256,7 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert light_owner.count("drop-shadow") == 2
 
 
-def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger_logo() -> None:
+def test_alldebrid_card_uses_supplied_provider_art_on_brand_identity_chip_and_larger_logo() -> None:
     chrome = read(CHROME)
     runtime = read(RUNTIME)
     raw = read(PROVIDERS / "alldebrid.svg")
@@ -268,7 +268,7 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger
     # The locked AllDebrid colour is the chip's one datum.
     assert ("#view-settings .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }"
             in chrome)
-    assert "--dp-identity-alldebrid: #DB9C15;" in read(STATIC / "design-tokens.css")
+    assert "--dp-identity-alldebrid: #FFA34E;" in read(STATIC / "design-tokens.css")
 
     logo = chrome.split(".dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "width: 34px;" in logo
