@@ -378,6 +378,40 @@ async def test_one_owned_group_per_attempt_cancelled_whole_and_reconciled_after_
 
 
 @pytest.mark.asyncio
+async def test_a_reconfigured_executor_keeps_observing_the_attempt_it_did_not_restart(tmp_path):
+    """The application rebuilds its integrations on every reconfiguration (a
+    live bandwidth change, any settings write) while the worker runs on. The
+    rebuilt executor must keep the attempt's live progress, not report the
+    0/0 of an orphan found after a real restart."""
+    root, runtime = tmp_path / "downloads", tmp_path / "runtime"
+    root.mkdir()
+    executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=FakeSandbox(str(runtime)))
+    request, target = _request(root, "sleep", "attempt-live")
+    handle = executor.prepare(request)
+    assert (await executor.start(request, handle)).state == ExecutionState.RUNNING
+    workspace = executor.workspace(target.resolve())
+    deadline = time.monotonic() + 10
+    while not (workspace / "child.pid").exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    child = int((workspace / "child.pid").read_text())
+    while (await executor.observe(handle)).progress.completed_bytes != 1000 and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+
+    rebuilt = MediaExecutor(str(root), str(runtime), _allowed, sandbox=FakeSandbox(str(runtime)))
+    observed = await rebuilt.observe(handle)
+    assert observed.state == ExecutionState.RUNNING
+    assert (observed.progress.completed_bytes, observed.progress.total_bytes) == (1000, 4000)
+    assert observed.activity.network_active
+    from transfers._engine_base import TransferEngine
+    assert TransferEngine._acquired_bytes(observed) == 1000         # the speed meter's counter continues
+    assert (await rebuilt.cancel(handle)).state == ExecutionState.CANCELLED
+    deadline = time.monotonic() + 10
+    while not _gone(child) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    assert _gone(child)
+
+
+@pytest.mark.asyncio
 async def test_completion_truth_is_the_durable_record_and_the_target_never_a_vanished_process(tmp_path):
     root, runtime = tmp_path / "downloads", tmp_path / "runtime"
     root.mkdir()

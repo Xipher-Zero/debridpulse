@@ -164,11 +164,27 @@ class EgressBudget:
     its share, and the executor sets it here. Pacing is on bytes delivered
     from the destination, so the sum over every connection of the budget never
     exceeds the rate by more than one relayed chunk, whatever the remote does;
-    a connection that is paused or gone simply stops consuming it."""
+    a connection that is paused or gone simply stops consuming it.
+
+    The pacing state is a byte ledger, never a precomputed wake-up time: each
+    chunk reserves its place in order (``_issued``), and it is delivered once
+    the rate has paid for every byte reserved ahead of it (``_paid``, which
+    never runs ahead of what was reserved, so idle time is never saved up into
+    a burst). A live rate change settles the ledger at the old rate and wakes
+    every waiter to re-time what it still owes at the new one; Unlimited pays
+    everything outstanding at once. A reservation cancelled before delivery
+    (its connection gone) is withdrawn from the ledger: every reservation
+    queued behind it moves up by its size, in order, so no connection waits
+    for bytes that will never be delivered."""
 
     def __init__(self):
         self._rate = 0
-        self._next = 0.0
+        self._issued = 0.0
+        self._paid = 0.0
+        self._settled = time.monotonic()
+        self._waiters: set[asyncio.Future] = set()
+        # Undelivered reservations in order, each ``[bytes ahead, size]``.
+        self._pending: list[list[float]] = []
         self._delivered = 0
 
     @property
@@ -180,18 +196,61 @@ class EgressBudget:
         """Bytes delivered through this budget so far (paced or not)."""
         return self._delivered
 
+    def _settle(self, now: float) -> None:
+        if self._rate > 0:
+            self._paid = min(self._issued, self._paid + (now - self._settled) * self._rate)
+        self._settled = now
+
     def set_rate(self, bytes_per_second: int) -> int:
+        self._settle(time.monotonic())
         self._rate = max(0, int(bytes_per_second or 0))
+        if not self._rate:
+            self._paid = self._issued                  # Unlimited: no obsolete debt survives
+        self._wake()
         return self._rate
 
+    def _wake(self) -> None:
+        """Every waiter re-times what it still owes."""
+        for waiter in self._waiters:
+            if not waiter.done():
+                waiter.set_result(None)
+        self._waiters.clear()
+
+    def _withdraw(self, reservation: list[float]) -> None:
+        """Remove an undelivered reservation: the ones behind it move up."""
+        index = self._pending.index(reservation)
+        for later in self._pending[index + 1:]:
+            later[0] -= reservation[1]
+        del self._pending[index]
+        self._issued -= reservation[1]
+        # Time the rate spent on it is not credit for the ones behind it.
+        self._paid = min(self._paid, reservation[0])
+        self._wake()
+
     async def consume(self, size: int) -> None:
-        rate = self._rate
-        if rate > 0 and size > 0:
-            now = time.monotonic()
-            start = max(now, self._next)
-            self._next = start + size / rate
-            if start > now:
-                await asyncio.sleep(start - now)
+        if self._rate > 0 and size > 0:
+            self._settle(time.monotonic())
+            reservation = [self._issued, size]
+            self._issued += size
+            self._pending.append(reservation)
+            try:
+                while self._rate > 0:
+                    self._settle(time.monotonic())
+                    owed = reservation[0] - self._paid
+                    if owed <= 0:
+                        break
+                    waiter = asyncio.get_running_loop().create_future()
+                    self._waiters.add(waiter)
+                    try:
+                        await asyncio.wait_for(waiter, owed / self._rate)
+                    except TimeoutError:
+                        pass
+                    finally:
+                        self._waiters.discard(waiter)
+            except asyncio.CancelledError:
+                self._withdraw(reservation)            # never delivered: it owes nothing
+                raise
+            self._pending.remove(reservation)
         self._delivered += max(0, size)
 
 

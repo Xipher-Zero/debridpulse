@@ -984,3 +984,18 @@ async def test_only_planned_components_contribute_to_the_denominator():
     seen = await _observed(run, reader, _parts(0, 10, 100), _parts(1, 50, 50, 1, 1), _parts(7, 9, 9))
     assert (seen.progress.total_bytes, seen.progress.completed_bytes) == (100, 10)
     assert seen.progress.total_units is None
+
+
+def test_every_reconfiguration_builds_a_new_executor_on_the_same_live_attempts(tmp_path, monkeypatch):
+    """``application.composition.configure`` registers freshly built
+    integrations on every reconfiguration; the Media executor it builds shares
+    its binding's in-flight attempts with the one it replaces."""
+    from types import SimpleNamespace
+    from db import database
+    from integrations.media.definition import MediaOptions, build
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    environment = SimpleNamespace(download_root=str(tmp_path / "downloads"), preferred_subtitle_language="en",
+                                  repository=SimpleNamespace(authorize_execution=None))
+    (_provider, first), (_again, second) = build(MediaOptions(), environment), build(MediaOptions(), environment)
+    assert first is not second and first.binding == second.binding
+    assert first._runs is second._runs

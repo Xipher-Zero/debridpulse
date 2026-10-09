@@ -110,6 +110,17 @@ def _component(previous, event: dict) -> tuple:
     return max(0, int(event.get("downloaded") or 0)), total, units, unit_total
 
 
+# This process's live attempts, per executor binding: ``(runs, finished)``.
+# The application rebuilds its integrations on every reconfiguration (a live
+# bandwidth change, any settings write) while the workers an executor started
+# -- and the readers draining their progress -- run on, so a rebuilt executor
+# of the same binding adopts them rather than mistaking them for the orphans
+# of a real restart (which starts with none, and reports no progress). Only
+# what is still in flight is adopted: a finished attempt's truth is its
+# durable record, re-verified, exactly as after a restart.
+_LIVE: dict[str, tuple[dict, OrderedDict]] = {}
+
+
 class MediaExecutor:
     descriptor = IntegrationDescriptor(EXECUTOR_ID, "Media Downloads", frozenset())
     capabilities = ExecutorCapabilities(
@@ -126,10 +137,14 @@ class MediaExecutor:
         self.sandbox = sandbox or MediaSandbox(runtime_dir, budget=EXECUTOR_ID)
         self.processes = self.sandbox.processes
         self.records = self.runtime_dir / "results"
-        self._runs: dict[str, _Run] = {}
-        self._finished: OrderedDict[str, None] = OrderedDict()
         self._health: tuple[float, ExecutorHealth] | None = None
         self.binding = f"{Path(local_root).resolve()}|{self.runtime_dir.resolve()}"
+        self._runs: dict[str, _Run]
+        self._finished: OrderedDict[str, None]
+        self._runs, self._finished = _LIVE.setdefault(self.binding, ({}, OrderedDict()))
+        for attempt_id in [key for key, run in self._runs.items() if run.terminal is not None]:
+            del self._runs[attempt_id]
+            self._finished.pop(attempt_id, None)
 
     # ── claim, identity, footprint ─────────────────────────────────────────
 
