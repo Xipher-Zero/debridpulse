@@ -113,6 +113,19 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+      # Docker Hub pulls (the Python base image, BuildKit) are authenticated:
+      # anonymous runner pulls are rate-limited. Where the secret is not
+      # available (a pull request from a fork) the pull stays anonymous.
+      - name: Log in to Docker Hub
+        env:
+          DOCKERHUB_TOKEN: ${{ secrets.XIPHERZERO_DOCKER_PAT }}
+        run: |
+          if [ -n "$DOCKERHUB_TOKEN" ]; then
+            printf '%s' "$DOCKERHUB_TOKEN" | docker login docker.io --username xipherzero --password-stdin
+          else
+            echo "Docker Hub credentials are not available to this run; pulling anonymously"
+          fi
+
       - name: Build exact candidate container
         run: |
           set -euo pipefail
