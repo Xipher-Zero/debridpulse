@@ -24,6 +24,8 @@ function completedTransfer(id) {
     current_provider_name: 'HTTP & HTTPS',
     delivering_provider_id: 'general_http',
     delivering_provider_name: 'HTTP & HTTPS',
+    active_provider_id: 'general_http',
+    active_provider_name: 'HTTP & HTTPS',
     provider_provenance_status: 'known',
     extraction_status: null,
     source_failure_count: 0,

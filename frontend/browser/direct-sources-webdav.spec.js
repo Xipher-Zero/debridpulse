@@ -421,6 +421,7 @@ function webdavItem(overrides = {}) {
     origin_provider_id: PROVIDER, origin_provider_name: 'WebDAV',
     current_provider_id: 'general_http', current_provider_name: 'HTTP(S)',
     delivering_provider_id: 'general_http', delivering_provider_name: 'HTTP(S)',
+    active_provider_id: PROVIDER, active_provider_name: 'WebDAV',
     ...overrides,
   };
 }
@@ -465,7 +466,8 @@ test('a completed WebDAV collection keeps its origin; one without an origin keep
   async ({page}) => {
     await isolateExternalFonts(page);
     const done = webdavItem({id: 996, status: 'completed', presentation_status: 'completed', progress: 100});
-    const legacy = webdavItem({id: 997, origin_provider_id: null, origin_provider_name: null});
+    const legacy = webdavItem({id: 997, origin_provider_id: null, origin_provider_name: null,
+      active_provider_id: 'general_http', active_provider_name: 'HTTP(S)'});
     await page.route(url => url.pathname === '/api/torrents',
       route => route.fulfill({status: 200, contentType: 'application/json',
         body: JSON.stringify({items: [done, legacy], total: 2})}));

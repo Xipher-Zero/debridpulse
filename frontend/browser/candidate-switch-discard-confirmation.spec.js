@@ -39,6 +39,7 @@ function detail(id, files) {
     id, name: `Discard fixture ${id}`, status: 'downloading', progress: 40, size_bytes: 8 * MIB * files.length,
     source: 'direct_link', label: '', hash: '', created_at: '2026-09-27T10:00:00Z',
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid',
     route_attempts: [], execution_attempts: [], executors: ['aria2'], source_outcomes: [], events: [], files,
   };
 }
@@ -50,6 +51,7 @@ function scopedItem(id, scope, opts = {}) {
     current_source_identity: { kind: 'host', host: 'rapidgator.net' },
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
     delivering_provider_id: 'alldebrid', delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid',
     provider_provenance_status: 'recorded', source: 'direct_link',
     common_candidate_count: opts.commonCount || 0, group_remaining_count: opts.remaining || 0,
     candidate_action_scope: scope, candidate_action_count: opts.count || 0,

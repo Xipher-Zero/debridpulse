@@ -10,6 +10,7 @@ const detail = (id, attempts) => ({
   original_resource: 'https://downloads.example.com/a/deliberately/long/path/ubuntu-24.04.1-desktop-amd64.iso',
   files: [], source_outcomes: [], events: [], executors: [],
   current_provider_name: 'HTTP & HTTPS', delivering_provider_name: 'HTTP & HTTPS',
+  active_provider_id: 'general_http', active_provider_name: 'HTTP & HTTPS',
   route_attempts: attempts,
 });
 

@@ -30,7 +30,7 @@ from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    _ENDED_ROUTE_STATES, active_execution_progress_sql, active_execution_projection,
+    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, active_execution_progress_sql, active_execution_projection,
     canonical_artifact_membership_sql,
 )
 from transfers.display_name import normalized_transfer_display_name
@@ -75,6 +75,9 @@ _SWITCHABLE_STATES_SQL = ", ".join(
 # Route-attempt states that end a route, from their one owner
 # (transfers._repository_base._ENDED_ROUTE_STATES): never a current provider.
 _ENDED_ROUTE_STATES_SQL = ", ".join(f"'{state}'" for state in sorted(_ENDED_ROUTE_STATES))
+# Execution states of a live writer, from their one owner
+# (transfers._repository_base._MUTATING_EXECUTION_STATES).
+_MUTATING_EXECUTION_STATES_SQL = ", ".join(f"'{state}'" for state in sorted(_MUTATING_EXECUTION_STATES))
 
 # The one canonical actionable-artifact filter (DP 1.0.12 recovery leveling,
 # Section 7), shared with transfers._repository_base.TransferRepository.artifacts()
@@ -703,41 +706,107 @@ async def list_operational_torrents(
               ON page.id = r.transfer_id
             WHERE d.state = 'declined'
         ),
+        live_route AS (
+            SELECT transfer_id, ordinal, provider_id
+            FROM (
+                SELECT
+                    p.transfer_id,
+                    p.ordinal,
+                    a.provider_id,
+                    a.state,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.request_id
+                        ORDER BY p.ordinal DESC
+                    ) AS request_rank
+                FROM route_attempt_provenance p
+                JOIN resolution_attempts a
+                  ON a.id = p.resolution_attempt_id
+                JOIN page
+                  ON page.id = p.transfer_id
+                LEFT JOIN declined_attempt
+                  ON declined_attempt.request_id = p.request_id
+                 AND declined_attempt.provider_id = a.provider_id
+                WHERE a.provider_id IS NOT NULL AND a.provider_id != ''
+                  AND declined_attempt.request_id IS NULL
+            ) request_route
+            WHERE request_route.request_rank = 1
+              AND request_route.state NOT IN ({_ENDED_ROUTE_STATES_SQL})
+        ),
         current_route AS (
             SELECT transfer_id, provider_id
             FROM (
                 SELECT
-                    request_route.transfer_id,
-                    request_route.provider_id,
+                    transfer_id,
+                    provider_id,
                     ROW_NUMBER() OVER (
-                        PARTITION BY request_route.transfer_id
-                        ORDER BY request_route.ordinal DESC
+                        PARTITION BY transfer_id
+                        ORDER BY ordinal DESC
                     ) AS row_number
-                FROM (
-                    SELECT
-                        p.transfer_id,
-                        p.ordinal,
-                        a.provider_id,
-                        a.state,
-                        ROW_NUMBER() OVER (
-                            PARTITION BY p.request_id
-                            ORDER BY p.ordinal DESC
-                        ) AS request_rank
-                    FROM route_attempt_provenance p
-                    JOIN resolution_attempts a
-                      ON a.id = p.resolution_attempt_id
-                    JOIN page
-                      ON page.id = p.transfer_id
-                    LEFT JOIN declined_attempt
-                      ON declined_attempt.request_id = p.request_id
-                     AND declined_attempt.provider_id = a.provider_id
-                    WHERE a.provider_id IS NOT NULL AND a.provider_id != ''
-                      AND declined_attempt.request_id IS NULL
-                ) request_route
-                WHERE request_route.request_rank = 1
-                  AND request_route.state NOT IN ({_ENDED_ROUTE_STATES_SQL})
+                FROM live_route
             )
             WHERE row_number = 1
+        ),
+        live_route_providers AS (
+            SELECT
+                transfer_id,
+                COUNT(DISTINCT provider_id) AS provider_count,
+                MIN(provider_id) AS provider_id
+            FROM live_route
+            GROUP BY transfer_id
+        ),
+        -- The active provider: execution authority, the same derivation as
+        -- transfers._repository_base.active_provider. Each artifact's own
+        -- execution is its latest attempt by the durable per-artifact
+        -- provenance ordinal (a replaced attempt never counts); live writers
+        -- outrank finished ones; among live writers the latest started, among
+        -- finished ones the latest recorded activity. Every attempt at that
+        -- instant is kept: no durable sequence orders them further, so more
+        -- than one provider (or an unrecorded one) is ambiguous, never broken.
+        final_execution AS (
+            SELECT
+                transfer_id,
+                provider_id,
+                live,
+                CASE WHEN live = 1 THEN started_at ELSE active_at END AS moment
+            FROM (
+                SELECT
+                    p.transfer_id,
+                    p.provider_id,
+                    p.created_at AS started_at,
+                    p.updated_at AS active_at,
+                    CASE
+                        WHEN e.authorized = 1 AND e.state IN ({_MUTATING_EXECUTION_STATES_SQL}) THEN 1
+                        ELSE 0
+                    END AS live,
+                    ROW_NUMBER() OVER (
+                        PARTITION BY p.transfer_id, p.artifact_id
+                        ORDER BY p.ordinal DESC
+                    ) AS artifact_rank
+                FROM execution_attempt_provenance p
+                JOIN page
+                  ON page.id = p.transfer_id
+                LEFT JOIN execution_attempts e
+                  ON e.id = p.execution_attempt_id
+            )
+            WHERE artifact_rank = 1
+        ),
+        execution_lead AS (
+            SELECT
+                transfer_id,
+                COUNT(DISTINCT COALESCE(provider_id, '')) AS provider_count,
+                MIN(provider_id) AS provider_id
+            FROM (
+                SELECT
+                    transfer_id,
+                    provider_id,
+                    RANK() OVER (
+                        PARTITION BY transfer_id
+                        ORDER BY live DESC, moment DESC
+                    ) AS lead_rank
+                FROM final_execution
+            )
+            WHERE lead_rank = 1
+            GROUP BY transfer_id
         ),
         delivery AS (
             SELECT
@@ -1336,6 +1405,21 @@ async def list_operational_torrents(
             group_member_filenames.filenames AS _group_member_filenames,
             current_route.provider_id AS current_provider_id,
             CASE
+                WHEN execution_lead.transfer_id IS NOT NULL THEN
+                    CASE WHEN execution_lead.provider_count = 1 THEN execution_lead.provider_id END
+                WHEN live_route_providers.provider_count = 1 THEN live_route_providers.provider_id
+            END AS active_provider_id,
+            CASE
+                WHEN execution_lead.transfer_id IS NOT NULL THEN
+                    CASE
+                        WHEN execution_lead.provider_count = 1 AND execution_lead.provider_id IS NOT NULL
+                        THEN 'execution'
+                        ELSE 'ambiguous'
+                    END
+                WHEN live_route_providers.provider_count = 1 THEN 'route'
+                ELSE 'none'
+            END AS active_provider_basis,
+            CASE
                 WHEN COALESCE(delivery.provider_count, 0) = 1
                 THEN delivery.provider_id
                 ELSE NULL
@@ -1393,6 +1477,10 @@ async def list_operational_torrents(
           ON latest_route.transfer_id = t.id
         LEFT JOIN current_route
           ON current_route.transfer_id = t.id
+        LEFT JOIN execution_lead
+          ON execution_lead.transfer_id = t.id
+        LEFT JOIN live_route_providers
+          ON live_route_providers.transfer_id = t.id
         LEFT JOIN delivery
           ON delivery.transfer_id = t.id
         LEFT JOIN origin

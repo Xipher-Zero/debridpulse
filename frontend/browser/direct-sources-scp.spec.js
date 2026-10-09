@@ -75,6 +75,7 @@ function scpItem(overrides = {}) {
     current_source_identity: {kind: 'host', host: 'files.example.org'},
     current_provider_id: SCP, current_provider_name: 'SCP',
     delivering_provider_id: null, delivering_provider_name: null,
+    active_provider_id: SCP, active_provider_name: 'SCP',
     ...overrides,
   };
 }

@@ -54,6 +54,7 @@ function item(overrides = {}) {
     origin_provider_id: 'multimeta', origin_provider_name: 'Multimeta',
     current_provider_id: 'general_http', current_provider_name: 'HTTP(S)',
     delivering_provider_id: 'general_http', delivering_provider_name: 'HTTP(S)',
+    active_provider_id: 'multimeta', active_provider_name: 'Multimeta',
     ...overrides,
   };
 }

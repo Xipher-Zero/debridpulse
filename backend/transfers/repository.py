@@ -58,8 +58,8 @@ from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    _ENDED_ROUTE_STATES, _established_children_in_db, _release_selection_poll_wait_in_db, _selection_intent_in_db,
-    _set_selection_intent_in_db,
+    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, _established_children_in_db, _release_selection_poll_wait_in_db,
+    _selection_intent_in_db, _set_selection_intent_in_db,
 )
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
@@ -202,7 +202,6 @@ _HISTORICAL_SNAPSHOT_KEYS = frozenset({
 
 
 _TERMINAL_EXECUTION_STATES = frozenset({"failed", "absent", "cancelled", "succeeded"})
-_MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "running", "paused", "unknown"})
 _RUNTIME_TOTAL_STATES = frozenset({
     ExecutionState.QUEUED,
     ExecutionState.RUNNING,

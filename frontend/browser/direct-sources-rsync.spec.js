@@ -340,6 +340,7 @@ function rsyncItem(overrides = {}) {
     current_source_identity: {kind: 'host', host: 'files.example.org'},
     current_provider_id: PROVIDER, current_provider_name: 'rsync',
     delivering_provider_id: null, delivering_provider_name: null,
+    active_provider_id: PROVIDER, active_provider_name: 'rsync',
     ...overrides,
   };
 }

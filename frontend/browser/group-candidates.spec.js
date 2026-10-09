@@ -39,6 +39,7 @@ function detail(id, files) {
     id, name: `Group fixture ${id}`, status: 'downloading', progress: 40, size_bytes: 4096,
     source: 'direct_link', label: '', hash: '', created_at: '2026-09-09T10:00:00Z',
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid',
     route_attempts: [], execution_attempts: [], executors: ['aria2'], source_outcomes: [], events: [],
     files,
   };
@@ -57,6 +58,7 @@ function listItem(id, commonCount, opts = {}) {
     size_bytes: 4096, created_at: '2026-09-09 10:00:00', current_source_identity: { kind: 'host', host: 'rapidgator.net' },
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
     delivering_provider_id: 'alldebrid', delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid',
     provider_provenance_status: 'recorded', source: 'direct_link',
     common_candidate_count: commonCount,
     group_remaining_count: remaining,
@@ -73,6 +75,7 @@ function scopedItem(id, scope, opts = {}) {
     size_bytes: 4096, created_at: '2026-09-09 10:00:00', current_source_identity: { kind: 'host', host: 'rapidgator.net' },
     current_provider_id: 'alldebrid', current_provider_name: 'AllDebrid',
     delivering_provider_id: 'alldebrid', delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid',
     provider_provenance_status: 'recorded', source: 'direct_link',
     common_candidate_count: opts.commonCount != null ? opts.commonCount : 0,
     group_remaining_count: opts.remaining != null ? opts.remaining : 0,

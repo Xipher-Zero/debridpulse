@@ -38,7 +38,7 @@ test('Dashboard Recent Activity keeps fixed row geometry across host artwork and
  await page.setViewportSize({width:1440,height:900});
  const items=Array.from({length:6},(_,index)=>({
   id:index+1,name:`Layout transfer ${index+1}`,status:index===0?'downloading':'completed',progress:index===0?42:100,size_bytes:1048576*(index+1),created_at:'2026-09-08 17:00:00',
-  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'
+  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'
  }));
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
  await ready(page);await page.evaluate(async()=>{await loadRecent();});await expect(page.locator('#dash-tbody tr')).toHaveCount(6);await expect(page.locator('#dash-tbody .dp-source-host-logo')).toHaveCount(6);
@@ -59,7 +59,7 @@ test('Dashboard Recent Activity keeps fixed row geometry across host artwork and
 
 test('Downloads provider/source block adds host artwork and centers its two lines without moving the block',async({page})=>{
  await page.setViewportSize({width:1440,height:800});
- const item={id:77,name:'Rapidgator layout transfer',status:'paused',presentation_status:'paused',progress:18,size_bytes:7340032,created_at:'2026-09-08 18:00:00',source:'direct_link',hash:'request:layout',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:null,delivering_provider_name:null,provider_provenance_status:'known'};
+ const item={id:77,name:'Rapidgator layout transfer',status:'paused',presentation_status:'paused',progress:18,size_bytes:7340032,created_at:'2026-09-08 18:00:00',source:'direct_link',hash:'request:layout',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:null,delivering_provider_name:null,active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'};
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[item],total:1,page:1,page_size:1})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
  const release=await parkDownloadsList(page);
@@ -211,7 +211,7 @@ test('Downloads pager: a shrink-triggered clamp refetches the clamped page inste
  // never assumed. 300 rows guarantees several pages regardless of that size.
  // Every row carries an identifiable id so assertions can prove *which*
  // page's data actually rendered, not just that the pager label changed.
- function transfer(id){return{id,name:`Historical Transfer ${id}`,hash:`hash-${id}-0123456789abcdef`,status:'completed',progress:100,size_bytes:1024*1024*id,created_at:'2026-08-01T12:00:00Z',source:'direct_link',label:null,current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS',provider_provenance_status:'known'};}
+ function transfer(id){return{id,name:`Historical Transfer ${id}`,hash:`hash-${id}-0123456789abcdef`,status:'completed',progress:100,size_bytes:1024*1024*id,created_at:'2026-08-01T12:00:00Z',source:'direct_link',label:null,current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS',active_provider_id:'general_http',active_provider_name:'HTTP & HTTPS',provider_provenance_status:'known'};}
  let downloads=Array.from({length:300},(_,i)=>transfer(i+1));
  const requests=[];
  await page.route('**/api/torrents**',async route=>{

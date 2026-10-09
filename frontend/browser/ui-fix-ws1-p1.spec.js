@@ -28,6 +28,8 @@ function transferFixture(overrides = {}) {
     current_provider_name: 'AllDebrid',
     delivering_provider_id: 'alldebrid',
     delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid',
+    active_provider_name: 'AllDebrid',
     ...overrides,
   };
 }

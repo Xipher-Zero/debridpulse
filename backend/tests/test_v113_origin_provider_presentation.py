@@ -4,9 +4,9 @@ A transfer's ORIGIN provider is the provider owning its root request's route:
 derived from durable root route truth (never persisted as a second provider
 identity), and projected beside -- never instead of -- the existing current,
 delivering, route-attempt and execution provider facts. A decomposed
-collection (root provider A, members delivered by provider B) therefore shows
-A as its compact origin while every other fact keeps telling the truth about
-B. Both read models (the comprehensive Details presentation and the bounded
+collection (root provider A, members delivered by provider B) therefore keeps
+A as its origin while every other fact keeps telling the truth about B; the
+compact badge names the active (execution) provider, never the origin. Both read models (the comprehensive Details presentation and the bounded
 list projection) derive the same fact; the browser only consumes it.
 
 Provider-neutral: two fake providers over unrelated ``vaultdir``/``vault``
@@ -195,10 +195,14 @@ async def test_a_provider_that_declined_is_never_the_origin(stage):
     assert details["origin_provider_id"] == listed["origin_provider_id"] == "plain-source"
 
 
-async def test_the_browser_consumes_the_projected_origin_and_infers_nothing():
+async def test_the_browser_consumes_the_projected_active_provider_and_infers_nothing():
     app = (ROOT / "frontend/static/app.js").read_text()
     body = app.split("function transferProviderPresentation(t) {", 1)[1].split("\n}\n", 1)[0]
-    assert "t?.origin_provider_name" in body
-    # Origin is never reconstructed from parents, manifests, URLs or route walks.
+    assert "t?.active_provider_id" in body and "t.active_provider_name" in body
+    # The compact badge is execution authority: it never falls back to the
+    # origin, delivering or route-ordinal provider facts.
+    for retired in ("origin_provider", "delivering_provider", "current_provider"):
+        assert retired not in body, retired
+    # Nothing is reconstructed from parents, manifests, URLs or route walks.
     for forbidden in ("route_attempts", "parent", "manifest", "request_kinds", "original_resource", "http"):
         assert forbidden not in body, forbidden

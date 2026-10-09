@@ -37,7 +37,8 @@ function listFixture(overrides = {}) {
     id:901, name:'Stage 10 fixture', status:'completed', progress:100, size_bytes:1024,
     source:'direct_link', label:'', hash:'', created_at:'2026-09-02T12:00:00Z',
     provider_provenance_status:'recorded', current_provider_id:'general_http', current_provider_name:'HTTP(S)',
-    delivering_provider_id:'general_http', delivering_provider_name:'HTTP(S)', ...overrides,
+    delivering_provider_id:'general_http', delivering_provider_name:'HTTP(S)',
+    active_provider_id:'general_http', active_provider_name:'HTTP(S)', ...overrides,
   };
 }
 
@@ -75,7 +76,7 @@ test('Services exposes canonical AllDebrid and General HTTP enable controls with
 
 test('Recent Activity shows final provider and neutral legacy unknown without URL inference', async ({ page }) => {
   await isolateExternalFonts(page);
-  const items = [listFixture(), listFixture({id:902,name:'Legacy unknown',provider_provenance_status:'unknown_legacy',current_provider_id:null,current_provider_name:null,delivering_provider_id:null,delivering_provider_name:null})];
+  const items = [listFixture(), listFixture({id:902,name:'Legacy unknown',provider_provenance_status:'unknown_legacy',current_provider_id:null,current_provider_name:null,delivering_provider_id:null,delivering_provider_name:null,active_provider_id:null,active_provider_name:null})];
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
   await page.goto('/');
   await expect(page.locator('#dash-tbody tr[data-torrent-id="901"] .dp-provider-chip')).toHaveText('HTTP(S)');
@@ -85,9 +86,9 @@ test('Recent Activity shows final provider and neutral legacy unknown without UR
 test('Downloads uses current provider for active transfers and delivering provider for completed transfers', async ({ page }) => {
   await isolateExternalFonts(page);
   const items = [
-    listFixture({id:903,name:'Active',status:'downloading',progress:42,delivering_provider_id:null,delivering_provider_name:null,current_provider_id:'alldebrid',current_provider_name:'AllDebrid'}),
+    listFixture({id:903,name:'Active',status:'downloading',progress:42,delivering_provider_id:null,delivering_provider_name:null,current_provider_id:'alldebrid',current_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid'}),
     listFixture({id:904,name:'Completed'}),
-    listFixture({id:905,name:'Pending',status:'pending',progress:0,provider_provenance_status:'pending',current_provider_id:null,current_provider_name:null,delivering_provider_id:null,delivering_provider_name:null}),
+    listFixture({id:905,name:'Pending',status:'pending',progress:0,provider_provenance_status:'pending',current_provider_id:null,current_provider_name:null,delivering_provider_id:null,delivering_provider_name:null,active_provider_id:null,active_provider_name:null}),
   ];
   await page.route(url => url.pathname === '/api/torrents', route => route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})}));
   await page.goto('/'); await page.locator('#sidebar .nav-item[data-view="torrents"]').click();

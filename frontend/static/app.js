@@ -318,22 +318,19 @@ function transferProviderPresentation(t) {
       ? {label: String(t.route_provider_name || t.route_provider_id), state: 'known', id: t.route_provider_id}
       : {label: 'Pending', state: 'pending'};
   }
-  const completed = String(t?.status || '') === 'completed';
-  // The backend's origin projection (the provider owning the transfer's root
-  // route) is what the compact chip names; current/delivering stay the
-  // fallback. Nothing here derives an origin. The badge identity is that same
-  // provider's, by its id.
-  const name = t?.origin_provider_name || (completed ? t?.delivering_provider_name : t?.current_provider_name);
-  const id = t?.origin_provider_name ? t?.origin_provider_id
-    : (completed ? t?.delivering_provider_id : t?.current_provider_id);
-  if (name) return {label: String(name), state: 'known', id};
-  if (completed && t?.provider_provenance_status === 'unknown_legacy') {
+  // Every other transfer names the backend's ACTIVE provider projection
+  // (``active_provider_id``): the provider executing its work, or the last
+  // one that did once nothing is live -- execution authority, never an
+  // origin, a delivery majority or a route ordinal. Nothing here derives a
+  // provider; an ambiguous projection is Unknown, an absent one Pending
+  // until the transfer completed.
+  if (t?.active_provider_id) {
+    return {label: String(t.active_provider_name || t.active_provider_id), state: 'known', id: t.active_provider_id};
+  }
+  if (t?.active_provider_basis === 'ambiguous' || String(t?.status || '') === 'completed') {
     return {label: 'Unknown', state: 'unknown'};
   }
-  if (!completed && !t?.current_provider_id) {
-    return {label: 'Pending', state: 'pending'};
-  }
-  return {label: 'Unknown', state: 'unknown'};
+  return {label: 'Pending', state: 'pending'};
 }
 
 // The provider the row's badge names, by id ('' while none is known).

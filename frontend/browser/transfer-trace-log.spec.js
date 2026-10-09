@@ -8,6 +8,7 @@ const detail = {
   id: 7301, name: 'Trace subject', status: 'consolidated', progress: 100, size_bytes: 1024,
   created_at: '2026-01-01T00:00:00Z', completed_at: null, hash: '', files: [], source_outcomes: [],
   events: [], executors: [], route_attempts: [], current_provider_name: 'Parcel', delivering_provider_name: 'Parcel',
+  active_provider_id: 'parcel', active_provider_name: 'Parcel',
 };
 const tracePath = `/api/torrents/${detail.id}/trace`;
 const filename = `debridpulse-transfer-${detail.id}-trace-20260926T120000Z.json`;

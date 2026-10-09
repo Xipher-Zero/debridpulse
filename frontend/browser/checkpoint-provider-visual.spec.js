@@ -22,6 +22,8 @@ function providerFixture(overrides = {}) {
     current_provider_name: 'HTTP & HTTPS',
     delivering_provider_id: 'general_http',
     delivering_provider_name: 'HTTP & HTTPS',
+    active_provider_id: 'general_http',
+    active_provider_name: 'HTTP & HTTPS',
     ...overrides,
   };
 }
@@ -38,6 +40,8 @@ test('checkpoint visually captures Recent Activity and Downloads provider indica
       current_provider_name: 'AllDebrid',
       delivering_provider_id: null,
       delivering_provider_name: null,
+      active_provider_id: 'alldebrid',
+      active_provider_name: 'AllDebrid',
     }),
     providerFixture({
       id: 952,
@@ -51,6 +55,8 @@ test('checkpoint visually captures Recent Activity and Downloads provider indica
       current_provider_name: null,
       delivering_provider_id: null,
       delivering_provider_name: null,
+      active_provider_id: null,
+      active_provider_name: null,
     }),
   ];
 

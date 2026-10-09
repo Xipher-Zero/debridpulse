@@ -287,9 +287,11 @@ def _public_transfer_presentation(value, definitions) -> dict:
         result["origin_provider_name"] = _provider_display_name(result.get("origin_provider_id"), definitions)
     if "route_provider_id" in result:
         result["route_provider_name"] = _provider_display_name(result.get("route_provider_id"), definitions)
+    if "active_provider_id" in result:
+        result["active_provider_name"] = _provider_display_name(result.get("active_provider_id"), definitions)
     # Only a provider that declares a badge theme carries one, beside its name,
     # so every other badge stays exactly as it was.
-    for role in ("current", "delivering", "origin", "route"):
+    for role in ("current", "delivering", "origin", "route", "active"):
         theme = _provider_theme(result.get(f"{role}_provider_id"), definitions)
         if theme:
             result[f"{role}_provider_theme"] = theme

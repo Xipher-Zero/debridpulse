@@ -28,6 +28,8 @@ function transfer(id, name, overrides = {}) {
     current_provider_name: 'HTTP & HTTPS',
     delivering_provider_id: null,
     delivering_provider_name: null,
+    active_provider_id: 'general_http',
+    active_provider_name: 'HTTP & HTTPS',
     provider_provenance_status: 'known',
     extraction_status: null,
     source_failure_count: 0,
@@ -199,6 +201,8 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
       current_provider_name: 'AllDebrid',
       delivering_provider_id: 'alldebrid',
       delivering_provider_name: 'AllDebrid',
+      active_provider_id: 'alldebrid',
+      active_provider_name: 'AllDebrid',
     }),
     transfer(2, 'Beta', {status: 'paused', progress: 0}),
   ]);
@@ -258,6 +262,8 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
       current_provider_name: 'AllDebrid',
       delivering_provider_id: 'alldebrid',
       delivering_provider_name: 'AllDebrid',
+      active_provider_id: 'alldebrid',
+      active_provider_name: 'AllDebrid',
     }),
   ]);
   await page.evaluate(() => loadTorrents());

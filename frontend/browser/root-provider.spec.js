@@ -29,6 +29,7 @@ function hosterItem(id) {
   delete item.route_provider_id; delete item.route_provider_name; delete item.route_switch_available;
   item.current_source_identity = { kind: 'host', host: 'rapidgator.net' };
   item.request_kinds = ['https'];
+  item.active_provider_id = 'alldebrid'; item.active_provider_name = 'AllDebrid';
   return item;
 }
 

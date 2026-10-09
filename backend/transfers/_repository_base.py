@@ -41,6 +41,10 @@ from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANS
 # attempt once a later campaign began. Both are failures, neither binds.
 _ENDED_ROUTE_STATES = frozenset({"exhausted", "released"})
 
+# Execution-attempt states of a writer still doing (or about to do) work; an
+# ``authorized`` attempt in one of them is a live writer of its artifact.
+_MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "running", "paused", "unknown"})
+
 # The forms a retired generation's unique ``torrents.hash`` takes once it no
 # longer holds its source's active dedupe identity (``_tombstone_hash``); the
 # original logical fingerprint stays in ``source_fingerprint``.
@@ -130,6 +134,14 @@ def current_route_provider(route_attempts) -> str | None:
     derives the same fact in its one SQL read. ``route_attempts`` rows, in
     ordinal order, carry ``request_id``/``provider_id``/``resolution_state``/
     ``ordinal``."""
+    live = _live_routes(route_attempts)
+    return str(max(live, key=lambda row: int(row["ordinal"]))["provider_id"]) if live else None
+
+
+def _live_routes(route_attempts) -> list:
+    """Each request's LIVE route: its latest route attempt not declined, by a
+    provider that did not decline that request, unless that attempt ended the
+    route (``_ENDED_ROUTE_STATES``)."""
     declined = {(row["request_id"], row["provider_id"]) for row in route_attempts
                 if row.get("resolution_state") == "declined"}
     latest = {}
@@ -137,8 +149,49 @@ def current_route_provider(route_attempts) -> str | None:
         if (row.get("provider_id") and row.get("resolution_state") != "declined"
                 and (row["request_id"], row["provider_id"]) not in declined):
             latest[row["request_id"]] = row
-    live = [row for row in latest.values() if row.get("resolution_state") not in _ENDED_ROUTE_STATES]
-    return str(max(live, key=lambda row: int(row["ordinal"]))["provider_id"]) if live else None
+    return [row for row in latest.values() if row.get("resolution_state") not in _ENDED_ROUTE_STATES]
+
+
+def active_provider(execution_history, route_attempts) -> tuple[str | None, str]:
+    """THE active provider of one transfer -- the provider currently executing
+    its work, or, once no writer is live, the provider of its last execution
+    activity -- as ``(provider_id, basis)``.
+
+    Execution authority decides. Each artifact's own execution is its latest
+    execution attempt (the durable per-artifact provenance ``ordinal``); an
+    attempt a later one replaced -- a candidate switch, a retry -- never
+    counts. When any of those is a live writer (``authorized`` and in
+    ``_MUTATING_EXECUTION_STATES``), the latest-started live writer is the
+    active one; otherwise the one whose recorded activity ended last
+    (provenance ``updated_at``). No durable sequence orders executions of
+    different artifacts finer than those timestamps, so different providers
+    at the same instant -- or a winner whose provider was never recorded --
+    are ``(None, "ambiguous")``, never a tie-break. Only a transfer with no
+    execution at all falls back to its live routes, and only when they name
+    one provider (``"route"``); else ``(None, "none")``. Derived from durable
+    truth only, never persisted. The bounded list projection
+    (``api.operational_downloads``) derives the same fact in its one SQL read.
+    ``execution_history`` rows carry ``artifact_id``/``ordinal``/
+    ``provider_id``/``execution_state``/``authorized``/
+    ``provenance_created_at``/``provenance_updated_at``."""
+    final = {}
+    for row in execution_history:
+        current = final.get(row["artifact_id"])
+        if current is None or int(row["ordinal"]) > int(current["ordinal"]):
+            final[row["artifact_id"]] = row
+    if final:
+        def live(row) -> bool:
+            return bool(row.get("authorized")) and row.get("execution_state") in _MUTATING_EXECUTION_STATES
+
+        any_live = any(live(row) for row in final.values())
+        rows = [row for row in final.values() if live(row) == any_live]
+        moment = "provenance_created_at" if any_live else "provenance_updated_at"
+        latest = max(str(row.get(moment) or "") for row in rows)
+        providers = {row.get("provider_id") or None for row in rows if str(row.get(moment) or "") == latest}
+        provider = next(iter(providers)) if len(providers) == 1 else None
+        return (str(provider), "execution") if provider else (None, "ambiguous")
+    providers = {str(row["provider_id"]) for row in _live_routes(route_attempts)}
+    return (next(iter(providers)), "route") if len(providers) == 1 else (None, "none")
 
 
 def manifest_child_identity(parent_id: str, relative_path: str, alternate: int = 0) -> str:
@@ -1192,6 +1245,7 @@ class TransferRepository:
                 JOIN resolution_attempts a ON a.id=p.resolution_attempt_id WHERE p.transfer_id=?
                 ORDER BY p.ordinal,p.resolution_attempt_id""", (transfer_id,))
             execution_history = await db.fetchall("""SELECT e.id,e.artifact_id,e.executor_id,e.state AS execution_state,e.created_at,e.updated_at,
+                e.authorized,p.created_at AS provenance_created_at,p.updated_at AS provenance_updated_at,
                 p.route_attempt_id,p.provider_id,p.candidate_id,p.candidate_source,p.ordinal,p.outcome,p.delivered,p.history_quality
                 FROM execution_attempt_provenance p JOIN execution_attempts e ON e.id=p.execution_attempt_id
                 WHERE p.transfer_id=? ORDER BY p.created_at,p.artifact_id,p.ordinal,p.execution_attempt_id""", (transfer_id,))
@@ -1226,6 +1280,7 @@ class TransferRepository:
         historical_providers = sorted({item["provider_id"] for item in (*resources, *providers) if item.get("provider_id")})
         delivering_providers = sorted({item["provider_id"] for item in execution_history if item.get("delivered") and item.get("provider_id")})
         current_provider_id = current_route_provider(route_attempts)
+        result["active_provider_id"], result["active_provider_basis"] = active_provider(execution_history, route_attempts)
         result["historical_providers"] = historical_providers
         result["current_provider_id"] = current_provider_id
         result["origin_provider_id"] = origin_provider(requests, route_attempts)
@@ -1304,6 +1359,8 @@ class TransferRepository:
             result["execution_attempts"] = []
             for row in execution_history:
                 item = dict(row)
+                for field in ("authorized", "provenance_created_at", "provenance_updated_at"):
+                    item.pop(field, None)
                 item["candidate_source"] = codec.load(item.get("candidate_source"), None)
                 item["delivered"] = bool(item.get("delivered"))
                 result["execution_attempts"].append(item)

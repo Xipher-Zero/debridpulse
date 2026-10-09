@@ -211,8 +211,7 @@ def test_the_transfer_list_badge_label_has_exactly_one_owner():
     app_js = read("app.js")
     presentation = app_js[app_js.index("function transferProviderPresentation("):]
     presentation = presentation[:presentation.index("\nfunction ", 1)]
-    assert "current_provider_name" in presentation
-    assert "delivering_provider_name" in presentation
+    assert "active_provider_name" in presentation
     # The chip renders that label and nothing it derived itself.
     chip = app_js[app_js.index("function providerChip("):]
     chip = chip[:chip.index("\nfunction ", 1)]

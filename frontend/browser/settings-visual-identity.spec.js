@@ -272,9 +272,11 @@ const PREMIUM = [
   ['torbox', 'TorBox', '#0FBD88', {kind: 'magnet'}],
 ];
 const ROWS = [
-  ...NETWORK.map(([id, name], index) => row(9810 + index, {origin_provider_id: id, origin_provider_name: name})),
+  ...NETWORK.map(([id, name], index) => row(9810 + index, {origin_provider_id: id, origin_provider_name: name,
+    active_provider_id: id, active_provider_name: name})),
   ...PREMIUM.map(([id, name, _colour, source], index) =>
-    row(9830 + index, {origin_provider_id: id, origin_provider_name: name, current_source_identity: source})),
+    row(9830 + index, {origin_provider_id: id, origin_provider_name: name,
+      active_provider_id: id, active_provider_name: name, current_source_identity: source})),
   // A torrent root's committed route (the root-provider badge), premium-served.
   row(9840, {route_provider_id: 'torbox', route_provider_name: 'TorBox', current_source_identity: {kind: 'magnet'}}),
   // A provider not yet known keeps the existing neutral pending badge.

@@ -24,6 +24,8 @@ function transfer(id, name, status = 'downloading', progress = 10) {
     current_provider_name: 'HTTP & HTTPS',
     delivering_provider_id: null,
     delivering_provider_name: null,
+    active_provider_id: 'general_http',
+    active_provider_name: 'HTTP & HTTPS',
     provider_provenance_status: 'known',
     extraction_status: null,
     source_failure_count: 0,

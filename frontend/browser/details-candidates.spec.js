@@ -7,7 +7,7 @@ function candidate(id, source, active) {
 function detail(active) {
   return {id:990,name:'Candidate switch fixture',status:'downloading',progress:42,size_bytes:1024,
     source:'direct_link',label:'',hash:'',created_at:'2026-09-06T10:00:00Z',current_provider_id:'alldebrid',
-    current_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],
+    current_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],
     files:[{id:502,filename:'GF030926-M2SP-RN.rar',size_bytes:1024,status:'downloading',blocked:false,block_reason:null,
       candidate_count:2,acquisition_candidates:[candidate('a','rapidgator.net',active==='a'),candidate('b','megaup.net',active==='b')]}]};
 }

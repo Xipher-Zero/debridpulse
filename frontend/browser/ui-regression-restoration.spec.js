@@ -286,7 +286,7 @@ test('Dashboard Recent Items renders host artwork on cold load without navigatio
  await page.setViewportSize({width:1440,height:900});
  const items=Array.from({length:6},(_,i)=>({
   id:i+1,name:`Cold load transfer ${i+1}`,status:'completed',progress:100,size_bytes:1048576*(i+1),created_at:'2026-09-08 17:00:00',
-  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'
+  current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'
  }));
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length,page:1,page_size:items.length})}));
  await page.addInitScript(()=>{window.__recentEvents=0;document.addEventListener('debridpulse:dashboard-recent-rendered',()=>{window.__recentEvents+=1;});});
@@ -317,7 +317,7 @@ test('Dashboard Recent Activity requests priority ordering and reports a truthfu
  const capturedUrls=[];
  const items=Array.from({length:3},(_,i)=>({
   id:i+1,name:`Item ${i+1}`,status:'downloading',progress:10,size_bytes:1024,created_at:'2026-09-08 17:00:00',
-  current_source_identity:{kind:'link'},current_provider_id:'alldebrid',provider_provenance_status:'known'
+  current_source_identity:{kind:'link'},current_provider_id:'alldebrid',active_provider_id:null,active_provider_name:null,active_provider_basis:'ambiguous',provider_provenance_status:'known'
  }));
  await page.route('**/api/torrents*',route=>{capturedUrls.push(route.request().url());return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})});});
  await page.goto('/');
@@ -463,11 +463,11 @@ test('Download speed custom cap reads Set Custom and still applies on Enter and 
 
 test('Downloads Provider Inventory icon, provider badge, and source label share canonical alignment',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
- const common={status:'completed',presentation_status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'link'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded'};
+ const common={status:'completed',presentation_status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'link'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'recorded'};
  const items=[
   {...common,id:71,name:'Direct',hash:'direct:71',source:'direct_link'},
   {...common,id:72,name:'Inventory',hash:'inventory:72',source:'alldebrid_existing'},
-  {...common,id:73,name:'General HTTP',hash:'direct:73',source:'direct_link',current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS'}
+  {...common,id:73,name:'General HTTP',hash:'direct:73',source:'direct_link',current_provider_id:'general_http',current_provider_name:'HTTP & HTTPS',delivering_provider_id:'general_http',delivering_provider_name:'HTTP & HTTPS',active_provider_id:'general_http',active_provider_name:'HTTP & HTTPS'}
  ];
  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:3,page:1,page_size:3})}));
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
@@ -485,7 +485,7 @@ test('Downloads Provider Inventory icon, provider badge, and source label share 
 
 test('Dashboard common-source group launcher renders only for 2+ common hosts, in [source][provider][network N] order',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
- const base={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 17:00:00',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'known'};
+ const base={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 17:00:00',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'known'};
  const items=[
   {...base,id:1,name:'One common host',current_source_identity:{kind:'host',host:'rapidgator.net'},common_candidate_count:1},
   {...base,id:2,name:'Two common hosts',current_source_identity:{kind:'host',host:'rapidgator.net'},common_candidate_count:3},
@@ -520,7 +520,7 @@ test('Dashboard common-source group launcher renders only for 2+ common hosts, i
 
 test('Downloads common-source group launcher joins the first line for 2+ common hosts only, source label kept beneath',async({page})=>{
  await page.setViewportSize({width:1600,height:900});
- const common={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',provider_provenance_status:'recorded',source:'direct_link'};
+ const common={status:'completed',progress:100,size_bytes:1048576,created_at:'2026-09-08 12:00:00',current_source_identity:{kind:'host',host:'rapidgator.net'},current_provider_id:'alldebrid',current_provider_name:'AllDebrid',delivering_provider_id:'alldebrid',delivering_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',provider_provenance_status:'recorded',source:'direct_link'};
  const items=[
   {...common,id:81,name:'One common',hash:'direct:81',common_candidate_count:1},
   {...common,id:82,name:'Two common',hash:'direct:82',common_candidate_count:4},
@@ -552,7 +552,7 @@ test('Downloads common-source group launcher joins the first line for 2+ common 
 
 test('Details candidate switch remains available after comprehensive presentation refresh',async({page})=>{
  const candidate=(id,source,active)=>({candidate_id:id,source_label:source,provider_id:'alldebrid',relationship:'Original',dispositions:active?['Active']:[],is_selected:active,is_active:active,is_delivering:false,switch_eligible:!active});
- const detail={id:990,name:'Candidate review fixture',status:'downloading',progress:42,size_bytes:1024,source:'direct_link',label:'',hash:'',created_at:'2026-09-06T10:00:00Z',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],files:[{id:502,filename:'fixture.rar',size_bytes:1024,status:'downloading',blocked:false,block_reason:null,candidate_count:2,acquisition_candidates:[candidate('a','rapidgator.net',true),candidate('b','megaup.net',false)]}]};
+ const detail={id:990,name:'Candidate review fixture',status:'downloading',progress:42,size_bytes:1024,source:'direct_link',label:'',hash:'',created_at:'2026-09-06T10:00:00Z',current_provider_id:'alldebrid',current_provider_name:'AllDebrid',active_provider_id:'alldebrid',active_provider_name:'AllDebrid',route_attempts:[],execution_attempts:[],executors:['aria2'],source_outcomes:[],events:[],files:[{id:502,filename:'fixture.rar',size_bytes:1024,status:'downloading',blocked:false,block_reason:null,candidate_count:2,acquisition_candidates:[candidate('a','rapidgator.net',true),candidate('b','megaup.net',false)]}]};
  // Every detail read is stamped with a monotonically increasing revision that the owner renders into
  // the file row, so the test synchronizes on the presentation boundary itself (the owner re-rendering
  // its rows from a fresh read) instead of on how many reads the live app happened to issue. Once

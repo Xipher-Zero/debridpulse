@@ -34,6 +34,8 @@ function baseRow(overrides) {
     current_provider_name: 'AllDebrid',
     delivering_provider_id: null,
     delivering_provider_name: null,
+    active_provider_id: 'alldebrid',
+    active_provider_name: 'AllDebrid',
     provider_provenance_status: 'pending',
     extraction_status: null,
     source_failure_count: 0,

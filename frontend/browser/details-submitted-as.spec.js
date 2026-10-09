@@ -7,7 +7,8 @@ const base = (id, extra) => ({
   id, name: 'Posting', status: 'completed', progress: 100, size_bytes: 1024,
   created_at: '2026-01-01T00:00:00Z', completed_at: '2026-01-01T01:00:00Z', hash: '',
   files: [], source_outcomes: [], events: [], executors: [], route_attempts: [],
-  current_provider_name: 'Usenet', delivering_provider_name: 'Usenet', ...extra,
+  current_provider_name: 'Usenet', delivering_provider_name: 'Usenet',
+  active_provider_id: 'usenet', active_provider_name: 'Usenet', ...extra,
 });
 
 async function showDetail(page, detail) {
@@ -31,18 +32,21 @@ test('an uploaded NZB reports NZB file', async ({page}) => {
 
 test('an uploaded torrent still reports Torrent file', async ({page}) => {
   await showDetail(page, base(941, {source: 'manual_file', request_kinds: ['torrent'],
-    current_provider_name: 'AllDebrid', delivering_provider_name: 'AllDebrid'}));
+    current_provider_name: 'AllDebrid', delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid'}));
   await expect(submittedAs(page)).toHaveText('Torrent file');
 });
 
 test('the label never comes from provider identity', async ({page}) => {
   // Provider says Usenet, but the canonical request kind is a torrent upload.
   await showDetail(page, base(942, {source: 'manual_file', request_kinds: ['torrent'],
-    current_provider_name: 'Usenet', delivering_provider_name: 'Usenet'}));
+    current_provider_name: 'Usenet', delivering_provider_name: 'Usenet',
+    active_provider_id: 'usenet', active_provider_name: 'Usenet'}));
   await expect(submittedAs(page)).toHaveText('Torrent file');
   // ...and the reverse.
   await showDetail(page, base(943, {source: 'manual_file', request_kinds: ['nzb'],
-    current_provider_name: 'AllDebrid', delivering_provider_name: 'AllDebrid'}));
+    current_provider_name: 'AllDebrid', delivering_provider_name: 'AllDebrid',
+    active_provider_id: 'alldebrid', active_provider_name: 'AllDebrid'}));
   await expect(submittedAs(page)).toHaveText('NZB file');
 });
 
