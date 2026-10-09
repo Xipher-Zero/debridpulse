@@ -83,6 +83,17 @@ class LocalNetworkConfirmationRequired(Exception):
         super().__init__("local network connection requires confirmation")
         self.hosts = tuple(hosts)
 
+class AcquisitionScopeRequired(Exception):
+    """Links of a submission each name one item inside an enclosing collection,
+    and the submission chose no acquisition scope for them. Nothing was
+    admitted. ``links``: each such link's position in the submission with the
+    choices its claimant offers, in submission order."""
+
+    def __init__(self, links: tuple[dict, ...]):
+        super().__init__("an acquisition scope must be chosen")
+        self.links = tuple(links)
+
+
 class IntegrationStopFailed(RuntimeError):
     """An integration failed to stop; ``stopped`` were stopped before it."""
 
@@ -639,7 +650,7 @@ class ApplicationService:
         referenced = await self.repository.referenced_staged_inputs()
         return self.staged_input.sweep(referenced)
 
-    async def submit_links(self, links, *, selection_mode="all", allow_local_network=False):
+    async def submit_links(self, links, *, selection_mode="all", allow_local_network=False, acquisition_scopes=None):
         # DP 1.0.12 corrective: one Quick Add batch is one user submission
         # and admits as ONE durable transfer owning N independent root
         # requests -- submission scope is not the same thing as equivalence
@@ -674,15 +685,62 @@ class ApplicationService:
             members = [row[0] for row in rows]
         else:
             urls = members = normalize_direct_links(links)
+        scopes = self._acquisition_scopes(urls, groups, acquisition_scopes)
         consented = await self._local_network_consent(urls, allow_local_network=allow_local_network)
         requests = tuple(TransferRequest(urlsplit(url).scheme.lower(), url, name=direct_link_filename(url, index),
                                          selection_mode=selection_mode,
-                                         local_network_consent=direct_link_host(url) in consented)
+                                         local_network_consent=direct_link_host(url) in consented,
+                                         acquisition_scope=scopes.get(url, ""))
                          for index, url in enumerate(urls, 1))
         item = await self.submit(requests, name=direct_link_collection_name([], members), source="direct_link",
                                  deduplicate=False, **({"alternative_groups": groups} if groups else {}))
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
+
+    def _acquisition_scopes(self, urls, groups, answers) -> dict[str, str]:
+        """Admission's acquisition-scope decision for one submission: the scope
+        the operator chose for each link that names one item inside an
+        enclosing collection (``IntegrationRegistry.scope_choices``).
+
+        ``answers`` maps a link, as submitted, to ``"item"`` or
+        ``"collection"`` -- one answer per link, never a submission-wide
+        default. A link that asks and has no answer refuses the whole
+        submission (``AcquisitionScopeRequired``, nothing admitted) so the
+        operator answers each one; an answer no link asked for, or one outside
+        the link's own choices, is invalid. A collection is never an alternate
+        source of another item."""
+        given = {}
+        for link, scope in dict(answers or {}).items():
+            normalized = normalize_direct_links([str(link)])[0]
+            if normalized in given:
+                raise ValueError("A link may be given only one acquisition scope")
+            given[normalized] = str(scope)
+        registry = getattr(self.engine, "registry", None)
+        scopes, missing = {}, []
+        for index, url in enumerate(urls):
+            choices = registry.scope_choices(TransferRequest(urlsplit(url).scheme.lower(), url)) if registry else ()
+            if not choices:
+                if url in given:
+                    raise ValueError(f"Link {index + 1} has no acquisition scope to choose")
+                continue
+            answer = given.pop(url, None)
+            if answer is None:
+                # ``index``: the link's position among every link submitted,
+                # alternates included, in submission order -- the caller's own
+                # input is never echoed back.
+                missing.append({"index": index,
+                                "choices": [{"scope": scope, "label": label} for scope, label in choices]})
+            elif answer not in {scope for scope, _label in choices}:
+                raise ValueError(f"Link {index + 1} has no acquisition scope {answer!r}")
+            elif answer == "collection" and groups and groups[index] is not None:
+                raise ValueError(f"Link {index + 1} is an alternate source and cannot be a collection")
+            else:
+                scopes[url] = answer
+        if given:
+            raise ValueError("An acquisition scope names a link that is not in this submission")
+        if missing:
+            raise AcquisitionScopeRequired(tuple(missing))
+        return scopes
 
     async def _local_network_consent(self, urls, *, allow_local_network: bool) -> frozenset[str]:
         """Admission's private-LAN decision for one submission: the hosts it

@@ -6,7 +6,9 @@
  * Details manual entry point.
  *
  * It owns NO policy. The Universal Transfer Core decides ALL-vs-subset, the
- * 60s auto-offer window, the 120s cached hold, and every deadline. This module
+ * 60s auto-offer window, the 120s cached hold, and every deadline. A
+ * collection of independent members (``explicit_only``) has no deadline and
+ * no ALL: nothing starts selected, and closing leaves it waiting. This module
  * only reads authoritative state from the dedicated file-selection API, POSTs
  * manifest_id + entry_ids on Confirm, and POSTs manifest_id on dismiss. It
  * never authorizes ALL locally and never wraps or reassigns the shared modal
@@ -41,6 +43,7 @@
   let selectorTransferId = null;          // transfer shown in the selector modal
   let selectorManifestId = null;
   let selectorTransferName = '';
+  let selectorExplicitOnly = false;       // independent collection members: explicit choice only
   const draft = new Set();                // browser-local selected entry_ids
   let manifestEntries = [];               // [{entry_id, name, relative_path, size_bytes}]
   let countdownTimer = null;
@@ -121,6 +124,18 @@
   // ── Selector rendering ──────────────────────────────────────────────────
   function bodyEl() { return document.getElementById('modal-body'); }
 
+  // A collection the source holds more of than its bounded snapshot: say so,
+  // with the source's total only where the source stated one.
+  function truncationNotice(view) {
+    if (!view.source_truncated) return '';
+    const shown = Array.isArray(view.entries) ? view.entries.length : 0;
+    const total = Number.isInteger(view.source_total) && view.source_total > shown
+      ? 'This collection has ' + view.source_total + ' entries'
+      : 'This collection has more entries; its total length is unknown';
+    return '<p class="dp-fs-notice" role="note">Only the first ' + shown +
+      ' entries are shown and can be selected. ' + total + '; later entries are not shown or downloaded.</p>';
+  }
+
   function renderSelector(view) {
     manifestEntries = Array.isArray(view.entries) ? view.entries.slice() : [];
     const tree = buildTree(manifestEntries);
@@ -133,7 +148,9 @@
       (selectorTransferName ? esc(selectorTransferName) : '') + '</span>' +
       '<button type="button" class="btn btn-ghost btn-sm dp-fs-toggle-all"></button>' +
       '</div>' +
-      '<div class="dp-fs-tree" role="tree" aria-label="Files in this transfer">' +
+      truncationNotice(view) +
+      '<div class="dp-fs-tree" role="tree" aria-label="' +
+      (selectorExplicitOnly ? 'Entries in this collection' : 'Files in this transfer') + '">' +
       renderNode(tree, 0) + '</div>' +
       '<div class="dp-fs-summary">' +
       '<span class="dp-fs-count"></span>' +
@@ -153,8 +170,11 @@
     const hasHold = view.decision_deadline != null;
     footer.innerHTML =
       '<div class="dp-fs-footer">' +
-      '<p class="dp-fs-foot-note">Confirm downloads only the selected files. ' +
-      'Cancel stops the entire transfer.</p>' +
+      (selectorExplicitOnly
+        ? '<p class="dp-fs-foot-note">Confirm downloads only the selected entries. Nothing downloads until ' +
+          'you confirm; closing keeps this collection waiting. Cancel stops the entire transfer.</p>'
+        : '<p class="dp-fs-foot-note">Confirm downloads only the selected files. ' +
+          'Cancel stops the entire transfer.</p>') +
       '<p class="dp-fs-foot-countdown"' + (hasHold ? '' : ' hidden') + '>' +
       'All files will download automatically in <span class="dp-fs-clock">—</span> ' +
       'if no selection is confirmed.</p>' +
@@ -249,7 +269,10 @@
     }, 0);
     const countNode = body.querySelector('.dp-fs-count');
     const bytesNode = body.querySelector('.dp-fs-bytes');
-    if (countNode) countNode.textContent = selected.length + ' of ' + total + ' files selected';
+    if (countNode) {
+      countNode.textContent = selected.length + ' of ' + total + (selectorExplicitOnly ? ' entries' : ' files') +
+        ' selected';
+    }
     if (bytesNode) bytesNode.textContent = bytes > 0 ? fmtSize(bytes) : '';
     const toggle = body.querySelector('.dp-fs-toggle-all');
     if (toggle) {
@@ -316,7 +339,7 @@
 
   function isAutoPresentable(view) {
     return Boolean(view && view.eligible && view.mutable && view.auto_offer &&
-      Number(view.file_count || 0) > 1);
+      Number(view.file_count || 0) > (view.explicit_only ? 0 : 1));
   }
 
   function affordanceLabel(affordance) {
@@ -328,9 +351,10 @@
     const persisted = Array.isArray(view.selected_entry_ids) ? view.selected_entry_ids : [];
     if (persisted.length) {
       persisted.forEach(function (id) { draft.add(String(id)); });
-    } else {
+    } else if (!view.explicit_only) {
       (view.entries || []).forEach(function (entry) { draft.add(String(entry.entry_id)); });
     }
+    // A collection's members start unselected: only the operator chooses them.
   }
 
   function openSelector(transferId, view, options) {
@@ -347,11 +371,12 @@
     selectorTransferId = transferId;
     selectorManifestId = view.manifest_id;
     selectorTransferName = opts.transferName || selectorTransferName || '';
+    selectorExplicitOnly = Boolean(view.explicit_only);
     initialDraftFromView(view);
 
     modal().open({
       mode: 'file-selection',
-      title: 'Select files',
+      title: selectorExplicitOnly ? 'Select entries' : 'Select files',
       closeLabel: 'Close file selection',
       onClose: handleModalClose,
     });
@@ -409,10 +434,10 @@
       confirmInFlight = false;
       const count = entryIds.length;
       stopCountdown();
+      const noun = selectorExplicitOnly ? (count === 1 ? 'entry' : 'entries') : (count === 1 ? 'file' : 'files');
       modal().finishClose('confirmed');
       resetSelectorState();
-      toast(count === 1 ? '1 file selected for download' : count + ' files selected for download',
-        'success');
+      toast(count + ' ' + noun + ' selected for download', 'success');
       refreshTransferViews();
     }).catch(function (error) {
       confirmInFlight = false;
@@ -444,7 +469,9 @@
 
   function handleModalClose() {
     // Close / X: no subset is committed, default ALL stays authoritative, and
-    // an active cached hold is released server-side. Draft is discarded.
+    // an active cached hold is released server-side. Draft is discarded. For a
+    // collection of independent members the server keeps the choice pending:
+    // closing never selects anything.
     const transferId = selectorTransferId;
     const manifestId = selectorManifestId;
     stopCountdown();
@@ -462,6 +489,7 @@
     selectorTransferId = null;
     selectorManifestId = null;
     selectorTransferName = '';
+    selectorExplicitOnly = false;
     manifestEntries = [];
     draft.clear();
     confirmInFlight = false;

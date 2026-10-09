@@ -39,7 +39,9 @@ _OUTCOMES = {
     # carries unchanged: never dropped, never converted.
     "subtitle_unembeddable": (Domain.RESOLUTION, Category.NO_TRANSFER_CANDIDATE, Retryability.NEVER,
                               Origin.REMOTE_SOURCE),
-    "collection_too_large": (Domain.REQUEST, Category.UNSUPPORTED_REQUEST, Retryability.NEVER, Origin.USER),
+    # The link names one item inside its enclosing collection and no
+    # acquisition scope was chosen: the operator must say which.
+    "scope_choice_required": (Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER, Origin.USER),
     "network": (Domain.NETWORK, Category.CONNECTION_FAILED, Retryability.BACKOFF, Origin.REMOTE_SOURCE),
     "rate_limited": (Domain.RESOLUTION, Category.SOURCE_TEMPORARILY_UNAVAILABLE, Retryability.BACKOFF,
                      Origin.REMOTE_SOURCE),

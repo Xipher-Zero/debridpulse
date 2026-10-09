@@ -13,12 +13,22 @@ plans it (``providers.media.plan``). A single medium becomes one FILE
 candidate whose durable context is the plan -- extractor and native id, the
 selected native format ids, the chosen subtitle, the final container and the
 preferences it was made from; never a media, manifest or subtitle URL. A
-playlist becomes the ordinary complete file manifest, every member planned
-before the manifest exists (so each member's file name, extension included,
-is final before core commits it) or carrying its own outcome; core owns
-selection and fan-out. Every failure is a fact about the medium or this
-machine (``integrations.media.outcomes``), so a claimed medium never falls
-through to another provider.
+playlist becomes a manifest of independent members: its first
+``COLLECTION_BOUND`` entries in source order, read once and kept as the
+resource's snapshot (whether the source holds more, and its stated total, kept
+beside it), every member planned before the manifest exists (so each member's
+file name, extension included, is final before core commits it) or carrying
+its own outcome; core owns the operator's explicit selection and fan-out.
+Every failure is a fact about the medium or this machine
+(``integrations.media.outcomes``), so a claimed medium never falls through to
+another provider.
+
+A link naming one video AND its enclosing playlist
+(``plan.names_item_in_collection``) declares the two acquisition scopes; the
+operator's answer is the request's ``acquisition_scope``. ``item`` reads only
+that medium (yt-dlp's own single-item reading) and plans it at its own page
+address; ``collection`` reads the playlist. Without an answer it is refused,
+never guessed.
 """
 from __future__ import annotations
 
@@ -27,7 +37,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from integrations.media.outcomes import MediaFailure, outcome_error
 from providers.media import plan as planning
-from transfers.applicability import HostClaim, ProviderApplicability, parse_url_applicability
+from transfers.applicability import AcquisitionScope, HostClaim, ProviderApplicability, parse_url_applicability
 from transfers.errors import Stage, TransferError
 from transfers.filesystem import safe_name
 from transfers.models import (
@@ -60,8 +70,8 @@ class MediaProvider:
 
     def __init__(self, extract, *, target_resolution: str = "best", video_quality: str = "high",
                  video_codec: str = "auto", subtitle_language: str = "en"):
-        # ``extract(url, selection=..., collection_bound=...)``: the worker's
-        # read-only extraction, raising ``MediaFailure``.
+        # ``extract(url, selection=..., collection_bound=..., single_item=...)``:
+        # the worker's read-only extraction, raising ``MediaFailure``.
         self.extract = extract
         self.target_resolution = target_resolution
         self.video_quality = video_quality
@@ -79,8 +89,10 @@ class MediaProvider:
         view = parse_url_applicability(request) if kind in _PLAIN else None
         if view is None or planning.explicit_extractor(str(request.payload)) is None:
             return ProviderApplicability()
-        return ProviderApplicability(specialized_hosts=(HostClaim(view.hostname, schemes=frozenset({kind})),),
-                                     collection_authority=False)
+        return ProviderApplicability(
+            specialized_hosts=(HostClaim(view.hostname, schemes=frozenset({kind})),), collection_authority=False,
+            acquisition_scopes=(planning.ACQUISITION_SCOPES
+                                if planning.names_item_in_collection(str(request.payload)) else ()))
 
     # -- resolution -------------------------------------------------------------------
 
@@ -102,10 +114,10 @@ class MediaProvider:
             raise _failure("unsupported")
         return address
 
-    async def _facts(self, address: str) -> dict:
+    async def _facts(self, address: str, *, single_item: bool = False) -> dict:
         try:
             return await self.extract(address, selection=planning.selection(self.target_resolution),
-                                      collection_bound=planning.COLLECTION_BOUND)
+                                      collection_bound=planning.COLLECTION_BOUND, single_item=single_item)
         except MediaFailure as exc:
             raise _failure(exc.code, exc.detail) from None
 
@@ -127,11 +139,29 @@ class MediaProvider:
             # A member the manifest could not plan answers with its own outcome.
             raise _failure(str(request.payload or "unavailable"))
         address = self._address(request)
-        facts = await self._facts(address)
+        scope = str(getattr(request, "acquisition_scope", "") or "")
+        if member:
+            # A member is one medium by definition, read as itself.
+            scope = AcquisitionScope.ITEM
+        elif planning.names_item_in_collection(address):
+            if scope not in set(AcquisitionScope):
+                raise _failure("scope_choice_required")
+        elif scope:
+            # An answer to a question this link never asked is not an answer.
+            raise _failure("unsupported", "no acquisition scope applies to this link")
+        single = scope == AcquisitionScope.ITEM
+        facts = await self._facts(address, single_item=single)
         if facts.get("kind") == "collection":
-            if member:
+            if single:
                 raise _failure("unsupported", "nested collection")
             return self._collection(facts)
+        if single and not member:
+            # The chosen item is planned at its own page address: the executor's
+            # later re-read names that medium alone, never the playlist.
+            page = str(facts.get("webpage_url") or "")
+            if not page.startswith(("http://", "https://")) or planning.explicit_extractor(page) is None:
+                raise _failure("unsupported", "the item has no address of its own")
+            address = page
         try:
             planned = self._plan(facts, address)
         except MediaFailure as exc:
@@ -185,17 +215,26 @@ class MediaProvider:
         if not members:
             raise _failure("unavailable", "the collection is empty")
         name = safe_name(str(facts.get("title") or facts.get("id") or "Media"))
-        resource = ProviderResource(self.descriptor.id, {"name": name, "members": members}, Ownership.OBSERVED)
+        total = facts.get("total")
+        resource = ProviderResource(self.descriptor.id, {
+            "name": name, "members": members, "truncated": facts.get("truncated") is True,
+            "total": total if isinstance(total, int) and not isinstance(total, bool) and total >= 0 else None,
+        }, Ownership.OBSERVED)
         return ResolutionResult(ResourceState.AVAILABLE, observation=self._observation(resource))
 
     def _observation(self, resource: ProviderResource) -> ProviderObservation:
-        return ProviderObservation(resource, ResourceState.AVAILABLE, safe_name(resource.context["name"]),
-                                   file_manifest=FileManifest(tuple(
-                                       FileManifestEntry(leaf, leaf, 0)
-                                       for leaf, _address, _outcome in resource.context["members"])))
+        context = resource.context
+        return ProviderObservation(resource, ResourceState.AVAILABLE, safe_name(context["name"]),
+                                   file_manifest=FileManifest(
+                                       tuple(FileManifestEntry(leaf, leaf, 0)
+                                             for leaf, _address, _outcome in context["members"]),
+                                       independent_members=True,
+                                       source_truncated=context.get("truncated") is True,
+                                       source_total=context.get("total")))
 
     async def observe(self, resource: ProviderResource) -> ProviderObservation:
-        # The collection was read once, completely; observing never reads it again.
+        # The collection was read once -- its bounded snapshot -- and observing
+        # never reads it again: a restart or a later look never rediscovers it.
         return self._observation(resource)
 
     async def manifest(self, resource: ProviderResource) -> tuple[SourceEntry, ...]:

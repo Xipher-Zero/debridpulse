@@ -134,6 +134,44 @@ async function confirmLocalNetwork(hosts) {
   });
 }
 
+/* One link names an item inside an enclosing collection: the operator says
+ * which to acquire, through the canonical dialog owner. The choices and their
+ * labels are the claimant's own (``acquisition_scope`` refusal); Cancel, X
+ * and Escape choose nothing -- the link is simply not added. Resolves to the
+ * chosen scope, or '' when cancelled. */
+async function chooseAcquisitionScope(link, choices) {
+  if (!window.DPSettingsModal || typeof window.DPSettingsModal.open !== 'function') return '';
+  const offered = (Array.isArray(choices) ? choices : [])
+    .filter(choice => choice && (choice.scope === 'item' || choice.scope === 'collection'));
+  if (offered.length !== 2) return '';
+  let chosen = '';
+  const fallback = {item: 'This Item', collection: 'Collection'};
+  const handle = window.DPSettingsModal.open({
+    title: 'Download the item or its collection?',
+    dismiss: true,
+    closeControl: true,
+    cancelLabel: 'Cancel',
+    actions: offered.map(choice => ({id: choice.scope, label: String(choice.label || fallback[choice.scope])})),
+    mount(body) {
+      const message = document.createElement('p');
+      message.className = 'dp-modal-message';
+      message.textContent = 'This link points to one item inside a collection. Choose what to download; '
+        + 'the choice applies to this link only.';
+      const address = document.createElement('code');
+      address.className = 'dp-modal-message dp-modal-code';
+      address.textContent = String(link || '');
+      body.append(message, address);
+      return message;
+    },
+    onAction(id) {
+      chosen = String(id);
+      handle.close();
+    },
+  });
+  await handle.closed;
+  return chosen;
+}
+
 /* The application action "open this address outside DebridPulse".
  * DebridPulse's own window is never navigated, framed or replaced: the address
  * opens in the operator's own browser. It is one function so a desktop host
@@ -1305,6 +1343,12 @@ async function uploadTransferFile(input) {
     } catch (error) {
       // The same per-submission private-LAN confirmation as Quick Add: Allow
       // resubmits THIS file with consent; neither answer changes a setting.
+      if (error?.detail?.confirmation === 'acquisition_scope') {
+        // A file carries no per-link answers: it is declined, never guessed.
+        toast('Some links in this file point to an item inside a collection. '
+          + 'Add those links through Quick Add to choose what to download.', 'warn');
+        return;
+      }
       if (error?.detail?.confirmation !== 'local_network') throw error;
       if (!await confirmLocalNetwork(error.detail.hosts)) {
         toast('Local network transfer not added', 'info');
@@ -1420,6 +1464,7 @@ async function addDashboardEntries() {
   const kept = [];
   let handled = 0;
   let deferred = 0;
+  let scopeKept = 0;
   try {
     if (direct.length) {
       try {
@@ -1427,22 +1472,57 @@ async function addDashboardEntries() {
         // to be a multi-file collection offers the file selector; a single
         // file is unaffected. Headless callers that omit this keep ALL.
         const submission = {links: direct.map(entry => entry.value), selection_mode: 'interactive'};
+        const scopes = {};
         let result;
-        try {
-          result = await api('POST', '/links/add', submission, 30000);
-        } catch (error) {
-          // A private-LAN destination with confirmation required: nothing was
-          // admitted. Allow applies to THIS submission only; neither answer
-          // changes a setting (Skip Local Connection Confirmation is the one
-          // persistent owner of "do not ask").
-          if (error?.detail?.confirmation !== 'local_network') throw error;
-          if (!await confirmLocalNetwork(error.detail.hosts)) {
-            kept.push(...direct);
-            direct.length = 0;
-          } else {
-            result = await api('POST', '/links/add', {...submission, allow_local_network: true}, 30000);
+        for (let asked = 0; direct.length && asked < 3; asked += 1) {
+          try {
+            submission.links = direct.map(entry => entry.value);
+            const answered = Object.fromEntries(Object.entries(scopes)
+              .filter(([link]) => direct.some(entry => entry.value.split('\t').includes(link))));
+            if (Object.keys(answered).length) submission.acquisition_scopes = answered;
+            else delete submission.acquisition_scopes;
+            result = await api('POST', '/links/add', submission, 30000);
+            break;
+          } catch (error) {
+            const confirmation = error?.detail?.confirmation;
+            if (confirmation === 'acquisition_scope') {
+              // Nothing was admitted: each link naming an item inside its
+              // collection is asked about on its own, one at a time, in input
+              // order. A cancelled link is kept in the input; every other
+              // line is still submitted. No answer is ever a default.
+              const cells = direct.flatMap(entry => entry.value.split('\t').map(cell => ({entry, cell})));
+              const cancelled = new Set();
+              for (const ask of Array.isArray(error.detail.links) ? error.detail.links : []) {
+                const target = cells[Number(ask.index)];
+                if (!target) throw error;
+                if (cancelled.has(target.entry)) continue;
+                const scope = await chooseAcquisitionScope(target.cell, ask.choices);
+                if (scope) scopes[target.cell] = scope;
+                else cancelled.add(target.entry);
+              }
+              if (cancelled.size) {
+                kept.push(...cancelled);
+                scopeKept += cancelled.size;
+                const remaining = direct.filter(entry => !cancelled.has(entry));
+                direct.length = 0;
+                direct.push(...remaining);
+              }
+              continue;
+            }
+            // A private-LAN destination with confirmation required: nothing was
+            // admitted. Allow applies to THIS submission only; neither answer
+            // changes a setting (Skip Local Connection Confirmation is the one
+            // persistent owner of "do not ask").
+            if (confirmation !== 'local_network') throw error;
+            if (!await confirmLocalNetwork(error.detail.hosts)) {
+              kept.push(...direct);
+              direct.length = 0;
+            } else {
+              submission.allow_local_network = true;
+            }
           }
         }
+        if (direct.length && !result) throw new Error('The links could not be submitted');
         if (direct.length) {
           handled += direct.length;
           if (result && result._deferred) deferred += direct.length;
@@ -1481,7 +1561,7 @@ async function addDashboardEntries() {
         toast(`${handled} handled · ${failed.length} failed`, handled ? 'warn' : 'error');
       }
     } else if (!handled && kept.length) {
-      toast('Local network transfer not added', 'info');
+      toast(scopeKept === kept.length ? 'Link not added' : 'Local network transfer not added', 'info');
     } else if (handled && deferred === handled) {
       toast(`${handled} added · processing is paused`, 'success');
     } else if (deferred) {

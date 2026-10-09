@@ -341,6 +341,11 @@ class TransferRequest:
     # identity; never a global permission; never inherited by anything the
     # source's provider returns for another host.
     local_network_consent: bool = False
+    # The operator's explicit answer for a request that names one item inside
+    # an enclosing collection (``ProviderApplicability.acquisition_scopes``):
+    # ``"item"`` or ``"collection"``; empty when no choice was asked. Recorded
+    # at admission, never inferred; not identity.
+    acquisition_scope: str = ""
 
 
 # BitTorrent-class request kinds: a magnet URI, or a torrent metainfo upload
@@ -529,8 +534,23 @@ class FileManifest:
 
     A provider reports ``None`` until it has a complete authoritative tree;
     partial trees are never exposed as a selectable manifest.
+
+    ``independent_members``: every entry is an independently identified
+    resource of a collection (each fans out as its own request), not a file of
+    one payload. Core then authorizes members only by the operator's explicit
+    choice -- never ALL by default, by Close or by a decision timeout.
+
+    ``source_truncated`` / ``source_total``: for such a collection the manifest
+    is the complete BOUNDED selection universe the provider observed; the
+    source itself may hold more (``source_truncated``), and ``source_total`` is
+    its authoritative entry count only when the source stated one (``None``:
+    unknown). Neither ever makes the bounded manifest partial or the source
+    complete.
     """
     entries: tuple[FileManifestEntry, ...]
+    independent_members: bool = False
+    source_truncated: bool = False
+    source_total: int | None = None
 
 
 @dataclass(frozen=True)

@@ -82,7 +82,7 @@ def _sql_date(field: str) -> str:
 from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
-from application.service import ApplicationService, LocalNetworkConfirmationRequired
+from application.service import AcquisitionScopeRequired, ApplicationService, LocalNetworkConfirmationRequired
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
 from services import transfer_trace
@@ -866,9 +866,18 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
         # keeps the ALL default. Never inferred from the source or client.
         # ``allow_local_network`` is the operator's answer to THIS submission's
         # private-LAN confirmation only; it never changes a setting.
+        # ``acquisition_scopes`` answers, link by link, a link that names one
+        # item inside an enclosing collection: ``{link: "item"|"collection"}``.
+        scopes = body.get("acquisition_scopes")
+        if scopes is not None and not (isinstance(scopes, dict)
+                                       and all(isinstance(value, str) for value in scopes.values())):
+            raise HTTPException(400, "acquisition_scopes must map each link to a scope")
         return public_payload(await application.submit_links(
             links, selection_mode=body.get("selection_mode"),
-            **({"allow_local_network": True} if body.get("allow_local_network") is True else {})))
+            **({"allow_local_network": True} if body.get("allow_local_network") is True else {}),
+            **({"acquisition_scopes": scopes} if scopes else {})))
+    except AcquisitionScopeRequired as exc:
+        raise _acquisition_scope_required(exc) from None
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
     except ValueError as exc:
@@ -876,6 +885,16 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
     except Exception as exc:
         logger.exception("add_debrid_links failed: %s", _sanitize_error(exc))
         raise HTTPException(502, _sanitize_error(exc))
+
+
+def _acquisition_scope_required(exc: AcquisitionScopeRequired) -> HTTPException:
+    """Nothing was admitted: each listed link names one item inside an
+    enclosing collection, and the caller must choose -- link by link, with
+    ``acquisition_scopes`` -- which to acquire. Never inferred."""
+    return HTTPException(409, {
+        "confirmation": "acquisition_scope", "links": [dict(link) for link in exc.links],
+        "message": "Choose whether to download the linked item or its collection.",
+    })
 
 
 def _local_network_confirmation(exc: LocalNetworkConfirmationRequired) -> HTTPException:
@@ -924,6 +943,9 @@ async def add_link_file(
         for magnet in magnets:
             items.append(await application.submit_magnet(magnet, source="manual", selection_mode=selection_mode))
         return public_payload({"ok": True, "accepted": len(direct) + len(magnets), "items": items})
+    except AcquisitionScopeRequired as exc:
+        # A link file carries no answers: it is declined, never guessed.
+        raise _acquisition_scope_required(exc) from None
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
     except ValueError as exc:

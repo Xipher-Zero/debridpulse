@@ -338,6 +338,14 @@ body.light .dp-modal-dialog {
   line-height: 1.55;
 }
 
+/* A literal value the dialog is about (a submitted link): shown whole,
+   wrapped anywhere, never truncated into something else. */
+.dp-modal-code {
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .dp-modal-typed {
   display: grid;
   gap: 7px;

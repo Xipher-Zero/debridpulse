@@ -381,3 +381,72 @@ test('a non-eligible transfer shows no file-selection control in Details', async
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
   await expect(detailFileSelectionMount(page)).toBeEmpty();
 });
+
+// DP 1.0.13 generalized collection acquisition: a collection of independent
+// members (``explicit_only``) is chosen only explicitly. Nothing starts
+// selected, there is no ALL countdown, Close and Escape select nothing, and a
+// source larger than its bounded snapshot is stated, never hidden.
+const MEMBERS = [
+  {entry_id: 'm-1', name: 'Song 1 [a1].webm', relative_path: 'Song 1 [a1].webm', size_bytes: 0},
+  {entry_id: 'm-2', name: 'Song 2 [b2].webm', relative_path: 'Song 2 [b2].webm', size_bytes: 0},
+  {entry_id: 'm-3', name: 'Song 3 [c3].webm', relative_path: 'Song 3 [c3].webm', size_bytes: 0},
+];
+
+function collectionView(overrides) {
+  return selectionView(Object.assign({entries: MEMBERS, file_count: MEMBERS.length, total_size_bytes: 0,
+    explicit_only: true, source_truncated: true, source_total: null,
+    decision_deadline: null, auto_offer_until: null}, overrides || {}));
+}
+
+for (const theme of ['dark', 'light']) {
+  test(`a collection starts unselected with no countdown, states its truncation, and closing selects nothing (${theme})`,
+    async ({page}) => {
+      const state = {view: collectionView()};
+      await stub(page, state);
+      await boot(page);
+      if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
+      await openViaEvent(page);
+      await expect(page.locator('#modal-title')).toHaveText('Select entries');
+      await expect(page.locator('.dp-fs-tree')).toHaveAttribute('aria-label', 'Entries in this collection');
+      await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
+      await expect(page.locator('.dp-fs-count')).toHaveText('0 of 3 entries selected');
+      await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeDisabled();
+      await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toBeHidden();
+      await expect(page.locator('#modal-footer .dp-fs-foot-note')).toContainText('closing keeps this collection waiting');
+      const notice = page.locator('.dp-fs-notice');
+      await expect(notice).toHaveText('Only the first 3 entries are shown and can be selected. This collection has '
+        + 'more entries; its total length is unknown; later entries are not shown or downloaded.');
+      await expect(notice).toHaveAttribute('role', 'note');
+      // Escape is no answer: the selector stays, nothing is sent.
+      await page.keyboard.press('Escape');
+      await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+      await page.locator('#modal-footer .dp-fs-close').click();
+      await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+      await expect.poll(() => state.dismissBody).toEqual({manifest_id: MANIFEST_A});
+      expect(state.confirmBody).toBeUndefined();
+    });
+}
+
+test('a collection confirms exactly the entries chosen, and a stated source total is shown', async ({page}) => {
+  const state = {view: collectionView({source_total: 342})};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  await expect(page.locator('.dp-fs-notice')).toContainText('This collection has 342 entries');
+  await page.locator('.dp-fs-check--file[data-entry-id="m-1"]').check();
+  await page.locator('.dp-fs-check--file[data-entry-id="m-3"]').check();
+  await expect(page.locator('.dp-fs-count')).toHaveText('2 of 3 entries selected');
+  await page.locator('#modal-footer .dp-fs-confirm').click();
+  await expect.poll(() => state.confirmBody).toEqual({manifest_id: MANIFEST_A, entry_ids: ['m-1', 'm-3']});
+  await expect(page.locator('.toast')).toContainText('2 entries selected for download');
+});
+
+test('a one-entry collection is still offered and is never chosen for the operator', async ({page}) => {
+  const state = {view: collectionView({entries: [MEMBERS[0]], file_count: 1, source_truncated: false})};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  await expect(page.locator('.dp-fs-notice')).toHaveCount(0);
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
+  await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeDisabled();
+});

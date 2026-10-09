@@ -188,6 +188,18 @@
   display: none;
 }
 
+/* A collection larger than its bounded snapshot: the selector says so. */
+.dp-fs-notice {
+  margin: 0;
+  padding: 10px var(--dp-card-padding, 16px);
+  border-bottom: 1px solid var(--dp-border-subtle);
+  color: var(--dp-text-secondary);
+  background: color-mix(in srgb, var(--dp-state-caution) 10%, var(--dp-surface-1));
+  font-family: var(--dp-font-sans);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .dp-fs-summary {
   display: flex;
   align-items: center;

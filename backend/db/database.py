@@ -1024,6 +1024,16 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # native-transition reconciliation may resolve it. NULL = none.
         'native_transition_from': 'TEXT',
     },
+    'transfer_file_manifests': {
+        # ``FileManifest.independent_members``: the entries are independent
+        # resources of a collection, authorized only by an explicit choice.
+        'independent_members': 'INTEGER NOT NULL DEFAULT 0',
+        # The manifest is a complete BOUNDED selection universe; these record,
+        # separately, that the source held more (``source_truncated``) and its
+        # authoritative entry count when the source stated one (NULL: unknown).
+        'source_truncated': 'INTEGER NOT NULL DEFAULT 0',
+        'source_total': 'INTEGER',
+    },
     # Additive nullable column for databases created before the Torrent/Magnet
     # File-Selection Lifecycle Correction. A metadata-only ALTER: every existing
     # row is left NULL, which is exactly the correct "resource not yet observed
@@ -1105,7 +1115,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
     'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},
     'artifact_consolidations': {'contributing_artifact_id', 'source_transfer_id', 'source_request_id', 'canonical_artifact_id', 'created_at', 'updated_at'},
-    'transfer_file_manifests': {'id', 'transfer_id', 'request_id', 'provider_resource_id', 'provider_id', 'manifest_digest', 'observed_at', 'created_at'},
+    'transfer_file_manifests': {'id', 'transfer_id', 'request_id', 'provider_resource_id', 'provider_id', 'manifest_digest', 'observed_at', 'created_at', 'independent_members', 'source_truncated', 'source_total'},
     'transfer_file_manifest_entries': {'manifest_id', 'entry_id', 'ordinal', 'name', 'relative_path', 'expected_bytes'},
     'transfer_file_selections': {'id', 'request_id', 'transfer_id', 'provider_resource_id', 'provider_id', 'manifest_id', 'initially_available', 'manifest_wait_until', 'available_at', 'auto_offer_queued_at', 'auto_offer_dismissed_at', 'decision', 'decision_reason', 'decision_at', 'hold_until', 'manifest_committed_at', 'created_at', 'updated_at', 'interactive', 'predecessor_id', 'continuity', 'continuity_reason', 'legacy_established', 'reacquired_at', 'reacquisition_consumed_at'},
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},

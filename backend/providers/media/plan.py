@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import functools
 import re
+from urllib.parse import parse_qs, urlsplit
 
 from transfers.filesystem import safe_name
 
@@ -48,8 +49,19 @@ REWRITABLE_CONTAINERS = frozenset({"mp4", "m4a", "m4v", "mov", "webm", "mkv", "m
 # text subtitle is mov_text, which no source offers, so MP4 carries none.
 _CARRIES = {"webm": ("vtt",), "mkv": ("srt", "ass", "ssa", "vtt"), "mka": ("srt", "ass", "ssa", "vtt")}
 MKV = "mkv"
-# Bounded complete collections: a larger one is refused, never truncated.
+# A collection's bounded selection universe: its first entries in source
+# order. A larger collection is offered as exactly these, never refused for
+# its size and never continued past them.
 COLLECTION_BOUND = 100
+# The scope choice a link naming one medium inside its enclosing collection
+# offers its operator, in Media's own words.
+ACQUISITION_SCOPES = (("item", "Current Video"), ("collection", "Playlist"))
+# Extractors whose addresses can name one video inside an enclosing playlist
+# (``watch?v=ID&list=ID``, ``youtu.be/ID?list=ID``), and the stable id forms
+# that make each half defensible. Anything else asks nothing.
+_ITEM_IN_COLLECTION = frozenset({"YoutubeTab", "YoutubeYtBe"})
+_VIDEO_ID = re.compile(r"[0-9A-Za-z_-]{11}")
+_LIST_ID = re.compile(r"[0-9A-Za-z_-]{2,160}")
 _MAX_STEM = 180
 
 
@@ -77,6 +89,22 @@ def explicit_extractor(address: str) -> str | None:
             key = extractor.ie_key()
             return None if key == "Generic" else key
     return None
+
+
+def names_item_in_collection(address: str) -> bool:
+    """Pure: whether ``address`` names one explicit video AND the playlist
+    enclosing it, each by exactly one stable id. Never guesses: a missing,
+    repeated or malformed id is no such pair."""
+    extractor = explicit_extractor(address)
+    if extractor not in _ITEM_IN_COLLECTION:
+        return False
+    parts = urlsplit(address)
+    query = parse_qs(parts.query, keep_blank_values=True)
+    lists = query.get("list") or []
+    # A short link carries the video in its path; every other form in ``v``.
+    items = [parts.path.strip("/")] if extractor == "YoutubeYtBe" else query.get("v") or []
+    return (len(lists) == 1 and len(items) == 1 and _LIST_ID.fullmatch(lists[0]) is not None
+            and _VIDEO_ID.fullmatch(items[0]) is not None)
 
 
 def selection(target: str) -> dict:

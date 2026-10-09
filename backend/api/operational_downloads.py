@@ -1022,11 +1022,14 @@ async def list_operational_torrents(
         -- Entry count of that current generation's bound manifest (0/absent
         -- when no manifest is bound yet) — the same durable manifest-size
         -- fact the fresh-click file-selection read model exposes, never a
-        -- filename-shape guess.
+        -- filename-shape guess -- and whether its members are independent
+        -- resources a collection offers only for an explicit choice.
         page_file_selection_manifest_counts AS (
-            SELECT e.manifest_id, COUNT(*) AS manifest_entry_count
+            SELECT e.manifest_id, COUNT(*) AS manifest_entry_count,
+                   MAX(m.independent_members) AS independent_members
             FROM transfer_file_manifest_entries e
             JOIN page_current_file_selection sel ON sel.manifest_id = e.manifest_id
+            JOIN transfer_file_manifests m ON m.id = e.manifest_id
             GROUP BY e.manifest_id
         ),
         -- Transfer-level COMMON-SOURCE group MEMBERSHIP summary derived only
@@ -1371,7 +1374,8 @@ async def list_operational_torrents(
             page_current_file_selection.manifest_id AS _file_selection_manifest_id,
             page_current_file_selection.decision AS _file_selection_decision,
             page_current_file_selection.manifest_committed_at AS _file_selection_committed_at,
-            COALESCE(page_file_selection_manifest_counts.manifest_entry_count, 0) AS _file_selection_entry_count
+            COALESCE(page_file_selection_manifest_counts.manifest_entry_count, 0) AS _file_selection_entry_count,
+            COALESCE(page_file_selection_manifest_counts.independent_members, 0) AS _file_selection_explicit_only
         FROM page
         JOIN torrents t
           ON t.id = page.id
@@ -1500,6 +1504,7 @@ async def list_operational_torrents(
         file_selection_decision = projected.pop("_file_selection_decision", None)
         file_selection_committed_at = projected.pop("_file_selection_committed_at", None)
         file_selection_entry_count = int(projected.pop("_file_selection_entry_count", 0) or 0)
+        file_selection_explicit_only = bool(projected.pop("_file_selection_explicit_only", 0))
         if movable_artifact_count == 1:
             candidate_action_scope = "artifact"
             candidate_action_count = int(single_movable_artifact_candidate_count or 0)
@@ -1562,6 +1567,7 @@ async def list_operational_torrents(
             file_selection_decision,
             file_selection_committed_at,
             file_selection_entry_count,
+            explicit_only=file_selection_explicit_only,
         )
         # Effective processing presentation via the ONE shared owner
         # (transfers.presentation_repository.effective_presentation), fed the same

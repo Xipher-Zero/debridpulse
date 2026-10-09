@@ -151,9 +151,10 @@ class MediaSandbox:
                            "tools": self.confined_tools(), "socket_timeout": SOCKET_TIMEOUT_SECONDS, **extra},
                           separators=(",", ":")).encode("utf-8")
 
-    async def extract(self, url: str, *, selection: dict, collection_bound: int) -> dict:
-        """Read-only facts about ``url`` (``worker.extract``), or the outcome
-        that ended the extraction as ``MediaFailure``."""
+    async def extract(self, url: str, *, selection: dict, collection_bound: int, single_item: bool = False) -> dict:
+        """Read-only facts about ``url`` (``worker.extract``) -- only the one
+        medium it names when ``single_item`` -- or the outcome that ended the
+        extraction as ``MediaFailure``."""
         scope = uuid.uuid4().hex
         identity = f"extract:{scope}"
         workspace = self.scratch / scope
@@ -162,7 +163,7 @@ class MediaSandbox:
         try:
             proxy, guard = await self.route(scope)
             spec = self._spec("extract", url, proxy, guard, selection=selection, collection_bound=collection_bound,
-                              workspace=str(workspace))
+                              single_item=single_item, workspace=str(workspace))
             owned = await self.processes.spawn(identity, self.argv(), env=self.environment(workspace), stdin=spec)
             stdout, _stderr = await self._collect(owned, identity, EXTRACT_TIMEOUT_SECONDS)
         finally:

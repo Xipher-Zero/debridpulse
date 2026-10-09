@@ -30,7 +30,7 @@ from providers.media.provider import MEMBER_KIND, PLAN_KEY, MediaProvider
 from test_v113_collection_route_generic_closure import Route, by_payload, drive, lab, routes, submit
 from transfers import codec
 from transfers.applicability import ApplicabilityClass
-from transfers.errors import Category, Stage, TransferError
+from transfers.errors import Category, Retryability, Stage, TransferError
 from transfers.models import (
     ContinuationCapability, Endpoint, ExecutionSubject, ExecutionWork, MaterializationKind, MaterializationPlan,
     ExecutionRequest, TransferCandidate, TransferRequest,
@@ -62,8 +62,8 @@ class Extraction:
         self.answer = answer if answer is not None else media_facts()
         self.calls = []
 
-    async def __call__(self, url, *, selection, collection_bound):
-        self.calls.append((url, selection, collection_bound))
+    async def __call__(self, url, *, selection, collection_bound, single_item=False):
+        self.calls.append((url, selection, collection_bound, single_item))
         if isinstance(self.answer, MediaFailure):
             raise self.answer
         return self.answer(url) if callable(self.answer) else self.answer
@@ -414,12 +414,238 @@ async def test_a_playlist_is_one_complete_manifest_whose_member_names_are_final(
         await member.resolve(entries[2].request)
     assert raised.value.error.native_code == "unavailable"
 
-    # The bound fails closed rather than truncating.
-    with pytest.raises(worker.Failure) as refused:
-        worker.bounded_entries({"entries": [{}] * 4}, 3)
-    assert refused.value.code == "collection_too_large"
-    assert len(worker.bounded_entries({"entries": [{}] * 3}, 3)) == 3
-    assert outcome_error("collection_too_large", Stage.RESOLUTION).category == Category.UNSUPPORTED_REQUEST
+    # The members are independent resources: chosen only explicitly, from a
+    # snapshot that observing never re-reads.
+    manifest = result.observation.file_manifest
+    assert manifest.independent_members and not manifest.source_truncated and manifest.source_total is None
+    assert (await provider.observe(result.observation.resource)).file_manifest == manifest
+    assert len(extraction.calls) == 1
+
+
+# -- acquisition scope and the bounded collection snapshot ---------------------------------
+
+MIX = "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&index=12"
+
+
+def test_a_link_naming_a_video_inside_its_playlist_declares_both_scopes_and_nothing_else_asks():
+    provider = MediaProvider(Extraction())
+    asks = ["https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=RDdQw4w9WgXcQ&index=12",
+            "https://music.youtube.com/watch?v=dQw4w9WgXcQ&list=RDAMVMdQw4w9WgXcQ",
+            "https://youtu.be/dQw4w9WgXcQ?list=PLbpi6ZahtOH6Ar_3GPy3workQZiTQKzxs"]
+    silent = [VIDEO, PLAYLIST, "https://www.youtube.com/watch?list=PLbpi6ZahtOH6Ar_3GPy3workQZiTQKzxs",
+              # Never guessed: a repeated or malformed id is no defensible pair.
+              "https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLa1&list=PLb2",
+              "https://www.youtube.com/watch?v=short&list=PLbpi6ZahtOH6Ar_3GPy3workQZiTQKzxs"]
+    for url in asks:
+        assert provider.applicability_for(TransferRequest("https", url)).acquisition_scopes == (
+            ("item", "Current Video"), ("collection", "Playlist")), url
+    for url in silent:
+        assert provider.applicability_for(TransferRequest("https", url)).acquisition_scopes == (), url
+
+
+@pytest.mark.asyncio
+async def test_without_a_chosen_scope_the_link_is_refused_and_never_read():
+    extraction = Extraction()
+    with pytest.raises(TransferError) as raised:
+        await MediaProvider(extraction).resolve(TransferRequest("https", MIX))
+    assert raised.value.error.native_code == "scope_choice_required" and extraction.calls == []
+    refused = outcome_error("scope_choice_required", Stage.RESOLUTION)
+    assert (refused.category, refused.retryability) == (Category.INVALID_REQUEST, Retryability.NEVER)
+    # An answer to a question the link never asked is no answer either.
+    with pytest.raises(TransferError) as raised:
+        await MediaProvider(extraction).resolve(TransferRequest("https", VIDEO, acquisition_scope="item"))
+    assert raised.value.error.native_code == "unsupported" and extraction.calls == []
+
+
+@pytest.mark.asyncio
+async def test_current_video_reads_only_that_medium_and_plans_it_at_its_own_page():
+    extraction = Extraction(media_facts(webpage_url=VIDEO))
+    request = TransferRequest("https", MIX, acquisition_scope="item")
+    (candidate,) = (await MediaProvider(extraction).resolve(request)).candidates
+    (url, _selection, _bound, single), = extraction.calls
+    assert (url, single) == (MIX, True)          # yt-dlp's own single-item reading of the submitted link
+    assert candidate.context[PLAN_KEY]["url"] == VIDEO and request.payload == MIX
+    # A link whose item reading still yields a collection, or a medium with no
+    # page of its own, is refused -- never expanded, never guessed.
+    for answer in ({"kind": "collection", "members": []}, media_facts(webpage_url="")):
+        with pytest.raises(TransferError) as raised:
+            await MediaProvider(Extraction(answer)).resolve(request)
+        assert raised.value.error.native_code == "unsupported"
+
+
+@pytest.mark.asyncio
+async def test_playlist_reads_the_collection_and_a_member_is_always_read_as_itself():
+    members = [{**media_facts(id=f"m{index}", title=f"Song {index}"),
+                "url": f"https://www.youtube.com/watch?v=member{index:05d}"} for index in range(3)]
+    extraction = Extraction({"kind": "collection", "extractor": "YoutubeTab", "id": "RD1", "title": "Mix",
+                             "members": members, "truncated": True, "total": None})
+    result = await MediaProvider(extraction).resolve(TransferRequest("https", MIX, acquisition_scope="collection"))
+    assert extraction.calls[0][3] is False
+    manifest = result.observation.file_manifest
+    assert (manifest.independent_members, manifest.source_truncated, manifest.source_total) == (True, True, None)
+    entries = await MediaProvider(extraction).manifest(result.observation.resource)
+    member = MediaProvider(Extraction(media_facts(id="m0", title="Song 0")))
+    await member.resolve(entries[0].request)
+    assert member.extract.calls[0][0] == "https://www.youtube.com/watch?v=member00000"
+    assert member.extract.calls[0][3] is True
+
+
+@pytest.mark.parametrize("observed,stated,shown,truncated,total", [
+    (0, None, 0, False, None),
+    (1, None, 1, False, None),
+    (100, None, 100, False, None),
+    (101, None, 100, True, None),          # one beyond the bound proves the excess; the total stays unknown
+    (101, 342, 100, True, 342),            # a total the source stated is kept, separately
+    (50, 50, 50, False, 50),
+    (101, 7, 100, True, None),             # a stated count the entries contradict is no total
+])
+def test_the_snapshot_is_the_first_hundred_in_source_order(observed, stated, shown, truncated, total):
+    entries = [{"id": f"e{index}"} for index in range(observed)]
+    kept, more, count = worker.bounded_entries({"entries": entries, "playlist_count": stated},
+                                               planning.COLLECTION_BOUND)
+    assert kept == entries[:shown] and (more, count) == (truncated, total)
+    assert {"id": "e100"} not in kept
+
+
+class _CollectionYoutubeDL:
+    """A playlist of ``size`` flat entries, then each member's own medium."""
+
+    size = 101
+    seen = []
+
+    def __init__(self, params):
+        type(self).seen.append(params)
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def extract_info(self, url, download=False):
+        if "list=" in url and not type(self).seen[-1].get("noplaylist"):
+            entries = [{"id": f"v{index:010d}", "title": f"Track {index}",
+                        "url": f"https://www.youtube.com/watch?v=v{index:010d}"}
+                       for index in range(min(self.size, self.seen[-1]["playlistend"]))]
+            return {"_type": "playlist", "extractor_key": "YoutubeTab", "id": "RD1", "title": "Mix",
+                    "entries": entries}
+        return {"extractor_key": "Youtube", "id": url.rsplit("=", 1)[-1][:11], "title": "Clip",
+                "webpage_url": url.split("&", 1)[0], "formats": [], "requested_formats": []}
+
+
+def test_the_worker_snapshots_a_large_playlist_boundedly_and_reads_an_item_without_its_playlist(monkeypatch):
+    import yt_dlp
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", _CollectionYoutubeDL)
+    spec = {"url": MIX, "proxy": "http://127.0.0.1:9", "collection_bound": planning.COLLECTION_BOUND}
+    facts = worker.extract(spec)
+    assert _CollectionYoutubeDL.seen[-1]["playlistend"] == planning.COLLECTION_BOUND + 1
+    assert _CollectionYoutubeDL.seen[-1]["noplaylist"] is False
+    assert (facts["kind"], len(facts["members"]), facts["truncated"], facts["total"]) == ("collection", 100, True,
+                                                                                         None)
+    assert [member["id"] for member in facts["members"]] == [f"v{index:010d}" for index in range(100)]
+    single = worker.extract({**spec, "single_item": True})
+    assert _CollectionYoutubeDL.seen[-1]["noplaylist"] is True
+    assert single["kind"] == "media" and single["webpage_url"] == "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+async def _transfers():
+    import db.database as database
+    async with database.get_db() as db:
+        return [row["id"] for row in await db.fetchall("SELECT id FROM torrents")]
+
+
+@pytest.mark.asyncio
+async def test_admission_asks_each_ambiguous_link_in_order_and_admits_nothing_until_each_is_answered(
+        tmp_path, monkeypatch):
+    from dataclasses import replace
+    from application.service import AcquisitionScopeRequired, ApplicationService
+    # Any provider may declare the same contract: core names none of them.
+    neutral = Route("collector", hosts=("collect.test",))
+    neutral.applicability = replace(neutral.applicability,
+                                    acquisition_scopes=(("item", "This Item"), ("collection", "Collection")))
+    media = MediaProvider(Extraction())
+    repository, _registry, _executor, engine = await lab(tmp_path, monkeypatch, media, neutral,
+                                                         Route("generic-route", generic=True))
+    service = ApplicationService(engine)
+    other = "https://collect.test/set?item=7"
+    links = ["https://files.example.org/a.bin", MIX, other, VIDEO, PLAYLIST]
+
+    with pytest.raises(AcquisitionScopeRequired) as asked:
+        await service.submit_links(links, selection_mode="interactive")
+    assert [link["index"] for link in asked.value.links] == [1, 2]          # submission order; nothing else asks
+    assert asked.value.links[0]["choices"] == [{"scope": "item", "label": "Current Video"},
+                                               {"scope": "collection", "label": "Playlist"}]
+    assert asked.value.links[1]["choices"][0]["label"] == "This Item"
+    assert MIX not in json.dumps(asked.value.links)                        # the caller's input is never echoed
+    assert await _transfers() == []
+    # One answer is never a default for another link.
+    with pytest.raises(AcquisitionScopeRequired) as asked:
+        await service.submit_links(links, acquisition_scopes={MIX: "item"})
+    assert [link["index"] for link in asked.value.links] == [2] and await _transfers() == []
+    for answers in ({MIX: "both", other: "item"}, {MIX: "item", other: "item", VIDEO: "item"},
+                    {MIX: "item", other: "item", "https://elsewhere.test/x": "item"}):
+        with pytest.raises(ValueError):
+            await service.submit_links(links, acquisition_scopes=answers)
+    assert await _transfers() == []
+
+    admitted = await service.submit_links(links, selection_mode="interactive",
+                                          acquisition_scopes={MIX: "item", other: "collection"})
+    scopes = {str(record.request.payload): record.request.acquisition_scope
+              for record in await repository.requests(admitted["id"])}
+    assert scopes == {links[0]: "", MIX: "item", other: "collection", VIDEO: "", PLAYLIST: ""}
+    # A collection is never an alternate source of another item.
+    with pytest.raises(ValueError):
+        await service.submit_links([(MIX, "https://files.example.org/b.bin")], acquisition_scopes={MIX: "collection"})
+
+
+@pytest.mark.asyncio
+async def test_a_chosen_playlist_snapshots_once_and_only_the_explicitly_selected_members_ever_run(
+        tmp_path, monkeypatch):
+    member_urls = [f"https://www.youtube.com/watch?v=member{index:05d}" for index in range(3)]
+
+    def answer(url):
+        if url == MIX:
+            return {"kind": "collection", "extractor": "YoutubeTab", "id": "RD1", "title": "Mix",
+                    "truncated": True, "total": None,
+                    "members": [{**media_facts(id=f"m{index}", title=f"Song {index}"), "url": member}
+                                for index, member in enumerate(member_urls)]}
+        return media_facts(id=f"m{member_urls.index(url)}", title=f"Song {member_urls.index(url)}")
+
+    extraction = Extraction(answer)
+    repository, _registry, _executor, engine = await lab(tmp_path, monkeypatch, MediaProvider(extraction))
+    transfer = await engine.submit((TransferRequest("https", MIX, name="mix", acquisition_scope="collection"),),
+                                   name="mix", source="direct_link", deduplicate=False)
+    await drive(engine)
+    roots = await repository.requests(transfer.id)
+    assert [record.parent_id for record in roots] == [None]                   # no member before the choice
+    assert [call[0] for call in extraction.calls] == [MIX]
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    assert view["decision"] == "pending" and view["source_truncated"] is True and view["file_count"] == 3
+
+    # A restart observes the same snapshot: the playlist is never read again.
+    _r, _g, _e, restarted = await lab(tmp_path, monkeypatch, MediaProvider(extraction), fresh=False)
+    await drive(restarted)
+    assert [call[0] for call in extraction.calls] == [MIX]
+    assert (await repository.file_selection_presentation(transfer.id, now=engine.clock()))["entries"] == \
+        view["entries"]
+
+    chosen = [entry for entry in view["entries"] if entry["name"] != "Song 1 [m1].mp4"]
+    await repository.confirm_file_selection(transfer.id, view["manifest_id"],
+                                            [entry["entry_id"] for entry in chosen], now=engine.clock())
+    await drive(restarted)
+    members = sorted(str(record.request.payload) for record in await repository.requests(transfer.id)
+                     if record.parent_id is not None)
+    assert members == [member_urls[0], member_urls[2]]                        # exactly the selection
+
+
+def test_a_scope_refusal_is_an_actionable_conflict_naming_positions_only():
+    from api.routes import _acquisition_scope_required
+    from application.service import AcquisitionScopeRequired
+    refusal = _acquisition_scope_required(AcquisitionScopeRequired((
+        {"index": 3, "choices": [{"scope": "item", "label": "Current Video"},
+                                 {"scope": "collection", "label": "Playlist"}]},)))
+    assert refusal.status_code == 409
+    assert refusal.detail["confirmation"] == "acquisition_scope" and refusal.detail["links"][0]["index"] == 3
 
 
 # -- executor contract --------------------------------------------------------------------

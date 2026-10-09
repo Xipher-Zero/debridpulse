@@ -26,6 +26,13 @@ class ApplicabilityReadiness(StrEnum):
     UNRESOLVED = "unresolved"
 
 
+class AcquisitionScope(StrEnum):
+    """The operator's answer when a request names one explicit item inside an
+    enclosing collection (``ProviderApplicability.acquisition_scopes``)."""
+    ITEM = "item"
+    COLLECTION = "collection"
+
+
 class HostClaimScope(StrEnum):
     EXACT = "exact"
     DOMAIN = "domain"
@@ -69,6 +76,12 @@ class ProviderApplicability:
     speaks only for the object it names: it still takes that root through the
     ordinary specialized competition, but says nothing about the independent
     roots submitted beside it, which keep their own claimants.
+
+    ``acquisition_scopes``: the request names one explicit item inside an
+    enclosing collection, and the operator must choose which to acquire --
+    ``(scope, label)`` pairs over ``"item"`` and ``"collection"``, the label in
+    the provider's own words. Empty (the default) asks nothing: an ordinary
+    item, or a collection with no explicit item in it.
     """
 
     generic_schemes: frozenset[str] = frozenset()
@@ -78,6 +91,7 @@ class ProviderApplicability:
     conditional: bool = False
     specific: bool = False
     collection_authority: bool = True
+    acquisition_scopes: tuple[tuple[str, str], ...] = ()
 
     @property
     def is_specialized(self) -> bool:

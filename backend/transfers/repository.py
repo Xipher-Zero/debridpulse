@@ -1611,7 +1611,10 @@ class TransferRepository(_QualifiedTransferRepository):
         binding_id = await self.resource_binding_id(record.transfer_id, resource.id)
         async with get_db() as db:
             exists = await self._selection_generation(db, record.id, binding_id) is not None
-            interactive = await self._selection_required(db, record)
+            # A collection of independent members is the operator's to choose
+            # whatever the submission asked: never decided ALL at creation.
+            interactive = (bool(getattr(file_manifest, "independent_members", False))
+                           or await self._selection_required(db, record))
         if not exists and await self.begin_file_selection_window(
             record.id, record.transfer_id, binding_id, provider_id,
             initially_available=available, now=now, interactive=interactive,
@@ -1709,7 +1712,8 @@ class TransferRepository(_QualifiedTransferRepository):
         return None
 
     @staticmethod
-    def _selection_state(row, file_count: int, *, resource_available: bool | None = None) -> fs.SelectionWindowState:
+    def _selection_state(row, file_count: int, *, resource_available: bool | None = None,
+                         explicit_only: bool = False) -> fs.SelectionWindowState:
         available_at = row["available_at"]
         if resource_available is None:
             # Read-model / offer-list callers do not consult a live provider
@@ -1729,7 +1733,21 @@ class TransferRepository(_QualifiedTransferRepository):
             manifest_file_count=int(file_count),
             manifest_committed_at=row["manifest_committed_at"],
             auto_offer_dismissed_at=row["auto_offer_dismissed_at"],
+            explicit_only=bool(explicit_only),
         )
+
+    @staticmethod
+    async def _manifest_collection(db, manifest_id) -> dict:
+        """The bound manifest's collection facts: whether its members are
+        independent resources (authorized only explicitly), and -- separately
+        from the complete bounded manifest -- whether the source held more and
+        its stated total (``None``: unknown)."""
+        row = await db.fetchone(
+            "SELECT independent_members, source_truncated, source_total FROM transfer_file_manifests WHERE id=?",
+            (manifest_id,)) if manifest_id else None
+        return {"independent_members": bool((row or {}).get("independent_members")),
+                "source_truncated": bool((row or {}).get("source_truncated")),
+                "source_total": (row or {}).get("source_total")}
 
     @staticmethod
     async def _manifest_file_count(db, manifest_id) -> int:
@@ -1860,13 +1878,18 @@ class TransferRepository(_QualifiedTransferRepository):
             if not recordable(sel):
                 await db.rollback()
                 return None
+            explicit_only = bool(getattr(manifest, "independent_members", False))
+            source_total = getattr(manifest, "source_total", None)
             await db.execute(
                 """INSERT OR IGNORE INTO transfer_file_manifests(
                         id, transfer_id, request_id, provider_resource_id, provider_id,
-                        manifest_digest, observed_at)
-                    VALUES(?,?,?,?,?,?,?)""",
+                        manifest_digest, observed_at, independent_members, source_truncated, source_total)
+                    VALUES(?,?,?,?,?,?,?,?,?,?)""",
                 (canonical.manifest_id, sel["transfer_id"], request_id, provider_resource_id,
-                 sel["provider_id"], canonical.manifest_digest, now),
+                 sel["provider_id"], canonical.manifest_digest, now, int(explicit_only),
+                 int(bool(getattr(manifest, "source_truncated", False))),
+                 source_total if isinstance(source_total, int) and not isinstance(source_total, bool)
+                 and source_total >= 0 else None),
             )
             for entry in canonical.entries:
                 await db.execute(
@@ -1888,7 +1911,8 @@ class TransferRepository(_QualifiedTransferRepository):
             # restart. There is no submission-relative cutoff.
             hold_until = sel["hold_until"]
             pending = sel["decision"] == "pending"
-            if pending and canonical.file_count > 1 and hold_until is None:
+            # A collection of independent members has no decision deadline.
+            if pending and canonical.file_count > 1 and hold_until is None and not explicit_only:
                 hold_until = fs.decision_hold_deadline(now)
                 assignments.append("hold_until=?")
                 params.append(hold_until)
@@ -1906,6 +1930,7 @@ class TransferRepository(_QualifiedTransferRepository):
                 available_grace_until=None, hold_until=hold_until,
                 manifest_id=canonical.manifest_id, manifest_file_count=canonical.file_count,
                 manifest_committed_at=None, auto_offer_dismissed_at=sel["auto_offer_dismissed_at"],
+                explicit_only=explicit_only,
             )
             queue_offer = pending and sel["auto_offer_queued_at"] is None and fs.auto_offer_active(bound_state, now)
             if queue_offer:
@@ -1988,8 +2013,10 @@ class TransferRepository(_QualifiedTransferRepository):
                 row = await self._selection_generation(db, request_id, provider_resource_id)
 
             file_count = await self._manifest_file_count(db, row["manifest_id"])
+            explicit_only = (await self._manifest_collection(db, row["manifest_id"]))["independent_members"]
             evaluation = fs.evaluate_gate(
-                self._selection_state(row, file_count, resource_available=bool(resource_available)), now,
+                self._selection_state(row, file_count, resource_available=bool(resource_available),
+                                      explicit_only=explicit_only), now,
             )
             if (evaluation.resolve_decision is not None and row["decision"] == "pending"
                     and row["manifest_committed_at"] is None):
@@ -2183,9 +2210,11 @@ class TransferRepository(_QualifiedTransferRepository):
             file_count = await self._manifest_file_count(db, row["manifest_id"])
             # Close/X on any live auto-presented multi-file hold settles ALL and
             # releases immediately, whatever the resource's initial availability
-            # (specification section 6.5).
+            # (specification section 6.5). A collection of independent members
+            # is never settled by Close: it stays pending, its offer closed.
+            explicit_only = (await self._manifest_collection(db, row["manifest_id"]))["independent_members"]
             active_hold = (
-                file_count > 1
+                file_count > 1 and not explicit_only
                 and row["hold_until"] is not None and str(row["decision"]) == "pending"
             )
             if active_hold:
@@ -2285,6 +2314,13 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback()
                 return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
                                             held=str(row["continuity_reason"] or fs.Continuity.HELD))
+            if (str(row["decision"]) != "explicit" and not already
+                    and (await self._manifest_collection(db, row["manifest_id"]))["independent_members"]):
+                # Fail closed: independent members are authorized only by an
+                # explicit choice -- never by pending, never by ALL.
+                await db.rollback()
+                return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
+                                            held="explicit_selection_required")
             if str(row["decision"]) in ("pending", "all"):
                 authorized = recorded = full_entries
                 # A settled ALL the live transfer owns as a concrete intent
@@ -2806,7 +2842,8 @@ class TransferRepository(_QualifiedTransferRepository):
                 r["entry_id"] for r in await db.fetchall(
                     "SELECT entry_id FROM transfer_file_selection_entries WHERE selection_id=?", (row["id"],))
             ]
-        state = self._selection_state(row, file_count)
+            collection = await self._manifest_collection(db, row["manifest_id"])
+        state = self._selection_state(row, file_count, explicit_only=collection["independent_members"])
         return {
             "eligible": True,
             "mutable": fs.selection_mutable(state),
@@ -2817,8 +2854,14 @@ class TransferRepository(_QualifiedTransferRepository):
             "decision": str(row["decision"]),
             "file_selection_affordance": fs.file_selection_affordance(
                 row["manifest_id"], str(row["decision"]), row["manifest_committed_at"], file_count,
+                explicit_only=collection["independent_members"],
             ),
             "decision_reason": row["decision_reason"],
+            # A collection of independent members: chosen only explicitly, from
+            # a complete bounded snapshot whose source may hold more.
+            "explicit_only": collection["independent_members"],
+            "source_truncated": collection["source_truncated"],
+            "source_total": collection["source_total"],
             "file_count": file_count,
             "total_size_bytes": sum(int(e["expected_bytes"] or 0) for e in entries),
             "entries": [
@@ -2846,7 +2889,9 @@ class TransferRepository(_QualifiedTransferRepository):
             rows = await db.fetchall(
                 """SELECT s.*,
                           (SELECT COUNT(*) FROM transfer_file_manifest_entries e
-                           WHERE e.manifest_id=s.manifest_id) AS file_count
+                           WHERE e.manifest_id=s.manifest_id) AS file_count,
+                          (SELECT m.independent_members FROM transfer_file_manifests m
+                           WHERE m.id=s.manifest_id) AS independent_members
                    FROM transfer_file_selections s
                    JOIN torrents t ON t.id=s.transfer_id
                    WHERE s.manifest_committed_at IS NULL AND s.decision='pending'
@@ -2857,9 +2902,10 @@ class TransferRepository(_QualifiedTransferRepository):
         offers = []
         for row in rows:
             file_count = int(row["file_count"] or 0)
-            if file_count <= 1:
+            explicit_only = bool(row["independent_members"])
+            if file_count <= 1 and not explicit_only:
                 continue
-            if fs.auto_offer_active(self._selection_state(row, file_count), now):
+            if fs.auto_offer_active(self._selection_state(row, file_count, explicit_only=explicit_only), now):
                 offers.append({
                     "transfer_id": int(row["transfer_id"]),
                     "selection_id": row["id"],

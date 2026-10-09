@@ -740,3 +740,90 @@ async def test_selection_policy_has_one_reader_a_default_all_request_is_decided_
         seed.record, seed.provider_id, seed.resource, available=True, file_manifest=None, now=1001.0)
     assert legacy.governed and legacy.binding_id == governed.binding_id
     assert len(await _selection_rows(seed.transfer_id)) == 1
+
+
+# --------------------------------------------------------------------------- #
+# A collection of independent members (``FileManifest.independent_members``):
+# only an explicit Confirm ever authorizes members -- never the ALL default,
+# a single member, Close/X, a decision timeout or a headless submission.
+# --------------------------------------------------------------------------- #
+
+def _collection(*paths, truncated=False, total=None):
+    from transfers.models import FileManifest, FileManifestEntry
+    return FileManifest(tuple(FileManifestEntry(path, path, 0) for path in paths),
+                        independent_members=True, source_truncated=truncated, source_total=total)
+
+
+@pytest.mark.asyncio
+async def test_a_headless_collection_waits_durably_for_an_explicit_choice_through_every_non_answer(repo):
+    clock = Clock(1000.0)
+    seed = await seed_window(transfer_hash="f" * 40)              # selection_mode "all": a headless submission
+    tree = _collection("One [a].mp4", "Two [b].mp4", "Three [c].mp4", truncated=True)
+    await repo.ensure_selection_generation(
+        seed.record, seed.provider_id, seed.resource, available=True, file_manifest=tree, now=clock())
+    view = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    assert view["decision"] == "pending" and view["file_selection_affordance"] == "choose"
+    assert (view["explicit_only"], view["source_truncated"], view["source_total"]) == (True, True, None)
+    assert view["decision_deadline"] is None and view["auto_offer"] is True    # no ALL countdown, offered
+    assert view["file_count"] == 3                                             # the bounded snapshot, complete
+
+    # A decision timeout never comes: the gate waits however long it takes.
+    clock.advance(fs.IMMEDIATE_DECISION_HOLD_SECONDS * 100)
+    gate = await repo.file_selection_gate(seed.request_id, seed.provider_resource_id, now=clock(),
+                                          resource_available=True)
+    assert gate == fs.SelectionGate.WAIT_FOR_DECISION
+    # Close/X closes the offer only: still pending, still the operator's to choose.
+    closed = await repo.dismiss_file_selection(seed.transfer_id, view["manifest_id"], now=clock())
+    assert closed.outcome == fs.SelectionOutcome.DISMISSED and closed.decision == "pending"
+    after = await repo.file_selection_presentation(seed.transfer_id, now=clock())
+    assert after["decision"] == "pending" and after["auto_offer"] is False
+    assert after["file_selection_affordance"] == "choose"
+    # Nothing materializes without the choice: fail closed, nothing committed.
+    held = await repo.commit_selected_manifest(
+        seed.record, executable(("One [a].mp4", "One [a].mp4", 0), ("Two [b].mp4", "Two [b].mp4", 0),
+                                ("Three [c].mp4", "Three [c].mp4", 0)), now=clock())
+    assert tuple(held) == () and held.held == "explicit_selection_required"
+    rows = await _selection_rows(seed.transfer_id)
+    assert rows[0]["manifest_committed_at"] is None and rows[0]["decision"] == "pending"
+    # A restart restores the same immutable snapshot and the same pending choice.
+    restarted = TransferRepository()
+    await restarted.ensure_selection_generation(
+        seed.record, seed.provider_id, seed.resource, available=True, file_manifest=tree, now=clock())
+    again = await restarted.file_selection_presentation(seed.transfer_id, now=clock())
+    assert (again["manifest_id"], again["entries"], again["decision"]) == (
+        view["manifest_id"], view["entries"], "pending")
+    # Selecting none is no answer.
+    empty = await repo.confirm_file_selection(seed.transfer_id, view["manifest_id"], [], now=clock())
+    assert empty.outcome == fs.SelectionOutcome.INVALID
+    # Some: exactly those members, and nothing beyond them.
+    chosen = [view["entries"][0]["entry_id"], view["entries"][2]["entry_id"]]
+    assert (await repo.confirm_file_selection(seed.transfer_id, view["manifest_id"], chosen,
+                                              now=clock())).outcome == fs.SelectionOutcome.CONFIRMED
+    authorized = await repo.commit_selected_manifest(
+        seed.record, executable(("One [a].mp4", "One [a].mp4", 0), ("Two [b].mp4", "Two [b].mp4", 0),
+                                ("Three [c].mp4", "Three [c].mp4", 0)), now=clock())
+    assert sorted(entry.relative_path for entry in authorized) == ["One [a].mp4", "Three [c].mp4"]
+
+
+@pytest.mark.asyncio
+async def test_a_one_member_collection_is_still_chosen_and_explicit_all_is_every_member(repo):
+    clock = Clock(1000.0)
+    one = await seed_window(transfer_hash="1" * 40)
+    await repo.ensure_selection_generation(one.record, one.provider_id, one.resource, available=True,
+                                           file_manifest=_collection("Only [a].mp4"), now=clock())
+    assert await repo.file_selection_gate(one.request_id, one.provider_resource_id, now=clock() + 10_000,
+                                          resource_available=True) == fs.SelectionGate.WAIT_FOR_DECISION
+    view = await repo.file_selection_presentation(one.transfer_id, now=clock())
+    assert view["decision"] == "pending" and view["file_selection_affordance"] == "choose"
+    assert [offer["transfer_id"] for offer in await repo.active_file_selection_offers(now=clock())] == [
+        one.transfer_id]
+
+    every = await seed_window(transfer_hash="2" * 40)
+    tree = _collection(*(f"Track {index:03d}.mp4" for index in range(100)), total=342, truncated=True)
+    await repo.ensure_selection_generation(every.record, every.provider_id, every.resource, available=True,
+                                           file_manifest=tree, now=clock())
+    view = await repo.file_selection_presentation(every.transfer_id, now=clock())
+    assert (view["file_count"], view["source_truncated"], view["source_total"]) == (100, True, 342)
+    result = await repo.confirm_file_selection(every.transfer_id, view["manifest_id"],
+                                               [entry["entry_id"] for entry in view["entries"]], now=clock())
+    assert result.outcome == fs.SelectionOutcome.CONFIRMED and result.decision == "explicit"

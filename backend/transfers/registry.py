@@ -7,6 +7,7 @@ import json
 import logging
 
 from transfers.applicability import (
+    AcquisitionScope,
     ApplicabilityClass,
     ApplicabilityUnresolved,
     ProviderApplicabilityInput,
@@ -361,6 +362,22 @@ class IntegrationRegistry:
         only kind of claim a provider may decline after its probe."""
         facts = self._applicability_for(provider, request)
         return bool(getattr(facts, "conditional", False))
+
+    def scope_choices(self, request: TransferRequest) -> tuple[tuple[str, str], ...]:
+        """The acquisition scopes ``request`` asks its operator to choose
+        between: the ``(scope, label)`` pairs its routing winner declares
+        (``ProviderApplicability.acquisition_scopes``) -- the established
+        competition's first claimant, never a new arbitration. Pure. Empty
+        when that claimant asks nothing, or declares anything but exactly the
+        item and the collection."""
+        providers, _assessment, _unknown = self._provider_selection(request)
+        if not providers:
+            return ()
+        facts = self._applicability_for(providers[0], request)
+        declared = tuple((str(scope), str(label)) for scope, label in getattr(facts, "acquisition_scopes", ()) or ())
+        if sorted(scope for scope, _label in declared) != sorted(AcquisitionScope):
+            return ()
+        return declared
 
     def _decision(self, request, route, providers, assessment, unknown, removed, declined,
                   generic_closed, availability=None) -> RoutingDecision:

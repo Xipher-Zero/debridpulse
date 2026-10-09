@@ -35,6 +35,9 @@ _PUBLIC_SELECTION_FIELDS = (
     "file_count", "total_size_bytes", "entries", "selected_entry_ids",
     "auto_offer", "auto_offer_until", "decision_deadline", "initially_available",
     "server_now", "file_selection_affordance",
+    # A collection of independent members: only an explicit choice; the
+    # bounded snapshot complete, the source's truncation stated separately.
+    "explicit_only", "source_truncated", "source_total",
 )
 _PUBLIC_OFFER_FIELDS = (
     "transfer_id", "manifest_id", "file_count", "decision_deadline", "auto_offer_until",

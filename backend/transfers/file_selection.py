@@ -391,6 +391,11 @@ class SelectionWindowState:
     manifest_file_count: int             # 0 when no manifest is bound
     manifest_committed_at: float | None
     auto_offer_dismissed_at: float | None
+    # The bound manifest's members are independent resources
+    # (``FileManifest.independent_members``): only an explicit Confirm ever
+    # authorizes them -- no single-entry ALL, no decision timeout, no ALL on
+    # Close. The decision waits, durably, for as long as it takes.
+    explicit_only: bool = False
 
 
 @dataclass(frozen=True)
@@ -431,6 +436,11 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
 
     has_manifest = state.manifest_id is not None
     has_multi = has_manifest and state.manifest_file_count > 1
+
+    if has_manifest and state.explicit_only:
+        # A collection of independent members: whatever its size, and however
+        # long the operator takes, nothing settles but an explicit Confirm.
+        return GateEvaluation(SelectionGate.WAIT_FOR_DECISION)
 
     if has_manifest and not has_multi:
         return GateEvaluation(
@@ -482,15 +492,19 @@ def auto_offer_active(state: SelectionWindowState, now: float) -> bool:
     """
     if state.manifest_committed_at is not None or state.decision != SelectionDecision.PENDING:
         return False
-    if state.manifest_id is None or state.manifest_file_count <= 1:
+    if state.auto_offer_dismissed_at is not None or state.manifest_id is None:
         return False
-    if state.auto_offer_dismissed_at is not None:
+    if state.explicit_only:
+        # No decision deadline: the offer stands until it is answered or closed.
+        return state.manifest_file_count >= 1
+    if state.manifest_file_count <= 1:
         return False
     return state.hold_until is not None and now < state.hold_until
 
 
 def file_selection_affordance(
-    manifest_id: str | None, decision: str | None, committed_at, file_count: int,
+    manifest_id: str | None, decision: str | None, committed_at, file_count: int, *,
+    explicit_only: bool = False,
 ) -> str:
     """Canonical ``none``/``pending_manifest``/``choose``/``change`` classification.
 
@@ -518,8 +532,9 @@ def file_selection_affordance(
         # A generation exists (torrent/magnet resolution in progress) but no
         # usable manifest has arrived yet.
         return "pending_manifest"
-    if file_count <= 1:
-        # Single-file torrent/magnet: no picker action (Section 6.9).
+    if file_count <= 1 and not explicit_only:
+        # Single-file torrent/magnet: no picker action (Section 6.9). A
+        # one-member collection is still the operator's to choose.
         return "none"
     if str(decision or "") == SelectionDecision.EXPLICIT:
         return "change"

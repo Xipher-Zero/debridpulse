@@ -374,6 +374,8 @@ def _facts(info: dict) -> dict:
         "kind": "media",
         "extractor": str(info.get("extractor_key") or ""),
         "id": str(info.get("id") or ""),
+        # The medium's own page: the one address that names it alone.
+        "webpage_url": str(info.get("webpage_url") or ""),
         "title": str(info.get("title") or "")[:512],
         "live_status": str(info.get("live_status") or ("is_live" if info.get("is_live") else "")),
         "formats": [{
@@ -391,25 +393,33 @@ def _facts(info: dict) -> dict:
     }
 
 
-def bounded_entries(info: dict, bound: int) -> list:
-    """Every entry of a collection, or a refusal: a collection larger than
-    the bound is never truncated into a smaller one (the extraction asked for
-    one entry more than the bound, so reaching it proves the excess)."""
+def bounded_entries(info: dict, bound: int) -> tuple[list, bool, int | None]:
+    """A collection's first ``bound`` entries in source order, whether the
+    source holds more, and its entry count only where yt-dlp states one
+    (``None``: unknown). The extraction asked for one entry more than the
+    bound, so reaching it proves the excess without enumerating the rest; a
+    stated count never contradicts the entries actually observed."""
     entries = list(info.get("entries") or [])
-    if len(entries) > bound:
-        raise Failure("collection_too_large", f"more than {bound} entries")
-    return entries
+    total = info.get("playlist_count")
+    if isinstance(total, bool) or not isinstance(total, int) or total < len(entries[:bound + 1]):
+        total = None
+    return entries[:bound], len(entries) > bound or (total is not None and total > bound), total
 
 
 def extract(spec: dict) -> dict:
-    """Read-only facts for the provider's plan: one medium, or a complete
-    bounded collection whose every member was itself planned (or failed)."""
+    """Read-only facts for the provider's plan: one medium (only that medium
+    when ``single_item``), or a collection's bounded first entries -- whether
+    the source holds more stated separately -- each member itself planned (or
+    failed)."""
     from yt_dlp import YoutubeDL
     selection = spec.get("selection") or {}
     bound = int(spec.get("collection_bound") or 0)
+    # One explicitly identified medium: yt-dlp's own single-item reading of an
+    # address that also names its enclosing playlist -- never its expansion.
+    single = spec.get("single_item") is True
     log = _Log()
     params = _params(spec, log, format=selection.get("format"), format_sort=list(selection.get("format_sort") or []),
-                     extract_flat="in_playlist", playlistend=bound + 1, lazy_playlist=False)
+                     extract_flat="in_playlist", playlistend=bound + 1, lazy_playlist=False, noplaylist=single)
     with YoutubeDL(params) as ydl:
         try:
             info = ydl.extract_info(spec["url"], download=False)
@@ -419,7 +429,9 @@ def extract(spec: dict) -> dict:
             raise Failure("extractor_failed", "no information")
         if info.get("_type") not in {"playlist", "multi_video"}:
             return _facts(info)
-        entries = bounded_entries(info, bound)
+        if single:
+            raise Failure("unsupported", "the item's address names only a collection")
+        entries, truncated, total = bounded_entries(info, bound)
         members = []
         for entry in entries:
             if not isinstance(entry, dict):
@@ -439,7 +451,8 @@ def extract(spec: dict) -> dict:
                 member["outcome"] = failure.code
             members.append(member)
         return {"kind": "collection", "extractor": str(info.get("extractor_key") or ""),
-                "id": str(info.get("id") or ""), "title": str(info.get("title") or "")[:512], "members": members}
+                "id": str(info.get("id") or ""), "title": str(info.get("title") or "")[:512], "members": members,
+                "truncated": truncated, "total": total}
 
 
 def _count(value) -> int | None:
