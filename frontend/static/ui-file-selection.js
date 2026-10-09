@@ -8,7 +8,9 @@
  * It owns NO policy. The Universal Transfer Core decides ALL-vs-subset, the
  * 60s auto-offer window, the 120s cached hold, and every deadline. A
  * collection of independent members (``explicit_only``) has no deadline and
- * no ALL: nothing starts selected, and closing leaves it waiting. This module
+ * no ALL: its draft starts with every displayed entry checked, but only
+ * Confirm commits anything; the backdrop and Escape do nothing, and X, Close
+ * and Cancel Transfer all cancel the transfer. This module
  * only reads authoritative state from the dedicated file-selection API, POSTs
  * manifest_id + entry_ids on Confirm, and POSTs manifest_id on dismiss. It
  * never authorizes ALL locally and never wraps or reassigns the shared modal
@@ -169,10 +171,10 @@
     if (!footer) return;
     const hasHold = view.decision_deadline != null;
     footer.innerHTML =
-      '<div class="dp-fs-footer">' +
+      '<div class="dp-fs-footer' + (selectorExplicitOnly ? ' dp-fs-footer--collection' : '') + '">' +
       (selectorExplicitOnly
         ? '<p class="dp-fs-foot-note">Confirm downloads only the selected entries. Nothing downloads until ' +
-          'you confirm; closing keeps this collection waiting. Cancel stops the entire transfer.</p>'
+          'you confirm; Close or Cancel Transfer cancels the entire transfer.</p>'
         : '<p class="dp-fs-foot-note">Confirm downloads only the selected files. ' +
           'Cancel stops the entire transfer.</p>') +
       '<p class="dp-fs-foot-countdown"' + (hasHold ? '' : ' hidden') + '>' +
@@ -276,7 +278,9 @@
     if (bytesNode) bytesNode.textContent = bytes > 0 ? fmtSize(bytes) : '';
     const toggle = body.querySelector('.dp-fs-toggle-all');
     if (toggle) {
-      toggle.textContent = selected.length === total && total > 0 ? 'Deselect all' : 'Select all';
+      const selectable = selectableEntryIds();
+      toggle.textContent = allSelected(selectable) ? 'Deselect All' : 'Select All';
+      toggle.disabled = selectable.length === 0;
     }
     const footer = modal().footer();
     const confirmBtn = footer ? footer.querySelector('.dp-fs-confirm') : null;
@@ -286,14 +290,28 @@
     }
   }
 
-  function onToggleAll() {
-    const selectingAll = manifestEntries.some(function (entry) {
-      return !draft.has(String(entry.entry_id));
+  // The entries the operator can select: every displayed file row whose
+  // checkbox is enabled. A disabled row is never counted or changed.
+  function selectableEntryIds() {
+    const body = bodyEl();
+    if (!body) return [];
+    return Array.from(body.querySelectorAll('.dp-fs-check--file:not(:disabled)'), function (checkbox) {
+      return String(checkbox.dataset.entryId);
     });
-    draft.clear();
-    if (selectingAll) {
-      manifestEntries.forEach(function (entry) { draft.add(String(entry.entry_id)); });
-    }
+  }
+
+  function allSelected(ids) {
+    return ids.length > 0 && ids.every(function (id) { return draft.has(id); });
+  }
+
+  // The one Select All / Deselect All for both selectors: every selectable
+  // entry checked unchecks them all; otherwise it checks them all.
+  function onToggleAll() {
+    const selectable = selectableEntryIds();
+    const deselecting = allSelected(selectable);
+    selectable.forEach(function (id) {
+      if (deselecting) draft.delete(id); else draft.add(id);
+    });
     syncCheckboxesFromDraft();
     updateFolderStates();
     updateSummary();
@@ -351,10 +369,11 @@
     const persisted = Array.isArray(view.selected_entry_ids) ? view.selected_entry_ids : [];
     if (persisted.length) {
       persisted.forEach(function (id) { draft.add(String(id)); });
-    } else if (!view.explicit_only) {
+    } else {
+      // Every displayed entry starts checked. For a collection this is only
+      // the draft: nothing is committed until Confirm.
       (view.entries || []).forEach(function (entry) { draft.add(String(entry.entry_id)); });
     }
-    // A collection's members start unselected: only the operator chooses them.
   }
 
   function openSelector(transferId, view, options) {
@@ -377,7 +396,8 @@
     modal().open({
       mode: 'file-selection',
       title: selectorExplicitOnly ? 'Select entries' : 'Select files',
-      closeLabel: 'Close file selection',
+      closeLabel: selectorExplicitOnly ? 'Cancel transfer' : 'Close file selection',
+      contain: selectorExplicitOnly,
       onClose: handleModalClose,
     });
     renderSelector(view);
@@ -458,6 +478,10 @@
     stopCountdown();
     modal().finishClose('cancel-transfer');
     resetSelectorState();
+    cancelTransfer(transferId);
+  }
+
+  function cancelTransfer(transferId) {
     api('POST', '/torrents/' + transferId + '/cancel').then(function () {
       toast('Transfer cancelled', 'success');
       refreshTransferViews();
@@ -467,11 +491,19 @@
     });
   }
 
-  function handleModalClose() {
+  function handleModalClose(reason) {
+    // A collection of independent members is blocking: the backdrop does
+    // nothing, and X / Close cancel the transfer exactly as Cancel Transfer
+    // does -- nothing is committed and nothing is left pending.
+    if (selectorExplicitOnly) {
+      if (reason === 'backdrop') return false;
+      const cancelled = selectorTransferId;
+      resetSelectorState();
+      if (cancelled != null) cancelTransfer(cancelled);
+      return undefined;
+    }
     // Close / X: no subset is committed, default ALL stays authoritative, and
-    // an active cached hold is released server-side. Draft is discarded. For a
-    // collection of independent members the server keeps the choice pending:
-    // closing never selects anything.
+    // an active cached hold is released server-side. Draft is discarded.
     const transferId = selectorTransferId;
     const manifestId = selectorManifestId;
     stopCountdown();

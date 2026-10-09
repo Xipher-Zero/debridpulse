@@ -338,6 +338,11 @@ body.light .dp-modal-dialog {
   line-height: 1.55;
 }
 
+/* An explanatory line centred on the dialog frame. */
+.dp-modal-message--center {
+  text-align: center;
+}
+
 /* A literal value the dialog is about (a submitted link): shown whole,
    wrapped anywhere, never truncated into something else. */
 .dp-modal-code {
@@ -428,6 +433,12 @@ body.light .dp-modal-dialog {
 
 .dp-modal-footer .btn {
   min-width: 104px;
+}
+
+/* A destructive cancel slot (cancelTone: 'danger') leads the footer; the
+   actions keep the far end. */
+.dp-modal-footer .dp-modal-cancel-leading {
+  margin-right: auto;
 }
 
 @media (max-width: 620px) {

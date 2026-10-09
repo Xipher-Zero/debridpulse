@@ -25,6 +25,10 @@
  * through `handle.setActionEnabled(id, enabled)`; they never settle the
  * dialog. `closeControl: true` adds the upper-right close control, which is
  * the cancel slot's settlement under a second, conventional placement.
+ * `cancelTone: 'danger'` makes the cancel slot a destructive abandonment: it
+ * takes the red treatment and leads the footer, with the actions at the far
+ * end. `blocking: true` asks for a decision: Escape is inert, as the backdrop
+ * always is, so only a control settles the dialog.
  *
  * A dialog that reports work the operator cannot stop declares `progress:
  * true` (built by `progress()`): its title is the centred status line in the
@@ -169,7 +173,7 @@
     if (overlays[overlays.length - 1] !== entry.overlay) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!entry.progress) entry.settle(false);
+      if (!entry.blocking) entry.settle(false);
     } else if (event.key === 'Tab') {
       trapTab(event, entry);
     } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement
@@ -186,6 +190,10 @@
     const progress = spec.progress === true;
     const dismissOnly = spec.dismiss === true;
     const actions = Array.isArray(spec.actions) ? spec.actions : [];
+    const blocking = progress || spec.blocking === true;
+    const cancelSlot = spec.cancelTone === 'danger'
+      ? '<button class="btn btn-danger dp-modal-cancel-leading" type="button" data-modal-cancel></button>'
+      : '';
     const acceptClass = tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
@@ -206,8 +214,9 @@
         </header>
         <div class="dp-modal-body"></div>
         <footer class="dp-modal-footer">
+          ${cancelSlot}
           ${actions.map(() => '<button class="btn" type="button" data-modal-action></button>').join('')}
-          <button class="btn btn-ghost" type="button" data-modal-cancel></button>
+          ${cancelSlot ? '' : '<button class="btn btn-ghost" type="button" data-modal-cancel></button>'}
           ${dismissOnly ? '' : `<button class="btn ${acceptClass}" type="button" data-modal-accept></button>`}
         </footer>
       </section>`;
@@ -245,7 +254,7 @@
     let settled = false;
     let resolveClosed;
     const closed = new Promise(resolve => { resolveClosed = resolve; });
-    const entry = {overlay, dialog, body, accept, progress, settle};
+    const entry = {overlay, dialog, body, accept, blocking, settle};
 
     function settle(accepted) {
       if (settled) return;

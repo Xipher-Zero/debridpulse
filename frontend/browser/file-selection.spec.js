@@ -118,7 +118,7 @@ test('cold-load offers query recovers an active offer', async ({page}) => {
   await expect(page.locator('.dp-fs-tree .dp-fs-check--file')).toHaveCount(4);
 });
 
-test('default draft is ALL; folder tri-state, Select all / Deselect all and counts track the draft', async ({page}) => {
+test('default draft is ALL; folder tri-state, Select All / Deselect All and counts track the draft', async ({page}) => {
   const state = {view: selectionView()};
   await stub(page, state);
   await boot(page);
@@ -126,24 +126,24 @@ test('default draft is ALL; folder tri-state, Select all / Deselect all and coun
 
   const count = page.locator('.dp-fs-count');
   await expect(count).toHaveText('4 of 4 files selected');
-  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Deselect all');
+  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Deselect All');
 
   // Uncheck one file in "Season 1" → that folder becomes indeterminate and the
-  // state-aware toggle flips to "Select all".
+  // state-aware toggle flips to "Select All".
   await page.locator('.dp-fs-check--file[data-entry-id="e-s1e01"]').uncheck();
   await expect(count).toHaveText('3 of 4 files selected');
   const seasonFolder = page.locator('.dp-fs-check--folder[data-folder-path="Season 1"]');
   await expect(seasonFolder).toHaveJSProperty('indeterminate', true);
-  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Select all');
+  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Select All');
 
-  // Select all → 4/4, then Deselect all → 0/4, Confirm disabled.
+  // Select All → 4/4, then Deselect All → 0/4, Confirm disabled.
   await page.locator('.dp-fs-toggle-all').click();
   await expect(count).toHaveText('4 of 4 files selected');
-  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Deselect all');
+  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Deselect All');
   await page.locator('.dp-fs-toggle-all').click();
   await expect(count).toHaveText('0 of 4 files selected');
   await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeDisabled();
-  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Select all');
+  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Select All');
 
   // Folder checkbox selects its whole subtree.
   await page.locator('.dp-fs-check--folder[data-folder-path="Season 1"]').check();
@@ -382,10 +382,11 @@ test('a non-eligible transfer shows no file-selection control in Details', async
   await expect(detailFileSelectionMount(page)).toBeEmpty();
 });
 
-// DP 1.0.13 generalized collection acquisition: a collection of independent
-// members (``explicit_only``) is chosen only explicitly. Nothing starts
-// selected, there is no ALL countdown, Close and Escape select nothing, and a
-// source larger than its bounded snapshot is stated, never hidden.
+// DP 1.0.13 collection acquisition: a collection of independent members
+// (``explicit_only``) starts with every displayed entry checked, but that draft
+// is not consent -- only Confirm commits it. There is no ALL countdown, the
+// backdrop and Escape do nothing, and X, Close and Cancel Transfer all cancel
+// the transfer. A source larger than its bounded snapshot is stated.
 const MEMBERS = [
   {entry_id: 'm-1', name: 'Song 1 [a1].webm', relative_path: 'Song 1 [a1].webm', size_bytes: 0},
   {entry_id: 'm-2', name: 'Song 2 [b2].webm', relative_path: 'Song 2 [b2].webm', size_bytes: 0},
@@ -399,7 +400,7 @@ function collectionView(overrides) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`a collection starts unselected with no countdown, states its truncation, and closing selects nothing (${theme})`,
+  test(`a collection starts all checked without committing anything, has no countdown, and ignores backdrop, Escape and time (${theme})`,
     async ({page}) => {
       const state = {view: collectionView()};
       await stub(page, state);
@@ -408,45 +409,209 @@ for (const theme of ['dark', 'light']) {
       await openViaEvent(page);
       await expect(page.locator('#modal-title')).toHaveText('Select entries');
       await expect(page.locator('.dp-fs-tree')).toHaveAttribute('aria-label', 'Entries in this collection');
-      await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
-      await expect(page.locator('.dp-fs-count')).toHaveText('0 of 3 entries selected');
-      await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeDisabled();
+      await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(3);
+      await expect(page.locator('.dp-fs-count')).toHaveText('3 of 3 entries selected');
+      await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Deselect All');
+      await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeEnabled();
       await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toBeHidden();
-      await expect(page.locator('#modal-footer .dp-fs-foot-note')).toContainText('closing keeps this collection waiting');
+      const note = page.locator('#modal-footer .dp-fs-foot-note');
+      await expect(note).toHaveText('Confirm downloads only the selected entries. Nothing downloads until you '
+        + 'confirm; Close or Cancel Transfer cancels the entire transfer.');
+      await expect(note).toHaveCSS('text-align', 'center');
+      const frame = await page.locator('#modal').boundingBox();
+      const noteBox = await note.boundingBox();
+      expect(Math.abs((noteBox.x + noteBox.width / 2) - (frame.x + frame.width / 2))).toBeLessThanOrEqual(1);
       const notice = page.locator('.dp-fs-notice');
       await expect(notice).toHaveText('Only the first 3 entries are shown and can be selected. This collection has '
         + 'more entries; its total length is unknown; later entries are not shown or downloaded.');
       await expect(notice).toHaveAttribute('role', 'note');
-      // Escape is no answer: the selector stays, nothing is sent.
+      // Blocking: the backdrop, Escape and waiting decide nothing and send nothing.
+      await page.locator('#overlay').click({position: {x: 4, y: 4}});
       await page.keyboard.press('Escape');
+      await page.waitForTimeout(2500);
       await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
-      await page.locator('#modal-footer .dp-fs-close').click();
-      await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
-      await expect.poll(() => state.dismissBody).toEqual({manifest_id: MANIFEST_A});
+      await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(3);
       expect(state.confirmBody).toBeUndefined();
+      expect(state.dismissBody).toBeUndefined();
+      expect(state.cancelHit).toBeUndefined();
     });
 }
 
-test('a collection confirms exactly the entries chosen, and a stated source total is shown', async ({page}) => {
-  const state = {view: collectionView({source_total: 342})};
+for (const [name, closer] of [['X', '#modal .modal-close'], ['Close', '#modal-footer .dp-fs-close'],
+  ['Cancel Transfer', '#modal-footer .dp-fs-cancel']]) {
+  test(`${name} cancels a pending collection transfer once, committing nothing and leaving nothing pending`, async ({page}) => {
+    const state = {view: collectionView()};
+    await stub(page, state);
+    await boot(page);
+    await openViaEvent(page);
+    await page.locator(closer).dblclick();
+    await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+    await expect.poll(() => state.cancelHit).toBe(1);
+    await expect(page.locator('.toast')).toContainText('Transfer cancelled');
+    await page.waitForTimeout(300);
+    expect(state.cancelHit).toBe(1);
+    expect(state.confirmBody).toBeUndefined();
+    expect(state.dismissBody).toBeUndefined();
+  });
+}
+
+test('a collection confirms exactly the entries chosen, keeps edits across a re-render, and a stated source total is shown', async ({page}) => {
+  const state = {view: collectionView({source_total: 342}), confirmStatus: 409};
   await stub(page, state);
   await boot(page);
   await openViaEvent(page);
   await expect(page.locator('.dp-fs-notice')).toContainText('This collection has 342 entries');
-  await page.locator('.dp-fs-check--file[data-entry-id="m-1"]').check();
-  await page.locator('.dp-fs-check--file[data-entry-id="m-3"]').check();
+  await page.locator('.dp-fs-check--file[data-entry-id="m-2"]').uncheck();
   await expect(page.locator('.dp-fs-count')).toHaveText('2 of 3 entries selected');
+  // A refused Confirm re-reads authority and re-renders: the deliberate edit stays.
+  await page.locator('#modal-footer .dp-fs-confirm').click();
+  await expect(page.locator('.toast')).toContainText(/selection changed|already started/i);
+  await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
+  await expect(page.locator('.dp-fs-check--file[data-entry-id="m-2"]')).not.toBeChecked();
+  await expect(page.locator('.dp-fs-count')).toHaveText('2 of 3 entries selected');
+  await expect(page.locator('.dp-fs-toggle-all')).toHaveText('Select All');
+  state.confirmStatus = 200;
   await page.locator('#modal-footer .dp-fs-confirm').click();
   await expect.poll(() => state.confirmBody).toEqual({manifest_id: MANIFEST_A, entry_ids: ['m-1', 'm-3']});
-  await expect(page.locator('.toast')).toContainText('2 entries selected for download');
+  await expect(page.locator('.toast').last()).toContainText('2 entries selected for download');
 });
 
-test('a one-entry collection is still offered and is never chosen for the operator', async ({page}) => {
+test('a collection needs a positive explicit selection: no entries checked disables Confirm', async ({page}) => {
   const state = {view: collectionView({entries: [MEMBERS[0]], file_count: 1, source_truncated: false})};
   await stub(page, state);
   await boot(page);
   await openViaEvent(page);
   await expect(page.locator('.dp-fs-notice')).toHaveCount(0);
-  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(1);
+  await page.locator('.dp-fs-toggle-all').click();
+  await expect(page.locator('.dp-fs-count')).toHaveText('0 of 1 entries selected');
   await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeDisabled();
+  await page.locator('#modal-footer .dp-fs-confirm').click({force: true});
+  await page.waitForTimeout(300);
+  expect(state.confirmBody).toBeUndefined();
+});
+
+test('after a reload a pending collection is offered afresh: all checked again, nothing committed by the reload', async ({page}) => {
+  const state = {view: collectionView(), offers: [{transfer_id: 7, manifest_id: MANIFEST_A, file_count: 3}]};
+  await stub(page, state);
+  await boot(page);
+  await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
+  await page.locator('.dp-fs-check--file[data-entry-id="m-1"]').uncheck();
+  await page.reload();
+  await page.waitForFunction(() => Boolean(window.DPFileSelection && window.DPModal));
+  await expect(page.locator('#modal[data-dp-modal-mode="file-selection"]')).toBeVisible();
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(3);
+  expect(state.confirmBody).toBeUndefined();
+  expect(state.dismissBody).toBeUndefined();
+  expect(state.cancelHit).toBeUndefined();
+});
+
+// The one shared Select All / Deselect All, for both selectors: every
+// selectable entry checked reads Deselect All and unchecks them; otherwise it
+// reads Select All and checks them. One box for both labels, in its place.
+for (const kind of ['torrent', 'collection']) {
+  test(`the shared toggle tracks the selection and never resizes or moves (${kind})`, async ({page}) => {
+    const state = {view: kind === 'torrent' ? selectionView() : collectionView()};
+    await stub(page, state);
+    await boot(page);
+    await openViaEvent(page);
+    const toggle = page.locator('.dp-fs-toolbar > .dp-fs-toggle-all');
+    const checks = page.locator('.dp-fs-check--file');
+    const total = await checks.count();
+    const boxes = [];
+    const measure = async () => boxes.push(JSON.stringify(await toggle.boundingBox()));
+    await expect(toggle).toHaveText('Deselect All');
+    await measure();
+    await checks.first().uncheck();                                             // partial
+    await expect(toggle).toHaveText('Select All');
+    await measure();
+    await checks.first().check();                                               // all again
+    await expect(toggle).toHaveText('Deselect All');
+    await toggle.click();                                                       // → none
+    await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
+    await expect(toggle).toHaveText('Select All');
+    await measure();
+    await toggle.click();                                                       // → all
+    await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(total);
+    await expect(toggle).toHaveText('Deselect All');
+    await measure();
+    expect(new Set(boxes).size).toBe(1);
+  });
+}
+
+test('a disabled row is never counted or changed by the toggle', async ({page}) => {
+  const state = {view: collectionView()};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  const toggle = page.locator('.dp-fs-toggle-all');
+  const blocked = page.locator('.dp-fs-check--file[data-entry-id="m-3"]');
+  await blocked.uncheck();
+  // No current source renders an ineligible row; the rule is the HTML one --
+  // a disabled checkbox is not selectable -- so the case is made in the page.
+  await blocked.evaluate(node => { node.disabled = true; });
+  await page.locator('.dp-fs-check--file[data-entry-id="m-1"]').uncheck();
+  await page.locator('.dp-fs-check--file[data-entry-id="m-1"]').check();
+  await expect(toggle).toHaveText('Deselect All');                              // every eligible row checked
+  await toggle.click();
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(0);
+  await expect(toggle).toHaveText('Select All');
+  await toggle.click();
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(2);
+  await expect(blocked).not.toBeChecked();
+  await expect(toggle).toHaveText('Deselect All');
+});
+
+test('the collection selector is keyboard-complete: modal semantics, focus moves in and stays in, Escape is inert', async ({page}) => {
+  const state = {view: collectionView({entries: [MEMBERS[0]], file_count: 1, source_truncated: false})};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  const modalNode = page.locator('#modal');
+  await expect(modalNode).toHaveAttribute('role', 'dialog');
+  await expect(modalNode).toHaveAttribute('aria-modal', 'true');
+  await expect(modalNode).toHaveAttribute('aria-labelledby', 'modal-title');
+  await expect(modalNode).toBeFocused();
+  await expect(page.locator('#modal .modal-close')).toHaveAttribute('aria-label', 'Cancel transfer');
+  const order = [];
+  for (let step = 0; step < 8; step += 1) {
+    await page.keyboard.press('Tab');
+    order.push(await page.evaluate(() => {
+      const node = document.activeElement;
+      if (!node.closest('#modal')) return 'OUTSIDE';
+      return node.getAttribute('aria-label') || node.dataset.entryId || node.textContent.trim();
+    }));
+  }
+  expect(order).toEqual(['Cancel transfer', 'Deselect All', 'm-1', 'Cancel Transfer', 'Close', 'Confirm',
+    'Cancel transfer', 'Deselect All']);
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#modal .modal-close')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');                                      // wraps backwards
+  await expect(page.locator('#modal-footer .dp-fs-confirm')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  await page.locator('#modal-footer .dp-fs-cancel').focus();
+  await page.keyboard.press('Enter');
+  await expect.poll(() => state.cancelHit).toBe(1);
+  await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  expect(await page.locator('#modal').getAttribute('tabindex')).toBeNull();
+});
+
+test('the torrent selector keeps its lifecycle: all checked, countdown, dismissal by backdrop / X / Close, no focus capture', async ({page}) => {
+  const state = {view: selectionView()};
+  await stub(page, state);
+  await boot(page);
+  await openViaEvent(page);
+  await expect(page.locator('.dp-fs-check--file:checked')).toHaveCount(4);
+  await expect(page.locator('#modal-footer .dp-fs-foot-countdown')).toBeVisible();
+  await expect(page.locator('#modal-footer .dp-fs-foot-note')).not.toHaveCSS('text-align', 'center');
+  await expect(page.locator('#modal .modal-close')).toHaveAttribute('aria-label', 'Close file selection');
+  expect(await page.locator('#modal').getAttribute('tabindex')).toBeNull();
+  await expect(page.locator('#modal')).not.toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);             // unchanged: Escape was never wired
+  await page.locator('#overlay').click({position: {x: 4, y: 4}});
+  await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  await expect.poll(() => state.dismissBody).toEqual({manifest_id: MANIFEST_A});
+  expect(state.cancelHit).toBeUndefined();
 });

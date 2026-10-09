@@ -136,9 +136,10 @@ async function confirmLocalNetwork(hosts) {
 
 /* One link names an item inside an enclosing collection: the operator says
  * which to acquire, through the canonical dialog owner. The choices and their
- * labels are the claimant's own (``acquisition_scope`` refusal); Cancel, X
- * and Escape choose nothing -- the link is simply not added. Resolves to the
- * chosen scope, or '' when cancelled. */
+ * labels are the claimant's own (``acquisition_scope`` refusal) and carry equal,
+ * neutral weight. The dialog is blocking: the backdrop and Escape do nothing,
+ * and Cancel Transfer and X choose nothing -- this link is simply not added.
+ * Resolves to the chosen scope, or '' when cancelled. */
 async function chooseAcquisitionScope(link, choices) {
   if (!window.DPSettingsModal || typeof window.DPSettingsModal.open !== 'function') return '';
   const offered = (Array.isArray(choices) ? choices : [])
@@ -149,12 +150,14 @@ async function chooseAcquisitionScope(link, choices) {
   const handle = window.DPSettingsModal.open({
     title: 'Download the item or its collection?',
     dismiss: true,
+    blocking: true,
     closeControl: true,
-    cancelLabel: 'Cancel',
+    cancelLabel: 'Cancel Transfer',
+    cancelTone: 'danger',
     actions: offered.map(choice => ({id: choice.scope, label: String(choice.label || fallback[choice.scope])})),
     mount(body) {
       const message = document.createElement('p');
-      message.className = 'dp-modal-message';
+      message.className = 'dp-modal-message dp-modal-message--center';
       message.textContent = 'This link points to one item inside a collection. Choose what to download; '
         + 'the choice applies to this link only.';
       const address = document.createElement('code');
@@ -1692,10 +1695,35 @@ async function resumeT(id, button) {
 // app.js is the single owner of the shared #overlay/#modal shell. Bounded
 // presentation owners (Details candidates, file selection) drive it through
 // this contract and never wrap window.closeModal or window.showDetail.
+// `contain: true` declares a blocking dialog: focus moves onto the dialog when
+// it opens and Tab / Shift+Tab stay inside it until it closes.
 const DPModal = (function () {
+  const FOCUSABLE = 'button, input, select, textarea, a[href], [tabindex]:not([tabindex="-1"])';
   let activeMode = null;            // 'details' | 'file-selection' | null
   let onCloseCallback = null;
   let focusReturnTarget = null;
+  let containFocus = false;
+
+  function containTab(event) {
+    const modal = document.getElementById('modal');
+    if (!containFocus || event.key !== 'Tab' || !modal) return;
+    const controls = Array.from(modal.querySelectorAll(FOCUSABLE))
+      .filter(control => !control.disabled && control.getClientRects().length > 0);
+    if (!controls.length) { event.preventDefault(); modal.focus(); return; }
+    const first = controls[0];
+    const last = controls[controls.length - 1];
+    const active = document.activeElement;
+    if (!modal.contains(active) || active === modal) {
+      event.preventDefault();
+      (event.shiftKey ? last : first).focus();
+    } else if (event.shiftKey && active === first) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && active === last) {
+      event.preventDefault();
+      first.focus();
+    }
+  }
 
   function open(options) {
     const opts = options || {};
@@ -1719,6 +1747,15 @@ const DPModal = (function () {
       closeBtn.title = label;
     }
     if (footer) { footer.hidden = true; footer.innerHTML = ''; }
+    containFocus = opts.contain === true && Boolean(modal);
+    if (containFocus) {
+      modal.tabIndex = -1;
+      document.addEventListener('keydown', containTab);
+      modal.focus({preventScroll: true});
+    } else {
+      document.removeEventListener('keydown', containTab);
+      if (modal) modal.removeAttribute('tabindex');
+    }
     return activeMode;
   }
 
@@ -1741,6 +1778,11 @@ const DPModal = (function () {
 
     activeMode = null;
     onCloseCallback = null;
+    if (containFocus) {
+      containFocus = false;
+      document.removeEventListener('keydown', containTab);
+      if (modal) modal.removeAttribute('tabindex');
+    }
     const returnTarget = focusReturnTarget;
     focusReturnTarget = null;
 

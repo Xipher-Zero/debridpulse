@@ -94,8 +94,13 @@
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* One box for both labels: Select All and Deselect All occupy the same
+   width, so the control never resizes or shifts when its label changes. */
 .dp-fs-toggle-all {
   flex: 0 0 auto;
+  width: 8em;
+  justify-content: center;
+  text-align: center;
 }
 
 .dp-fs-tree {
@@ -241,6 +246,10 @@
   font-family: var(--dp-font-sans);
   font-size: 12px;
   line-height: 1.45;
+}
+/* A collection's hint is centred on the dialog frame. */
+.dp-fs-footer--collection .dp-fs-foot-note {
+  text-align: center;
 }
 .dp-fs-foot-countdown[hidden] {
   display: none;
