@@ -6,8 +6,10 @@
   gap: 10px;
 }
 
+/* The Settings family colours (the same datums as each family's tab,
+   ui-settings-chrome.css); Services is the default. */
 #view-settings .dp-settings-inner-card-icon {
-  --dp-settings-inner-icon-color: #b866f5;
+  --dp-settings-inner-icon-color: #D657FF;
   width: 34px;
   height: 34px;
   flex: 0 0 34px;
@@ -17,19 +19,19 @@
 }
 
 #view-settings .dp-settings-inner-card-icon[data-section='downloads'] {
-  --dp-settings-inner-icon-color: #4c8fff;
+  --dp-settings-inner-icon-color: #2563EB;
 }
 #view-settings .dp-settings-inner-card-icon[data-section='extraction'] {
-  --dp-settings-inner-icon-color: #e0a02b;
+  --dp-settings-inner-icon-color: #FF9D00;
 }
 #view-settings .dp-settings-inner-card-icon[data-section='authentication'] {
-  --dp-settings-inner-icon-color: #48c77e;
+  --dp-settings-inner-icon-color: #1DDB69;
 }
 #view-settings .dp-settings-inner-card-icon[data-section='notifications'] {
-  --dp-settings-inner-icon-color: #39c6e8;
+  --dp-settings-inner-icon-color: #04D7FE;
 }
 #view-settings .dp-settings-inner-card-icon[data-section='maintenance'] {
-  --dp-settings-inner-icon-color: #3ab8a8;
+  --dp-settings-inner-icon-color: #6366F1;
 }
 
 /* ── The ONE Settings protocol identity chip ──────────────────────────────
@@ -70,45 +72,55 @@
     0 1px 3px rgba(0,0,0,.18);
 }
 
+/* Light theme: the glyph is drawn in the identity colour itself, so the chip
+   takes a pale face of that colour (as Debrid-Link's does) instead of a
+   saturated one the glyph would vanish into. */
 body.light #view-settings .dp-settings-protocol-chip {
-  border-color: color-mix(in srgb, var(--dp-protocol-color) 58%, #000);
+  border-color: color-mix(in srgb, var(--dp-protocol-color) 78%, #000);
   background: linear-gradient(145deg,
-    color-mix(in srgb, var(--dp-protocol-color) 78%, #fff) 0%,
-    color-mix(in srgb, var(--dp-protocol-color) 92%, #fff) 54%,
-    color-mix(in srgb, var(--dp-protocol-color) 72%, #000) 100%);
+    color-mix(in srgb, var(--dp-protocol-color) 8%, #fff) 0%,
+    color-mix(in srgb, var(--dp-protocol-color) 16%, #fff) 54%,
+    color-mix(in srgb, var(--dp-protocol-color) 28%, #fff) 100%);
   box-shadow:
     inset 0 1px 0 color-mix(in srgb, #fff 72%, transparent),
     inset 0 -1px 0 rgba(0,0,0,.16),
     0 1px 3px rgba(0,0,0,.14);
 }
 
-/* The one per-instance datum. Each protocol states its canonical colour and
-   nothing else; the chip above derives border, surface and glow from it. */
-#view-settings .dp-settings-protocol-chip[data-protocol='direct_sources'],
+/* The one per-instance datum. Each protocol states its canonical colour --
+   its identity token (design-tokens.css) -- and nothing else; the chip above
+   derives border, surface and glow from it. */
+/* A family identity on a group card that has no protocol (familyIcon). */
+#view-settings .dp-settings-protocol-chip[data-section='downloads'] {
+  --dp-protocol-color: #2563EB;
+}
+/* Network Sources is the Services family's own identity (upright Network). */
+#view-settings .dp-settings-protocol-chip[data-protocol='direct_sources'] {
+  --dp-protocol-color: #D657FF;
+}
 #view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {
-  --dp-protocol-color: #3B82F6;
+  --dp-protocol-color: var(--dp-identity-general_http);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='general_ftp'] {
-  --dp-protocol-color: #2DD4BF;
+  --dp-protocol-color: var(--dp-identity-general_ftp);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='general_scp'] {
-  --dp-protocol-color: #A78BFA;
+  --dp-protocol-color: var(--dp-identity-general_scp);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='general_rsync'] {
-  --dp-protocol-color: #7C3AED;
+  --dp-protocol-color: var(--dp-identity-general_rsync);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='general_webdav'] {
-  --dp-protocol-color: #38BDF8;
+  --dp-protocol-color: var(--dp-identity-general_webdav);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='multimeta'] {
-  --dp-protocol-color: #E879F9;
+  --dp-protocol-color: var(--dp-identity-multimeta);
 }
-/* Media Downloads. Kept apart from Multimeta's violet (#E879F9) by hue. */
 #view-settings .dp-settings-protocol-chip[data-protocol='media'] {
-  --dp-protocol-color: #FF56AE;
+  --dp-protocol-color: var(--dp-identity-media);
 }
 #view-settings .dp-settings-protocol-chip[data-protocol='usenet'] {
-  --dp-protocol-color: #CBD5E1;
+  --dp-protocol-color: var(--dp-identity-usenet);
 }
 
 /* The glyph sits INSIDE the chip, so it is sized to leave the container

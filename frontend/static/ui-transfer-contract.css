@@ -184,10 +184,12 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 }
 
 /* Roadmap Item 10: durable provider provenance presentation. The accent is
-   the one per-badge datum: a provider that declares a badge theme
-   (``data-provider-theme``) changes it and nothing else. */
+   the one per-badge datum: the named provider's identity colour, when it has
+   one, changes it and nothing else. */
 .dp-provider-chip {
-  --dp-provider-accent: var(--dp-accent-purple-bright, var(--accent));
+  /* --dp-provider-identity: the named provider's identity colour
+     (providerBadgeIdentity -> design-tokens.css); without one, the shared accent. */
+  --dp-provider-accent: var(--dp-provider-identity, var(--dp-accent-purple-bright, var(--accent)));
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -196,7 +198,7 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   border: 1px solid color-mix(in srgb, var(--dp-provider-accent) 34%, var(--dp-divider, var(--border)));
   border-radius: 6px;
   background: color-mix(in srgb, var(--dp-provider-accent) 9%, transparent);
-  color: var(--dp-provider-accent);
+  color: var(--dp-identity-ink);
   font-size: 10px;
   font-weight: 650;
   line-height: 1.25;
@@ -204,9 +206,29 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-/* Media Downloads (theme identifier "hot-rose"). */
-.dp-provider-chip[data-provider-theme="hot-rose"] {
-  --dp-provider-accent: #FF56AE;
+/* Identity ink: the identity colour as label and glyph draw it -- the same
+   hue and chroma, with only its OKLCH lightness bounded for the surface: at
+   least 0.62 on dark, at most 0.48 on light. Each reads at >= 4.5:1 on its
+   badge face; an identity already inside the bound is drawn as itself. The
+   identity hex stays the badge's border and face tint. */
+.dp-provider-chip,
+.dp-source-magnet {
+  --dp-identity-ink: oklch(from var(--dp-provider-accent) max(l, 0.62) c h);
+}
+:is(body.light, [data-theme="light"], .theme-light) :is(.dp-provider-chip, .dp-source-magnet) {
+  --dp-identity-ink: oklch(from var(--dp-provider-accent) min(l, 0.48) c h);
+}
+/* A protocol identity badge's glyph: inside the badge, left of its label,
+   drawn in the label's ink. Only a protocol identity has one
+   (PROTOCOL_GLYPHS); a premium badge is text. */
+.dp-provider-glyph {
+  flex: 0 0 12px;
+  width: 12px;
+  height: 12px;
+  margin-right: 4px;
+  background-color: currentColor;
+  -webkit-mask: var(--dp-provider-glyph) center / contain no-repeat;
+  mask: var(--dp-provider-glyph) center / contain no-repeat;
 }
 .dp-provider-chip[data-provider-state="pending"],
 .dp-provider-chip[data-provider-state="unknown"] {

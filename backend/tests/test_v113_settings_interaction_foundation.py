@@ -1299,9 +1299,9 @@ def test_the_master_card_outer_glow_has_exactly_one_owner():
     assert "[data-integration-group] > .card-header .dp-settings-protocol-chip" in owner
     # The previously hard-coded debrid-services filter is gone from the other
     # stylesheet: it now supplies only its colour.
-    debrid = enclosing_rule(chrome, "url('/icons/dp/debrid-services.svg")
+    debrid = enclosing_rule(chrome, "url('/icons/lucide/crown.svg')")
     assert "drop-shadow" not in debrid, "a second outer-glow owner survives"
-    assert "--dp-settings-master-glow: #b866f5;" in debrid
+    assert "--dp-settings-master-glow: #D657FF;" in debrid
     assert "rgba(184,102,245,.78)" not in chrome
     # Exactly two stylesheets mention the datum: the one owner, and the one
     # master that is not a protocol chip stating its colour.
@@ -1330,7 +1330,8 @@ def test_the_network_sources_master_glow_is_selected_structurally():
 def test_the_network_sources_chip_keeps_its_colour_geometry_and_inner_glow():
     icons = read("ui-settings-card-icons.css")
     datum = rule(icons, "#view-settings .dp-settings-protocol-chip[data-protocol='general_http'] {")
-    assert "#3B82F6" in datum
+    assert "var(--dp-identity-general_http)" in datum
+    assert "--dp-identity-general_http: #3B82F6;" in read("design-tokens.css")
     chip = rule(icons, "#view-settings .dp-settings-protocol-chip {")
     for kept in ("width: 38px", "height: 38px", "border-radius: 9px", "inset 0 1px 0"):
         assert kept in chip, kept

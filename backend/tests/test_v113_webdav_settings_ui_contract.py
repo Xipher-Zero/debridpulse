@@ -22,18 +22,20 @@ def _read(name: str) -> str:
 
 
 def test_the_identity_is_declared_once_in_the_central_owners():
-    page = _read("ui-settings-page.js")
+    owner = _read("ui-transfer-source-presentation.js")
     css = _read("ui-settings-card-icons.css")
-    assert page.count("general_webdav: 'cloud-sync',") == 1
-    assert re.search(r"\[data-protocol='general_webdav'\] \{\s*--dp-protocol-color: #38BDF8;\s*\}", css)
+    assert owner.count("general_webdav: 'cloud-sync',") == 1
+    assert re.search(r"\[data-protocol='general_webdav'\] \{\s*--dp-protocol-color: var\(--dp-identity-general_webdav\);\s*\}",
+                     css)
+    assert "--dp-identity-general_webdav: #38BDF8;" in _read("design-tokens.css")
     glyph = (STATIC / "icons/lucide/cloud-sync.svg").read_text()
     assert 'stroke="#38BDF8"' in glyph and "Lucide cloud-sync @ 23f9abc4ed0146cffededd3d7f94c1018bfdf693" in glyph
     # Nowhere else hand-codes the colour or the glyph.
     for path in list(STATIC.glob("*.js")) + list(STATIC.glob("*.css")):
         text = path.read_text(encoding="utf-8")
-        if path.name not in {"ui-settings-card-icons.css"}:
+        if path.name not in {"design-tokens.css"}:
             assert "#38bdf8" not in text.casefold(), path.name
-        if path.name not in {"ui-settings-page.js"}:
+        if path.name not in {"ui-transfer-source-presentation.js"}:
             assert "cloud-sync" not in text, path.name
 
 

@@ -22,8 +22,8 @@
 }
 
 /* ── Compact glyph-only list chip (Dashboard Recent / Downloads, §6.3) ────
- * Same green treatment as the existing torrent/magnet source glyph
- * (.dp-source-boxes, ui-dashboard-transfer-presentation.css) -- #0fbd88. No
+ * The file-selection green, #0fbd88 (an action chip, not a protocol
+ * identity: the torrent/magnet source glyph is .dp-source-magnet). No
  * visible text, no count; title/aria-label carry the Choose/Change label. */
 .dp-file-selection-chip {
   flex: 0 0 auto;

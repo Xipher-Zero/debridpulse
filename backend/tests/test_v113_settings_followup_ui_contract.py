@@ -241,7 +241,8 @@ def test_the_relocated_test_button_lives_in_the_alldebrid_header_rail():
 
 # --- G. protocol iconography ---------------------------------------------------
 
-PROTOCOL_COLOURS = {"globe": "#3B82F6", "arrow-up-down": "#2DD4BF", "newspaper": "#CBD5E1"}
+PROTOCOL_COLOURS = {"globe": "#3B82F6", "arrow-up-down": "#2DD4BF", "newspaper": "#FFA34E",
+                    "network-services": "#D657FF"}
 
 
 def test_the_lucide_protocol_assets_are_vendored_locally():
@@ -279,14 +280,16 @@ def test_one_protocol_chip_primitive_carries_the_whole_treatment():
 
 def test_a_protocol_contributes_only_its_colour():
     """No six hand-maintained copies of the same border/surface/glow."""
-    blocks = re.findall(r"\[data-protocol='[a-z_]+'\][^{]*\{([^}]*)\}", CARD_ICONS)
+    blocks = re.findall(r"\[data-(?:protocol|section)='[a-z_]+'\][^{]*\{([^}]*)\}", CARD_ICONS)
+    blocks = [block for block in blocks if "--dp-protocol-color" in block]
     assert len(blocks) >= 3, "the per-protocol colour data went missing"
     for block in blocks:
         declarations = {line.split(":")[0].strip() for line in block.split(";") if line.strip()}
         assert declarations == {"--dp-protocol-color"}, \
             f"a protocol block declares more than its colour: {sorted(declarations)}"
+    tokens = read("design-tokens.css")
     for colour in PROTOCOL_COLOURS.values():
-        assert colour in CARD_ICONS, f"{colour} has no canonical colour datum"
+        assert colour in CARD_ICONS or colour in tokens, f"{colour} has no canonical colour datum"
 
 
 def test_the_chip_glow_is_declared_once_per_theme_not_per_protocol():
@@ -298,17 +301,23 @@ def test_the_chip_glow_is_declared_once_per_theme_not_per_protocol():
 
 
 def test_every_protocol_identity_uses_the_same_block():
-    """One composer emits every protocol identity, and it is the only emitter.
+    """One composer emits every Settings identity chip, and it is the only emitter:
+    a protocol through protocolIcon(), a family identity on a group card that has
+    no protocol through familyIcon(), both through identityChip().
 
     Which six places render one is proven where it is visible, in
     frontend/browser/settings-protocol-icons.spec.js.
     """
-    assert SETTINGS.count("data-protocol=") == 1, \
-        "a protocol identity block is emitted somewhere other than protocolIcon()"
-    assert SETTINGS.count('class="dp-settings-protocol-chip"') == 1
-    table = SETTINGS[SETTINGS.index("const PROTOCOL_GLYPHS"):]
+    assert SETTINGS.count('class="dp-settings-protocol-chip"') == 1, \
+        "an identity chip is emitted somewhere other than identityChip()"
+    assert SETTINGS.count("identityChip(") == 3                     # the emitter and its two callers
+    # The one protocol glyph table lives with the transfer identity owner, which
+    # Settings reads it from.
+    assert "const PROTOCOL_GLYPHS = window.DPTransferSourcePresentation.PROTOCOL_GLYPHS;" in SETTINGS
+    owner = read("ui-transfer-source-presentation.js")
+    table = owner[owner.index("const PROTOCOL_GLYPHS"):]
     table = table[:table.index("});")]
-    for protocol, glyph in (("direct_sources", "globe"), ("general_http", "globe"),
+    for protocol, glyph in (("direct_sources", "network-services"), ("general_http", "globe"),
                             ("general_ftp", "arrow-up-down"), ("usenet", "newspaper")):
         assert f"{protocol}: '{glyph}'" in table, f"{protocol} has no frozen glyph"
     # One composer plus its call sites. The two Network Sources members each

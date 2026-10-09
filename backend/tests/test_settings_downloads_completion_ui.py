@@ -50,7 +50,7 @@ def test_download_safety_recovery_has_vector_header_artwork_and_established_glow
     icon = RECOVERY_ICON.read_text(encoding="utf-8")
 
     # The card's icon is part of its emitted title (CARD_ICONS); nothing prepends it later.
-    assert "'Disk Space & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1']" in runtime
+    assert "'Disk Space & Recovery': ['downloads', '/icons/lucide/shield-alert.svg']" in runtime
     assert "ensureRecoveryIdentity" not in runtime and "dp-settings-download-recovery-icon" not in runtime
     assert ".dp-settings-inner-card-icon" in css
     assert "width: 34px;" in css

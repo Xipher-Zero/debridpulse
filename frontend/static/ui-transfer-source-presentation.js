@@ -21,6 +21,43 @@
     ['uploadhaven.com', 'uploadhaven.png'], ['uploadrar.com', 'uploadrar.png'], ['world-files.com', 'world-files.png'],
   ]);
 
+  /* The ONE protocol identity glyph table, keyed by integration id: Settings
+   * draws it in its identity chip (ui-settings-page.js), and a transfer row
+   * draws it inside that provider's badge, left of the label. Each glyph file
+   * carries its exact identity colour (and Multimeta's inversion). A provider
+   * absent here -- a premium service -- has no glyph: its badge is text. */
+  const PROTOCOL_GLYPHS = Object.freeze({
+    direct_sources: 'network-services',
+    general_http: 'globe',
+    general_ftp: 'arrow-up-down',
+    general_scp: 'file-down',
+    general_rsync: 'folder-sync',
+    general_webdav: 'cloud-sync',
+    multimeta: 'network',
+    media: 'monitor-down',
+    usenet: 'newspaper',
+  });
+
+  // A safe integration id, or ''.
+  function identityKey(providerId) {
+    const key = String(providerId || '');
+    return /^[a-z0-9_]+$/.test(key) ? key : '';
+  }
+
+  /* A provider badge's identity, from its integration id alone: its colour
+   * token (design-tokens.css, --dp-identity-<id>; an id without one keeps
+   * the shared badge accent) and, for a protocol identity, its glyph inside
+   * the badge on the left. */
+  function providerBadgeIdentity(providerId) {
+    const key = identityKey(providerId);
+    if (!key) return {attributes: '', glyph: ''};
+    const glyph = PROTOCOL_GLYPHS[key];
+    return {
+      attributes: ` data-provider-id="${key}" style="--dp-provider-identity: var(--dp-identity-${key})"`,
+      glyph: glyph ? `<span class="dp-provider-glyph" style="--dp-provider-glyph: url(/icons/lucide/${glyph}.svg)" aria-hidden="true"></span>` : '',
+    };
+  }
+
   function normalizeHost(value) {
     return String(value || '').trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, '');
   }
@@ -36,13 +73,16 @@
   }
 
   function sourceSvg(kind) {
-    const boxes = '<path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/>';
+    // Torrent / Magnet: the Lucide Magnet glyph, its identity colour and its
+    // clockwise 315° turn on .dp-source-magnet
+    // (ui-dashboard-transfer-presentation.css).
+    const magnet = '<path d="m12 15 4 4"/><path d="M2.352 10.648a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.029-6.029a1 1 0 1 1 3 3l-6.029 6.029a1.205 1.205 0 0 0 0 1.704l2.296 2.296a1.205 1.205 0 0 0 1.704 0l6.365-6.367A1 1 0 0 0 8.716 4.282z"/><path d="m5 8 4 4"/>';
     const paths = {
       link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
-      magnet: boxes, torrent_file: boxes,
+      magnet, torrent_file: magnet,
     };
-    const usesBoxes = kind === 'magnet' || kind === 'torrent_file';
-    return `<svg class="lucide dp-source-fallback${usesBoxes ? ' lucide-boxes dp-source-boxes' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind] || paths.link}</svg>`;
+    const isMagnet = kind === 'magnet' || kind === 'torrent_file';
+    return `<svg class="lucide dp-source-fallback${isMagnet ? ' lucide-magnet dp-source-magnet' : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[kind] || paths.link}</svg>`;
   }
 
   function sourceIconMarkup(identity) {
@@ -63,10 +103,17 @@
     return 'Link source';
   }
 
-  function sourceSlot(identity) {
+  /* ``providerId``: the provider the row's badge names. When that badge is a
+   * protocol identity carrying its own glyph, the generic link glyph would be
+   * a second, meaningless identity and is not drawn. A real hoster logo or the
+   * magnet glyph still is. */
+  function sourceSlot(identity, {providerId = ''} = {}) {
+    if (PROTOCOL_GLYPHS[identityKey(providerId)] && sourceIconMarkup(identity) === sourceSvg('link')) return '';
     const label = sourceIdentityLabel(identity);
     return `<span class="dp-source-icon-slot" title="${esc(label)}" aria-label="${esc(label)}">${sourceIconMarkup(identity)}</span>`;
   }
 
-  window.DPTransferSourcePresentation = Object.freeze({hostAsset, sourceIconMarkup, sourceSlot});
+  window.DPTransferSourcePresentation = Object.freeze({
+    PROTOCOL_GLYPHS, hostAsset, providerBadgeIdentity, sourceIconMarkup, sourceSlot,
+  });
 })();

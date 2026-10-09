@@ -124,6 +124,24 @@
   --yellow: var(--dp-state-caution);
   --red: var(--dp-state-error);
   --purple: var(--dp-accent-purple-bright);
+  /* Identity colours: the one value per acquisition identity and premium
+     provider, keyed by its integration id. Settings chips and transfer
+     badges both read these; neither states a hex of its own. Never a status
+     colour. */
+  --dp-identity-general_http: #3B82F6;
+  --dp-identity-general_ftp: #2DD4BF;
+  --dp-identity-general_scp: #A78BFA;
+  --dp-identity-general_rsync: #7C3AED;
+  --dp-identity-general_webdav: #38BDF8;
+  --dp-identity-multimeta: #E879F9;
+  --dp-identity-usenet: #FFA34E;
+  --dp-identity-torrent: #14FF8C;
+  --dp-identity-media: #FF56AE;
+  --dp-identity-alldebrid: #DB9C15;
+  --dp-identity-debridlink: #418DD5;
+  --dp-identity-premiumize: #A43C8E;
+  --dp-identity-realdebrid: #7EAC56;
+  --dp-identity-torbox: #0FBD88;
 }
 
 body.light,

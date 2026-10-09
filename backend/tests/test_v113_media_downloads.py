@@ -670,10 +670,13 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     # one protocol chip, the exact Lucide MonitorDown glyph, the Media
     # Downloads accent #FF56AE declared once as that chip's canonical colour --
     # and Multimeta keeps its own, distinct violet.
-    assert "    media: 'monitor-down'," in page
+    assert "    media: 'monitor-down'," in (STATIC / "ui-transfer-source-presentation.js").read_text(encoding="utf-8")
     assert "Lucide monitor-down @ 23f9abc4ed0146cffededd3d7f94c1018bfdf693" in glyph and 'stroke="#FF56AE"' in glyph
-    assert re.search(r"\[data-protocol='media'\] \{\s*--dp-protocol-color: #FF56AE;\s*\}", chips)
-    assert re.search(r"\[data-protocol='multimeta'\] \{\s*--dp-protocol-color: #E879F9;\s*\}", chips)
+    assert re.search(r"\[data-protocol='media'\] \{\s*--dp-protocol-color: var\(--dp-identity-media\);\s*\}", chips)
+    assert re.search(r"\[data-protocol='multimeta'\] \{\s*--dp-protocol-color: var\(--dp-identity-multimeta\);\s*\}",
+                     chips)
+    tokens = (STATIC / "design-tokens.css").read_text(encoding="utf-8")
+    assert "--dp-identity-media: #FF56AE;" in tokens and "--dp-identity-multimeta: #E879F9;" in tokens
     assert "    media: ['Downloads supported media from', 'compatible web pages and media sites.']," in page
     panel = _function(page, "downloadsPanel")
     cards = re.findall(r"executorTuningCard\('(\w+)', '([^']+)'", panel)
@@ -728,21 +731,31 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
             in page)
 
     # The provider badge: the shared chip, whose one per-badge datum is its
-    # accent; Hot Rose changes only that, and only for the declared theme.
+    # accent -- the named provider's identity token, by id -- and, for a
+    # protocol identity, its glyph inside on the left. Both come from the one
+    # identity owner (ui-transfer-source-presentation.js); Media's colour is
+    # declared once, as its token.
     base = badges[badges.index(".dp-provider-chip {"):]
     base = base[:base.index("}")]
-    assert "--dp-provider-accent: var(--dp-accent-purple-bright, var(--accent));" in base
-    assert "color: var(--dp-provider-accent);" in base
-    assert re.search(r'\.dp-provider-chip\[data-provider-theme="hot-rose"\] \{\s*--dp-provider-accent: #FF56AE;\s*\}',
-                     badges)
+    assert "--dp-provider-accent: var(--dp-provider-identity, var(--dp-accent-purple-bright, var(--accent)));" in base
+    assert "color: var(--dp-identity-ink);" in base
+    # The ink is the identity's hue with only its lightness bounded (a floor
+    # on dark, a cap on light), so the label stays readable on the badge face.
+    assert "--dp-identity-ink: oklch(from var(--dp-provider-accent) max(l, 0.62) c h);" in badges
+    assert "--dp-identity-ink: oklch(from var(--dp-provider-accent) min(l, 0.48) c h);" in badges
+    tokens = (STATIC / "design-tokens.css").read_text(encoding="utf-8")
+    assert "--dp-identity-media: #FF56AE;" in tokens
+    owner = (STATIC / "ui-transfer-source-presentation.js").read_text(encoding="utf-8")
+    assert "    media: 'monitor-down'," in owner
+    assert "style=\"--dp-provider-identity: var(--dp-identity-${key})\"" in owner
     app = (STATIC / "app.js").read_text(encoding="utf-8")
     chip = app[app.index("function providerChip("):]
     chip = chip[:chip.index("\nfunction ", 1)]
-    assert "data-provider-theme" in chip and "dp-provider-chip" in chip
+    assert "providerBadgeIdentity(" in chip and "dp-provider-chip" in chip
     # No renderer names this provider to rename or recolour it.
     for renderer in ("app.js", "ui-root-provider.js", "ui-downloads.js", "ui-dashboard-transfer-presentation.js"):
         text = (STATIC / renderer).read_text(encoding="utf-8")
-        for literal in ("'media'", '"media"', "Media Download", "hot-rose", "#FF56AE", "yt_dlp"):
+        for literal in ("'media'", '"media"', "Media Download", "hot-rose", "#FF56AE", "yt_dlp", "monitor-down"):
             assert literal not in text, (renderer, literal)
 
 

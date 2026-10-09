@@ -37,7 +37,7 @@ def test_download_engine_header_matches_reviewed_identity_and_copy_contract():
     # The card's icon is its CARD_ICONS entry; no separate legacy icon is emitted.
     assert "wrapTitle: true" in downloads
     assert "dp-settings-download-engine-icon" not in downloads
-    assert "'Download Behavior & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1']" in source(SETTINGS_PAGE_JS)
+    assert "'Download Behavior & Limits': ['downloads', '/icons/lucide/gauge.svg']" in source(SETTINGS_PAGE_JS)
     assert "headerCenter:" in downloads
     assert "dp-settings-download-engine-header-copy" in downloads
     assert "Where DebridPulse saves downloads and how many it runs at once." in downloads

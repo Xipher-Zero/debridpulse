@@ -100,23 +100,25 @@ body.light #view-settings .dp-settings-tab-glyph {
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-settings-tab-color) 34%, transparent));
 }
 
+/* The Settings family colours (the same datums as each family's card icons,
+   ui-settings-card-icons.css). */
 #view-settings .dp-settings-tabs .stab[data-tab='sources'] {
-  --dp-settings-tab-color: #b866f5;
+  --dp-settings-tab-color: #D657FF;
 }
 #view-settings .dp-settings-tabs .stab[data-tab='downloads'] {
-  --dp-settings-tab-color: #4c8fff;
+  --dp-settings-tab-color: #2563EB;
 }
 #view-settings .dp-settings-tabs .stab[data-tab='extraction'] {
-  --dp-settings-tab-color: #e0a02b;
+  --dp-settings-tab-color: #FF9D00;
 }
 #view-settings .dp-settings-tabs .stab[data-tab='notifications'] {
-  --dp-settings-tab-color: #39c6e8;
+  --dp-settings-tab-color: #04D7FE;
 }
 #view-settings .dp-settings-tabs .stab[data-tab='authentication'] {
-  --dp-settings-tab-color: #48c77e;
+  --dp-settings-tab-color: #1DDB69;
 }
 #view-settings .dp-settings-tabs .stab[data-tab='maintenance'] {
-  --dp-settings-tab-color: #3ab8a8;
+  --dp-settings-tab-color: #6366F1;
 }
 
 /* ── Services / Download Engine identity ─────────────────────────────── */
@@ -145,8 +147,8 @@ body.light #view-settings .dp-settings-tab-glyph {
   height: 34px;
   flex: 0 0 34px;
   display: block;
-  background: url('/icons/dp/debrid-services.svg?v=1') center / 34px 34px no-repeat;
-  --dp-settings-master-glow: #b866f5;
+  background: url('/icons/lucide/crown.svg') center / 34px 34px no-repeat;
+  --dp-settings-master-glow: #D657FF;
 }
 
 /* Keep provider/engine disclosures visually subordinate to their primary rows:
@@ -166,30 +168,65 @@ body.light #view-settings .dp-settings-tab-glyph {
   padding: 8px 0 4px 28px;
 }
 
-#view-settings .dp-settings-provider-chip--alldebrid {
+
+
+/* ── The premium provider identity chips ──────────────────────────────────
+ *
+ * One chip grammar for all five, the protocol chip's (ui-settings-card-icons.css):
+ * border, surface and glow derive from ONE per-provider datum,
+ * --dp-provider-color; each provider contributes that colour and its own
+ * shipped mark, nothing else. */
+#view-settings :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
+                   .dp-settings-provider-chip--premiumize, .dp-settings-provider-chip--realdebrid,
+                   .dp-settings-provider-chip--torbox) {
   width: 38px;
   height: 38px;
   flex: 0 0 38px;
   display: grid;
   place-items: center;
   overflow: visible;
-  border: 1px solid #dc9e0e;
+  border: 1px solid color-mix(in srgb, var(--dp-provider-color) 66%, #000);
   border-radius: 9px;
-  background: linear-gradient(145deg, #5f4306 0%, #8f6508 52%, #c68c0c 100%);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--dp-provider-color) 16%, #000) 0%,
+    color-mix(in srgb, var(--dp-provider-color) 30%, #000) 52%,
+    color-mix(in srgb, var(--dp-provider-color) 52%, #000) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255,235,174,.34),
-    inset 0 -1px 0 rgba(65,41,0,.34),
+    inset 0 1px 0 color-mix(in srgb, var(--dp-provider-color) 34%, transparent),
+    inset 0 -1px 0 rgba(0,0,0,.34),
     0 1px 3px rgba(0,0,0,.18);
 }
 
-body.light #view-settings .dp-settings-provider-chip--alldebrid {
-  border-color: #c88b08;
-  background: linear-gradient(145deg, #f2c14b 0%, #dc9e0e 54%, #b87905 100%);
+body.light #view-settings :is(.dp-settings-provider-chip--alldebrid, .dp-settings-provider-chip--debridlink,
+                              .dp-settings-provider-chip--premiumize, .dp-settings-provider-chip--realdebrid,
+                              .dp-settings-provider-chip--torbox) {
+  border-color: color-mix(in srgb, var(--dp-provider-color) 58%, #000);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--dp-provider-color) 78%, #fff) 0%,
+    color-mix(in srgb, var(--dp-provider-color) 92%, #fff) 54%,
+    color-mix(in srgb, var(--dp-provider-color) 72%, #000) 100%);
   box-shadow:
-    inset 0 1px 0 rgba(255,251,224,.68),
-    inset 0 -1px 0 rgba(104,64,0,.22),
-    0 1px 3px rgba(65,45,0,.16);
+    inset 0 1px 0 color-mix(in srgb, #fff 72%, transparent),
+    inset 0 -1px 0 rgba(0,0,0,.16),
+    0 1px 3px rgba(0,0,0,.14);
 }
+
+/* Debrid-Link's mark is a single deep navy, so its chip keeps a light face of
+   its colour in both themes for the mark to stay legible. */
+#view-settings .dp-settings-provider-chip--debridlink,
+body.light #view-settings .dp-settings-provider-chip--debridlink {
+  border-color: var(--dp-provider-color);
+  background: linear-gradient(145deg,
+    color-mix(in srgb, var(--dp-provider-color) 14%, #fff) 0%,
+    color-mix(in srgb, var(--dp-provider-color) 30%, #fff) 54%,
+    color-mix(in srgb, var(--dp-provider-color) 48%, #fff) 100%);
+}
+
+#view-settings .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }
+#view-settings .dp-settings-provider-chip--debridlink { --dp-provider-color: var(--dp-identity-debridlink); }
+#view-settings .dp-settings-provider-chip--premiumize { --dp-provider-color: var(--dp-identity-premiumize); }
+#view-settings .dp-settings-provider-chip--realdebrid { --dp-provider-color: var(--dp-identity-realdebrid); }
+#view-settings .dp-settings-provider-chip--torbox { --dp-provider-color: var(--dp-identity-torbox); }
 
 #view-settings .dp-settings-provider-logo--alldebrid {
   width: 34px;
@@ -199,44 +236,19 @@ body.light #view-settings .dp-settings-provider-chip--alldebrid {
   transform: translateY(1px);
   filter:
     saturate(1.08)
-    drop-shadow(0 0 3px rgba(220,158,14,.92))
-    drop-shadow(0 0 7px rgba(220,158,14,.52));
+    drop-shadow(0 0 3px color-mix(in srgb, var(--dp-provider-color) 92%, transparent))
+    drop-shadow(0 0 7px color-mix(in srgb, var(--dp-provider-color) 52%, transparent));
 }
 
 body.light #view-settings .dp-settings-provider-logo--alldebrid {
   filter:
     saturate(1.12)
     contrast(1.06)
-    drop-shadow(0 0 3px rgba(220,158,14,.96))
-    drop-shadow(0 0 8px rgba(220,158,14,.62));
+    drop-shadow(0 0 3px color-mix(in srgb, var(--dp-provider-color) 96%, transparent))
+    drop-shadow(0 0 8px color-mix(in srgb, var(--dp-provider-color) 62%, transparent));
 }
 
-/* Real-Debrid's identity block: the same chip grammar as AllDebrid's, in the
-   green of Real-Debrid's own mark. The mark itself is used as shipped. */
-#view-settings .dp-settings-provider-chip--realdebrid {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-  border: 1px solid #7fae55;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #213a17 0%, #345a24 52%, #4d7f35 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(214,240,190,.30),
-    inset 0 -1px 0 rgba(20,40,10,.34),
-    0 1px 3px rgba(0,0,0,.18);
-}
 
-body.light #view-settings .dp-settings-provider-chip--realdebrid {
-  border-color: #6f9d48;
-  background: linear-gradient(145deg, #d6ecbf 0%, #b8d995 54%, #93bd6a 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(250,255,240,.68),
-    inset 0 -1px 0 rgba(50,80,20,.22),
-    0 1px 3px rgba(40,60,20,.16);
-}
 
 #view-settings .dp-settings-provider-logo--realdebrid {
   width: 28px;
@@ -245,32 +257,7 @@ body.light #view-settings .dp-settings-provider-chip--realdebrid {
   object-fit: contain;
 }
 
-/* TorBox's identity block: the same chip grammar, in the teal and green of
-   TorBox's own mark. The mark itself is used as shipped. */
-#view-settings .dp-settings-provider-chip--torbox {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-  border: 1px solid #34ba90;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #00262b 0%, #00444d 52%, #0b5f58 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(190,240,220,.30),
-    inset 0 -1px 0 rgba(0,30,34,.34),
-    0 1px 3px rgba(0,0,0,.18);
-}
 
-body.light #view-settings .dp-settings-provider-chip--torbox {
-  border-color: #2fa682;
-  background: linear-gradient(145deg, #d2f1e6 0%, #a9e2cf 54%, #7fcfb4 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(245,255,250,.68),
-    inset 0 -1px 0 rgba(0,68,77,.22),
-    0 1px 3px rgba(0,50,50,.16);
-}
 
 #view-settings .dp-settings-provider-logo--torbox {
   width: 26px;
@@ -279,33 +266,7 @@ body.light #view-settings .dp-settings-provider-chip--torbox {
   object-fit: contain;
 }
 
-/* Debrid-Link's identity block: the same chip grammar, carrying Debrid-Link's
-   own mark as shipped. The mark is a single deep navy, so the chip keeps a
-   light blue face in both themes for it to stay legible. */
-#view-settings .dp-settings-provider-chip--debridlink {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-  border: 1px solid #3f8fd6;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #e3eefa 0%, #c4dcf3 54%, #a2c7ec 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(245,250,255,.68),
-    inset 0 -1px 0 rgba(20,58,94,.22),
-    0 1px 3px rgba(0,0,0,.18);
-}
 
-body.light #view-settings .dp-settings-provider-chip--debridlink {
-  border-color: #3b84c6;
-  background: linear-gradient(145deg, #d6e8f8 0%, #b3d3f0 54%, #8bbbe6 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(245,250,255,.68),
-    inset 0 -1px 0 rgba(20,58,94,.22),
-    0 1px 3px rgba(20,40,60,.16);
-}
 
 #view-settings .dp-settings-provider-logo--debridlink {
   width: 28px;
@@ -314,32 +275,7 @@ body.light #view-settings .dp-settings-provider-chip--debridlink {
   object-fit: contain;
 }
 
-/* Premiumize's identity block: the same chip grammar, in the red and amber of
-   Premiumize's own mark. The mark itself is used as shipped. */
-#view-settings .dp-settings-provider-chip--premiumize {
-  width: 38px;
-  height: 38px;
-  flex: 0 0 38px;
-  display: grid;
-  place-items: center;
-  overflow: visible;
-  border: 1px solid #c8443a;
-  border-radius: 9px;
-  background: linear-gradient(145deg, #2e0d0b 0%, #4f1612 52%, #6e2219 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(250,214,190,.30),
-    inset 0 -1px 0 rgba(36,8,6,.34),
-    0 1px 3px rgba(0,0,0,.18);
-}
 
-body.light #view-settings .dp-settings-provider-chip--premiumize {
-  border-color: #c24a36;
-  background: linear-gradient(145deg, #fbe3c8 0%, #f6cb98 54%, #f0b46a 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(255,250,240,.68),
-    inset 0 -1px 0 rgba(110,34,25,.22),
-    0 1px 3px rgba(60,20,10,.16);
-}
 
 #view-settings .dp-settings-provider-logo--premiumize {
   width: 28px;

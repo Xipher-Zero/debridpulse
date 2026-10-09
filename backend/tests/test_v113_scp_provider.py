@@ -399,7 +399,8 @@ def test_route_history_keeps_the_sftp_execution_endpoint_truthful() -> None:
 
 def test_settings_protocol_chip_declares_scp_glyph_and_colour_once() -> None:
     settings = (STATIC / "ui-settings-page.js").read_text(encoding="utf-8")
-    table = settings[settings.index("const PROTOCOL_GLYPHS"):]
+    owner = (STATIC / "ui-transfer-source-presentation.js").read_text(encoding="utf-8")
+    table = owner[owner.index("const PROTOCOL_GLYPHS"):]
     table = table[:table.index("});")]
     assert "general_scp: 'file-down'" in table
     copy = settings[settings.index("const SOURCE_BOX_COPY"):]
@@ -408,7 +409,8 @@ def test_settings_protocol_chip_declares_scp_glyph_and_colour_once() -> None:
     assert "SFTP" not in copy[copy.index("general_scp:"):], "the SCP box must not describe itself as SFTP"
     icons = (STATIC / "ui-settings-card-icons.css").read_text(encoding="utf-8")
     block = icons[icons.index("[data-protocol='general_scp']"):]
-    assert block[:block.index("}")].split("{", 1)[1].strip() == "--dp-protocol-color: #A78BFA;"
+    assert block[:block.index("}")].split("{", 1)[1].strip() == "--dp-protocol-color: var(--dp-identity-general_scp);"
+    assert "--dp-identity-general_scp: #A78BFA;" in (STATIC / "design-tokens.css").read_text(encoding="utf-8")
 
 
 def test_file_down_is_vendored_from_the_pinned_lucide_commit_in_lavender() -> None:

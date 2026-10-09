@@ -96,11 +96,11 @@ def test_settings_is_the_single_clean_room_owner_and_emits_explicit_lifecycle() 
 
     expected = [
         "['sources', 'Services', 'zap']",
-        "['downloads', 'Downloads', 'download']",
+        "['downloads', 'Downloads', 'download-downloads']",
         "['extraction', 'Extraction', 'package-open']",
-        "['authentication', 'Authentication', 'shield-check']",
-        "['notifications', 'Notifications', 'bell']",
-        "['maintenance', 'Data & Maintenance', 'database-backup']",
+        "['authentication', 'Authentication', 'shield-user']",
+        "['notifications', 'Notifications', 'bell-ring']",
+        "['maintenance', 'Data & Maintenance', 'database']",
     ]
     positions = [source.index(item) for item in expected]
     assert positions == sorted(positions)

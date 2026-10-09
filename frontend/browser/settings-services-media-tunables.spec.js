@@ -84,10 +84,20 @@ test('the Media Downloads accent is #FF56AE on every identity surface, Multimeta
   // The transfer-row provider badge of a Media Download, and an error badge beside it.
   const badges = await page.evaluate(() => {
     const host = document.createElement('div');
-    host.innerHTML = '<span class="dp-provider-chip" data-provider-theme="hot-rose">Media Download</span>'
+    // Built by the one badge identity owner, from the provider id, as rows do.
+    const identity = window.DPTransferSourcePresentation.providerBadgeIdentity('media');
+    host.innerHTML = `<span class="dp-provider-chip"${identity.attributes}>Media Download</span>`
       + '<span class="dp-provider-chip">Other</span><span class="badge badge-error">Error</span>';
     document.body.appendChild(host);
-    const [media, other, error] = Array.from(host.children, node => getComputedStyle(node).color);
+    // Colours as drawn (sRGB), whatever notation the computed value uses.
+    const srgb = colour => {
+      const context = document.createElement('canvas').getContext('2d');
+      context.fillStyle = colour;
+      context.fillRect(0, 0, 1, 1);
+      const [r, g, b] = context.getImageData(0, 0, 1, 1).data;
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    const [media, other, error] = Array.from(host.children, node => srgb(getComputedStyle(node).color));
     host.remove();
     return {media, other, error};
   });

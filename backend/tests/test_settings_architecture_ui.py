@@ -143,11 +143,11 @@ def test_settings_tabs_match_the_reviewed_order_and_glyph_inventory():
     runtime = source(SETTINGS_PAGE_JS)
     expected = [
         "['sources', 'Services', 'zap']",
-        "['downloads', 'Downloads', 'download']",
+        "['downloads', 'Downloads', 'download-downloads']",
         "['extraction', 'Extraction', 'package-open']",
-        "['authentication', 'Authentication', 'shield-check']",
-        "['notifications', 'Notifications', 'bell']",
-        "['maintenance', 'Data & Maintenance', 'database-backup']",
+        "['authentication', 'Authentication', 'shield-user']",
+        "['notifications', 'Notifications', 'bell-ring']",
+        "['maintenance', 'Data & Maintenance', 'database']",
     ]
     positions = [runtime.index(item) for item in expected]
     assert positions == sorted(positions)

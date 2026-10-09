@@ -5,14 +5,15 @@ const { test, expect } = require('@playwright/test');
  * Services and Downloads. */
 
 const PROTOCOLS = {
-  direct_sources: {glyph: 'globe', colour: 'rgb(59, 130, 246)'},
+  // Network Sources is the Services family's own identity: the upright Network.
+  direct_sources: {glyph: 'network-services', colour: 'rgb(214, 87, 255)'},
   general_http: {glyph: 'globe', colour: 'rgb(59, 130, 246)'},
   general_ftp: {glyph: 'arrow-up-down', colour: 'rgb(45, 212, 191)'},
   general_scp: {glyph: 'file-down', colour: 'rgb(167, 139, 250)'},
   general_rsync: {glyph: 'folder-sync', colour: 'rgb(124, 58, 237)'},
   general_webdav: {glyph: 'cloud-sync', colour: 'rgb(56, 189, 248)'},
   multimeta: {glyph: 'network', colour: 'rgb(232, 121, 249)'},
-  usenet: {glyph: 'newspaper', colour: 'rgb(203, 213, 225)'},
+  usenet: {glyph: 'newspaper', colour: 'rgb(255, 163, 78)'},
 };
 
 const CHIP = '[data-protocol]';
@@ -164,7 +165,7 @@ test('Downloads shows Network Sources with the identical identity', async ({page
   const general = rendered.find(item => item.protocol === 'direct_sources');
   const usenet = rendered.find(item => item.protocol === 'usenet');
   expect(general, 'Downloads Network Sources has no protocol identity').toBeTruthy();
-  expect(general.src).toBe('/icons/lucide/globe.svg');
+  expect(general.src).toBe('/icons/lucide/network-services.svg');
   expect(usenet, 'Downloads Usenet has no protocol identity').toBeTruthy();
   expect(usenet.src).toBe('/icons/lucide/newspaper.svg');
   expect(general.width).toBe(usenet.width);
@@ -226,11 +227,10 @@ test('the chip surface and border derive from the protocol colour', async ({page
   const chips = await chipGeometry(page, 'sources');
   const by = Object.fromEntries(chips.map(chip => [chip.protocol, chip]));
 
-  // Two protocols that share a colour render the same surface...
-  expect(by.general_http.borderColour).toBe(by.direct_sources.borderColour);
-  expect(by.general_http.background).toBe(by.direct_sources.background);
-  // ...and protocols with different colours do not.
-  for (const [a, b] of [['general_http', 'general_ftp'], ['general_ftp', 'usenet'],
+  // Protocols with different colours never share a surface -- including the
+  // Services family's Network Sources against HTTP(S) and against Multimeta.
+  for (const [a, b] of [['direct_sources', 'general_http'], ['direct_sources', 'multimeta'],
+                        ['general_http', 'general_ftp'], ['general_ftp', 'usenet'],
                         ['general_http', 'usenet'], ['general_ftp', 'general_scp'],
                         ['general_scp', 'general_rsync'], ['general_rsync', 'general_webdav'],
                         ['general_http', 'general_webdav'], ['general_webdav', 'multimeta'],

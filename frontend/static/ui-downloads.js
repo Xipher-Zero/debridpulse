@@ -342,7 +342,8 @@ function rowMarkup(t) {
     ? window.DPProcessingPresentation.presentationStatus(t, t.status)
     : (t.status || '');
   const showRetry = t.status === 'error' && !AUTO_RECOVERING_PRESENTATION.has(presentation);
-  const sourceMarkup = window.DPTransferSourcePresentation ? window.DPTransferSourcePresentation.sourceSlot(t.current_source_identity) : '';
+  const sourceMarkup = window.DPTransferSourcePresentation ? window.DPTransferSourcePresentation.sourceSlot(t.current_source_identity,
+    {providerId: providerChipId(t)}) : '';
   const fileSelectionMarkup = window.DPFileSelection?.chipMarkup?.(t) || '';
   const groupMarkup = window.DPGroupCandidates?.launcherMarkup?.(t, 'compact', 'downloads') || '';
   return `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" tabindex="0" onclick="if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">

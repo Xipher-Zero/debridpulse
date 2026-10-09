@@ -269,14 +269,16 @@ test('Archive Passwords submit the full edited multi-row list with no clear requ
  expect(state.passwords).toBe('ALPHA\nbeta\ngamma\ndelta');
 });
 
-test('Torrent and magnet source identities use teal Lucide Boxes while MegaUp reuses the Mega host asset',async({page})=>{
+test('Torrent and magnet source identities use the rotated Lucide Magnet while MegaUp reuses the Mega host asset',async({page})=>{
  await ready(page);
  const result=await page.evaluate(()=>{
   const presentation=window.DPTransferSourcePresentation;
-  const probe=identity=>{const slot=document.createElement('span');slot.className='dp-source-icon-slot';slot.innerHTML=presentation.sourceIconMarkup(identity);document.body.appendChild(slot);const svg=slot.querySelector('svg'),img=slot.querySelector('img'),value={slotColor:getComputedStyle(slot).color,glyphColor:svg?getComputedStyle(svg).color:null,classes:svg?[...svg.classList]:[],pathCount:svg?.querySelectorAll('path').length||0,firstPath:svg?.querySelector('path')?.getAttribute('d')||'',src:img?.getAttribute('src')||''};slot.remove();return value;};
+  // Colours as drawn (sRGB), whatever notation the computed value uses.
+  const srgb=colour=>{const c=document.createElement('canvas').getContext('2d');c.fillStyle=colour;c.fillRect(0,0,1,1);const [r,g,b]=c.getImageData(0,0,1,1).data;return `rgb(${r}, ${g}, ${b})`;};
+  const probe=identity=>{const slot=document.createElement('span');slot.className='dp-source-icon-slot';slot.innerHTML=presentation.sourceIconMarkup(identity);document.body.appendChild(slot);const svg=slot.querySelector('svg'),img=slot.querySelector('img'),value={slotColor:srgb(getComputedStyle(slot).color),glyphColor:svg?srgb(getComputedStyle(svg).color):null,transform:svg?getComputedStyle(svg).transform:null,classes:svg?[...svg.classList]:[],pathCount:svg?.querySelectorAll('path').length||0,firstPath:svg?.querySelector('path')?.getAttribute('d')||'',src:img?.getAttribute('src')||''};slot.remove();return value;};
   return {magnet:probe({kind:'magnet'}),torrent:probe({kind:'torrent_file'}),megaup:probe({kind:'host',host:'megaup.net'}),megaupAsset:presentation.hostAsset('cdn.megaup.net')};
  });
- for(const item of [result.magnet,result.torrent]){expect(item.classes).toContain('lucide-boxes');expect(item.classes).toContain('dp-source-boxes');expect(item.glyphColor).toBe('rgb(15, 189, 136)');expect(item.slotColor).not.toBe(item.glyphColor);expect(item.pathCount).toBe(12);expect(item.firstPath).toBe('M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z');}
+ for(const item of [result.magnet,result.torrent]){expect(item.classes).toContain('lucide-magnet');expect(item.classes).toContain('dp-source-magnet');expect(item.glyphColor).toBe('rgb(20, 255, 140)');expect(item.slotColor).not.toBe(item.glyphColor);expect(item.pathCount).toBe(3);expect(item.firstPath).toBe('m12 15 4 4');const [a,b]=item.transform.match(/matrix\(([^,]+), ([^,]+)/).slice(1).map(Number);expect(Math.round(Math.atan2(b,a)*180/Math.PI)).toBe(-45);}
  expect(result.megaup.src).toBe('/icons/hosts/mega.svg');expect(result.megaupAsset).toBe('/icons/hosts/mega.svg');
 });
 
@@ -471,12 +473,14 @@ test('Downloads Provider Inventory icon, provider badge, and source label share 
  await ready(page);await page.evaluate(async()=>{nav(document.querySelector('[data-view="torrents"]'));await loadTorrents();});
  const blocks=page.locator('#t-tbody .dp-downloads-provider-block');await expect(blocks).toHaveCount(3);
  const labels=blocks.locator(':scope > .dp-transfer-source-label');await expect(labels.nth(0)).toHaveText('Direct link');await expect(labels.nth(1)).toHaveText('Provider inventory');await expect(labels.nth(2)).toHaveText('Direct link');
- const geometry=await blocks.evaluateAll(nodes=>nodes.map(block=>{const cell=block.closest('.dp-downloads-provider-cell'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector(':scope > .dp-transfer-source-label'),icon=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};return{cell:box(cell),block:box(block),line:box(line),label:box(label),icon:box(icon),chip:box(chip)};}));
- for(const row of geometry){expect(Math.abs(row.line.left-row.label.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);expect(row.chip.scrollWidth).toBeLessThanOrEqual(row.chip.clientWidth);}
+ const geometry=await blocks.evaluateAll(nodes=>nodes.map(block=>{const cell=block.closest('.dp-downloads-provider-cell'),line=block.querySelector('.dp-downloads-provider-line'),label=block.querySelector(':scope > .dp-transfer-source-label'),slot=line.querySelector('.dp-source-icon-slot'),chip=line.querySelector('.dp-provider-chip'),icon=slot||chip.querySelector('.dp-provider-glyph');const box=node=>{const r=node.getBoundingClientRect();return{left:r.left,right:r.right,top:r.top,width:r.width,height:r.height,centerY:r.top+r.height/2,scrollWidth:node.scrollWidth,clientWidth:node.clientWidth};};return{cell:box(cell),block:box(block),line:box(line),label:box(label),icon:box(icon),chip:box(chip),glyphInside:!slot};}));
+ // A protocol identity (General HTTP) carries its glyph inside the badge, so the badge leads the line.
+ expect(geometry.map(row=>row.glyphInside)).toEqual([false,false,true]);
+ for(const row of geometry){expect(Math.abs(row.line.left-row.label.left)).toBeLessThanOrEqual(0.75);expect(Math.abs((row.glyphInside?row.chip:row.icon).left-row.line.left)).toBeLessThanOrEqual(0.75);expect(Math.abs(row.icon.centerY-row.chip.centerY)).toBeLessThanOrEqual(0.75);expect(row.chip.right).toBeLessThanOrEqual(row.cell.right+0.5);expect(row.chip.scrollWidth).toBeLessThanOrEqual(row.chip.clientWidth);}
  expect(Math.abs(geometry[0].label.left-geometry[1].label.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].icon.left-geometry[1].icon.left)).toBeLessThanOrEqual(0.75);
  expect(Math.abs(geometry[0].chip.left-geometry[1].chip.left)).toBeLessThanOrEqual(0.75);
- expect(Math.abs(geometry[0].icon.left-geometry[2].icon.left)).toBeLessThanOrEqual(0.75);
+ expect(Math.abs(geometry[0].icon.left-geometry[2].chip.left)).toBeLessThanOrEqual(0.75);
 });
 
 test('Dashboard common-source group launcher renders only for 2+ common hosts, in [source][provider][network N] order',async({page})=>{

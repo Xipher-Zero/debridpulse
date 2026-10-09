@@ -10,11 +10,11 @@
   const TABS = Object.freeze([
     // Presentation only: the internal tab key stays `sources`.
     ['sources', 'Services', 'zap'],
-    ['downloads', 'Downloads', 'download'],
+    ['downloads', 'Downloads', 'download-downloads'],
     ['extraction', 'Extraction', 'package-open'],
-    ['authentication', 'Authentication', 'shield-check'],
-    ['notifications', 'Notifications', 'bell'],
-    ['maintenance', 'Data & Maintenance', 'database-backup'],
+    ['authentication', 'Authentication', 'shield-user'],
+    ['notifications', 'Notifications', 'bell-ring'],
+    ['maintenance', 'Data & Maintenance', 'database'],
   ]);
 
   const state = {
@@ -681,18 +681,18 @@
 
   // Inner-card title icons, keyed by the card's title.
   const CARD_ICONS = Object.freeze({
-    'Download Behavior & Limits': ['downloads', '/icons/dp/settings/download-engine.svg?v=1'],
-    'Disk Space & Recovery': ['downloads', '/icons/dp/settings/download-safety-recovery.svg?v=1'],
-    'Download Engine Activity': ['downloads', '/icons/dp/settings/download-engine-state.svg?v=1'],
-    'Automatic Extraction': ['extraction', '/icons/dp/settings/automatic-extraction.svg?v=1'],
-    'Authentication Status': ['authentication', '/icons/dp/settings/authentication-status.svg?v=1'],
-    'Username & Password': ['authentication', '/icons/dp/settings/username-password.svg?v=1'],
-    'OpenID Connect': ['authentication', '/icons/dp/settings/openid-connect.svg?v=1'],
-    'API Access': ['authentication', '/icons/dp/settings/api-access.svg?v=1'],
-    'Discord Notifications': ['notifications', '/icons/dp/settings/discord-notifications.svg?v=1'],
-    'Statistics Reporting': ['notifications', '/icons/dp/settings/statistics-reporting.svg?v=1'],
-    'Backups & Retention': ['maintenance', '/icons/dp/settings/backups-retention.svg?v=1'],
-    'Database Reset Controls': ['maintenance', '/icons/dp/settings/database-reset-controls.svg?v=1'],
+    'Download Behavior & Limits': ['downloads', '/icons/lucide/gauge.svg'],
+    'Disk Space & Recovery': ['downloads', '/icons/lucide/shield-alert.svg'],
+    'Download Engine Activity': ['downloads', '/icons/lucide/activity.svg'],
+    'Automatic Extraction': ['extraction', '/icons/lucide/archive-restore.svg'],
+    'Authentication Status': ['authentication', '/icons/lucide/shield-check.svg'],
+    'Username & Password': ['authentication', '/icons/lucide/user-lock.svg'],
+    'OpenID Connect': ['authentication', '/icons/lucide/id-card.svg'],
+    'API Access': ['authentication', '/icons/lucide/key-round.svg'],
+    'Discord Notifications': ['notifications', '/icons/lucide/message-square.svg'],
+    'Statistics Reporting': ['notifications', '/icons/lucide/chart-line.svg'],
+    'Backups & Retention': ['maintenance', '/icons/lucide/archive.svg'],
+    'Database Reset Controls': ['maintenance', '/icons/lucide/database-x.svg'],
   });
 
   function card(title, body, options = {}) {
@@ -1087,24 +1087,27 @@
    * Multimeta and Usenet on Services; Network Sources, rsync, WebDAV and
    * Usenet on Downloads) render this
    * and nothing else, so the chip's whole treatment is declared once in CSS
-   * and a protocol contributes nothing but its canonical colour. */
-  const PROTOCOL_GLYPHS = Object.freeze({
-    direct_sources: 'globe',
-    general_http: 'globe',
-    general_ftp: 'arrow-up-down',
-    general_scp: 'file-down',
-    general_rsync: 'folder-sync',
-    general_webdav: 'cloud-sync',
-    multimeta: 'network',
-    media: 'monitor-down',
-    usenet: 'newspaper',
-  });
+   * and a protocol contributes nothing but its canonical colour. Its glyph
+   * comes from the one protocol glyph table, which transfer badges share
+   * (ui-transfer-source-presentation.js). */
+  const PROTOCOL_GLYPHS = window.DPTransferSourcePresentation.PROTOCOL_GLYPHS;
+
+  /* The ONE emitter of the Settings identity chip: a protocol (data-protocol),
+   * or a Settings family identity on a group card that has no protocol
+   * (data-section). The chip's colour is that datum's
+   * (ui-settings-card-icons.css). */
+  function identityChip(datum, value, glyph) {
+    return `<span class="dp-settings-protocol-chip" aria-hidden="true" data-${datum}="${html(value)}">`
+      + `<img src="/icons/lucide/${html(glyph)}.svg" alt="" decoding="async"></span>`;
+  }
+
+  function familyIcon(section, glyph) {
+    return identityChip('section', section, glyph);
+  }
 
   function protocolIcon(protocol) {
     const glyph = PROTOCOL_GLYPHS[protocol];
-    if (!glyph) return '';
-    return `<span class="dp-settings-protocol-chip" aria-hidden="true" data-protocol="${html(protocol)}">`
-      + `<img src="/icons/lucide/${glyph}.svg" alt="" decoding="async"></span>`;
+    return glyph ? identityChip('protocol', protocol, glyph) : '';
   }
 
   /* What enabling one Network Source allows, as the two lines its protocol box
@@ -2401,6 +2404,7 @@
         'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),
         'media'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
+      titlePrefix: familyIcon('downloads', 'arrow-left-right'),
     });
 
     // Two relationships -- the disk-space guard's threshold and its buffer, and

@@ -87,13 +87,14 @@ def test_settings_master_header_uses_supplied_feature_asset_and_true_centered_ta
 def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow() -> None:
     chrome = read(CHROME)
     runtime = read(RUNTIME)
+    # The locked Settings family colours, each tab glyph stroked in its family's.
     expected = {
-        "sources": ("zap.svg", "#b866f5"),
-        "downloads": ("download.svg", "#4c8fff"),
-        "extraction": ("package-open.svg", "#e0a02b"),
-        "notifications": ("bell.svg", "#39c6e8"),
-        "authentication": ("shield-check.svg", "#48c77e"),
-        "maintenance": ("database-backup.svg", "#3ab8a8"),
+        "sources": ("zap.svg", "#D657FF"),
+        "downloads": ("download-downloads.svg", "#2563EB"),
+        "extraction": ("package-open.svg", "#FF9D00"),
+        "notifications": ("bell-ring.svg", "#04D7FE"),
+        "authentication": ("shield-user.svg", "#1DDB69"),
+        "maintenance": ("database.svg", "#6366F1"),
     }
 
     assert 'class="dp-settings-tab-chip"' in runtime
@@ -122,6 +123,7 @@ def test_settings_tabs_use_reviewed_lucide_glyphs_with_theme_specific_glyph_glow
         assert f"'{Path(filename).stem}'" in runtime
 
         raw = read(LUCIDE / filename)
+        assert f'stroke="{color}"' in raw
         icon_root = ET.fromstring(raw)
         assert icon_root.tag.endswith("svg")
         assert icon_root.attrib.get("viewBox") == "0 0 24 24"
@@ -136,7 +138,6 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     runtime = read(RUNTIME)
     page = read(PAGE)
     chrome = read(CHROME)
-    manifest = json.loads(read(MANIFEST))
     key_helper = runtime[runtime.index("function allDebridApiKeyField"):runtime.index("function tuningToggle")]
     sources = runtime[runtime.index("function sourcesPanel"):runtime.index("function downloadsPanel")]
 
@@ -230,24 +231,24 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     additional_body = chrome.split(".dp-settings-additional-body {", 1)[1].split("}", 1)[0]
     assert "padding: 8px 0 4px 28px;" in additional_body
 
-    assert manifest["icons"]["debridServices"] == "debrid-services.svg"
-    raw = read(STATIC / "icons" / "dp" / "debrid-services.svg")
+    # Premium Services is the Services family's Crown.
+    raw = read(LUCIDE / "crown.svg")
     root = ET.fromstring(raw)
     assert root.tag.endswith("svg")
-    assert root.attrib.get("viewBox") in {"0 0 2048 2048", "0 0 2e3 2e3"}
-    assert "<path" in raw
+    assert root.attrib.get("viewBox") == "0 0 24 24"
+    assert 'stroke="#D657FF"' in raw and PIN in raw
     assert "<image" not in raw.lower()
     assert "data:image" not in raw.lower()
 
     icon_rule = chrome.split(".dp-settings-debrid-services > .card-header > .card-title::before {", 1)[1].split("}", 1)[0]
-    assert "url('/icons/dp/debrid-services.svg?v=1')" in icon_rule
+    assert "url('/icons/lucide/crown.svg')" in icon_rule
     assert "width: 34px;" in icon_rule
     assert "height: 34px;" in icon_rule
     # DP 1.0.13: the omnidirectional master-card outer glow has ONE owner,
     # shared with the Network Sources master. This master states only the
     # colour that owner derives both of its stops from, in both themes.
     assert icon_rule.count("drop-shadow") == 0
-    assert "--dp-settings-master-glow: #b866f5;" in icon_rule
+    assert "--dp-settings-master-glow: #D657FF;" in icon_rule
     glow = read(ICONS)
     owner = glow.split("#view-settings [data-integration-group] > .card-header .dp-settings-protocol-chip {", 1)[1].split("}", 1)[0]
     assert owner.count("drop-shadow") == 2
@@ -264,19 +265,20 @@ def test_alldebrid_card_uses_supplied_provider_art_on_brand_gold_chip_and_larger
     assert "dp-settings-provider-chip--alldebrid" in runtime
     assert "dp-settings-provider-logo--alldebrid" in runtime
     assert 'src="/icons/providers/alldebrid.svg"' in runtime
-    assert "#dc9e0e" in chrome
-    assert "#5f4306" in chrome
-    assert "#f2c14b" in chrome
+    # The locked AllDebrid colour is the chip's one datum.
+    assert ("#view-settings .dp-settings-provider-chip--alldebrid { --dp-provider-color: var(--dp-identity-alldebrid); }"
+            in chrome)
+    assert "--dp-identity-alldebrid: #DB9C15;" in read(STATIC / "design-tokens.css")
 
     logo = chrome.split(".dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
     assert "width: 34px;" in logo
     assert "height: 34px;" in logo
     assert "transform: translateY(1px);" in logo
-    assert "drop-shadow(0 0 3px rgba(220,158,14,.92))" in logo
-    assert "drop-shadow(0 0 7px rgba(220,158,14,.52))" in logo
+    assert "drop-shadow(0 0 3px color-mix(in srgb, var(--dp-provider-color) 92%, transparent))" in logo
+    assert "drop-shadow(0 0 7px color-mix(in srgb, var(--dp-provider-color) 52%, transparent))" in logo
 
     light_logo = chrome.split("body.light #view-settings .dp-settings-provider-logo--alldebrid {", 1)[1].split("}", 1)[0]
-    assert "drop-shadow(0 0 8px rgba(220,158,14,.62))" in light_logo
+    assert "drop-shadow(0 0 8px color-mix(in srgb, var(--dp-provider-color) 62%, transparent))" in light_logo
 
     assert root.tag.endswith("svg")
     assert root.attrib.get("viewBox") == "0 0 2048 2048"
