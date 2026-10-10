@@ -24,7 +24,7 @@ from transfers import codec
 from transfers.convergence_engine import TransferEngine
 from transfers.errors import Category, Domain, NormalizedError, Origin, Recovery, Retryability, Stage
 from transfers.models import (
-    ExecutionState, ResolutionResult, ResourceState, SourceEntry, TransferRequest, TransferState,
+    ExecutionObservation, ExecutionState, ResolutionResult, ResourceState, SourceEntry, TransferRequest, TransferState,
 )
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
@@ -560,6 +560,43 @@ async def test_genuine_independent_failure_still_votes_failed(tmp_path, monkeypa
     assert outcome is not None and outcome.should_complete is False
     transfer_after = await repository.get(transfer.id)
     assert transfer_after.state == TransferState.FAILED
+
+
+async def test_lost_execution_awaiting_recovery_never_votes_failed(tmp_path, monkeypatch):
+    """Transfer 585: an attached execution aria2 answered "not found" for is
+    recorded 'lost' and is still recovery's work, so a sibling's terminal
+    failure must not report the transfer FAILED (nor emit its error event)
+    meanwhile. Once recovery is exhausted the artifact is 'error' and the
+    transfer fails as before."""
+    engine, repository, transfer, artifacts = await _build_two_artifact_transfer(tmp_path, monkeypatch)
+    failed_artifact, lost_artifact = artifacts[0], artifacts[1]
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='error' WHERE id=?", (failed_artifact.id,))
+        await db.commit()
+    # The real observation path records native absence as 'lost'.
+    await repository.execution(ExecutionObservation(lost_artifact.execution, ExecutionState.ABSENT))
+    lost_after = next(item for item in await repository.artifacts(transfer.id) if item.id == lost_artifact.id)
+    assert lost_after.state == "lost" and lost_after.execution is not None
+
+    outcome = await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert outcome is not None and outcome.should_complete is False
+    assert (await repository.get(transfer.id)).state == TransferState.QUEUED
+
+    async def failure_events():
+        async with database.get_db() as db:
+            rows = await db.fetchall(
+                "SELECT kind FROM application_events WHERE transfer_id=? AND kind=?",
+                (transfer.id, TransferState.FAILED.value))
+        return len(rows)
+
+    assert await failure_events() == 0
+
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='error' WHERE id=?", (lost_artifact.id,))
+        await db.commit()
+    await repository.aggregate_lifecycle(transfer.id, input_required=False)
+    assert (await repository.get(transfer.id)).state == TransferState.FAILED
+    assert await failure_events() == 1
 
 
 async def test_affirmatively_independent_disposition_is_never_excused_by_same_name_completion(tmp_path, monkeypatch):

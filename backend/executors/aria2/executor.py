@@ -11,8 +11,10 @@ import asyncio
 import base64
 from collections import OrderedDict
 from dataclasses import dataclass, field, replace
+from datetime import datetime
 import hashlib
 import json
+import logging
 import os
 from pathlib import Path
 import re
@@ -118,6 +120,37 @@ _MOVED_LIMIT = 256
 _AUTHORITY_DIAGNOSTIC = "redirected_authority"
 
 
+# Diagnostic only: the daemon identity (``Aria2Service.session_id``) read
+# around each accepted submission, kept per GID for the last
+# ``_SUBMISSIONS_LIMIT`` submissions of this process so a later "GID not found"
+# can say whether the daemon that forgot the job is the one that accepted it.
+# Never durable, never consulted by any decision.
+_SUBMISSIONS_LIMIT = 256
+_IDENTITY_READ_SECONDS = 2.0
+
+logger = logging.getLogger("alldebrid.aria2")
+
+
+@dataclass(frozen=True)
+class _Submission:
+    attempt_id: str
+    session_before: str | None
+    session_after: str | None
+    accepted_at: float
+
+    @property
+    def session(self) -> str | None:
+        """The accepting daemon, proven only by two equal reads bracketing addUri."""
+        if self.session_before is not None and self.session_before == self.session_after:
+            return self.session_before
+        return None
+
+
+def _stamp(timestamp: float) -> str:
+    """Local time with its explicit offset, matching the log's own clock."""
+    return datetime.fromtimestamp(timestamp).astimezone().isoformat(timespec="milliseconds")
+
+
 class _AdmissionDeferred(Exception):
     """Owned execution remains parked by a newer core control intent."""
 
@@ -182,6 +215,8 @@ class Aria2Executor:
         self._moved: OrderedDict[str, tuple[float, str]] = OrderedDict()
         # attempt id -> the requirement a redirected download raised for it.
         self._asked: OrderedDict[str, InputRequirement] = OrderedDict()
+        # gid -> the daemon identity around its accepted submission (diagnostic).
+        self._submitted: OrderedDict[str, _Submission] = OrderedDict()
         if not configuration.continue_downloads:
             # The operator disabled continuing partial downloads with aria2:
             # declare it, so core plans restarts for it rather than offsets.
@@ -986,6 +1021,7 @@ class Aria2Executor:
         what cannot prove the answer (a timeout, a lost connection, a
         malformed or lost response) propagates to the caller's uncertain
         handling."""
+        before = await self._session_identity()
         try:
             returned = await self.client._call("aria2.addUri", [[address], options])
         except Aria2ResponseError as exc:
@@ -993,7 +1029,53 @@ class Aria2Executor:
                                         error=exception_failure(exc, stage=Stage.QUEUE, secrets=secrets))
         if str(returned) != self._handle_gid(handle):
             raise self._failure(Category.EXECUTOR_PROTOCOL_VIOLATION)
+        accepted_at = time.time()
+        self._remember_submission(str(returned), _Submission(
+            str(handle.attempt_id), before, await self._session_identity(), accepted_at))
         return await self._admitted(handle, paused=paused)
+
+    async def _session_identity(self) -> str | None:
+        """One bounded, best-effort daemon identity read; never raises."""
+        try:
+            return await asyncio.wait_for(self.client.session_id(), _IDENTITY_READ_SECONDS)
+        except Exception:
+            return None
+
+    def _remember_submission(self, gid: str, submission: _Submission) -> None:
+        self._submitted.pop(gid, None)
+        self._submitted[gid] = submission
+        while len(self._submitted) > _SUBMISSIONS_LIMIT:
+            self._submitted.popitem(last=False)
+
+    async def _report_disappearance(self, gid: str) -> None:
+        """One warning when a job this process submitted is confirmed not found
+        by the daemon: whether the daemon answering now is the one that accepted
+        it. Removed from the memo first, so each execution warns at most once.
+        Best-effort diagnostic; it never raises and changes nothing."""
+        submission = self._submitted.pop(gid, None)
+        if submission is None:
+            return
+        try:
+            observed_at = time.time()
+            observed = await self._session_identity()
+            accepted = submission.session
+            if accepted is None or observed is None:
+                daemon = "unknown"
+            else:
+                daemon = "same" if accepted == observed else "differs"
+            pid, started_at = (self.runtime.process_identity() if self.runtime is not None
+                               else (None, 0.0))
+            logger.warning(
+                "aria2 lost an accepted execution: attempt=%s gid=%s daemon=%s "
+                "submission_session=%s/%s observation_session=%s accepted_at=%s observed_at=%s "
+                "elapsed=%.3fs runtime_pid=%s runtime_started_at=%s",
+                submission.attempt_id, gid, daemon,
+                submission.session_before or "unknown", submission.session_after or "unknown",
+                observed or "unknown", _stamp(submission.accepted_at), _stamp(observed_at),
+                max(0.0, observed_at - submission.accepted_at), pid if pid is not None else "none",
+                _stamp(started_at) if started_at else "none")
+        except Exception:
+            logger.debug("aria2 disappearance diagnostic skipped", exc_info=True)
 
     async def start(self, request: ExecutionRequest, handle: ExecutionHandle) -> ExecutionObservation:
         return await self._start(request, handle)
@@ -1068,6 +1150,7 @@ class Aria2Executor:
             elif self._endpoint(request.work.subject.candidate).scheme == "sftp":
                 host_identity = await self._confirmed_host_identity(gid)
             await self._check(handle, "resume")
+            self._submitted.pop(gid, None)
             try:
                 await self.client._call("aria2.removeDownloadResult", [gid])
             except Exception as exc:
@@ -1121,6 +1204,7 @@ class Aria2Executor:
                     continue
                 exact = await self._recover_redactions(handle, native)
                 return self._observation(handle, native, exact_redaction=exact)
+            await self._report_disappearance(gid)
             return ExecutionObservation(self._bound(handle), ExecutionState.ABSENT)
         except Exception as exc:
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
@@ -1268,6 +1352,8 @@ class Aria2Executor:
         try:
             gid = await self._check(handle, "cancel")
             before = await self.observe(handle)
+            # From here this executor removes the job itself: its absence is not a loss.
+            self._submitted.pop(gid, None)
             if before.state == ExecutionState.UNKNOWN:
                 return before
             if before.resumable:

@@ -1762,7 +1762,13 @@ class TransferRepository:
                     should_complete = True
                 elif any(item.state in {"downloading", "verifying"} for item in artifacts):
                     await _transition(TransferState.TRANSFERRING, progress=progress)
-                elif any(item.state == "unknown" for item in artifacts):
+                # An attached execution whose native truth is unknown, or was
+                # found lost (``ExecutionState.ABSENT``), is still owned by
+                # recovery: reconcile revisits it and either requeues it or
+                # settles it explicitly ('error' once recovery is exhausted).
+                # It is unfinished work, never a terminal vote -- a sibling's
+                # failure must not report the transfer FAILED meanwhile.
+                elif any(item.state in {"unknown", "lost"} for item in artifacts):
                     await _transition(TransferState.QUEUED, progress=progress)
                 # DP 1.0.12 canonical lifecycle/recovery/completion rework,
                 # Section 7 (CANON-001): an artifact autonomously waiting on

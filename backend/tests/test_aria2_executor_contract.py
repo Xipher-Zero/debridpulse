@@ -1,5 +1,6 @@
 """Exercise the execution boundary, including ambiguous RPC outcomes and ownership."""
 from dataclasses import replace
+import logging
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -31,6 +32,13 @@ class NativeDaemon:
         self.pending_controls = {}
         self.options = {}
         self.fail_get_option = False
+        # The answering daemon process (``aria2.getSessionInfo``); None = unreadable.
+        self.session = "5e55" * 10
+
+    async def session_id(self):
+        if self.session is None:
+            raise Aria2ConnectionError("session info unavailable")
+        return self.session
 
     async def tell_status(self, gid):
         self.lookups += 1
@@ -471,3 +479,90 @@ async def test_unrecoverable_redaction_facts_fail_closed_on_diagnostic_text_not_
     assert retried.state == ExecutionState.FAILED and "unexpected" in retried.error.diagnostic
     assert "opaque-header-value" not in retried.error.diagnostic
     assert execution.handle.attempt_id in restarted._redactions
+
+
+def _loss_warnings(caplog):
+    return [record.getMessage() for record in caplog.records
+            if record.name == "alldebrid.aria2" and record.levelno == logging.WARNING]
+
+
+@pytest.mark.asyncio
+async def test_ordinary_observation_of_an_accepted_job_logs_no_identity_warning(execution, caplog):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    await execution.executor.start(execution.request, execution.handle)
+    for _ in range(3):
+        assert (await execution.executor.observe(execution.handle)).state == ExecutionState.RUNNING
+    assert _loss_warnings(caplog) == []
+    # Identity reads are not native job calls: the submission is still the first and only one.
+    assert [method for method, _ in execution.daemon.calls] == ["aria2.addUri"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("replaced, expected", [(False, "daemon=same"), (True, "daemon=differs")])
+async def test_lost_accepted_job_names_whether_the_accepting_daemon_still_answers(execution, caplog, replaced, expected):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    gid = execution.handle.native["gid"]
+    await execution.executor.start(execution.request, execution.handle)
+    accepted = execution.daemon.session
+    if replaced:
+        execution.daemon.session = "a11e" * 10
+    del execution.daemon.jobs[gid]
+
+    lost = await execution.executor.observe(execution.handle)
+    assert lost.state == ExecutionState.ABSENT and lost.error is None
+    assert execution.daemon.lookups >= 3
+    # One warning per execution: further confirmed absences say nothing more.
+    assert (await execution.executor.observe(execution.handle)).state == ExecutionState.ABSENT
+    [warning] = _loss_warnings(caplog)
+    assert f"attempt={execution.handle.attempt_id}" in warning and f"gid={gid}" in warning
+    assert expected in warning
+    assert f"submission_session={accepted}/{accepted}" in warning
+    assert f"observation_session={execution.daemon.session}" in warning
+    assert "accepted_at=" in warning and "observed_at=" in warning and "elapsed=" in warning
+    # Bounded and safe: no source address, query secret, header value or path.
+    for forbidden in ("download.example", "secret", "opaque-header-value", "X-Capability",
+                      "guard:8888", str(execution.request.work.materialization.target)):
+        assert forbidden not in warning
+    assert len(warning) < 600
+
+
+@pytest.mark.asyncio
+async def test_unreadable_daemon_identity_never_fails_dispatch_or_observation(execution, caplog):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    execution.daemon.session = None
+    started = await execution.executor.start(execution.request, execution.handle)
+    assert started.state == ExecutionState.QUEUED
+    del execution.daemon.jobs[execution.handle.native["gid"]]
+    assert (await execution.executor.observe(execution.handle)).state == ExecutionState.ABSENT
+    [warning] = _loss_warnings(caplog)
+    assert "daemon=unknown" in warning and "observation_session=unknown" in warning
+
+
+@pytest.mark.asyncio
+async def test_identity_that_changes_across_submission_is_never_claimed_as_the_acceptor(execution, caplog):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    reads = iter(["b4f0" * 10, "af7e" * 10])
+    execution.daemon.session_id = AsyncMock(side_effect=lambda: next(reads, "af7e" * 10))
+    await execution.executor.start(execution.request, execution.handle)
+    del execution.daemon.jobs[execution.handle.native["gid"]]
+    await execution.executor.observe(execution.handle)
+    [warning] = _loss_warnings(caplog)
+    assert "daemon=unknown" in warning
+    assert f"submission_session={'b4f0' * 10}/{'af7e' * 10}" in warning
+
+
+@pytest.mark.asyncio
+async def test_cancel_removing_its_own_job_is_not_reported_as_a_loss(execution, caplog):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    await execution.executor.start(execution.request, execution.handle)
+    await execution.executor.cancel(execution.handle)
+    assert execution.handle.native["gid"] not in execution.daemon.jobs
+    await execution.executor.observe(execution.handle)
+    assert _loss_warnings(caplog) == []
+
+
+@pytest.mark.asyncio
+async def test_absence_of_a_job_this_process_never_submitted_logs_nothing(execution, caplog):
+    caplog.set_level(logging.DEBUG, logger="alldebrid.aria2")
+    assert (await execution.executor.observe(execution.handle)).state == ExecutionState.ABSENT
+    assert _loss_warnings(caplog) == []

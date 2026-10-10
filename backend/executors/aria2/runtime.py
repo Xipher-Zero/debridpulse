@@ -48,6 +48,9 @@ def rpc_service(options) -> Aria2Service:
 # global setting, and nothing synchronizes it to that setting.
 NATIVE_ACTIVE_DOWNLOADS = 64
 
+# Bound on one diagnostic daemon-identity read (``Aria2Service.session_id``).
+_IDENTITY_READ_SECONDS = 2.0
+
 
 def build_aria2_global_options(options, *, include_safety: bool = False) -> Dict[str, str]:
     """Pure translation of aria2-owned typed tuning into the native aria2
@@ -131,6 +134,19 @@ class Aria2Runtime:
 
     def _service(self) -> Aria2Service:
         return rpc_service(self._config.options)
+
+    def process_identity(self) -> tuple[Optional[int], float]:
+        """The daemon process this runtime started (pid, start time), or
+        (None, 0.0) when it has none -- diagnostic context only."""
+        process = self._process
+        return getattr(process, "pid", None), self._started_at
+
+    async def _session_identity(self) -> str:
+        """The answering daemon's sessionId for a transition log; never raises."""
+        try:
+            return await asyncio.wait_for(self._service().session_id(), _IDENTITY_READ_SECONDS) or "unknown"
+        except Exception:
+            return "unknown"
 
     def _is_process_alive(self) -> bool:
         return self._process is not None and self._process.returncode is None
@@ -259,7 +275,8 @@ class Aria2Runtime:
                 self._started_at = time.time()
                 self._last_error = ""
                 await self._wait_until_healthy()
-                logger.info("aria2 started on %s", rpc_url())
+                logger.info("aria2 started on %s (pid %s, session %s)", rpc_url(), self.process_identity()[0],
+                            await self._session_identity())
             except BaseException as exc:
                 self._last_error = str(exc).strip() or exc.__class__.__name__
                 await self._cleanup_failed_start()
@@ -271,6 +288,9 @@ class Aria2Runtime:
     async def stop(self) -> Dict[str, Any]:
         async with self._lock:
             try:
+                pid, _ = self.process_identity()
+                logger.info("aria2 stopping (pid %s, session %s)", pid,
+                            await self._session_identity())
                 try:
                     await self._service()._call("aria2.shutdown")
                 except Exception as _e:

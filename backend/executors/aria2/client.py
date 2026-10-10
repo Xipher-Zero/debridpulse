@@ -151,6 +151,22 @@ class Aria2Service:
             "enabled_features": version.get("enabledFeatures", []),
         }
 
+    async def session_id(self) -> Optional[str]:
+        """Best-effort identity of the daemon process answering right now.
+
+        aria2's ``getSessionInfo`` sessionId is fixed for the life of one
+        daemon process and new on every start, so two equal reads were
+        answered by the same process. Diagnostic only: None whenever it
+        cannot be read, and it never raises."""
+        try:
+            info = await self._call("aria2.getSessionInfo")
+        except Exception:
+            return None
+        value = info.get("sessionId") if isinstance(info, dict) else None
+        if isinstance(value, str) and 0 < len(value) <= 64 and value.isalnum():
+            return value
+        return None
+
     async def get_global_stat(self) -> Dict[str, int]:
         try:
             result = await self._call("aria2.getGlobalStat")
