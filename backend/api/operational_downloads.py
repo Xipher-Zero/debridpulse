@@ -404,6 +404,13 @@ async def replace_root_route(
         raise HTTPException(status_code=409, detail=exc.error.as_dict()) from None
 
 
+@router.get("/events/count")
+async def count_activity_events():
+    """How many events the journal retains in all (Settings -> Event Logging)."""
+    async with get_db() as db:
+        return {"recorded": await event_journal.recorded_count(db)}
+
+
 @router.get("/events")
 async def list_activity_events(
     search: Annotated[Optional[str], Query(max_length=event_journal.SEARCH_MAX_TEXT)] = None,

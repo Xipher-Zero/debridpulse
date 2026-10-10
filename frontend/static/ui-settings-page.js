@@ -22,6 +22,9 @@
     auth: null,
     activeTab: 'sources',
     oneTimeToken: '',
+    // The journal's retained event count: undefined while it is being read,
+    // null when it could not be, otherwise the number.
+    recordedEvents: undefined,
     loading: null,
     oidc: {
       popup: null,
@@ -3468,6 +3471,21 @@
    * each settles the page's pending field writes first, so it acts on the
    * values the server has accepted rather than on a draft the operator left in
    * a field. That settle is the one shared owner's, not a Maintenance timer. */
+  /* Recorded Events is a reading, not a setting: the journal's whole retained
+   * count, read when Settings loads. An unread or unreadable count is never
+   * shown as zero. */
+  function recordedEventsText() {
+    if (state.recordedEvents === undefined) return '…';
+    if (!Number.isInteger(state.recordedEvents)) return '—';
+    return state.recordedEvents.toLocaleString('en-US');
+  }
+
+  function showRecordedEvents(value) {
+    state.recordedEvents = value;
+    const control = root()?.querySelector('[data-setting="event_journal_recorded"]');
+    if (control) control.value = recordedEventsText();
+  }
+
   function maintenancePanel(s) {
     /* Event Logging selects only how many events one Activity Log page shows;
      * the journal itself is kept indefinitely, so nothing here retains, prunes
@@ -3478,6 +3496,11 @@
           [[50, '50 events'], [100, '100 events'], [250, '250 events']],
           'Number of events displayed per page in the Activity Log.',
           {inline: true, className: 'dp-settings-event-logging-field'})}
+        ${input('event_journal_recorded', 'Recorded Events', recordedEventsText(), {
+          inline: true, commit: false, readonly: true,
+          hint: 'Total events retained in the activity journal.',
+          className: 'dp-settings-event-logging-field dp-settings-event-logging-recorded',
+        })}
       </div>
     `, {
       className: 'dp-settings-event-logging-card',
@@ -4901,6 +4924,9 @@
 
       const settingsPromise = request('GET', '/settings', undefined, 10000);
       const authPromise = request('GET', '/auth/config', undefined, 7000);
+      state.recordedEvents = undefined;
+      const recordedPromise = request('GET', '/events/count', undefined, 7000).then(
+        result => (Number.isInteger(result?.recorded) ? result.recorded : null), () => null);
 
       let settings;
       try {
@@ -4917,6 +4943,10 @@
       state.auth = fallbackAuthFromSettings(settings);
       syncAuthIntoSettings(state.auth);
       render();
+
+      void recordedPromise.then(recorded => {
+        if (generation === loadGeneration) showRecordedEvents(recorded);
+      });
 
       void authPromise.then(auth => {
         if (generation !== loadGeneration || !settingsActive()) return;

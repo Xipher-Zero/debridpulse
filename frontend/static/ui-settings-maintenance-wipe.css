@@ -88,12 +88,28 @@
   padding: 16px 22px 17px;
 }
 
-/* Event Logging's island holds one compact selector: the same island at a
-   quarter of the card body, never narrower than its row needs to keep the
-   title and hint beside a full-size selector. */
+/* Event Logging's island holds two compact field groups side by side -- the
+   page-size selector and the Recorded Events reading -- centred against each
+   other: the same island at half the card body, never narrower than both
+   groups need beside full-size controls. Too narrow for both, the groups
+   wrap onto rows instead of clipping. */
 #view-settings .dp-settings-event-logging-island {
-  width: 25%;
-  min-width: min(100%, 360px);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 16px 40px;
+  width: 50%;
+  min-width: min(100%, 720px);
+}
+
+#view-settings .dp-settings-event-logging-island > .dp-settings-event-logging-field {
+  flex: 1 1 300px;
+  min-width: 0;
+}
+
+/* The reading takes the selector's footprint, not a free-text field's. */
+#view-settings .dp-settings-event-logging-recorded .input {
+  width: 120px;
 }
 
 /* Title over hint on the left, field on the right, the descriptive block

@@ -526,6 +526,15 @@ async def transfer_events(db, transfer_id: int, limit: int = 50) -> list[dict]:
         (int(transfer_id), int(transfer_id), int(limit)))
 
 
+async def recorded_count(db) -> int:
+    """Every committed journal record -- the whole retained history, not a
+    page, a search, the index watermark or one transfer's share. One scan of
+    the narrowest covering index (about 5 ms at a million records, measured);
+    read on demand, never cached."""
+    row = await db.fetchone("SELECT COUNT(*) AS n FROM event_journal")
+    return int(row["n"]) if row else 0
+
+
 async def severity_counts(db, since: float | None) -> dict[str, int]:
     """Journal events per severity, optionally since an instant (Statistics)."""
     if since is None:

@@ -174,6 +174,7 @@ test('Backup Folder is a centred island at roughly 70% with Browse inside the fi
 
 test('Event Logging is the first card: family chip, file-text glyph, centred hint, empty rail, one island',
   async ({page}) => {
+    const recorded = (await (await page.request.get('/api/events/count')).json()).recorded;
     await openMaintenance(page);
     for (const width of [1440, 1024, 820, 390]) {
       await page.setViewportSize({width, height: 900});
@@ -195,9 +196,22 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
         const i = island.getBoundingClientRect(), b = body.getBoundingClientRect();
         const info = island.querySelector('.dp-settings-inline-field-info').getBoundingClientRect();
         const control = island.querySelector('.dp-settings-inline-field-control').getBoundingClientRect();
+        const groups = Array.from(island.querySelectorAll(':scope > .dp-settings-event-logging-field'),
+          group => group.getBoundingClientRect());
+        const reading = island.querySelector('[data-setting="event_journal_recorded"]');
+        const readingGroup = reading.closest('.dp-settings-event-logging-field');
         const select = island.querySelector('.dp-dropdown__trigger') || island.querySelector('select');
         return {
           islandWidth: i.width, inner,
+          groupsSideBySide: groups.length === 2 && groups[0].right <= groups[1].left + 1,
+          groupsCentred: groups.length === 2
+            && Math.abs((groups[0].top + groups[0].height / 2) - (groups[1].top + groups[1].height / 2)),
+          groupsInside: groups.every(g => g.left >= i.left - 1 && g.right <= i.right + 1),
+          reading: {value: reading.value, readOnly: reading.readOnly, commit: reading.dataset.commit || null,
+                    title: readingGroup.querySelector('.form-label').textContent.trim(),
+                    hint: readingGroup.querySelector('.form-hint').textContent.trim(),
+                    width: reading.getBoundingClientRect().width,
+                    selectWidth: select.getBoundingClientRect().width},
           valueText: (island.querySelector('.dp-dropdown__value') || {}).textContent?.trim(),
           valueClipped: (() => { const v = island.querySelector('.dp-dropdown__value'); return !v || v.scrollWidth > v.clientWidth + 1; })(),
           sideBySide: info.right <= control.left + 1,
@@ -238,12 +252,23 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
       // A quarter of the card body, centred; the label and hint stay to the
       // left of the selector, centred against it, and nothing leaves the island.
       if (width > 700) {
-        // 25% of the card body, floored at the 360px the row needs.
-        expect(Math.abs(facts.islandWidth - Math.max(0.25 * facts.inner, Math.min(facts.inner, 360)))).toBeLessThan(2);
+        // Half the card body, floored at the 720px both groups need, the two
+        // groups side by side and centred against each other.
+        expect(Math.abs(facts.islandWidth - Math.max(0.5 * facts.inner, Math.min(facts.inner, 720)))).toBeLessThan(2);
+        // With room for both, side by side and centred against each other;
+        // without it (a card body under 720px) they wrap onto rows instead.
+        if (facts.inner >= 720) {
+          expect(facts.groupsSideBySide).toBe(true);
+          expect(facts.groupsCentred).toBeLessThan(2);
+        }
         expect(facts.sideBySide).toBe(true);
         expect(facts.centredRow).toBeLessThan(2);
       }
       expect(facts.controlInside).toBe(true);
+      expect(facts.groupsInside).toBe(true);
+      expect(facts.reading).toMatchObject({value: recorded.toLocaleString('en-US'), readOnly: true, commit: null,
+        title: 'Recorded Events', hint: 'Total events retained in the activity journal.'});
+      expect(Math.abs(facts.reading.width - facts.reading.selectWidth)).toBeLessThan(4);
       // The selector keeps its size: its value is shown whole.
       expect(facts.valueText).toBe('100 events');
       expect(facts.valueClipped).toBe(false);
@@ -254,6 +279,20 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
     }
     // Not a control of the Activity Log itself.
     expect(await page.locator('#view-events [data-setting="activity_log_page_size"]').count()).toBe(0);
+  });
+
+test('Recorded Events shows the journal count with separators, and never zero when it cannot be read',
+  async ({page}) => {
+    let reply = {status: 200, body: {recorded: 1234567}};
+    await page.route('**/api/events/count', route => route.fulfill({
+      status: reply.status, contentType: 'application/json', body: JSON.stringify(reply.body)}));
+    await openMaintenance(page);
+    await expect(field(page, 'event_journal_recorded')).toHaveValue('1,234,567');
+    // Revisiting Settings reads it again; a failed read is unavailable, not 0.
+    reply = {status: 503, body: {detail: 'unavailable'}};
+    await page.locator('#sidebar .nav-item[data-view="events"]').click();
+    await openMaintenance(page);
+    await expect(field(page, 'event_journal_recorded')).toHaveValue('—');
   });
 
 test('Activity Log Page Size persists through the canonical owner and sizes the Activity Log page',

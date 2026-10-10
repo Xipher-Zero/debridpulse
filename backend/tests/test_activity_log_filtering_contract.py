@@ -254,3 +254,23 @@ async def test_query_plans_are_indexed_for_every_filter_shape(journal_db):
     assert "idx_event_journal_category_severity" in plans["category+severity"]
     assert "idx_event_journal_transfer" in plans["transfer"] and "idx_event_journal_related" in plans["transfer"]
     print("\n".join(f"{name}: {plan}" for name, plan in plans.items()))
+
+
+@pytest.mark.asyncio
+async def test_recorded_count_is_every_committed_journal_record_and_nothing_else(journal_db):
+    assert await activity_routes.count_activity_events() == {"recorded": 0}
+    await _record(_event(index, category="routing" if index % 2 else "transfer", transfer_id=index % 7)
+                  for index in range(1, 1301))
+    async with database.get_db() as db:
+        # Legacy rows are not the journal ...
+        await db.execute("INSERT INTO events(torrent_id,level,message) VALUES(NULL,'info','legacy row')")
+        await db.commit()
+        # ... and an uncommitted record is not one.
+        await event_journal.record(db, _event(9999))
+        await db.rollback()
+        assert (await db.fetchone("SELECT COUNT(*) AS n FROM events"))["n"] == 1
+    # Not the index watermark (nothing indexed yet), a page, a filter or one transfer's share.
+    assert await activity_routes.count_activity_events() == {"recorded": 1300}
+    await _index_all()
+    assert (await _page(category="routing", limit=50))["has_more"] is True
+    assert await activity_routes.count_activity_events() == {"recorded": 1300}

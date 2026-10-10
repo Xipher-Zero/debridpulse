@@ -216,8 +216,13 @@ def test_event_logging_is_the_first_card_with_the_family_chip_and_one_page_size_
     assert "headerCenter: 'Configure how many activity log entries are displayed per page.'" in card
     # Nothing on the right: no Test, action, toggle or Enable.
     assert "headerAction" not in card and "action:" not in card and "toggle(" not in card
-    # Exactly one centred island holding exactly one selector.
+    # Exactly one centred island: the one page-size selector beside the one
+    # Recorded Events reading, which is read-only and never persisted.
     assert card.count('class="dp-settings-event-logging-island"') == 1 and card.count("selectField(") == 1
+    assert ("${input('event_journal_recorded', 'Recorded Events', recordedEventsText(), {\n"
+            "          inline: true, commit: false, readonly: true,\n"
+            "          hint: 'Total events retained in the activity journal.',") in card
+    assert "event_journal_recorded" not in source(RUNTIME).split("const COMMIT_FIELDS", 1)[1].split("});", 1)[0]
     assert ("selectField('activity_log_page_size', 'Activity Log Page Size', s.activity_log_page_size ?? 100,\n"
             "          [[50, '50 events'], [100, '100 events'], [250, '250 events']],\n"
             "          'Number of events displayed per page in the Activity Log.',") in card
