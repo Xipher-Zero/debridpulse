@@ -89,7 +89,7 @@ class FailingPrimary(Primary):
         return ProviderObservation(resource, ResourceState.PREPARING, "Show")
 
 
-async def prepared(tmp_path, monkeypatch, client=None, *, clock=None):
+async def prepared(tmp_path, monkeypatch, client=None, *, clock=None, request=None):
     """A root on the primary with a bound TorBox backup."""
     client = client or FakeClient()
     primary = FailingPrimary()
@@ -98,7 +98,7 @@ async def prepared(tmp_path, monkeypatch, client=None, *, clock=None):
     # resolve to (aria2's role in the product).
     for executor in registry.executors.values():
         executor.claim_schemes = frozenset({*executor.claim_schemes, "https"})
-    transfer = await submitted(engine)
+    transfer = await submitted(engine, request)
     await engine.resolve_pending()
     (standby,) = await repository.standbys(transfer.id)
     assert standby["state"] == "bound" and len(creates(client)) == 1
@@ -201,9 +201,13 @@ async def test_a_preparing_promotion_waits_and_an_available_one_fans_out_under_o
 
 
 async def test_an_available_backup_that_is_not_promoted_is_never_executable(tmp_path, monkeypatch):
+    # The request prefers its preparing primary, so no readiness-driven yield
+    # may take the backup over (D4): it stays a backup, and a backup is never
+    # executable. (Without such an exclusion a still-preparing root now yields
+    # to a ready backup: test_v113_readiness_promotion.)
     clock = Clock()
     client, _primary, repository, _registry, engine, transfer, _standby = await prepared(
-        tmp_path, monkeypatch, clock=clock)
+        tmp_path, monkeypatch, clock=clock, request=replace(magnet(), preferred_provider="provider-a"))
     client.objects[TORRENT][str(client.next_id)].update(download_state="cached", download_present=True)
     clock.now += 3_600
     for _ in range(3):

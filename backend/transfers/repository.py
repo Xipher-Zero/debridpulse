@@ -65,7 +65,7 @@ from transfers._repository_base import (
     _selection_intent_in_db, _set_selection_intent_in_db,
 )
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
-from transfers.errors import Category, Domain, NormalizedError, Stage, TransferError
+from transfers.errors import Category, Domain, NormalizedError, Permanence, Retryability, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import (
     CleanupAuthority, ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership,
@@ -2483,12 +2483,11 @@ class TransferRepository(_QualifiedTransferRepository):
                         migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
                                                                     full_entries, established)
                     except fs.SelectionUnprovable as refused:
-                        await db.rollback()
-                        # The bounded reason only: never a path, name or payload.
-                        raise TransferError(NormalizedError(
-                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                            diagnostic=refused.reason,
-                        )) from exc
+                        held = await self._continuity_refusal(
+                            db, record, row, source, binding_id, refused, now,
+                            migrated=refused is not exc and source is not None and not already)
+                        return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
+                                                    held=held)
                     authorized, recorded = migration.logical, migration.provenance
                 provenance = None
                 if not already:
@@ -2538,6 +2537,69 @@ class TransferRepository(_QualifiedTransferRepository):
             sizes.setdefault(path, set()).add(size)
         return [(path, next(iter(values)) if len(values) == 1 else 0) for path, values in sizes.items()]
 
+    async def _continuity_refusal(self, db, record, row, source, binding_id: str, refused, now: float, *,
+                                  migrated: bool) -> str:
+        """THE outcome of a selection the whole-manifest proofs could not carry
+        onto this replacement, inside ``commit_selected_manifest``'s
+        transaction. Returns the held reason, or raises the normalized refusal
+        (the bounded reason only: never a path, name or payload).
+
+        Only a CONCLUSIVE refusal (``_refusal_conclusive``: durable evidence
+        positively contradicting the established identity) is final for this
+        route: on a route the operator chose it holds, visibly, and never
+        moves the route; on any other route it is raised as the permanent
+        continuity refusal that disqualifies this route alone
+        (``policy.continuity_disqualifying``). A refusal that only lacks
+        evidence, or that a later observation could still answer, stays the
+        ordinary retried refusal it always was."""
+        conclusive = migrated and await self._refusal_conclusive(db, record, source, binding_id)
+        if conclusive and await self._operator_chosen_route(db, record.id):
+            return await self._hold_generation(db, record, row, refused.reason, now)
+        await db.rollback()
+        raise TransferError(NormalizedError(
+            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+            diagnostic=refused.reason,
+            **({"retryability": Retryability.NEVER, "permanence": Permanence.PERMANENT} if conclusive else {}),
+        )) from refused
+
+    async def _refusal_conclusive(self, db, record, source, binding_id: str) -> bool:
+        """Whether a refused continuation is CONCLUSIVE: durable evidence
+        positively contradicts that the replacement is the established
+        torrent -- its own provider reported exactly one info-hash for it, and
+        that hash differs from the one the established tree is bound to (the
+        root's validated hash, else the predecessor provider's single reported
+        hash). Those reports are durable resolution records of each bound
+        resource and never change for it.
+
+        Nothing else is conclusive. A manifest is re-recorded on every
+        observation until its generation commits, so agreeing current views
+        of a file list never prove it frozen; a missing fingerprint is absent
+        evidence, not a contradiction; and a file list that does not
+        correspond today may still be completing."""
+        from transfers.requests import bittorrent_root_hash
+
+        def attested(values) -> set[str]:
+            return {value.strip().casefold() for value in values if value.strip()}
+
+        replacement = attested(await self._binding_fingerprints(db, record.id, binding_id))
+        if len(replacement) != 1:
+            return False
+        digest = bittorrent_root_hash(record.request)
+        established = ({digest} if digest
+                       else attested(await self._binding_fingerprints(db, record.id, source["provider_resource_id"])))
+        return len(established) == 1 and replacement != established
+
+    @classmethod
+    async def _operator_chosen_route(cls, db, request_id: str) -> bool:
+        """Whether the root's current route is one the operator chose
+        explicitly (its latest route attempt opened by ``replace_root_route``
+        under ``operator_switch``)."""
+        latest = await db.fetchone(
+            """SELECT p.operation FROM route_attempt_provenance p
+               JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+               WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
+        return bool(latest) and latest["operation"] == cls.OPERATOR_SWITCH
+
     @staticmethod
     def _at_established_paths(authorized, established) -> bool:
         """Whether every authorized member already has an established
@@ -2550,17 +2612,100 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def _inherited_migration(self, db, record, source, row, binding_id: str, selected,
                                    full_entries, established) -> "fs.InheritedMigration":
-        """The whole-manifest proof (``fs.migrate_inherited_subset``) that an
-        inherited selection's members are this replacement's, read inside
-        ``commit_selected_manifest``'s transaction: both generations'
-        complete manifests and each binding's own reported source
-        fingerprints, with the members already established under the root."""
-        return fs.migrate_inherited_subset(
-            selected, await self._manifest_members(db, source["manifest_id"]),
-            await self._manifest_members(db, row["manifest_id"]), tuple(full_entries),
-            predecessor_fingerprints=await self._binding_fingerprints(db, record.id, source["provider_resource_id"]),
-            replacement_fingerprints=await self._binding_fingerprints(db, record.id, binding_id),
-            established=established)
+        """The whole-manifest proof that an inherited selection's members are
+        this replacement's, read inside ``commit_selected_manifest``'s
+        transaction, from durable evidence only.
+
+        First the existing strict proof, unchanged
+        (``fs.migrate_inherited_subset``: both bindings' own reported source
+        fingerprints, a unique basename/size bijection). Only when that
+        cannot prove, and only when the replacement is durably bound to the
+        same torrent as the established tree (``_same_torrent_correspondence``),
+        the distinct bounded coordinate-interpretation proof
+        (``fs.coordinate_correspondence``) may carry the selection instead.
+        Without that binding the strict proof's own refusal stands."""
+        predecessor = await self._manifest_members(db, source["manifest_id"])
+        replacement = await self._manifest_members(db, row["manifest_id"])
+        predecessor_fingerprints = await self._binding_fingerprints(db, record.id, source["provider_resource_id"])
+        replacement_fingerprints = await self._binding_fingerprints(db, record.id, binding_id)
+        try:
+            return fs.migrate_inherited_subset(
+                selected, predecessor, replacement, tuple(full_entries),
+                predecessor_fingerprints=predecessor_fingerprints,
+                replacement_fingerprints=replacement_fingerprints,
+                established=established)
+        except fs.SelectionUnprovable:
+            correspondence = await self._same_torrent_correspondence(
+                db, record, binding_id, predecessor, replacement, predecessor_fingerprints,
+                replacement_fingerprints)
+            if correspondence is None:
+                raise
+        return fs.migrate_by_correspondence(selected, predecessor, correspondence, tuple(full_entries),
+                                            established=established)
+
+    async def _same_torrent_correspondence(self, db, record, binding_id: str, predecessor, replacement,
+                                           predecessor_fingerprints, replacement_fingerprints):
+        """The bounded coordinate correspondence between the predecessor's and
+        the replacement's COMPLETE file lists -- or ``None`` when DebridPulse
+        holds no durable binding of both to one torrent identity (D1), in
+        which case nothing is proven here. Raises ``fs.SelectionUnprovable``
+        when the binding holds but no single interpretation corresponds.
+
+        The binding, every element durable and authored by DebridPulse or the
+        established provider, never by a display name or a path:
+
+        * the root's info-hash -- its admission fingerprint, reproduced from
+          the same row's persisted payload (``bittorrent_root_hash``), and the
+          one the root is resolved as;
+        * the replacement was produced for exactly that root: a resolution
+          attempt of THIS root request by the replacement's provider recorded
+          that resource (``resolution_attempts.request_id`` and its result's
+          resource id), and the replacement reports no other fingerprint;
+        * the established tree is that torrent's: either the predecessor's own
+          provider reported exactly that info-hash for the resource whose file
+          list it is (``_binding_fingerprints``) -- the provider's record of the
+          torrent it holds, which DebridPulse cannot verify cryptographically
+          -- or the root is an uploaded ``.torrent`` whose own verified member
+          tree both file lists correspond to.
+
+        Paths and sizes then identify members; they never attest content."""
+        from transfers.requests import bittorrent_root_hash, torrent_member_tree
+
+        digest = bittorrent_root_hash(record.request)
+        if not digest or bittorrent_root_hash(record.resolvable) != digest:
+            return None
+        attested = {value.strip().casefold() for value in replacement_fingerprints if value.strip()}
+        if attested and attested != {digest}:
+            return None
+        if not await self._resolved_for_root(db, record.id, binding_id):
+            return None
+        if {value.strip().casefold() for value in predecessor_fingerprints if value.strip()} == {digest}:
+            return fs.coordinate_correspondence(predecessor, replacement)
+        payload = record.request.payload
+        tree = torrent_member_tree(payload) if isinstance(payload, (bytes, bytearray)) else None
+        if tree is None or tree.info_hash != digest:
+            return None
+        return fs.compose_correspondences(fs.coordinate_correspondence(list(tree.members), predecessor),
+                                          fs.coordinate_correspondence(list(tree.members), replacement))
+
+    @staticmethod
+    async def _resolved_for_root(db, request_id: str, binding_id: str) -> bool:
+        """Whether the resource behind ``binding_id`` was produced for exactly
+        this root request: one of its provider's resolution attempts OF THIS
+        REQUEST recorded that resource (directly, or as the prepared backup
+        the request's route took over)."""
+        binding = await db.fetchone("SELECT provider_id,resource_key FROM provider_resources WHERE id=?",
+                                    (binding_id,))
+        if not binding:
+            return False
+        resource_key = binding["resource_key"] or binding_id
+        for attempt in await db.fetchall(
+                """SELECT result FROM resolution_attempts WHERE request_id=? AND provider_id=?
+                   AND state!='declined' AND result IS NOT NULL""", (request_id, binding["provider_id"])):
+            observation = (codec.load(attempt["result"], {}) or {}).get("observation") or {}
+            if (observation.get("resource") or {}).get("id") == resource_key:
+                return True
+        return False
 
     @staticmethod
     async def _binding_fingerprints(db, request_id: str, binding_id: str) -> frozenset[str]:
@@ -2632,6 +2777,14 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.execute("UPDATE transfer_file_selections SET reacquisition_consumed_at=?,updated_at=? "
                                  "WHERE id=?", (now, now, predecessor["id"]))
                 return None, self.COMPATIBILITY_RECONSTRUCTION
+        return await self._hold_generation(db, record, row, reason, now), None
+
+    @staticmethod
+    async def _hold_generation(db, record, row, reason: str, now: float) -> str:
+        """Record the uncommitted generation ``held`` with its bounded
+        ``reason`` and commit only that, inside the caller's transaction:
+        nothing fans out, supersedes or starts, and the generation is
+        re-proven on every later pass. Returns the reason."""
         await db.execute(
             """UPDATE transfer_file_selections SET continuity=?, continuity_reason=?, updated_at=?
                WHERE id=? AND manifest_committed_at IS NULL""",
@@ -2642,13 +2795,22 @@ class TransferRepository(_QualifiedTransferRepository):
             await journal(db, je.selection("held", transfer_id=record.transfer_id, selection_id=row["id"],
                                            provider_id=row["provider_id"], detail=str(reason).replace("_", " ")))
         await db.commit()
-        return reason, None
+        return reason
 
     # The route-attempt operation an operator's explicit root route
     # replacement is recorded under, distinct from ordinary resolution
     # (``resolve``) and from automatic failover (whose predecessor attempt
     # carries the exhaustion that caused it).
     OPERATOR_SWITCH = "operator_switch"
+    # The route-attempt operation an automatic readiness-driven yield of a
+    # still-preparing root to its prepared backup is recorded under
+    # (``TransferEngine._readiness_promotion``): never a failure of the
+    # released route, never an operator's choice.
+    READINESS_PROMOTION = "readiness_promotion"
+    # Root routes that a later readiness-driven yield never moves again: an
+    # operator's explicit choice, and a route a readiness yield itself opened
+    # (anti-flapping by route state, not by a counter).
+    READINESS_PINNED_OPERATIONS = frozenset({OPERATOR_SWITCH, READINESS_PROMOTION})
 
     async def _root_route_facts(self, db, transfer_ids) -> dict[int, dict]:
         """Inside the caller's session, set-oriented: for each transfer of
@@ -2709,10 +2871,11 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def latest_root_route(self, request_id: str) -> dict | None:
         """The latest non-declined route attempt of a root request (the one
-        ``bound_route_provider`` reads): ``{id, provider_id, state}``."""
+        ``bound_route_provider`` reads): ``{id, provider_id, state,
+        operation}``."""
         async with get_db() as db:
             return await db.fetchone(
-                """SELECT a.id,a.provider_id,a.state FROM route_attempt_provenance p
+                """SELECT a.id,a.provider_id,a.state,p.operation FROM route_attempt_provenance p
                    JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
                    WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
 
@@ -2752,15 +2915,16 @@ class TransferRepository(_QualifiedTransferRepository):
         return refusal
 
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
-                                 target_provider_id: str) -> str:
+                                 target_provider_id: str, operation: str = OPERATOR_SWITCH) -> str:
         """THE operator root-route replacement, decided atomically.
 
         The root's current route -- its latest route attempt, which must still
         be ``expected_attempt_id`` by ``expected_provider_id`` and not ended --
         ends ``released`` (never ``exhausted``: the provider did not fail), and
         ``target_provider_id``'s route attempt is opened as the root's route
-        under the ``operator_switch`` operation, which ordinary resolution then
-        adopts (``begin_pinned_resolution``). Only the target's own earlier
+        under ``operation`` -- ``operator_switch``, or ``readiness_promotion``
+        for the engine's automatic yield of a still-preparing root -- which
+        ordinary resolution then adopts (``begin_pinned_resolution``). Only the target's own earlier
         exhaustion of this root is released (``released`` stays history);
         no other provider's exhaustion and no other root is touched. The
         replaced provider resource, when DebridPulse owns its cleanup and it
@@ -2808,7 +2972,7 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.execute("INSERT INTO resolution_attempts(id,request_id,provider_id,state) VALUES(?,?,?,'started')",
                              (pin, request_id, target_provider_id))
             await self._begin_route_provenance(db, pin, transfer_id, request_id, target_provider_id,
-                                               operation=self.OPERATOR_SWITCH)
+                                               operation=operation)
             resource = codec.resource(codec.load(row["resource"])) if row["resource"] else None
             if resource is not None and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
                 binding = await db.fetchone(
@@ -2821,10 +2985,23 @@ class TransferRepository(_QualifiedTransferRepository):
             await db.commit()
         return "replaced"
 
+    async def root_crossed_execution_boundary(self, request_id: str) -> bool:
+        """Whether a root has crossed the boundary after which no automatic
+        route change may replace it: any committed selection generation, any
+        member it fanned out, or any download of it or its members."""
+        async with get_db() as db:
+            return bool(await db.fetchone(
+                """SELECT 1 WHERE EXISTS(SELECT 1 FROM transfer_file_selections
+                       WHERE request_id=? AND manifest_committed_at IS NOT NULL)
+                   OR EXISTS(SELECT 1 FROM transfer_requests WHERE parent_id=?)
+                   OR EXISTS(SELECT 1 FROM download_files WHERE request_id=?
+                       OR request_id IN (SELECT id FROM transfer_requests WHERE parent_id=?))""",
+                (request_id, request_id, request_id, request_id)))
+
     async def begin_pinned_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
-        """Adopt the root's open ``operator_switch`` route attempt for
-        ``provider_id`` as its resolution attempt -- the replacement's own
-        attempt, never a second one. ``None`` when there is none to adopt
+        """Adopt the root's open ``operator_switch`` or ``readiness_promotion``
+        route attempt for ``provider_id`` as its resolution attempt -- the
+        replacement's own attempt, never a second one. ``None`` when there is none to adopt
         (then ordinary ``begin_resolution`` applies)."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -2836,7 +3013,8 @@ class TransferRepository(_QualifiedTransferRepository):
                    WHERE a.request_id=? AND a.state!='declined' AND r.state='pending'
                    AND t.status NOT IN ('deleted','completed','consolidated','cancelled') AND COALESCE(i.paused,0)=0
                    ORDER BY p.ordinal DESC LIMIT 1""", (request_id,))
-            if (not pinned or pinned["operation"] != self.OPERATOR_SWITCH or pinned["state"] != "started"
+            if (not pinned or pinned["operation"] not in self.READINESS_PINNED_OPERATIONS
+                    or pinned["state"] != "started"
                     or str(pinned["provider_id"]) != str(provider_id)):
                 await db.rollback()
                 return None

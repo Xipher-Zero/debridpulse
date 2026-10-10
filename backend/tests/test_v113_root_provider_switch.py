@@ -740,7 +740,7 @@ def offer_source(provider, files, fingerprint):
 
 
 async def chosen_then_switched(tmp_path, monkeypatch, *, target=FLAT, before=SOURCE, after=SOURCE,
-                               chosen=("S1/A.mkv", "S3/C.mkv"), conflict=False):
+                               chosen=("S1/A.mkv", "S3/C.mkv"), conflict=False, held=False, fingerprint=""):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "switch.sqlite3")
     await database.init_db()
     repository, registry = TransferRepository(), IntegrationRegistry()
@@ -753,7 +753,8 @@ async def chosen_then_switched(tmp_path, monkeypatch, *, target=FLAT, before=SOU
                             policy=TransferPolicy(retry_delay=0.0, max_attempts=3), clock=Clock())
     await engine.initialize()
     offer_source(providers["parcel-a"], SEASONS, before)
-    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="interactive"),),
+    transfer = await engine.submit((TransferRequest("magnet", MAGNET, name="Show", fingerprint=fingerprint,
+                                                    selection_mode="interactive"),),
                                    name="Show", deduplicate=False)
     for _ in range(3):
         await engine.tick()
@@ -764,7 +765,10 @@ async def chosen_then_switched(tmp_path, monkeypatch, *, target=FLAT, before=SOU
     await settle(engine, 4)
     offer_source(providers["parcel-b"], target, after)
     await switch_root_provider(engine, transfer.id, "parcel-b", expected_provider_id="parcel-a")
-    error = await first_conflict(repository, engine, transfer.id) if conflict else await settle(engine)
+    if held:
+        error = await first_hold(engine, transfer.id, "parcel-b")
+    else:
+        error = await first_conflict(repository, engine, transfer.id) if conflict else await settle(engine)
     return repository, engine, transfer, error
 
 
@@ -776,6 +780,20 @@ async def first_conflict(repository, engine, transfer_id, ticks=8):
         root = await root_of(repository, transfer_id)
         if root.error is not None and root.error.category == Category.RESOURCE_STATE_CONFLICT:
             return root.error
+    return None
+
+
+async def first_hold(engine, transfer_id, provider_id, ticks=8):
+    """The bounded reason the root's ``provider_id`` generation is first held
+    for after the switch: an operator-chosen route whose conclusive refusal
+    holds, visibly, rather than retrying or moving the route."""
+    for _ in range(ticks):
+        engine.clock.now += 30
+        await engine.tick()
+        held = await rows("SELECT continuity_reason FROM transfer_file_selections WHERE transfer_id=? "
+                          "AND provider_id=? AND continuity='held'", (transfer_id, provider_id))
+        if held:
+            return held[0]["continuity_reason"]
     return None
 
 
@@ -809,7 +827,6 @@ async def test_a_replacement_reporting_the_files_without_their_directories_carri
 @pytest.mark.parametrize("before, after, target, reason", [
     ("", SOURCE, FLAT, "fallback_missing_fingerprint"),                       # M-C16
     (SOURCE, "", FLAT, "fallback_missing_fingerprint"),                       # M-C17
-    (SOURCE, "b" * 40, FLAT, "fallback_fingerprint_mismatch"),                # M-C18
     (SOURCE, SOURCE, [("A.mkv", "A.mkv", 100), ("B.mkv", "x/A.mkv", 100), ("C.mkv", "C.mkv", 300)],
      "fallback_duplicate_identity"),                                          # M-C14
     (SOURCE, SOURCE, [("A.mkv", "A.mkv", 100), ("B.mkv", "B.mkv", 200), ("D.mkv", "D.mkv", 300)],
@@ -817,10 +834,26 @@ async def test_a_replacement_reporting_the_files_without_their_directories_carri
 ])
 async def test_an_unprovable_replacement_carries_nothing_and_says_why(tmp_path, monkeypatch, before, after, target,
                                                                        reason):
+    # Absent or insufficient evidence, never a contradiction: the ordinary
+    # retried refusal, as before (D5 is final only for a conclusive one).
     repository, _engine, transfer, error = await chosen_then_switched(
         tmp_path, monkeypatch, target=target, before=before, after=after, conflict=True)
     assert error is not None and error.stage.value == "reconciliation" and error.diagnostic == reason
     assert "A.mkv" not in error.diagnostic and "S1" not in error.diagnostic
+    assert not await rows("SELECT 1 FROM transfer_file_selections WHERE transfer_id=? AND provider_id='parcel-b' "
+                          "AND manifest_committed_at IS NOT NULL", (transfer.id,))
+    assert await members_of(repository, transfer.id) == [("S1/A.mkv", "x:S1/A.mkv"), ("S3/C.mkv", "x:S3/C.mkv")]
+
+
+async def test_a_contradicting_replacement_on_the_operator_s_route_holds_and_says_why(tmp_path, monkeypatch):
+    """M-C18: the replacement's own provider reports another torrent -- a
+    conclusive contradiction (D5). The operator chose the route, so it holds
+    with the bounded reason: never retried as a failure, never moved."""
+    repository, _engine, transfer, held = await chosen_then_switched(
+        tmp_path, monkeypatch, target=FLAT, before=SOURCE, after="b" * 40, held=True)
+    assert held == "fallback_fingerprint_mismatch"
+    root = await root_of(repository, transfer.id)
+    assert root.resource.provider_id == "parcel-b" and root.error is None
     assert not await rows("SELECT 1 FROM transfer_file_selections WHERE transfer_id=? AND provider_id='parcel-b' "
                           "AND manifest_committed_at IS NOT NULL", (transfer.id,))
     assert await members_of(repository, transfer.id) == [("S1/A.mkv", "x:S1/A.mkv"), ("S3/C.mkv", "x:S3/C.mkv")]

@@ -39,13 +39,14 @@ from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
 from transfers import nzb
-from transfers.file_selection import ManifestInvalid
+from transfers.file_selection import ManifestInvalid, SelectionUnprovable, coordinate_correspondence
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind,
     Endpoint, HealthObservation, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState,
-    SourceEntry, SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
+    SourceEntry, SourceIdentity, TORRENT_FILE_REQUEST_KINDS, TransferCandidate, TransferOutcome, TransferRequest,
 )
+from transfers.requests import TorrentMetainfoRejected, torrent_identity, torrent_member_tree
 from transfers.staged_input import StagedInputError, StagedPayload
 
 # "Use Premiumize Before Usenet": Premiumize's ordering priority for NZB
@@ -228,18 +229,58 @@ class PremiumizeProvider:
                 raise TransferError(error) from None
             raise _ImmediateUnavailable(error) from None
         try:
-            members = immediate_members(content, root_name=request.name or "")
+            members = self._declared_coordinates(request, immediate_members(content, root_name=request.name or ""))
             for record in content:
                 validate_provider_download_url(record.get("link"), context="Premiumize download link")
         except (ManifestInvalid, TypeError, ValueError):
             raise _ImmediateUnavailable(protocol_error(Stage.RESOLUTION, "immediate result is incomplete")) from None
         except Exception as exc:
             raise TransferError(translate_error(exc, secrets=self.client.secrets())) from None
-        name = members[0].name if len(members) == 1 else (request.name or "")
+        name = members[0].name if len(members) == 1 else (self._declared_name(request) or request.name or "")
         resource_value = immediate_resource(source, name, members)
         observed = ProviderObservation(resource_value, ResourceState.AVAILABLE, name, request=request,
                                        file_manifest=file_manifest(members))
         return ResolutionResult(ResourceState.AVAILABLE, observation=observed)
+
+    def _declared_name(self, request: TransferRequest) -> str:
+        """An uploaded ``.torrent``'s own collection name -- its validated
+        ``info.name``, from the request's persisted bytes, whose info-hash is
+        the one asked about -- or ``""``: a magnet's display name or an upload's
+        file name is never the torrent's name."""
+        payload, digest = request.payload, self._info_hash(request)
+        if request.kind not in TORRENT_FILE_REQUEST_KINDS or not digest or not isinstance(payload, (bytes, bytearray)):
+            return ""
+        try:
+            identity = torrent_identity(payload)
+        except TorrentMetainfoRejected:
+            return ""
+        return (identity.name or "") if identity.info_hash == digest else ""
+
+    def _declared_coordinates(self, request: TransferRequest, members: tuple[NativeMember, ...]):
+        """An uploaded ``.torrent``'s immediate members at the torrent's OWN
+        collection-relative coordinates, when its verified member tree proves
+        them: the torrent's metainfo (the request's persisted bytes, whose
+        info-hash is the one asked about) and Premiumize's complete stated
+        list correspond one-to-one under exactly one bounded interpretation
+        (``coordinate_correspondence``). Each member keeps the path Premiumize
+        stated (``native_path``) for every later request. Otherwise -- a
+        magnet, unreadable metadata, no single complete correspondence -- the
+        members are exactly as stated, never guessed."""
+        payload = request.payload
+        digest = self._info_hash(request)
+        if request.kind not in TORRENT_FILE_REQUEST_KINDS or not digest or not isinstance(payload, (bytes, bytearray)):
+            return members
+        tree = torrent_member_tree(payload)
+        if tree is None or tree.info_hash != digest:
+            return members
+        try:
+            proven = coordinate_correspondence(list(tree.members),
+                                               [(member.native_path, member.expected_bytes) for member in members])
+        except SelectionUnprovable:
+            return members
+        declared = {native: path for path, native in proven.mapping.items()}
+        return tuple(replace(member, name=declared[member.native_path].rsplit("/", 1)[-1],
+                             relative_path=declared[member.native_path]) for member in members)
 
     async def _create(self, request: TransferRequest) -> str:
         """Create the cloud transfer: a productive mutation with no idempotency

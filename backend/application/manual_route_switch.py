@@ -11,6 +11,10 @@ async def switch_route_provider(application, transfer_id: int, provider_id: str,
         await application.require(int(transfer_id))
         result = await switch_root_provider(application.engine, int(transfer_id), str(provider_id),
                                             expected_provider_id=str(expected_provider_id))
+        # The replacement left the root pending on its new route: resolution
+        # work is runnable now, not at the next provider poll. The engine's
+        # own opportunity reaches only a cycle already running.
+        application.resolution_wakeup.set()
         application.execution_wakeup.set()
         await application._publish(int(transfer_id))
         return result

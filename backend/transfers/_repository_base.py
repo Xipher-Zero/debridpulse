@@ -42,6 +42,10 @@ from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANS
 # provider is excluded until the campaign ends -- and ``released``, the same
 # attempt once a later campaign began. Both are failures, neither binds.
 _ENDED_ROUTE_STATES = frozenset({"exhausted", "released"})
+# Route-attempt operations of a deliberate root route replacement
+# (``TransferRepository.replace_root_route``); their transitions are recorded
+# with the operation as the reason.
+_ROUTE_REPLACEMENT_OPERATIONS = frozenset({"operator_switch", "readiness_promotion"})
 
 # Execution-attempt states of a writer still doing (or about to do) work; an
 # ``authorized`` attempt in one of them is a live writer of its artifact.
@@ -1155,7 +1159,7 @@ class TransferRepository:
     @classmethod
     async def _begin_route_provenance(cls, db, attempt_id, transfer_id, request_id, provider_id, *, operation,
                                       routing_decision: str | None = None):
-        previous = await db.fetchone("""SELECT a.id,a.provider_id,a.error,p.ordinal,p.outcome
+        previous = await db.fetchone("""SELECT a.id,a.provider_id,a.state,a.error,p.ordinal,p.outcome
             FROM resolution_attempts a JOIN route_attempt_provenance p ON p.resolution_attempt_id=a.id
             WHERE a.request_id=? AND a.id!=? ORDER BY p.ordinal DESC LIMIT 1""", (request_id, attempt_id))
         ordinal_row = await db.fetchone(
@@ -1172,6 +1176,13 @@ class TransferRepository:
             elif previous["provider_id"] != provider_id:
                 transition_kind = "provider_change"
                 transition_reason = "route_reselected"
+            elif previous.get("state") == "released" and not previous.get("error"):
+                # The same provider again after its earlier attempt was
+                # RELEASED -- by a route change or a superseded generation,
+                # never by a failure: a renewed resolution, not a retry. The
+                # predecessor stays linked (``previous_attempt_id``).
+                transition_kind = None
+                transition_reason = None
             else:
                 transition_kind = "resolution_retry"
                 transition_reason = "retry"
@@ -1180,6 +1191,10 @@ class TransferRepository:
                 transition_reason = str(error.category.value)
             if previous.get("outcome") == "declined":
                 transition_reason = "provider_declined"
+            if transition_kind == "provider_change" and operation in _ROUTE_REPLACEMENT_OPERATIONS:
+                # Why the route moved: the operator's explicit switch, or the
+                # automatic yield of a still-preparing route to a ready backup.
+                transition_reason = operation
             if previous.get("outcome") in {"started", "resolved", "unknown"}:
                 await db.execute("UPDATE route_attempt_provenance SET outcome='superseded',updated_at=CURRENT_TIMESTAMP WHERE resolution_attempt_id=?", (previous_id,))
         await db.execute("""INSERT INTO route_attempt_provenance(

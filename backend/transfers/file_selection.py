@@ -613,6 +613,184 @@ class InheritedMigration:
     provenance: tuple[SourceEntry, ...]
 
 
+class CoordinateInterpretation(StrEnum):
+    """The only coordinate interpretations the bounded correspondence proof
+    (``coordinate_correspondence``) ever evaluates between two complete file
+    lists of the same torrent: the paths are the same, or exactly ONE leading
+    collection directory -- the same one for every member -- is present on
+    one side only. Nothing else (no deeper stripping, no prefix chosen for
+    looking like a name, no basename, ordinal or fuzzy matching)."""
+    UNCHANGED = "unchanged"
+    REPLACEMENT_WRAPPED = "replacement_wrapped"
+    ESTABLISHED_WRAPPED = "established_wrapped"
+
+
+@dataclass(frozen=True)
+class CoordinateCorrespondence:
+    """The one total bijection between two complete file lists that a single
+    interpretation proved: ``mapping`` takes each member's normalized path on
+    the established side to its normalized path on the replacement side."""
+    interpretation: CoordinateInterpretation
+    mapping: dict[str, str]
+
+
+def _complete_members(entries, reason: str) -> dict[str, int]:
+    """``normalized path -> exact size`` of one COMPLETE file list, or
+    :class:`SelectionUnprovable` (``coordinate_<reason>_*``) when any member
+    is unsafe, duplicated or of unknown (zero) size, or the list is empty."""
+    members: dict[str, int] = {}
+    for path, size in entries:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable(f"coordinate_{reason}_unsafe_path") from None
+        if normalized in members:
+            raise SelectionUnprovable(f"coordinate_{reason}_duplicate_path")
+        if isinstance(size, bool) or not isinstance(size, int) or size <= 0:
+            raise SelectionUnprovable(f"coordinate_{reason}_unknown_size")
+        members[normalized] = size
+    if not members:
+        raise SelectionUnprovable(f"coordinate_{reason}_manifest_missing")
+    return members
+
+
+def _without_collection_directory(members: dict[str, int]) -> dict[str, str] | None:
+    """``inner path -> path`` when EVERY member lies under one and the same
+    leading directory with at least one segment after it; ``None`` otherwise.
+    The directory is whatever every member shares at depth one -- it is
+    proven a collection wrapper only by the complete correspondence the
+    caller then demands, never by its name."""
+    leading, inner = None, {}
+    for path in members:
+        head, separator, rest = path.partition("/")
+        if not separator or not rest or (leading is not None and head != leading):
+            return None
+        leading = head
+        inner[rest] = path
+    return inner
+
+
+def coordinate_correspondence(established: list[tuple[str, int]],
+                              replacement: list[tuple[str, int]]) -> CoordinateCorrespondence:
+    """THE bounded coordinate-interpretation proof between two COMPLETE file
+    lists already bound to one torrent identity by the caller: the one total
+    one-to-one correspondence of every member, or :class:`SelectionUnprovable`
+    with a bounded ``coordinate_*`` reason.
+
+    Each ``CoordinateInterpretation`` is evaluated on the whole of both lists
+    (never on a selected subset): it holds only when its paths are exactly the
+    other side's -- case-sensitive, as complete sets, no member missing or
+    extra -- and every corresponding pair has the same exact positive size.
+    Exactly one interpretation can hold for two finite lists (a list can never
+    equal itself with one more leading directory), so a second success is
+    refused as ``coordinate_ambiguous`` rather than resolved by order.
+
+    Paths and sizes prove which member is which only once the lists are known
+    to describe the same torrent; they are no evidence of that by themselves
+    and never of the bytes' integrity."""
+    before = _complete_members(established, "established")
+    after = _complete_members(replacement, "replacement")
+    proven: list[CoordinateCorrespondence] = []
+    sized_mismatch = False
+    candidates = [(CoordinateInterpretation.UNCHANGED, {path: path for path in before}, after)]
+    replacement_inner = _without_collection_directory(after)
+    if replacement_inner is not None:
+        candidates.append((CoordinateInterpretation.REPLACEMENT_WRAPPED,
+                           {path: replacement_inner.get(path) for path in before}, after))
+    established_inner = _without_collection_directory(before)
+    if established_inner is not None:
+        candidates.append((CoordinateInterpretation.ESTABLISHED_WRAPPED,
+                           {path: inner for inner, path in established_inner.items()}, after))
+    for interpretation, mapping, other in candidates:
+        if len(mapping) != len(before) or any(target is None or target not in other
+                                              for target in mapping.values()):
+            continue
+        if set(mapping.values()) != set(other) or len(set(mapping.values())) != len(mapping):
+            continue
+        if any(before[source] != other[target] for source, target in mapping.items()):
+            sized_mismatch = True
+            continue
+        proven.append(CoordinateCorrespondence(interpretation, dict(mapping)))
+    if len(proven) > 1:
+        raise SelectionUnprovable("coordinate_ambiguous")
+    if not proven:
+        raise SelectionUnprovable("coordinate_size_conflict" if sized_mismatch else "coordinate_no_correspondence")
+    return proven[0]
+
+
+def migrate_by_correspondence(
+    selected: list[tuple[str, int]],
+    predecessor: list[tuple[str, int]],
+    correspondence: CoordinateCorrespondence,
+    executable_entries: tuple[SourceEntry, ...],
+    *,
+    established: list[tuple[str, int]],
+) -> InheritedMigration:
+    """Carry an inherited selection onto a replacement through a proven
+    ``correspondence`` (predecessor path -> replacement path, complete), or
+    raise :class:`SelectionUnprovable` with a bounded ``coordinate_*`` reason.
+
+    Exactly the ``selected`` members -- never broader: each is the
+    predecessor's member, its replacement member must be in the replacement's
+    executable list at the corresponding path with that exact size, and its
+    logical path stays where the root already established it (the
+    predecessor's path where that IS an established member, otherwise the
+    existing ``established_logical_paths`` rule; the predecessor's path when
+    nothing is established yet). Provider-native coordinates stay the
+    executable entries' own."""
+    sizes = _complete_members(predecessor, "established")
+    executable: dict[str, SourceEntry] = {}
+    for entry in executable_entries:
+        try:
+            normalized = normalize_relative_path(entry.relative_path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("coordinate_executable_unsafe_path") from None
+        if normalized in executable:
+            raise SelectionUnprovable("coordinate_executable_duplicate_path")
+        executable[normalized] = entry
+    provenance, predecessor_paths = [], []
+    for path, _size in selected:
+        try:
+            normalized = normalize_relative_path(path)
+        except ManifestInvalid:
+            raise SelectionUnprovable("coordinate_selected_unsafe_path") from None
+        if normalized not in sizes or normalized not in correspondence.mapping:
+            raise SelectionUnprovable("coordinate_selected_not_in_predecessor")
+        entry = executable.get(correspondence.mapping[normalized])
+        if entry is None:
+            raise SelectionUnprovable("coordinate_executable_path_missing")
+        if isinstance(entry.expected_bytes, bool) or entry.expected_bytes != sizes[normalized]:
+            raise SelectionUnprovable("coordinate_executable_size_conflict")
+        provenance.append(entry)
+        predecessor_paths.append(normalized)
+    if len(set(predecessor_paths)) != len(predecessor_paths):
+        raise SelectionUnprovable("coordinate_selected_duplicate_path")
+    if established:
+        established_paths = set()
+        for path, _size in established:
+            try:
+                established_paths.add(normalize_relative_path(path))
+            except ManifestInvalid:
+                raise SelectionUnprovable("fallback_established_unsafe_path") from None
+        logical_paths = (predecessor_paths if all(path in established_paths for path in predecessor_paths)
+                         else established_logical_paths(selected, established))
+    else:
+        logical_paths = predecessor_paths
+    return InheritedMigration(tuple(replace(entry, relative_path=path) for entry, path in zip(provenance, logical_paths)),
+                              tuple(provenance))
+
+
+def compose_correspondences(anchor_to_predecessor: CoordinateCorrespondence,
+                            anchor_to_replacement: CoordinateCorrespondence) -> CoordinateCorrespondence:
+    """``predecessor path -> replacement path`` through one shared anchor
+    list (an uploaded torrent's own member tree) both were proven complete
+    and one-to-one against. The composite records the replacement-side
+    interpretation."""
+    mapping = {anchor_to_predecessor.mapping[anchor]: anchor_to_replacement.mapping[anchor]
+               for anchor in anchor_to_predecessor.mapping}
+    return CoordinateCorrespondence(anchor_to_replacement.interpretation, mapping)
+
+
 def _migration_keys(entries: list[tuple[str, int]]) -> dict[tuple[str, int], str]:
     """``(basename, exact size) -> normalized path`` of one COMPLETE manifest,
     or :class:`SelectionUnprovable` when that is not a unique identity of

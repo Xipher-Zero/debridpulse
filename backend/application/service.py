@@ -25,7 +25,7 @@ from transfers.filesystem import safe_name
 from transfers.models import TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
-    direct_link_host, extract_hash_from_torrent, normalize_direct_links,
+    direct_link_host, normalize_direct_links, torrent_identity,
 )
 from services.network_safety import names_private_lan
 from transfers.staged_input import StagedInputError
@@ -505,10 +505,18 @@ class ApplicationService:
 
     async def submit_torrent(self, data, filename, *, source="manual_file", selection_mode="all"):
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
-        fingerprint = extract_hash_from_torrent(data)
-        if not fingerprint:
-            raise ValueError("Invalid torrent metainfo")
-        name = filename.rsplit(".", 1)[0]
+        # Validated before anything is admitted: an unidentifiable or v2-only
+        # metainfo is refused with its actionable reason (a ValueError), never
+        # given an invented v1 identity.
+        identity = torrent_identity(data)
+        fingerprint = identity.info_hash
+        # The transfer is named by the torrent itself (its validated
+        # ``info.name``) -- the name every provider later reports for it and
+        # the collection root its first fan-out freezes -- never by the
+        # uploaded file's name, which only names the input artifact. That
+        # stays the request's own name (what providers receive the upload
+        # as), and names the transfer only when the torrent declares none.
+        name = safe_name(identity.name) if identity.name else filename.rsplit(".", 1)[0]
         return await self.submit(
             (TransferRequest("torrent", data, name=filename, fingerprint=fingerprint,
                              selection_mode=selection_mode),),

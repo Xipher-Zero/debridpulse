@@ -20,29 +20,203 @@ MAX_DIRECT_LINKS_PER_BATCH = 100
 import bencode2
 
 
-def extract_hash_from_torrent(data: bytes) -> str:
-    """
-    Return the BitTorrent v1 info-hash from a validated metainfo payload.
+class TorrentMetainfoRejected(ValueError):
+    """A ``.torrent`` metainfo DebridPulse does not accept, with an
+    operator-actionable message."""
 
-    BitTorrent defines the v1 info-hash as SHA-1 over the bencoded ``info``
-    dictionary. ``bencode2`` preserves byte strings and validates the complete
-    metainfo structure before the dictionary is encoded for hashing. Invalid or
-    incomplete payloads return an empty string and are never approximated with
-    a byte-slicing fallback.
-    """
+
+V2_ONLY_TORRENT_MESSAGE = ("This .torrent is BitTorrent v2-only, which is not supported. "
+                           "Use a v1 or hybrid .torrent, or the torrent's magnet link.")
+INVALID_TORRENT_MESSAGE = "Invalid torrent metainfo"
+
+
+def _bencode_element_end(data: bytes, start: int) -> int:
+    """The offset just past the one bencoded element starting at ``start``,
+    scanned without decoding (iteratively, so nesting depth costs no stack).
+    Structural only: ``bencode2`` validates the element afterwards."""
+    depth, index, size = 0, start, len(data)
+    while True:
+        if index >= size:
+            raise ValueError("truncated bencode")
+        token = data[index]
+        if token in b"dl":
+            depth, index = depth + 1, index + 1
+        elif token == ord("e"):
+            if depth == 0:
+                raise ValueError("unexpected end marker")
+            depth, index = depth - 1, index + 1
+        elif token == ord("i"):
+            index = data.index(b"e", index) + 1
+        elif 48 <= token <= 57:
+            colon = data.index(b":", index)
+            index = colon + 1 + int(data[index:colon])
+            if index > size:
+                raise ValueError("truncated string")
+        else:
+            raise ValueError("invalid bencode token")
+        if depth == 0:
+            return index
+
+
+def _raw_info(data: bytes) -> bytes:
+    """The ``info`` value's ORIGINAL encoded bytes, sliced from the metainfo
+    exactly as submitted -- never re-encoded -- after the whole metainfo has
+    been validated by the strict decoder."""
+    if not isinstance(data, (bytes, bytearray)) or not data[:1] == b"d":
+        raise ValueError("metainfo is not a dictionary")
+    data = bytes(data)
+    if not isinstance(bencode2.bdecode(data), dict):
+        raise ValueError("metainfo is not a dictionary")
+    index, raw = 1, None
+    while data[index:index + 1] != b"e":
+        key_end = _bencode_element_end(data, index)
+        key = bencode2.bdecode(data[index:key_end])
+        value_end = _bencode_element_end(data, key_end)
+        if key == b"info":
+            raw = data[key_end:value_end]
+        index = value_end
+    if index + 1 != len(data) or raw is None:
+        raise ValueError("metainfo has no info dictionary")
+    return raw
+
+
+@dataclass(frozen=True)
+class TorrentIdentity:
+    """A validated torrent metainfo: its v1 info-hash -- SHA-1 over the
+    ``info`` dictionary's original encoded bytes -- whether it is a hybrid
+    (v1 + v2) torrent, whose v1 side is what DebridPulse uses, and the
+    torrent's own declared ``info.name`` when that is one safe, strict UTF-8
+    name (``None`` otherwise: no naming authority)."""
+    info_hash: str
+    hybrid: bool
+    raw_info: bytes
+    name: str | None = None
+
+
+def torrent_identity(data: bytes) -> TorrentIdentity:
+    """THE validation of an uploaded ``.torrent``: raises
+    :class:`TorrentMetainfoRejected` for anything DebridPulse cannot identify.
+
+    The info-hash is SHA-1 over the ``info`` value's original bytes. The
+    strict decoder refuses non-canonical encodings (unsorted or duplicate
+    keys, leading zeros), and the raw bytes must re-encode to themselves, so
+    the hash can never be of a reconstructed structure. A v2-only torrent
+    (``meta version`` 2 without the v1 ``pieces``) has no v1 info-hash at all
+    and is refused with an actionable message rather than given an invented
+    one; a hybrid keeps its v1 identity."""
     try:
-        metainfo = bencode2.bdecode(data)
-        if not isinstance(metainfo, dict):
-            return ""
-        info = metainfo.get(b"info")
-        if not isinstance(info, dict):
-            return ""
-        info_bytes = bencode2.bencode(info)
-        # SHA-1 is mandated by the BitTorrent v1 info-hash protocol and is not
-        # used here for a security decision.
-        return hashlib.sha1(info_bytes, usedforsecurity=False).hexdigest()
+        raw = _raw_info(data)
+        info = bencode2.bdecode(raw)
+        canonical = isinstance(info, dict) and bencode2.bencode(info) == raw
     except Exception:
+        raise TorrentMetainfoRejected(INVALID_TORRENT_MESSAGE) from None
+    if not canonical:
+        raise TorrentMetainfoRejected(INVALID_TORRENT_MESSAGE)
+    if info.get(b"meta version") == 2 and b"pieces" not in info:
+        raise TorrentMetainfoRejected(V2_ONLY_TORRENT_MESSAGE)
+    # SHA-1 is mandated by the BitTorrent v1 info-hash protocol and is not
+    # used here for a security decision.
+    return TorrentIdentity(hashlib.sha1(raw, usedforsecurity=False).hexdigest(),
+                           info.get(b"meta version") == 2, raw, _utf8_segment(info.get(b"name")))
+
+
+def extract_hash_from_torrent(data: bytes) -> str:
+    """The BitTorrent v1 info-hash of a validated metainfo payload
+    (``torrent_identity``), or ``""`` for anything it refuses -- including a
+    v2-only torrent, which has no v1 info-hash to report."""
+    try:
+        return torrent_identity(data).info_hash
+    except TorrentMetainfoRejected:
         return ""
+
+
+@dataclass(frozen=True)
+class TorrentMemberTree:
+    """An identified torrent's own declared member tree (v1 side): its
+    ``info.name`` and every file as ``(path, exact size)``. For a multi-file
+    torrent the paths are inside the collection named ``name``; a single-file
+    torrent is the one member ``(name, length)``."""
+    info_hash: str
+    name: str
+    members: tuple[tuple[str, int], ...]
+    multi_file: bool
+
+
+def _utf8_segment(value) -> str | None:
+    if not isinstance(value, bytes):
+        return None
+    try:
+        text = value.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    return None if text in {"", ".", ".."} or "/" in text or "\\" in text or "\x00" in text else text
+
+
+def torrent_member_tree(data: bytes) -> TorrentMemberTree | None:
+    """The declared member tree of a validated ``.torrent`` (``torrent_identity``),
+    read only when identity evidence is needed; ``None`` when the metainfo is
+    not identifiable or its tree is not unambiguous text.
+
+    Names and path segments must be strict UTF-8 and individually safe; they
+    are taken exactly (no Unicode normalization). BEP 47 padding files
+    (``attr`` containing ``p``) are alignment filler, not content, and are
+    left out. A member of size zero is kept, so a proof that needs exact
+    positive sizes fails closed on it."""
+    try:
+        identity = torrent_identity(data)
+        info = bencode2.bdecode(identity.raw_info)
+    except Exception:
+        return None
+    name = identity.name
+    if name is None:
+        return None
+    files = info.get(b"files")
+    if files is None:
+        length = info.get(b"length")
+        if isinstance(length, bool) or not isinstance(length, int) or length < 0:
+            return None
+        return TorrentMemberTree(identity.info_hash, name, ((name, length),), False)
+    if not isinstance(files, list) or not files:
+        return None
+    members = []
+    for item in files:
+        if not isinstance(item, dict):
+            return None
+        attr = item.get(b"attr", b"")
+        if isinstance(attr, bytes) and b"p" in attr:
+            continue
+        length, path = item.get(b"length"), item.get(b"path")
+        if isinstance(length, bool) or not isinstance(length, int) or length < 0:
+            return None
+        if not isinstance(path, list) or not path:
+            return None
+        segments = [_utf8_segment(segment) for segment in path]
+        if any(segment is None for segment in segments):
+            return None
+        members.append(("/".join(segments), length))
+    if not members or len({path for path, _size in members}) != len(members):
+        return None
+    return TorrentMemberTree(identity.info_hash, name, tuple(members), True)
+
+
+def bittorrent_root_hash(request) -> str:
+    """The info-hash a BitTorrent root request is DURABLY bound to, or ``""``:
+    the fingerprint recorded at admission AND the same hash derived again from
+    the request's own persisted payload -- a magnet's ``btih``, or an uploaded
+    torrent's original ``info`` bytes. A recorded fingerprint that its payload
+    does not reproduce binds nothing."""
+    from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS
+
+    recorded = str(getattr(request, "fingerprint", "") or "").strip().casefold()
+    kind = str(getattr(request, "kind", "") or "").strip().lower()
+    if kind not in BITTORRENT_REQUEST_KINDS or not re.fullmatch(r"[0-9a-f]{40}", recorded):
+        return ""
+    payload = getattr(request, "payload", None)
+    if kind in TORRENT_FILE_REQUEST_KINDS:
+        derived = extract_hash_from_torrent(payload) if isinstance(payload, (bytes, bytearray)) else ""
+    else:
+        derived = (extract_hash(payload) or "") if isinstance(payload, str) else ""
+    return recorded if derived == recorded else ""
 
 
 

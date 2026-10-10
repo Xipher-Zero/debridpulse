@@ -615,6 +615,7 @@ class TransferEngine(_RecoveryTransferEngine):
             capacities: dict[tuple[str, str], ActiveCapacity | None] = {}
             await self._observe_standbys(transfers)
             await self._settle_released_standbys(transfers)
+            await self._readiness_promotions(transfers)
             # An interrupted claim nothing proved absent is never attempted
             # again in this pass: it may already hold a resource.
             unsettled = await self._reconcile_standby_claims(transfers)
@@ -886,6 +887,115 @@ class TransferEngine(_RecoveryTransferEngine):
         await self.repository.promote_standby(standby_id, self.clock())
         observation = replace(observed, request=record.resolvable)
         return ResolutionResult(observation.state, observation=observation, error=observation.error)
+
+    async def _readiness_promotions(self, transfers) -> None:
+        """The backup coordinator's readiness pass, right after its backups
+        were observed: every root whose own route is still PREPARING (its
+        bound resource's last observation) while a backup of it is AVAILABLE
+        is offered to ``_readiness_promotion``. A committed yield brings the
+        next resolution pass now (the persisted readiness deadline the
+        scheduler honours): convergence waits for no further poll, while
+        readiness itself is still discovered at the provider poll cadence."""
+        yielded = False
+        for transfer in transfers:
+            ready = {item["request_id"] for item in await self.repository.standbys(transfer.id)
+                     if item["state"] == "bound" and not item.get("promoted_at")
+                     and item["resource_state"] == ResourceState.AVAILABLE.value}
+            if not ready:
+                continue
+            states = {resource.id: state for resource, state, _pending in await self.repository.resources(transfer.id)}
+            for record in await self.repository.requests(transfer.id):
+                if (record.id in ready and record.parent_id is None and record.resource is not None
+                        and states.get(record.resource.id) == ResourceState.PREPARING):
+                    yielded = await self._readiness_promotion(record) or yielded
+        if yielded:
+            now = self.clock()
+            self.resolution_deadline = now if self.resolution_deadline is None else min(self.resolution_deadline, now)
+
+    async def _readiness_promotion(self, record) -> bool:
+        """THE readiness-driven yield: a root route whose bound resource its
+        provider still reports PREPARING is replaced by a backup already
+        prepared for the root, through the one route replacement
+        (``replace_root_route`` under ``readiness_promotion``) and the one
+        promotion seam that ordinary resolution then runs. ``True`` when the
+        replacement committed.
+
+        Only while nothing executes: a root the switch read model serves (one
+        BitTorrent root) of a live, unpaused transfer (no global pause),
+        outside collection route authority, never
+        past a committed selection, fan-out or download
+        (``root_crossed_execution_boundary``). Never away from a route the
+        operator chose or a readiness yield opened, nor from the provider the
+        request prefers. The target is the first PREPARED backup in the
+        canonical competition's own order (``manual_route_switch.route_providers``
+        / ``standby_choice``), observed again now. The released route is not
+        a failure: no retry budget, no exhaustion, and its resource is given
+        back only where DebridPulse owns it.
+
+        Decided outside any resolution unit (``_readiness_promotions``), so
+        the replaced root is ordinary runnable work of the next pass."""
+        from transfers import manual_route_switch
+
+        repository = self.repository
+        if record.resource is None:
+            return False
+        current = record.resource.provider_id
+        # A root this applies to at all (one BitTorrent root) is the switch
+        # read model's own decision (``route_providers`` reports nothing for
+        # any other), never a request-kind branch here.
+        if record.parent_id is not None or current in {record.request.preferred_provider,
+                                                       record.resolvable.preferred_provider}:
+            return False
+        if (not await self._live(record.transfer_id, admission=True)
+                or await repository.collection_route_authority(record.transfer_id)):
+            return False
+        latest = await repository.latest_root_route(record.id)
+        if (not latest or latest["provider_id"] != current or latest["state"] in {"exhausted", "released"}
+                or latest["operation"] in repository.READINESS_PINNED_OPERATIONS):
+            return False
+        if await repository.root_crossed_execution_boundary(record.id):
+            return False
+        status = await manual_route_switch.route_providers(self, record.transfer_id)
+        target = next((entry["provider_id"] for entry in (status or {}).get("providers", ())
+                       if entry["status"] == manual_route_switch.PREPARED and entry["provider_id"] != current), None)
+        target_provider = self.registry.providers.get(target) if target else None
+        if target_provider is None or not isinstance(target_provider, ResourceLookup):
+            return False
+        held = await repository.promotable_standby(record.id, target)
+        if held is None:
+            return False
+        standby_id, resource = held
+        try:
+            observed = await target_provider.observe(resource)
+        except Exception as exc:
+            logger.debug("readiness promotion target unobservable provider=%s: %s", target, type(exc).__name__)
+            return False
+        if observed.resource.provider_id != target or observed.resource.id != resource.id:
+            return False
+        await repository.observe_standby(standby_id, record.transfer_id, observed.resource, observed.state,
+                                         self.clock())
+        if observed.state != ResourceState.AVAILABLE:
+            return False
+        # The primary is released only while its provider still says it is
+        # preparing -- read now, not from its last poll.
+        primary = self.registry.providers.get(current)
+        if primary is None or not primary.descriptor.enabled or not isinstance(primary, ResourceLookup):
+            return False                                  # a disabled provider's route is parked: no I/O
+        try:
+            preparing = await primary.observe(record.resource)
+        except Exception as exc:
+            logger.debug("readiness promotion primary unobservable provider=%s: %s", current, type(exc).__name__)
+            return False
+        await repository.resource_observation(record.transfer_id, preparing.resource, preparing.state)
+        if preparing.state != ResourceState.PREPARING:
+            return False
+        outcome = await repository.replace_root_route(
+            record.id, expected_attempt_id=str(latest["id"]), expected_provider_id=current,
+            target_provider_id=target, operation=repository.READINESS_PROMOTION)
+        if outcome != "replaced":
+            return False
+        await self._cleanup_pending()
+        return True
 
     async def _observe_standbys(self, transfers) -> None:
         """Each bound backup's resource as its provider observes it, at most

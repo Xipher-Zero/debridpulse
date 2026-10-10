@@ -168,6 +168,20 @@ def provider_attributable(error: NormalizedError) -> bool:
     return error.domain == Domain.PROVIDER or (error.domain == Domain.NETWORK and error.origin == Origin.PROVIDER)
 
 
+def continuity_disqualifying(error: NormalizedError) -> bool:
+    """A root route's CONCLUSIVE continuity refusal: core proved, from durable
+    evidence a retry would read unchanged, that this route's resource cannot
+    carry the root's established selection
+    (``TransferRepository.commit_selected_manifest``). It is no failure of the
+    provider -- never provider-attributable, never its health or its transient
+    budget -- yet retrying the same route cannot succeed, so the route is
+    disqualified like an exhausted one and the request continues through the
+    rest of its competition. Recognized by its exact normalized facts only."""
+    return (error.domain == Domain.LIFECYCLE and error.category == Category.RESOURCE_STATE_CONFLICT
+            and error.stage == Stage.RECONCILIATION and error.origin == Origin.CORE
+            and error.permanence == Permanence.PERMANENT and error.retryability == Retryability.NEVER)
+
+
 MEANINGFUL_PROGRESS_FLOOR_BYTES = 64 * 1024
 MEANINGFUL_PROGRESS_CEILING_BYTES = 1024 * 1024
 MEANINGFUL_PROGRESS_DIVISOR = 100
@@ -365,14 +379,15 @@ class TransferPolicy:
         spent -- or the error says this provider cannot continue without an
         operator -- a provider-attributable failure (``provider_attributable``)
         has exhausted that provider: ``TRY_ALTERNATE_PROVIDER``, with no retry
-        of it. That is a fact about the provider alone; whether another
+        of it. A conclusive continuity refusal (``continuity_disqualifying``)
+        ends that route the same way without being the provider's failure. That is a fact about the provider alone; whether another
         provider can take the request over is routing's question, never part
         of this one. Anything else stays the request's own failure."""
         policy = replace(self,
             max_attempts=self.max_attempts if self.resolution_max_attempts is None else self.resolution_max_attempts,
             retry_delay=self.retry_delay if self.resolution_retry_delay is None else self.resolution_retry_delay)
         decision = policy.retry(error, attempts, now, can_refresh=True)
-        if decision.retry_at is None and provider_attributable(error):
+        if decision.retry_at is None and (provider_attributable(error) or continuity_disqualifying(error)):
             return RetryDecision(Recovery.TRY_ALTERNATE_PROVIDER)
         return decision
 
