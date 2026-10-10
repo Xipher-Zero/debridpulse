@@ -336,9 +336,12 @@ class RealDebridService:
         the current maximum limit" -- ``nb`` and ``limit`` for this account."""
         return _object(_decode(await self._authorized("GET", "torrents/activeCount")), "active torrent count")
 
-    async def select_files(self, native_id: str, files: str = "all") -> int:
-        """Select files of a torrent; 204 selected it, 202 says it already was."""
-        response = await self._authorized("POST", f"torrents/selectFiles/{native_id}", data={"files": files})
+    async def select_files(self, native_id: str, files: str) -> int:
+        """Select files of a torrent -- ``files`` the comma-separated native
+        file ids; there is no default. 204 selected them, 202 says the torrent
+        already had a selection: neither verifies which files it holds."""
+        response = await self._authorized("POST", f"torrents/selectFiles/{native_id}", data={"files": files},
+                                          productive=True)
         return response.status
 
     async def torrent_info(self, native_id: str) -> dict:

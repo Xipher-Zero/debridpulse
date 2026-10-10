@@ -361,7 +361,7 @@ class FakeClient:
     async def add_torrent(self, data):
         return self._respond("add_torrent", data)
 
-    async def select_files(self, native_id, files="all"):
+    async def select_files(self, native_id, files):
         return self._respond("select_files", native_id, files)
 
     async def torrent_info(self, native_id):
@@ -416,30 +416,35 @@ def info(status="downloaded", files=None, links=None, **extra):
 
 
 @pytest.mark.asyncio
-async def test_magnet_and_torrent_creation_select_every_file_upstream_and_report_unknown_cache():
+async def test_magnet_and_torrent_creation_select_nothing_upstream_and_report_unknown_cache():
+    """Which files Real-Debrid fetches is DebridPulse's decision, synchronized
+    once made: creating the torrent selects nothing."""
     for request, method in ((TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40, fingerprint="a" * 40),
                              "add_magnet"),
                             (TransferRequest("torrent", b"d4:infod4:name1:xee", "x.torrent"), "add_torrent")):
         client = FakeClient(**{method: {"id": "T1", "uri": "https://api.real-debrid.com/rest/1.0/torrents/info/T1"},
-                               "select_files": 202, "torrent_info": info("downloading")})
+                               "torrent_info": info("waiting_files_selection")})
         result = await RealDebridProvider(client).resolve(request)
-        assert ("select_files", "T1", "all") in client.calls
+        assert [call[0] for call in client.calls] == [method, "torrent_info"]
         assert result.state == ResourceState.PREPARING and result.observation.request is request
         assert result.observation.resource.ownership == Ownership.CREATED
         assert result.observation.cache_presence == CachePresence.UNKNOWN
 
 
 @pytest.mark.asyncio
-async def test_a_selection_refused_before_the_file_list_exists_is_made_when_real_debrid_waits_for_it():
-    client = FakeClient(add_magnet={"id": "T1"}, select_files=[RealDebridAPIError(2, "parameter_missing", 400), 204],
-                        torrent_info=[info("magnet_conversion"), info("magnet_conversion"),
-                                      info("waiting_files_selection")])
+async def test_a_torrent_waiting_for_its_selection_is_observed_with_its_selectable_file_list_unselected():
+    client = FakeClient(add_magnet={"id": "T1"},
+                        torrent_info=[info("magnet_conversion"),
+                                      info("waiting_files_selection", files=[{**record, "selected": 0}
+                                                                             for record in FILES])])
     provider = RealDebridProvider(client)
     result = await provider.resolve(TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40))
-    assert result.state == ResourceState.PREPARING
+    assert result.state == ResourceState.PREPARING and result.observation.file_manifest is None
     observation = await provider.observe(result.observation.resource)
     assert observation.state == ResourceState.PREPARING
-    assert [call for call in client.calls if call[0] == "select_files"] == [("select_files", "T1", "all")] * 2
+    assert [entry.relative_path for entry in observation.file_manifest.entries] == [
+        "A/same.bin", "B/same.bin", "skip.nfo", "unique-b.bin", "unique-a.bin"]
+    assert not [call for call in client.calls if call[0] == "select_files"]
 
 
 @pytest.mark.asyncio
@@ -482,20 +487,18 @@ async def test_a_creation_whose_token_refresh_failed_before_sending_was_not_comm
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("refused, status, category", [
-    # The same parameter refusal once Real-Debrid has a file list is not timing.
-    (RealDebridAPIError(2, "parameter_missing", 400), "downloading", Category.INVALID_REQUEST),
-    (RealDebridAPIError(21, "too_many_active_downloads", 400), "magnet_conversion", Category.CONCURRENCY_LIMITED),
-    (RealDebridAPIError(7, "unknown_ressource", 404), "magnet_conversion", Category.RESOURCE_NOT_FOUND),
-    (RealDebridAPIError(999, "something_new", 400), "magnet_conversion", Category.UNMAPPED_PROVIDER_ERROR),
-], ids=["parameter-refusal-after-conversion", "unrelated-400", "not-found", "unknown-native"])
-async def test_every_other_selection_refusal_hands_over_the_created_torrent_with_that_refusal(
-        refused, status, category):
-    # The torrent exists once add_magnet answered its id: a refused file
-    # selection is Real-Debrid's answer, but never a reason to lose the only
+@pytest.mark.parametrize("refused, category", [
+    (RealDebridAPIError(2, "parameter_missing", 400), Category.INVALID_REQUEST),
+    (RealDebridAPIError(21, "too_many_active_downloads", 400), Category.CONCURRENCY_LIMITED),
+    (RealDebridAPIError(25, "service_unavailable", 503), Category.PROVIDER_UNAVAILABLE),
+    (RealDebridAPIError(999, "something_new", 400), Category.UNMAPPED_PROVIDER_ERROR),
+], ids=["parameter-refusal", "unrelated-400", "server-refusal", "unknown-native"])
+async def test_a_first_observation_refusal_hands_over_the_created_torrent_with_that_refusal(refused, category):
+    # The torrent exists once add_magnet answered its id: a refused first
+    # observation is Real-Debrid's answer, but never a reason to lose the only
     # record of the torrent. It crosses the durable boundary unready, carrying
     # the normalized refusal.
-    client = FakeClient(add_magnet={"id": "T1"}, select_files=refused, torrent_info=info(status))
+    client = FakeClient(add_magnet={"id": "T1"}, torrent_info=refused)
     request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40)
     result = await RealDebridProvider(client).resolve(request)
     assert result.state == ResourceState.UNKNOWN and result.error is None
@@ -637,10 +640,12 @@ async def test_a_link_whose_identity_matches_no_file_fails_the_manifest_closed(u
 
 @pytest.mark.asyncio
 async def test_links_are_identified_by_their_answer_never_by_their_position_and_unsafe_paths_fail_closed():
-    """T6: the two same-name members' links swapped, and one link fewer than
-    the selected files -- each link is the member its answer proves."""
+    """T6: the two same-name members' links swapped, and a file Real-Debrid
+    did not select left without one -- each link is the member its answer
+    proves."""
     swapped = {**UNRESTRICT, LINKS[0]: UNRESTRICT[LINKS[1]], LINKS[1]: UNRESTRICT[LINKS[0]]}
-    provider = torrent(links=LINKS[:3], unrestrict=swapped)
+    files = [*FILES[:4], {**FILES[4], "selected": 0}]
+    provider = torrent(files=files, links=LINKS[:3], unrestrict=swapped)
     entries = await provider.manifest(provider_resource())
     assert [(entry.relative_path, entry.expected_bytes, entry.request.payload) for entry in entries] == [
         ("A/same.bin", 100, LINKS[1]), ("B/same.bin", 200, LINKS[0]), ("unique-b.bin", 400, LINKS[2])]
@@ -743,6 +748,10 @@ WHALE_LINK = "https://real-debrid.com/d/WHALE538"
 AS_MOVIE = {"filename": MOVIE, "filesize": 22_576_859_233, "download": "https://cdn.example/whale/movie"}
 
 
+# What Real-Debrid holds once DebridPulse synchronized a movie-only selection.
+WHALE_MOVIE_ONLY = [{**record, "selected": int(record["id"] == 3)} for record in WHALE_FILES]
+
+
 def whale(links=(WHALE_LINK,), unrestrict=None, files=WHALE_FILES):
     answers = unrestrict if unrestrict is not None else {WHALE_LINK: AS_MOVIE}
     return RealDebridProvider(FakeClient(
@@ -752,8 +761,8 @@ def whale(links=(WHALE_LINK,), unrestrict=None, files=WHALE_FILES):
 
 @pytest.mark.asyncio
 async def test_the_one_link_of_transfer_538_is_proven_to_be_the_movie_by_its_identity():
-    """FB-1 / T1."""
-    provider = whale()
+    """FB-1 / T1, with only the movie selected upstream."""
+    provider = whale(files=WHALE_MOVIE_ONLY)
     try:
         entries = await provider.manifest(provider_resource())
     except TransferError as exc:
@@ -767,7 +776,9 @@ async def test_the_one_link_of_transfer_538_is_proven_to_be_the_movie_by_its_ide
 @pytest.mark.asyncio
 async def test_the_one_link_may_prove_a_file_the_transfer_did_not_select_and_core_refuses_it():
     """T2: the adapter states what the link is; selection is core's."""
-    provider = whale(unrestrict={WHALE_LINK: {"filename": NFO, "filesize": 400, "download": "https://cdn.example/n"}})
+    nfo_only = [{**record, "selected": int(record["id"] == 4)} for record in WHALE_FILES]
+    provider = whale(files=nfo_only,
+                     unrestrict={WHALE_LINK: {"filename": NFO, "filesize": 400, "download": "https://cdn.example/n"}})
     (entry,) = await provider.manifest(provider_resource())
     assert (entry.relative_path, entry.expected_bytes, entry.request.payload) == (NFO, 400, WHALE_LINK)
     assert unrestricted_links(provider) == [WHALE_LINK]
@@ -1102,21 +1113,21 @@ def test_the_wrapper_is_the_neutral_rule_and_real_hierarchy_survives_it():
         translation.native_members([{"path": "/Root//x.bin", "bytes": 1, "selected": 1}], root_name="Root")
 
 
-# -- the created torrent's ownership survives its failed bootstrap --------------------------------------
+# -- the created torrent's ownership survives its failed first observation ---------------------------------
 
 @pytest.mark.asyncio
-async def test_a_created_torrent_whose_bootstrap_failed_stays_owned_resumes_and_is_cleaned_up(tmp_path, monkeypatch):
+async def test_a_created_torrent_whose_first_observation_failed_stays_owned_resumes_and_is_cleaned_up(
+        tmp_path, monkeypatch):
     """RD1 (and the neutral O1/O2 through the real adapter): once add_magnet
-    answered the torrent's id, a failing file selection never loses it. The
-    root holds the CREATED torrent durably and unready; the ordinary
-    observation of a bound resource re-attempts the file selection and the
-    torrent progresses; a restart observes it instead of adding it again; and
-    removing the transfer cleans it up through the one cleanup owner."""
+    answered the torrent's id, a failing first observation never loses it.
+    The root holds the CREATED torrent durably and unready; the ordinary
+    observation of a bound resource sees it progress; a restart observes it
+    instead of adding it again; and removing the transfer cleans it up
+    through the one cleanup owner."""
     from test_v113_standby_preparation import lab
 
     client = FakeClient(add_magnet={"id": "T1"},
-                        select_files=[RealDebridAPIError(25, "service_unavailable", 503), 204],
-                        torrent_info=[info("waiting_files_selection"), info("downloading")] + [info("downloading")] * 8,
+                        torrent_info=[RealDebridAPIError(25, "service_unavailable", 503)] + [info("downloading")] * 9,
                         delete_torrent=None)
     request = TransferRequest("magnet", "magnet:?xt=urn:btih:" + "c" * 40, name="Root", fingerprint="c" * 40)
     repository, _registry, engine = await lab(tmp_path, monkeypatch, RealDebridProvider(client))
@@ -1131,10 +1142,9 @@ async def test_a_created_torrent_whose_bootstrap_failed_stays_owned_resumes_and_
     assert state == ResourceState.UNKNOWN                                # unready, never fabricated ready
     root = next(item for item in await repository.requests(transfer.id) if item.parent_id is None)
     assert root.state == "waiting" and root.resource.id == bound.id
-    assert len(calls("select_files")) == 1 and len(calls("add_magnet")) == 1
+    assert len(calls("add_magnet")) == 1
 
     await engine.resolve_pending()                                       # the ordinary bound observation
-    assert len(calls("select_files")) == 2                               # the bootstrap was re-attempted
     (_resource, state, _pending), = await repository.resources(transfer.id)
     assert state == ResourceState.PREPARING                              # and the torrent progresses
 
@@ -1142,6 +1152,7 @@ async def test_a_created_torrent_whose_bootstrap_failed_stays_owned_resumes_and_
     await restarted.resolve_pending()
     assert len(calls("add_magnet")) == 1                                 # observed, never added again
     assert transfer.id in {item.id for item in await reopened.active()}
+    assert not calls("select_files")                                     # nothing to select: no file list
 
     await restarted.delete(transfer.id, remote=True)
     assert calls("delete_torrent") == [("delete_torrent", "T1")]

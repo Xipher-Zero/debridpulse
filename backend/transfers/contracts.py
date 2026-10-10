@@ -11,7 +11,7 @@ from transfers.input_required import SubmittedInput
 from transfers.models import (
     ActiveCapacity, AvailabilityState, CachePresence, CleanupDirective, DiscoveryDepth, DiscoveryLimits, DiscoveryResult, ExecutionFootprint, ExecutionHandle, ExecutionObservation, ExecutionRequest,
     ExecutionSnapshot, ExecutionSubject, ExecutionWork, ExecutorCapabilities, ExecutorClaim, ExecutorGateResult,
-    ExecutorHealth, ExecutorRuntimeControlResult, HealthObservation, InputRequirement,
+    ExecutorHealth, ExecutorRuntimeControlResult, FileManifestEntry, HealthObservation, InputRequirement,
     IntegrationDescriptor,
     ProviderObservation, ProviderResource, ResolutionResult, ResourceSnapshot, TransferCandidate,
     TransferOutcome, TransferRequest, SourceEntry, ArtifactFingerprint,
@@ -168,6 +168,27 @@ class ResourceLookup(Protocol):
 @runtime_checkable
 class Manifest(Protocol):
     async def manifest(self, resource: ProviderResource) -> tuple[SourceEntry, ...]: ...
+
+
+@runtime_checkable
+class UpstreamSelection(Protocol):
+    """A manifest provider that executes only the files selected on its own
+    resource: until DebridPulse's authorized selection is synchronized there,
+    the resource is observable and its file list selectable, but none of its
+    members is executable.
+
+    Core hands it, for a root's still-uncommitted generation whose decision is
+    settled, exactly the members that generation's proof authorizes, at the
+    provider's own manifest coordinates
+    (``TransferRepository.upstream_selection``) -- never a choice of its own.
+    The provider expresses them natively -- answering ``True``: its resource
+    changed and is observed again at once -- or verifies a selection already
+    made (``False``), and raises a normalized error when its resource does not
+    or cannot reflect them. A provider without it keeps every member
+    executable as before."""
+
+    async def synchronize_selection(self, resource: ProviderResource,
+                                    members: tuple[FileManifestEntry, ...]) -> bool: ...
 
 
 @runtime_checkable

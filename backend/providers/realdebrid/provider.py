@@ -9,29 +9,30 @@ from providers.realdebrid.account import refused_family
 from providers.realdebrid.client import RealDebridAPIError, RealDebridService
 from providers.realdebrid.translation import (
     AMBIGUOUS_MEMBER, AWAITING_SELECTION, CONVERTING, INTEGRATION_ID, MEMBER_ALREADY_PROVEN, NO_MEMBER,
-    creation_error, link_identity_evidence, malformed_links_evidence, manifest_evidence, native_members,
-    native_name, observation_from_native, protocol_error, resource_from_native, translate_error,
-    unrestricted_matches,
+    NativeFileIdsAmbiguous, archive_indicated, creation_error, link_identity_evidence, malformed_links_evidence,
+    manifest_evidence, native_file_ids, native_members, native_name, observation_from_native, protocol_error,
+    resource_from_native,
+    selection_error, selection_evidence, translate_error, unrestricted_matches,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
 from transfers.contracts import speculative_attempt
 from transfers.errors import (
-    Category, Domain, NormalizedError, Origin, Permanence, Retryability, Stage, TransferError,
+    Category, Domain, EvidenceBasis, NormalizedError, Origin, Permanence, Retryability, Stage, TransferError,
 )
 from transfers.file_selection import ManifestInvalid
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, ActiveCapacity, Capability, CleanupAuthority, CleanupDirective, DeliveryKind, Endpoint, HealthObservation,
-    IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
+    FileManifestEntry, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation, ProviderResource,
     ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState, SourceEntry,
     SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
 )
 
 # Real-Debrid's own "this torrent is already on the account" refusal.
 _ALREADY_ACTIVE = 33
-# Native parameter refusals: the only ones a not-yet-converted magnet can give
-# a file selection, because it has no file list yet.
-_SELECTION_NOT_READY_CODES = frozenset({1, 2})
+# Native parameter refusals of a file selection: Real-Debrid will not select
+# those ids on this torrent.
+_SELECTION_REFUSED_CODES = frozenset({1, 2})
 # Inventory pages a complete scan may take before it is called malformed.
 _MAX_INVENTORY_PAGES = 200
 
@@ -196,15 +197,17 @@ class RealDebridProvider:
             # truth (``creation_error``), never decided by the exception alone.
             raise TransferError(creation_error(exc, secrets=self._secrets())) from None
         try:
-            await self._bootstrap(resource)
+            # Nothing is selected here: which files Real-Debrid fetches is
+            # DebridPulse's decision, synchronized once it is made
+            # (``synchronize_selection``). The torrent waits for it as
+            # ``waiting_files_selection``, its file list already selectable.
             observation = replace(await self.observe(resource), request=request)
         except TransferError as exc:
             # The torrent exists and its id is known: it reaches DebridPulse's
             # durable provider-resource boundary unready rather than vanish
-            # with this exception -- a failed file selection or first
-            # observation is no proof it is gone, and only a bound resource is
-            # observed again (``observe`` re-selects a torrent still waiting
-            # for its file selection) and cleaned up.
+            # with this exception -- a failed first observation is no proof it
+            # is gone, and only a bound resource is observed again and cleaned
+            # up.
             unknown = ProviderObservation(resource, ResourceState.UNKNOWN, error=exc.error, request=request)
             return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         return ResolutionResult(observation.state, observation=observation, error=observation.error)
@@ -221,30 +224,6 @@ class RealDebridProvider:
         if len(matches) != 1:
             raise exc
         return replace(matches[0].resource, ownership=Ownership.ADOPTED)
-
-    @normalized_boundary(Stage.RESOLUTION)
-    async def _bootstrap(self, resource: ProviderResource) -> None:
-        """Real-Debrid's own start action: select every file upstream.
-
-        Provider bootstrap only -- DebridPulse's file selection decides what is
-        materialized locally and is never synchronized back. 204 selected the
-        files and 202 says they already were; both are success.
-
-        The one refusal deferred to observation is a magnet Real-Debrid has
-        not converted yet: a parameter refusal (native 1 or 2) while
-        Real-Debrid itself still reports ``magnet_conversion``, so there is no
-        file list to select. The observation that later sees
-        ``waiting_files_selection`` selects it then. Every other refusal is
-        Real-Debrid's answer and propagates."""
-        native_id = self._native_id(resource)
-        try:
-            await self.client.select_files(native_id, "all")
-        except RealDebridAPIError as exc:
-            if exc.error_code not in _SELECTION_NOT_READY_CODES:
-                raise
-            info = await self.client.torrent_info(native_id)
-            if not isinstance(info, dict) or info.get("status") != CONVERTING:
-                raise exc from None
 
     def _native_id(self, resource: ProviderResource) -> str:
         if resource.provider_id != INTEGRATION_ID or not resource.context.get("id"):
@@ -263,9 +242,82 @@ class RealDebridProvider:
             raise
         if str(native.get("id") or "") != native_id:
             raise TransferError(protocol_error(Stage.RECONCILIATION, "torrent identity mismatch"))
-        if native.get("status") == AWAITING_SELECTION:
-            await self._call(self.client.select_files, native_id, "all", stage=Stage.RECONCILIATION)
         return observation_from_native(native, resource=resource)
+
+    # -- upstream file selection ------------------------------------------------
+
+    @normalized_boundary(Stage.RECONCILIATION)
+    async def synchronize_selection(self, resource: ProviderResource,
+                                    members: tuple[FileManifestEntry, ...]) -> bool:
+        """Make this torrent's selected files exactly DebridPulse's
+        authorized ``members`` (``contracts.UpstreamSelection``), or say why
+        it cannot.
+
+        Always read first: the torrent as Real-Debrid states it now decides,
+        never what an earlier request is believed to have done. Each member
+        is Real-Debrid's own file of exactly that path and size
+        (``native_file_ids``); its ids -- every authorized one, ALL included,
+        never the literal ``all`` -- are sent only while Real-Debrid still
+        waits for a selection, so a request whose answer was lost is re-sent
+        only when the torrent shows it took no effect, and sending the same
+        set again selects nothing new. Once Real-Debrid has a selection, it
+        is compared: the same files are this selection, verified; any other
+        set is a selection this torrent cannot change, refused -- never
+        reselected, never reused for another subset. An acknowledgement is
+        no verification: the next observation is. ``True`` only when a
+        selection was sent."""
+        stage = Stage.RECONCILIATION
+        native_id = self._native_id(resource)
+        native = await self._call(self.client.torrent_info, native_id, stage=stage)
+        if str(native.get("id") or "") != native_id:
+            raise TransferError(protocol_error(stage, "torrent identity mismatch"))
+        status = native.get("status")
+        if status == CONVERTING:
+            return False                                               # no file list to select from yet
+        try:
+            listed = native_members(native.get("files"), root_name=native_name(native))
+        except ManifestInvalid:
+            raise TransferError(NormalizedError(Domain.SECURITY, Category.PATH_POLICY_VIOLATION, stage,
+                                                integration_id=INTEGRATION_ID)) from None
+        wanted = [(member.relative_path, int(member.expected_bytes)) for member in members]
+        try:
+            requested = native_file_ids(native, listed, wanted)
+        except NativeFileIdsAmbiguous:
+            raise TransferError(selection_error(
+                stage, "Real-Debrid's file ids do not name each file once",
+                selection_evidence(native, native_id, listed, wanted=len(wanted),
+                                   outcome="ambiguous_native_ids"))) from None
+        except ValueError:
+            raise TransferError(selection_error(
+                stage, "the selected files are not this torrent's files",
+                selection_evidence(native, native_id, listed, wanted=len(wanted), outcome="unmapped"),
+                category=Category.PROVIDER_PROTOCOL_VIOLATION)) from None
+        if status == AWAITING_SELECTION:
+            try:
+                await self.client.select_files(native_id, ",".join(requested))
+            except RealDebridAPIError as exc:
+                error = translate_error(exc, stage=stage, secrets=self._secrets())
+                if exc.error_code in _SELECTION_REFUSED_CODES:
+                    error = replace(selection_error(
+                        stage, "Real-Debrid refused the file selection",
+                        selection_evidence(native, native_id, listed, wanted=len(wanted), requested=requested,
+                                           outcome="refused"), category=Category.CANDIDATE_REJECTED),
+                        native_code=error.native_code, evidence_basis=error.evidence_basis)
+                raise TransferError(error) from None
+            except Exception as exc:
+                # No usable answer: whether it took effect is the mutation's
+                # own truth (``creation_error``: only a request never sent or
+                # never connected proves it did not). The next observation
+                # reads the torrent before anything is sent again.
+                raise TransferError(replace(creation_error(exc, secrets=self._secrets()), stage=stage)) from None
+            return True
+        if {index for index, member in enumerate(listed) if member.selected} != {
+                index for index, record in enumerate(native["files"]) if str(record.get("id")) in requested}:
+            raise TransferError(selection_error(
+                stage, "the torrent's selected files are not this selection",
+                selection_evidence(native, native_id, listed, wanted=len(wanted), requested=requested,
+                                   outcome="mismatch")))
+        return False
 
     # -- executable members -------------------------------------------------------
 
@@ -288,10 +340,16 @@ class RealDebridProvider:
         that identity must match exactly one native file, and no file twice.
         A link that matches none or several, or a file two links match, fails
         the whole manifest -- a link is never assigned by count, ordinal or
-        neighbour. The proven members are emitted in native ``files[]`` order;
-        which of them the transfer materializes is core's selection, not this
-        adapter's. The unrestricted answer is proof only: each member keeps
-        its restricted link, which resolution unrestricts again."""
+        neighbour; one that names itself an archive no file is
+        (``archive_indicated``) is Real-Debrid delivering the selection as an
+        archive, which is never a selected file and is never unpacked. Every
+        file Real-Debrid reports selected must be proven by its own link, or
+        the manifest fails: a partial delivery never passes for the selection
+        DebridPulse synchronized. The proven members are emitted in native
+        ``files[]`` order; which of them the transfer materializes is core's
+        selection, not this adapter's. The unrestricted answer is proof only:
+        each member keeps its restricted link, which resolution unrestricts
+        again."""
         stage = Stage.CANDIDATE_PREPARATION
         native_id = self._native_id(resource)
         native = await self._call(self.client.torrent_info, native_id, stage=stage)
@@ -325,9 +383,24 @@ class RealDebridProvider:
                       else MEMBER_ALREADY_PROVEN)
             identity = link_identity_evidence(ordinal, link, unrestricted, native, members, matches, reason,
                                               proven_by=proven.get(matches[0]) if len(matches) == 1 else None)
-            raise TransferError(protocol_error(
-                stage, self._IDENTITY_FAILURES[reason],
-                diagnostic_evidence=manifest_evidence(native, native_id, members, links, link_identity=identity)))
+            evidence = manifest_evidence(native, native_id, members, links, link_identity=identity)
+            if reason == NO_MEMBER and archive_indicated(unrestricted, members):
+                # Real-Debrid's answer for this torrent's selection on this
+                # account, not a protocol fault: another provider may still
+                # deliver the files themselves.
+                raise TransferError(selection_error(
+                    stage, "a torrent link is an archive, not a selected file",
+                    {**evidence, "archive_indicated": True}, category=Category.CANDIDATE_REJECTED))
+            raise TransferError(protocol_error(stage, self._IDENTITY_FAILURES[reason], diagnostic_evidence=evidence))
+        uncovered = [index for index, member in enumerate(members) if member.selected and index not in proven]
+        if uncovered:
+            # Inferred from the torrent's own file and link lists alone: the
+            # observation is the evidence, never a native code.
+            raise TransferError(replace(protocol_error(
+                stage, "torrent links do not cover its selected files",
+                diagnostic_evidence={**manifest_evidence(native, native_id, members, links),
+                                     "proven_member_count": len(proven), "uncovered_selected_count": len(uncovered)}),
+                evidence_basis=EvidenceBasis.STRUCTURED))
         entries = []
         for index in sorted(proven):
             member, link = members[index], restricted[proven[index]]

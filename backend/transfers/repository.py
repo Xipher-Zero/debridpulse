@@ -68,8 +68,8 @@ from transfers._repository_base import TransferRepository as _QualifiedTransferR
 from transfers.errors import Category, Domain, NormalizedError, Permanence, Retryability, Stage, TransferError
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_ARTIFACT_STATES
 from transfers.models import (
-    CleanupAuthority, ExecutionState, MaterializationAdmission, MaterializationAdmissionKind, Ownership,
-    ProviderResource, ResolutionAttempt, ResourceState, TransferProgress, new_identity,
+    CleanupAuthority, ExecutionState, FileManifestEntry, MaterializationAdmission, MaterializationAdmissionKind,
+    Ownership, ProviderResource, ResolutionAttempt, ResourceState, SourceEntry, TransferProgress, new_identity,
 )
 from transfers.policy import TERMINAL_TRANSFER_STATES, failure_signature, meaningful_progress_threshold
 
@@ -351,6 +351,18 @@ def _attested(values) -> set[str]:
     """The distinct non-empty source fingerprints a provider reported, as
     compared everywhere: trimmed and case-folded."""
     return {str(value).strip().casefold() for value in values if str(value).strip()}
+
+
+class _CarryRefused(Exception):
+    """An inherited selection the whole-manifest proofs could not carry onto
+    a replacement (``TransferRepository._authorized_subset``): the proofs'
+    ``refused`` reason, the exact-path refusal that sent it there (``exact``)
+    and the committed ``source`` it was carried from, for the one continuity
+    owner (``_continuity_refusal``) to decide."""
+
+    def __init__(self, refused, exact, source):
+        super().__init__(refused.reason)
+        self.refused, self.exact, self.source = refused, exact, source
 
 
 def _corresponds(established, replacement) -> bool:
@@ -2398,27 +2410,20 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback()
                 return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
                                             held="explicit_selection_required")
+            try:
+                authorized, recorded = await self._authorized_subset(db, record, row, binding_id, full_entries,
+                                                                     already=already)
+            except _CarryRefused as carry:
+                held = await self._continuity_refusal(
+                    db, record, row, carry.source, binding_id, carry.refused, now,
+                    migrated=carry.refused is not carry.exact and carry.source is not None and not already)
+                return ManifestCommitResult((), first_commitment=False, selection_id=selection_id, held=held)
+            except fs.SelectionUnprovable as refused:
+                await db.rollback()
+                raise TransferError(NormalizedError(
+                    Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                    diagnostic=refused.reason)) from None
             if str(row["decision"]) in ("pending", "all"):
-                authorized = recorded = full_entries
-                # A settled ALL the live transfer owns as a concrete intent
-                # (Close/X or the decision timeout on a usable choice) is that
-                # member set, in this generation's own coordinates: every
-                # member must be executable before it commits, and nothing
-                # beyond it is authorized. Without an intent, ALL stays every
-                # executable member the provider exposes.
-                intent = (await _selection_intent_in_db(db, record.id)
-                          if str(row["decision"]) == "all" and not already else None)
-                if intent is not None:
-                    try:
-                        fs.reconcile_executable_subset(intent, full_entries)
-                    except fs.SelectionUnprovable as refused:
-                        await db.rollback()
-                        raise TransferError(NormalizedError(
-                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                            diagnostic=refused.reason)) from None
-                    intended = {path for path, _size in intent}
-                    authorized = recorded = tuple(entry for entry in full_entries
-                                                  if fs.normalize_relative_path(entry.relative_path) in intended)
                 if not already:
                     held, provenance = await self._continuity(db, record, row, authorized, now)
                     if held:
@@ -2435,77 +2440,6 @@ class TransferRepository(_QualifiedTransferRepository):
                     )
             else:
                 inherited = str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)
-                # An inherited generation proves the live transfer's intent; one
-                # of a transfer that predates the intent proves its committed
-                # explicit predecessor's selection, as before.
-                intent = await _selection_intent_in_db(db, record.id) if inherited else None
-                if intent is not None:
-                    source = await self._committed_predecessor(db, record.id, binding_id)
-                elif inherited:
-                    source = await self._inherited_source(db, record.id, binding_id)
-                else:
-                    source = None
-                if inherited and source is None and intent is None:
-                    await db.rollback()
-                    raise TransferError(NormalizedError(
-                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                        diagnostic="missing_inherited_predecessor"))
-                if intent is not None:
-                    try:
-                        # The intent's members at the committed predecessor's own
-                        # coordinates (the one identity owner), never one it no
-                        # longer holds; with no committed predecessor, the intent's
-                        # own (logical) coordinates.
-                        pairs = fs.intent_in_predecessor(
-                            intent, await self._manifest_members(db, source["manifest_id"]) if source else [])
-                    except fs.SelectionUnprovable as refused:
-                        await db.rollback()
-                        raise TransferError(NormalizedError(
-                            Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                            diagnostic=refused.reason)) from None
-                else:
-                    selected = await db.fetchall(
-                        """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
-                           FROM transfer_file_selection_entries s
-                           JOIN transfer_file_manifest_entries e
-                             ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
-                           WHERE s.selection_id=? ORDER BY e.ordinal""",
-                        (source["id"] if inherited else row["id"],),
-                    )
-                    pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
-                if not pairs:
-                    await db.rollback()
-                    raise TransferError(NormalizedError(
-                        Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
-                        diagnostic="selection_empty"))
-                established = await self._established_members(db, record) if inherited else []
-                try:
-                    authorized = fs.reconcile_executable_subset(pairs, full_entries)
-                    recorded = authorized
-                    if established and not self._at_established_paths(authorized, established):
-                        # Proven by exact path against a predecessor that itself
-                        # held other paths than the established ones (an earlier
-                        # migration's): the members stay where they live.
-                        authorized = tuple(replace(entry, relative_path=path) for entry, path in zip(
-                            recorded, fs.established_logical_paths(pairs, established)))
-                except fs.SelectionUnprovable as exc:
-                    # Exact path is the proof. Only an inherited selection whose
-                    # replacement reports a selected member under another path
-                    # may still be carried -- by the whole-manifest proof alone.
-                    try:
-                        if not (inherited and exc.reason == "selected_path_missing"):
-                            raise exc
-                        if source is None:
-                            raise fs.SelectionUnprovable("missing_inherited_predecessor")
-                        migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
-                                                                    full_entries, established, intent=intent)
-                    except fs.SelectionUnprovable as refused:
-                        held = await self._continuity_refusal(
-                            db, record, row, source, binding_id, refused, now,
-                            migrated=refused is not exc and source is not None and not already)
-                        return ManifestCommitResult((), first_commitment=False, selection_id=selection_id,
-                                                    held=held)
-                    authorized, recorded = migration.logical, migration.provenance
                 provenance = None
                 if not already:
                     held, provenance = await self._continuity(db, record, row, authorized, now)
@@ -2533,6 +2467,145 @@ class TransferRepository(_QualifiedTransferRepository):
                        if recorded is not authorized else {})
         return ManifestCommitResult(authorized, first_commitment=not already, selection_id=selection_id,
                                     coordinates=coordinates)
+
+    async def _authorized_subset(self, db, record, row, binding_id: str, full_entries, *, already: bool):
+        """THE selection proof of one generation, inside the caller's
+        transaction: ``(authorized, recorded)`` -- the members its decision
+        authorizes at their logical coordinates, and the same members at
+        ``full_entries``' own -- read from durable evidence only and never
+        written. ``commit_selected_manifest`` commits what it proves; a
+        provider that synchronizes the selection upstream
+        (``upstream_selection``) is handed exactly what it proves.
+
+        Raises ``fs.SelectionUnprovable`` for a selection that cannot be read
+        at all (its reason only), and ``_CarryRefused`` when an inherited
+        selection's whole-manifest proofs could not carry it onto this
+        replacement -- the caller's ``_continuity_refusal`` decides that."""
+        if str(row["decision"]) in ("pending", "all"):
+            # A settled ALL the live transfer owns as a concrete intent
+            # (Close/X or the decision timeout on a usable choice) is that
+            # member set, in this generation's own coordinates: every
+            # member must be executable before it commits, and nothing
+            # beyond it is authorized. Without an intent, ALL stays every
+            # executable member the provider exposes.
+            intent = (await _selection_intent_in_db(db, record.id)
+                      if str(row["decision"]) == "all" and not already else None)
+            if intent is None:
+                return full_entries, full_entries
+            fs.reconcile_executable_subset(intent, full_entries)
+            intended = {path for path, _size in intent}
+            authorized = tuple(entry for entry in full_entries
+                               if fs.normalize_relative_path(entry.relative_path) in intended)
+            return authorized, authorized
+        inherited = str(row["decision_reason"] or "") == str(fs.DecisionReason.INHERITED)
+        # An inherited generation proves the live transfer's intent; one
+        # of a transfer that predates the intent proves its committed
+        # explicit predecessor's selection, as before.
+        intent = await _selection_intent_in_db(db, record.id) if inherited else None
+        if intent is not None:
+            source = await self._committed_predecessor(db, record.id, binding_id)
+        elif inherited:
+            source = await self._inherited_source(db, record.id, binding_id)
+        else:
+            source = None
+        if inherited and source is None and intent is None:
+            raise fs.SelectionUnprovable("missing_inherited_predecessor")
+        if intent is not None:
+            # The intent's members at the committed predecessor's own
+            # coordinates (the one identity owner), never one it no
+            # longer holds; with no committed predecessor, the intent's
+            # own (logical) coordinates.
+            pairs = fs.intent_in_predecessor(
+                intent, await self._manifest_members(db, source["manifest_id"]) if source else [])
+        else:
+            selected = await db.fetchall(
+                """SELECT e.relative_path AS relative_path, e.expected_bytes AS expected_bytes
+                   FROM transfer_file_selection_entries s
+                   JOIN transfer_file_manifest_entries e
+                     ON e.manifest_id=s.manifest_id AND e.entry_id=s.entry_id
+                   WHERE s.selection_id=? ORDER BY e.ordinal""",
+                (source["id"] if inherited else row["id"],),
+            )
+            pairs = [(r["relative_path"], int(r["expected_bytes"] or 0)) for r in selected]
+        if not pairs:
+            raise fs.SelectionUnprovable("selection_empty")
+        established = await self._established_members(db, record) if inherited else []
+        try:
+            authorized = fs.reconcile_executable_subset(pairs, full_entries)
+            recorded = authorized
+            if established and not self._at_established_paths(authorized, established):
+                # Proven by exact path against a predecessor that itself
+                # held other paths than the established ones (an earlier
+                # migration's): the members stay where they live.
+                authorized = tuple(replace(entry, relative_path=path) for entry, path in zip(
+                    recorded, fs.established_logical_paths(pairs, established)))
+            return authorized, recorded
+        except fs.SelectionUnprovable as exc:
+            # Exact path is the proof. Only an inherited selection whose
+            # replacement reports a selected member under another path
+            # may still be carried -- by the whole-manifest proof alone.
+            try:
+                if not (inherited and exc.reason == "selected_path_missing"):
+                    raise exc
+                if source is None:
+                    raise fs.SelectionUnprovable("missing_inherited_predecessor")
+                migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
+                                                            full_entries, established, intent=intent)
+            except fs.SelectionUnprovable as refused:
+                raise _CarryRefused(refused, exc, source) from None
+            return migration.logical, migration.provenance
+
+    async def upstream_selection(self, record, binding_id: str, file_manifest=None, *, now: float):
+        """The members this binding's still-uncommitted generation authorizes,
+        at its provider's own manifest coordinates, for a provider that must
+        select them upstream before it can execute them
+        (``contracts.UpstreamSelection``) -- or ``None`` when there is nothing
+        to synchronize: no generation, a decision still open, a generation
+        already committed (its upstream selection was proven by its executable
+        manifest), or no complete provider manifest yet.
+
+        The one selection proof (``_authorized_subset``), evaluated against
+        the generation's recorded early manifest -- or, for an ALL decided at
+        creation that never recorded one, the provider's current
+        ``file_manifest`` -- so the provider is handed exactly what the commit
+        will authorize from its executable manifest, never a choice of its
+        own. A carried selection the proofs refuse is decided by the one
+        continuity owner (``_continuity_refusal``), exactly as at commit."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await self._selection_generation(db, record.id, binding_id)
+            if (not row or row["manifest_committed_at"] is not None or str(row["decision"]) == "pending"
+                    or (await self._manifest_collection(db, row["manifest_id"]))["independent_members"]):
+                await db.rollback()
+                return None
+            if row["manifest_id"]:
+                members = [(entry["name"], entry["relative_path"], int(entry["expected_bytes"] or 0))
+                           for entry in await db.fetchall(
+                               "SELECT name,relative_path,expected_bytes FROM transfer_file_manifest_entries "
+                               "WHERE manifest_id=? ORDER BY ordinal", (row["manifest_id"],))]
+            elif str(row["decision"]) == "all" and file_manifest is not None:
+                members = [(entry.name, entry.relative_path, int(entry.expected_bytes or 0))
+                           for entry in file_manifest.entries]
+            else:
+                members = []
+            if not members:
+                await db.rollback()
+                return None
+            listed = tuple(SourceEntry(name, size, path, None) for name, path, size in members)
+            try:
+                _authorized, recorded = await self._authorized_subset(db, record, row, binding_id, listed,
+                                                                      already=False)
+            except _CarryRefused as carry:
+                await self._continuity_refusal(db, record, row, carry.source, binding_id, carry.refused, now,
+                                               migrated=carry.refused is not carry.exact and carry.source is not None)
+                return None
+            except fs.SelectionUnprovable as refused:
+                await db.rollback()
+                raise TransferError(NormalizedError(
+                    Domain.LIFECYCLE, Category.RESOURCE_STATE_CONFLICT, Stage.RECONCILIATION,
+                    diagnostic=refused.reason)) from None
+            await db.rollback()
+        return tuple(FileManifestEntry(entry.name, entry.relative_path, entry.expected_bytes) for entry in recorded)
 
     @staticmethod
     async def _manifest_members(db, manifest_id) -> list[tuple[str, int]]:

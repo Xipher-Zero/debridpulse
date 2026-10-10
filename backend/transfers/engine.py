@@ -23,7 +23,8 @@ from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.contracts import (
-    ActiveCapacitySource, CachedResolution, Inventory, Manifest, ResourceLookup, speculative_preparation,
+    ActiveCapacitySource, CachedResolution, Inventory, Manifest, ResourceLookup, UpstreamSelection,
+    speculative_preparation,
 )
 from transfers.errors import (
     Category, Domain, MutationOutcome, Origin, Recovery, Retryability, Stage, TransferError, unknown_failure,
@@ -1127,6 +1128,31 @@ class TransferEngine(_RecoveryTransferEngine):
                 return first_commitment
             binding_id = authority.binding_id
             selecting = authority.governed
+            if (selecting and isinstance(provider, UpstreamSelection) and observation.error is None
+                    and observation.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}):
+                # A provider that executes only what is selected on its own
+                # resource waits for DebridPulse's decision, never past it:
+                # the one gate settles the decision (the operator's choice,
+                # Close/X, the decision timeout or a single file) while the
+                # resource is still preparing, and a decision still open is
+                # the operator's wait -- no preparation stall, no failure.
+                # Once settled, the provider is handed exactly what the
+                # generation's proof authorizes, before anything executes.
+                gate = await self.repository.file_selection_gate(
+                    record.id, binding_id, now=self.clock(), poll_interval=self.policy.resource_poll_interval,
+                    resource_available=observation.state == ResourceState.AVAILABLE,
+                )
+                if gate == fs.SelectionGate.WAIT_FOR_DECISION:
+                    return first_commitment
+                if gate == fs.SelectionGate.PROCEED:
+                    members = await self.repository.upstream_selection(
+                        record, binding_id, observation.file_manifest, now=self.clock())
+                    if members is not None and await provider.synchronize_selection(observation.resource, members):
+                        # The provider's own resource just changed: its next
+                        # observation -- the one that verifies what it now
+                        # holds -- is due now, not a preparation poll later.
+                        await self.repository.poll_after(record.id, self.clock())
+                        return first_commitment
 
             if observation.error:
                 await self._request_failure(record, observation.error, waiting=True)

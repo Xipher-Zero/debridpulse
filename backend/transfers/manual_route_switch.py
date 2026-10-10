@@ -48,6 +48,7 @@ from __future__ import annotations
 
 from transfers.applicability import ApplicabilityUnresolved
 from transfers.candidate_activation import retire_writer
+from transfers.contracts import UpstreamSelection
 from transfers.errors import (
     Category,
     Domain,
@@ -157,7 +158,7 @@ def switch_available(registry, facts: dict | None) -> bool:
         entry["selectable"] for entry in provider_choices(registry, facts))
 
 
-def standby_choice(standby: dict) -> tuple[str, bool]:
+def standby_choice(standby: dict, *, upstream_selection: bool = False) -> tuple[str, bool]:
     """What one TASK3 backup of the root makes an otherwise available target:
     ``(status, selectable)``.
 
@@ -173,8 +174,17 @@ def standby_choice(standby: dict) -> tuple[str, bool]:
     the resource is in no usable state), or a preparation that itself
     ended in failure, ``failed_earlier``: an explicit retry only. A resource
     known gone holds nothing, and a deferred claim holds no resource: the
-    target resolves cold, as ``available`` / ``deferred``."""
+    target resolves cold, as ``available`` / ``deferred``.
+
+    A backup of a provider that executes only what is selected on its own
+    resource (``upstream_selection``) is never selected while it is a
+    backup, so PREPARING is no acquisition in progress there: it waits for
+    the root's selection, which taking it over synchronizes. It is the
+    ``available`` target it would be cold -- never ``prepared``, which it is
+    not."""
     state, resource = standby["state"], standby.get("resource_state")
+    if state == "bound" and resource == ResourceState.PREPARING.value and upstream_selection:
+        return AVAILABLE, True
     if state == "creating" or (state == "bound" and resource == ResourceState.PREPARING.value):
         return PREPARING, False
     if state == "deferred":
@@ -208,7 +218,8 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
     for entry in providers:
         standby = standbys.get(entry["provider_id"])
         if entry["status"] == AVAILABLE and standby:
-            entry["status"], entry["selectable"] = standby_choice(standby)
+            entry["status"], entry["selectable"] = standby_choice(standby, upstream_selection=isinstance(
+                engine.registry.providers.get(entry["provider_id"]), UpstreamSelection))
     return {"transfer_id": int(transfer_id), "current_provider_id": facts["current"], "providers": providers,
             "switchable": root_actionable(facts) and any(entry["selectable"] for entry in providers)}
 

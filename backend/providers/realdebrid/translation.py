@@ -481,3 +481,98 @@ def malformed_links_evidence(native: dict, native_id: str) -> dict:
                         link_element_types=[type(link).__name__ for link in links[:EVIDENCE_RECORDS]],
                         link_element_types_omitted=max(0, len(links) - EVIDENCE_RECORDS))
     return evidence
+
+
+# -- upstream file selection ---------------------------------------------------
+# DebridPulse decides which members a transfer wants; Real-Debrid is told
+# exactly those, by its own file ids, and its resource is judged by whether it
+# reflects them. Nothing here chooses a member.
+_SELECTION_OPERATION = "torrent_file_selection"
+
+
+class NativeFileIdsAmbiguous(ValueError):
+    """Real-Debrid's file ids do not name each of its torrent's files once."""
+
+
+def native_file_ids(native: dict, members: tuple[NativeMember, ...], wanted) -> tuple[str, ...]:
+    """Real-Debrid's own file id of each ``wanted`` member (neutral
+    ``(relative_path, expected_bytes)`` facts at this torrent's own manifest
+    coordinates, as ``native_members`` reads them), in native ``files[]``
+    order.
+
+    Every native file -- selected or not, authorized or not -- must carry its
+    own positive integer id, distinct from every other file's: an id two
+    files share would select a file DebridPulse never authorized, and a
+    comparison by id would accept that overbroad selection. Otherwise
+    ``NativeFileIdsAmbiguous``. ``ValueError`` when any wanted member is not
+    exactly one native file of that path and size. Never by name, extension,
+    order or nearness of size."""
+    records = native["files"]
+    identifiers = []
+    for record in records:
+        value = record.get("id")
+        if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+            raise NativeFileIdsAmbiguous("a native file id is not a positive integer")
+        identifiers.append(value)
+    if len(set(identifiers)) != len(identifiers):
+        raise NativeFileIdsAmbiguous("two native files share one id")
+    by_coordinate: dict[tuple[str, int], list[int]] = {}
+    for index, member in enumerate(members):
+        by_coordinate.setdefault((member.relative_path, member.expected_bytes), []).append(index)
+    chosen: set[int] = set()
+    for path, size in wanted:
+        indexes = by_coordinate.get((path, size), [])
+        if len(indexes) != 1 or indexes[0] in chosen:
+            raise ValueError("a selected member is not exactly one native file")
+        chosen.add(indexes[0])
+    return tuple(str(identifiers[index]) for index in sorted(chosen))
+
+
+def selection_evidence(native: dict, native_id: str, members: tuple[NativeMember, ...], *, wanted: int,
+                       requested: tuple[str, ...] = (), outcome: str) -> dict:
+    """What a file-selection decision judged: the torrent's native status,
+    the counts of its files, of the files DebridPulse authorized, of the
+    native ids it asked for and of the files Real-Debrid reports selected,
+    the selected flags it disagrees with as a bounded native-order prefix,
+    and the ``outcome`` decided -- never a link."""
+    requested_ids = set(requested)
+    records = native.get("files") if isinstance(native.get("files"), list) else []
+    disagreeing = [{"ordinal": ordinal, "native_id": _native_number(record.get("id")),
+                    "relative_path": member.relative_path, "bytes": member.expected_bytes,
+                    "selected": member.selected}
+                   for ordinal, (record, member) in enumerate(zip(records, members))
+                   if requested_ids and member.selected != (str(record.get("id")) in requested_ids)]
+    return safe_diagnostic_evidence({
+        "provider_operation": _SELECTION_OPERATION, "native_status": _native_text(native.get("status")),
+        "native_torrent_id": native_id, "native_file_count": len(members), "authorized_member_count": wanted,
+        "requested_native_id_count": len(requested), "native_selected_count": sum(m.selected for m in members),
+        "outcome": outcome, "disagreeing_files": disagreeing[:EVIDENCE_RECORDS],
+        "disagreeing_files_omitted": max(0, len(disagreeing) - EVIDENCE_RECORDS)})
+
+
+def selection_error(stage: Stage, diagnostic: str, evidence: dict, *,
+                    category: Category = Category.RESOURCE_STATE_CONFLICT) -> NormalizedError:
+    """This resource cannot reflect DebridPulse's selection, decided from
+    Real-Debrid's own answer: a fact about this torrent on this provider --
+    never the request's, never transient, never Real-Debrid's health. Judged
+    from the torrent's structured state, never from a native error code; a
+    caller deciding from Real-Debrid's own code carries that code and basis."""
+    return NormalizedError(Domain.PROVIDER, category, stage, Retryability.NEVER, origin=Origin.PROVIDER,
+                           permanence=Permanence.PERMANENT, integration_id=INTEGRATION_ID,
+                           diagnostic=safe_diagnostic(diagnostic), confidence=Confidence.HIGH,
+                           evidence_basis=EvidenceBasis.STRUCTURED, diagnostic_evidence=evidence)
+
+
+# The suffixes Real-Debrid's archived deliveries carry. Evidence only -- what
+# a link that proved no member said it was; it never selects or skips one.
+_ARCHIVE_SUFFIXES = (".rar", ".zip", ".7z", ".tar")
+
+
+def archive_indicated(unrestricted: dict, members: tuple[NativeMember, ...]) -> bool:
+    """Whether a link that proved no member positively named itself an
+    archive no member of the torrent is: its returned filename carries an
+    archive suffix and is no native file's name. Anything less is the
+    ordinary unidentified link."""
+    name = _comparable(unrestricted.get("filename"))
+    return (bool(name) and name.endswith(_ARCHIVE_SUFFIXES)
+            and all(_comparable(member.name) != name for member in members))
