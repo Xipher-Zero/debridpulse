@@ -1255,6 +1255,18 @@ class TransferEngine(_QualifiedTransferEngine):
                         factual_terminal_error = True
                     retirement_reason = "execution_succeeded_but_verification_failed"
 
+                elif (trigger == RecoveryTrigger.RESUME
+                      and await self._retire_lost_parked_writer(current, observed)):
+                    # Resume found the job Pause parked gone: no orphan, no
+                    # backoff -- a fresh writer continues from DP material.
+                    current = await self._current_artifact(current.transfer_id, current.id)
+                    if current is None:
+                        return None, error, observed, _Step(
+                            True, False, RecoveryAction.RECONCILE.value,
+                            "artifact_disappeared", "terminal_or_missing",
+                        ), None
+                    retirement_reason = "parked_writer_lost"
+
                 elif observed.state in {
                     ExecutionState.FAILED, ExecutionState.ABSENT, ExecutionState.CANCELLED,
                 }:

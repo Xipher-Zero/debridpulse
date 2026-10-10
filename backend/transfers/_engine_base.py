@@ -1343,6 +1343,8 @@ class TransferEngine:
 
                     if observed.state in {ExecutionState.UNKNOWN, ExecutionState.FAILED, ExecutionState.ABSENT,
                                           ExecutionState.CANCELLED, ExecutionState.SUCCEEDED}:
+                        if desired_paused and await self._retire_lost_parked_writer(current, observed):
+                            return observed
                         if persist_passive:
                             await self.repository.execution(observed)
                         return observed
@@ -2685,6 +2687,28 @@ class TransferEngine:
         if retired.retirement != "parked":
             await self.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="paused")
         return None
+
+    async def _retire_lost_parked_writer(self, artifact: Artifact, observed: ExecutionObservation) -> bool:
+        """A writer Pause parked whose native job is then found gone -- an
+        executor that keeps no paused job across its own restart -- lost
+        nothing DebridPulse owns: its material was checkpointed when it parked.
+        That is not a failure of the transfer, so it is not handed to recovery
+        as an orphan. The absence is recorded and the writer detached exactly
+        as Pause detaches a writer it retired outright; the next start plans
+        from DebridPulse material alone. Applies only to the artifact's current
+        writer whose durable state is still the PAUSED its parking left
+        (read before this observation is recorded). Returns whether it did."""
+        if observed.state != ExecutionState.ABSENT:
+            return False
+        prior = await self.repository.previous_writer(artifact.id)
+        if (prior is None or prior.handle.attempt_id != observed.handle.attempt_id
+                or ExecutionState(prior.state) != ExecutionState.PAUSED):
+            return False
+        await self.repository.execution(observed)
+        transfer = await self.repository.get(artifact.transfer_id)
+        paused = bool(transfer and transfer.paused) or await self.repository.globally_paused()
+        return await self.repository.detach_retired_writer(
+            artifact.id, observed.handle.attempt_id, state="paused" if paused else "queued")
 
     async def _retire_stale_writer(self, artifact: Artifact, executor,
                                    observed: ExecutionObservation) -> ExecutionObservation:

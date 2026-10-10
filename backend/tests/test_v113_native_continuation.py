@@ -41,7 +41,7 @@ SIZE = 6 * MIB + 4321
 SPARSE = ((0, 2 * MIB), (3 * MIB, 4 * MIB))
 
 
-async def build(tmp_path, monkeypatch, *, continuation=NATIVE):
+async def build(tmp_path, monkeypatch, *, continuation=NATIVE, retry_delay=0):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "native.db")
     await database.init_db()
     sources = {"movie": payload(SIZE)}
@@ -57,7 +57,7 @@ async def build(tmp_path, monkeypatch, *, continuation=NATIVE):
     registry.register_executor(other)
     clock = [1000.0]
     engine = TransferEngine(repository, registry, download_root=str(tmp_path / "payloads"),
-                            policy=TransferPolicy(retry_delay=0, adoption_stability_seconds=0,
+                            policy=TransferPolicy(retry_delay=retry_delay, adoption_stability_seconds=0,
                                                   max_active_executions=4),
                             clock=lambda: clock[0])
     await engine.initialize()
@@ -173,25 +173,82 @@ async def test_resume_continues_the_same_native_job_without_truncation_or_privat
     assert Path(artifact.target).read_bytes() == ctx.source
 
 
+async def _decision(ctx, artifact_id):
+    return (await ctx.repository.recovery_context(artifact_id)).get("decision_action")
+
+
+async def _assert_prompt_portable_restart(ctx, transfer, artifact):
+    """Resume of a writer whose parked job is gone starts a fresh writer from
+    DP material in the same pass -- the clock never moves -- with no orphan
+    backoff, no retry deadline and no second live writer."""
+    await ctx.engine.resume(transfer.id)
+    await ctx.engine.reconcile_executions()
+    await ctx.engine.tick()
+    resumed = await artifact_of(ctx, transfer.id)
+    assert len(starts(ctx)) == 2 and resumed.execution is not None and resumed.execution != artifact.execution
+    assert resumed.retry_at == 0 and await _decision(ctx, artifact.id) != "backoff"
+    assert not await ctx.repository.authorize_execution(artifact.execution, "resume")
+    live = [item for item in await ctx.repository.executions(transfer.id)
+            if item.state in {"prepared", "queued", "running", "paused", "unknown"}]
+    assert [item.handle.attempt_id for item in live] == [resumed.execution.attempt_id]
+    # No correctness dependency on the parked job: DP material alone plans.
+    plan = ctx.native.plans[-1]
+    assert plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET and plan.boundary == 2 * MIB
+    assert plan.discarded == ((3 * MIB, 4 * MIB),)
+
+
 @pytest.mark.asyncio
 async def test_a_lost_parked_job_falls_back_to_the_portable_planner(tmp_path, monkeypatch):
+    """The loss is first seen by Resume itself."""
     ctx = await build(tmp_path, monkeypatch)
     transfer, artifact = await running_sparse(ctx)
     await ctx.engine.pause(transfer.id)
     del ctx.native.jobs[artifact.execution.native["job"]]  # e.g. the executor restarted
+    await _assert_prompt_portable_restart(ctx, transfer, artifact)
 
+
+@pytest.mark.asyncio
+async def test_a_parked_job_lost_while_paused_is_released_then_resumed_promptly(tmp_path, monkeypatch):
+    """Transfer 585: the loss is seen by convergence while still paused (a
+    restart's reconciliation). The parked writer is detached as paused --
+    material kept, authority revoked -- and Resume does not read it as an
+    orphan."""
+    ctx = await build(tmp_path, monkeypatch)
+    transfer, artifact = await running_sparse(ctx)
+    await ctx.engine.pause(transfer.id)
+    before = await ctx.repository.material_state(artifact.id)
+    del ctx.native.jobs[artifact.execution.native["job"]]
+    await ctx.engine.reconcile_executions()
+    released = await artifact_of(ctx, transfer.id)
+    assert released.execution is None and released.state == "paused"
+    assert (await ctx.repository.get(transfer.id)).paused is True
+    assert (await ctx.repository.material_state(artifact.id)).valid == before.valid
+    assert {item.handle.attempt_id: item.state for item in await ctx.repository.executions(transfer.id)}[
+        artifact.execution.attempt_id] == ExecutionState.ABSENT
+    assert len(starts(ctx)) == 1  # nothing starts while paused
+    await _assert_prompt_portable_restart(ctx, transfer, artifact)
+
+
+@pytest.mark.asyncio
+async def test_an_unexpected_loss_still_backs_off_and_resume_keeps_that_wait(tmp_path, monkeypatch):
+    """A running writer's job vanishing is an orphan as before (backoff, a
+    retry deadline); pausing and resuming during that wait does not erase it."""
+    ctx = await build(tmp_path, monkeypatch, retry_delay=60)
+    transfer, artifact = await running_sparse(ctx)
+    del ctx.native.jobs[artifact.execution.native["job"]]
+    await ctx.engine.reconcile_executions()
+    waiting = await artifact_of(ctx, transfer.id)
+    assert await _decision(ctx, artifact.id) == "backoff" and waiting.retry_at > ctx.clock[0]
+    deadline = waiting.retry_at
+    await ctx.engine.pause(transfer.id)
     await ctx.engine.resume(transfer.id)
-    for _ in range(4):
-        ctx.clock[0] += 60
-        await ctx.engine.reconcile_executions()
-        await ctx.engine.tick()
-        if len(starts(ctx)) > 1:
-            break
-    plan = ctx.native.plans[-1]
+    await ctx.engine.reconcile_executions()
+    await ctx.engine.tick()
+    assert len(starts(ctx)) == 1 and (await artifact_of(ctx, transfer.id)).retry_at == deadline
+    ctx.clock[0] = deadline + 1
+    await ctx.engine.reconcile_executions()
+    await ctx.engine.tick()
     assert len(starts(ctx)) == 2
-    # No correctness dependency on the parked job: DP material alone plans.
-    assert plan.strategy == ContinuationStrategy.CONTIGUOUS_FROM_OFFSET and plan.boundary == 2 * MIB
-    assert plan.discarded == ((3 * MIB, 4 * MIB),)
 
 
 @pytest.mark.asyncio
