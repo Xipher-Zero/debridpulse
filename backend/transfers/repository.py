@@ -347,6 +347,23 @@ _RECOVERY_SNAPSHOT_DEFAULTS = {
 }
 
 
+def _attested(values) -> set[str]:
+    """The distinct non-empty source fingerprints a provider reported, as
+    compared everywhere: trimmed and case-folded."""
+    return {str(value).strip().casefold() for value in values if str(value).strip()}
+
+
+def _corresponds(established, replacement) -> bool:
+    """Whether two complete file lists correspond as wholes under the bounded
+    coordinate proof -- ambiguity, any missing, extra or resized member
+    included, is no correspondence."""
+    try:
+        fs.coordinate_correspondence(established, replacement)
+    except fs.SelectionUnprovable:
+        return False
+    return True
+
+
 class TransferRepository(_QualifiedTransferRepository):
     @staticmethod
     def _recovery_event_kind(artifact_id: int) -> str:
@@ -2481,7 +2498,7 @@ class TransferRepository(_QualifiedTransferRepository):
                         if source is None:
                             raise fs.SelectionUnprovable("missing_inherited_predecessor")
                         migration = await self._inherited_migration(db, record, source, row, binding_id, pairs,
-                                                                    full_entries, established)
+                                                                    full_entries, established, intent=intent)
                     except fs.SelectionUnprovable as refused:
                         held = await self._continuity_refusal(
                             db, record, row, source, binding_id, refused, now,
@@ -2611,48 +2628,243 @@ class TransferRepository(_QualifiedTransferRepository):
             return False
 
     async def _inherited_migration(self, db, record, source, row, binding_id: str, selected,
-                                   full_entries, established) -> "fs.InheritedMigration":
+                                   full_entries, established, *, intent=None) -> "fs.InheritedMigration":
         """The whole-manifest proof that an inherited selection's members are
         this replacement's, read inside ``commit_selected_manifest``'s
         transaction, from durable evidence only.
 
         First the existing strict proof, unchanged
         (``fs.migrate_inherited_subset``: both bindings' own reported source
-        fingerprints, a unique basename/size bijection). Only when that
-        cannot prove, and only when the replacement is durably bound to the
-        same torrent as the established tree (``_same_torrent_correspondence``),
-        the distinct bounded coordinate-interpretation proof
-        (``fs.coordinate_correspondence``) may carry the selection instead.
-        Without that binding the strict proof's own refusal stands."""
+        fingerprints, a unique basename/size bijection) -- accepted only when
+        the predecessor's selection reaches its origin through identity edges
+        (``_identity_lineage``), so an exact-path carry from a list it never
+        wholly matched lends it no authority. Only when that cannot prove:
+
+        * when the immediate predecessor attests no torrent hash, the
+          established tree's identity may still rest on the nearest attested
+          generation of the root's own proven lineage
+          (``_identity_anchor``), against which the selection is proven in the
+          approved order (``_carried_from_anchor``);
+        * otherwise -- or when that cannot prove -- the distinct bounded
+          coordinate-interpretation proof (``fs.coordinate_correspondence``)
+          against the immediate predecessor, only when the two are durably
+          bound to the same torrent (``_same_torrent_correspondence``).
+
+        Without any such binding the strict proof's own refusal stands."""
+        from transfers.requests import bittorrent_root_hash
+
         predecessor = await self._manifest_members(db, source["manifest_id"])
         replacement = await self._manifest_members(db, row["manifest_id"])
         predecessor_fingerprints = await self._binding_fingerprints(db, record.id, source["provider_resource_id"])
         replacement_fingerprints = await self._binding_fingerprints(db, record.id, binding_id)
+        digest = bittorrent_root_hash(record.request)
+        if digest and bittorrent_root_hash(record.resolvable) != digest:
+            digest = ""
         try:
-            return fs.migrate_inherited_subset(
+            strict = fs.migrate_inherited_subset(
                 selected, predecessor, replacement, tuple(full_entries),
                 predecessor_fingerprints=predecessor_fingerprints,
                 replacement_fingerprints=replacement_fingerprints,
                 established=established)
-        except fs.SelectionUnprovable:
-            correspondence = await self._same_torrent_correspondence(
-                db, record, binding_id, predecessor, replacement, predecessor_fingerprints,
-                replacement_fingerprints)
-            if correspondence is None:
-                raise
+        except fs.SelectionUnprovable as unproven:
+            refusal = unproven
+        else:
+            # The bijection proves the two attested lists are one torrent; the
+            # selection it carries is the predecessor's, which vouches for it
+            # only through a lineage of identity edges back to its origin.
+            identity = digest or next(iter(_attested(predecessor_fingerprints)))
+            if await self._identity_lineage(db, record, source, identity):
+                return strict
+            refusal = fs.SelectionUnprovable("fallback_lineage_unproven")
+        if digest and intent is not None and not _attested(predecessor_fingerprints):
+            anchor = await self._identity_anchor(db, record, source, digest)
+            if anchor is not None:
+                try:
+                    return await self._carried_from_anchor(
+                        db, record, anchor, binding_id, intent, replacement, replacement_fingerprints,
+                        full_entries, established, digest, replacement_manifest_id=row["manifest_id"])
+                except fs.SelectionUnprovable as anchored:
+                    refusal = anchored
+        correspondence = await self._same_torrent_correspondence(
+            db, record, source, binding_id, predecessor, replacement, predecessor_fingerprints,
+            replacement_fingerprints, replacement_manifest_id=row["manifest_id"])
+        if correspondence is None:
+            raise refusal
         return fs.migrate_by_correspondence(selected, predecessor, correspondence, tuple(full_entries),
                                             established=established)
 
-    async def _same_torrent_correspondence(self, db, record, binding_id: str, predecessor, replacement,
-                                           predecessor_fingerprints, replacement_fingerprints):
+    # How far back a root's generation lineage is followed for an identity
+    # anchor: a bound on the walk, never a policy -- a lineage longer than this
+    # anchors nothing.
+    _ANCHOR_LINEAGE_LIMIT = 64
+
+    async def _identity_anchor(self, db, record, start, digest: str):
+        """The nearest generation of this root's committed lineage whose own
+        provider attested exactly the root's validated info-hash, reached from
+        ``start`` (the immediate predecessor) only through generations that
+        legitimately carried the established selection -- or ``None``.
+
+        A generation is the anchor when it is committed and ``proven``, holds
+        a recorded complete manifest, and its binding's own resolution of THIS
+        root reported exactly ``digest`` (``_binding_fingerprints``). A
+        generation that attested nothing is crossed only when it, too, is
+        committed and ``proven``, was born carrying the selection
+        (``inherited``), was produced for this very root
+        (``_resolved_for_root``), is no legacy compatibility reconstruction,
+        and names a predecessor. Anything else ends the walk with no anchor:
+        an uncommitted, held or never-proven generation, another root's, a
+        missing or repeated link, a truncated manifest, or any other hash.
+
+        ``proven`` is SELECTION continuity -- a commit may have proven only the
+        selected members by exact path while the unselected ones differ -- so
+        it never makes a crossed generation an identity bridge by itself. Each
+        crossed generation's complete list must also correspond, as a whole
+        (``_bridged``), to the list of the generation it was carried from or
+        to the anchor's own, reconstructed from the frozen committed
+        manifests. Durable rows only: reproduced identically after a
+        restart."""
+        seen, crossed, row = set(), [], start
+        for _ in range(self._ANCHOR_LINEAGE_LIMIT):
+            if (row is None or row["id"] in seen or str(row["request_id"]) != str(record.id)
+                    or row["manifest_committed_at"] is None or row["continuity"] != str(fs.Continuity.PROVEN)
+                    or not row["manifest_id"]
+                    or (await self._manifest_collection(db, row["manifest_id"]))["source_truncated"]):
+                return None
+            seen.add(row["id"])
+            attested = _attested(await self._binding_fingerprints(db, record.id, row["provider_resource_id"]))
+            if attested:
+                return row if (attested == {digest} and await self._bridged(db, row, crossed)
+                               and await self._identity_lineage(db, record, row, digest)) else None
+            if (str(row["decision_reason"] or "") != str(fs.DecisionReason.INHERITED) or not row["predecessor_id"]
+                    or row["continuity_reason"] == self.COMPATIBILITY_RECONSTRUCTION
+                    or not await self._resolved_for_root(db, record.id, row["provider_resource_id"])):
+                return None
+            crossed.append(row)
+            row = await db.fetchone("SELECT * FROM transfer_file_selections WHERE id=?", (row["predecessor_id"],))
+        return None
+
+    async def _bridged(self, db, anchor, crossed) -> bool:
+        """Whether every crossed fingerprint-less generation (``crossed``,
+        nearest first) is the anchor's torrent as a COMPLETE collection: its
+        whole recorded list corresponds one-to-one, every member at its exact
+        size, under exactly one approved interpretation
+        (``fs.coordinate_correspondence``) to the whole list of the
+        generation it was carried from -- itself the anchor or an already
+        bridged generation -- or to the anchor's own. Walked from the anchor
+        outwards, so each edge rests on a proven one."""
+        anchor_members = await self._manifest_members(db, anchor["manifest_id"])
+        earlier = anchor_members
+        for row in reversed(crossed):
+            members = await self._manifest_members(db, row["manifest_id"])
+            if not (_corresponds(earlier, members) or _corresponds(anchor_members, members)):
+                return False
+            earlier = members
+        return True
+
+    async def _identity_lineage(self, db, record, row, digest: str) -> bool:
+        """Whether a committed generation's identity reaches back, edge by
+        edge, to where its root's selection was made -- so its tree may vouch
+        for the inherited selection it holds.
+
+        Walked through ``predecessor_id`` from ``row`` while each generation
+        was born carrying the selection (``inherited``); only a generation
+        whose selection was decided on its own list (confirmed, closed, timed
+        out, single file, ...) is an origin and ends the walk proven. An
+        inherited generation naming no predecessor has lost the provenance of
+        what it carries and vouches for nothing. Every generation on the way
+        is this root's, committed and ``proven`` -- never a legacy
+        compatibility reconstruction -- and attests no hash other than
+        ``digest``. Each edge is an identity
+        edge only when both ends' own providers attested exactly ``digest``,
+        or else both recorded lists are complete (neither source truncated)
+        and correspond as wholes (``_corresponds``): an exact-path carry of
+        the selected members alone is continuity of the selection, never of
+        the collection. Anything else -- a missing, repeated or foreign link,
+        a lineage longer than the bound -- vouches for nothing. Reconstructed
+        from durable rows and frozen committed manifests only."""
+        seen = set()
+        for _ in range(self._ANCHOR_LINEAGE_LIMIT):
+            if (row is None or row["id"] in seen or str(row["request_id"]) != str(record.id)
+                    or row["manifest_committed_at"] is None or row["continuity"] != str(fs.Continuity.PROVEN)
+                    or row["continuity_reason"] == self.COMPATIBILITY_RECONSTRUCTION or not row["manifest_id"]):
+                return False
+            seen.add(row["id"])
+            newer = _attested(await self._binding_fingerprints(db, record.id, row["provider_resource_id"]))
+            if newer and newer != {digest}:
+                return False
+            if str(row["decision_reason"] or "") != str(fs.DecisionReason.INHERITED):
+                return True
+            if not row["predecessor_id"]:
+                return False
+            older = await db.fetchone("SELECT * FROM transfer_file_selections WHERE id=?", (row["predecessor_id"],))
+            if older is None or not older["manifest_id"]:
+                return False
+            older_attested = _attested(await self._binding_fingerprints(db, record.id, older["provider_resource_id"]))
+            if not (newer == {digest} and older_attested == {digest}):
+                if (await self._manifest_collection(db, row["manifest_id"]))["source_truncated"] \
+                        or (await self._manifest_collection(db, older["manifest_id"]))["source_truncated"] \
+                        or not _corresponds(await self._manifest_members(db, older["manifest_id"]),
+                                            await self._manifest_members(db, row["manifest_id"])):
+                    return False
+            row = older
+        return False
+
+    async def _carried_from_anchor(self, db, record, anchor, binding_id: str, intent, replacement,
+                                   replacement_fingerprints, full_entries, established,
+                                   digest: str, *, replacement_manifest_id) -> "fs.InheritedMigration":
+        """The inherited selection proven against the root's identity anchor:
+        the transfer's intent in the anchor's own committed coordinates, then
+        the approved proofs in their order -- exact path, the existing strict
+        basename/size bijection (the anchor's and the replacement's own
+        reported hashes), and the bounded coordinate correspondence -- all of
+        them only for a replacement produced for this root that reports no
+        other hash.
+        Logical paths stay the established ones; the replacement's own entries
+        are the provenance. Raises the last proof's bounded refusal."""
+        # Every anchored proof is about a replacement produced for this very
+        # root that names no other torrent: a positive contradiction is never
+        # carried, whatever the paths say.
+        attested = _attested(replacement_fingerprints)
+        if attested and attested != {digest}:
+            raise fs.SelectionUnprovable("fallback_fingerprint_mismatch")
+        if not await self._resolved_for_root(db, record.id, binding_id):
+            raise fs.SelectionUnprovable("fallback_missing_fingerprint")
+        anchor_members = await self._manifest_members(db, anchor["manifest_id"])
+        pairs = fs.intent_in_predecessor(intent, anchor_members)
+        try:
+            recorded = fs.reconcile_executable_subset(pairs, full_entries)
+        except fs.SelectionUnprovable:
+            pass
+        else:
+            logical = recorded
+            if established and not self._at_established_paths(recorded, established):
+                logical = tuple(replace(entry, relative_path=path) for entry, path in zip(
+                    recorded, fs.established_logical_paths(pairs, established)))
+            return fs.InheritedMigration(tuple(logical), tuple(recorded))
+        try:
+            return fs.migrate_inherited_subset(
+                pairs, anchor_members, replacement, tuple(full_entries),
+                predecessor_fingerprints=await self._binding_fingerprints(db, record.id, anchor["provider_resource_id"]),
+                replacement_fingerprints=replacement_fingerprints, established=established)
+        except fs.SelectionUnprovable:
+            pass
+        if (await self._manifest_collection(db, replacement_manifest_id))["source_truncated"]:
+            raise fs.SelectionUnprovable("coordinate_replacement_truncated")    # no complete list to correspond
+        return fs.migrate_by_correspondence(pairs, anchor_members,
+                                            fs.coordinate_correspondence(anchor_members, replacement),
+                                            tuple(full_entries), established=established)
+
+    async def _same_torrent_correspondence(self, db, record, source, binding_id: str, predecessor, replacement,
+                                           predecessor_fingerprints, replacement_fingerprints, *,
+                                           replacement_manifest_id=None):
         """The bounded coordinate correspondence between the predecessor's and
         the replacement's COMPLETE file lists -- or ``None`` when DebridPulse
         holds no durable binding of both to one torrent identity (D1), in
         which case nothing is proven here. Raises ``fs.SelectionUnprovable``
         when the binding holds but no single interpretation corresponds.
 
-        The binding, every element durable and authored by DebridPulse or the
-        established provider, never by a display name or a path:
+        The binding, every element durable and authored by DebridPulse or a
+        provider, never by a display name or a path:
 
         * the root's info-hash -- its admission fingerprint, reproduced from
           the same row's persisted payload (``bittorrent_root_hash``), and the
@@ -2661,30 +2873,56 @@ class TransferRepository(_QualifiedTransferRepository):
           attempt of THIS root request by the replacement's provider recorded
           that resource (``resolution_attempts.request_id`` and its result's
           resource id), and the replacement reports no other fingerprint;
-        * the established tree is that torrent's: either the predecessor's own
-          provider reported exactly that info-hash for the resource whose file
-          list it is (``_binding_fingerprints``) -- the provider's record of the
-          torrent it holds, which DebridPulse cannot verify cryptographically
-          -- or the root is an uploaded ``.torrent`` whose own verified member
-          tree both file lists correspond to.
+        * one side's tree is that torrent's: the predecessor's own provider
+          reported exactly that info-hash for the resource whose file list it
+          is (``_binding_fingerprints``) and that generation's identity
+          reaches back to where the selection was made (``_identity_lineage``:
+          never an exact-path carry from a list it does not wholly match); or
+          the replacement's own provider did, while the predecessor -- itself
+          produced for this root, committed, proven and of such a lineage --
+          reported none, so the complete
+          correspondence bridges the established selection onto the newly
+          attested tree (a later hash never attests the earlier files by
+          itself); or the root is an uploaded ``.torrent`` whose own verified
+          member tree both file lists correspond to. A provider's report is
+          its record of the torrent it holds, which DebridPulse cannot verify
+          cryptographically.
 
-        Paths and sizes then identify members; they never attest content."""
+        Every branch corresponds COMPLETE lists only: a recorded list whose
+        source held more (``source_truncated``) refuses
+        (``coordinate_manifest_truncated``). Paths and sizes then identify
+        members; they never attest content."""
         from transfers.requests import bittorrent_root_hash, torrent_member_tree
 
         digest = bittorrent_root_hash(record.request)
         if not digest or bittorrent_root_hash(record.resolvable) != digest:
             return None
-        attested = {value.strip().casefold() for value in replacement_fingerprints if value.strip()}
+        attested = _attested(replacement_fingerprints)
         if attested and attested != {digest}:
             return None
         if not await self._resolved_for_root(db, record.id, binding_id):
             return None
-        if {value.strip().casefold() for value in predecessor_fingerprints if value.strip()} == {digest}:
+        # A list whose source held more than it recorded is no complete list:
+        # no branch of this proof may correspond it.
+        complete = not ((await self._manifest_collection(db, source["manifest_id"]))["source_truncated"]
+                        or (await self._manifest_collection(db, replacement_manifest_id))["source_truncated"])
+        established = _attested(predecessor_fingerprints)
+        if established == {digest}:
+            if not await self._identity_lineage(db, record, source, digest):
+                return None
+            if not complete:
+                raise fs.SelectionUnprovable("coordinate_manifest_truncated")
+            return fs.coordinate_correspondence(predecessor, replacement)
+        if (attested == {digest} and not established and complete
+                and await self._resolved_for_root(db, record.id, source["provider_resource_id"])
+                and await self._identity_lineage(db, record, source, digest)):
             return fs.coordinate_correspondence(predecessor, replacement)
         payload = record.request.payload
         tree = torrent_member_tree(payload) if isinstance(payload, (bytes, bytearray)) else None
         if tree is None or tree.info_hash != digest:
             return None
+        if not complete:
+            raise fs.SelectionUnprovable("coordinate_manifest_truncated")
         return fs.compose_correspondences(fs.coordinate_correspondence(list(tree.members), predecessor),
                                           fs.coordinate_correspondence(list(tree.members), replacement))
 
