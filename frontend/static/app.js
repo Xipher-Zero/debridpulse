@@ -570,22 +570,27 @@ function badge(s, detail) {
 // no status is derived here from extraction or source-failure fields.
 // The Details progress line: the list's rule in words -- verified material
 // first; current execution activity, only while the row is running, leads
-// while nothing is verified yet, and is never completion.
+// while nothing is verified yet, and is never completion. A best-effort
+// estimate is never a second figure beside verified material, and a
+// processing writer's retained fill is processing, not a percentage.
 function dpDetailProgress(t) {
   const status = transferDisplayStatus(t);
   const active = inFlightExecutionPercent(status, t.active_execution_progress);
-  const execution = active !== null
-    ? executionProgressWords(active, t.active_execution_basis) + ' (not yet verified)'
-    : (executionProcessing(status, t.active_execution_basis) ? 'processing (not yet verified)' : '');
+  const execution = executionProcessing(status, t.active_execution_basis)
+    ? 'processing (not yet verified)'
+    : (active !== null ? executionProgressWords(active, t.active_execution_basis) + ' (not yet verified)' : '');
   if (t.progress == null || (execution && Number(t.progress) === 0)) {
     return execution || '—' + (t.retained_bytes ? ' · ' + fmtSize(t.retained_bytes) : '');
   }
-  return Number(t.progress).toFixed(1) + '%' + (execution ? ' · ' + execution : '');
+  const beside = execution && t.active_execution_basis !== 'estimated';
+  return Number(t.progress).toFixed(1) + '%' + (beside ? ' · ' + execution : '');
 }
 // What an execution percentage counts (``active_execution_basis``): acquired
-// bytes, or completed acquisition units (parts such as media segments) --
-// never logical completion.
+// bytes, completed acquisition units (parts such as media segments), or one
+// writer's best-effort estimate of its whole execution -- never logical
+// completion.
 function executionProgressWords(value, basis) {
+  if (basis === 'estimated') return '~' + value.toFixed(1) + '% estimated';
   return 'in progress ' + value.toFixed(1) + '%' + (basis === 'units' ? ' of parts' : '');
 }
 // The running row's writers are past acquisition (repair, unpack, remux,
@@ -628,6 +633,11 @@ function progress(pct, status, activePct, basis) {
   // material is durable across a replaced execution (no high-water mark).
   const activeOnly = inFlight && (unknown || actual === 0);
   const processing = executionProcessing(state, basis);
+  // A best-effort estimate of the whole execution is one primary figure, or
+  // nothing beside verified material: never a second lane. A processing
+  // writer's value is only the fill its acquisition reached.
+  const estimated = basis === 'estimated';
+  const besideVerified = inFlight && !activeOnly && !estimated && !processing;
   // Running with no primary percentage to show -- an unknown total, nothing
   // verified and no measurable acquisition, or writers past acquisition -- is
   // the one moving indeterminate state: active, never a fabricated figure.
@@ -649,18 +659,19 @@ function progress(pct, status, activePct, basis) {
   // any executor) gets its own thinner lane and label beneath, and the
   // verified figure says so.
   const label = done ? '100%' : (activeOnly
-    ? activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress')
+    ? (processing ? 'processing' : (estimated ? executionProgressWords(activeValue, basis)
+      : activeValue.toFixed(1) + '% ' + (basis === 'units' ? 'of parts' : 'in progress')))
     : (showStripe && processing ? 'processing' : (unknown ? '—'
       : actual.toFixed(0) + '%' + (inFlight || processing ? ' verified' : ''))));
   const inFlightTitle = 'In progress on the current source; not yet verified as DebridPulse material';
-  const lane = inFlight && !activeOnly
+  const lane = besideVerified
     ? '<div class="prog-lane" data-role="execution-progress-lane" role="progressbar" aria-valuemin="0" aria-valuemax="100"' +
       ' aria-valuenow="' + activeValue + '" aria-label="' + inFlightTitle + '">' +
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
   const activityLabel = activeOnly || (showStripe && processing)
     ? '<span class="prog-activity" data-role="execution-unverified" title="' + inFlightTitle + '">not yet verified</span>'
-    : (inFlight
+    : (besideVerified
       ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">' +
         executionProgressWords(activeValue, basis) + '</span>'
       : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));

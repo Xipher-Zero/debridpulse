@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import math
 import time
 from collections import Counter
 from dataclasses import dataclass, replace
@@ -367,8 +368,10 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
     ``f.torrent_id``; one row per transfer: ``transfer_id``,
     ``execution_completed``, ``execution_total``, and the facts
     ``active_execution_projection`` decides a percentage from: how many
-    writers, how many still acquiring, how many state an exact byte total, and
-    how many state a consistent unit total with their unit sums.
+    writers, how many still acquiring, how many state an exact byte total,
+    how many state a consistent unit total with their unit sums, and how many
+    state a best-effort estimated percentage (``TransferProgress
+    .estimated_percentage``) with the largest such figure.
 
     The capability test is an anti-join, never a per-row subquery: the left
     join matches only an ``export_material_ranges`` element of a writer that
@@ -383,6 +386,7 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
     units_known = ("(COALESCE(json_extract(e.progress, '$.total_units'), 0) > 0"
                    " AND json_extract(e.progress, '$.completed_units') BETWEEN 0"
                    " AND json_extract(e.progress, '$.total_units'))")
+    estimate_known = "(json_type(e.progress, '$.estimated_percentage') IN ('integer', 'real'))"
     return f"""SELECT f.torrent_id AS transfer_id,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.completed_bytes'), 0))) AS execution_completed,
             SUM(MAX(0, COALESCE(json_extract(e.progress, '$.total_bytes'), 0))) AS execution_total,
@@ -393,7 +397,10 @@ def active_execution_progress_sql(transfer_scope: str, *, reconstruction_only: b
             SUM(CASE WHEN {units_known} THEN json_extract(e.progress, '$.completed_units') ELSE 0 END)
                 AS execution_units_completed,
             SUM(CASE WHEN {units_known} THEN json_extract(e.progress, '$.total_units') ELSE 0 END)
-                AS execution_units_total
+                AS execution_units_total,
+            SUM({estimate_known}) AS execution_estimates_known,
+            MAX(CASE WHEN {estimate_known} THEN json_extract(e.progress, '$.estimated_percentage') END)
+                AS execution_estimated
         FROM download_files f JOIN execution_attempts e ON e.id = f.execution_attempt_id{exporter_join}
         WHERE e.state = 'running' AND e.authorized = 1
           AND {not_yet_material}
@@ -406,21 +413,41 @@ def active_execution_projection(row, prefix: str = "") -> tuple[float | None, st
     columns under ``prefix``). One coherent scope or none: bytes when every
     counted writer states an exact byte total, else completed units when every
     one states a consistent unit total; a mix, or anything unknown, is no
-    percentage (indeterminate, never a fabricated figure). Writers all past
-    acquisition (repair, unpack, remux, finalization) are ``"processing"``:
-    their acquisition percentage is retired, not shown at 100%."""
+    percentage (indeterminate, never a fabricated figure). ONE writer may
+    also state its own best-effort estimate of its whole execution, kept per
+    attempt as a high-water mark: it is ``"estimated"`` where no exact scope
+    exists or while it is ahead of that exact figure (so the bar never moves
+    back), and that writer's exact figure, once it leads, stays below 100%
+    (its execution is not finished until its own finalization). Never
+    relabelled bytes or units, and never combined across writers (no common
+    denominator). Writers all past acquisition (repair, unpack, remux,
+    finalization) are ``"processing"``: their acquisition percentage is
+    retired, not shown at 100%; a single writer's estimate is kept only as
+    that processing fill."""
     def fact(name):
         return int((row or {}).get(prefix + name) or 0)
     writers = fact("execution_writers")
     if writers <= 0:
         return None, None
+    estimate = None
+    if writers == 1 and fact("execution_estimates_known") == 1:
+        try:
+            value = float((row or {}).get(prefix + "execution_estimated"))
+        except (TypeError, ValueError):
+            value = math.nan
+        estimate = min(99.9, max(0.0, value)) if math.isfinite(value) else None
     if fact("execution_acquiring") <= 0:
-        return None, "processing"
+        return estimate, "processing"
+    exact = (None, None)
     if fact("execution_bytes_known") == writers and fact("execution_total") > 0:
-        return min(100.0, fact("execution_completed") / fact("execution_total") * 100.0), "bytes"
-    if fact("execution_units_known") == writers and fact("execution_units_total") > 0:
-        return min(100.0, fact("execution_units_completed") / fact("execution_units_total") * 100.0), "units"
-    return None, None
+        exact = min(100.0, fact("execution_completed") / fact("execution_total") * 100.0), "bytes"
+    elif fact("execution_units_known") == writers and fact("execution_units_total") > 0:
+        exact = min(100.0, fact("execution_units_completed") / fact("execution_units_total") * 100.0), "units"
+    if estimate is None:
+        return exact
+    if exact[0] is None or estimate > exact[0]:
+        return estimate, "estimated"
+    return min(99.9, exact[0]), exact[1]
 
 
 def canonical_artifact_membership_sql(alias: str = "f") -> str:
@@ -1881,7 +1908,7 @@ class TransferRepository:
             rows = await db.fetchall(f"""SELECT t.*, COALESCE(p.paused,0) AS paused_intent,
                 x.execution_completed, x.execution_total, x.execution_writers, x.execution_acquiring,
                 x.execution_bytes_known, x.execution_units_known, x.execution_units_completed,
-                x.execution_units_total FROM torrents t
+                x.execution_units_total, x.execution_estimates_known, x.execution_estimated FROM torrents t
                 LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
                 LEFT JOIN ({active_execution_progress_sql("1=1")}) x ON x.transfer_id=t.id
                 WHERE t.status NOT IN ('completed','consolidated','deleted','cancelled')

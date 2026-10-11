@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 import shutil
 import stat
@@ -86,6 +87,21 @@ class _Run:
     tasks: list = field(default_factory=list)
     sample: tuple[float, int] = (0.0, 0)
     terminal: ExecutionObservation | None = None
+    # How many leading components are the planned streams (the rest: the
+    # planned subtitle); ``None`` = all of them.
+    streams: int | None = None
+    # This attempt's best-effort whole-plan percentage so far: its high-water
+    # mark, owned by this attempt alone (a new attempt is a new ``_Run``).
+    estimate: float | None = None
+
+
+# Held back from every acquisition estimate for local finalization: an
+# estimated presentation policy, never downloaded bytes.
+_FINALIZATION_RESERVE = 0.05
+# A component measured only against its approximate size is never finished
+# by that measurement alone: only its own finished report completes it.
+_APPROXIMATE_CAP = 0.99
+_MAX_ESTIMATED_BYTES = 1 << 50
 
 
 def _count(value) -> int | None:
@@ -94,20 +110,68 @@ def _count(value) -> int | None:
 
 def _component(previous, event: dict) -> tuple:
     """One component's ``(downloaded, byte total, completed units, unit
-    total)`` after a worker progress event. A total, once known, is not
-    withdrawn by an event that omits it; a unit total that changes, or units
-    that run backwards or past it, make the component's units unknown for the
-    rest of the attempt (0) rather than a figure that cannot be trusted."""
-    _downloaded, total, units, unit_total = previous or (0, None, None, None)
+    total, estimated size, finished)`` after a worker progress event. A total,
+    once known, is not withdrawn by an event that omits it; a unit total that
+    changes, or units that run backwards or past it, make the component's
+    units unknown for the rest of the attempt (0) rather than a figure that
+    cannot be trusted. The estimated size is the worker's approximate one --
+    a weight for ``_estimate``, never a total -- and finished, once reported,
+    stays so."""
+    _downloaded, total, units, unit_total, estimated, finished = previous or (0, None, None, None, None, False)
     reported = _count(event.get("total"))
     total = reported or total
+    approximate = _count(event.get("estimated_total"))
+    estimated = approximate if approximate and approximate <= _MAX_ESTIMATED_BYTES else estimated
+    finished = finished or event.get("finished") is True
     count, done = _count(event.get("unit_total")), _count(event.get("units"))
     if count:
         unit_total = count if unit_total is None else (unit_total if unit_total == count else 0)
     if unit_total and done is not None:
         units = done if done <= unit_total and done >= (units or 0) else None
         unit_total = unit_total if units is not None else 0
-    return max(0, int(event.get("downloaded") or 0)), total, units, unit_total
+    return max(0, int(event.get("downloaded") or 0)), total, units, unit_total, estimated, finished
+
+
+def _estimate(parts: list, streams: int | None) -> float | None:
+    """The best-effort percentage of the WHOLE plan -- every planned stream
+    and the planned subtitle -- or ``None`` while nothing is measured.
+
+    Each component counts by its own completed fraction: 1 once it reports
+    finished, else its bytes of an exact total, else its completed fragments
+    of their exact count, else its bytes of its approximate size (never past
+    ``_APPROXIMATE_CAP``), else 0. Each is weighted by its size: the exact
+    total, else the approximate one. A stream with no size at all weighs the
+    mean of the streams that have one; with none sized, the streams weigh
+    equally and the subtitle (sized only relative to them) nothing. The
+    weighted mean is scaled into ``1 - _FINALIZATION_RESERVE``: acquisition
+    alone never reads as a finished file."""
+    if not parts or any(part is None for part in parts):
+        return None
+    count = len(parts) if streams is None else max(0, min(streams, len(parts)))
+    sizes, fractions = [], []
+    for downloaded, total, units, unit_total, estimated, finished in parts:
+        if finished:
+            fraction = 1.0
+        elif total:
+            fraction = min(1.0, downloaded / total)
+        elif unit_total and units is not None:
+            fraction = units / unit_total
+        elif estimated:
+            fraction = min(_APPROXIMATE_CAP, downloaded / estimated)
+        else:
+            fraction = 0.0
+        sizes.append(total or estimated or 0)
+        fractions.append(fraction)
+    if not any(fractions):
+        return None
+    sized = [size for size in sizes[:count] if size]
+    if sized:
+        fallback = sum(sized) / len(sized)
+        weights = [size or (fallback if index < count else 0) for index, size in enumerate(sizes)]
+    else:
+        weights = [1.0 if index < count else 0.0 for index in range(len(sizes))]
+    whole = sum(weight * fraction for weight, fraction in zip(weights, fractions)) / sum(weights)
+    return round(100 * (1 - _FINALIZATION_RESERVE) * min(1.0, max(0.0, whole)), 1)
 
 
 # This process's live attempts, per executor binding: ``(runs, finished)``.
@@ -256,7 +320,7 @@ class MediaExecutor:
                 return await self.observe(handle)
             # The acquisition's whole scope: every planned stream and a planned subtitle.
             run = _Run(owned, target, workspace, len(media["formats"]) + bool(media.get("subtitle")),
-                       time.monotonic())
+                       time.monotonic(), streams=len(media["formats"]))
             self._runs[handle.attempt_id] = run
             run.tasks = [asyncio.ensure_future(self._follow(run)), asyncio.ensure_future(self._pump_stderr(run))]
             return self._running(handle, run)
@@ -307,12 +371,31 @@ class MediaExecutor:
         then, before = run.sample
         rate = int((completed - before) / (now - then)) if then and now > then and completed >= before else 0
         run.sample = (now, completed)
-        if run.finalizing:
-            # Lossless finalization is local work: no network, no progress.
-            return ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(total, completed, 0, *units),
-                                        activity=ExecutionActivity())
+        # The attempt's best-effort whole-plan figure, never lower than it has
+        # read in this attempt. An exact scope contributes its own figure
+        # (rounded down, below 100); the projection shows that exact scope
+        # once it reaches this mark, and the labelled mark until it does.
+        if total:
+            exact = completed / total * 100
+        elif units != (None, None):
+            exact = units[0] / units[1] * 100
+        else:
+            exact = None
+        measured = (math.floor(min(99.9, max(0.0, exact)) * 10) / 10 if exact is not None
+                    else _estimate(parts, run.streams))
+        if measured is not None:
+            run.estimate = measured if run.estimate is None else max(run.estimate, measured)
+        # Every planned component reported finished: acquisition is over even
+        # before the finalize phase arrives -- processing, never a 100%.
+        acquired = all(parts) and all(part[5] for part in parts)
+        if run.finalizing or acquired:
+            # Lossless finalization is local work: no network, no progress --
+            # only the fill the acquisition reached, kept as processing.
+            return ExecutionObservation(handle, ExecutionState.RUNNING, TransferProgress(
+                total, completed, 0, *units, estimated_percentage=run.estimate), activity=ExecutionActivity())
         return ExecutionObservation(
-            handle, ExecutionState.RUNNING, TransferProgress(total, completed, max(0, rate), *units),
+            handle, ExecutionState.RUNNING, TransferProgress(total, completed, max(0, rate), *units,
+                                                             estimated_percentage=run.estimate),
             activity=ExecutionActivity(network_active=True, bandwidth_reservation_required=True,
                                        progress_expected=bool(run.progress)))
 

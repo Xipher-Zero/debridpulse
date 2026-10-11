@@ -50,6 +50,8 @@ MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
 MAX_DESCRIPTION_CHARS = 16 * 1024
 MAX_DETAIL_CHARS = 300
 PROGRESS_INTERVAL = 0.5
+# The largest approximate component size an estimate may claim (1 PiB).
+MAX_ESTIMATED_BYTES = 1 << 50
 # The only native transports a component may use: HTTP(S) carries plain
 # files, HLS playlists and DASH manifests alike, and each is downloaded by
 # yt-dlp's own native downloader through the guarded proxy.
@@ -463,6 +465,19 @@ def _count(value) -> int | None:
     return value if isinstance(value, int) and not isinstance(value, bool) and value >= 0 else None
 
 
+def _estimated_size(fmt: dict, info: dict) -> int | None:
+    """A component's APPROXIMATE size, never its total: yt-dlp's own
+    ``filesize_approx``, else the format's average bitrate (kbit/s) over the
+    medium's duration. Bounded; ``None`` when neither is known."""
+    approx = _count(fmt.get("filesize_approx"))
+    if not approx:
+        rate, duration = fmt.get("tbr"), info.get("duration")
+        if all(isinstance(value, (int, float)) and not isinstance(value, bool) and 0 < value < 1e12
+               for value in (rate, duration)):
+            approx = int(rate * 125 * duration)
+    return approx if approx and 0 < approx <= MAX_ESTIMATED_BYTES else None
+
+
 class _Progress:
     """yt-dlp progress, per component, emitted no more often than the interval.
 
@@ -642,12 +657,15 @@ def acquire(spec: dict, phase: _Phase) -> int:
         # one planned as fragments, before any of it is fetched: without them
         # the attempt's total stays unknown until the last component starts.
         # Only yt-dlp's exact ``filesize`` -- never the ``filesize_approx``
-        # estimate -- is a total.
+        # estimate -- is a total. Without one, the component's approximate
+        # size is announced under its own name: the weight of a best-effort
+        # whole-plan estimate, never a byte total.
         for index, fmt in enumerate(requested):
             size, fragments = _count(fmt.get("filesize")), fmt.get("fragments")
             planned = len(fragments) if isinstance(fragments, list) and fragments else None
             _emit({"event": "progress", "component": index, "downloaded": 0, "total": size or None,
-                   "units": 0 if planned else None, "unit_total": planned, "finished": False})
+                   "units": 0 if planned else None, "unit_total": planned, "finished": False,
+                   "estimated_total": None if size else _estimated_size(fmt, info)})
         components = []
         for index, fmt in enumerate(requested):
             item = dict(info)

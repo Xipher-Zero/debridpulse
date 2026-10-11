@@ -1443,6 +1443,8 @@ async def list_operational_torrents(
             page_active_execution.execution_units_known AS _execution_units_known,
             page_active_execution.execution_units_completed AS _execution_units_completed,
             page_active_execution.execution_units_total AS _execution_units_total,
+            page_active_execution.execution_estimates_known AS _execution_estimates_known,
+            page_active_execution.execution_estimated AS _execution_estimated,
             root_request.payload AS _source_request_payload,
             root_request_kinds.kinds AS _root_request_kinds,
             delivered_source.candidate_source AS _delivered_candidate_source,
@@ -1548,7 +1550,7 @@ async def list_operational_torrents(
         projected["active_execution_progress"], projected["active_execution_basis"] = active_execution_projection(
             projected, prefix="_")
         for name in ("completed", "total", "writers", "acquiring", "bytes_known", "units_known",
-                     "units_completed", "units_total"):
+                     "units_completed", "units_total", "estimates_known", "estimated"):
             projected.pop(f"_execution_{name}", None)
         file_presentations = _bounded_child_presentations(
             projected.pop("_artifact_presentation_facts", None),

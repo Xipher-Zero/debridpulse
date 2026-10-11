@@ -10,6 +10,8 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
+import re
 import socket
 
 import pytest
@@ -1041,12 +1043,13 @@ def test_the_worker_reports_every_planned_components_exact_size_before_fetching(
                      "subtitle": None}}
     assert worker.acquire(spec, worker._Phase()) == 0
     progress = [event for event in events if event.get("event") == "progress"]
-    # Before any byte: the exact size where yt-dlp has one, and no guess where it has an estimate.
+    # Before any byte: the exact size where yt-dlp has one, and no guess where
+    # it has an estimate -- that estimate travels only under its own name.
     assert progress[:2] == [
         {"event": "progress", "component": 0, "downloaded": 0, "total": 3000, "units": None, "unit_total": None,
-         "finished": False},
+         "finished": False, "estimated_total": None},
         {"event": "progress", "component": 1, "downloaded": 0, "total": None, "units": None, "unit_total": None,
-         "finished": False}]
+         "finished": False, "estimated_total": 1000}]
     assert events.index(progress[1]) < events.index(progress[2])
     assert events[-1] == {"event": "completed", "bytes": len(b"muxed")}
 
@@ -1565,3 +1568,247 @@ def test_fragment_threads_report_progress_in_order(monkeypatch):
     assert emitted == [(5, 100), (6, 200)]
     run_units = [units for units, _bytes in emitted]
     assert run_units == sorted(run_units)
+
+
+# -- one primary best-effort estimate across every planned component --------------------
+# The observed shape (transfers 603-606): a segmented 616 HLS video whose
+# fragment count is known only once it downloads, a direct 251 audio offered
+# without an exact size, and a planned subtitle. No exact whole-plan scope
+# exists, so the bar must carry an explicitly ESTIMATED whole-plan figure.
+
+class _EstimatedYoutubeDL(_PlannedYoutubeDL):
+    """616-like HLS video with no exact size but a bitrate, 251-like audio
+    with only yt-dlp's ``filesize_approx`` estimate."""
+
+    info = {"extractor_key": "Youtube", "id": "abc", "title": "Clip", "duration": 100, "requested_formats": [
+        {"format_id": "616", "ext": "mp4", "protocol": "m3u8_native", "url": "https://v.example/616", "tbr": 5000},
+        {"format_id": "251", "ext": "webm", "protocol": "https", "url": "https://v.example/251",
+         "filesize_approx": 1_600_000}]}
+
+    def dl(self, path, item):
+        with open(path, "wb") as handle:
+            handle.write(b"x")
+
+
+def test_the_worker_announces_each_components_estimated_size_never_as_its_total(tmp_path, monkeypatch):
+    import yt_dlp
+    events = []
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", _EstimatedYoutubeDL)
+    monkeypatch.setattr(worker, "_emit", events.append)
+    monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
+    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
+            "target": str(tmp_path / "Clip.mp4"), "tools": {"ffmpeg": "/bin/true"},
+            "plan": {"container": "mp4", "formats": ["616", "251"], "extractor": "Youtube", "id": "abc",
+                     "subtitle": None}}
+    assert worker.acquire(spec, worker._Phase()) == 0
+    announced = [event for event in events if event.get("event") == "progress"][:2]
+    assert [(event["total"], event.get("estimated_total")) for event in announced] == [
+        (None, 5000 * 125 * 100),       # bitrate x duration: an estimate, never the total
+        (None, 1_600_000)]              # yt-dlp's own estimate, never the total
+
+
+def _announce(component, estimated=None, total=None, units=None, unit_total=None):
+    return {"event": "progress", "component": component, "downloaded": 0, "total": total, "units": units,
+            "unit_total": unit_total, "finished": False, "estimated_total": estimated}
+
+
+VIDEO_EST, AUDIO_EST = 9_000_000, 1_000_000
+
+
+@pytest.mark.asyncio
+async def test_a_mixed_unknown_size_plan_has_one_estimated_whole_plan_percentage():
+    """P1: video fragments arriving, audio not started and without an exact
+    size: no exact scope (none is forged), but one estimated aggregate."""
+    run, reader = _media_run(3)                                        # video, audio, subtitle
+    seen = await _observed(run, reader, {**_parts(2, 50, 50, 1, 1), "finished": True},
+                           _announce(0, VIDEO_EST), _announce(1, AUDIO_EST),
+                           _parts(0, 2_700_000, None, 3, 10))
+    assert seen.progress.total_bytes == 0 and seen.progress.total_units is None   # nothing exact is invented
+    estimated = getattr(seen.progress, "estimated_percentage", None)
+    assert estimated is not None, "no whole-plan figure: the bar can only be indeterminate"
+    whole = (VIDEO_EST * 0.3 + 50) / (VIDEO_EST + AUDIO_EST + 50)
+    assert estimated == pytest.approx(95 * whole, abs=0.05)           # all three components, 5% held back
+
+
+@pytest.mark.asyncio
+async def test_the_estimate_advances_through_every_component_without_going_back_then_processing():
+    """P2: subtitle -> video -> audio -> finalization in one attempt."""
+    run, reader = _media_run(3)
+    values = []
+    for events in ([{**_parts(2, 50, 50, 1, 1), "finished": True}, _announce(0, VIDEO_EST), _announce(1, AUDIO_EST)],
+                   [_parts(0, 900_000, None, 1, 10)], [_parts(0, 4_500_000, None, 5, 10)],
+                   [{**_parts(0, 9_400_000, 9_400_000, 10, 10), "finished": True}],     # video exact at its end
+                   [_parts(1, 100_000, None)], [_parts(1, 900_000, None)],
+                   [{**_parts(1, 1_100_000, 1_100_000), "finished": True}]):
+        seen = await _observed(run, reader, *events)
+        values.append(getattr(seen.progress, "estimated_percentage", None))
+    assert None not in values[1:] and values[1:] == sorted(values[1:])   # never backwards at the video/audio hand-off
+    assert all(value < 100 for value in values[1:])                     # never completion before DP owns it
+    # Every component reported finished, each with its exact total: the
+    # acquisition is over -- processing, before the finalize phase arrives.
+    assert seen.progress.total_bytes == 9_400_000 + 1_100_000 + 50 and not seen.activity.network_active
+    finalizing = await _observed(run, reader, {"event": "phase", "phase": "finalize"})
+    assert not finalizing.activity.network_active                      # processing: no acquisition, no bandwidth
+    # The fill the acquisition reached is kept for processing, below 100.
+    assert finalizing.progress.estimated_percentage == values[-1] == 99.9
+
+
+@pytest.mark.asyncio
+async def test_the_media_estimate_reaches_the_list_as_an_estimated_basis_never_bytes_or_units(tmp_path, monkeypatch):
+    from test_v113_active_execution_progress_lane import NativeJobExecutor, _core, _listed, _set
+    run, reader = _media_run(3)
+    seen = await _observed(run, reader, {**_parts(2, 50, 50, 1, 1), "finished": True},
+                           _announce(0, VIDEO_EST), _announce(1, AUDIO_EST), _parts(0, 2_700_000, None, 3, 10))
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    await _set(core, seen.progress)
+    listed = await _listed(core)
+    assert listed["active_execution_basis"] == "estimated"
+    assert listed["active_execution_progress"] == pytest.approx(getattr(seen.progress, "estimated_percentage", -1))
+    assert not listed["progress"]                                      # verified material untouched
+
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("events, exact", [
+    # P3: every component exact in bytes, or every one in authoritative units.
+    ([_announce(0, total=3000), _announce(1, total=1000), _parts(0, 1500, 3000)], ("bytes", 4000, 37.5)),
+    ([_announce(0, units=0, unit_total=8), _announce(1, units=0, unit_total=2), _parts(0, 10, None, 4, 8)],
+     ("units", 10, 40.0)),
+])
+async def test_an_exact_whole_plan_scope_is_reported_instead_of_an_estimate(events, exact):
+    run, reader = _media_run(2)
+    seen = await _observed(run, reader, *events)
+    basis, scope, figure = exact
+    assert (seen.progress.total_bytes if basis == "bytes" else seen.progress.total_units) == scope
+    # The attempt's mark is the exact figure itself, rounded down: never ahead
+    # of it, so the projection presents the exact scope.
+    assert seen.progress.estimated_percentage == figure
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("components, streams, events, expected", [
+    # P4: mixed HLS + direct: the video's fragments, weighted by its size,
+    # beside an audio stream that has not started (a lone segmented stream is
+    # an exact units scope instead -- see the exact-scope test).
+    (2, 2, [_announce(0, VIDEO_EST), _announce(1, AUDIO_EST), _parts(0, 100, None, 2, 8)],
+     95 * VIDEO_EST * 0.25 / (VIDEO_EST + AUDIO_EST)),
+    # P4: direct only, measured against its approximate size alone.
+    (1, 1, [_announce(0, AUDIO_EST), _parts(0, 250_000, None)], 95 * 0.25),
+    # P4: no size facts at all -- the streams weigh equally, a subtitle nothing.
+    (3, 2, [{**_parts(2, 50, 50, 1, 1), "finished": True}, _announce(0), _announce(1),
+            {**_parts(0, 777, None), "finished": True}], 95 * 0.5),
+    # P4: one stream unsized -- it weighs the mean of the sized streams.
+    (2, 2, [_announce(0, VIDEO_EST), _announce(1), _parts(0, 4_500_000, None)], 95 * 0.25),
+    # P4: an approximate size overrun is never completion of the component.
+    (1, 1, [_announce(0, AUDIO_EST), _parts(0, 5_000_000, None)], 95 * 0.99),
+])
+async def test_a_measurable_plan_has_a_bounded_estimate(components, streams, events, expected):
+    run, reader = _media_run(components)
+    run.streams = streams
+    seen = await _observed(run, reader, *events)
+    assert seen.progress.estimated_percentage == pytest.approx(expected, abs=0.1)   # one decimal place
+    assert seen.progress.total_bytes == 0 and seen.progress.total_units is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("events", [
+    [],                                                                # nothing announced yet
+    [_announce(0, VIDEO_EST)],                                         # one of two components unknown
+    [_announce(0, VIDEO_EST), _announce(1, AUDIO_EST)],                # announced, nothing measured
+    [_announce(0, -5), _announce(1, True), _parts(0, 0, None)],        # unusable estimates, nothing measured
+    [_announce(0, 2 ** 60), _announce(1), _parts(0, 0, None, 0, 0)],   # immense estimate, zero-length fragments
+])
+async def test_nothing_measurable_stays_indeterminate_never_a_bogus_figure(events):
+    run, reader = _media_run(2)
+    seen = await _observed(run, reader, *events)
+    assert seen.progress.estimated_percentage is None
+    assert seen.progress.total_bytes == 0 and seen.progress.total_units is None
+
+
+@pytest.mark.asyncio
+async def test_new_size_evidence_and_overrunning_fragments_never_move_the_estimate_back():
+    """P5: the video's approximate size doubles mid-attempt, then its fragment
+    counter overruns its count: the figure holds and only rises."""
+    run, reader = _media_run(2)
+    first = await _observed(run, reader, _announce(0, VIDEO_EST), _announce(1, AUDIO_EST),
+                            _parts(0, 4_500_000, None))
+    larger = await _observed(run, reader, {**_parts(0, 4_600_000, None), "estimated_total": 2 * VIDEO_EST})
+    overrun = await _observed(run, reader, _parts(0, 4_700_000, None, 9, 8))
+    figures = [first.progress.estimated_percentage, larger.progress.estimated_percentage,
+               overrun.progress.estimated_percentage]
+    assert figures == sorted(figures) and figures[1] == figures[0]   # held, not dropped by the new denominator
+    assert all(math.isfinite(value) and 0 < value < 95 for value in figures)
+
+
+@pytest.mark.asyncio
+async def test_a_new_attempt_starts_from_its_own_evidence():
+    """P6: the high-water mark is the attempt's own: a restart (a new
+    ``_Run``) reads lower without carrying the old figure."""
+    old, old_reader = _media_run(2)
+    before = await _observed(old, old_reader, _announce(0, VIDEO_EST), _announce(1, AUDIO_EST),
+                             _parts(0, 8_000_000, None))
+    fresh, fresh_reader = _media_run(2)
+    after = await _observed(fresh, fresh_reader, _announce(0, VIDEO_EST), _announce(1, AUDIO_EST),
+                            _parts(0, 900_000, None))
+    assert after.progress.estimated_percentage < before.progress.estimated_percentage
+    assert old.estimate == before.progress.estimated_percentage and fresh.estimate == after.progress.estimated_percentage
+
+
+
+async def _visible(core, seen):
+    """What the operator sees for one executor observation: the real SQL
+    projection of the persisted progress, rendered by the real ``progress()``."""
+    from test_v113_active_execution_progress_lane import _listed, _render, _set
+    await _set(core, seen.progress, network_active=seen.activity.network_active)
+    listed = await _listed(core)
+    [shown] = _render([[listed["progress"], "downloading", listed["active_execution_progress"],
+                        listed["active_execution_basis"]]])
+    width = float(re.search(r"width:([0-9.]+)%", shown["bar"]).group(1))
+    label = re.search(r'class="prog-pct">([^<]*)<', shown["bar"]).group(1)
+    return width, label, listed["active_execution_basis"], shown["bar"]
+
+
+@pytest.mark.asyncio
+async def test_a_lower_late_exact_figure_never_moves_the_visible_bar_back(tmp_path, monkeypatch):
+    """The estimate (an underestimated video size) reads 63.3%; the video's
+    exact size then arrives and the exact figure is only 37.3%. The labelled
+    estimate holds until the exact figure passes it, then exact takes over."""
+    from test_v113_active_execution_progress_lane import NativeJobExecutor, _core
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    run, reader = _media_run(2)                                          # video, audio
+    shown = []
+    for events in ([_announce(0, 5_000_000), _announce(1, total=1_000_000), _parts(0, 4_000_000, None)],
+                   [_parts(0, 4_100_000, 10_000_000)],                    # exact now: 37.3%
+                   [_parts(0, 7_000_000, 10_000_000)],                    # exact 63.6%: it has caught up
+                   [_parts(0, 8_000_000, 10_000_000)]):
+        shown.append(await _visible(core, await _observed(run, reader, *events)))
+    widths = [width for width, _label, _basis, _bar in shown]
+    assert widths == sorted(widths)                                      # the primary bar never moves back
+    assert [(label, basis) for _width, label, basis, _bar in shown] == [
+        ("~63.3% estimated", "estimated"), ("~63.3% estimated", "estimated"),   # truthful: still the estimate
+        ("63.6% in progress", "bytes"), ("72.7% in progress", "bytes")]         # then the exact acquisition
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("parts, last, label", [
+    # Exact bytes: the last bytes are in before the components report finished.
+    ([_announce(0, total=3000), _announce(1, total=1000)], [_parts(0, 2999, 3000), _parts(1, 1000, 1000)],
+     "99.9% in progress"),
+    # Exact units: every fragment completed before the component reports finished.
+    ([_announce(0, units=0, unit_total=8)], [_parts(0, 800, None, 8, 8)], "99.9% of parts"),
+])
+async def test_a_finished_acquisition_is_never_100_until_the_artifact_is_complete(tmp_path, monkeypatch,
+                                                                                 parts, last, label):
+    from test_v113_active_execution_progress_lane import NativeJobExecutor, _core, _render
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    run, reader = _media_run(len(parts))
+    await _observed(run, reader, *parts)
+    width, shown_label, _basis, bar = await _visible(core, await _observed(run, reader, *last))
+    assert shown_label == label and width < 100 and "done" not in bar
+    finished = [{**event, "finished": True} for event in last]
+    width, shown_label, basis, bar = await _visible(core, await _observed(run, reader, *finished))
+    assert (shown_label, basis) == ("processing", "processing")          # acquisition over: processing
+    assert width < 100 and "100" not in bar and "done" not in bar
+    [completed] = _render([[100, "completed", None, None]])               # only DP's committed artifact
+    assert ">100%<" in completed["bar"] and "prog-fill done" in completed["bar"]

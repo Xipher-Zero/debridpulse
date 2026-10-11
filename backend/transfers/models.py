@@ -503,6 +503,12 @@ class TransferProgress:
     # finalization has no acquisition percentage. ``None`` = recorded before
     # this fact existed.
     acquiring: bool | None = None
+    # An executor's BEST-EFFORT percentage (0-100) of its whole execution,
+    # where neither exact bytes nor authoritative units cover all of it --
+    # e.g. a media plan whose later stream has only an approximate size.
+    # Presentation only: never bytes, never units, never DP material, never
+    # read by recovery, stall detection or checkpointing. ``None`` = none.
+    estimated_percentage: float | None = None
 
     @property
     def percentage(self) -> float:

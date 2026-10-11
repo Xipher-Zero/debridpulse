@@ -395,3 +395,43 @@ test('reduced motion keeps the indeterminate state but stops its movement', asyn
   await expect(primary(cell(page, 9747))).toHaveClass(/is-indeterminate/);
   await expect(primary(cell(page, 9747))).toHaveCSS('animation-name', 'none');
 });
+
+// A Media Downloads plan with no exact whole-plan scope (a segmented video, an
+// audio stream offered without an exact size): its one estimate is the ONE
+// primary bar -- worded as estimated, never a lane, the same in Details and
+// live -- then processing with the fill it reached, then completion.
+test('a best-effort estimate is the one labelled primary bar, then processing, then 100%', async ({ page }) => {
+  await isolateExternalFonts(page);
+  const errors = observeRuntime(page);
+  const media = at(9790, 0, 25.7, 'estimated');
+  await page.route(url => url.pathname === '/api/torrents/9790', route => route.fulfill({
+    status: 200, contentType: 'application/json', body: JSON.stringify(served.find(entry => entry.id === 9790))}));
+  await downloads(page, [media]);
+  const row = cell(page, 9790);
+  await expect(row.locator('.prog')).toHaveCount(1);
+  await expect(row.locator('[data-role="execution-progress-lane"]')).toHaveCount(0);
+  await expect(primary(row)).not.toHaveClass(/is-indeterminate/);
+  await expect(primary(row)).toHaveAttribute('style', /width:25.7%/);
+  await expect(row.locator('.prog-pct')).toHaveText('~25.7% estimated');
+  await expect(row.locator('[data-role="execution-unverified"]')).toHaveText('not yet verified');
+  await event(page, [{id: 9790, progress: 0, active_execution_progress: 61.4, active_execution_basis: 'estimated'}]);
+  await expect(row.locator('.prog-pct')).toHaveText('~61.4% estimated');
+  await expect(primary(row)).toHaveAttribute('style', /width:61.4%/);
+  await page.evaluate(() => showDetail(9790));
+  const detail = page.locator('#modal-body .dk', {hasText: /^Progress$/}).locator('..').locator('.dv');
+  await expect(detail).toHaveText('~61.4% estimated (not yet verified)');
+  await page.evaluate(() => closeModal());
+  // Remux / finalization: the fill it reached stays, worded as processing.
+  await event(page, [{id: 9790, progress: 0, active_execution_progress: 95, active_execution_basis: 'processing'}]);
+  await expect(row.locator('.prog-pct')).toHaveText('processing');
+  await expect(primary(row)).toHaveAttribute('style', /width:95%/);
+  await expect(primary(row)).not.toHaveClass(/is-indeterminate/);
+  await expect(row).not.toContainText(/95|100%/);
+  // Only DP's completed artifact is 100%.
+  Object.assign(served.find(entry => entry.id === 9790), {status: 'completed', presentation_status: 'completed',
+    presentation_badge_status: 'completed', progress: 100, active_execution_progress: null, active_execution_basis: null});
+  await page.evaluate(async () => { await loadTorrents(); });
+  await expect(row.locator('.prog-pct')).toHaveText('100%');
+  await expect(row.locator('[data-role="execution-progress-lane"]')).toHaveCount(0);
+  expect(errors).toEqual([]);
+});

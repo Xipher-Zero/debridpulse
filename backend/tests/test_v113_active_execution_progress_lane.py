@@ -313,3 +313,126 @@ async def test_a_mix_of_byte_and_unit_writers_is_no_scope():
     assert _repository_base.active_execution_projection({**row, "execution_units_known": 2}) == (50.0, "units")
     assert _repository_base.active_execution_projection({**row, "execution_acquiring": 0}) == (None, "processing")
     assert _repository_base.active_execution_projection({}) == (None, None)
+
+
+
+# -- the one primary bar: verified, exact in-flight, estimated, or processing -----------
+
+def _render(cases):
+    """The real ``progress()`` / ``dpDetailProgress()`` of app.js, run under node."""
+    import shutil
+    import subprocess
+    from pathlib import Path
+    node = shutil.which("node")
+    if node is None:
+        pytest.fail("node is required to run the shared progress renderer")
+    app = (Path(__file__).resolve().parents[2] / "frontend" / "static" / "app.js").read_text()
+    names = ("progress(pct, status, activePct, basis)", "dpDetailProgress(t)", "executionProgressWords(value, basis)",
+             "executionProcessing(status, basis)", "transferDisplayStatus(t)",
+             "inFlightExecutionPercent(status, activePct)")
+    functions = []
+    for name in names:
+        body = app[app.index("function " + name):]
+        functions.append(body[:body.index("\n}\n") + 3])
+    script = ("const fmtSize = value => value + ' B';\n" + "\n".join(functions)
+              + f"\nconst cases = {json.dumps(cases)};\n"
+              + "console.log(JSON.stringify(cases.map(([pct, status, active, basis]) => ({"
+              + "bar: progress(pct, status, active, basis), "
+              + "details: dpDetailProgress({progress: pct, presentation_status: status, "
+              + "active_execution_progress: active, active_execution_basis: basis})}))));")
+    completed = subprocess.run([node, "-e", script], capture_output=True, text=True, timeout=30, check=True)
+    return json.loads(completed.stdout)
+
+
+def test_an_estimated_whole_plan_figure_is_the_one_labelled_primary_bar():
+    """P8: the estimate fills the primary bar, says ``estimated`` in visible
+    text, has no secondary lane beside verified material, and agrees with
+    Details; an unknown native scope stays the indeterminate stripe."""
+    nothing, zero, nonzero, unknown, done = _render([
+        [None, "downloading", 25.7, "estimated"], [0, "downloading", 25.7, "estimated"],
+        [40, "downloading", 25.7, "estimated"], [None, "downloading", None, None], [100, "completed", None, None]])
+    for shown in (nothing, zero):
+        assert "is-indeterminate" not in shown["bar"] and "width:25.7%" in shown["bar"]
+        assert "~25.7% estimated" in shown["bar"] and "prog-lane" not in shown["bar"]
+        assert shown["details"] == "~25.7% estimated (not yet verified)"
+    # Verified material keeps the bar; the estimate is not a second figure beside it.
+    assert "width:40%" in nonzero["bar"] and "prog-lane" not in nonzero["bar"] and "estimated" not in nonzero["bar"]
+    assert nonzero["details"] == "40.0%"
+    assert "is-indeterminate" in unknown["bar"]
+    assert ">100%<" in done["bar"] and "estimated" not in done["bar"]
+
+
+def test_processing_keeps_the_estimated_fill_and_says_processing_never_a_percentage():
+    [processing, retired] = _render([[0, "downloading", 82.1, "processing"], [0, "downloading", None, "processing"]])
+    assert "width:82.1%" in processing["bar"] and "is-indeterminate" not in processing["bar"]
+    assert ">processing<" in processing["bar"] and "82.1%<" not in processing["bar"]
+    assert processing["details"] == "processing (not yet verified)"
+    assert "is-indeterminate" in retired["bar"] and ">processing<" in retired["bar"]   # no fill known: unchanged
+
+
+
+def test_an_estimate_is_one_writers_own_never_combined_and_never_behind_or_beyond_its_exact_scope():
+    """P3/P7 on the neutral projection: one writer's estimate mark is shown,
+    labelled, while it is ahead of that writer's exact figure, and the exact
+    figure once it catches up -- below 100% for such a writer; two writers'
+    estimates have no common denominator, an estimate past acquisition is only
+    a processing fill, and an older row (or any writer without an estimate)
+    is unchanged."""
+    one = {"execution_writers": 1, "execution_acquiring": 1, "execution_estimates_known": 1,
+           "execution_estimated": 42.5}
+    exact_bytes = {"execution_bytes_known": 1, "execution_total": 100}
+    exact_units = {"execution_units_known": 1, "execution_units_total": 8}
+    assert _repository_base.active_execution_projection(one) == (42.5, "estimated")
+    assert _repository_base.active_execution_projection(
+        {**one, **exact_bytes, "execution_completed": 30}) == (42.5, "estimated")      # the mark is ahead
+    assert _repository_base.active_execution_projection(
+        {**one, **exact_bytes, "execution_completed": 60}) == (60.0, "bytes")          # exact caught up
+    assert _repository_base.active_execution_projection(
+        {**one, **exact_units, "execution_units_completed": 2}) == (42.5, "estimated")
+    assert _repository_base.active_execution_projection(
+        {**one, **exact_units, "execution_units_completed": 6}) == (75.0, "units")
+    assert _repository_base.active_execution_projection(
+        {**one, **exact_bytes, "execution_completed": 100}) == (99.9, "bytes")         # never 100% while running
+    without = {"execution_writers": 1, "execution_acquiring": 1, **exact_bytes, "execution_completed": 100}
+    assert _repository_base.active_execution_projection(without) == (100.0, "bytes")   # other executors unchanged
+    assert _repository_base.active_execution_projection(
+        {**one, "execution_writers": 2, "execution_acquiring": 2, "execution_estimates_known": 2}) == (None, None)
+    assert _repository_base.active_execution_projection({**one, "execution_acquiring": 0}) == (42.5, "processing")
+    for unusable in (None, "nan", float("inf"), "x"):
+        assert _repository_base.active_execution_projection({**one, "execution_estimated": unusable}) == (None, None)
+    assert _repository_base.active_execution_projection({**one, "execution_estimated": 250})[0] == 99.9
+    older = {key: value for key, value in one.items() if "estimate" not in key}
+    assert _repository_base.active_execution_projection(older) == (None, None)
+
+
+async def test_an_estimate_on_a_stopped_or_unauthorized_writer_contributes_nothing(tmp_path, monkeypatch):
+    """P6/P7 through the real SQL: the estimate rides the writer's own row, so
+    it is retired exactly with that writer."""
+    core = await _core(tmp_path, monkeypatch, NativeJobExecutor)
+    await _set(core, TransferProgress(0, 700, 7, estimated_percentage=61.2))
+    assert ((await _listed(core))["active_execution_progress"], (await _listed(core))["active_execution_basis"]) \
+        == (pytest.approx(61.2), "estimated")
+    details = await core.repository.presentation(core.transfer.id, details=True)
+    assert (details["active_execution_progress"], details["active_execution_basis"]) == (pytest.approx(61.2),
+                                                                                         "estimated")
+    assert ApplicationService._active_overlay_item(await _active(core))["active_execution_basis"] == "estimated"
+    assert not (await _active(core)).progress                          # verified material untouched
+    [attempt] = core.executor.jobs
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT progress FROM execution_attempts WHERE id=?", (attempt,))
+        assert json.loads(row["progress"])["estimated_percentage"] == 61.2   # the writer's own row, no new table
+        await db.execute("UPDATE execution_attempts SET authorized=0 WHERE id=?", (attempt,))
+        await db.commit()
+    assert (await _active(core)).active_execution_progress is None
+    async with database.get_db() as db:
+        await db.execute("UPDATE execution_attempts SET authorized=1,state=? WHERE id=?",
+                         (ExecutionState.PAUSED.value, attempt))
+        await db.commit()
+    assert (await _active(core)).active_execution_basis is None
+
+
+def test_a_progress_row_written_before_estimates_loads_unchanged():
+    from transfers import codec
+    older = TransferProgress(**codec.load('{"total_bytes":0,"completed_bytes":5,"bytes_per_second":1,'
+                                          '"completed_units":null,"total_units":null,"acquiring":true}', {}))
+    assert older.estimated_percentage is None and older.completed_bytes == 5
