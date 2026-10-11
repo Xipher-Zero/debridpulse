@@ -13,7 +13,7 @@ import logging
 import os
 import time
 from pathlib import Path
-from typing import AsyncGenerator, Literal
+from typing import Annotated, AsyncGenerator, Literal
 from urllib.parse import urlparse, urlsplit
 
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
@@ -2352,6 +2352,29 @@ async def set_torrent_priority(torrent_id: int, body: dict, application: Applica
         raise _queue_move_error(exc) from None
     return {"ok": True, "torrent_id": torrent_id, "priority": moved.priority, "moved": moved.moved,
             "outcome": moved.outcome, "preempting": list(moved.preempting)}
+
+
+class QueueTop(BaseModel):
+    """Move to Top: the unfinished transfers among ``ids`` -- one, or the
+    operator's selection on one page -- become the front of the queue, in
+    their current queue order; any other is left as it is. Carries the
+    attempts whose restart the operator confirmed."""
+    ids: list[Annotated[int, Field(ge=1)]] = Field(min_length=1, max_length=100)
+    confirm_restart: list[str] = Field(default_factory=list, max_length=64)
+
+
+@router.post("/torrents/move-to-top")
+async def move_to_top(body: QueueTop, application: ApplicationService = Depends(get_application)):
+    """One queue move for every transfer named (``QueueTop``): ``moved``
+    queue members, ``ignored`` transfers that are no queue member."""
+    requested = frozenset(body.ids)
+    try:
+        moved = await application.move_in_queue(top=requested, confirm_restart=body.confirm_restart)
+    except (QueueMoveRefused, RestartConfirmationRequired) as exc:
+        raise _queue_move_error(exc) from None
+    return {"ok": True, "moved": len(moved.members) if moved.moved else 0,
+            "ignored": len(requested) - len(moved.members), "outcome": moved.outcome,
+            "preempting": list(moved.preempting)}
 
 
 # ── Recovery ──────────────────────────────────────────────────────────────────

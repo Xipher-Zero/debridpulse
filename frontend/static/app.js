@@ -248,6 +248,31 @@ function dpIsInteractiveRowTarget(target) {
 }
 window.dpIsInteractiveRowTarget = dpIsInteractiveRowTarget;
 
+// The one application context-menu policy (a trial, deliberately small): the
+// browser keeps its own menu wherever it does real work -- an editable text
+// field (Cut, Copy, Paste, spelling), a hyperlink (Open, Copy Link) or text the
+// operator selected where they right-clicked (Copy) -- and is otherwise
+// suppressed on DebridPulse's own surfaces, where the owner of a surface may
+// offer its own: Downloads' unfinished rows (DPDownloads.contextMenu), their
+// selection checkboxes included. No other module listens for contextmenu.
+const DP_EDITABLE_FIELD = 'textarea,input:not([type="checkbox"],[type="radio"],[type="button"],[type="submit"],'
+  + '[type="reset"],[type="range"],[type="color"],[type="file"],[type="image"],[type="hidden"])';
+function dpKeepsNativeContextMenu(target) {
+  if (!(target instanceof Element)) return true;
+  if (target.closest(`${DP_EDITABLE_FIELD},a[href]`) || target.isContentEditable) return true;
+  const selection = window.getSelection?.();
+  if (!selection || selection.isCollapsed || !selection.toString().trim()) return false;
+  for (let index = 0; index < selection.rangeCount; index++) {
+    if (selection.getRangeAt(index).intersectsNode(target)) return true;
+  }
+  return false;
+}
+document.addEventListener('contextmenu', event => {
+  if (dpKeepsNativeContextMenu(event.target)) return;
+  event.preventDefault();
+  window.DPDownloads?.contextMenu?.(event);
+});
+
 // ── Toast ──────────────────────────────────────────────────────────────────
 function esc(s) {
   // Escape HTML special chars to prevent XSS when inserting user-controlled

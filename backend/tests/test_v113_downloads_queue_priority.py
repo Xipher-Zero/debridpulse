@@ -688,6 +688,184 @@ async def test_a_slot_freed_mid_pass_goes_to_the_higher_waiting_transfer(tmp_pat
     assert await writer(core, waiting) is not None and await writer(core, tail) is None
 
 
+# -- Move to Top: one command for one transfer or a selection, one atomic commit ----------------------
+
+async def top(core, *ids, confirm_restart=None):
+    """``POST /torrents/move-to-top`` through the real route, its validation
+    and the application's operator-control boundary: ``(status, body)``."""
+    import httpx
+    from fastapi import FastAPI
+
+    app = FastAPI()
+    app.state.application = core.application
+    app.include_router(routes.router, prefix="/api")
+    body = {"ids": list(ids)}
+    if confirm_restart is not None:
+        body["confirm_restart"] = list(confirm_restart)
+    async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://t") as client:
+        response = await client.post("/api/torrents/move-to-top", json=body)
+    return response.status_code, response.json()
+
+
+async def priorities(core, ids):
+    return [(await core.repository.get(tid)).priority for tid in ids]
+
+
+async def stored_status(transfer_id):
+    async with database.get_db() as db:
+        return (await db.fetchone("SELECT status FROM torrents WHERE id=?", (transfer_id,)))["status"]
+
+
+async def journaled_moves():
+    async with database.get_db() as db:
+        row = await db.fetchone("SELECT COUNT(*) AS n FROM event_journal WHERE event_type='transfer.queue_moved'")
+    return int(row["n"])
+
+
+def committed(core):
+    """Every queue commit the repository makes, by the transfers it renumbers to."""
+    commits, commit = [], core.repository.commit_queue_move
+
+    async def recording(*args, **kwargs):
+        commits.append(tuple(kwargs["proposed"]))
+        return await commit(*args, **kwargs)
+    core.repository.commit_queue_move = recording
+    return commits
+
+
+async def test_move_to_top_puts_the_selection_first_in_its_queue_order_in_one_commit(tmp_path, monkeypatch):
+    """Q = [A, B, C, D, E, F], selection {F, B, D, X} with X settled: one
+    commit of [B, D, F, A, C, E]; X is ignored and never resurrected."""
+    core = await queue_lab(tmp_path, monkeypatch)
+    a, b, c, d, e, f, x = [await submit(core, name) for name in ("one", "two", "three", "four", "first", "second",
+                                                                  "third")]
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (x,))
+        await db.commit()
+    assert await order(core.repository) == [a, b, c, d, e, f]
+    settled = (await priorities(core, [x]), await stored_status(x))
+    commits = committed(core)
+
+    status, result = await top(core, f, b, d, x)
+    assert status == 200, result
+    assert await order(core.repository) == [b, d, f, a, c, e]
+    assert commits == [(b, d, f, a, c, e)]
+    assert (result["moved"], result["ignored"]) == (3, 1)
+    # Each selected transfer that overtook work holds the operator promotion;
+    # the settled one is untouched.
+    assert await promoted() == sorted([b, d, f])
+    assert (await priorities(core, [x]), await stored_status(x)) == settled
+    assert await journaled_moves() == 3
+    # A submission afterwards joins the tail and preempts nothing.
+    g = (await core.engine.submit((TransferRequest("spool", "first", name="late"),))).id
+    assert (await order(core.repository))[-1] == g and await promoted() == sorted([b, d, f])
+
+
+async def test_move_to_top_of_the_top_block_is_a_true_no_op_and_promotes_only_real_overtakes(tmp_path, monkeypatch):
+    core = await queue_lab(tmp_path, monkeypatch)
+    a, b, c = [await submit(core, name) for name in ("one", "two", "three")]
+    before = await priorities(core, [a, b, c])
+    commits = committed(core)
+    status, result = await top(core, b, a)
+    assert status == 200 and result["moved"] == 0 and result["outcome"] == "unchanged"
+    assert commits == [] and await priorities(core, [a, b, c]) == before
+    assert await promoted() == [] and await journaled_moves() == 0
+    # A is already ahead of every unselected member: only C overtakes.
+    status, result = await top(core, c, a)
+    assert status == 200 and await order(core.repository) == [a, c, b]
+    assert await promoted() == [c]
+
+
+async def test_a_selection_larger_than_capacity_displaces_only_what_the_slots_need(tmp_path, monkeypatch):
+    """One slot held by resumable A; B and C promoted together: A yields once,
+    B takes the slot, C waits in its new place."""
+    core = await queue_lab(tmp_path, monkeypatch)
+    first = await submit(core, "first")
+    a = await running(core, first, completed=2 * MIB + 100)
+    second, third = await submit(core, "second"), await submit(core, "third")
+    status, result = await top(core, third, second)
+    assert status == 200 and result["outcome"] == "preempting"
+    assert [(item["transfer_id"], item["restart"]) for item in result["preempting"]] == [(first, False)]
+    await tick(core, 3)
+    assert await order(core.repository) == [second, third, first]
+    assert calls(core.spool, "cancel") == [a.attempt_id]
+    assert await writer(core, second) is not None and await writer(core, third) is None
+    # The yielded writer kept its material and was never operator-paused.
+    assert (await core.repository.get(first)).paused is False
+    assert (await core.repository.material_state((await core.repository.artifacts(first))[0].id)).valid == (
+        (0, 2 * MIB),)
+
+
+async def test_a_paused_selection_keeps_its_pause_and_evicts_nothing_on_its_own(tmp_path, monkeypatch):
+    core = await queue_lab(tmp_path, monkeypatch)
+    first = await submit(core, "first")
+    a = await running(core, first, completed=10)
+    second = await submit(core, "second")
+    await core.application.pause(second)
+    third = await submit(core, "third")
+    stopped = calls(core.spool, "cancel")
+    status, result = await top(core, second)
+    assert status == 200 and result["outcome"] == "queued"
+    await tick(core, 3)
+    assert calls(core.spool, "cancel") == stopped and core.spool.jobs[a.attempt_id].state == ExecutionState.RUNNING
+    # B already leads; with C the selection evicts A for C alone.
+    status, result = await top(core, second, third)
+    assert status == 200 and await order(core.repository) == [second, third, first]
+    await tick(core, 3)
+    assert calls(core.spool, "cancel") == [*stopped, a.attempt_id]
+    assert (await core.repository.get(second)).paused is True and await writer(core, second) is None
+    assert await writer(core, third) is not None
+
+
+async def test_one_confirmation_covers_every_restart_a_selection_needs_and_cancel_changes_nothing(
+        tmp_path, monkeypatch):
+    """Two slots held by restart-only A and B; C and D promoted together need
+    both: one refusal lists each once; a partial or stale confirmation moves
+    nothing; the confirmation of both commits once and retires exactly those."""
+    core = await queue_lab(tmp_path, monkeypatch, slots=2)
+    first = await submit(core, "first", kind="ledger")
+    a = await running(core, first, completed=2)
+    second = await submit(core, "second", kind="ledger")
+    b = await running(core, second, completed=3)
+    third, fourth = await submit(core, "third", kind="ledger"), await submit(core, "four", kind="ledger")
+    before = await priorities(core, [first, second, third, fourth])
+
+    status, refusal = await top(core, fourth, third)
+    assert status == 409 and refusal["detail"]["confirmation"] == "restart_required"
+    assert refusal["detail"]["changed"] is False
+    assert sorted((item["transfer_id"], tuple(item["attempt_ids"])) for item in refusal["detail"]["transfers"]) == [
+        (first, (a.attempt_id,)), (second, (b.attempt_id,))]
+    for confirmation in ([a.attempt_id], ["not-the-current-attempt", b.attempt_id]):
+        status, stale = await top(core, fourth, third, confirm_restart=confirmation)
+        assert status == 409 and stale["detail"]["changed"] is True
+    assert await priorities(core, [first, second, third, fourth]) == before and await promoted() == []
+    await tick(core)
+    assert calls(core.restart, "cancel") == []
+
+    status, result = await top(core, fourth, third, confirm_restart=[a.attempt_id, b.attempt_id])
+    assert status == 200 and result["outcome"] == "preempting"
+    assert await order(core.repository) == [third, fourth, first, second]
+    await tick(core, 3)
+    assert sorted(calls(core.restart, "cancel")) == sorted([a.attempt_id, b.attempt_id])
+    assert await writer(core, third) is not None and await writer(core, fourth) is not None
+
+
+async def test_move_to_top_refuses_a_selection_with_no_queue_member_and_bounds_its_input(tmp_path, monkeypatch):
+    core = await queue_lab(tmp_path, monkeypatch)
+    first, second = await submit(core, "first"), await submit(core, "second")
+    async with database.get_db() as db:
+        await db.execute("UPDATE torrents SET status='completed' WHERE id=?", (second,))
+        await db.commit()
+    status, refusal = await top(core, second, 9999)
+    assert status == 409 and refusal["detail"]["reason"] == "not_queued"
+    assert await stored_status(second) == "completed" and await promoted() == []
+    assert (await top(core))[0] == 422
+    assert (await top(core, *range(1, 102)))[0] == 422
+    # Duplicates are one selection, never a reason to refuse or repeat.
+    status, result = await top(core, first, first)
+    assert status == 200 and result["outcome"] == "unchanged"
+
+
 # -- maintenance composition ----------------------------------------------------------------------
 
 async def test_a_database_wipe_removes_every_queue_promotion(tmp_path, monkeypatch):

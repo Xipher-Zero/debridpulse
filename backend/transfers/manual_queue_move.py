@@ -1,14 +1,18 @@
-"""The operator queue move: one transfer's place in the durable queue.
+"""The operator queue move: a transfer's place in the durable queue.
 
 The queue is ``torrents.priority`` (``TransferRepository.queue``): resolution
 and execution admission already serve it in that order. A move names the
 transfer's new neighbours (``before_id``/``after_id``) in the complete queue,
 never page positions, and is refused unchanged when those neighbours are no
-longer adjacent there (``queue_changed``).
+longer adjacent there (``queue_changed``). Move to Top (``top``) names a set
+of transfers instead: its queue members become the front of the queue, in
+their current queue order, ahead of every other member (``top_of_queue``) --
+one transfer or a selection alike, planned and committed as one move.
 
-A move is read as the overtakes it makes (``overtakes``): the moved transfer
-when it goes up, or every member it fell below when it goes down -- so
-dragging A below B and dragging B above A mean the same. Each overtaking
+A move is read as the overtakes it makes (``overtakes``): every transfer it
+ranks above one it ranked below before -- the moved transfer when it goes
+up, or every member it fell below when it goes down, so dragging A below B
+and dragging B above A mean the same. Each overtaking
 transfer holds the operator's promotion (``torrents.queue_promotion``),
 committed with the new order: the authority to take an execution slot from
 work ranked below it. Nothing else creates one -- an ordinary submission, an
@@ -72,6 +76,9 @@ class RestartConfirmationRequired(Exception):
 class QueueMove:
     priority: int
     moved: bool
+    # The transfers whose place the move set: the moved one, or Move to
+    # Top's block in its queue order.
+    members: tuple[int, ...]
     # ``unchanged`` | ``queued`` (admitted by ordinary admission whenever it
     # is eligible and a slot is free) | ``preempting`` (lower-ranked writers
     # yield it their slots) | ``waiting`` (it waits for a slot nothing could
@@ -92,6 +99,14 @@ def proposed_queue(queue: tuple[int, ...], transfer_id: int, *, before_id: int |
     index = rest.index(before_id) if before_id is not None else rest.index(after_id) + 1
     rest.insert(index, transfer_id)
     return tuple(rest)
+
+
+def top_of_queue(queue: tuple[int, ...], transfer_ids) -> tuple[int, ...]:
+    """The queue with the members among ``transfer_ids`` first, in their
+    current queue order, and every other member after them in its own."""
+    wanted = frozenset(transfer_ids)
+    return (tuple(member for member in queue if member in wanted)
+            + tuple(member for member in queue if member not in wanted))
 
 
 def interruption(writer: dict, executor) -> str | None:
@@ -132,17 +147,19 @@ def _affected(victims: list[dict]) -> tuple[dict, ...]:
     return tuple(affected)
 
 
-def overtakes(queue: tuple[int, ...], proposed: tuple[int, ...], transfer_id: int) -> frozenset[int]:
+def overtakes(queue: tuple[int, ...], proposed: tuple[int, ...]) -> frozenset[int]:
     """The transfers the move ranks above a transfer they ranked below
-    before: the moved transfer when it passed any member going up, or each
-    member it fell below going down."""
-    old = {member: index for index, member in enumerate(queue)}
+    before: for one moved transfer, itself when it passed any member going
+    up, or each member it fell below going down; for Move to Top, each
+    selected transfer that passed an unselected one -- never one that
+    already led every member it now leads."""
     new = {member: index for index, member in enumerate(proposed)}
-    passed = [member for member in queue if member != transfer_id
-              and (old[member] < old[transfer_id]) != (new[member] < new[transfer_id])]
-    if not passed:
-        return frozenset()
-    return frozenset({transfer_id}) if new[transfer_id] < old[transfer_id] else frozenset(passed)
+    overtaking, lowest_above = set(), -1
+    for member in queue:                                # in the old order
+        if lowest_above > new[member]:
+            overtaking.add(member)
+        lowest_above = max(lowest_above, new[member])
+    return frozenset(overtaking)
 
 
 def displaced(writers, rank: dict[int, int], transfer_id: int, *, wanted: int, free: int, capacity: int,
@@ -203,12 +220,18 @@ async def _preview(engine, overtaking: frozenset[int], rank: dict[int, int]):
     return victims, unmet
 
 
-async def move_in_queue(engine, transfer_id: int, *, before_id: int | None = None, after_id: int | None = None,
-                        reaffirm: bool = False, confirmed: frozenset[str] = frozenset()) -> QueueMove:
+async def move_in_queue(engine, transfer_id: int | None = None, *, before_id: int | None = None,
+                        after_id: int | None = None, top: frozenset[int] = frozenset(), reaffirm: bool = False,
+                        confirmed: frozenset[str] = frozenset()) -> QueueMove:
     """Plan and commit one operator queue move, or change nothing.
 
-    ``reaffirm`` keeps the transfer where it is and renews the promotion it
-    already holds, with the restarts the operator confirmed now. Planned from
+    ``top`` is Move to Top: the queue members among those transfers move to
+    the front together (``top_of_queue``) -- their overtakes, displacement
+    and restart confirmation planned once over the whole proposed queue;
+    transfers that are no queue member are left as they are, and only a
+    selection without one is refused (``not_queued``). ``reaffirm`` keeps
+    the transfer where it is and renews the promotion it already holds, with
+    the restarts the operator confirmed now. Planned from
     durable truth under the execution-admission lock, so no admission or
     pause intent interleaves; committed in one transaction that re-checks the
     queue, re-planned once when that check finds the plan overtaken.
@@ -219,18 +242,27 @@ async def move_in_queue(engine, transfer_id: int, *, before_id: int | None = Non
     async with engine._dispatch_lock:
         for _attempt in range(2):
             queue = await repository.queue()
-            if transfer_id not in queue:
+            if top:
+                members = tuple(member for member in queue if member in top)
+                if not members:
+                    raise QueueMoveRefused("not_queued")
+                transfer_id = members[0]
+                proposed = top_of_queue(queue, members)
+                overtaking = overtakes(queue, proposed)
+            elif transfer_id not in queue:
                 raise QueueMoveRefused("not_queued")
-            if reaffirm:
-                proposed = queue
-                held = await repository.queue_promotion(transfer_id)
-                overtaking = frozenset({transfer_id}) if held is not None else frozenset()
             else:
-                proposed = proposed_queue(queue, transfer_id, before_id=before_id, after_id=after_id)
-                overtaking = overtakes(queue, proposed, transfer_id)
+                members = (transfer_id,)
+                if reaffirm:
+                    proposed = queue
+                    held = await repository.queue_promotion(transfer_id)
+                    overtaking = frozenset({transfer_id}) if held is not None else frozenset()
+                else:
+                    proposed = proposed_queue(queue, transfer_id, before_id=before_id, after_id=after_id)
+                    overtaking = overtakes(queue, proposed)
             if not overtaking and proposed == queue:
                 transfer = await repository.get(transfer_id)
-                return QueueMove(int(transfer.priority or 0), False, "unchanged")
+                return QueueMove(int(transfer.priority or 0), False, members, "unchanged")
             rank = {member: index for index, member in enumerate(proposed)}
             victims, unmet = await _preview(engine, overtaking, rank)
             held = {member: set((await repository.queue_promotion(member) or {}).get("restart") or ())
@@ -243,21 +275,28 @@ async def move_in_queue(engine, transfer_id: int, *, before_id: int | None = Non
             if reaffirm and not restarts:
                 # Nothing to confirm now: the promotion stands as it is.
                 transfer = await repository.get(transfer_id)
-                return QueueMove(int(transfer.priority or 0), False, "preempting" if victims
+                return QueueMove(int(transfer.priority or 0), False, members, "preempting" if victims
                                  else "waiting" if unmet else "queued", tuple(
                     {"transfer_id": victim["transfer_id"], "attempt_id": victim["attempt_id"],
                      "restart": False} for victim in victims))
             promotions = {member: {"restart": sorted(
                 victim["attempt_id"] for victim in restarts if victim["for"] == member)}
                 for member in overtaking}
-            event = (je.queue_reaffirmed(transfer_id, confirmed=len(restarts)) if reaffirm
-                     else je.queue_moved(transfer_id, before_id=before_id, after_id=after_id,
-                                         promoted=bool(overtaking)))
+            if reaffirm:
+                events = (je.queue_reaffirmed(transfer_id, confirmed=len(restarts)),)
+            elif top:
+                # Each transfer whose place the block changed, once.
+                events = tuple(je.queue_moved(member, before_id=None, after_id=None,
+                                              promoted=member in overtaking)
+                               for index, member in enumerate(members) if queue[index] != member)
+            else:
+                events = (je.queue_moved(transfer_id, before_id=before_id, after_id=after_id,
+                                         promoted=bool(overtaking)),)
             priority = await repository.commit_queue_move(
-                transfer_id, expected=queue, proposed=proposed, promotions=promotions, event=event)
+                transfer_id, expected=queue, proposed=proposed, promotions=promotions, events=events)
             if priority is not None:
                 outcome = "preempting" if victims else "waiting" if unmet else "queued"
-                return QueueMove(priority, not reaffirm, outcome, tuple(
+                return QueueMove(priority, not reaffirm, members, outcome, tuple(
                     {"transfer_id": victim["transfer_id"], "attempt_id": victim["attempt_id"],
                      "restart": victim["kind"] == "restart"} for victim in victims))
     raise QueueMoveRefused("queue_changed")

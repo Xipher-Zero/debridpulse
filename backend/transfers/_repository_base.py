@@ -1966,7 +1966,7 @@ class TransferRepository:
         return {int(row["id"]): int(row["torrent_id"]) for row in rows}
 
     async def commit_queue_move(self, transfer_id: int, *, expected: tuple[int, ...], proposed: tuple[int, ...],
-                                promotions: dict[int, dict], event) -> int | None:
+                                promotions: dict[int, dict], events) -> int | None:
         """Commit one operator queue move atomically, or nothing.
 
         ``expected`` is the queue the move was planned against: if it is no
@@ -1975,7 +1975,7 @@ class TransferRepository:
         (``len`` .. 1, only rows whose priority changes are written; settled
         history is never touched), each overtaking transfer holds a promotion
         that gains the restarts confirmed for it (one an earlier move
-        recorded stays), and ``event`` is journaled.
+        recorded stays), and ``events`` are journaled.
         Returns the moved transfer's new priority."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
@@ -1991,7 +1991,8 @@ class TransferRepository:
                 held = codec.load(row["queue_promotion"], None) or {} if row else {}
                 merged = {key: sorted({*(held.get(key) or ()), *promotion[key]}) for key in ("restart",)}
                 await db.execute("UPDATE torrents SET queue_promotion=? WHERE id=?", (codec.dump(merged), member))
-            await journal(db, event)
+            for event in events:
+                await journal(db, event)
             await db.commit()
         return count - proposed.index(transfer_id)
 

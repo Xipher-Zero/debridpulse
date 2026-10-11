@@ -187,8 +187,9 @@ def test_no_test_only_compatibility_globals_survive() -> None:
     # whose only consumer was a browser test is exactly the compatibility
     # residue this pass is supposed to flatten -- each was either removed or
     # (for DPDownloads.scheduleCapacityCheck, which ui-processing
-    # -presentation.js's syncPauseUi() genuinely calls) kept because a real
-    # production consumer exists.
+    # -presentation.js's syncPauseUi() genuinely calls, and
+    # DPDownloads.contextMenu, the row menu app.js's one context-menu policy
+    # offers) kept because a real production consumer exists.
     for path in all_js():
         source = path.read_text(encoding="utf-8")
         assert "DPDashboardTransferPresentation" not in source, path.name
@@ -197,10 +198,11 @@ def test_no_test_only_compatibility_globals_survive() -> None:
     downloads = read("ui-downloads.js")
     assert "DPDownloads.selectedIds" not in downloads
     assert "DPDownloads.pageSize" not in downloads
-    assert "window.DPDownloads = Object.freeze({scheduleCapacityCheck});" in downloads
+    assert "window.DPDownloads = Object.freeze({scheduleCapacityCheck, contextMenu});" in downloads
 
     processing = read("ui-processing-presentation.js")
     assert "window.DPDownloads?.scheduleCapacityCheck?.()" in processing
+    assert "window.DPDownloads?.contextMenu?.(event)" in read("app.js")
 
 
 # ── CSS version-layer flattening ────────────────────────────────────────────

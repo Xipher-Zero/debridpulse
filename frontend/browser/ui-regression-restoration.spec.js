@@ -312,19 +312,48 @@ test('Dashboard Recent Items renders host artwork on cold load without navigatio
  expect(state.delta).toBe(1);
 });
 
-test('Dashboard Recent Activity requests priority ordering and reports a truthful, non-recency subtitle',async({page})=>{
+test('Dashboard Download Activity mirrors the first fitted rows of the Downloads Priority queue, read-only',async({page})=>{
  await page.setViewportSize({width:1440,height:900});
  const capturedUrls=[];
- const items=Array.from({length:3},(_,i)=>({
-  id:i+1,name:`Item ${i+1}`,status:'downloading',progress:10,size_bytes:1024,created_at:'2026-09-08 17:00:00',
+ // The server's queue order: an older queued transfer it ranks first, then a
+ // newer download, then settled history -- never re-sorted in the browser.
+ const items=[3,1,2].map((id,i)=>({
+  id,name:`Item ${id}`,status:i===1?'downloading':i===2?'completed':'queued',progress:i===2?100:10,size_bytes:1024,created_at:`2026-09-0${id}T17:00:00Z`,queue_member:i<2,
   current_source_identity:{kind:'link'},current_provider_id:'alldebrid',active_provider_id:null,active_provider_name:null,active_provider_basis:'ambiguous',provider_provenance_status:'known'
  }));
- await page.route('**/api/torrents*',route=>{capturedUrls.push(route.request().url());return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})});});
+ // List reads wait until the initial placeholder has been read.
+ let release;const released=new Promise(resolve=>{release=resolve;});
+ await page.route('**/api/torrents*',async route=>{capturedUrls.push(route.request().url());await released;return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,total:items.length})});});
  await page.goto('/');
- await expect(page.locator('#dash-activity-count')).toHaveText('3 recent activity items');
- const activityRequest=capturedUrls.find(u=>new URL(u).searchParams.get('order')==='activity');
- expect(activityRequest).toBeTruthy();
- expect(await page.locator('#dash-activity-count').textContent()).not.toContain('most recent');
+ await expect(page.locator('#dash-activity-count')).toHaveText('Loading downloads…');
+ release();
+ await expect(page.locator('#dash-tbody tr[data-torrent-id]')).toHaveCount(3);
+ // The Dashboard's reads: every list read but Downloads' paged ones and the
+ // input-required scan (ui-auth-required.js).
+ const isDashboardRead=u=>u.pathname==='/api/torrents'&&!u.searchParams.has('offset')&&u.searchParams.get('status')!=='input_required';
+ const dashboardReads=capturedUrls.map(u=>new URL(u)).filter(isDashboardRead);
+ expect(dashboardReads.length).toBeGreaterThan(0);
+ for(const url of dashboardReads){
+  expect(url.searchParams.get('order')).toBe('queue');
+  expect(url.searchParams.has('status')||url.searchParams.has('search')).toBe(false);
+ }
+ // The first N of the whole queue, N being the Dashboard's own fitted row count.
+ await expect.poll(async()=>Number(capturedUrls.map(u=>new URL(u)).filter(isDashboardRead).at(-1).searchParams.get('limit'))).toBe(await page.evaluate(()=>_dashboardRecentFitLimit));
+ expect(await page.locator('#dash-tbody tr[data-torrent-id]').evaluateAll(rows=>rows.map(r=>Number(r.dataset.torrentId)))).toEqual([3,1,2]);
+ // Read-only for priority: no grip, no drag cell, no queue menu.
+ await expect(page.locator('#dash-tbody .dp-queue-grip, #dash-tbody [data-queue-drag]')).toHaveCount(0);
+ await page.locator('#dash-tbody tr[data-torrent-id="1"] td').nth(3).click({button:'right'});
+ await expect(page.locator('.dp-row-menu')).toHaveCount(0);
+ // The card heading is Download Activity; its count line says how many rows it shows.
+ await expect(page.locator('#dash-activity-card .card-title .dp-card-heading-copy > span').first()).toHaveText('Download Activity');
+ await expect(page.locator('#dash-activity-count')).toHaveText('3 downloads shown');
+ await page.unroute('**/api/torrents*');
+ for(const [rows,text] of [[items.slice(0,1),'1 download shown'],[[],'No downloads to show']]){
+  await page.route('**/api/torrents*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:rows,total:rows.length})}));
+  await page.evaluate(()=>loadRecent());
+  await expect(page.locator('#dash-activity-count')).toHaveText(text);
+  await page.unroute('**/api/torrents*');
+ }
 });
 
 const DASH_WIDE_WIDTHS=[1440,1600,1920,2200];
@@ -335,7 +364,7 @@ const DASH_WIDE_WIDTHS=[1440,1600,1920,2200];
 // returned release() is called, so the probe measures a DOM no render can replace.
 async function parkDashboardRecent(page){
  let markParked,open;const parked=new Promise(resolve=>{markParked=resolve;}),gate=new Promise(resolve=>{open=resolve;});
- const isRecentRead=url=>url.pathname==='/api/torrents'&&url.searchParams.get('order')==='activity';
+ const isRecentRead=url=>url.pathname==='/api/torrents'&&url.searchParams.get('order')==='queue'&&!url.searchParams.has('offset');
  const hold=async route=>{markParked();await gate;await route.continue().catch(()=>{});};
  await page.route(isRecentRead,hold);
  await page.evaluate(()=>{loadRecent().catch(()=>{});});

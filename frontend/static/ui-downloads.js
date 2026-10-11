@@ -332,6 +332,8 @@ function syncDownloadSelectionUi() {
   }
   const bar = document.getElementById('bulk-bar');
   const count = document.getElementById('bulk-count');
+  const top = bar?.querySelector('.dp-downloads-bulk-action--top');
+  if (top) top.hidden = !selectedQueueMembers().length;
   if (_selectedIds.size > 0) {
     bar?.classList.add('visible');
     if (count) count.textContent = _selectedIds.size + ' Selected';
@@ -357,6 +359,12 @@ function toggleAllCheckboxes(el) {
 function clearSelection() {
   _selectedIds.clear();
   syncDownloadSelectionUi();
+}
+/* The selected transfers this page shows as unfinished queue members: the
+ * ones Move to Top asks to move (the server decides again). */
+function selectedQueueMembers() {
+  return [...document.querySelectorAll('#t-tbody tr[data-torrent-id][data-queue-member="true"]')]
+    .map(rowId).filter(id => id !== null && _selectedIds.has(id));
 }
 
 // ── Row rendering (one pass: presentation status drives badge/progress/
@@ -887,6 +895,112 @@ async function reaffirmQueue(id, button) {
   } finally { setButtonPending(button, false); }
 }
 
+// ── Move to Top ─────────────────────────────────────────────────────────
+// One command behind the row menu and the bulk action: the server moves the
+// unfinished transfers among ``ids`` to the front of the whole queue, in
+// their current queue order, as one move -- whatever page, filter, search or
+// order this view shows. A restart it would cause is confirmed first, once
+// for all of them, through the same confirmation a drag asks for.
+let topPending = false;
+async function moveToTop(ids, {button = null, name = '', focusId = null} = {}) {
+  if (topPending || !ids.length) return;
+  topPending = true;
+  setButtonPending(button, true, 'Moving…');
+  try {
+    let confirmed = null;
+    let result = null;
+    for (;;) {
+      try {
+        result = await api('POST', '/torrents/move-to-top', confirmed ? {ids, confirm_restart: confirmed} : {ids});
+        break;
+      } catch (e) {
+        if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
+          confirmed = await confirmRestart(e.detail.transfers);
+          if (confirmed) continue;
+          announce('Move to Top cancelled. Nothing was moved.');
+          return;
+        }
+        toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
+        return;
+      }
+    }
+    const moved = Number(result?.moved) || 0;
+    const subject = ids.length === 1 ? (name || 'Transfer') : `${moved} transfer${moved === 1 ? '' : 's'}`;
+    const message = result?.outcome === 'unchanged'
+      ? `${ids.length === 1 ? subject : 'The selection'} already leads the queue.`
+      : `${subject} moved to the top of the queue.${result?.outcome === 'preempting' ? ' Lower-ranked work stops to make room.' : ''}`;
+    announce(message);
+    // The unfiltered Priority view shows the new top on its first page; any
+    // other view stays as the operator chose it and says what happened.
+    if (!queueEditable()) toast(message, 'success');
+    if (queueEditable() && torrentPage !== 1) goToTorrentPage(1);
+    else await loadTorrents();
+    if (focusId !== null && (!document.activeElement || document.activeElement === document.body)) {
+      document.querySelector(`#t-tbody tr[data-torrent-id="${focusId}"]`)?.focus();
+    }
+  } finally {
+    topPending = false;
+    setButtonPending(button, false);
+  }
+}
+function moveSelectionToTop(button) {
+  moveToTop(selectedQueueMembers(), {button});
+}
+
+// The row menu: one command, Move to Top, for an unfinished transfer's row,
+// opened by the application's one context-menu policy (app.js) once it has
+// left the browser its own menu wherever that does real work. One menu at a
+// time; Escape, Tab, a pointer outside it, scrolling and navigation close it.
+let rowMenu = null;
+function closeRowMenu(restoreFocus) {
+  if (!rowMenu) return;
+  const {node, id, abort} = rowMenu;
+  rowMenu = null;
+  abort.abort();
+  node.remove();
+  if (restoreFocus) document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`)?.focus();
+}
+function contextMenu(event) {
+  closeRowMenu(false);
+  const row = event.target.closest?.('#t-tbody tr[data-torrent-id]');
+  if (!row || row.dataset.queueMember !== 'true' || reorder) return false;
+  const id = rowId(row);
+  const name = rowName(row);
+  const node = document.createElement('div');
+  node.className = 'dp-row-menu';
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', `${name} actions`);
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.setAttribute('role', 'menuitem');
+  item.textContent = 'Move to Top';
+  node.appendChild(item);
+  document.body.appendChild(node);
+  // At the pointer, or at its row when the keyboard opened it; always inside the viewport.
+  const rect = row.getBoundingClientRect();
+  const atPointer = event.clientX >= rect.left && event.clientX <= rect.right
+    && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  const x = atPointer ? event.clientX : rect.left + 16;
+  const y = atPointer ? event.clientY : rect.bottom;
+  const size = node.getBoundingClientRect();
+  node.style.left = `${Math.max(4, Math.min(x, window.innerWidth - size.width - 4))}px`;
+  node.style.top = `${Math.max(4, Math.min(y, window.innerHeight - size.height - 4))}px`;
+  const abort = new AbortController();
+  const signal = abort.signal;
+  rowMenu = {node, id, abort};
+  item.addEventListener('click', () => { closeRowMenu(true); moveToTop([id], {name, focusId: id}); }, {signal});
+  // Escape, or Tab out of its one item, closes it back to its row.
+  node.addEventListener('keydown', e => {
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeRowMenu(true); }
+  }, {signal});
+  document.addEventListener('pointerdown', e => { if (!node.contains(e.target)) closeRowMenu(false); }, {signal, capture: true});
+  window.addEventListener('scroll', () => closeRowMenu(false), {signal, capture: true});
+  window.addEventListener('resize', () => closeRowMenu(false), {signal});
+  document.addEventListener('debridpulse:navigation', () => closeRowMenu(false), {signal});
+  item.focus({preventScroll: true});
+  return true;
+}
+
 // ── Row/bulk actions ─────────────────────────────────────────────────────
 // A confirmed removal re-renders the list, so the control that started it is gone or replaced. Once the
 // operation settles, focus goes to a deliberate surviving control and never stays on <body>: the retry
@@ -1001,6 +1115,7 @@ window.onTorrentSearchInput = onTorrentSearchInput;
 window.onTorrentOrderChange = onTorrentOrderChange;
 window.onDownloadRowClick = onDownloadRowClick;
 window.reaffirmQueue = reaffirmQueue;
+window.moveSelectionToTop = moveSelectionToTop;
 window.goToTorrentPage = goToTorrentPage;
 window.onPageSizeChange = onPageSizeChange;
 window.toggleAllCheckboxes = toggleAllCheckboxes;
@@ -1012,9 +1127,10 @@ window.deleteT = deleteT;
 window.retryT = retryT;
 // scheduleCapacityCheck is a real production consumer
 // (ui-processing-presentation.js's syncPauseUi() re-measures capacity after
-// the pause shim toggles). No other member is exposed here -- there is no
-// other real runtime consumer of Downloads' internal state.
-window.DPDownloads = Object.freeze({scheduleCapacityCheck});
+// the pause shim toggles); contextMenu is the row menu the application's one
+// context-menu policy (app.js) offers. No other member is exposed here --
+// there is no other real runtime consumer of Downloads' internal state.
+window.DPDownloads = Object.freeze({scheduleCapacityCheck, contextMenu});
 
 if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init, {once: true});
 else init();

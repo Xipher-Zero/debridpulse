@@ -1,6 +1,7 @@
 // Downloads operator queue: Name-cell drag vs Details click, cross-page drag
 // on the bounded table, view gating, the destructive-preemption confirmation,
-// the selection column after Actions, and the quiet unhovered Remove.
+// the selection column after Actions, the quiet unhovered Remove, Move to Top
+// (row menu and bulk action, one request) and the context-menu policy.
 const { test, expect } = require('@playwright/test');
 
 function clone(value) {
@@ -37,9 +38,9 @@ async function isolateExternalFonts(page) {
 
 /* A server-ordered queue: ``items`` is the queue order then history; a move
  * is applied by stable identity against the whole collection. */
-async function installQueue(page, initial, {victims = {}, consent = {}} = {}) {
+async function installQueue(page, initial, {victims = {}, consent = {}, topVictims = []} = {}) {
   let items = clone(initial);
-  const log = {gets: [], moves: [], details: []};
+  const log = {gets: [], moves: [], details: [], tops: []};
   const respond = (route, status, body) => route.fulfill({
     status, contentType: 'application/json', body: JSON.stringify(body),
   });
@@ -95,6 +96,28 @@ async function installQueue(page, initial, {victims = {}, consent = {}} = {}) {
       items = [...queue, ...history];
       return respond(route, 200, {ok: true, torrent_id: id, priority: queue.length - index,
                                   outcome: needed.length ? 'preempting' : 'queued', preempting: []});
+    }
+    if (url.pathname === '/api/torrents/move-to-top' && method === 'POST') {
+      // The server derives the block from its own queue: the requested
+      // members, in their current queue order, ahead of every other member.
+      const body = request.postDataJSON() || {};
+      log.tops.push(body);
+      const wanted = new Set(body.ids || []);
+      const members = items.filter(item => item.queue_member);
+      const block = members.filter(item => wanted.has(item.id));
+      if (!block.length) {
+        return respond(route, 409, {detail: {reason: 'not_queued', message: 'Only unfinished transfers have a place in the queue.'}});
+      }
+      const confirmed = new Set(body.confirm_restart || []);
+      if (topVictims.length && !topVictims.every(victim => victim.attempt_ids.every(attempt => confirmed.has(attempt)))) {
+        return respond(route, 409, {detail: {
+          confirmation: 'restart_required', changed: confirmed.size > 0, transfers: clone(topVictims),
+          message: 'Reordering the queue interrupts transfers that cannot resume.',
+        }});
+      }
+      items = [...block, ...members.filter(item => !wanted.has(item.id)), ...items.filter(item => !item.queue_member)];
+      return respond(route, 200, {ok: true, moved: block.length, ignored: wanted.size - block.length,
+                                  outcome: topVictims.length ? 'preempting' : 'queued', preempting: []});
     }
     if (detail && method === 'GET') {
       const id = Number(detail[1]);
@@ -415,27 +438,274 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
 
   await page.setViewportSize({width: 1500, height: 900});
   const remove = row(page, 1).locator('button', {hasText: 'Remove'});
-  const name = row(page, 1).locator('.t-name');
   const styles = async () => remove.evaluate(n => {
     const s = getComputedStyle(n);
-    return {color: s.color, background: s.backgroundColor, border: s.borderTopColor};
+    return {color: s.color, background: s.backgroundColor, border: s.borderTopColor, width: n.offsetWidth,
+            height: n.offsetHeight, transition: s.transitionProperty};
   });
-  const quiet = await styles();
-  expect(quiet.color).toBe(await name.evaluate(n => getComputedStyle(n).color));
-  const danger = await page.evaluate(() => {
+  const token = name => page.evaluate(variable => {
     const probe = document.createElement('span');
-    probe.style.color = 'var(--dp-state-error)';
+    probe.style.color = `var(${variable})`;
     document.body.appendChild(probe);
     const color = getComputedStyle(probe).color;
     probe.remove();
     return color;
+  }, name);
+  for (const light of [false, true]) {
+    await page.evaluate(on => document.body.classList.toggle('light', on), light);
+    await page.mouse.move(0, 0);
+    await page.evaluate(() => document.activeElement?.blur());
+    const danger = await token('--dp-state-error');
+    // Rest: the softer secondary text; only the colour differs from before.
+    await expect.poll(async () => (await styles()).color).toBe(await token('--dp-text-secondary'));
+    const quiet = await styles();
+    expect(quiet.color).not.toBe(await token('--dp-text-primary'));
+    expect(quiet.color).not.toBe(danger);
+    await remove.hover();
+    // The settled hover state (the shared button material transitions colour).
+    await expect.poll(async () => (await styles()).color).toBe(danger);
+    const hovered = await styles();
+    expect([hovered.width, hovered.height, hovered.transition]).toEqual([quiet.width, quiet.height, quiet.transition]);
+    // Only the row Remove changes: the bulk Delete keeps its red text.
+    const bulk = await page.locator('.dp-downloads-bulk-action--delete').evaluate(n => getComputedStyle(n).color);
+    expect(bulk).toBe(hovered.color);
+    // Keyboard focus is as loud as hover.
+    await page.mouse.move(0, 0);
+    await row(page, 1).locator('button', {hasText: /Pause|Resume/}).first().focus();
+    await page.keyboard.press('Tab');
+    await expect(remove).toBeFocused();
+    await expect.poll(async () => (await styles()).color).toBe(danger);
+  }
+});
+
+/* The browser's own context menu is suppressed only where nothing native is
+ * lost; ``prevented`` reads what reached the window. */
+async function recordContextMenus(page) {
+  await page.evaluate(() => {
+    window.__menus = [];
+    window.addEventListener('contextmenu', event => {
+      window.__menus.push({prevented: event.defaultPrevented, tag: event.target.tagName});
+    });
   });
-  expect(quiet.color).not.toBe(danger);
-  await remove.hover();
-  // The settled hover state (the shared button material transitions colour).
-  await expect.poll(async () => (await styles()).color).toBe(danger);
-  const hovered = await styles();
-  // Only the row Remove changes: the bulk Delete keeps its red text.
-  const bulk = await page.locator('.dp-downloads-bulk-action--delete').evaluate(n => getComputedStyle(n).color);
-  expect(bulk).toBe(hovered.color);
+  return async () => page.evaluate(() => window.__menus.map(entry => entry.prevented));
+}
+const rowMenu = page => page.locator('.dp-row-menu');
+
+test('U7 right-click anywhere on an unfinished row offers Move to Top: one global move, back to the queue top', async ({ page }) => {
+  await page.setViewportSize({width: 1500, height: 640});
+  const items = Array.from({length: 30}, (_, index) => transfer(index + 1));
+  items.push(transfer(31, {status: 'completed', progress: 100, queue_member: false}));
+  const queue = await boot(page, items);
+  const prevented = await recordContextMenus(page);
+  const perPage = (await renderedIds(page)).length;
+  await page.locator('#torrent-page-btns [aria-label="Next page"]').click();
+  await expect.poll(async () => (await renderedIds(page))[0]).toBe(perPage + 1);
+  const target = (await renderedIds(page))[2];
+  await row(page, target).locator('.t-chk').check();
+  const gets = queue.log.gets.length;
+
+  // Outside the Name cell: the Size cell.
+  await row(page, target).locator('td').nth(4).click({button: 'right'});
+  await expect(rowMenu(page)).toHaveCount(1);
+  await expect(rowMenu(page)).toBeVisible();
+  await expect(rowMenu(page)).toHaveAttribute('role', 'menu');
+  const items_ = rowMenu(page).locator('[role="menuitem"]');
+  await expect(items_).toHaveCount(1);
+  await expect(items_).toHaveText('Move to Top');
+  expect(await prevented()).toEqual([true]);
+  // No Details, no checkbox change, no drag.
+  expect(queue.log.details).toEqual([]);
+  await expect(row(page, target).locator('.t-chk')).toBeChecked();
+  await expect(page.locator('#t-tbody .dp-queue-drag-source')).toHaveCount(0);
+  // The menu stays inside the viewport.
+  const menu = await box(rowMenu(page));
+  expect(menu.x + menu.width).toBeLessThanOrEqual(1500);
+  expect(menu.y + menu.height).toBeLessThanOrEqual(640);
+
+  await items_.click();
+  await expect.poll(() => queue.log.tops).toEqual([{ids: [target]}]);
+  await expect(rowMenu(page)).toHaveCount(0);
+  expect(queue.log.moves).toEqual([]);
+  // The unfiltered Priority view returns to its first page, where it now leads.
+  await expect.poll(() => queue.page().offset).toBe('0');
+  await expect.poll(async () => (await renderedIds(page))[0]).toBe(target);
+  expect(queue.log.gets.length).toBeGreaterThan(gets);
+
+  // A settled row has no queue command and no browser menu.
+  await page.locator('#torrent-order').selectOption('newest');
+  await expect.poll(() => queue.page().order).toBeUndefined();
+  await row(page, 31).locator('td').nth(4).click({button: 'right'});
+  await expect(rowMenu(page)).toHaveCount(0);
+  expect((await prevented()).at(-1)).toBe(true);
+  // Plain chrome: suppressed, no DP menu.
+  await page.locator('#view-torrents .dp-downloads-bulk-count, #view-torrents h2, #view-torrents .card').first().click({button: 'right', position: {x: 4, y: 4}});
+  await expect(rowMenu(page)).toHaveCount(0);
+  expect((await prevented()).at(-1)).toBe(true);
+});
+
+test('U8 native menus stay for editing, selected text and links; the row menu is keyboard-operable', async ({ page }) => {
+  const queue = await boot(page, [transfer(1, {status: 'downloading', progress: 40}), transfer(2), transfer(3),
+    transfer(4, {status: 'completed', progress: 100, queue_member: false})]);
+  const prevented = await recordContextMenus(page);
+
+  await page.locator('#torrent-search').click({button: 'right'});
+  await page.evaluate(() => {
+    const host = document.querySelector('#view-torrents .card');
+    host.insertAdjacentHTML('afterbegin', '<div id="probe-edit" contenteditable="true">editable <b id="probe-edit-child">child</b></div><textarea id="probe-text">t</textarea><a id="probe-link" href="https://example.invalid/help"><span id="probe-link-child">link</span></a>');
+  });
+  for (const selector of ['#probe-edit-child', '#probe-text', '#probe-link-child']) {
+    await page.locator(selector).click({button: 'right'});
+  }
+  expect(await prevented()).toEqual([false, false, false, false]);
+  await expect(rowMenu(page)).toHaveCount(0);
+  await page.evaluate(() => document.querySelectorAll('#probe-edit,#probe-text,#probe-link').forEach(n => n.remove()));
+  // The probes resized the card: let the list settle its capacity first.
+  await settled(page, queue);
+
+  // Selected text in the row: the native Copy menu.
+  // Right-click on the selected text itself (the draggable Name cell is not
+  // selectable; the Size cell is).
+  const text = await row(page, 2).locator('td').nth(4).evaluate(node => {
+    const range = document.createRange();
+    range.selectNodeContents(node);
+    getSelection().removeAllRanges();
+    getSelection().addRange(range);
+    const rect = range.getBoundingClientRect();
+    return {x: rect.left + rect.width / 2, y: rect.top + rect.height / 2};
+  });
+  await page.mouse.click(text.x, text.y, {button: 'right'});
+  await expect(rowMenu(page)).toHaveCount(0);
+  expect((await prevented()).at(-1)).toBe(false);
+  // Text selected elsewhere never disables the row menu.
+  await page.locator('#view-torrents .dp-downloads-tracked, #view-torrents h2, #bulk-count').first().evaluate(node => {
+    const range = document.createRange(); range.selectNodeContents(node); getSelection().removeAllRanges(); getSelection().addRange(range);
+  });
+  await row(page, 2).locator('td').nth(3).click({button: 'right'});
+  await expect(rowMenu(page)).toBeVisible();
+  expect((await prevented()).at(-1)).toBe(true);
+  // Escape closes it and returns focus to the row.
+  await page.keyboard.press('Escape');
+  await expect(rowMenu(page)).toHaveCount(0);
+  await expect(row(page, 2)).toBeFocused();
+
+  // Keyboard: Shift+F10 and the Context Menu key on a focused row.
+  for (const key of ['Shift+F10', 'ContextMenu']) {
+    await row(page, 3).focus();
+    await page.keyboard.press(key);
+    await expect(rowMenu(page)).toBeVisible();
+    await expect(rowMenu(page).locator('[role="menuitem"]')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(rowMenu(page)).toHaveCount(0);
+    await expect(row(page, 3)).toBeFocused();
+  }
+  // Outside pointer and scrolling dismiss; only one menu ever exists.
+  await row(page, 3).locator('td').nth(4).click({button: 'right'});
+  await row(page, 2).locator('td').nth(4).click({button: 'right'});
+  await expect(rowMenu(page)).toHaveCount(1);
+  await page.locator('#torrent-pagination').click({position: {x: 2, y: 2}});
+  await expect(rowMenu(page)).toHaveCount(0);
+  await row(page, 3).locator('td').nth(4).click({button: 'right'});
+  await page.evaluate(() => window.dispatchEvent(new Event('scroll')));
+  await expect(rowMenu(page)).toHaveCount(0);
+  // Enter activates the command from the keyboard; the row never opened Details.
+  await row(page, 3).focus();
+  await page.keyboard.press('Shift+F10');
+  await page.keyboard.press('Enter');
+  await expect.poll(() => queue.log.tops).toEqual([{ids: [3]}]);
+  expect(queue.log.details).toEqual([]);
+  // The Name-cell keyboard drag is unaffected.
+  await nameCell(page, 1).focus();
+  await page.keyboard.press('Space');
+  await expect(page.locator('#dp-queue-status')).toContainText(/picked up/i);
+  await page.keyboard.press('Escape');
+});
+
+test('U11 right-clicking a selection checkbox opens the row menu and leaves the selection as it was', async ({ page }) => {
+  const queue = await boot(page, [transfer(1, {status: 'downloading', progress: 40}), transfer(2), transfer(3)]);
+  const prevented = await recordContextMenus(page);
+  await row(page, 2).locator('.t-chk').check();
+  for (const [id, checked] of [[2, true], [3, false]]) {
+    const box_ = row(page, id).locator('.t-chk');
+    await box_.click({button: 'right'});
+    await expect(rowMenu(page)).toBeVisible();
+    await expect(rowMenu(page).locator('[role="menuitem"]')).toHaveText('Move to Top');
+    expect((await prevented()).at(-1)).toBe(true);
+    if (checked) await expect(box_).toBeChecked(); else await expect(box_).not.toBeChecked();
+    await page.keyboard.press('Escape');
+    await expect(rowMenu(page)).toHaveCount(0);
+  }
+  await expect(page.locator('#bulk-count')).toHaveText('1 Selected');
+  // A text field keeps the browser's own menu.
+  await page.locator('#torrent-search').click({button: 'right'});
+  expect((await prevented()).at(-1)).toBe(false);
+  await expect(rowMenu(page)).toHaveCount(0);
+  expect(queue.log.tops).toEqual([]);
+});
+
+test('U9 Move to Top on the bulk toolbar: eligible selection only, one request, sits before Delete', async ({ page }) => {
+  const items = [1, 2, 3, 4, 5, 6].map(id => transfer(id, id === 1 ? {status: 'downloading', progress: 30} : {}));
+  items.push(transfer(7, {status: 'completed', progress: 100, queue_member: false}),
+             transfer(8, {status: 'completed', progress: 100, queue_member: false}));
+  const queue = await boot(page, items);
+  const actions = page.locator('.dp-downloads-bulk-actions > *');
+  const order = await actions.evaluateAll(nodes => nodes.map(node => node.dataset.defaultLabel || node.className));
+  expect(order).toEqual(['Pause', 'Resume', 'Reset', 'Move to Top', 'dp-downloads-bulk-separator', 'Delete']);
+  const button = page.locator('.dp-downloads-bulk-action--top');
+  await expect(button.locator('svg[data-dp-lucide="arrow-up-to-line"]')).toHaveCount(1);
+
+  // Settled-only selection: no Move to Top.
+  await row(page, 7).locator('.t-chk').check();
+  await row(page, 8).locator('.t-chk').check();
+  await expect(page.locator('#bulk-bar')).toHaveClass(/\bvisible\b/);
+  await expect(button).toBeHidden();
+  // Mixed: F, B, D (checked in that order) and two settled.
+  for (const id of [6, 2, 4]) await row(page, id).locator('.t-chk').check();
+  await expect(button).toBeVisible();
+  const heights = await actions.evaluateAll(nodes => nodes.filter(n => n.tagName === 'BUTTON').map(n => n.offsetHeight));
+  expect(new Set(heights).size).toBe(1);
+  await button.click();
+  await expect.poll(() => queue.log.tops.length).toBe(1);
+  expect(new Set(queue.log.tops[0].ids)).toEqual(new Set([2, 4, 6]));
+  expect(queue.log.moves).toEqual([]);
+  await expect.poll(() => renderedIds(page)).toEqual([2, 4, 6, 1, 3, 5, 7, 8]);
+  // The settled rows are untouched and nothing was reset.
+  expect(queue.order().slice(-2)).toEqual([7, 8]);
+});
+
+test('U10 Move to Top keeps a search, filter or Newest view and asks once for every restart it needs', async ({ page }) => {
+  const victims = [
+    {transfer_id: 1, name: 'Queue item 01', attempt_ids: ['attempt-1'], completed_bytes: 2097152, total_bytes: 4194304, estimated_percentage: null},
+    {transfer_id: 2, name: 'Queue item 02', attempt_ids: ['attempt-2'], completed_bytes: 1048576, total_bytes: 4194304, estimated_percentage: null},
+  ];
+  const queue = await boot(page, [transfer(1, {status: 'downloading'}), transfer(2, {status: 'downloading'}),
+    transfer(3), transfer(4)], {topVictims: victims});
+  await page.locator('#torrent-order').selectOption('newest');
+  await page.locator('#torrent-search').fill('item 0');
+  await expect.poll(() => queue.page().search).toBe('item 0');
+  await settled(page, queue);
+  for (const id of [4, 3]) await row(page, id).locator('.t-chk').check();
+  await page.locator('.dp-downloads-bulk-action--top').click();
+
+  const dialog = page.locator('.dp-modal-dialog.dp-queue-restart-dialog');
+  await expect(dialog).toHaveCount(1);
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('.dp-queue-restart-item')).toHaveCount(2);
+  await dialog.locator('[data-modal-cancel]').click();
+  await expect(dialog).toBeHidden();
+  expect(queue.log.tops.length).toBe(1);
+  expect(queue.order()).toEqual([1, 2, 3, 4]);
+  await expect(row(page, 3).locator('.t-chk')).toBeChecked();
+
+  await page.locator('.dp-downloads-bulk-action--top').click();
+  await expect(dialog).toBeVisible();
+  await dialog.locator('[data-modal-accept]').click();
+  await expect.poll(() => queue.log.tops.length).toBe(3);
+  expect(queue.log.tops[2].confirm_restart).toEqual(['attempt-1', 'attempt-2']);
+  await expect(dialog).toBeHidden();
+  expect(queue.order()).toEqual([3, 4, 1, 2]);
+  // The operator's view is kept; the outcome is said, not shown by clearing it.
+  await expect(page.locator('#torrent-order')).toHaveValue('newest');
+  await expect(page.locator('#torrent-search')).toHaveValue('item 0');
+  await expect(page.locator('#dp-queue-status')).toContainText(/top of the queue/i);
+  expect(queue.log.moves).toEqual([]);
 });

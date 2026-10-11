@@ -529,7 +529,7 @@ async function parkOwnerRead(page, isOwnerRead, refresh) {
   await parked;
   return async () => { open(); await page.unroute(isOwnerRead, hold).catch(() => {}); };
 }
-const isDashboardRecentRead = url => url.pathname === '/api/torrents' && url.searchParams.get('order') === 'activity';
+const isDashboardRecentRead = url => url.pathname === '/api/torrents' && url.searchParams.get('order') === 'queue' && !url.searchParams.has('offset');
 const isDownloadsListRead = url => url.pathname === '/api/torrents' && url.searchParams.has('offset');
 
 test('keyboard: Enter on either list launcher opens only the chooser, never Details; Enter on the Downloads row itself still opens Details', async ({ page }) => {

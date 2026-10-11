@@ -823,18 +823,22 @@ class ApplicationService:
             await self._publish(transfer_id)
             return self._control_result(errors)
 
-    async def move_in_queue(self, transfer_id, *, before_id=None, after_id=None, reaffirm=False, confirm_restart=()):
-        """One operator queue move or reaffirmation (``transfers
-        .manual_queue_move``), on the same serialized operator-control boundary
-        as Pause and Resume."""
+    async def move_in_queue(self, transfer_id=None, *, before_id=None, after_id=None, top=(), reaffirm=False,
+                            confirm_restart=()):
+        """One operator queue move, Move to Top (``top``: the transfers it
+        names) or reaffirmation (``transfers.manual_queue_move``), on the same
+        serialized operator-control boundary as Pause and Resume."""
         async with self.operator_controls, self.application_operation():
-            await self.require(transfer_id)
-            moved = await move_in_queue(self.engine, int(transfer_id), before_id=before_id, after_id=after_id,
+            if not top:
+                await self.require(transfer_id)
+            moved = await move_in_queue(self.engine, None if top else int(transfer_id), before_id=before_id,
+                                        after_id=after_id, top=frozenset(int(item) for item in top),
                                         reaffirm=reaffirm, confirmed=frozenset(confirm_restart))
             if moved.moved or moved.preempting:
                 self.resolution_wakeup.set()
                 self.execution_wakeup.set()
-                await self._publish(transfer_id)
+                for member in moved.members:
+                    await self._publish(member)
             return moved
 
     @staticmethod
