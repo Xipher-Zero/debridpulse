@@ -226,3 +226,35 @@ async def test_a_globally_paused_operator_is_backed_up_as_paused(tmp_path, monke
 
     assert _backed_up_pause_intent(result["backup"]["id"])[0] is True
     assert await core.repository.globally_paused()
+
+
+@pytest.mark.parametrize("wiped", [True, False])
+async def test_the_safety_backup_outlives_the_wipe_under_a_one_backup_limit(tmp_path, monkeypatch, wiped):
+    from test_backup_restore_points import _clock, _scheduler_lifetime
+
+    _core, service, _transfer, _artifact, _seen = await _wipe_setup(tmp_path, monkeypatch)
+    earlier = await backup.create_restore_point()
+    import core.config as config
+    monkeypatch.setitem(config.get_settings().__dict__, "backup_enabled", False)
+    monkeypatch.setitem(config.get_settings().__dict__, "backup_max_retained", 1)
+    clock = _clock(monkeypatch)
+    inner = db_maintenance.wipe_database
+    during = []
+
+    async def wipe_after_a_retention_pass(**kwargs):
+        await _scheduler_lifetime(monkeypatch, clock)
+        during.append({point.id for point in backup.list_restore_points()})
+        if not wiped:
+            raise RuntimeError("the wipe failed after its safety backup")
+        return await inner(**kwargs)
+
+    monkeypatch.setattr(db_maintenance, "wipe_database", wipe_after_a_retention_pass)
+    if wiped:
+        safety = (await routes.wipe_database_admin({"confirm": True}, application=service))["backup"]["id"]
+    else:
+        with pytest.raises(RuntimeError):
+            await routes.wipe_database_admin({"confirm": True}, application=service)
+        safety = next(iter(during[0] - {earlier.id}))
+    assert safety in during[0]  # held through the destructive boundary
+    assert [point.id for point in backup.list_restore_points()] == [safety]
+    assert earlier.id != safety

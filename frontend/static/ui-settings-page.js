@@ -290,6 +290,7 @@
     backup_folder: {scope: 'settings-document', option: 'backup_folder'},
     backup_interval_hours: {scope: 'settings-document', option: 'backup_interval_hours'},
     backup_keep_days: {scope: 'settings-document', option: 'backup_keep_days'},
+    backup_max_retained: {scope: 'settings-document', option: 'backup_max_retained'},
     stats_snapshot_interval_minutes: {scope: 'settings-document', option: 'stats_snapshot_interval_minutes'},
     stats_snapshot_keep_days: {scope: 'settings-document', option: 'stats_snapshot_keep_days'},
     activity_log_page_size: {scope: 'settings-document', option: 'activity_log_page_size'},
@@ -3529,6 +3530,11 @@
             type: 'number', min: 1, max: 90,
             hint: 'Delete backup files older than the configured number of days.',
             embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
+          }),
+          input('backup_max_retained', 'Maximum Retained Backups', s.backup_max_retained ?? 7, {
+            type: 'number', min: 1, max: 365,
+            hint: 'Keep at most this many backups. Older excess backups are removed even when they are within the retention period.',
+            embedAction: fieldUnit('backups'), controlClass: 'dp-settings-unit-field',
           }),
         ),
         tuningGroup(

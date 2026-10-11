@@ -135,8 +135,8 @@ def test_data_and_maintenance_declares_every_one_of_its_own_controls():
     declared = declared_fields()
     for field in (
         "backup_enabled", "backup_folder", "backup_interval_hours", "backup_keep_days",
-        "stats_snapshot_interval_minutes", "stats_snapshot_keep_days", "activity_log_page_size",
-        "db_wipe_enabled",
+        "backup_max_retained", "stats_snapshot_interval_minutes", "stats_snapshot_keep_days",
+        "activity_log_page_size", "db_wipe_enabled",
     ):
         assert field in declared, field
     # Retired: the pre-reset safety backup can no longer be switched off.
@@ -149,7 +149,7 @@ def test_the_maintenance_booleans_commit_immediately_and_the_values_on_blur():
         row = re.search(rf"^    {immediate}: \{{(.+)\}},$", table, re.M).group(1)
         assert "scope: 'settings-document'" in row, immediate
         assert "commit: 'immediate'" in row, immediate
-    for changed_blur in ("backup_folder", "backup_interval_hours", "backup_keep_days",
+    for changed_blur in ("backup_folder", "backup_interval_hours", "backup_keep_days", "backup_max_retained",
                          "stats_snapshot_interval_minutes", "stats_snapshot_keep_days",
                          "activity_log_page_size"):
         row = re.search(rf"^    {changed_blur}: \{{(.+)\}},$", table, re.M).group(1)

@@ -24,7 +24,7 @@ def test_backup_rotation_requires_ownership_manifest(tmp_path):
     unrelated = tmp_path / "20000101_000000"
     unrelated.mkdir()
     (unrelated / "keep.txt").write_text("keep")
-    assert backup._rotate_backups(tmp_path, 1) == 0
+    assert backup._rotate_backups(tmp_path, 1, 1) == (0, 0)
     assert (unrelated / "keep.txt").exists()
 
 

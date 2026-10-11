@@ -92,6 +92,8 @@ class AppSettings(BaseModel):
     backup_folder: str = "/app/data/backups"
     backup_keep_days: int = 7
     backup_interval_hours: int = 24
+    # Count retention, independent of age: at most this many restore points.
+    backup_max_retained: int = 7
 
     # Database maintenance
     db_backup_enabled: bool = True

@@ -11,11 +11,15 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import shutil
 import sqlite3
 import time
+import uuid
 import zipfile
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import httpx
 import pytest
@@ -23,6 +27,7 @@ import pytest_asyncio
 from fastapi import FastAPI
 
 import core.config as config
+import core.scheduler as scheduler
 import db.database as database
 from api.routes import router
 from application.service import ApplicationService
@@ -51,6 +56,9 @@ async def installation(tmp_path, monkeypatch):
     conf.mkdir()
     monkeypatch.setattr(database, "DB_PATH", data / "debridpulse.db")
     monkeypatch.setattr(config, "CONFIG_PATH", conf / "config.json")
+    # The run lock binds to the first event loop that waits on it; each test
+    # runs its own loop, so each gets its own (one) run lock.
+    monkeypatch.setattr(backup, "_BACKUP_RUN_LOCK", asyncio.Lock())
     settings = config.AppSettings(backup_folder=str(tmp_path / "backups"), backup_enabled=True, backup_keep_days=7)
     previous = config.get_settings()
     config.apply_settings(settings)
@@ -292,10 +300,11 @@ async def test_retention_keeps_pruning_independently(installation):
     os.utime(old.path, (stale, stale))
     added_id, saved = await _real_package(installation, "kept.zip")
     admitted = await backup.add_backup(_chunks(saved))
+    # Add Backup applies retention once it has admitted the copy.
+    assert old.id not in {point.id for point in backup.list_restore_points()}
     result = await backup.run_backup()
     remaining = {point.id for point in backup.list_restore_points()}
-    assert result["rotated"] == 1
-    assert old.id not in remaining
+    assert result["rotated"] == 0
     # Admission time, not the package's age, starts an added backup's retention.
     assert admitted.id == added_id and added_id in remaining
 
@@ -948,3 +957,552 @@ async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the
     assert _digest(_managed_database(point)) == before
     assert not list(database.DB_PATH.parent.glob(".dp-restore-*"))
     assert not (database.DB_PATH.parent / ".dp-restore-journal.json").exists()
+
+
+# --------------------------------------------------------------------------- #
+# scheduled cadence (durable, restart-safe) + age OR count retention
+# --------------------------------------------------------------------------- #
+
+class _Stopped(Exception):
+    """The end of one scheduler lifetime in a test."""
+
+
+def _clock(monkeypatch) -> list[float]:
+    """The backup owner's wall clock, under the test's control."""
+    clock = [time.time()]
+    monkeypatch.setattr(backup, "time", SimpleNamespace(time=lambda: clock[0]), raising=False)
+    monkeypatch.setattr(backup, "_schedule_retry_at", 0.0, raising=False)
+    return clock
+
+
+async def _scheduler_lifetime(monkeypatch, clock) -> None:
+    """One process start of the real backup loop: its readiness delay and its
+    first pass. The next sleep ends that lifetime, as a restart would."""
+    sleeps = []
+
+    async def sleep(seconds):
+        sleeps.append(seconds)
+        if len(sleeps) > 1:
+            raise _Stopped
+        clock[0] += seconds
+
+    monkeypatch.setattr(scheduler, "application", None)
+    monkeypatch.setattr(scheduler, "asyncio", SimpleNamespace(sleep=sleep))
+    with pytest.raises(_Stopped):
+        await scheduler.backup_loop()
+
+
+def _policy(**values) -> None:
+    """Persist backup settings as the operator would (the fixture restores)."""
+    settings = config.get_settings().model_copy(update=values)
+    config.apply_settings(settings)
+    config.save_settings(settings)
+
+
+def _age(point_path: Path, seconds: float) -> None:
+    stamp = time.time() - seconds
+    os.utime(point_path, (stamp, stamp))
+
+
+async def _seed(count: int, age_of) -> list[str]:
+    """``count`` valid managed restore points, copies of one real one, each
+    ``age_of(index)`` seconds old. Returns their ids, newest first."""
+    origin = await backup.create_restore_point()
+    folder = origin.path.parent
+    now = time.time()
+    seeded = []
+    for index in range(count):
+        stamp = now - age_of(index)
+        point_id = f"{datetime.fromtimestamp(stamp, timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
+        target = folder / point_id
+        shutil.copytree(origin.path, target)
+        manifest = target / ".debridpulse-backup.json"
+        manifest.write_text(json.dumps({**json.loads(manifest.read_text()), "timestamp": point_id}))
+        os.utime(target, (stamp, stamp))
+        seeded.append((stamp, point_id))
+    backup.remove_restore_point(origin.id)
+    return [point_id for _stamp, point_id in sorted(seeded, reverse=True)]
+
+
+def _listed() -> list[str]:
+    return [point.id for point in backup.list_restore_points()]
+
+
+async def test_restarts_inside_the_backup_interval_take_no_scheduled_backup(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)  # a fresh installation: its first scheduled backup
+    first = _listed()
+    assert len(first) == 1
+    for _restart in range(4):  # restarted ten minutes later, again and again
+        clock[0] += 600
+        await _scheduler_lifetime(monkeypatch, clock)
+    assert _listed() == first
+    clock[0] += 24 * 3600  # 24 hours after the scheduled backup, not after a start
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 2
+
+
+async def test_manual_imported_and_safety_backups_never_move_the_scheduled_clock(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    _imported_id, saved = await _real_package(installation, "imported.zip")
+    await _scheduler_lifetime(monkeypatch, clock)  # the scheduled backup at T
+    clock[0] += 23 * 3600
+    await backup.run_backup()  # Run Backup
+    await backup.add_backup(_chunks(saved))  # Add Backup
+    await backup.create_restore_point()  # a mandatory pre-restore / pre-reset safety backup
+    count = len(_listed())
+    await _scheduler_lifetime(monkeypatch, clock)  # T + 23 h: not due
+    assert len(_listed()) == count
+    clock[0] += 3600
+    await _scheduler_lifetime(monkeypatch, clock)  # T + 24 h: due, however recent the others are
+    assert len(_listed()) == count + 1
+
+
+async def test_forty_backups_from_two_days_converge_to_the_newest_seven_without_a_new_backup(
+        installation, monkeypatch):
+    _policy(backup_enabled=False, backup_keep_days=7, backup_max_retained=7)
+    seeded = await _seed(40, lambda index: 2 * 86400 - index * 60)  # every one within age retention
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)  # a start: retention only, creation is disabled
+    assert _listed() == seeded[:7]
+
+
+@pytest.mark.parametrize("outcome", ["restored", "refused", "rolled_back"])
+async def test_a_restore_keeps_its_source_and_safety_backup_until_it_resolves_under_a_one_backup_limit(
+        served, monkeypatch, outcome):
+    app, client, _composed, _calls = served
+    import application.lifetime as lifetime
+    if outcome == "refused":
+        def refused(_staged):
+            raise RuntimeError("staged state is not valid")
+        monkeypatch.setattr(backup.StagedRestore, "validate", refused)
+    elif outcome == "rolled_back":
+        original_start, attempts = lifetime.start_application, []
+
+        async def failing_once(service):
+            attempts.append(service)
+            if len(attempts) == 1:
+                raise RuntimeError("restored startup failed")
+            return await original_start(service)
+
+        monkeypatch.setattr(lifetime, "start_application", failing_once)
+    _policy(backup_enabled=False, backup_max_retained=1)
+    clock = _clock(monkeypatch)
+    extra = await backup.create_restore_point()
+    source = await backup.create_restore_point()
+    _age(extra.path, 300)
+    _age(source.path, 200)
+    original = backup.stage_restore
+    during = []
+
+    async def staged_while_a_retention_pass_lands(point_id):
+        await _scheduler_lifetime(monkeypatch, clock)
+        during.append(set(_listed()))
+        return await original(point_id)
+
+    monkeypatch.setattr(backup, "stage_restore", staged_while_a_retention_pass_lands)
+    response = await client.post("/api/admin/backups/restore", json={"id": source.id})
+    assert response.status_code == (200 if outcome == "restored" else 400), response.text
+    safety = next(point_id for point_id in during[0] if point_id not in {source.id, extra.id})
+    assert {source.id, safety} <= during[0]  # both still needed: neither is pruned
+    assert extra.id not in during[0]  # nothing protects it from the count limit
+    assert _listed() == [safety]  # the restore resolved: the ordinary policy converges
+
+
+def _record() -> dict:
+    return json.loads((database.DB_PATH.parent / ".dp-backup-schedule.json").read_text())
+
+
+async def test_a_fresh_installation_records_its_first_scheduled_backup_beside_the_live_database(
+        installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    record_path = database.DB_PATH.parent / ".dp-backup-schedule.json"
+    assert record_path.is_file() and (record_path.stat().st_mode & 0o777) == 0o600
+    assert _record() == {"last_scheduled": clock[0], "pending": None}
+    assert len(_listed()) == 1
+    assert not _folder(installation).joinpath(".dp-backup-schedule.json").exists()
+
+
+async def test_disable_reenable_and_interval_changes_follow_the_last_scheduled_backup(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)  # scheduled at T
+    start = clock[0]
+    _policy(backup_enabled=False)
+    clock[0] = start + 25 * 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 1  # disabled: due, but never created
+    assert _record()["last_scheduled"] == start
+    _policy(backup_enabled=True, backup_interval_hours=48)
+    await _scheduler_lifetime(monkeypatch, clock)  # re-enabled, lengthened: T + 26 h is not due
+    assert len(_listed()) == 1
+    _policy(backup_interval_hours=6)
+    await _scheduler_lifetime(monkeypatch, clock)  # shortened: due at once, exactly once
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 2
+    second = _record()["last_scheduled"]
+    clock[0] = second + 5 * 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 2
+    clock[0] = second + 6 * 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 3
+
+
+async def test_a_failed_scheduled_backup_records_no_success_and_is_retried_on_a_bounded_cadence(
+        installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    real_backup, attempts = backup._sqlite_backup, []
+
+    def full_disk(source, destination):
+        attempts.append(destination)
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(backup, "_sqlite_backup", full_disk)
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert _listed() == [] and len(attempts) == 1
+    assert _record()["last_scheduled"] is None  # no false success
+    assert not [entry for entry in _folder(installation).iterdir() if entry.name.startswith(".dp-staging-")]
+    for _pass in range(3):  # the loop keeps evaluating every few minutes...
+        clock[0] += 300
+        await _scheduler_lifetime(monkeypatch, clock)
+    assert len(attempts) == 1  # ...but a failure is not retried immediately and continuously
+    monkeypatch.setattr(backup, "_sqlite_backup", real_backup)
+    clock[0] += 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 1
+    assert _record() == {"last_scheduled": clock[0], "pending": None}
+
+
+async def test_an_upgraded_installation_bootstraps_its_clock_once_from_its_newest_backup(installation, monkeypatch):
+    seeded = await _seed(5, lambda index: 3600 * (index + 1))  # backups 1..5 hours old, no record yet
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)  # the first start of the new build
+    assert _listed() == seeded  # no extra copy
+    newest = backup.restore_point(seeded[0]).path.stat().st_mtime
+    assert _record()["last_scheduled"] == newest
+    await backup.run_backup()  # later manual backups never re-derive the clock
+    clock[0] = newest + 24 * 3600 + 1
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 7
+
+
+@pytest.mark.parametrize("damage", ["missing", "malformed", "future", "symlink"])
+async def test_a_missing_damaged_or_future_record_never_floods(installation, monkeypatch, damage):
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    record_path = database.DB_PATH.parent / ".dp-backup-schedule.json"
+    if damage == "missing":
+        record_path.unlink()
+    elif damage == "malformed":
+        record_path.write_text('{"last_scheduled": "yesterday"')
+    elif damage == "future":
+        record_path.write_text(json.dumps({"last_scheduled": clock[0] + 10 * 86400, "pending": None}))
+    else:
+        elsewhere = installation / "elsewhere.json"
+        elsewhere.write_text(json.dumps({"last_scheduled": 0, "pending": None}))
+        record_path.unlink()
+        record_path.symlink_to(elsewhere)
+    for _restart in range(3):
+        clock[0] += 600
+        await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 1
+    assert not record_path.is_symlink()
+    clock[0] += 24 * 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 2  # one interval later, never never
+
+
+async def test_changing_the_backup_folder_does_not_reset_the_scheduled_clock(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    recorded = _record()
+    _policy(backup_folder=str(installation / "elsewhere"))
+    clock[0] += 3600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert _listed() == []  # nothing new in the new folder: not due
+    assert _record() == recorded
+
+
+async def test_the_record_is_no_restore_point_and_survives_restore_even_inside_the_data_directory(
+        installation, monkeypatch):
+    _policy(backup_folder=str(database.DB_PATH.parent), backup_max_retained=1, backup_keep_days=1)
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    record_path = database.DB_PATH.parent / ".dp-backup-schedule.json"
+    recorded = record_path.read_bytes()
+    point = backup.list_restore_points()[0]
+    assert ".dp-backup-schedule.json" not in point.public()["id"]
+    assert ".dp-backup-schedule.json" not in json.loads((point.path / ".debridpulse-backup.json").read_text())["files"]
+    old = time.time() - 30 * 86400
+    os.utime(record_path, (old, old))
+    assert await backup.apply_retention() == (0, 0)  # never counted, never aged out
+    staged = await backup.stage_restore(point.id)
+    staged.validate()
+    staged.activate()
+    assert all(".dp-backup-schedule.json" not in move for pair in staged.moves for move in pair)
+    assert backup.recover_interrupted_restore() is True  # an interrupted restore, reversed
+    staged = await backup.stage_restore(point.id)
+    staged.validate()
+    staged.activate()
+    staged.commit()  # and a completed one
+    assert record_path.read_bytes() == recorded
+
+
+async def test_a_crash_between_the_restore_point_and_its_record_takes_no_second_backup(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+
+    class Crash(BaseException):
+        pass
+
+    real_write = backup._write_schedule
+
+    def crashing_settlement(last, pending=None):
+        if pending is None and last is not None:
+            raise Crash  # the process dies after the restore point, before its record
+        real_write(last, pending)
+
+    monkeypatch.setattr(backup, "_write_schedule", crashing_settlement)
+    with pytest.raises(Crash):
+        await backup.run_scheduled_backup()
+    monkeypatch.setattr(backup, "_write_schedule", real_write)
+    created = _listed()
+    assert len(created) == 1 and _record()["pending"] == created[0]
+    clock[0] += 600
+    await _scheduler_lifetime(monkeypatch, clock)  # the restart settles it as the success it was
+    assert _listed() == created and _record()["pending"] is None
+
+
+async def test_a_crash_inside_a_scheduled_backup_is_never_a_success(installation, monkeypatch):
+    clock = _clock(monkeypatch)
+
+    class Crash(BaseException):
+        pass
+
+    real_backup = backup._sqlite_backup
+
+    def dies(source, destination):
+        raise Crash
+
+    monkeypatch.setattr(backup, "_sqlite_backup", dies)
+    with pytest.raises(Crash):
+        await backup.run_scheduled_backup()
+    monkeypatch.setattr(backup, "_sqlite_backup", real_backup)
+    assert _listed() == [] and _record()["pending"] is not None
+    clock[0] += 600
+    await _scheduler_lifetime(monkeypatch, clock)
+    assert len(_listed()) == 1  # due, exactly once
+    assert _record()["pending"] is None
+
+
+async def test_concurrent_scheduled_passes_take_one_backup_for_one_due_interval(installation, monkeypatch):
+    _clock(monkeypatch)
+    await asyncio.gather(backup.run_scheduled_backup(), backup.run_scheduled_backup(), backup.run_backup())
+    scheduled = _record()
+    assert len(_listed()) == 2  # one scheduled, one Run Backup
+    await backup.run_scheduled_backup()
+    assert len(_listed()) == 2 and _record() == scheduled
+
+
+async def test_a_backup_older_than_the_age_limit_is_pruned_below_the_count_limit(installation, monkeypatch):
+    _policy(backup_enabled=False, backup_keep_days=7, backup_max_retained=7)
+    seeded = await _seed(3, lambda index: [3600, 7200, 8 * 86400][index])
+    assert await backup.apply_retention() == (1, 0)
+    assert _listed() == seeded[:2]
+
+
+async def test_every_kind_of_restore_point_counts_and_an_added_one_ranks_by_admission(installation, monkeypatch):
+    imported_id, saved = await _real_package(installation, "imported.zip")  # the OLDEST identity
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    scheduled = _listed()[0]
+    manual = (await backup.run_backup())["timestamp"]
+    safety = (await backup.create_restore_point()).id
+    for point_id, seconds in ((scheduled, 400), (manual, 300), (safety, 200)):
+        _age(backup.restore_point(point_id).path, seconds)
+    _policy(backup_max_retained=2)
+    admitted = await backup.add_backup(_chunks(saved))  # admitted now: the newest by admission
+    assert admitted.id == imported_id
+    assert set(_listed()) == {imported_id, safety}
+
+
+async def test_a_tie_in_creation_time_is_broken_by_identity(installation, monkeypatch):
+    _policy(backup_enabled=False, backup_max_retained=1)
+    seeded = await _seed(2, lambda index: 3600)
+    stamp = time.time() - 3600
+    for point_id in seeded:
+        os.utime(backup.restore_point(point_id).path, (stamp, stamp))
+    assert await backup.apply_retention() == (0, 1)
+    assert _listed() == [max(seeded)]
+
+
+async def test_retention_never_touches_or_counts_anything_it_does_not_own(installation, monkeypatch):
+    _policy(backup_enabled=False, backup_keep_days=1, backup_max_retained=1)
+    seeded = await _seed(2, lambda index: [3600, 7200][index])
+    folder = _folder(installation)
+    outside = installation / "outside-point"
+    shutil.copytree(backup.restore_point(seeded[0]).path, outside)
+    strangers = {
+        "20200101_000000": "dir",  # restore-point name, no manifest
+        "20200101_000001_" + "1" * 32: "foreign-manifest",
+        "20200101_000002_" + "2" * 32: "symlink",
+        "20200101_000003": "file",
+        ".dp-staging-" + "3" * 32: "dir",
+        ".dp-package-" + "4" * 32 + ".zip": "file",
+        "debridpulse-backup-20200101_000004.zip": "file",
+        "notes.txt": "file",
+    }
+    for name, kind in strangers.items():
+        entry = folder / name
+        if kind == "dir":
+            entry.mkdir()
+            (entry / "keep.txt").write_text("keep")
+        elif kind == "foreign-manifest":
+            entry.mkdir()
+            (entry / ".debridpulse-backup.json").write_text(json.dumps({"kind": "someone-else"}))
+        elif kind == "symlink":
+            entry.symlink_to(outside, target_is_directory=True)
+        else:
+            entry.write_text("keep")
+        old = time.time() - 365 * 86400
+        os.utime(entry, (old, old), follow_symlinks=False)
+    assert await backup.apply_retention() == (0, 1)  # only the older of its own two
+    assert _listed() == seeded[:1]
+    assert {entry.name for entry in folder.iterdir()} == set(strangers) | {seeded[0]}
+    assert (outside / ".debridpulse-backup.json").exists()
+
+
+async def test_an_upgrade_prunes_thirty_daily_backups_to_the_newest_seven_at_its_first_start(
+        installation, monkeypatch, caplog):
+    _policy(backup_keep_days=30)
+    document = json.loads(config.CONFIG_PATH.read_text())
+    document.pop("backup_max_retained", None)  # written before the setting existed
+    config.CONFIG_PATH.write_text(json.dumps(document))
+    upgraded = config.load_settings()
+    assert upgraded.backup_max_retained == 7 and upgraded.backup_keep_days == 30
+    config.apply_settings(upgraded)
+    seeded = await _seed(30, lambda index: index * 86400 + 3600)  # daily, all within 30 days
+    clock = _clock(monkeypatch)
+    caplog.set_level("INFO", logger="debridpulse.backup")
+    await _scheduler_lifetime(monkeypatch, clock)  # no confirmation, no new backup
+    assert _listed() == seeded[:7]
+    summaries = [record.getMessage() for record in caplog.records if "retention removed" in record.getMessage()]
+    assert summaries == ["Backup retention removed 23 backup(s): 0 older than 30 day(s), 23 beyond the newest 7"]
+
+
+async def test_the_count_setting_defaults_validates_and_round_trips(installation):
+    from core.config_validator import validate_and_sanitise
+    from pydantic import ValidationError
+
+    assert config.AppSettings().backup_max_retained == 7
+    assert validate_and_sanitise(config.AppSettings(backup_max_retained=0)).backup_max_retained == 1
+    assert validate_and_sanitise(config.AppSettings(backup_max_retained=1000)).backup_max_retained == 365
+    with pytest.raises(ValidationError):
+        config.AppSettings(backup_max_retained="many")
+    _policy(backup_max_retained=12)
+    assert config.load_settings().backup_max_retained == 12
+    assert config.AppSettings().stats_snapshot_keep_days == 30  # statistics retention is its own
+
+
+async def test_an_interrupted_restore_keeps_both_points_until_startup_recovery_resolves_it(
+        installation, monkeypatch):
+    """Gate 5: a scheduled backup, restarts without duplicates, then a restore
+    under a one-backup limit that dies after its safety backup -- before the
+    swap and, separately, after it -- and the next start."""
+    clock = _clock(monkeypatch)
+    await _scheduler_lifetime(monkeypatch, clock)
+    clock[0] += 600
+    await _scheduler_lifetime(monkeypatch, clock)
+    source = _listed()
+    assert len(source) == 1  # no duplicate after the restart
+    folder = _folder(installation)
+    (folder / "notes.txt").write_text("keep")
+    _policy(backup_max_retained=1)
+    _age(backup.restore_point(source[0]).path, 120)
+
+    for crash in ("before_swap", "after_swap"):
+        # The restore, in a process that dies after its safety backup; what it
+        # held in memory dies with it.
+        safety = await backup.create_restore_point()
+        staged = await backup.stage_restore(source[0])
+        if crash == "after_swap":
+            staged.validate()
+            staged.activate()
+            # Even out of order, an undecided swap prunes nothing.
+            assert await backup.apply_retention() == (0, 0)
+        assert set(_listed()) == {source[0], safety.id}
+        # The next start: interrupted-restore recovery first...
+        assert backup.recover_interrupted_restore() is (crash == "after_swap")
+        assert set(_listed()) == {source[0], safety.id}
+        # ...and only then the scheduler's first pass reconciles retention.
+        clock[0] += 600
+        await _scheduler_lifetime(monkeypatch, clock)
+        assert _listed() == [safety.id]
+        assert (folder / "notes.txt").exists()
+        source = [safety.id]
+        _age(backup.restore_point(safety.id).path, 120)
+    lifespan = (Path(__file__).parents[1] / "main.py").read_text()
+    assert lifespan.index("recover_interrupted_restore()") < lifespan.index("await start_application(")
+
+
+def _interleaved_journal(monkeypatch) -> list[tuple[str, str, str | None]]:
+    """The backup journal, recording what each operation reported. The first
+    operation to report waits there until the second has reported, so the
+    second runs to completion -- creation and retention -- in between."""
+    reported, second = [], asyncio.Event()
+
+    async def journal(event_type, message, point_id, detail=None):
+        reported.append((event_type, point_id, detail))
+        if len(reported) == 1:
+            await asyncio.wait_for(second.wait(), 10)
+        else:
+            second.set()
+        return True
+
+    monkeypatch.setattr(backup, "journal_backup", journal)
+    return reported
+
+
+@pytest.mark.parametrize("first", ["manual", "scheduled"])
+async def test_concurrent_manual_and_scheduled_backups_report_truthfully_under_a_one_backup_limit(
+        installation, monkeypatch, first):
+    _policy(backup_max_retained=1)
+    _clock(monkeypatch)
+    backup._write_schedule(None)  # a scheduled backup has never been taken: it is due
+    reported = _interleaved_journal(monkeypatch)
+    operations = {"manual": backup.run_backup, "scheduled": backup.run_scheduled_backup}
+    order = [first, "scheduled" if first == "manual" else "manual"]
+    done = dict(zip(order, await asyncio.gather(*(operations[name]() for name in order))))
+
+    manual, scheduled = done["manual"], done["scheduled"]
+    assert manual["restore_point"]["id"] == manual["timestamp"]
+    assert manual["backed_up"] == sorted(["config.json", database.DB_PATH.name])
+    assert scheduled is not None and scheduled.id != manual["timestamp"]
+    # Exactly what each operation reported, and one point is left: the newer.
+    later = order[1]
+    later_id = manual["timestamp"] if later == "manual" else scheduled.id
+    earlier_id = scheduled.id if later == "manual" else manual["timestamp"]
+    assert _listed() == [later_id]
+    pruned_detail = "1 older backup(s) removed by retention (0 by age, 1 by count)"
+    assert sorted(reported) == sorted([
+        ("administration.backup_created", earlier_id, None),
+        ("administration.backup_created", later_id, pruned_detail),
+    ])
+    assert manual["rotated"] == (1 if later == "manual" else 0)
+
+
+async def test_add_backup_and_a_concurrent_scheduled_backup_report_truthfully_under_a_one_backup_limit(
+        installation, monkeypatch):
+    _imported_id, saved = await _real_package(installation, "imported.zip")
+    _policy(backup_max_retained=1)
+    _clock(monkeypatch)
+    backup._write_schedule(None)
+    reported = _interleaved_journal(monkeypatch)
+    admitted, scheduled = await asyncio.gather(backup.add_backup(_chunks(saved)), backup.run_scheduled_backup())
+    assert admitted.size_bytes > 0 and admitted.id == _imported_id
+    assert _listed() == [scheduled.id]
+    assert sorted(reported) == sorted([
+        ("administration.backup_added", admitted.id, None),
+        ("administration.backup_created", scheduled.id,
+         "1 older backup(s) removed by retention (0 by age, 1 by count)"),
+    ])

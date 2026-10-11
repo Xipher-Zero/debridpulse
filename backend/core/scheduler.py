@@ -175,19 +175,24 @@ async def postprocessing_loop():
         await asyncio.sleep(2)
 
 
+# How often the backup loop re-evaluates: the bound on how late a due
+# scheduled backup, a changed interval or changed retention takes effect.
+BACKUP_EVALUATION_SECONDS = 300
+
+
 async def backup_loop():
-    """Runs periodic backups based on backup_interval_hours setting."""
-    await asyncio.sleep(60)  # Initial delay
+    """The scheduled backup and retention. Whether a backup is due is decided
+    by the backup owner from its durable record of the last successful
+    scheduled backup, never by this loop's start: a restart is not a backup."""
+    await asyncio.sleep(60)  # readiness, not a due time
     while True:
         if _application_storage_ready():
             try:
-                from services.backup import run_backup
-                await run_backup()
+                from services.backup import run_scheduled_backup
+                await run_scheduled_backup()
             except Exception as e:
                 logger.error("Backup error: %s", sanitize_exception(e))
-        cfg = get_settings()
-        interval_h = max(1, getattr(cfg, "backup_interval_hours", 24))
-        await asyncio.sleep(interval_h * 3600)
+        await asyncio.sleep(BACKUP_EVALUATION_SECONDS)
 
 
 async def integration_maintenance_loop():

@@ -153,7 +153,10 @@ async def restore_backup(state, point_id: str) -> dict:
 
     if _RESTORE_LOCK.locked():
         raise RestoreFailed(409, "A restore is already in progress.")
-    async with _RESTORE_LOCK:
+    # The restore point being restored and the safety backup holding the
+    # replaced state outlive every retention pass until the restore ends.
+    async with _RESTORE_LOCK, backup.holding() as hold:
+        hold(point_id)
         current = state.application
         try:
             await backup.validate_restore_point(point_id)
@@ -183,6 +186,7 @@ async def restore_backup(state, point_id: str) -> dict:
                 try:
                     async with database_maintenance():
                         safety = await backup.create_restore_point()
+                        hold(safety.id)
                         staged = await backup.stage_restore(point_id)
                         await asyncio.to_thread(staged.validate)
                         if await current.repository.live_executions():

@@ -94,6 +94,7 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
         "full_sync_interval_minutes":     (0, 1440),
         "backup_keep_days":               (1, 365),
         "backup_interval_hours":          (1, 168),
+        "backup_max_retained":            (1, 365),
         "db_backup_keep_days":            (1, 365),
         "stats_snapshot_interval_minutes":(0, 1440),
         "stats_snapshot_keep_days":       (1, 365),

@@ -158,7 +158,7 @@ def test_the_disclosure_is_the_canonical_one_with_the_exact_label():
     assert 'aria-expanded="${expanded}"' in js
 
 
-def test_all_four_remaining_settings_moved_inside_using_the_compact_cell_treatment():
+def test_all_five_remaining_settings_moved_inside_using_the_compact_cell_treatment():
     body = panel()
     start = body.index("${disclosureSection(")
     disclosure = body[start:body.index("    `, {", start)]
@@ -169,25 +169,29 @@ def test_all_four_remaining_settings_moved_inside_using_the_compact_cell_treatme
     order = [
         "input('backup_interval_hours', 'Backup Interval'",
         "input('backup_keep_days', 'Backup Retention'",
+        "input('backup_max_retained', 'Maximum Retained Backups'",
         "input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval'",
         "input('stats_snapshot_keep_days', 'Statistics Snapshot Retention'",
     ]
     positions = [disclosure.index(call) for call in order]
     assert positions == sorted(positions)
-    # The backup pair and the snapshot pair are grouped. The event journal is
-    # kept indefinitely: no event-log retention setting exists any more.
+    # The backup triple and the snapshot pair are grouped. The event journal
+    # is kept indefinitely: no event-log retention setting exists any more.
     first, second = [m.start() for m in re.finditer(r"tuningGroup\(", disclosure)]
-    assert first < positions[0] < positions[1] < second < positions[2] < positions[3]
+    assert first < positions[0] < positions[1] < positions[2] < second < positions[3] < positions[4]
     assert "events_keep_days" not in source(RUNTIME)
 
 
-def test_the_four_settings_keep_every_unit_range_and_hint_they_had():
+def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
     disclosure = panel()
     expected = (
         ("backup_interval_hours", "min: 1, max: 168", "hours",
          "Set how often an automatic backup is created."),
         ("backup_keep_days", "min: 1, max: 90", "days",
          "Delete backup files older than the configured number of days."),
+        ("backup_max_retained", "min: 1, max: 365", "backups",
+         "Keep at most this many backups. Older excess backups are removed even when they are within the "
+         "retention period."),
         ("stats_snapshot_interval_minutes", "min: 0, max: 1440", "minutes",
          "Set how often DebridPulse records a statistics snapshot."),
         ("stats_snapshot_keep_days", "min: 1, max: 365", "days",

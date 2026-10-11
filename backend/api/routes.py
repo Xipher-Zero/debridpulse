@@ -1641,7 +1641,9 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                 # Application execution admission, scheduler activity, provider
                 # work, materialization work and every native execution are all
                 # closed/drained before this database writer gate is acquired.
-                async with database_maintenance():
+                # The safety backup outlives every retention pass until the
+                # wipe has ended, however it ends.
+                async with backup_store.holding() as hold, database_maintenance():
                     if await application.repository.live_executions():
                         raise HTTPException(409, "Could not prove every native execution stopped")
                     # The drain's pause is the wipe's own; the backup keeps the
@@ -1651,9 +1653,11 @@ async def wipe_database_admin(body: dict | None = None, application: Application
                     # the same one creation owner as Run Backup: a restore point.
                     # Without it nothing is deleted.
                     try:
-                        backup_result = (await backup_store.create_restore_point()).public()
+                        safety = await backup_store.create_restore_point()
                     except backup_store.BackupRejected:
                         raise HTTPException(500, "Pre-wipe database backup failed; wipe aborted") from None
+                    hold(safety.id)
+                    backup_result = safety.public()
 
                     from services.db_maintenance import wipe_database
                     result = await wipe_database(verified_quiesced=True)

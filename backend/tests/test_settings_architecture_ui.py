@@ -255,6 +255,7 @@ def test_settings_groups_keep_the_reviewed_field_inventory():
         "backup_folder",
         "backup_interval_hours",
         "backup_keep_days",
+        "backup_max_retained",
         "stats_snapshot_interval_minutes",
         "stats_snapshot_keep_days",
         "activity_log_page_size",

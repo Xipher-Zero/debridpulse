@@ -337,7 +337,7 @@ test('opening or closing the disclosure never moves the Backup Folder island',
 
 // --- the disclosure and the five policy values -----------------------------
 
-test('the disclosure exposes its state and holds exactly the four retention settings',
+test('the disclosure exposes its state and holds exactly the five retention settings',
   async ({page}) => {
     await openMaintenance(page);
     const chip = retention(page);
@@ -358,21 +358,21 @@ test('the disclosure exposes its state and holds exactly the four retention sett
                          el => el.textContent.trim()),
     }));
     expect(inside.controls).toEqual([
-      'backup_interval_hours', 'backup_keep_days',
+      'backup_interval_hours', 'backup_keep_days', 'backup_max_retained',
       'stats_snapshot_interval_minutes', 'stats_snapshot_keep_days',
     ]);
-    // The #2 compact-card collection, with the two related pairs grouped. The
-    // event journal is kept indefinitely, so no event-log retention exists.
+    // The #2 compact-card collection, the backup triple and the snapshot pair
+    // grouped. The event journal is kept indefinitely: no event-log retention.
     expect(inside.grids).toBe(1);
     expect(inside.groups).toBe(2);
     expect(inside.titles).toEqual([
-      'Backup Interval', 'Backup Retention',
+      'Backup Interval', 'Backup Retention', 'Maximum Retained Backups',
       'Statistics Snapshot Interval', 'Statistics Snapshot Retention',
     ]);
     // The unit is carried inside each field, so the title no longer repeats it.
     const units = await page.locator(`#${bodyId} .dp-settings-field-unit`)
       .evaluateAll(nodes => nodes.map(n => n.textContent.trim()));
-    expect(units).toEqual(['hours', 'days', 'minutes', 'days']);
+    expect(units).toEqual(['hours', 'days', 'backups', 'minutes', 'days']);
   });
 
 // --- persistence -----------------------------------------------------------
@@ -405,7 +405,7 @@ async function observeWrites(page, act) {
 }
 
 const RETENTION_VALUES = [
-  'backup_interval_hours', 'backup_keep_days', 'stats_snapshot_interval_minutes',
+  'backup_interval_hours', 'backup_keep_days', 'backup_max_retained', 'stats_snapshot_interval_minutes',
   'stats_snapshot_keep_days',
 ];
 
@@ -418,6 +418,7 @@ test('every Data & Maintenance value commits at its own boundary, with no Apply'
       const probes = {
         backup_interval_hours: Number(before.backup_interval_hours) === 13 ? 14 : 13,
         backup_keep_days: Number(before.backup_keep_days) === 11 ? 12 : 11,
+        backup_max_retained: Number(before.backup_max_retained) === 9 ? 10 : 9,
         stats_snapshot_interval_minutes:
           Number(before.stats_snapshot_interval_minutes) === 45 ? 50 : 45,
         stats_snapshot_keep_days: Number(before.stats_snapshot_keep_days) === 21 ? 22 : 21,

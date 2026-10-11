@@ -114,7 +114,7 @@ async def test_database_wipe_suspends_scheduler_and_holds_exclusive_gate(monkeyp
 
     async def safety_backup():
         calls.append("safety-backup")
-        return SimpleNamespace(public=lambda: {"id": "safety"})
+        return SimpleNamespace(id="safety", public=lambda: {"id": "safety"})
 
     monkeypatch.setattr(routes.backup_store, "create_restore_point", safety_backup)
 
@@ -342,7 +342,7 @@ async def test_database_wipe_reads_pause_intent_after_application_admission_drai
     monkeypatch.setattr(routes, "database_maintenance", maintenance)
     monkeypatch.setattr(db_maintenance, "wipe_database", wipe_database)
     monkeypatch.setattr(routes.backup_store, "create_restore_point",
-                        AsyncMock(return_value=SimpleNamespace(public=lambda: {"id": "safety"})))
+                        AsyncMock(return_value=SimpleNamespace(id="safety", public=lambda: {"id": "safety"})))
 
     await routes.wipe_database_admin({"confirm": True}, application=application)
     assert calls == [("restore", False)]

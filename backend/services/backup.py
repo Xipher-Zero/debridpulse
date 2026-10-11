@@ -15,6 +15,15 @@ scheduler, and the mandatory pre-restore / pre-reset safety backups all use
 and the staged, journaled state swap a restore performs. Nothing is admitted,
 created or swapped in before it has been validated completely.
 
+Retention has two independent authorities: a restore point is removed when it
+is older than Backup Retention OR outside the newest Maximum Retained Backups
+of the one managed inventory (every kind of restore point counts). Only a
+point an in-progress restore or reset holds (``holding``) is spared, and only
+until that operation ends. The scheduled backup is due once Backup Interval
+has elapsed since the last successful SCHEDULED backup, a durable record kept
+beside the live database (never in the Backup Folder, never in a restore
+point), so neither a restart nor any other kind of backup moves that clock.
+
 Compatibility is exact: a restore point records ``schema_version`` -- the
 fingerprint of its database's schema -- and is usable only while that equals
 the fingerprint of the running installation's database. The one exception is
@@ -24,17 +33,20 @@ itself), and that copy must then equal the running schema before anything is
 swapped in.
 """
 import asyncio
+import collections
 import hashlib
 import json
 import logging
+import math
 import os
 import re
 import shutil
 import sqlite3
 import stat
+import time
 import uuid
 import zipfile
-from contextlib import closing
+from contextlib import asynccontextmanager, closing
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -58,6 +70,13 @@ _STAGING_PREFIX = ".dp-staging-"
 _PACKAGE_PREFIX = ".dp-package-"
 _RESTORE_PREFIX = ".dp-restore-"
 _JOURNAL_NAME = ".dp-restore-journal.json"
+# The scheduled-backup record: operational state beside the live database. It
+# matches no restore-point pattern and is no member of any restore point.
+_SCHEDULE_NAME = ".dp-backup-schedule.json"
+_MAX_SCHEDULE_BYTES = 4096
+# A failed scheduled backup is retried after this long (the shortest Backup
+# Interval), never immediately and continuously.
+_SCHEDULE_RETRY_SECONDS = 3600
 _COPY_CHUNK = 1024 * 1024
 # Schemas the canonical bootstrap (``db.database.init_db``) upgrades to the
 # running one, each exactly as a pinned DebridPulse build recorded it:
@@ -406,7 +425,11 @@ async def create_restore_point() -> RestorePoint:
         return await _create_locked()
 
 
-async def _create_locked() -> RestorePoint:
+def _new_point_id() -> str:
+    return f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
+
+
+async def _create_locked(point_id: str | None = None) -> RestorePoint:
     from core.config import CONFIG_PATH, get_settings, save_settings
     from db.database import DB_PATH
 
@@ -415,7 +438,7 @@ async def _create_locked() -> RestorePoint:
     except OSError as exc:
         logger.warning("Backup folder unavailable: %s", exc)
         raise BackupRejected("create") from None
-    point_id = f"{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex}"
+    point_id = point_id or _new_point_id()
     staging = folder / f"{_STAGING_PREFIX}{uuid.uuid4().hex}"
     try:
         staging.mkdir(mode=0o700)
@@ -454,43 +477,261 @@ async def _create_locked() -> RestorePoint:
 
 
 async def run_backup() -> dict:
-    """Run Backup and the scheduled backup: honour the enable switch, create
-    one restore point, then apply retention."""
+    """Run Backup: honour the enable switch, create one restore point, then
+    apply retention. It never touches the scheduled-backup record.
+
+    Creation, retention and the facts the result reports are one run-lock
+    hold, so no concurrent backup's retention can remove the point before its
+    own result is read; only the journal entry is written after it."""
     cfg = _cfg()
     if not cfg or not getattr(cfg, "backup_enabled", True):
         return {"skipped": True, "reason": "backup disabled"}
-    point = await create_restore_point()
-    keep_days = max(1, int(getattr(cfg, "backup_keep_days", 7)))
     async with _BACKUP_RUN_LOCK:
-        removed = _rotate_backups(point.path.parent, keep_days)
-    await journal_backup("administration.backup_created", "Backup created", point.id,
-                   f"{removed} older backup(s) removed by retention" if removed else None)
+        point = await _create_locked()
+        result = _created(point)
+        removed = _retain_locked(cfg, point.path.parent)
+    result["rotated"] = sum(removed)
+    await _journal_created(point, removed)
+    return result
+
+
+def _retention_detail(removed: tuple[int, int]) -> str | None:
+    if not sum(removed):
+        return None
+    return f"{sum(removed)} older backup(s) removed by retention ({removed[0]} by age, {removed[1]} by count)"
+
+
+def _created(point: RestorePoint) -> dict:
+    """A created restore point's result, read in the same run-lock hold that
+    created it (callers hold the lock), before any retention pass."""
     files = sorted(entry.name for entry in point.path.iterdir() if entry.name != _MANIFEST_NAME)
     return {
         "timestamp": point.id,
         "backup_dir": str(point.path),
         "backed_up": files,
         "errors": [],
-        "rotated": removed,
+        "rotated": 0,
         "restore_point": point.public(),
     }
 
 
-def _rotate_backups(backup_folder: Path, keep_days: int) -> int:
-    """Remove only managed DebridPulse backup directories older than keep_days."""
-    removed = 0
-    cutoff = datetime.now(timezone.utc).timestamp() - (keep_days * 86400)
-    for entry in backup_folder.iterdir():
-        if not _managed_backup_dir(entry):
+async def _journal_created(point: RestorePoint, removed: tuple[int, int]) -> None:
+    await journal_backup("administration.backup_created", "Backup created", point.id, _retention_detail(removed))
+
+
+# ── the scheduled backup ────────────────────────────────────────────────────
+
+_schedule_retry_at = 0.0
+
+
+def _schedule_path() -> Path:
+    """Beside the live database: persistent application data, independent of
+    the Backup Folder, outside every restore point and every restore swap."""
+    from db.database import DB_PATH
+
+    return DB_PATH.parent / _SCHEDULE_NAME
+
+
+def _read_schedule() -> dict | None:
+    """The durable record, or None when it is absent or cannot be trusted."""
+    path = _schedule_path()
+    try:
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > _MAX_SCHEDULE_BYTES:
+            return None
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    last, pending = payload.get("last_scheduled"), payload.get("pending")
+    if last is not None and (isinstance(last, bool) or not isinstance(last, (int, float)) or not math.isfinite(last)):
+        return None
+    if pending is not None and (not isinstance(pending, str) or not _BACKUP_DIR_RE.fullmatch(pending)):
+        return None
+    return {"last_scheduled": last, "pending": pending}
+
+
+def _write_schedule(last: float | None, pending: str | None = None) -> None:
+    from core.secure_files import atomic_write_json
+
+    atomic_write_json(_schedule_path(), {"last_scheduled": last, "pending": pending})
+
+
+def _effective_time(path: Path) -> float:
+    """A restore point's creation or admission time: the one key age and
+    count retention both order by."""
+    return path.stat().st_mtime
+
+
+def _last_scheduled(folder: Path, now: float) -> float | None:
+    """When the last scheduled backup succeeded (None: never). Callers hold
+    the run lock.
+
+    Without a trustworthy record -- an upgrade, or a missing or damaged file --
+    it is decided ONCE from the newest managed restore point and recorded, so
+    an installation that already has backups does not take another at its
+    first start, and later manual, imported or safety backups never move it.
+    A run interrupted between its restore point and its record is settled by
+    whether that very restore point exists. A record from the future (the
+    clock went back) is pulled back to now: one interval later, not never."""
+    record = _read_schedule()
+    if record is None:
+        times = [_effective_time(entry) for entry in _managed_entries(folder)]
+        last = min(max(times), now) if times else None
+        _write_schedule(last)
+        logger.info("Scheduled backup record initialized from %s",
+                    "the newest existing backup" if times else "an empty Backup Folder")
+        return last
+    last, pending = record["last_scheduled"], record["pending"]
+    if pending is not None:
+        candidate = folder / pending
+        if _managed_backup_dir(candidate):
+            last = _effective_time(candidate)
+        _write_schedule(last)
+    if last is not None and last > now:
+        last = now
+        _write_schedule(last)
+    return last
+
+
+async def run_scheduled_backup() -> RestorePoint | None:
+    """The scheduler's pass: apply retention to the existing inventory, and
+    create a restore point only when the scheduled backup is enabled and due.
+
+    Due means Backup Interval has elapsed since the last successful scheduled
+    backup. The record names the restore point before it is created and is
+    settled once it exists, all under the run lock, so a second pass, a
+    restart or a crash between the two can never take a second backup for one
+    interval -- and a failed backup is never recorded as a success."""
+    global _schedule_retry_at
+    cfg = _cfg()
+    if not cfg:
+        return None
+    point = None
+    async with _BACKUP_RUN_LOCK:
+        folder = _folder()
+        now = time.time()
+        if getattr(cfg, "backup_enabled", True) and now >= _schedule_retry_at:
+            interval = max(1, int(getattr(cfg, "backup_interval_hours", 24))) * 3600
+            try:
+                last = _last_scheduled(folder, now)
+                if last is None or now - last >= interval:
+                    point_id = _new_point_id()
+                    _write_schedule(last, point_id)
+                    point = await _create_locked(point_id)
+                    try:
+                        _write_schedule(now)
+                    except OSError as exc:
+                        # The record still names this restore point: the next
+                        # pass settles it as the success it was.
+                        logger.warning("Scheduled backup %s created, record not yet settled: %s",
+                                       point.id, type(exc).__name__)
+            except (BackupRejected, OSError) as exc:
+                _schedule_retry_at = now + _SCHEDULE_RETRY_SECONDS
+                logger.warning("Scheduled backup failed; retrying in %d minutes: %s",
+                               _SCHEDULE_RETRY_SECONDS // 60, type(exc).__name__)
+        removed = _retain_locked(cfg, folder)
+    if point is not None:
+        await _journal_created(point, removed)
+    return point
+
+
+# ── retention ───────────────────────────────────────────────────────────────
+
+# Restore points an in-progress restore or reset still needs: its source and
+# its safety backup. Retention passes over them until that operation ends.
+_HELD: collections.Counter = collections.Counter()
+
+
+@asynccontextmanager
+async def holding():
+    """Hold restore points for one restore or reset. ``hold(point_id)`` keeps
+    that point out of every retention pass until the operation ends, however
+    it ends; retention is then reconciled, so a hold is never a permanent
+    exemption. (A process that dies holds nothing: startup recovers an
+    interrupted restore before the scheduler's first retention pass.)"""
+    held = []
+
+    def hold(point_id: str) -> None:
+        _HELD[point_id] += 1
+        held.append(point_id)
+
+    try:
+        yield hold
+    finally:
+        _HELD.subtract(held)
+        for point_id in held:
+            if _HELD[point_id] <= 0:
+                del _HELD[point_id]
+        await apply_retention()
+
+
+async def apply_retention() -> tuple[int, int]:
+    """Apply retention to the existing inventory without creating anything."""
+    cfg = _cfg()
+    if not cfg:
+        return 0, 0
+    async with _BACKUP_RUN_LOCK:
+        return _retain_locked(cfg, _folder())
+
+
+def _retain_locked(cfg, folder: Path) -> tuple[int, int]:
+    """Callers hold the run lock. Never raises: a restore point that could not
+    be removed stays listed and is retried by the next pass."""
+    from db.database import DB_PATH
+
+    if (DB_PATH.parent / _JOURNAL_NAME).exists():
+        # A state swap is undecided: nothing is pruned until it is resolved.
+        return 0, 0
+    keep_days = max(1, int(getattr(cfg, "backup_keep_days", 7)))
+    max_retained = max(1, int(getattr(cfg, "backup_max_retained", 7)))
+    try:
+        removed = _rotate_backups(folder, keep_days, max_retained)
+    except OSError as exc:
+        logger.warning("Backup retention could not read the Backup Folder: %s", type(exc).__name__)
+        return 0, 0
+    if sum(removed):
+        logger.info("Backup retention removed %d backup(s): %d older than %d day(s), %d beyond the newest %d",
+                    sum(removed), removed[0], keep_days, removed[1], max_retained)
+    return removed
+
+
+def _managed_entries(folder: Path) -> list[Path]:
+    if not folder.is_dir():
+        return []
+    return [entry for entry in folder.iterdir() if _managed_backup_dir(entry)]
+
+
+def _rotate_backups(backup_folder: Path, keep_days: int, max_retained: int) -> tuple[int, int]:
+    """Remove managed DebridPulse restore points older than ``keep_days`` OR
+    outside the newest ``max_retained`` -- two independent authorities over
+    one inventory, newest first by creation/admission time (identity breaks a
+    tie). A held point is never removed; it still occupies its rank. Returns
+    (removed by age, removed by count only)."""
+    cutoff = time.time() - keep_days * 86400
+    ranked = []
+    for entry in _managed_entries(backup_folder):
+        try:
+            ranked.append((_effective_time(entry), entry.name, entry))
+        except OSError as exc:
+            logger.debug("Backup retention skipped %s: %s", entry.name, exc)
+    ranked.sort(reverse=True)
+    by_age = by_count = 0
+    for rank, (stamp, name, entry) in enumerate(ranked):
+        too_old = stamp < cutoff
+        if not (too_old or rank >= max_retained) or name in _HELD:
             continue
         try:
-            if entry.stat().st_mtime < cutoff:
-                shutil.rmtree(entry)
-                removed += 1
-                logger.debug("Rotated old backup: %s", entry.name)
-        except Exception as e:
-            logger.warning("Could not rotate backup %s: %s", entry.name, e)
-    return removed
+            shutil.rmtree(entry)
+        except OSError as exc:
+            logger.warning("Could not remove backup %s by retention: %s", name, exc)
+            continue
+        if too_old:
+            by_age += 1
+        else:
+            by_count += 1
+        logger.debug("Backup retention removed %s", name)
+    return by_age, by_count
 
 
 # ── the portable unit: Save Backup / Add Backup ─────────────────────────────
@@ -625,9 +866,11 @@ async def add_backup(chunks) -> RestorePoint:
             raise BackupRejected("add") from None
         finally:
             shutil.rmtree(staging, ignore_errors=True)
-    point = _restore_point(target)
+        point = _restore_point(target)
+        cfg = _cfg()
+        removed = _retain_locked(cfg, folder) if cfg else (0, 0)
     logger.info("Backup added: %s", point.id)
-    await journal_backup("administration.backup_added", "Backup added", point.id)
+    await journal_backup("administration.backup_added", "Backup added", point.id, _retention_detail(removed))
     return point
 
 
