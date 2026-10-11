@@ -1,7 +1,8 @@
 // Downloads operator queue: Name-cell drag vs Details click, cross-page drag
 // on the bounded table, view gating, the destructive-preemption confirmation,
 // the selection column after Actions, the quiet unhovered Remove, Move to Top
-// (row menu and bulk action, one request) and the context-menu policy.
+// (row menu and bulk action, one request), the context-menu policy, and a
+// selection that never repaginates the page it was made on.
 const { test, expect } = require('@playwright/test');
 
 function clone(value) {
@@ -708,4 +709,71 @@ test('U10 Move to Top keeps a search, filter or Newest view and asks once for ev
   await expect(page.locator('#torrent-search')).toHaveValue('item 0');
   await expect(page.locator('#dp-queue-status')).toContainText(/top of the queue/i);
   expect(queue.log.moves).toEqual([]);
+});
+
+/* The page as the operator sees it: its number, the size of the last list
+ * read, and the rows in order. */
+async function pageState(page, queue) {
+  return {page: await page.locator('#torrent-page-btns [aria-current="page"]').textContent(),
+          limit: queue.page().limit, offset: queue.page().offset, ids: await renderedIds(page)};
+}
+/* Let the toolbar's resize notification and any refresh it causes run out. */
+async function quiet(page, queue) {
+  await page.waitForTimeout(400);
+  await settled(page, queue);
+}
+
+test('B1-B4 a selection holds its page: the toolbar never repaginates, live changes still show', async ({ page }) => {
+  await page.setViewportSize({width: 1500, height: 640});
+  const queue = await boot(page, Array.from({length: 30}, (_, index) => transfer(index + 1)));
+  await page.locator('#torrent-page-btns [aria-label="Next page"]').click();
+  const perPage = Number(queue.page().limit);
+  await expect.poll(async () => (await renderedIds(page))[0]).toBe(perPage + 1);
+  await quiet(page, queue);
+  const before = await pageState(page, queue);
+  const first = before.ids[0];
+
+  // B1: the first check shows the toolbar; nothing moves.
+  await row(page, first).locator('.t-chk').check();
+  await expect(page.locator('#bulk-bar')).toHaveClass(/\bvisible\b/);
+  await quiet(page, queue);
+  expect(await pageState(page, queue)).toEqual(before);
+  await expect(row(page, first).locator('.t-chk')).toBeChecked();
+
+  // B2: more checks, select all, one unchecked: still the same page and rows;
+  // the last row stays a member, reached by the table's own scrolling.
+  await row(page, before.ids[1]).locator('.t-chk').check();
+  await page.locator('#chk-all').check();
+  await row(page, before.ids[2]).locator('.t-chk').uncheck();
+  await expect(page.locator('#chk-all')).toHaveJSProperty('indeterminate', true);
+  await quiet(page, queue);
+  expect(await pageState(page, queue)).toEqual(before);
+  const last = row(page, before.ids.at(-1));
+  await last.scrollIntoViewIfNeeded();
+  await expect(last).toBeInViewport();
+  await expect(last.locator('.t-chk')).toBeChecked();
+  // A window resize during the selection does not repaginate either.
+  await page.setViewportSize({width: 1500, height: 560});
+  await quiet(page, queue);
+  expect(await pageState(page, queue)).toEqual(before);
+
+  // B4: a real change on the server still arrives through the list.
+  await page.evaluate(([id, anchor]) => api('PATCH', `/torrents/${id}/priority`, {before_id: anchor}),
+                      [before.ids.at(-1), before.ids[0]]);
+  await page.evaluate(() => window.loadTorrents());
+  await expect.poll(async () => (await renderedIds(page))[0]).toBe(before.ids.at(-1));
+  expect((await pageState(page, queue)).limit).toBe(before.limit);
+  await expect(row(page, first).locator('.t-chk')).toBeChecked();
+
+  // B3: clearing the selection lets the page measure itself again ...
+  await page.locator('.dp-downloads-bulk-action--clear').click();
+  await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
+  await expect.poll(() => queue.page().limit, {timeout: 4000}).not.toBe(before.limit);
+  // ... and explicit navigation keeps its own rule: a new page, no selection.
+  await quiet(page, queue);
+  const current = await renderedIds(page);
+  await row(page, current[0]).locator('.t-chk').check();
+  await page.locator('#torrent-page-btns [aria-label="Previous page"]').click();
+  await expect.poll(() => queue.page().offset).toBe('0');
+  await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
 });

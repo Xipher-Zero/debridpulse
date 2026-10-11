@@ -4397,6 +4397,15 @@ class TransferRepository:
         writer-replacement handoff. ``exclude_artifact_id`` lets an artifact
         about to consume its own reservation check admission without
         self-blocking on it.
+
+        Admission of that artifact (``exclude_artifact_id``) also counts the
+        one slot an operator promotion keeps through an automatic retry: the
+        highest-ranked unfinished, unpaused transfer holding a queue
+        promotion whose artifact waits out a bounded retry backoff (or the
+        candidate refresh a recovery decided) and which holds no slot of its
+        own -- counted only against an artifact of a transfer ranked below
+        it. It is derived from those durable facts alone, so it ends with
+        them: the retry admitted, a pause, a demotion, a final failure.
         """
         placeholders = ",".join("?" for _ in self._OCCUPYING_EXECUTION_STATES)
         async with get_db() as db:
@@ -4414,7 +4423,31 @@ class TransferRepository:
                     AND (? IS NULL OR f.id!=?)""",
                 (now, exclude_artifact_id, exclude_artifact_id),
             )
-        return int((live_row or {}).get("n") or 0) + int((reserved_row or {}).get("n") or 0)
+            kept = 0
+            if exclude_artifact_id is not None:
+                kept_row = await db.fetchone(
+                    f"""SELECT 1 AS n FROM download_files x JOIN torrents mine ON mine.id=x.torrent_id,
+                        (SELECT t.id, t.priority FROM torrents t
+                            LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
+                            WHERE t.status NOT IN ('deleted','completed','consolidated','cancelled')
+                            AND t.queue_promotion IS NOT NULL AND COALESCE(p.paused,0)=0
+                            AND EXISTS(SELECT 1 FROM download_files f
+                                       JOIN artifact_recovery_state r ON r.artifact_id=f.id
+                                       WHERE f.torrent_id=t.id AND f.execution_attempt_id IS NULL
+                                       AND ((f.status='recovery_wait' AND r.quiescence_reason='retry_backoff')
+                                            OR (f.status='refresh_pending' AND r.decision_action IS NOT NULL)))
+                            AND NOT EXISTS(SELECT 1 FROM execution_attempts e
+                                           JOIN download_files f ON f.execution_attempt_id=e.id
+                                           WHERE f.torrent_id=t.id AND e.authorized=1
+                                           AND e.state IN ({placeholders}))
+                            ORDER BY t.priority DESC, t.id LIMIT 1) kept
+                        WHERE x.id=? AND mine.id!=kept.id
+                        AND (COALESCE(mine.priority,0)<COALESCE(kept.priority,0)
+                             OR (COALESCE(mine.priority,0)=COALESCE(kept.priority,0) AND mine.id>kept.id))""",
+                    (*self._OCCUPYING_EXECUTION_STATES, exclude_artifact_id),
+                )
+                kept = 1 if kept_row else 0
+        return int((live_row or {}).get("n") or 0) + int((reserved_row or {}).get("n") or 0) + kept
 
     async def referenced_staged_inputs(self) -> set[str]:
         """Every staged-input identity a live transfer still depends on.

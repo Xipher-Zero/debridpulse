@@ -492,7 +492,10 @@ async function loadTorrents() {
   if (reorder) { reorder.refreshPending = true; return; }
   await fetchAndRenderTorrents();
   ensureDateMenus();
-  if (!busy) {
+  // A selection holds the page it was made on: the bulk toolbar it shows or
+  // reshapes takes room from the table, which scrolls within it, and never
+  // repaginates the rows being selected. Clearing it measures again.
+  if (!busy && !_selectedIds.size) {
     const size = measuredSize();
     if (applySize(size)) {
       const focus = captureFocus();

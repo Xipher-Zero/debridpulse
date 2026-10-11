@@ -866,6 +866,185 @@ async def test_move_to_top_refuses_a_selection_with_no_queue_member_and_bounds_i
     assert status == 200 and result["outcome"] == "unchanged"
 
 
+# -- A promoted transfer's automatic retry keeps one slot ---------------------------------------------
+
+def retryable(core, handle, *, after=60):
+    """The writer fails the way a refused download does: retryable, later."""
+    from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
+    core.restart.fail(handle, NormalizedError(Domain.NETWORK, Category.REMOTE_READ_FAILED, Stage.EXECUTION,
+                                              retryability=Retryability.BACKOFF, integration_id="restart-copy",
+                                              retry_after_seconds=after))
+
+
+async def artifact_state(core, transfer_id):
+    return (await core.repository.artifacts(transfer_id))[0].state
+
+
+async def promoted_in_retry(core, *, slots):
+    """``slots`` slots: B, C and A downloading, A promoted to the top, D
+    queued behind them; then A fails retryably and waits for its retry."""
+    core = await queue_lab(*core, slots=slots)
+    names = iter(("first", "second"))
+    others = []
+    for _ in range(slots - 1):
+        tid = await submit(core, next(names), kind="ledger")
+        await running(core, tid, completed=5)
+        others.append(tid)
+    if not others:
+        # One slot: A overtakes a transfer the operator paused.
+        held = await submit(core, "first", kind="ledger")
+        await core.application.pause(held)
+        others.append(held)
+    a = await submit(core, "third", kind="ledger")
+    handle = await running(core, a, completed=5)
+    assert (await move(core, a, before_id=others[0]))["outcome"] == "queued"
+    assert await promoted() == [a]
+    d = await submit(core, "four", kind="ledger")
+    await tick(core)
+    assert await writer(core, d) is None
+    retryable(core, handle)
+    await tick(core, 2)
+    assert await artifact_state(core, a) == "recovery_wait"
+    return core, a, d, others, handle
+
+
+async def test_a_promoted_transfer_in_retry_backoff_keeps_its_slot_and_retries_before_lower_work(
+        tmp_path, monkeypatch):
+    """Three slots: B and C download, promoted A waits for its retry, D is
+    runnable. The slot A freed stays A's -- nothing is interrupted to keep it
+    -- and A's due retry takes it before D; a second retryable failure keeps
+    it again, and only A's completion hands it to D."""
+    core, a, d, (b, c), first = await promoted_in_retry((tmp_path, monkeypatch), slots=3)
+    assert await writer(core, d) is None
+    await tick(core, 3)
+    assert await writer(core, d) is None and calls(core.restart, "cancel") == []
+
+    core.now[0] += 61
+    await tick(core, 2)
+    retry = await writer(core, a)
+    assert retry is not None and retry.attempt_id != first.attempt_id and await writer(core, d) is None
+
+    core.restart.run(retry, completed=50)                     # it progresses: a fresh retry budget
+    await tick(core)
+    retryable(core, retry)
+    await tick(core, 2)
+    assert await artifact_state(core, a) == "recovery_wait" and await writer(core, d) is None
+    core.now[0] += 300
+    await tick(core, 2)
+    last = await writer(core, a)
+    assert last is not None and await writer(core, d) is None
+    core.restart.finish_file(last, str(tmp_path / "payloads" / "third"))
+    await tick(core, 3)
+    assert await writer(core, d) is not None
+    # Kept by admission alone: no writer was ever retired for it.
+    assert calls(core.restart, "cancel") == []
+
+
+async def test_capacity_one_promoted_retry_keeps_the_only_slot_and_an_ordinary_one_keeps_none(
+        tmp_path, monkeypatch):
+    core, a, d, _others, _first = await promoted_in_retry((tmp_path / "promoted", monkeypatch), slots=1)
+    await tick(core, 2)
+    assert await writer(core, d) is None
+    core.now[0] += 61
+    await tick(core, 2)
+    assert await writer(core, a) is not None and await writer(core, d) is None
+
+    # An ordinary submission's retry reserves nothing: the slot goes on.
+    core = await queue_lab(tmp_path / "ordinary", monkeypatch, slots=1)
+    first = await submit(core, "first", kind="ledger")
+    handle = await running(core, first, completed=5)
+    second = await submit(core, "second", kind="ledger")
+    retryable(core, handle)
+    await tick(core, 2)
+    assert await promoted() == [] and await writer(core, second) is not None
+
+
+async def test_a_full_pool_is_never_interrupted_and_the_next_freed_slot_is_kept(tmp_path, monkeypatch):
+    """Two slots: A failed and waits for its retry while B and C hold both
+    slots; then the operator promotes A. Nothing is interrupted for it; the
+    slot C frees on completion is kept for A, not taken by D."""
+    core = await queue_lab(tmp_path, monkeypatch, slots=2)
+    b = await submit(core, "first", kind="ledger")
+    await running(core, b, completed=5)
+    a = await submit(core, "third", kind="ledger")
+    handle = await running(core, a, completed=5)
+    c = await submit(core, "second", kind="ledger")
+    retryable(core, handle)
+    await tick(core, 2)
+    c_writer = await writer(core, c)
+    assert c_writer is not None                       # not yet promoted: an ordinary retry keeps nothing
+    core.restart.run(c_writer, completed=5)
+    d = await submit(core, "four", kind="ledger")
+    result = await move(core, a, before_id=b)
+    assert result["outcome"] != "preempting" and result["preempting"] == []
+    await tick(core, 2)
+    assert calls(core.restart, "cancel") == [] and await writer(core, d) is None
+    core.restart.finish_file(c_writer, str(tmp_path / "payloads" / "second"))
+    await tick(core, 3)
+    assert await writer(core, d) is None and calls(core.restart, "cancel") == []
+    core.now[0] += 61
+    await tick(core, 2)
+    assert await writer(core, a) is not None and await writer(core, d) is None
+
+
+async def test_the_kept_slot_is_released_by_pause_demotion_or_a_final_failure(tmp_path, monkeypatch):
+    from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage
+
+    # Manual Pause: the slot goes to D, and A is never resumed by its retry.
+    core, a, d, _others, _first = await promoted_in_retry((tmp_path / "pause", monkeypatch), slots=2)
+    await core.application.pause(a)
+    await tick(core, 2)
+    assert await writer(core, d) is not None
+    core.now[0] += 61
+    await tick(core, 2)
+    assert (await core.repository.get(a)).paused is True and await writer(core, a) is None
+
+    # The operator moves A below D: D now outranks it and takes the slot.
+    core, a, d, _others, _first = await promoted_in_retry((tmp_path / "demoted", monkeypatch), slots=2)
+    await move(core, a, after_id=d)
+    await tick(core, 2)
+    assert await writer(core, d) is not None
+
+    # A failure that ends A's retries returns the slot at once.
+    core, a, d, _others, _first = await promoted_in_retry((tmp_path / "final", monkeypatch), slots=2)
+    core.now[0] += 61
+    await tick(core, 2)
+    retry = await writer(core, a)
+    core.restart.fail(retry, NormalizedError(Domain.NETWORK, Category.REMOTE_READ_FAILED, Stage.EXECUTION,
+                                             retryability=Retryability.NEVER, integration_id="restart-copy"))
+    await tick(core, 3)
+    assert await artifact_state(core, a) != "recovery_wait" and await writer(core, d) is not None
+
+
+async def test_a_new_engine_keeps_the_promoted_retry_slot_from_durable_state(tmp_path, monkeypatch):
+    core, a, d, _others, _first = await promoted_in_retry((tmp_path, monkeypatch), slots=2)
+    # The one occupancy count: the kept slot exists only for admission of
+    # work ranked below A -- never for A itself, never in the reported count.
+    mine, theirs = [(await core.repository.artifacts(tid))[0].id for tid in (a, d)]
+    reported = await core.repository.occupied_execution_slots(core.now[0])
+    assert await core.repository.occupied_execution_slots(core.now[0], exclude_artifact_id=theirs) == reported + 1
+    assert await core.repository.occupied_execution_slots(core.now[0], exclude_artifact_id=mine) == reported
+    # The candidate refresh a recovery decided is the same retry, still kept.
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='refresh_pending' WHERE id=?", (mine,))
+        await db.commit()
+    assert await core.repository.occupied_execution_slots(core.now[0], exclude_artifact_id=theirs) == reported + 1
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET status='recovery_wait' WHERE id=?", (mine,))
+        await db.commit()
+    from transfers.convergence_engine import TransferEngine
+    engine = TransferEngine(TransferRepository(), core.registry, download_root=str(core.root),
+                            policy=core.engine.policy, clock=lambda: core.now[0])
+    await engine.initialize()
+    await engine.tick()
+    await engine.tick()
+    assert await writer(core, d) is None
+    core.now[0] += 61
+    await engine.tick()
+    await engine.tick()
+    assert await writer(core, a) is not None and await writer(core, d) is None
+
+
 # -- maintenance composition ----------------------------------------------------------------------
 
 async def test_a_database_wipe_removes_every_queue_promotion(tmp_path, monkeypatch):
