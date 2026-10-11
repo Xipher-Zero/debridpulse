@@ -41,7 +41,8 @@ async function isolateExternalFonts(page) {
  * is applied by stable identity against the whole collection. */
 async function installQueue(page, initial, {victims = {}, consent = {}, topVictims = []} = {}) {
   let items = clone(initial);
-  const log = {gets: [], moves: [], details: [], tops: []};
+  const log = {gets: [], moves: [], details: [], tops: [], bulk: []};
+  let bulk = {error: false, hold: null};
   const respond = (route, status, body) => route.fulfill({
     status, contentType: 'application/json', body: JSON.stringify(body),
   });
@@ -120,6 +121,16 @@ async function installQueue(page, initial, {victims = {}, consent = {}, topVicti
       return respond(route, 200, {ok: true, moved: block.length, ignored: wanted.size - block.length,
                                   outcome: topVictims.length ? 'preempting' : 'queued', preempting: []});
     }
+    if (url.pathname === '/api/torrents/bulk' && method === 'POST') {
+      const body = request.postDataJSON() || {};
+      log.bulk.push(body);
+      if (bulk.hold) await bulk.hold;
+      if (bulk.error) return respond(route, 500, {detail: 'Bulk action failed'});
+      const ids = new Set(body.ids || []);
+      if (body.action === 'delete') items = items.filter(item => !ids.has(item.id));
+      else items.forEach(item => { if (ids.has(item.id)) item.status = body.action === 'pause' ? 'paused' : 'queued'; });
+      return respond(route, 200, {ok: ids.size, failed: 0});
+    }
     if (detail && method === 'GET') {
       const id = Number(detail[1]);
       log.details.push(id);
@@ -133,6 +144,7 @@ async function installQueue(page, initial, {victims = {}, consent = {}, topVicti
     page: () => log.gets.filter(request => 'offset' in request).at(-1),
     order: () => items.map(item => item.id),
     setVictims(next) { victims = next; },
+    setBulk(next) { bulk = {...bulk, ...next}; },
   };
 }
 
@@ -674,9 +686,10 @@ test('U9 Move to Top on the bulk toolbar: eligible selection only, one request, 
 });
 
 test('U10 Move to Top keeps a search, filter or Newest view and asks once for every restart it needs', async ({ page }) => {
+  // The victims are not on this page; each is named as Downloads names it.
   const victims = [
-    {transfer_id: 1, name: 'Queue item 01', attempt_ids: ['attempt-1'], completed_bytes: 2097152, total_bytes: 4194304, estimated_percentage: null},
-    {transfer_id: 2, name: 'Queue item 02', attempt_ids: ['attempt-2'], completed_bytes: 1048576, total_bytes: 4194304, estimated_percentage: null},
+    {transfer_id: 41, name: 'watch', display_name: 'Victim One [abc].webm', attempt_ids: ['attempt-1'], completed_bytes: 2097152, total_bytes: 4194304, estimated_percentage: null},
+    {transfer_id: 42, name: 'watch', display_name: 'Victim Two [def].webm', attempt_ids: ['attempt-2'], completed_bytes: 1048576, total_bytes: 4194304, estimated_percentage: null},
   ];
   const queue = await boot(page, [transfer(1, {status: 'downloading'}), transfer(2, {status: 'downloading'}),
     transfer(3), transfer(4)], {topVictims: victims});
@@ -691,6 +704,8 @@ test('U10 Move to Top keeps a search, filter or Newest view and asks once for ev
   await expect(dialog).toHaveCount(1);
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('.dp-queue-restart-item')).toHaveCount(2);
+  await expect(dialog.locator('.dp-queue-restart-name')).toHaveText(['Victim One [abc].webm', 'Victim Two [def].webm']);
+  await expect(page.locator('#t-tbody tr[data-torrent-id="41"], #t-tbody tr[data-torrent-id="42"]')).toHaveCount(0);
   await dialog.locator('[data-modal-cancel]').click();
   await expect(dialog).toBeHidden();
   expect(queue.log.tops.length).toBe(1);
@@ -704,7 +719,10 @@ test('U10 Move to Top keeps a search, filter or Newest view and asks once for ev
   expect(queue.log.tops[2].confirm_restart).toEqual(['attempt-1', 'attempt-2']);
   await expect(dialog).toBeHidden();
   expect(queue.order()).toEqual([3, 4, 1, 2]);
-  // The operator's view is kept; the outcome is said, not shown by clearing it.
+  // The completed bulk move ends the selection; the operator's view is kept
+  // and the outcome is said, not shown by clearing it.
+  await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#t-tbody .t-chk:checked')).toHaveCount(0);
   await expect(page.locator('#torrent-order')).toHaveValue('newest');
   await expect(page.locator('#torrent-search')).toHaveValue('item 0');
   await expect(page.locator('#dp-queue-status')).toContainText(/top of the queue/i);
@@ -776,4 +794,100 @@ test('B1-B4 a selection holds its page: the toolbar never repaginates, live chan
   await page.locator('#torrent-page-btns [aria-label="Previous page"]').click();
   await expect.poll(() => queue.page().offset).toBe('0');
   await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
+});
+
+test('N1 Details is headed by the transfer display name, the submitted name only as fallback', async ({ page }) => {
+  const queue = await boot(page, [transfer(1, {name: 'watch', display_name: 'A Real Video Title [abc123].webm'}),
+                                  transfer(2, {name: 'watch'})]);
+  await expect(row(page, 1).locator('.t-name')).toHaveText('A Real Video Title [abc123].webm');
+  await row(page, 1).locator('.t-name').click();
+  await expect.poll(() => queue.log.details).toEqual([1]);
+  await expect(page.locator('#modal-title')).toHaveText('A Real Video Title [abc123].webm');
+  await page.evaluate(() => closeModal());
+  await row(page, 2).locator('.t-name').click();
+  await expect.poll(() => queue.log.details).toEqual([1, 2]);
+  await expect(page.locator('#modal-title')).toHaveText('watch');
+});
+
+async function selectionCleared(page) {
+  await expect(page.locator('#bulk-bar')).not.toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#bulk-count')).toHaveText('');
+  await expect(page.locator('#t-tbody .t-chk:checked')).toHaveCount(0);
+  await expect(page.locator('#chk-all')).not.toBeChecked();
+  await expect(page.locator('#chk-all')).toHaveJSProperty('indeterminate', false);
+}
+
+test('C1 a completed bulk action ends the selection and shows its result', async ({ page }) => {
+  const queue = await boot(page, [1, 2, 3, 4, 5, 6].map(id => transfer(id)));
+  for (const [action, ids, status] of [['pause', [2, 3], 'paused'], ['resume', [2], 'queued'], ['reset', [3], 'queued']]) {
+    for (const id of ids) await row(page, id).locator('.t-chk').check();
+    await page.locator(`.dp-downloads-bulk-action--${action}`).click();
+    await expect.poll(() => queue.log.bulk.at(-1)?.action).toBe(action);
+    await selectionCleared(page);
+    for (const id of ids) await expect(row(page, id)).toHaveAttribute('data-status', status);
+  }
+  // Delete: the removed rows are gone, nothing stays selected, focus is not stranded.
+  for (const id of [4, 5]) await row(page, id).locator('.t-chk').check();
+  await page.locator('.dp-downloads-bulk-action--delete').click();
+  await page.locator('.dp-modal-dialog [data-modal-accept]').click();
+  await expect.poll(() => renderedIds(page)).toEqual([1, 2, 3, 6]);
+  await selectionCleared(page);
+  await expect(page.locator('#torrent-search')).toBeFocused();
+  // Move to Top on page 1: the selection ends too.
+  await row(page, 6).locator('.t-chk').check();
+  await page.locator('.dp-downloads-bulk-action--top').click();
+  await expect.poll(() => renderedIds(page)).toEqual([6, 1, 2, 3]);
+  await selectionCleared(page);
+  // A later refresh never brings a stale selection back.
+  await page.evaluate(() => window.loadTorrents());
+  await settled(page, queue);
+  await selectionCleared(page);
+});
+
+test('C2 cancel and failure keep the selection; a pending action holds the page; completion releases it', async ({ page }) => {
+  await page.setViewportSize({width: 1500, height: 640});
+  const queue = await boot(page, Array.from({length: 30}, (_, index) => transfer(index + 1)));
+  await page.locator('#torrent-page-btns [aria-label="Next page"]').click();
+  await expect.poll(() => queue.page().offset).not.toBe('0');
+  await quiet(page, queue);
+  const before = await pageState(page, queue);
+  const [first, second] = before.ids;
+  for (const id of [first, second]) await row(page, id).locator('.t-chk').check();
+
+  // Cancelled confirmation: nothing sent, selection kept.
+  await page.locator('.dp-downloads-bulk-action--delete').click();
+  await page.locator('.dp-modal-dialog [data-modal-cancel]').click();
+  expect(queue.log.bulk).toEqual([]);
+  // A failed request: selection kept for a retry.
+  queue.setBulk({error: true});
+  await page.locator('.dp-downloads-bulk-action--pause').click();
+  await expect.poll(() => queue.log.bulk.length).toBe(1);
+  for (const id of [first, second]) await expect(row(page, id).locator('.t-chk')).toBeChecked();
+  await expect(page.locator('#bulk-bar')).toHaveClass(/\bvisible\b/);
+  await expect(page.locator('#bulk-count')).toHaveText('2 Selected');
+
+  // Pending: the page holds; completion ends the selection on the same page.
+  let release;
+  queue.setBulk({error: false, hold: new Promise(resolve => { release = resolve; })});
+  await page.locator('.dp-downloads-bulk-action--pause').click();
+  await expect.poll(() => queue.log.bulk.length).toBe(2);
+  await quiet(page, queue);
+  expect(await pageState(page, queue)).toEqual(before);
+  release();
+  queue.setBulk({hold: null});
+  await expect(row(page, first)).toHaveAttribute('data-status', 'paused');
+  await selectionCleared(page);
+  expect((await pageState(page, queue)).offset).toBe(before.offset);
+  // Capacity measurement runs again once the selection is gone.
+  await page.setViewportSize({width: 1500, height: 520});
+  await expect.poll(() => queue.page().limit, {timeout: 4000}).not.toBe(before.limit);
+
+  // A bulk Move to Top from a deeper unfiltered Priority page shows the new top.
+  await quiet(page, queue);
+  const deep = (await renderedIds(page))[1];
+  await row(page, deep).locator('.t-chk').check();
+  await page.locator('.dp-downloads-bulk-action--top').click();
+  await expect.poll(() => queue.page().offset).toBe('0');
+  await expect.poll(async () => (await renderedIds(page))[0]).toBe(deep);
+  await selectionCleared(page);
 });

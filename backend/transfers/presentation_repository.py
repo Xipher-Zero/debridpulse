@@ -14,8 +14,10 @@ from db.database import get_db
 from transfers import codec
 from transfers import material as mat
 from transfers._repository_base import (
-    active_execution_progress_sql, active_execution_projection, is_canonical_artifact_row,
+    active_execution_progress_sql, active_execution_projection, canonical_artifact_membership_sql,
+    is_canonical_artifact_row,
 )
+from transfers.display_name import normalized_transfer_display_name
 from transfers.manual_failover import SWITCH_ELIGIBLE_LIFECYCLE_STATES as _SWITCHABLE_STATES
 from transfers.models import BITTORRENT_REQUEST_KINDS, TORRENT_FILE_REQUEST_KINDS, SizeKnowledge
 from transfers.repository import TransferRepository as _CanonicalTransferRepository
@@ -448,6 +450,45 @@ def canonical_file_presentations(files, refs, contributed, associations, *, tran
 class TransferRepository(_CanonicalTransferRepository):
     """Canonical production repository plus safe recovery/source presentation."""
 
+    async def display_names(self, transfer_ids) -> dict[int, str]:
+        """Each transfer's human-facing title, as the Downloads list derives
+        it (``api.operational_downloads``): ``normalized_transfer_display_name``
+        over the filenames of its current canonical artifacts in artifact
+        order, its root request kind deciding whether a torrent/magnet root
+        name is its identity, and its durable ``name`` the fallback. Read
+        only -- the submitted name, requests and files are never rewritten."""
+        ids = sorted({int(item) for item in transfer_ids})
+        if not ids:
+            return {}
+        marks = ",".join("?" for _ in ids)
+        async with get_db() as db:
+            names = await db.fetchall(f"SELECT id, name FROM torrents WHERE id IN ({marks})", ids)
+            roots = await db.fetchall(
+                f"""SELECT transfer_id, payload FROM (
+                        SELECT transfer_id, payload, ROW_NUMBER() OVER (
+                            PARTITION BY transfer_id
+                            ORDER BY CASE WHEN parent_id IS NULL THEN 0 ELSE 1 END, ordinal, id) AS position
+                        FROM transfer_requests WHERE transfer_id IN ({marks}))
+                    WHERE position=1""", ids)
+            files = await db.fetchall(
+                f"""SELECT f.torrent_id, f.filename FROM download_files f
+                    WHERE f.torrent_id IN ({marks}) AND {canonical_artifact_membership_sql("f")}
+                    ORDER BY f.torrent_id, f.id""", ids)
+        kinds = {}
+        for row in roots:
+            try:
+                kinds[int(row["transfer_id"])] = str(codec.request(codec.load(row["payload"])).kind or "").strip().lower()
+            except (TypeError, ValueError, KeyError):
+                kinds[int(row["transfer_id"])] = ""
+        filenames: dict[int, list[str]] = {}
+        for row in files:
+            filenames.setdefault(int(row["torrent_id"]), []).append(row["filename"])
+        return {int(row["id"]): normalized_transfer_display_name(
+                    filenames.get(int(row["id"]), []), root_name=row["name"],
+                    root_is_canonical_identity=public_source_identity(
+                        kinds.get(int(row["id"]), "")).get("kind") in {"magnet", "torrent_file"})
+                for row in names}
+
     async def presentation(self, transfer_id: int, details: bool = False, *,
                             capacity_only_blocked_ids=frozenset()):
         """``capacity_only_blocked_ids`` (Section 9) is the live set from
@@ -782,6 +823,7 @@ class TransferRepository(_CanonicalTransferRepository):
                     item["download_speed"] = 0
 
         result["request_kinds"] = request_kinds
+        result["display_name"] = (await self.display_names((transfer_id,))).get(int(transfer_id))
         if route_provider is not _NOT_A_TORRENT_ROOT:
             result["route_provider_id"] = route_provider
         result["current_source_identity"] = public_source_identity(request_kind, candidate_source)

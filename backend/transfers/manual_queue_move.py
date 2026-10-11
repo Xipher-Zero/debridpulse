@@ -125,8 +125,9 @@ def interruption(writer: dict, executor) -> str | None:
     return "restart" if writer["state"] == "running" else "idle"
 
 
-def _affected(victims: list[dict]) -> tuple[dict, ...]:
-    """Each affected logical transfer once, whatever number of its writers."""
+def _affected(victims: list[dict], names: dict[int, str]) -> tuple[dict, ...]:
+    """Each affected logical transfer once, whatever number of its writers,
+    named by ``names`` (its display name, as Downloads shows it)."""
     grouped: dict[int, list[dict]] = {}
     for victim in victims:
         grouped.setdefault(victim["transfer_id"], []).append(victim)
@@ -138,6 +139,7 @@ def _affected(victims: list[dict]) -> tuple[dict, ...]:
         affected.append({
             "transfer_id": transfer_id,
             "name": str(writers[0]["name"] or ""),
+            "display_name": names.get(transfer_id) or str(writers[0]["name"] or ""),
             "attempt_ids": [writer["attempt_id"] for writer in writers],
             "completed_bytes": sum(max(0, int(item.get("completed_bytes") or 0)) for item in progress),
             "total_bytes": sum(totals) if all(totals) else None,
@@ -271,7 +273,8 @@ async def move_in_queue(engine, transfer_id: int | None = None, *, before_id: in
             unconfirmed = [victim for victim in restarts
                            if victim["attempt_id"] not in confirmed | held[victim["for"]]]
             if unconfirmed:
-                raise RestartConfirmationRequired(_affected(unconfirmed), changed=bool(confirmed))
+                names = await repository.display_names({victim["transfer_id"] for victim in unconfirmed})
+                raise RestartConfirmationRequired(_affected(unconfirmed, names), changed=bool(confirmed))
             if reaffirm and not restarts:
                 # Nothing to confirm now: the promotion stands as it is.
                 transfer = await repository.get(transfer_id)

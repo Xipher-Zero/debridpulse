@@ -322,7 +322,11 @@ test('WS2-P1 bulk Remove captures its stable targets once, rejects double-confir
   await expect.poll(() => fixture.snapshot().requests.bulk.length).toBe(1);
   expect(fixture.snapshot().requests.bulk[0]).toEqual({ids: [1], action: 'delete'});
   await expect(row(page, 1)).toHaveCount(0);
-  await expect(rowCheckbox(page, 2)).toBeChecked();
+  // The completed removal ends the selection session; the next removal is a
+  // fresh selection whose targets are captured again.
+  await expect(rowCheckbox(page, 2)).not.toBeChecked();
+  expect(await selectedIds(page)).toEqual([]);
+  await rowCheckbox(page, 2).check();
 
   await page.locator('.dp-downloads-bulk-action--delete').click();
   await accept(page).click();

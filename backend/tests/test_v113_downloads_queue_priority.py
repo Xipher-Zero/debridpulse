@@ -127,6 +127,14 @@ def calls(executor, name):
     return [attempt for call, attempt in executor.calls if call == name]
 
 
+async def titled(transfer_id, title):
+    """The artifact resolved to ``title`` (a Media Downloads ``/watch``
+    transfer keeps its submitted name); the transfer's own name is untouched."""
+    async with database.get_db() as db:
+        await db.execute("UPDATE download_files SET filename=? WHERE torrent_id=?", (title, transfer_id))
+        await db.commit()
+
+
 # -- Q1: server-side order before pagination ---------------------------------------------------------
 
 def _seed(db_path: Path, rows) -> None:
@@ -274,6 +282,7 @@ async def test_a_restart_only_victim_is_listed_and_cancel_changes_nothing(tmp_pa
     first = await submit(core, "first", kind="ledger")
     a = await running(core, first, completed=2)
     second = await submit(core, "second", kind="ledger")
+    await titled(first, "The Victim's Real Title.webm")
     priorities = [(await core.repository.get(tid)).priority for tid in (first, second)]
 
     refusal = await refused(core, second, before_id=first)
@@ -282,6 +291,10 @@ async def test_a_restart_only_victim_is_listed_and_cancel_changes_nothing(tmp_pa
     assert detail["confirmation"] == "restart_required" and detail["changed"] is False
     # Each affected logical transfer once, with every attempt to confirm.
     assert [(item["transfer_id"], item["attempt_ids"]) for item in detail["transfers"]] == [(first, [a.attempt_id])]
+    # Named as the Downloads list names it -- the victim's own title, never
+    # the moved transfer's; the submitted name stays as it was.
+    assert [(item.get("display_name"), item["name"]) for item in detail["transfers"]] == [
+        ("The Victim's Real Title.webm", "first")]
     assert detail["transfers"][0]["completed_bytes"] == 2
     # The proposal changed nothing: no order, intent or native call.
     assert [(await core.repository.get(tid)).priority for tid in (first, second)] == priorities
@@ -828,13 +841,16 @@ async def test_one_confirmation_covers_every_restart_a_selection_needs_and_cance
     second = await submit(core, "second", kind="ledger")
     b = await running(core, second, completed=3)
     third, fourth = await submit(core, "third", kind="ledger"), await submit(core, "four", kind="ledger")
+    await titled(first, "First Title.webm")
+    await titled(second, "Second Title.webm")
     before = await priorities(core, [first, second, third, fourth])
 
     status, refusal = await top(core, fourth, third)
     assert status == 409 and refusal["detail"]["confirmation"] == "restart_required"
     assert refusal["detail"]["changed"] is False
-    assert sorted((item["transfer_id"], tuple(item["attempt_ids"])) for item in refusal["detail"]["transfers"]) == [
-        (first, (a.attempt_id,)), (second, (b.attempt_id,))]
+    assert sorted((item["transfer_id"], tuple(item["attempt_ids"]), item.get("display_name"))
+                  for item in refusal["detail"]["transfers"]) == [
+        (first, (a.attempt_id,), "First Title.webm"), (second, (b.attempt_id,), "Second Title.webm")]
     for confirmation in ([a.attempt_id], ["not-the-current-attempt", b.attempt_id]):
         status, stale = await top(core, fourth, third, confirm_restart=confirmation)
         assert status == 409 and stale["detail"]["changed"] is True

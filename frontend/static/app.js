@@ -1857,7 +1857,7 @@ async function showDetail(id) {
 
     if (modalTitle) {
       modalTitle.textContent =
-        t.name || 'Torrent Details';
+        t.display_name || t.name || 'Torrent Details';
     }
 
     const providerPresentation = transferProviderPresentation(t);

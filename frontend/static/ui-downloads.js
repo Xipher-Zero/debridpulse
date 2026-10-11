@@ -825,7 +825,7 @@ async function confirmRestart(transfers) {
         entry.className = 'dp-queue-restart-item';
         const name = document.createElement('strong');
         name.className = 'dp-queue-restart-name';
-        name.textContent = name.title = String(item?.name || 'Transfer');
+        name.textContent = name.title = String(item?.display_name || item?.name || 'Transfer');
         entry.appendChild(name);
         const progress = restartProgress(item);
         if (progress) {
@@ -905,7 +905,7 @@ async function reaffirmQueue(id, button) {
 // order this view shows. A restart it would cause is confirmed first, once
 // for all of them, through the same confirmation a drag asks for.
 let topPending = false;
-async function moveToTop(ids, {button = null, name = '', focusId = null} = {}) {
+async function moveToTop(ids, {button = null, name = '', focusId = null, selection = false} = {}) {
   if (topPending || !ids.length) return;
   topPending = true;
   setButtonPending(button, true, 'Moving…');
@@ -934,8 +934,10 @@ async function moveToTop(ids, {button = null, name = '', focusId = null} = {}) {
       : `${subject} moved to the top of the queue.${result?.outcome === 'preempting' ? ' Lower-ranked work stops to make room.' : ''}`;
     announce(message);
     // The unfiltered Priority view shows the new top on its first page; any
-    // other view stays as the operator chose it and says what happened.
+    // other view stays as the operator chose it and says what happened. A
+    // completed bulk Move to Top ends the selection it acted on.
     if (!queueEditable()) toast(message, 'success');
+    if (selection) clearSelection();
     if (queueEditable() && torrentPage !== 1) goToTorrentPage(1);
     else await loadTorrents();
     if (focusId !== null && (!document.activeElement || document.activeElement === document.body)) {
@@ -944,10 +946,11 @@ async function moveToTop(ids, {button = null, name = '', focusId = null} = {}) {
   } finally {
     topPending = false;
     setButtonPending(button, false);
+    if (selection) settleRemovalFocus(button);
   }
 }
 function moveSelectionToTop(button) {
-  moveToTop(selectedQueueMembers(), {button});
+  moveToTop(selectedQueueMembers(), {button, selection: true});
 }
 
 // The row menu: one command, Move to Top, for an unfinished transfer's row,
@@ -1069,12 +1072,15 @@ async function bulkAction(action, button) {
   try {
     const r = await api('POST', '/torrents/bulk', {ids, action});
     toast(`Done: ${r.ok} ok, ${r.failed} failed`, r.failed ? 'warn' : 'success');
-    if (action === 'delete') { await loadTorrents(); } else { clearSelection(); loadTorrents(); }
+    // A completed action ends the selection it acted on, and the list shows
+    // what happened. When nothing completed the selection stays to retry.
+    if (r.ok > 0 || !r.failed) clearSelection();
+    await loadTorrents();
     loadStats();
   } catch (e) { toast(e.message, 'error'); }
   finally {
     setButtonPending(button, false);
-    if (action === 'delete') settleRemovalFocus(button);
+    settleRemovalFocus(button);
     document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail: {action}}));
   }
 }

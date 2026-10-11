@@ -210,3 +210,93 @@ def test_pinned_representative_filename_form_uses_total_minus_one_count():
         normalized_transfer_display_name(filenames)
         == "Example.Release.part01.rar + 23 files"
     )
+
+
+# ── Read models: Details and the restart confirmation use the same title ──
+#
+# A Media Downloads URL ending in ``/watch`` keeps ``torrents.name`` "watch";
+# its resolved artifact names the real title. The Details read model and the
+# restart confirmation derive the same display name the Downloads list shows,
+# from current canonical artifacts, never by rewriting the durable name.
+
+import pytest
+
+import api.operational_downloads as downloads
+import db.database as database
+from transfers.models import TransferRequest
+
+
+async def _lab(tmp_path, monkeypatch, *, slots=1):
+    from test_v113_downloads_queue_priority import queue_lab
+    return await queue_lab(tmp_path, monkeypatch, slots=slots)
+
+
+async def _watch(core, title=None, *, name="watch"):
+    transfer = await core.engine.submit((TransferRequest("ledger", name, name=name),))
+    await core.engine.tick()
+    if title is not None:
+        async with database.get_db() as db:
+            await db.execute("UPDATE download_files SET filename=? WHERE torrent_id=?", (title, transfer.id))
+            await db.commit()
+    return transfer.id
+
+
+async def _durable(transfer_id):
+    async with database.get_db() as db:
+        name = (await db.fetchone("SELECT name FROM torrents WHERE id=?", (transfer_id,)))["name"]
+        requests = await db.fetchall("SELECT payload FROM transfer_requests WHERE transfer_id=? ORDER BY id",
+                                     (transfer_id,))
+    return name, [row["payload"] for row in requests]
+
+
+async def _listed(core, transfer_id):
+    page = await downloads.list_operational_torrents(status=None, search=None, limit=0, offset=0, order="queue",
+                                                     application=core.application)
+    return next(item["display_name"] for item in page["items"] if item["id"] == transfer_id)
+
+
+async def _details(core, transfer_id):
+    import api.routes as routes
+    return await routes.get_torrent(transfer_id, application=core.application)
+
+
+@pytest.mark.asyncio
+async def test_details_names_a_watch_submission_by_its_resolved_title_without_rewriting_it(tmp_path, monkeypatch):
+    core = await _lab(tmp_path, monkeypatch)
+    pending = (await core.engine.submit((TransferRequest("ledger", "watch", name="watch"),))).id
+    # Nothing resolved yet: the durable submitted name is the fallback.
+    assert (await _details(core, pending)).get("display_name") == "watch"
+    transfer = await _watch(core, "A Real Video Title [abc123].webm")
+    before = await _durable(transfer)
+    item = await _details(core, transfer)
+    assert item.get("display_name") == "A Real Video Title [abc123].webm"
+    assert item.get("display_name") == await _listed(core, transfer)
+    assert item["name"] == "watch" and await _durable(transfer) == before
+
+
+@pytest.mark.asyncio
+async def test_details_keeps_a_torrent_root_title_and_ignores_non_current_artifacts(tmp_path, monkeypatch):
+    core = await _lab(tmp_path, monkeypatch)
+    # A torrent/magnet root title is the transfer's identity, whatever its members are called.
+    torrent = await _watch(core, "member.file.mkv", name="Example Release")
+    async with database.get_db() as db:
+        await db.execute("UPDATE transfer_requests SET payload=json_set(payload,'$.kind','magnet') "
+                         "WHERE transfer_id=? AND parent_id IS NULL", (torrent,))
+        await db.commit()
+    assert (await _details(core, torrent)).get("display_name") == "Example Release" == await _listed(core, torrent)
+
+    # A blocked or standby row is never a current member: it cannot name the transfer.
+    media = await _watch(core, "The Real Title.webm")
+    async with database.get_db() as db:
+        for ordinal, (column, value) in enumerate((("blocked", 1), ("mirror_state", "standby")), 1):
+            request = f"misleading-{column}"
+            await db.execute(
+                "INSERT INTO transfer_requests (id, transfer_id, parent_id, ordinal, payload) "
+                "SELECT ?, transfer_id, id, ?, payload FROM transfer_requests "
+                "WHERE transfer_id=? AND parent_id IS NULL", (request, ordinal, media))
+            await db.execute(
+                f"INSERT INTO download_files (torrent_id, request_id, filename, status, {column}) "
+                "SELECT torrent_id, ?, 'Misleading.mkv', status, ? FROM download_files "
+                "WHERE torrent_id=? ORDER BY id LIMIT 1", (request, value, media))
+        await db.commit()
+    assert (await _details(core, media)).get("display_name") == "The Real Title.webm" == await _listed(core, media)
