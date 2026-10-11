@@ -2665,7 +2665,11 @@ class TransferRepository:
                                                 provider_id=resource.provider_id, previous=previous, state=state))
         return binding_id
 
-    async def resolution(self, attempt: ResolutionAttempt, result: ResolutionResult) -> bool:
+    async def resolution(self, attempt: ResolutionAttempt, result: ResolutionResult) -> bool | None:
+        """Accept ``attempt``'s answer. ``True``: accepted for a live transfer;
+        ``False``: accepted, the transfer is no longer live work; ``None``: not
+        accepted -- the attempt is no longer open, so the answer has no route
+        to answer for (callers treat it as not live, and owe it nothing)."""
         # Defense in depth: route identity is selected by the universal core.
         identities = [candidate.provider_id for candidate in result.candidates]
         identities.extend(candidate.resource.provider_id for candidate in result.candidates if candidate.resource)
@@ -2682,17 +2686,41 @@ class TransferRepository:
                 WHERE r.id=?""", (attempt.request_id,))
             if not row:
                 return False
+            error = codec.dump(result.error) if result.error else None
+            status = "failed" if result.error else "succeeded"
+            # The answer is the attempt's only while the attempt is still open
+            # -- resolving, or waiting on its input question. One that a route
+            # replacement released (or that already ended) has no route left
+            # to answer for: decided here, in this transaction, so no switch
+            # can commit between the decision and the writes. An attempt that
+            # now names its resource owes no reconciliation of a creation it
+            # may have made: that creation is this resource.
+            accepted = await db.execute(
+                "UPDATE resolution_attempts SET state=?,error=?,result=?,updated_at=CURRENT_TIMESTAMP,"
+                "reconcile_at=CASE WHEN ? THEN NULL ELSE reconcile_at END "
+                "WHERE id=? AND state IN ('started','input_required')",
+                (status, error, codec.dump(result), bool(result.observation), attempt.id))
+            if not accepted.rowcount:
+                # A late answer changes nothing it no longer owns -- not the
+                # attempt, its provenance, the journal or the request -- but a
+                # resource it names was created all the same: it is recorded,
+                # never bound to the request, with the owned cleanup a replaced
+                # route's resources get while the transfer lives (a deleted
+                # transfer's own Delete decides its resources).
+                if result.observation:
+                    observed = result.observation
+                    owned = (observed.resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}
+                             and observed.state != ResourceState.ABSENT
+                             and row["status"] not in {"deleted", "completed", "consolidated", "cancelled"})
+                    await self._record_unrouted_resource(db, row["transfer_id"], observed.resource, observed.state,
+                                                         CleanupAuthority.OWNED if owned else None)
+                    await db.execute("UPDATE resolution_attempts SET reconcile_at=NULL WHERE id=?", (attempt.id,))
+                await db.commit()
+                return None
             if result.observation:
                 # Persist even after Delete so late-created remote resources can
                 # be cleaned up without reviving the transfer.
                 await self._resource(db, row["transfer_id"], result.observation.resource, result.observation.state)
-            error = codec.dump(result.error) if result.error else None
-            status = "failed" if result.error else "succeeded"
-            # An attempt that now names its resource owes no reconciliation of
-            # a creation it may have made: that creation is this resource.
-            await db.execute("UPDATE resolution_attempts SET state=?,error=?,result=?,updated_at=CURRENT_TIMESTAMP,"
-                             "reconcile_at=CASE WHEN ? THEN NULL ELSE reconcile_at END WHERE id=?",
-                             (status, error, codec.dump(result), bool(result.observation), attempt.id))
             await db.execute("""UPDATE route_attempt_provenance SET outcome=?,candidate_summary=?,updated_at=CURRENT_TIMESTAMP
                 WHERE resolution_attempt_id=?""",
                 ("failed" if result.error else "resolved", self._candidate_summary(result.candidates), attempt.id))
@@ -2816,26 +2844,36 @@ class TransferRepository:
             await db.execute("BEGIN IMMEDIATE")
             outcome = "settled"
             if resource is not None:
-                known = await db.fetchone(
-                    "SELECT 1 FROM provider_resources WHERE transfer_id=? AND (resource_key=? OR "
-                    "(resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
-                if known:
-                    outcome = "known"
-                else:
-                    try:
-                        await self._resource(db, transfer_id, resource, state)
-                    except TransferError as exc:
-                        if exc.error.category != Category.OWNERSHIP_CONFLICT:
-                            await db.rollback()
-                            raise
-                        outcome = "foreign"
-                    else:
-                        outcome = "bound"
-                        if cleanup:
-                            await self.cleanup_intent(transfer_id, resource.id, cleanup, db=db)
+                outcome = await self._record_unrouted_resource(db, transfer_id, resource, state, cleanup)
             await db.execute("UPDATE resolution_attempts SET reconcile_at=NULL WHERE id=?", (attempt_id,))
             await db.commit()
         return outcome
+
+    async def _record_unrouted_resource(self, db, transfer_id: int, resource: ProviderResource,
+                                        state: ResourceState | None, cleanup: str | None) -> str:
+        """Inside the caller's transaction: record a resource a provider
+        created that no route binds -- an owed creation found
+        (``settle_creation``), or one a late answer named after its route
+        was released (``resolution``). A resource this transfer already
+        binds keeps its own lifecycle (``"known"``); one another live
+        transfer holds is not DebridPulse's to take (``"foreign"``); otherwise
+        it is bound to the transfer as an ordinary resource and, with
+        ``cleanup``, given that cleanup intent (``"bound"``)."""
+        known = await db.fetchone(
+            "SELECT 1 FROM provider_resources WHERE transfer_id=? AND (resource_key=? OR "
+            "(resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
+        if known:
+            return "known"
+        try:
+            await self._resource(db, transfer_id, resource, state)
+        except TransferError as exc:
+            if exc.error.category != Category.OWNERSHIP_CONFLICT:
+                await db.rollback()
+                raise
+            return "foreign"
+        if cleanup:
+            await self.cleanup_intent(transfer_id, resource.id, cleanup, db=db)
+        return "bound"
 
     async def record_interpretation(self, request_id: str, interpretation: TransferRequest) -> None:
         """Durably establish the provider's alternate reading of one request
@@ -3194,11 +3232,15 @@ class TransferRepository:
         # another owner after this commit is honestly ``None``.
         return next((item for item in await self.artifacts(record.transfer_id) if item.request_id == record.id), None)
 
-    async def artifacts(self, transfer_id: int) -> tuple[Artifact, ...]:
+    async def artifacts(self, transfer_id: int, *, artifact_id: int | None = None) -> tuple[Artifact, ...]:
+        """The transfer's canonical artifacts -- or, with ``artifact_id``, just
+        that one (when it is one of them), read the same way."""
+        only = "" if artifact_id is None else " AND f.id=?"
         async with get_db() as db:
             rows = await db.fetchall(f"""SELECT f.*,e.handle FROM download_files f
                 LEFT JOIN execution_attempts e ON e.id=f.execution_attempt_id
-                WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')} ORDER BY f.id""", (transfer_id,))
+                WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')}{only} ORDER BY f.id""",
+                                     (transfer_id,) if artifact_id is None else (transfer_id, artifact_id))
         return tuple(Artifact(row["id"], transfer_id, row["request_id"], row["filename"], row["local_path"], row["size_bytes"] or 0,
                               row["status"], tuple(codec.candidate(item) for item in codec.load(row["candidates"], [])),
                               row["selected_candidate"], codec.handle(codec.load(row["handle"])), row["retry_count"] or 0,
@@ -3290,6 +3332,13 @@ class TransferRepository:
             if (await self._decomposition_admission(db, artifact)).kind != MaterializationAdmissionKind.PROCEED:
                 await db.rollback()
                 return False
+            # And the candidate admitted is the artifact's current one, decided in
+            # this same transaction: never a candidate a newer fan-out or
+            # resolution replaced after the caller read it.
+            if artifact.candidates and not await self._candidate_current(
+                    db, artifact, artifact.candidates[artifact.selected]):
+                await db.rollback()
+                return False
             writer_generation = None
             if continuation is not None:
                 writer_generation = await self._admit_material_writer(db, artifact, continuation)
@@ -3300,6 +3349,54 @@ class TransferRepository:
                                       target_initially_absent=target_initially_absent, continuation=continuation,
                                       from_input_required=from_input_required)
             await db.commit()
+        return True
+
+    async def candidate_current(self, artifact: Artifact, candidate: TransferCandidate,
+                                paired: TransferRequest | None = None) -> bool:
+        """``_candidate_current`` in its own session (the dispatch read)."""
+        async with get_db() as db:
+            return await self._candidate_current(db, artifact, candidate, paired)
+
+    @staticmethod
+    async def _candidate_current(db, artifact: Artifact, candidate: TransferCandidate,
+                                 paired: TransferRequest | None = None) -> bool:
+        """THE coherence of a candidate with its artifact, from durable truth in
+        the caller's session: the artifact still selects exactly this
+        candidate (identity and provider), and the route attempt of its own
+        request that issued it -- the newest one recording it -- was not
+        released by a route replacement, so a candidate the replaced route left
+        behind is never prepared, or asked to issue material, for the
+        successor's member. ``paired``: the request the caller is about to
+        hand the candidate's provider, which must be the artifact's own
+        current request. A candidate no route attempt of the artifact's own
+        request recorded (a sibling's alternative, a canonically bound
+        candidate, a legacy row) is judged by its selection alone, as before."""
+        row = await db.fetchone("""SELECT f.candidates,f.selected_candidate,f.request_id,r.payload,r.interpretation
+            FROM download_files f LEFT JOIN transfer_requests r ON r.id=f.request_id WHERE f.id=?""", (artifact.id,))
+        if not row:
+            return False
+        durable = [codec.candidate(item) for item in codec.load(row["candidates"], [])]
+        selected = int(row["selected_candidate"] or 0)
+        if not 0 <= selected < len(durable):
+            return False
+        current = durable[selected]
+        if (str(current.id), current.provider_id) != (str(candidate.id), candidate.provider_id):
+            return False
+        if paired is not None:
+            if row["payload"] is None:
+                return False
+            request = (codec.optional_request(codec.load(row["interpretation"]))
+                       or codec.request(codec.load(row["payload"])))
+            if (paired.kind, paired.payload) != (request.kind, request.payload):
+                return False
+        for issued in await db.fetchall(
+                """SELECT a.state,p.candidate_summary FROM route_attempt_provenance p
+                   JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                   WHERE a.request_id=? AND a.provider_id=? ORDER BY p.ordinal DESC""",
+                (row["request_id"], str(candidate.provider_id))):
+            if any(str(item.get("candidate_id") or "") == str(candidate.id)
+                   for item in codec.load(issued["candidate_summary"], [])):
+                return issued["state"] != "released"
         return True
 
     async def _record_writer(self, db, artifact: Artifact, handle: ExecutionHandle, *, writer_generation,

@@ -306,10 +306,11 @@ class TransferEngine(_RecoveryTransferEngine):
                 # that frees the route for another creation -- until the
                 # provider's own inventory settles whether it exists.
                 return
-            if attempt:
-                await self.repository.resolution(
-                    attempt, ResolutionResult(ResourceState.UNKNOWN, error=error),
-                )
+            if attempt and await self.repository.resolution(
+                    attempt, ResolutionResult(ResourceState.UNKNOWN, error=error)) is None:
+                # The attempt's route ended meanwhile (an operator switch released
+                # it): its failure is no longer its request's to carry.
+                return
             await self._request_failure(
                 record, error, attempts=record.attempts + (1 if attempt else 0), routed=attempt is not None,
             )
@@ -464,8 +465,8 @@ class TransferEngine(_RecoveryTransferEngine):
                     Domain.PROVIDER, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION, Retryability.NEVER,
                     origin=Origin.PROVIDER, integration_id=attempt.provider_id, mutation=MutationOutcome.UNCERTAIN,
                     diagnostic="whether the provider created the resource could not be settled")
-        await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
-        await self._request_failure(record, error, attempts=record.attempts)
+        if await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error)) is not None:
+            await self._request_failure(record, error, attempts=record.attempts)
 
     async def _route_provider(self, record):
         """The provider this request's resolution belongs to: its bound route,

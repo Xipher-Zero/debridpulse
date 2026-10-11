@@ -1492,3 +1492,418 @@ async def test_an_intent_established_while_a_successor_is_open_governs_that_succ
 def fs_entry(generation, path):
     from transfers import file_selection as fs
     return fs.entry_identity(generation["provider_resource_id"], path)
+
+
+# -- #597: a switch's old member answers and old execution snapshots never act for the new route --------------------
+#
+# Members whose executable links are transient material their own provider
+# issues at execution time (``CandidateRefresh``), as a debrid's per-download
+# link is: the shapes of transfer 597 (Debrid-Link -> AllDebrid, 2x60; the 37 + 11
+# stale Premiumize/TorBox candidates). A provider names its members
+# ``<native>:<path>``, so an old provider handed the new provider's member is
+# visible in its calls.
+
+EPISODES = [(f"E{i:02}.mkv", f"Show/S1/E{i:02}.mkv", 1000 + i) for i in range(10)]
+
+
+class MemberParcel(ParcelProvider):
+    """A neutral manifest provider (magnet roots) whose member candidates carry
+    transient material only it issues. ``strict``: its refresh refuses a member
+    that is not its own, locally, as some debrids do; otherwise it would issue
+    material for anything. ``member_refusal``: its resolve refuses another
+    provider's member natively (``hostNotValid``-like). ``busy``: its member
+    links are momentarily unavailable (a transient refusal). ``hold`` keeps the
+    next member resolution (of ``only``, when named) open until released and
+    answers it with ``outcome``."""
+
+    def __init__(self, identity, native, *, strict=True, member_refusal=False):
+        super().__init__(identity, file_manifest=True)
+        self.descriptor = replace(self.descriptor, request_types=frozenset({"magnet", "parcel-member"}))
+        self.native, self.strict, self.member_refusal = native, strict, member_refusal
+        self.hold, self.busy = None, False
+        self.during_refresh = None
+
+    def own(self, payload):
+        return str(payload).startswith(f"{self.native}:")
+
+    def foreign(self, name):
+        """Members of another provider this one was asked to resolve or refresh."""
+        return [payload for call, payload in self.calls
+                if call == name and not str(payload).startswith("magnet:") and not self.own(payload)]
+
+    def _refusal(self):
+        from transfers.errors import Domain, NormalizedError, Retryability, Stage
+        return TransferError(NormalizedError(Domain.PROVIDER, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION,
+                                             Retryability.NEVER, integration_id=self.descriptor.id,
+                                             native_code="hostNotValid"))
+
+    async def resolve(self, request):
+        from transfers.models import Endpoint, Ownership, ProviderObservation, ResolutionResult, TransferCandidate
+        if request.kind != "parcel-member":
+            return await super().resolve(request)
+        self.calls.append(("resolve", request.payload))
+        outcome = None
+        if self.hold is not None and str(request.payload).endswith(self.hold[3] or ""):
+            (entered, release, outcome, _only), self.hold = self.hold, None
+            entered.set()
+            await release.wait()
+        if outcome == "refusal" or (self.member_refusal and not self.own(request.payload)):
+            raise self._refusal()
+        if self.busy:
+            from transfers.errors import Domain, NormalizedError, Retryability, Stage
+            raise TransferError(NormalizedError(Domain.PROVIDER, Category.PROVIDER_UNAVAILABLE, Stage.RESOLUTION,
+                                                Retryability.BACKOFF, integration_id=self.descriptor.id))
+        candidate = TransferCandidate(request.name or "member", (Endpoint("memory", "", transient=True),),
+                                      expected_bytes=4, provider_id=self.descriptor.id, refresh_request=request)
+        observation = None
+        if outcome == "resource":                         # the answer names a resource the provider created
+            observation = ProviderObservation(
+                ProviderResource(self.descriptor.id, {"box_ticket": "late"}, Ownership.CREATED,
+                                 id=f"{self.descriptor.id}:late"), ResourceState.AVAILABLE, "late", request=request)
+        return ResolutionResult(ResourceState.AVAILABLE, (candidate,), observation=observation)
+
+    async def refresh(self, candidate):
+        from transfers.errors import Domain, NormalizedError, Retryability, Stage
+        from transfers.models import Endpoint, ResolutionResult
+        payload = candidate.refresh_request.payload
+        self.calls.append(("refresh", payload))
+        if self.during_refresh is not None:
+            hook, self.during_refresh = self.during_refresh, None
+            await hook()
+        if self.strict and not self.own(payload):
+            raise TransferError(NormalizedError(Domain.RESOLUTION, Category.UNSUPPORTED_CAPABILITY,
+                                                Stage.CANDIDATE_PREPARATION, Retryability.NEVER,
+                                                integration_id=self.descriptor.id))
+        return ResolutionResult(ResourceState.AVAILABLE, (replace(
+            candidate, endpoints=(Endpoint("memory", f"memory:{payload}"),)),))
+
+
+class Members(SimpleNamespace):
+    """A ten-member root on its first provider, with the existing switch."""
+
+    async def switch(self, identity):
+        provider = self.providers[identity]
+        offer(provider, EPISODES, native=provider.native)
+        await switch_root_provider(self.engine, self.transfer.id, identity, expected_provider_id=self.current)
+        self.current = identity
+
+    async def boot(self):
+        """A fresh repository and engine over the same durable database."""
+        self.repository = TransferRepository()
+        self.registry.executors.clear()
+        self.executor = MemoryExecutor(self.repository.authorize_execution)
+        self.registry.register_executor(self.executor)
+        self.engine = TransferEngine(self.repository, self.registry, download_root=str(self.tmp_path / "dl"),
+                                     policy=self.policy, clock=self.clock)
+        await self.engine.initialize()
+
+    async def member(self, path):
+        return next(item for item in await self.repository.requests(self.transfer.id)
+                    if item.parent_id and item.entry.relative_path == path)
+
+    async def artifacts(self):
+        return {row["request_id"]: (row["id"], row["local_path"], row["status"],
+                                    [item.get("provider_id") for item in json.loads(row["candidates"] or "[]")])
+                for row in await rows("SELECT * FROM download_files WHERE torrent_id=?", (self.transfer.id,))}
+
+    async def identities(self):
+        return {request: (identity, path)
+                for request, (identity, path, _status, _candidates) in (await self.artifacts()).items()}
+
+    async def attempt(self, attempt_id):
+        (row,) = await rows("SELECT state,error,result FROM resolution_attempts WHERE id=?", (attempt_id,))
+        return dict(row)
+
+
+async def members_lab(tmp_path, monkeypatch, *providers, active=3):
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "members.sqlite3")
+    await database.init_db()
+    registry = IntegrationRegistry()
+    for provider in providers:
+        registry.register_provider(provider)
+    lab = Members(tmp_path=tmp_path, registry=registry, clock=Clock(), current=providers[0].descriptor.id,
+                  providers={provider.descriptor.id: provider for provider in providers},
+                  policy=TransferPolicy(retry_delay=0.0, max_attempts=3, max_active_executions=active))
+    await lab.boot()
+    offer(providers[0], EPISODES, native=providers[0].native)
+    lab.transfer = await lab.engine.submit((TransferRequest("magnet", MAGNET, name="Show", selection_mode="all"),),
+                                           name="Show", deduplicate=False)
+    await settle(lab.engine, 3)
+    return lab
+
+
+async def held_member_answer(lab, provider, outcome, only=None):
+    """One member resolution on ``provider`` in flight -- begun before any
+    switch -- held open; returns (cycle task, release, held request, its attempt)."""
+    import asyncio
+    entered, release = asyncio.Event(), asyncio.Event()
+    provider.hold = (entered, release, outcome, only)
+    cycle = asyncio.create_task(lab.engine.tick())
+    await asyncio.wait_for(entered.wait(), 10)
+    payload = provider.calls[-1][1]                                             # the member it holds
+    (member,) = [item for item in await lab.repository.requests(lab.transfer.id)
+                 if item.parent_id and item.request.payload == payload]
+    (held,) = await rows("SELECT id,state FROM resolution_attempts WHERE request_id=? ORDER BY rowid DESC LIMIT 1",
+                         (member.id,))
+    assert held["state"] == "started"
+    return cycle, release, member.id, held["id"]
+
+
+@pytest.mark.parametrize("outcome, member_refusal", [
+    ("success", False),            # A1/A3: the old provider would even accept the new provider's member
+    ("success", True),             # A6: transfer 597's 2x60 -- the old provider refuses it (hostNotValid)
+    ("refusal", False),            # A2: the late answer is a native NEVER refusal
+], ids=["late-success-permissive", "late-success-2x60", "late-refusal"])
+async def test_a_member_answer_landing_after_a_switch_never_takes_the_route_back(tmp_path, monkeypatch, outcome,
+                                                                                  member_refusal):
+    """A member resolution begun on B before the operator switches the root to
+    C answers after the switch committed. The switch released that attempt;
+    the late answer leaves it released -- no revived route, no rewritten
+    request -- so the new fan-out routes the member to C, B is never handed
+    C's member, and the member keeps its one artifact and destination."""
+    a = MemberParcel("parcel-a", "a")
+    b = MemberParcel("parcel-b", "b", member_refusal=member_refusal)
+    c = MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    identities = await lab.identities()
+    cycle, release, request_id, attempt_id = await held_member_answer(lab, b, outcome)
+    await lab.switch("parcel-c")
+    assert (await lab.attempt(attempt_id))["state"] == "released"                # the switch ended its authority
+    release.set()
+    await cycle                                                                 # the pre-switch call answers now
+    late = await lab.attempt(attempt_id)
+    assert (late["state"], late["error"], late["result"]) == ("released", None, None)
+    assert await lab.repository.bound_route_provider(request_id) != "parcel-b"
+    await settle(lab.engine, 4)
+    assert b.foreign("resolve") == [] and b.foreign("refresh") == []          # B never sees C's member
+    member = next(item for item in await lab.repository.requests(lab.transfer.id) if item.id == request_id)
+    assert member.state == "resolved" and member.error is None and member.request.payload.startswith("c:")
+    assert await lab.repository.bound_route_provider(request_id) == "parcel-c"
+    assert await lab.identities() == identities                                 # same artifact, same destination
+    assert {providers[0] for _i, _p, _s, providers in (await lab.artifacts()).values()} == {"parcel-c"}
+
+
+async def test_a_late_answer_naming_a_created_resource_keeps_its_cleanup_and_never_binds(tmp_path, monkeypatch):
+    """A7: the late answer of a released member attempt names a resource its
+    provider created. The attempt stays released and the member and its
+    successor are untouched, but the resource is DebridPulse's: it is recorded
+    with the owned cleanup the replaced route's resources get, survives a
+    restart and is drained by the one cleanup owner -- never dropped, never the
+    member's or the root's binding."""
+    a, b, c = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b"), MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    await lab.switch("parcel-b")
+    cycle, release, request_id, attempt_id = await held_member_answer(lab, b, "resource")
+    await lab.switch("parcel-c")
+    release.set()
+    await cycle
+    assert (await lab.attempt(attempt_id))["state"] == "released"
+    member = next(item for item in await lab.repository.requests(lab.transfer.id) if item.id == request_id)
+    assert member.resource is None or member.resource.id != "parcel-b:late"
+    root = await root_of(lab.repository, lab.transfer.id)
+    assert root.resource is None or root.resource.id != "parcel-b:late"
+    (binding,) = await rows("SELECT id,state,cleanup_authority FROM provider_resources WHERE resource_key=?",
+                            ("parcel-b:late",))
+    assert binding["cleanup_authority"] == "owned"
+    await lab.boot()                                                            # the obligation is durable
+    await lab.engine.cleanup_pending()
+    assert [call for call in b.calls if call[0] == "cleanup" and call[1].resource.id == "parcel-b:late"]
+    (binding,) = await rows("SELECT state FROM provider_resources WHERE resource_key=?", ("parcel-b:late",))
+    assert binding["state"] == "absent"
+
+
+async def test_a_current_answer_lands_once_and_a_replayed_one_changes_nothing(tmp_path, monkeypatch):
+    """A4/A5: a member answer for its still-open attempt is applied exactly
+    once; replaying it -- or a failure -- after it landed, or onto an attempt
+    a switch released, after a restart too, rewrites nothing."""
+    from transfers.models import ResolutionAttempt, ResolutionResult
+    from transfers.errors import Domain, NormalizedError, Retryability, Stage
+
+    a, b = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b")
+    lab = await members_lab(tmp_path, monkeypatch, a, b)
+    member = await lab.member("Show/S1/E00.mkv")
+    (landed,) = await rows("""SELECT id,provider_id,state,result FROM resolution_attempts WHERE request_id=?
+        ORDER BY rowid DESC LIMIT 1""", (member.id,))
+    assert landed["state"] == "succeeded"
+    journal = len(await rows("SELECT id FROM event_journal WHERE transfer_id=?", (lab.transfer.id,)))
+    attempt = ResolutionAttempt(landed["id"], member.id, landed["provider_id"], "started")
+    failure = NormalizedError(Domain.PROVIDER, Category.UNSUPPORTED_REQUEST, Stage.RESOLUTION, Retryability.NEVER)
+    for replay in (ResolutionResult(ResourceState.UNKNOWN, error=failure), ResolutionResult(ResourceState.AVAILABLE)):
+        assert await lab.repository.resolution(attempt, replay) is None             # not accepted
+    assert dict((await rows("SELECT state,result FROM resolution_attempts WHERE id=?", (landed["id"],)))[0]) == {
+        "state": "succeeded", "result": landed["result"]}
+    assert (await lab.member("Show/S1/E00.mkv")).state == member.state
+    assert len(await rows("SELECT id FROM event_journal WHERE transfer_id=?", (lab.transfer.id,))) == journal
+
+    await lab.switch("parcel-b")                                               # a's member routes are released
+    await lab.boot()
+    assert await lab.repository.resolution(attempt, ResolutionResult(ResourceState.AVAILABLE)) is None
+    assert (await lab.attempt(landed["id"]))["state"] == "released"
+    assert await lab.repository.bound_route_provider(member.id) != "parcel-a"
+
+
+async def execution_attempts(lab):
+    return {row["id"]: (row["artifact_id"], json.loads(row["candidate"] or "{}").get("provider_id"))
+            for row in await rows("SELECT id,artifact_id,candidate FROM execution_attempts WHERE transfer_id=?",
+                                  (lab.transfer.id,))}
+
+
+async def preparation_failures(lab):
+    return [row for row in await rows("SELECT payload FROM transfer_outcomes WHERE transfer_id=? AND kind='failure'",
+                                      (lab.transfer.id,))
+            if (json.loads(row["payload"]).get("error") or {}).get("category") == "unsupported_capability"]
+
+
+@pytest.mark.parametrize("strict", [True, False], ids=["old-provider-refuses", "old-provider-would-issue"])
+async def test_an_execution_pass_read_before_a_switch_never_prepares_an_old_candidate_for_the_new_member(
+        tmp_path, monkeypatch, strict):
+    """B1/B2: an execution pass read its artifacts -- three writing, seven
+    queued on A -- before the operator switched the root to B, whose fan-out
+    re-resolved every member. The queued entries it still holds are A's
+    candidates; B's members are the requests now. A is never asked to issue
+    material for B's members (refusing them, or -- permissive -- issuing it),
+    no artifact is failed for it, nothing executes on A, and every member goes
+    on with B, at its own artifact and destination."""
+    a, b = MemberParcel("parcel-a", "a", strict=strict), MemberParcel("parcel-b", "b")
+    lab = await members_lab(tmp_path, monkeypatch, a, b)
+    identities = await lab.identities()
+    snapshot = await lab.repository.artifacts(lab.transfer.id)
+    assert sorted(item.state for item in snapshot) == ["downloading"] * 3 + ["queued"] * 7
+    before = await execution_attempts(lab)
+    await lab.switch("parcel-b")
+    await lab.engine.resolve_pending()                       # B binds, commits, fans out, re-resolves members
+    a.calls.clear()
+    await lab.engine._process_executions(lab.transfer.id, snapshot, {})   # the pass that read its list earlier
+    assert a.foreign("refresh") == []
+    assert await preparation_failures(lab) == []
+    assert [provider for attempt, (_artifact, provider) in (await execution_attempts(lab)).items()
+            if attempt not in before and provider == "parcel-a"] == []
+    await settle(lab.engine, 3)
+    artifacts = await lab.artifacts()
+    assert {providers[0] for _i, _p, _s, providers in artifacts.values()} == {"parcel-b"}
+    assert sorted(status for _i, _p, status, _c in artifacts.values()) == ["downloading"] * 3 + ["queued"] * 7
+    assert await lab.identities() == identities
+    assert a.foreign("refresh") == [] and await preparation_failures(lab) == []
+
+
+async def test_a_switch_committing_while_an_old_candidate_is_prepared_admits_nothing_for_it(tmp_path, monkeypatch):
+    """B3: the snapshot was current when re-read -- A's queued member, A's own
+    request -- and A is issuing its material when the operator's switch to B
+    commits and B's fan-out re-resolves the member. The final admission
+    refuses the old candidate: no writer is recorded or started for it, and B's
+    candidate executes."""
+    a, b = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b")
+    lab = await members_lab(tmp_path, monkeypatch, a, b)
+    before = await execution_attempts(lab)
+
+    async def switch_now():                                  # retires A's writers: slots free at once
+        await lab.switch("parcel-b")
+        await lab.engine.resolve_pending()
+
+    a.during_refresh = switch_now
+    a.calls.clear()
+    await lab.engine.reconcile_executions()
+    assert a.foreign("refresh") == []                        # A only ever issued its own members' material
+    started = {attempt: entry for attempt, entry in (await execution_attempts(lab)).items() if attempt not in before}
+    assert [provider for _artifact, provider in started.values() if provider == "parcel-a"] == []
+    await settle(lab.engine, 3)
+    artifacts = await lab.artifacts()
+    assert {providers[0] for _i, _p, _s, providers in artifacts.values()} == {"parcel-b"}
+    assert "error" not in {status for _i, _p, status, _c in artifacts.values()}
+
+
+async def test_current_queued_members_still_refresh_prepare_and_start_once_and_capacity_is_reported(
+        tmp_path, monkeypatch):
+    """B4/B5/B7 controls: on an unchanged generation a queued member issues its
+    material and starts exactly once when a slot is free; a member only
+    capacity holds back is reported capacity-only blocked as before (its
+    material still issued -- the deferred ordering is unchanged); writers
+    already admitted are observed, never orphaned or started twice; a paused
+    transfer dispatches nothing."""
+    a = MemberParcel("parcel-a", "a")
+    lab = await members_lab(tmp_path, monkeypatch, a)
+    attempts = await execution_attempts(lab)
+    assert len(attempts) == 3 and len({artifact for artifact, _p in attempts.values()}) == 3
+    queued = {item.id for item in await lab.repository.artifacts(lab.transfer.id) if item.state == "queued"}
+    a.calls.clear()
+    await lab.engine.reconcile_executions()
+    assert set(lab.engine.capacity_only_blocked_ids()) == queued
+    assert len([call for call in a.calls if call[0] == "refresh"]) == len(queued)
+    assert await execution_attempts(lab) == attempts                          # the three writers, unchanged
+    lab.executor.finish(next(iter(lab.executor.jobs.values())).handle)       # one writer delivers
+    await settle(lab.engine, 2)
+    after = await execution_attempts(lab)
+    assert len(after) == 4 and len({artifact for artifact, _p in after.values()}) == 4      # one more, once
+    await lab.engine.pause(lab.transfer.id)
+    a.calls.clear()
+    await lab.engine.reconcile_executions()
+    assert [call for call in a.calls if call[0] == "refresh"] == []
+
+
+async def test_a_restart_between_the_switch_and_the_execution_pass_restores_no_old_candidate(tmp_path, monkeypatch):
+    """B6: the process restarts after the switch's fan-out committed but before
+    B re-resolved the members: the durable artifacts hold A's candidates while
+    their requests are B's. Nothing is prepared from them; once B resolves,
+    every member runs on B at its own artifact and destination."""
+    a, b = MemberParcel("parcel-a", "a"), MemberParcel("parcel-b", "b")
+    lab = await members_lab(tmp_path, monkeypatch, a, b)
+    identities = await lab.identities()
+    await lab.switch("parcel-b")
+    b.busy = True                                            # B's member links are not ready yet
+    await lab.engine.resolve_pending()
+    await lab.boot()
+    a.calls.clear()
+    await lab.engine.reconcile_executions()
+    assert a.foreign("refresh") == [] and await preparation_failures(lab) == []
+    b.busy = False
+    await settle(lab.engine, 4)
+    assert await lab.identities() == identities
+    assert {providers[0] for _i, _p, _s, providers in (await lab.artifacts()).values()} == {"parcel-b"}
+
+
+async def test_a_late_member_answer_and_a_stale_execution_pass_across_one_switch(tmp_path, monkeypatch):
+    """The combined race: while the root moves from B to C, one member's B
+    resolution answers late and an execution pass still holds B's queued
+    candidates. B is never asked to resolve or issue material for C's members,
+    the late answer takes nothing back, the stale entries are not prepared,
+    and all ten members continue on C at their own artifacts and destinations."""
+    a = MemberParcel("parcel-a", "a")
+    b = MemberParcel("parcel-b", "b", strict=False)          # B would accept anything it is handed
+    c = MemberParcel("parcel-c", "c")
+    lab = await members_lab(tmp_path, monkeypatch, a, b, c)
+    identities = await lab.identities()
+    await lab.switch("parcel-b")
+    cycle, release, request_id, attempt_id = await held_member_answer(lab, b, "success", "E09.mkv")
+    snapshot = await lab.repository.artifacts(lab.transfer.id)              # the earlier members queued on B
+    assert {item.candidates[item.selected].provider_id for item in snapshot if item.state == "queued"} == {"parcel-b"}
+    await lab.switch("parcel-c")
+    release.set()
+    await cycle
+    await lab.engine.resolve_pending()
+    await lab.engine._process_executions(lab.transfer.id, snapshot, {})
+    await settle(lab.engine, 4)
+    assert b.foreign("resolve") == [] and b.foreign("refresh") == []
+    assert (await lab.attempt(attempt_id))["state"] == "released"
+    assert await preparation_failures(lab) == []
+    assert await lab.identities() == identities
+    assert {providers[0] for _i, _p, _s, providers in (await lab.artifacts()).values()} == {"parcel-c"}
+
+
+async def test_each_execution_pass_logs_one_sanitized_summary(tmp_path, monkeypatch, caplog):
+    """One aggregate line per completed execution pass, at debug: counts and
+    durations only -- never a path, file name, link, member address or id."""
+    import logging
+
+    a = MemberParcel("parcel-a", "a")
+    lab = await members_lab(tmp_path, monkeypatch, a)
+    caplog.set_level(logging.DEBUG, logger="transfers._engine_base")
+    await lab.engine.reconcile_executions()
+    lines = [record.getMessage() for record in caplog.records if record.getMessage().startswith("Execution pass:")]
+    assert len(lines) == 1
+    line = lines[0]
+    for fact in ("transfers=1 ", "artifacts=10 ", "live=3 ", "queued=7 ", "stale=0 ", "capacity_only=7 ",
+                 "refreshes=7 ", "refreshed=7 ", "refresh_failed=0 ", "starts=0"):
+        assert fact in line
+    for leak in ("Show", "S1", ".mkv", "a:", "memory:", "parcel-a", "/", "\\"):
+        assert leak not in line

@@ -98,6 +98,7 @@ aggregation) safe against every other writer.
 from __future__ import annotations
 
 import asyncio
+import collections
 import math
 from collections.abc import Mapping
 from contextlib import asynccontextmanager
@@ -397,6 +398,9 @@ class TransferEngine:
         # recovery lifecycle. Presentation only ever reads this set; it never
         # decides independently that capacity is the blocker.
         self._capacity_only_blocked: set[int] = set()
+        # Aggregate counts of the reconcile_executions() pass in progress, for
+        # its one diagnostic summary line; ``None`` between passes.
+        self._pass_counts: collections.Counter | None = None
         # The one core owner of executor runtime limits (global download
         # bandwidth split across reserved executors).
         self.runtime = ExecutionRuntimeCoordinator(lambda: self.registry, repository)
@@ -1015,6 +1019,8 @@ class TransferEngine:
         """Reconcile cleanup obligations, then active execution attempts."""
         async with self._execution_cycle_lock:
             self._capacity_only_blocked = set()
+            started = time.monotonic()
+            counts = self._pass_counts = collections.Counter()
             await self._cleanup_executions_pending()
             transfers = await self.repository.active()
             artifacts_by_transfer = {transfer.id: await self.repository.artifacts(transfer.id) for transfer in transfers}
@@ -1069,6 +1075,15 @@ class TransferEngine:
                 if challenge and challenge.origin == InputOrigin.EXECUTOR and await self._live(transfer.id, admission=True):
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
             await self._release_runtime_reservations()
+            self._pass_counts = None
+            # One aggregate line per completed pass: counts and durations only.
+            logger.debug(
+                "Execution pass: %.3f s; transfers=%d artifacts=%d live=%d queued=%d stale=%d held=%d "
+                "capacity_only=%d refreshes=%d refreshed=%d refresh_failed=%d refresh_time=%.3f s starts=%d",
+                time.monotonic() - started, len(transfers), sum(len(items) for items in artifacts_by_transfer.values()),
+                sum(len(handles) for handles in grouped.values()), counts["queued"], counts["stale"], counts["held"],
+                len(self._capacity_only_blocked), counts["refreshes"], counts["refreshed"], counts["refresh_failed"],
+                counts["refresh_time"], counts["starts"])
         # Succeeded writers wait out their stability interval here, with the
         # cycle lock released: the fast observation keeps running meanwhile.
         await self._verify_pending()
@@ -1268,7 +1283,7 @@ class TransferEngine:
         return executor, work, self._footprint(executor, work)
 
     async def _current_artifact(self, transfer_id: int, artifact_id: int):
-        return next((item for item in await self.repository.artifacts(transfer_id) if item.id == artifact_id), None)
+        return next(iter(await self.repository.artifacts(transfer_id, artifact_id=artifact_id)), None)
 
     def _convergence_lock(self, attempt_id: str):
         return self._execution_convergence_locks.setdefault(attempt_id, asyncio.Lock())
@@ -1491,7 +1506,16 @@ class TransferEngine:
                     await self._execution_result(artifact, executor, observed, defer_verification=True,
                                                  expected_writes=expected)
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "queued" and artifact.retry_at <= self.clock():
-                    await self._dispatch(artifact)
+                    # The pass read its artifacts before whatever committed since
+                    # (a route replacement's fan-out, a new resolution): what is
+                    # dispatched is the artifact as it stands now, or nothing.
+                    current = await self._current_artifact(transfer_id, artifact.id)
+                    if (current is not None and current.state == "queued" and current.execution is None
+                            and current.retry_at <= self.clock()):
+                        self._count("queued")
+                        await self._dispatch(current)
+                    else:
+                        self._count("stale")
                 elif dispatch_allowed and await self._live(transfer_id, admission=True) and artifact.state == "refresh_pending" and artifact.retry_at <= self.clock():
                     await self._refresh(artifact)
                 elif (dispatch_allowed and artifact.state == "input_required"
@@ -1992,9 +2016,10 @@ class TransferEngine:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(
                 exc, integration_id=bound_provider_id or challenge.integration_id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION, secrets=secrets)
             attempt = ResolutionAttempt(challenge.operation_id, record.id, bound_provider_id or challenge.integration_id, "input_required")
-            await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
+            accepted = await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error))
             await self.challenges.clear(challenge)
-            await self._request_failure(record, error, attempts=record.attempts + 1)
+            if accepted is not None:
+                await self._request_failure(record, error, attempts=record.attempts + 1)
         finally:
             if submitted:
                 submitted.discard()
@@ -2807,8 +2832,10 @@ class TransferEngine:
             # commitment becomes durable.
             admission = await self.repository.materialization_authorization(artifact)
             if admission.kind == MaterializationAdmissionKind.HOLD:
+                self._count("held")
                 return
             if admission.kind == MaterializationAdmissionKind.STALE:
+                self._count("stale")
                 await self._retire_stale_materialization(artifact)
                 return
             candidate = artifact.candidates[artifact.selected]
@@ -2837,6 +2864,13 @@ class TransferEngine:
                 # Fresh material could not be issued now: the ordinary
                 # candidate refresh/recovery path owns the retry.
                 await self._schedule_refresh(artifact, exc.error)
+                return
+            if executable is None:
+                # No longer the artifact's current candidate for its current
+                # request (a route replacement's fan-out or a newer resolution
+                # replaced it): nothing is prepared, nothing fails -- the
+                # request's own resolution brings the current one.
+                self._count("stale")
                 return
             if executable is not candidate:
                 work = self._work(artifact, executable, attempt_id)
@@ -2952,7 +2986,7 @@ class TransferEngine:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.QUEUE)
             await self.repository.artifact_state(artifact.id, "error", error=error)
 
-    async def _executable_candidate(self, artifact: Artifact, candidate: TransferCandidate) -> TransferCandidate:
+    async def _executable_candidate(self, artifact: Artifact, candidate: TransferCandidate) -> TransferCandidate | None:
         """THE transient execution-material boundary.
 
         A candidate whose endpoint is transient execution material carries, in
@@ -2963,13 +2997,24 @@ class TransferEngine:
         provider output is (``_authoritative_provider_result``) -- and the
         fresh material lives only in this execution's in-memory request. The
         durable artifact, its candidates and the prepared execution row keep
-        the durable form. Any other candidate is returned unchanged."""
-        if not any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints):
+        the durable form. Any other candidate is returned unchanged.
+
+        ``None`` when the candidate is no longer the artifact's current one
+        for its current request (``TransferRepository.candidate_current``,
+        checked against exactly the request its provider would be handed):
+        a provider is never asked to issue material for a member another
+        provider's candidate replaced it with."""
+        transient = any(endpoint.transient and not endpoint.address for endpoint in candidate.endpoints)
+        record = None
+        if transient:
+            record = next((item for item in await self.repository.requests(artifact.transfer_id)
+                           if item.id == artifact.request_id), None)
+            if record is None:
+                raise TransferError(self._candidate_expired())
+        if not await self.repository.candidate_current(artifact, candidate, record.resolvable if record else None):
+            return None
+        if not transient:
             return candidate
-        record = next((item for item in await self.repository.requests(artifact.transfer_id)
-                       if item.id == artifact.request_id), None)
-        if record is None:
-            raise TransferError(self._candidate_expired())
         return await self._issued_material(candidate, record.resolvable, lan_host=await self._consented_lan_host(record))
 
     def _candidate_expired(self) -> NormalizedError:
@@ -2987,22 +3032,36 @@ class TransferEngine:
         provider = self.registry.providers.get(candidate.provider_id)
         if not isinstance(provider, CandidateRefresh):
             raise TransferError(expired)
+        self._count("refreshes")
+        asked = time.monotonic()
         try:
             result = self._authoritative_provider_result(
                 provider.descriptor.id, await provider.refresh(replace(candidate, refresh_request=request)),
                 request_kind=request.kind, lan_host=lan_host)
         except TransferError:
+            self._count("refresh_failed")
             raise
         except Exception as exc:
+            self._count("refresh_failed")
             raise TransferError(unknown_failure(exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER,
                                                 stage=Stage.CANDIDATE_PREPARATION)) from None
+        finally:
+            self._count("refresh_time", time.monotonic() - asked)
         if result.error:
+            self._count("refresh_failed")
             raise TransferError(result.error)
         fresh = result.candidates[0] if result.candidates else None
         if (fresh is None or not fresh.endpoints or not all(endpoint.address for endpoint in fresh.endpoints)
                 or (fresh.expires_at is not None and fresh.expires_at <= self.clock())):
+            self._count("refresh_failed")
             raise TransferError(expired)
+        self._count("refreshed")
         return replace(candidate, endpoints=fresh.endpoints, expires_at=fresh.expires_at)
+
+    def _count(self, name: str, amount: float = 1) -> None:
+        """Add to the execution pass in progress' summary (nothing between passes)."""
+        if self._pass_counts is not None:
+            self._pass_counts[name] += amount
 
     def _record_admission(self, observed: ExecutionObservation) -> None:
         """This engine natively admitted ``observed``'s attempt: the executor
@@ -3011,6 +3070,7 @@ class TransferEngine:
         if observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING, ExecutionState.SUCCEEDED,
                               ExecutionState.FAILED, ExecutionState.ABSENT}:
             self._admitted_executions.add(observed.handle.attempt_id)
+            self._count("starts")
 
     def _owned_disappearance(self, observed: ExecutionObservation | None) -> bool:
         """Whether an ABSENT observation is the disappearance of a
