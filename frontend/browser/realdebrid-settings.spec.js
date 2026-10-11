@@ -269,3 +269,36 @@ test('Cancel abandons the authorization without polling, and Test proves the sto
   await card.locator('[data-action="test-realdebrid"]').click();
   await expect.poll(() => calls).toContain('POST /api/settings/validate-realdebrid');
 });
+
+/* Provider Status publishes the same account many times (once per settled
+ * observation). The island is rebuilt only when what it shows changes, so an
+ * unchanged Disconnect keeps its element and the operator's focus; a changed
+ * account still renders. */
+test('repeated equivalent Provider Status publications keep the island controls; a changed account renders',
+  async ({page}) => {
+    // A connected Real-Debrid in the accepted document; its status endpoint answers its account.
+    await page.route('**/api/settings', async route => {
+      if (route.request().method() !== 'GET') return route.continue();
+      const document = await (await route.fetch()).json();
+      const connected = projection(true);
+      Object.assign(document.integrations.realdebrid, connected,
+        {options: {...document.integrations.realdebrid.options, ...connected.options}});
+      return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(document)});
+    });
+    const answer = {username: 'alice'};
+    await page.route('**/api/integration-status/realdebrid', route => route.fulfill({status: 200,
+      contentType: 'application/json', body: JSON.stringify({state: 'healthy', checked: true, ...ACCOUNT, ...answer})}));
+    const {region} = await prepare(page);
+    await page.evaluate(() => window.DPProviderStatus.refresh());
+    await expect(region.locator('.dp-settings-account-island')).toContainText('Connected as alice');
+
+    const disconnect = await region.locator('[data-action="disconnect-realdebrid"]').elementHandle();
+    await disconnect.focus();
+    for (let n = 0; n < 2; n += 1) await page.evaluate(() => window.DPProviderStatus.refresh());
+    expect(await disconnect.evaluate(node => node.isConnected && document.activeElement === node)).toBe(true);
+
+    answer.username = 'bob';
+    await page.evaluate(() => window.DPProviderStatus.refresh());
+    await expect(region.locator('.dp-settings-account-island')).toContainText('Connected as bob');
+    await expect(region.locator('[data-action="disconnect-realdebrid"]')).toBeVisible();
+  });

@@ -249,40 +249,68 @@
   const factsKey = candidate => [candidate.endpoint, candidate.enabled, candidate.configured,
     candidate.verified, candidate.verifiable].join('|');
 
-  async function observe(candidate) {
-    if (!candidate.enabled) return {entry:{...candidate, state:'disabled'}, answered:null};
-    if (candidate.staticStatus) {
-      return {entry:verificationAdjusted({...candidate, state:candidate.staticStatus}), answered:null};
-    }
-    if (!candidate.endpoint) return {entry:{...candidate, state:'unknown'}, answered:null};
-    let status, answered = null;
-    try {
-      status = await api('GET', candidate.endpoint);
-      answered = {at:Date.now(), key:factsKey(candidate), status};
-    } catch (_) {
-      const known = lastKnownGood.get(candidate.id);
-      if (!known || known.key !== factsKey(candidate) || Date.now() - known.at >= LAST_KNOWN_GOOD_MS) {
-        return {entry:{...candidate, state:'unknown'}, answered};
-      }
-      status = known.status;
-    }
-    return {entry:accountAdjusted(verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status})),
-      answered};
+  const observed = (candidate, status) =>
+    accountAdjusted(verificationAdjusted({...candidate, state:String(status?.state || 'unknown'), status}));
+
+  function remembered(candidate) {
+    const known = lastKnownGood.get(candidate.id);
+    if (!known || known.key !== factsKey(candidate) || Date.now() - known.at >= LAST_KNOWN_GOOD_MS) return null;
+    return observed(candidate, known.status);
   }
 
+  const probed = candidate => candidate.enabled && !candidate.staticStatus && Boolean(candidate.endpoint);
+
+  /* What a candidate is known to be before (or without) asking its endpoint.
+   * Participation and static facts are settled by the accepted settings
+   * document alone; a candidate that must be asked keeps its valid
+   * last-known-good under the same facts while it is asked again, and is
+   * otherwise being checked -- never healthy, never premium, until its own
+   * endpoint says so. */
+  function settled(candidate) {
+    if (!candidate.enabled) return {...candidate, state:'disabled'};
+    if (candidate.staticStatus) return verificationAdjusted({...candidate, state:candidate.staticStatus});
+    if (!candidate.endpoint) return {...candidate, state:'unknown'};
+    return remembered(candidate) || {...candidate, state:'checking'};
+  }
+
+  async function observe(candidate) {
+    try {
+      const status = await api('GET', candidate.endpoint);
+      return {entry:observed(candidate, status), answered:{at:Date.now(), key:factsKey(candidate), status}};
+    } catch (_) {
+      return {entry:remembered(candidate) || {...candidate, state:'unknown'}, answered:null};
+    }
+  }
+
+  function publish(entries, owned) {
+    render(entries);
+    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail:{entries:entries.slice(), generation:owned}}));
+  }
+
+  /* One generation owns one complete snapshot of every candidate. It is
+   * published at once from what is already settled, then again -- whole --
+   * as each endpoint answers, so a slow provider defers only its own health
+   * and never another's participation or answer. An answer is applied only
+   * while its generation is still the current one (the settings document it
+   * was asked under); an obsolete one changes nothing and seeds nothing.
+   * Resolves with the final snapshot, or null once superseded. */
   async function refresh() {
     const owned = invalidate();
     let settings = null;
     try { settings = settingsData; } catch (_) {}
     const providers = candidates(settings);
     if (providers === null) { render([], 'unknown'); return null; }
-    const results = await Promise.all(providers.map(observe));
-    if (owned !== generation) return null;
-    for (const {entry, answered} of results) if (answered) lastKnownGood.set(entry.id, answered);
-    const observations = results.map(result => result.entry);
-    render(observations);
-    document.dispatchEvent(new CustomEvent('debridpulse:provider-status', {detail:{entries:observations, generation:owned}}));
-    return observations;
+    const snapshot = providers.map(settled);
+    publish(snapshot, owned);
+    await Promise.all(providers.map(async (candidate, index) => {
+      if (!probed(candidate)) return;
+      const {entry, answered} = await observe(candidate);
+      if (owned !== generation) return;
+      if (answered) lastKnownGood.set(entry.id, answered);
+      snapshot[index] = entry;
+      publish(snapshot, owned);
+    }));
+    return owned === generation ? snapshot.slice() : null;
   }
 
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});

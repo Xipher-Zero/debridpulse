@@ -343,3 +343,66 @@ async def test_error_notifications_never_carry_diagnostic_evidence(core, monkeyp
     fields = {field["name"]: field["value"] for field in payload["fields"]}
     assert fields["Category"] == "provider_protocol_violation" and fields["Reason"] == error.message
     assert fields["Transfer ID"] == str(transfer.id) and payload["title"] == "❌ Error"
+
+
+TITLE_VARIANTS = [
+    # (event kind, presentation overrides, the send method that names the transfer)
+    ("accepted", {}, "send_added"),
+    ("completed", {}, "send_complete"),
+    ("completed", {"source_failure_count": 1}, "send"),
+    ("completed", {"blocked_count": 1}, "send_partial"),
+    ("completed", {"extraction_status": "error"}, "send_extract_failed"),
+    ("completed", {"extraction_status": "completed"}, "send_extract_complete"),
+    ("error", {}, "send_error"),
+]
+
+
+@pytest.mark.parametrize("display_name", ["Resolved Title [abc123].mkv", None, ""])
+@pytest.mark.parametrize("kind,overrides,method", TITLE_VARIANTS)
+@pytest.mark.asyncio
+async def test_lifecycle_notifications_name_the_transfer_by_its_display_name(
+        monkeypatch, kind, overrides, method, display_name):
+    """Every lifecycle notification names the transfer as the canonical
+    presentation does: its derived ``display_name`` when one exists at
+    dispatch, else its durable ``name`` (a /watch submission before its
+    artifact resolves). The durable name is never rewritten, and the event is
+    still claimed before anything is delivered."""
+    from application.observability import Observability
+    order = []
+    item = {"id": 7, "name": "watch", "display_name": display_name, "source": "https://media.example/watch",
+            "source_failure_count": 0, "blocked_count": 0, "file_count": 1, "size_bytes": 1,
+            "files": [{"status": "completed"}], "local_path": "/download", "executors": ["yt_dlp"],
+            "extraction_status": None, "extraction_error": None, "providers": ["media"], **overrides}
+
+    class Repository:
+        async def pending_events(self):
+            return [{"id": 1, "kind": kind, "transfer_id": 7, "detail": "boom"}]
+
+        async def presentation(self, _transfer_id, details=False):
+            return dict(item)
+
+        async def claim_event(self, _event_id):
+            order.append("claim")
+            return True
+
+    class Notifier:
+        def __getattr__(self, send):
+            async def deliver(*args, **_kwargs):
+                order.append((send, args))
+            return deliver
+
+    async def publish(_kind, _payload):
+        return None
+    monkeypatch.setattr("application.observability.publish", publish)
+    monkeypatch.setattr("application.observability.NotificationService", lambda: SimpleNamespace(client=Notifier))
+    monkeypatch.setattr("application.observability.get_settings", lambda: SimpleNamespace(
+        discord_notify_added=True, discord_notify_finished=overrides.get("extraction_status") is None,
+        discord_notify_error=True, discord_notify_extract=True))
+    await Observability(Repository()).deliver()
+    title = display_name or "watch"
+    assert order[0] == "claim"
+    (sent,) = [args for send, args in order[1:] if send == method]
+    # The generic warning send carries the title as the first line of its body.
+    named = sent[1].split("\n", 1)[0] if method == "send" else sent[0]
+    assert named == title
+    assert item["name"] == "watch"

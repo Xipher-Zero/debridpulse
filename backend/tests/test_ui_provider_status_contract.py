@@ -114,5 +114,7 @@ def test_legacy_alldebrid_provider_status_owner_is_removed():
     assert 'href="https://alldebrid.com"' not in INDEX
     assert 'loadAllDebridStatus' not in STATUS
     assert 'invalidateAllDebridStatus' not in STATUS
-    assert 'invalidateProviderStatus();' in APP
+    # Provider Status is sidebar-global: navigation changes no provider fact
+    # and never discards the observation in flight.
+    assert 'invalidateProviderStatus' not in APP
     assert 'await refreshProviderStatus();' in APP

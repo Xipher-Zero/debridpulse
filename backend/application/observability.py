@@ -41,24 +41,28 @@ class Observability:
 
             cfg = get_settings()
             notify = NotificationService().client()
+            # The transfer as the operator knows it: the canonical presentation's
+            # derived display name when one exists at dispatch, else the durable
+            # submission name (which stays untouched).
+            name = item.get("display_name") or item["name"]
             if kind == "accepted" and cfg.discord_notify_added:
-                await notify.send_added(item["name"], source=item["source"], transfer_id=str(item["id"]))
+                await notify.send_added(name, source=item["source"], transfer_id=str(item["id"]))
             elif kind == "completed":
                 if cfg.discord_notify_finished:
                     if item["source_failure_count"]:
-                        await notify.send("Completed with source warnings", f"{item['name']}\n{item['source_failure_count']} source request(s) failed; selected payloads completed.", color=COLOR_PARTIAL)
+                        await notify.send("Completed with source warnings", f"{name}\n{item['source_failure_count']} source request(s) failed; selected payloads completed.", color=COLOR_PARTIAL)
                     elif item["blocked_count"]:
-                        await notify.send_partial(item["name"], total_files=item["file_count"],
+                        await notify.send_partial(name, total_files=item["file_count"],
                             downloaded_files=sum(file["status"] == "completed" for file in item["files"]),
                             blocked_files=item["blocked_count"], downloaded_size=item["size_bytes"])
                     else:
-                        await notify.send_complete(item["name"], file_count=sum(file["status"] == "completed" for file in item["files"]),
+                        await notify.send_complete(name, file_count=sum(file["status"] == "completed" for file in item["files"]),
                             size_bytes=item["size_bytes"], destination=item["local_path"] or "", download_client=", ".join(item["executors"]))
                 if cfg.discord_notify_extract and item["extraction_status"] == "error":
-                    await notify.send_extract_failed(item["name"], reason=item["extraction_error"] or "Post-processing failed")
+                    await notify.send_extract_failed(name, reason=item["extraction_error"] or "Post-processing failed")
                 elif cfg.discord_notify_extract and item["extraction_status"] == "completed":
-                    await notify.send_extract_complete(item["name"], dest=item["local_path"] or "")
+                    await notify.send_extract_complete(name, dest=item["local_path"] or "")
             elif kind == "error" and cfg.discord_notify_error:
-                await notify.send_error(item["name"], reason=event["detail"] or "Transfer requires attention", source=item["source"],
+                await notify.send_error(name, reason=event["detail"] or "Transfer requires attention", source=item["source"],
                     provider=", ".join(item["providers"]), transfer_id=str(item["id"]),
                     category=(item.get("error") or {}).get("category", ""))

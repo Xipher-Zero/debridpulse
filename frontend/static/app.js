@@ -14,10 +14,6 @@ let pausedTransferCount = 0;
 // assigned only from server responses (GET /stats and the pause/resume results)
 // and never written to, or read from, settingsData.
 let processingPaused = false;
-function invalidateProviderStatus() {
-  return window.DPProviderStatus?.invalidate?.();
-}
-
 async function refreshProviderStatus() {
   if (!window.DPProviderStatus?.refresh) return null;
   return window.DPProviderStatus.refresh();
@@ -76,9 +72,6 @@ function renderTopbarActions() {
 // ── Nav ────────────────────────────────────────────────────────────────────
 function nav(el) {
   if (!el) return;
-  // Navigation establishes a new presentation generation. An HTTP response
-  // initiated by an older surface may finish later, but may not become truth.
-  invalidateProviderStatus();
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   const v = el.dataset.view;
@@ -1217,9 +1210,14 @@ async function loadStats() {
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
       document.getElementById('i-avg-duration').textContent = fmtDuration(s.avg_download_duration_seconds);
       document.getElementById('i-avg-size').textContent = s.avg_torrent_size_bytes ? fmtSize(s.avg_torrent_size_bytes) : '—';
-      const active = s.active_operations ?? s.active_downloads ?? 0;
+      // The Downloads badge: distinct transfers still in the ordinary download
+      // lifecycle (one torrents row each, whatever their artifacts or
+      // attempts). Failed transfers awaiting the operator and terminal ones
+      // are not counted.
+      const unfinished = ['pending', 'processing', 'input_required', 'ready', 'queued', 'downloading',
+        'paused', 'verifying', 'extracting'].reduce((sum, status) => sum + (Number(bs[status]) || 0), 0);
       const nb = document.getElementById('nb-active');
-      if (nb) { nb.textContent = active; nb.style.display = active > 0 ? '' : 'none'; }
+      if (nb) { nb.textContent = unfinished; nb.style.display = unfinished > 0 ? '' : 'none'; }
       // The topbar's active count is NOT written here: it has exactly one
       // writer, the neutral runtime-status poll, whose number is DebridPulse's
       // canonical execution-admission occupancy rather than this aggregate

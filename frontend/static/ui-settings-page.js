@@ -1574,9 +1574,15 @@
       `<button type="button" class="btn btn-primary btn-sm" data-action="connect-${id}">Connect ${html(name)}</button>`);
   }
 
+  /* Rebuilt only when what it shows changed: Provider Status publishes the
+   * same account once per settled observation, and replacing identical
+   * controls would take the operator's focus with them. */
   function renderDeviceConnection(id) {
     const region = root()?.querySelector(`[data-${id}-connection]`);
-    if (region) region.innerHTML = deviceConnectionMarkup(id);
+    if (!region) return;
+    const next = document.createElement('template');
+    next.innerHTML = deviceConnectionMarkup(id);
+    if (region.innerHTML !== next.innerHTML) region.replaceChildren(next.content);
   }
 
   function stopDevicePolling(id) {
