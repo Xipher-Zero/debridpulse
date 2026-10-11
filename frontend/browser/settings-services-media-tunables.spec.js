@@ -14,7 +14,8 @@ const MULTIMETA = 'rgb(232, 121, 249)';            // #E879F9, unchanged
 
 async function resetMedia(page) {
   const media = await page.request.patch('/api/integrations/media/configuration',
-    {data: {options: {target_resolution: 'best', video_quality: 'high', video_codec: 'auto'}}});
+    {data: {options: {target_resolution: 'best', video_quality: 'high', video_codec: 'auto',
+                     concurrent_fragment_downloads: 1}}});
   expect(media.ok()).toBe(true);
   const current = await (await page.request.get('/api/settings')).json();
   if (current.preferred_subtitle_language !== 'en') {
@@ -201,9 +202,10 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   await openSettings(page, 'downloads');
   await mediaCard(page).locator('.dp-settings-disclosure').first().click();
   const fields = mediaCard(page).locator('.dp-settings-field');
-  await expect(fields).toHaveCount(4);
+  await expect(fields).toHaveCount(5);
   await expect(fields.locator('.form-label')).toHaveText(
-    ['Target Resolution', 'Video Quality', 'Preferred Video Codec', 'Preferred Subtitle Language']);
+    ['Target Resolution', 'Video Quality', 'Preferred Video Codec', 'Preferred Subtitle Language',
+     'Concurrent Fragment Downloads']);
   // The two video preferences: one related group, drawn with the shared outline.
   const group = mediaCard(page).locator('.dp-settings-tuning-group');
   await expect(group).toHaveCount(1);
@@ -218,6 +220,17 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-codec')).toHaveValue('auto');
   await expect(mediaCard(page).locator('#dp-settings-field-media-target-resolution')).toHaveValue('best');
   await expect(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language')).toHaveValue('en');
+  const fragments = mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads');
+  await expect(fragments).toHaveValue('1');
+  await expect(fragments).toHaveAttribute('type', 'number');
+  await expect(fragments).toHaveAttribute('min', '1');
+  await expect(fragments).toHaveAttribute('max', '8');
+  // The same standard cell as the subtitle language beside it: same field
+  // grammar and the same ungrouped placement.
+  const subtitle = mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language');
+  expect(await fragments.evaluate(node => node.closest('.dp-settings-field').className))
+    .toBe(await subtitle.evaluate(node => node.closest('.dp-settings-field').className));
+  expect(await fragments.evaluate(node => !!node.closest('.dp-settings-tuning-group'))).toBe(false);
   await expect(group).toContainText('DebridPulse never re-encodes media');
   await expect(mediaCard(page)).not.toContainText(/Embed Subtitles|Subtitle Acquisition|separate files/i);
   await expect(mediaCard(page).locator('input[type="checkbox"]')).toHaveCount(0);
@@ -239,6 +252,7 @@ test('every control saves, survives a reload, and the one subtitle key agrees in
   await commit(mediaCard(page).locator('#dp-settings-field-media-video-quality'), 'low');
   await commit(mediaCard(page).locator('#dp-settings-field-media-video-codec'), 'hevc');
   await commit(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language'), 'de');
+  await commit(mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads'), '8');
   // The same key, shown under Download Behavior & Limits, follows at once.
   const global = page.locator('#dp-settings-field-preferred-subtitle-language');
   await expect(global).toHaveValue('de');
@@ -246,7 +260,7 @@ test('every control saves, survives a reload, and the one subtitle key agrees in
   const stored = await (await page.request.get('/api/settings')).json();
   expect(stored.preferred_subtitle_language).toBe('de');
   expect(stored.integrations.media.options).toMatchObject({target_resolution: '720', video_quality: 'low',
-                                                            video_codec: 'hevc'});
+                                                            video_codec: 'hevc', concurrent_fragment_downloads: 8});
 
   await page.reload();
   await openSettings(page, 'downloads');
@@ -255,6 +269,7 @@ test('every control saves, survives a reload, and the one subtitle key agrees in
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-quality')).toHaveValue('low');
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-codec')).toHaveValue('hevc');
   await expect(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language')).toHaveValue('de');
+  await expect(mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads')).toHaveValue('8');
 
   // Changed from the other entry point, the Media card follows too.
   await page.locator('.dp-settings-subsection', {hasText: 'Advanced Settings'}).locator('.dp-settings-disclosure').click();

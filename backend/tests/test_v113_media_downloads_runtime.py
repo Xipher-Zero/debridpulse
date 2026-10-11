@@ -298,10 +298,12 @@ class FakeSandbox:
         self.egress = DownloaderEgressGuard()
         self.tools = MediaTools("/bin/true", "/bin/true", "/bin/true")
         self.revoked = []
+        self.started = []
 
-    async def start(self, attempt_id, *, url, plan, workspace, target, result):
+    async def start(self, attempt_id, *, url, plan, workspace, target, result, concurrent_fragments=1):
         spec = {"plan": plan, "workspace": str(workspace), "target": str(target), "result": str(result),
-                "attempt": attempt_id}
+                "attempt": attempt_id, "concurrent_fragment_downloads": concurrent_fragments}
+        self.started.append(spec)
         return await self.processes.spawn(attempt_id, [sys.executable, "-c", _FAKE_WORKER],
                                           env=self.processes.environment(), stdin=json.dumps(spec).encode())
 
@@ -657,12 +659,13 @@ async def test_one_medium_resolved_planned_acquired_and_finalized_through_the_gu
     assert origin.requests.count("GET /s/abc123/clip.mp4?dl=1 HTTP/1.1") == 1
 
 
-async def _acquired(tmp_path, host: str, url: str, routes: dict, *, occupied_target: bool = False):
+async def _acquired(tmp_path, host: str, url: str, routes: dict, *, occupied_target: bool = False,
+                    concurrent_fragments: int = 1, origin_type=None, guard=None):
     """One medium resolved, planned and acquired by the real worker through
     the production guard, from a loopback origin on port 80 (the explicit
     extractors' address grammars admit no port)."""
-    origin = await Origin(routes, port=80).start()
-    guard = _guard({host: [PUBLIC]})
+    origin = await (origin_type or Origin)(routes, port=80).start()
+    guard = guard or _guard({host: [PUBLIC]})
     runtime, root = tmp_path / "runtime", tmp_path / "downloads"
     root.mkdir()
     sandbox = MediaSandbox(str(runtime), egress=guard)
@@ -672,7 +675,8 @@ async def _acquired(tmp_path, host: str, url: str, routes: dict, *, occupied_tar
         target = root / candidate.name
         if occupied_target:
             (target / "occupied").mkdir(parents=True)
-        executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox)
+        executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox,
+                                 concurrent_fragments=concurrent_fragments)
         work = ExecutionWork(ExecutionSubject.of(candidate), MaterializationPlan(
             MaterializationKind.FILE, str(root), str(target)), "attempt-e2e")
         request = ExecutionRequest(work, "attempt-e2e")
@@ -877,3 +881,113 @@ async def test_a_subtitle_withdrawn_after_planning_fails_its_plan_before_any_str
     assert done.state == ExecutionState.FAILED
     assert done.error.native_code == "format_unavailable" and dict(done.error.context) == {"phase": "subtitle"}
     assert "GET /media/clip.mp4 HTTP/1.1" not in origin.requests and not target.exists()
+
+
+# -- Concurrent Fragment Downloads -----------------------------------------------------
+
+@pytest.mark.asyncio
+async def test_a_settings_change_never_touches_an_attempt_already_running(tmp_path):
+    """The value is part of the attempt's one instruction, written when it
+    starts. A rebuilt executor (every settings write rebuilds it) carries the
+    new value only into attempts it starts itself; the running one keeps its
+    process, its instruction and its progress."""
+    root, runtime = tmp_path / "downloads", tmp_path / "runtime"
+    root.mkdir()
+    sandbox = FakeSandbox(str(runtime))
+    executor = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox, concurrent_fragments=2)
+    request, target = _request(root, "sleep", "attempt-running")
+    handle = executor.prepare(request)
+    assert (await executor.start(request, handle)).state == ExecutionState.RUNNING
+    workspace = executor.workspace(target.resolve())
+    deadline = time.monotonic() + 10
+    while not (workspace / "child.pid").exists() and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    child = int((workspace / "child.pid").read_text())
+
+    rebuilt = MediaExecutor(str(root), str(runtime), _allowed, sandbox=sandbox, concurrent_fragments=8)
+    assert (await rebuilt.start(request, handle)).state == ExecutionState.RUNNING  # observed, never restarted
+    assert [spec["concurrent_fragment_downloads"] for spec in sandbox.started] == [2]
+    assert not _gone(child)
+    second_root = tmp_path / "later"
+    second_root.mkdir()
+    later_executor = MediaExecutor(str(second_root), str(runtime), _allowed, sandbox=sandbox,
+                                   concurrent_fragments=8)
+    later, _later_target = _request(second_root, "complete", "attempt-later")
+    later_handle = later_executor.prepare(later)
+    await later_executor.start(later, later_handle)
+    assert [spec["concurrent_fragment_downloads"] for spec in sandbox.started] == [2, 8]
+    assert (await _settled(later_executor, later_handle)).state == ExecutionState.SUCCEEDED
+    assert (await rebuilt.cancel(handle)).state == ExecutionState.CANCELLED
+    deadline = time.monotonic() + 10
+    while not _gone(child) and time.monotonic() < deadline:
+        await asyncio.sleep(0.05)
+    assert _gone(child)
+
+
+class _InFlightOrigin(Origin):
+    """Holds each segment response briefly and records how many segment
+    requests were in flight at once."""
+
+    def __init__(self, routes, *, port=0):
+        super().__init__(routes, port=port)
+        self.in_flight = self.most = 0
+
+    async def _serve(self, reader, writer):
+        head = await reader.readuntil(b"\r\n\r\n")
+        segment = b"/hls/segment-" in head.split(b"\r\n", 1)[0]
+        if segment:
+            self.in_flight += 1
+            self.most = max(self.most, self.in_flight)
+            await asyncio.sleep(0.4)
+        try:
+            await super()._serve(_Replay(head, reader), writer)
+        finally:
+            if segment:
+                self.in_flight -= 1
+
+
+class _Replay:
+    def __init__(self, head, reader):
+        self.head, self.reader = head, reader
+
+    async def readuntil(self, separator):
+        head, self.head = self.head, b""
+        return head or await self.reader.readuntil(separator)
+
+
+def _segmented_routes(count: int) -> tuple[dict, list[bytes]]:
+    """The screenrec HLS medium with its transport stream cut into ``count``
+    segments on packet boundaries: yt-dlp joins them byte for byte."""
+    stream = (FIXTURES / "hls.ts").read_bytes()
+    packets = len(stream) // 188
+    cuts = [round(index * packets / count) * 188 for index in range(count + 1)]
+    segments = [stream[start:end] for start, end in zip(cuts, cuts[1:])]
+    media = (b"#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:10\n"
+             + b"".join(f"#EXTINF:2.5,\nsegment-{index}.ts\n".encode() for index in range(count))
+             + b"#EXT-X-ENDLIST\n")
+    routes = _screenrec_routes("A recording")
+    routes.pop("/hls/segment-0.ts")
+    routes["/hls/media.m3u8"] = (200, {"Content-Type": "application/vnd.apple.mpegurl"}, media)
+    for index, body in enumerate(segments):
+        routes[f"/hls/segment-{index}.ts"] = (200, {"Content-Type": "video/mp2t"}, body)
+    return routes, segments
+
+
+@pytest.mark.real_runtime
+@pytest.mark.asyncio
+@pytest.mark.parametrize("fragments, concurrent", [(1, False), (4, True)])
+async def test_concurrent_fragments_run_through_the_one_guard_and_its_one_budget(tmp_path, fragments, concurrent):
+    routes, segments = _segmented_routes(4)
+    guard = _guard({"screenrec.com": [PUBLIC]})
+    budget = guard.budget("yt_dlp")
+    done, _candidate, target, origin = await _acquired(
+        tmp_path, "screenrec.com", "http://screenrec.com/share/AbCdEfGhIj", routes,
+        concurrent_fragments=fragments, origin_type=_InFlightOrigin, guard=guard)
+    assert done.state == ExecutionState.SUCCEEDED, done.error
+    assert sorted(line for line in origin.requests if "/hls/segment-" in line) == [
+        f"GET /hls/segment-{index}.ts HTTP/1.1" for index in range(4)]  # each fragment once
+    assert (origin.most > 1) is concurrent  # the configured value is what yt-dlp ran with
+    # Every fragment byte was relayed by the guard on the attempt's route and
+    # drawn from the executor's ONE aggregate download budget.
+    assert budget.delivered >= sum(map(len, segments))
+    assert len(_packets(target, "v:0")) == len(_packets(FIXTURES / "hls.ts", "v:0"))

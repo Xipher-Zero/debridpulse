@@ -130,8 +130,12 @@ class MediaExecutor:
     )
 
     def __init__(self, local_root: str, runtime_dir: str,
-                 authorize: Callable[[ExecutionHandle, str], Awaitable[bool]], *, sandbox: MediaSandbox | None = None):
+                 authorize: Callable[[ExecutionHandle, str], Awaitable[bool]], *, sandbox: MediaSandbox | None = None,
+                 concurrent_fragments: int = 1):
         self.local_root = local_root
+        # Written into each attempt's instruction when it starts: a started
+        # worker keeps the value it was given.
+        self.concurrent_fragments = concurrent_fragments
         self.runtime_dir = Path(runtime_dir)
         self.authorize = authorize
         self.sandbox = sandbox or MediaSandbox(runtime_dir, budget=EXECUTOR_ID)
@@ -246,7 +250,8 @@ class MediaExecutor:
             try:
                 owned = await self.sandbox.start(handle.attempt_id, url=media["url"], plan=media,
                                                  workspace=workspace, target=target,
-                                                 result=self._record_path(handle.attempt_id))
+                                                 result=self._record_path(handle.attempt_id),
+                                                 concurrent_fragments=self.concurrent_fragments)
             except ProcessGroupAlive:
                 return await self.observe(handle)
             # The acquisition's whole scope: every planned stream and a planned subtitle.

@@ -206,14 +206,15 @@ class MediaSandbox:
         return bytes(stdout), bytes(stderr)
 
     async def start(self, attempt_id: str, *, url: str, plan: dict, workspace: Path, target: Path,
-                    result: Path) -> OwnedProcess:
+                    result: Path, concurrent_fragments: int = 1) -> OwnedProcess:
         """Start the attempt's one acquisition worker; its route stays live
         until ``revoke(public_scope(attempt_id))``."""
         scope = public_scope(attempt_id)
         proxy, guard = await self.route(scope)
         try:
             spec = self._spec("acquire", url, proxy, guard, plan=plan, attempt=str(attempt_id),
-                              workspace=str(workspace), target=str(target), result=str(result))
+                              workspace=str(workspace), target=str(target), result=str(result),
+                              concurrent_fragment_downloads=int(concurrent_fragments))
             return await self.processes.spawn(attempt_id, self.argv(), env=self.environment(workspace), stdin=spec)
         except BaseException:
             self.revoke(scope)

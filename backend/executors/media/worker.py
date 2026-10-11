@@ -42,6 +42,7 @@ import socket
 import stat
 import subprocess
 import sys
+import threading
 import time
 
 MAX_SPEC_BYTES = 1024 * 1024
@@ -244,7 +245,10 @@ def _params(spec: dict, log: _Log, **extra) -> dict:
         "check_formats": False, "updatetime": False, "overwrites": True, "continuedl": False,
         "writesubtitles": False, "writeautomaticsub": False, "writethumbnail": False, "writeinfojson": False,
         "writedescription": False, "writeannotations": False, "writecomments": False, "getcomments": False,
-        "retries": 3, "fragment_retries": 3, "extractor_retries": 1, "concurrent_fragment_downloads": 1,
+        "retries": 3, "fragment_retries": 3, "extractor_retries": 1,
+        # Fragments of one segmented download fetched at once, each its own
+        # guarded request on this route (an extraction downloads nothing).
+        "concurrent_fragment_downloads": int(spec.get("concurrent_fragment_downloads") or 1),
     }
     params.update(extra)
     return params
@@ -470,8 +474,16 @@ class _Progress:
         self.component = 0
         self.last = 0.0
         self.unit_totals: dict[int, int] = {}
+        # Concurrent fragments report from their own threads, all through the
+        # ONE status object yt-dlp keeps current: reading it and emitting the
+        # line as one step keeps every reported count in order.
+        self._lock = threading.Lock()
 
     def __call__(self, status: dict) -> None:
+        with self._lock:
+            self._report(status)
+
+    def _report(self, status: dict) -> None:
         now = time.monotonic()
         finished = status.get("status") == "finished"
         if not finished and now - self.last < PROGRESS_INTERVAL:

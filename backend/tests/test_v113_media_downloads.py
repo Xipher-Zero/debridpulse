@@ -190,9 +190,10 @@ def test_one_paired_integration_one_enable_state_and_network_sources_membership(
     provider, executor = media_definition.build(effective_integration_settings(settings, media_definition),
                                                 environment)
     assert not provider.descriptor.enabled and not executor.descriptor.enabled
-    # An installation that never stored a Video Quality reads the default, High.
+    # An installation that never stored a Video Quality reads the default,
+    # High -- and one fragment at a time, exactly as before the option existed.
     assert settings.integrations["media"].options == {"target_resolution": "720", "video_quality": "high",
-                                                      "video_codec": "auto"}
+                                                      "video_codec": "auto", "concurrent_fragment_downloads": 1}
     registry = _registry(provider, http_definition.build(IntegrationSettings(), None))
     assert [item.descriptor.id for item in registry.eligible_providers(TransferRequest("https", VIDEO))] == [
         "general_http"]
@@ -287,7 +288,8 @@ async def test_live_and_authenticated_media_are_refused_without_any_credential_f
     assert raised.value.error.category == Category.SOURCE_UNAVAILABLE
     # Nothing can ask for, carry or store a cookie or login.
     assert not hasattr(private, "resolve_with_input")
-    assert set(media_definition.options_model.model_fields) == {"target_resolution", "video_quality", "video_codec"}
+    assert set(media_definition.options_model.model_fields) == {"target_resolution", "video_quality", "video_codec",
+                                                               "concurrent_fragment_downloads"}
     params = worker._params({"proxy": "http://p"}, worker._Log())
     assert (params["cookiefile"], params["usenetrc"], params["remote_components"]) == (None, False, [])
 
@@ -918,7 +920,8 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     tuning = _function(page, "mediaTuning")
     assert re.findall(r"(selectField|input)\('(\w+)'", tuning) == [
         ("selectField", "media_target_resolution"), ("selectField", "media_video_quality"),
-        ("selectField", "media_video_codec"), ("input", "preferred_subtitle_language")]
+        ("selectField", "media_video_codec"), ("input", "preferred_subtitle_language"),
+        ("input", "media_concurrent_fragment_downloads")]
     # The two video preferences are ONE related group (the shared tuningGroup outline).
     group = tuning[tuning.index("tuningGroup("):]
     group = group[:group.index("      input('preferred_subtitle_language'")]
@@ -1409,3 +1412,156 @@ def test_any_level_finalizes_by_stream_copy_with_no_encoder():
     assert "copy" in argv and argv[argv.index("copy") - 1] in {"-c", "-codec"}
     for encoder in ("libx264", "libx265", "libvpx", "libaom", "libopus", "aac", "-b:v", "-crf", "-preset"):
         assert encoder not in argv
+
+
+# -- Concurrent Fragment Downloads: one bounded option, carried to yt-dlp per attempt --
+
+def test_concurrent_fragment_downloads_is_one_bounded_integer_media_option():
+    from pydantic import ValidationError
+    from integrations.media.definition import MediaOptions
+    assert MediaOptions().concurrent_fragment_downloads == 1  # unchanged behaviour by default
+    assert [MediaOptions(concurrent_fragment_downloads=value).concurrent_fragment_downloads
+            for value in (1, 8)] == [1, 8]
+    for invalid in (0, 9, -1, 2.5, "many", None):
+        with pytest.raises(ValidationError):
+            MediaOptions(concurrent_fragment_downloads=invalid)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("value, accepted", [(1, True), (8, True), (0, False), (9, False), (2.5, False),
+                                             ("many", False)])
+async def test_the_option_is_saved_or_refused_by_the_one_integration_configuration_path(value, accepted):
+    from unittest.mock import patch
+    from api import routes
+    from integrations.definition import IntegrationSettings
+    from test_settings_namespace_mutation import _application
+    current = AppSettings(integrations={"media": IntegrationSettings(options={"video_codec": "hevc"})})
+    application = _application(current)
+    application.definitions = (media_definition,)
+    saved = {}
+    with patch("api.routes.get_settings", return_value=current), \
+         patch("api.routes.load_settings", return_value=current), \
+         patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
+         patch("api.routes.apply_settings"):
+        update = routes.IntegrationConfigurationUpdate(options={"concurrent_fragment_downloads": value})
+        if accepted:
+            result = await routes.patch_integration_configuration("media", update, application=application)
+            assert result["options"]["concurrent_fragment_downloads"] == value
+            assert saved["cfg"].integrations["media"].options == {
+                "target_resolution": "best", "video_quality": "high", "video_codec": "hevc",
+                "concurrent_fragment_downloads": value}  # the other options stay exactly as they were
+        else:
+            with pytest.raises(routes.HTTPException) as refused:
+                await routes.patch_integration_configuration("media", update, application=application)
+            assert refused.value.status_code == 400 and "cfg" not in saved
+
+
+def test_the_option_survives_save_reload_and_restart_and_reaches_the_built_executor(tmp_path, monkeypatch):
+    import json as _json
+    from types import SimpleNamespace
+    import core.config as config
+    from db import database
+    from integrations.definition import IntegrationSettings
+    from integrations.media.definition import MediaOptions, build
+    monkeypatch.setattr(config, "CONFIG_PATH", tmp_path / "config.json")
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "state.db")
+    previous = config.get_settings()
+    try:
+        config.save_settings(normalize_settings(AppSettings(integrations={
+            "media": IntegrationSettings(options={"concurrent_fragment_downloads": 6})}), catalog))
+        reloaded = config.load_settings()  # what a restart reads
+        options = MediaOptions(**reloaded.integrations["media"].options)
+        assert options.concurrent_fragment_downloads == 6
+        environment = SimpleNamespace(download_root=str(tmp_path / "downloads"), preferred_subtitle_language="en",
+                                      repository=SimpleNamespace(authorize_execution=None))
+        assert build(options, environment)[1].concurrent_fragments == 6
+        # A document without the key (every installation until now) reads 1.
+        document = _json.loads(config.CONFIG_PATH.read_text())
+        document["integrations"]["media"]["options"].pop("concurrent_fragment_downloads")
+        config.CONFIG_PATH.write_text(_json.dumps(document))
+        assert MediaOptions(**config.load_settings().integrations["media"].options).concurrent_fragment_downloads == 1
+        assert build(MediaOptions(), environment)[1].concurrent_fragments == 1
+    finally:
+        config.apply_settings(previous)
+
+
+def test_the_worker_hands_yt_dlp_exactly_the_attempts_value_on_the_same_guarded_route():
+    baseline = worker._params({"proxy": "http://route"}, worker._Log())
+    assert baseline["concurrent_fragment_downloads"] == 1  # an extraction's instruction carries none
+    configured = worker._params({"proxy": "http://route", "concurrent_fragment_downloads": 5}, worker._Log())
+    assert configured["concurrent_fragment_downloads"] == 5
+    # Nothing else changes: the same one proxy route, the same one-connection-
+    # per-request handler, the same native downloader and retries.
+    assert {key: value for key, value in configured.items() if key not in {"concurrent_fragment_downloads", "logger"}} \
+        == {key: value for key, value in baseline.items() if key not in {"concurrent_fragment_downloads", "logger"}}
+    assert (configured["proxy"], configured["compat_opts"], configured["external_downloader"]) == (
+        "http://route", ["prefer-legacy-http-handler"], {"default": "native"})
+
+
+@pytest.mark.asyncio
+async def test_the_acquisition_instruction_carries_the_value_with_the_attempts_own_route_and_budget(tmp_path):
+    from executors.media.sandbox import MediaSandbox, MediaTools
+    routes, spawned = [], []
+
+    class Egress:
+        async def ensure_started(self):
+            pass
+
+        def public_route(self, scope, *, budget, connect_timeout_seconds):
+            routes.append((scope, budget))
+            return "127.0.0.1", 4321, "dp.public." + scope, "token"
+
+        def revoke_public_route(self, scope):
+            pass
+
+    sandbox = MediaSandbox(str(tmp_path / "runtime"), egress=Egress(), budget="yt_dlp",
+                           tools=MediaTools("/bin/true", "/bin/true", "/bin/true"))
+
+    async def spawn(attempt_id, argv, *, env, stdin):
+        spawned.append(json.loads(stdin))
+        return "owned"
+
+    sandbox.processes.spawn = spawn
+    await sandbox.start("attempt-7", url=VIDEO, plan={"formats": ["18"]}, workspace=tmp_path / "w",
+                        target=tmp_path / "t.mp4", result=tmp_path / "r.json", concurrent_fragments=7)
+    (spec,) = spawned
+    assert spec["concurrent_fragment_downloads"] == 7
+    (scope, budget), = routes
+    assert budget == "yt_dlp" and spec["proxy"] == f"http://dp.public.{scope}:token@127.0.0.1:4321"
+    assert spec["guard"] == ["127.0.0.1", 4321]
+
+
+def test_fragment_threads_report_progress_in_order(monkeypatch):
+    """Concurrent fragments call the hook from their own threads with yt-dlp's
+    ONE shared status object. A report read before a later fragment finished
+    must never be emitted after that later one: units that ran backwards would
+    make the executor distrust the part progress for the rest of the attempt."""
+    import threading
+    monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
+    status = {"status": "downloading", "downloaded_bytes": 100, "fragment_index": 5, "fragment_count": 9}
+    emitted, first_emitting, second_done = [], threading.Event(), threading.Event()
+
+    def emit(event):
+        if not first_emitting.is_set():
+            first_emitting.set()
+            second_done.wait(0.5)  # the second fragment gets every chance to report meanwhile
+        emitted.append((event["units"], event["downloaded"]))
+
+    monkeypatch.setattr(worker, "_emit", emit)
+    hook = worker._Progress()
+    first = threading.Thread(target=hook, args=(status,))
+    first.start()
+    assert first_emitting.wait(5)
+
+    def later_fragment():
+        status.update(fragment_index=6, downloaded_bytes=200)
+        hook(status)
+        second_done.set()
+
+    second = threading.Thread(target=later_fragment)
+    second.start()
+    first.join(5)
+    second.join(5)
+    assert emitted == [(5, 100), (6, 200)]
+    run_units = [units for units, _bytes in emitted]
+    assert run_units == sorted(run_units)

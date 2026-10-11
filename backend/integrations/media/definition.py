@@ -7,8 +7,8 @@ Usenet's, this definition lives under ``integrations/`` because it is the one
 module that pairs the halves: it hands the provider the sandboxed worker's
 read-only extraction, so the provider never imports its executor.
 
-Its operator settings are Target Resolution and the Video Preferences (Video
-Quality, Preferred Video Codec). The Preferred
+Its operator settings are Target Resolution, the Video Preferences (Video
+Quality, Preferred Video Codec) and Concurrent Fragment Downloads. The Preferred
 Subtitle Language it consumes is the GLOBAL Downloads preference
 (``AppSettings.preferred_subtitle_language``), read here and never copied into
 this namespace. There is no credential: authenticated media is out of scope.
@@ -18,7 +18,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from integrations.definition import IntegrationDefinition, IntegrationPresentation
 
@@ -38,6 +38,11 @@ class MediaOptions(BaseModel):
     # Auto + High (the defaults) is the native selection exactly as before.
     video_quality: VideoQuality = "high"
     video_codec: VideoCodec = "auto"
+    # yt-dlp's fragments in flight at once within ONE segmented (HLS/DASH)
+    # download; a plain HTTP file is one request whatever it is. Every one of
+    # them is its own guarded connection on the attempt's route, drawing on the
+    # executor's one download budget. Never DebridPulse's execution concurrency.
+    concurrent_fragment_downloads: int = Field(default=1, ge=1, le=8)
 
     @field_validator("video_quality", mode="before")
     @classmethod
@@ -71,7 +76,7 @@ def build(options: MediaOptions, environment):
                              video_quality=options.video_quality, video_codec=options.video_codec,
                              subtitle_language=environment.preferred_subtitle_language)
     executor = MediaExecutor(environment.download_root, runtime_dir(), environment.repository.authorize_execution,
-                             sandbox=sandbox)
+                             sandbox=sandbox, concurrent_fragments=options.concurrent_fragment_downloads)
     return provider, executor
 
 

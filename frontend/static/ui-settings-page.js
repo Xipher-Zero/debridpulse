@@ -187,6 +187,7 @@
     media_target_resolution: {scope: 'integration:media', option: 'target_resolution'},
     media_video_quality: {scope: 'integration:media', option: 'video_quality'},
     media_video_codec: {scope: 'integration:media', option: 'video_codec'},
+    media_concurrent_fragment_downloads: {scope: 'integration:media', option: 'concurrent_fragment_downloads'},
 
     // Downloads -> global admission and safety/recovery policy
     aria2_max_active_downloads: {scope: 'transfer-policy', option: 'max_concurrent_executions'},
@@ -2238,6 +2239,11 @@
         id: 'dp-settings-field-media-preferred-subtitle-language',
         hint: 'Language code (for example en, de or pt-br). The same setting as in Download Behavior &amp; Limits; a subtitle written for the media is preferred, an automatically generated one used otherwise, embedded in the one file.',
       }),
+      input('media_concurrent_fragment_downloads', 'Concurrent Fragment Downloads',
+        options.concurrent_fragment_downloads ?? 1, {
+          type: 'number', min: 1, max: 8,
+          hint: 'Number of media fragments downloaded simultaneously. Higher values may improve download speed for segmented media.',
+        }),
     );
   }
 
