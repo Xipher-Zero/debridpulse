@@ -194,7 +194,11 @@
     const cancelSlot = spec.cancelTone === 'danger'
       ? '<button class="btn btn-danger dp-modal-cancel-leading" type="button" data-modal-cancel></button>'
       : '';
-    const acceptClass = tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
+    // The accept control takes the dialog's danger/success tone; `acceptTone:
+    // 'warning'` asks for the caution treatment for an accept that is
+    // consequential but not destructive of its own.
+    const acceptClass = spec.acceptTone === 'warning' ? 'btn-warn'
+      : tone === 'danger' ? 'btn-danger' : tone === 'success' ? 'btn-success' : 'btn-primary';
     const origin = captureFocusOrigin();
     const dialogId = `dp-modal-${sequence += 1}`;
 

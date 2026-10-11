@@ -67,6 +67,26 @@ def deleted(transfer_id: int, *, remote: bool) -> JournalEvent:
                      detail="Provider resources are removed too" if remote else None)
 
 
+def queue_moved(transfer_id: int, *, before_id: int | None, after_id: int | None, promoted: bool) -> JournalEvent:
+    """An operator moved the transfer in the queue: where it now sits, by
+    its neighbours, and whether the move promoted it, so lower-ranked
+    downloads may yield their slots to it."""
+    where = (f"before transfer {before_id}" if before_id is not None
+             else f"after transfer {after_id}" if after_id is not None else "to the top")
+    detail = f"Moved {where}"
+    if promoted:
+        detail += "; lower-ranked downloads yield their slots while a transfer that overtook waits for one"
+    return _transfer(transfer_id, "transfer.queue_moved", "info", "Transfer moved in the queue", detail=detail)
+
+
+def queue_reaffirmed(transfer_id: int, *, confirmed: int) -> JournalEvent:
+    """An operator reaffirmed the transfer's place in the queue, confirming
+    the restarts of lower-ranked downloads that its slot still needs."""
+    return _transfer(transfer_id, "transfer.queue_reaffirmed", "info", "Queue position reaffirmed",
+                     detail=f"Confirmed restarting {confirmed} lower-ranked "
+                            f"{'download' if confirmed == 1 else 'downloads'} so this transfer can start")
+
+
 # ── routing ─────────────────────────────────────────────────────────────────
 
 _ROUTE_ENDS = {

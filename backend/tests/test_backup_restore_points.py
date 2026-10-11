@@ -938,6 +938,40 @@ async def test_the_pinned_pre_journal_backup_restores_an_empty_journal_holding_o
         conn.close()
 
 
+# Written by the pinned baseline's own backup service (52012d4d), immediately
+# before transfers carried an operator queue promotion: one transfer and its
+# execution attempt.
+PRE_QUEUE_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-52012d4d.zip"
+
+
+async def test_the_pinned_pre_queue_backup_restores_with_no_queue_promotion(served):
+    """Validated by its own recorded schema, upgraded on the private staged
+    copy only through the canonical bootstrap, and activated: its transfer and
+    attempt are kept unchanged, its queue priority stays as recorded, and the
+    transfer holds no promotion it never had."""
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_QUEUE_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        assert backup._fingerprint(conn) in backup._UPGRADABLE_SCHEMAS and backup._fingerprint(conn) != live
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert conn.execute("SELECT name, priority, queue_promotion FROM torrents").fetchall() == [
+            ("pre-queue.bin", 0, None)]
+        assert conn.execute("SELECT COUNT(*) FROM execution_attempts").fetchone() == (1,)
+    finally:
+        conn.close()
+
+
 async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(
         served, monkeypatch):
     app, client, _composed, _calls = served

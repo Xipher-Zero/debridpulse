@@ -50,6 +50,10 @@ _ROUTE_REPLACEMENT_OPERATIONS = frozenset({"operator_switch", "readiness_promoti
 
 # Execution-attempt states of a writer still doing (or about to do) work; an
 # ``authorized`` attempt in one of them is a live writer of its artifact.
+# THE queue membership predicate over ``torrents``: an unfinished transfer.
+# Settled history (completed, cancelled) and the absorbed/deleted are never
+# queue entries.
+_QUEUE_MEMBER_SQL = "status NOT IN ('completed','consolidated','deleted','cancelled')"
 _MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "running", "paused", "unknown"})
 
 # The forms a retired generation's unique ``torrents.hash`` takes once it no
@@ -1899,8 +1903,10 @@ class TransferRepository:
         async with get_db() as db:
             if not await db.fetchone("SELECT id FROM torrents WHERE id=?", (transfer_id,)):
                 raise KeyError(transfer_id)
-            await db.execute("UPDATE torrents SET label=COALESCE(?,label),priority=COALESCE(?,priority),updated_at=CURRENT_TIMESTAMP WHERE id=?",
-                (label, priority, transfer_id))
+            # An absolute priority is no operator promotion: it never preempts.
+            await db.execute("UPDATE torrents SET label=COALESCE(?,label),priority=COALESCE(?,priority),"
+                "queue_promotion=CASE WHEN ? IS NULL THEN queue_promotion END,updated_at=CURRENT_TIMESTAMP WHERE id=?",
+                (label, priority, priority, transfer_id))
             await db.commit()
 
     async def active(self) -> tuple[Transfer, ...]:
@@ -1915,6 +1921,98 @@ class TransferRepository:
                 AND EXISTS(SELECT 1 FROM transfer_requests r WHERE r.transfer_id=t.id)
                 ORDER BY t.priority DESC,t.id""")
         return tuple(self._transfer(row) for row in rows)
+
+    async def queue(self) -> tuple[int, ...]:
+        """THE operator queue: every unfinished transfer, first first --
+        ``torrents.priority`` descending, then the older transfer. One entry
+        per logical transfer; settled history is no queue member."""
+        async with get_db() as db:
+            return await self._queue(db)
+
+    @staticmethod
+    async def _queue(db) -> tuple[int, ...]:
+        rows = await db.fetchall(f"SELECT id FROM torrents WHERE {_QUEUE_MEMBER_SQL} ORDER BY priority DESC,id")
+        return tuple(int(row["id"]) for row in rows)
+
+    async def queue_writers(self) -> tuple[dict, ...]:
+        """Every current authorized writer occupying an execution slot, with
+        the durable facts a displacement is decided from: its transfer,
+        artifact, executor, native state, last recorded progress, the
+        continuation plan it was admitted under, and whether its transfer
+        holds a pause intent."""
+        placeholders = ",".join("?" for _ in self._OCCUPYING_EXECUTION_STATES)
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT e.id AS attempt_id, e.transfer_id, f.id AS artifact_id, e.executor_id, e.state,
+                       e.progress, e.continuation, e.native_transition_from,
+                       f.status AS artifact_state, t.name, COALESCE(p.paused,0) AS paused
+                    FROM execution_attempts e JOIN download_files f ON f.execution_attempt_id=e.id
+                    JOIN torrents t ON t.id=e.transfer_id
+                    LEFT JOIN transfer_pause_intents p ON p.torrent_id=t.id
+                    WHERE {_QUEUE_MEMBER_SQL.replace('status', 't.status')} AND e.authorized=1
+                    AND e.state IN ({placeholders}) ORDER BY e.transfer_id, f.id""",
+                self._OCCUPYING_EXECUTION_STATES)
+        return tuple({**row, "progress": codec.load(row["progress"], {}) or {},
+                      "continuation": codec.load(row["continuation"], {}) or {}} for row in rows)
+
+    async def artifact_transfers(self, artifact_ids) -> dict[int, int]:
+        """``artifact id -> transfer id`` for the given artifacts."""
+        ids = sorted({int(item) for item in artifact_ids})
+        if not ids:
+            return {}
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"SELECT id, torrent_id FROM download_files WHERE id IN ({','.join('?' for _ in ids)})", ids)
+        return {int(row["id"]): int(row["torrent_id"]) for row in rows}
+
+    async def commit_queue_move(self, transfer_id: int, *, expected: tuple[int, ...], proposed: tuple[int, ...],
+                                promotions: dict[int, dict], event) -> int | None:
+        """Commit one operator queue move atomically, or nothing.
+
+        ``expected`` is the queue the move was planned against: if it is no
+        longer the queue, nothing is written and ``None`` is returned.
+        Otherwise the unfinished queue is renumbered once to ``proposed``
+        (``len`` .. 1, only rows whose priority changes are written; settled
+        history is never touched), each overtaking transfer holds a promotion
+        that gains the restarts confirmed for it (one an earlier move
+        recorded stays), and ``event`` is journaled.
+        Returns the moved transfer's new priority."""
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            if await self._queue(db) != tuple(expected):
+                await db.rollback()
+                return None
+            count = len(proposed)
+            for index, member in enumerate(proposed):
+                await db.execute("UPDATE torrents SET priority=? WHERE id=? AND priority IS NOT ?",
+                                 (count - index, member, count - index))
+            for member, promotion in promotions.items():
+                row = await db.fetchone("SELECT queue_promotion FROM torrents WHERE id=?", (member,))
+                held = codec.load(row["queue_promotion"], None) or {} if row else {}
+                merged = {key: sorted({*(held.get(key) or ()), *promotion[key]}) for key in ("restart",)}
+                await db.execute("UPDATE torrents SET queue_promotion=? WHERE id=?", (codec.dump(merged), member))
+            await journal(db, event)
+            await db.commit()
+        return count - proposed.index(transfer_id)
+
+    async def queue_promotion(self, transfer_id: int) -> dict | None:
+        """The operator promotion an unfinished transfer holds, if any:
+        ``{"restart": [confirmed attempt ids]}``."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                f"SELECT queue_promotion FROM torrents WHERE id=? AND queue_promotion IS NOT NULL "
+                f"AND {_QUEUE_MEMBER_SQL}", (int(transfer_id),))
+        return (codec.load(row["queue_promotion"], None) or {}) if row else None
+
+    async def writer_demand(self, transfer_id: int) -> int:
+        """How many writers the transfer is about to ask for: its queued
+        artifacts without a writer, or one for a transfer that has no artifact
+        yet (still resolving)."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                "SELECT COUNT(*) AS total, COALESCE(SUM(status='queued' AND execution_attempt_id IS NULL),0) AS waiting "
+                "FROM download_files WHERE torrent_id=?", (int(transfer_id),))
+        return int(row["waiting"]) if int(row["total"]) else 1
 
     @staticmethod
     def _tombstone_hash(transfer_id: int, source_fingerprint: str, status: str = "deleted") -> str:
@@ -1991,7 +2089,7 @@ class TransferRepository:
         async with get_db() as db:
             return await self._predecessor_cleanup_blocks(db, transfer_id)
 
-    async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=0, deduplicate=True,
+    async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=None, deduplicate=True,
                     independent=True, alternative_groups: tuple[int | None, ...] | None = None) -> tuple[Transfer, bool]:
         """Admit one submission under the source's active dedupe identity.
 
@@ -2014,7 +2112,12 @@ class TransferRepository:
         first request in submitted order is admitted ``pending``; every other
         member is admitted dormant -- ``skipped``, the existing "not selected
         for acquisition" state no cohort, canonical or lifecycle owner treats
-        as material -- until ``_admit_next_alternative`` selects it."""
+        as material -- until ``_admit_next_alternative`` selects it.
+
+        A NEW transfer joins the tail of the unfinished queue (``queue``):
+        ``priority=None`` takes the lowest priority any unfinished transfer
+        holds (never above 0), which the older transfer wins on a tie, so no
+        existing position changes and nothing is displaced."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -2038,6 +2141,9 @@ class TransferRepository:
             if row:
                 transfer_id, created = int(row["id"]), False
             else:
+                if priority is None:
+                    tail = await db.fetchone(f"SELECT MIN(priority) AS low FROM torrents WHERE {_QUEUE_MEMBER_SQL}")
+                    priority = min(0, int(tail["low"])) if tail and tail["low"] is not None else 0
                 transfer_id = await db.execute_returning_id(
                     """INSERT INTO torrents(hash,name,status,source,priority,download_client,source_fingerprint)
                     VALUES(?,?,'pending',?,?,'',?)""", (fingerprint, name, source, priority, fingerprint))

@@ -899,6 +899,14 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # one collection folder: nothing is guessed or moved, and the
         # transfer's members hold until an operator resolves it.
         'collection_root_conflict': 'INTEGER NOT NULL DEFAULT 0',
+        # The operator's queue promotion of this transfer (``transfers
+        # .manual_queue_move``): JSON ``{"restart": [<attempt ids the operator
+        # confirmed may lose their progress>]}``. While it stands, the real
+        # execution admission may displace lower-ranked writers when this
+        # transfer is proven to wait only for a slot. Replaced or cleared by the
+        # transfer's next move or absolute priority; never set by a submission.
+        # NULL = none.
+        'queue_promotion': 'TEXT',
     },
     'transfer_requests': {
         'metadata': 'TEXT',
@@ -1126,7 +1134,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'transfer_file_selection_entries': {'selection_id', 'manifest_id', 'entry_id'},
     'transfer_file_selection_intents': {'request_id', 'transfer_id', 'origin_selection_id', 'created_at', 'updated_at'},
     'transfer_file_selection_intent_entries': {'request_id', 'relative_path', 'expected_bytes'},
-    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint', 'collection_root', 'collection_root_conflict'},
+    'torrents': {'normalized_error', 'lifecycle_epoch', 'delete_remote', 'collection_route_provider_id', 'collection_route_authority', 'source_fingerprint', 'collection_root', 'collection_root_conflict', 'queue_promotion'},
     'transfer_controls': {'value', 'key'},
     'transfer_outcomes': {'id', 'attempt_id', 'created_at', 'payload', 'transfer_id', 'kind'},
     'transfer_requests': {

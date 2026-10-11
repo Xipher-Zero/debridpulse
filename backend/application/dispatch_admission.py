@@ -43,3 +43,12 @@ def capacity_only_blocked_ids(engine) -> frozenset[int]:
     without the real dispatch path's own say-so."""
     getter = getattr(engine, "capacity_only_blocked_ids", None)
     return getter() if callable(getter) else frozenset()
+
+
+def restart_consent_ids(engine) -> frozenset[int]:
+    """The execution-admission owner's own record of the promoted transfers
+    whose slot waits only on a restart the operator has not confirmed
+    (``TransferEngine.restart_consent_ids``), passed through like the set
+    above. Empty when unavailable: consent is never asked for without it."""
+    getter = getattr(engine, "restart_consent_ids", None)
+    return getter() if callable(getter) else frozenset()

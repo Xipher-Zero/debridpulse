@@ -82,8 +82,10 @@
   .actions { gap: 4px; flex-wrap: nowrap; }
   .actions .btn { padding: 4px 6px !important; font-size: 10px !important; }
   .t-table { font-size: 12px; width: 100%; }
-  .t-table th:nth-child(5), .t-table td:nth-child(5),
-  .t-table th:nth-child(6), .t-table td:nth-child(6) { display: none; }
+  /* Downloads owns its own column order (ui-downloads-page.css); the
+     exclusion adds no specificity to these rules. */
+  .t-table:where(:not(#view-torrents *)) th:nth-child(5), .t-table:where(:not(#view-torrents *)) td:nth-child(5),
+  .t-table:where(:not(#view-torrents *)) th:nth-child(6), .t-table:where(:not(#view-torrents *)) td:nth-child(6) { display: none; }
 }
 
 /* ── Row action language ─────────────────────────────────────────────── */

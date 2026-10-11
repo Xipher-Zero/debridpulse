@@ -84,8 +84,12 @@ _COPY_CHUNK = 1024 * 1024
 #   which that bootstrap extends with the intent tables and the event journal;
 # * the v1.0.13 schema immediately before the event journal (8b009d04), which
 #   it extends with the journal alone -- an empty journal: legacy ``events``
-#   rows are kept as they are and never converted into journal history.
+#   rows are kept as they are and never converted into journal history;
+# * the v1.0.13 schema immediately before transfers carried an operator queue
+#   promotion (52012d4d), which it extends with that one nullable column --
+#   no transfer of such a backup holds one.
 _UPGRADABLE_SCHEMAS = frozenset({
+    "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
     "sha256:8c1f182d8be7c67c4d3b7a471c0878e8dd9304e5b9b2a704a393a7d7cbc7dc1a",
 })

@@ -334,6 +334,10 @@ body.light #view-torrents .empty-icon {
     justify-items: center;
   }
 
+  /* Progress and Size step aside; Name, Provider, Status, Added, Actions
+     and the selection column remain. */
+  #view-torrents .t-table :is(th, td):is(:nth-child(4), :nth-child(5)) { display: none; }
+
   #view-torrents #torrent-page-btns,
   #view-torrents #torrent-page-info {
     grid-column: 1;
@@ -358,10 +362,10 @@ body.light #view-torrents .empty-icon {
     table-layout: fixed;
   }
 
-  #view-torrents .t-table :is(th, td):nth-child(1) { width: 36px; }
-  #view-torrents .t-table :is(th, td):nth-child(8) { width: 190px; }
+  #view-torrents .t-table :is(th, td):nth-child(7) { width: 190px; }
+  #view-torrents .t-table :is(th, td):nth-child(8) { width: 36px; }
 
-  #view-torrents .t-table td:nth-child(8) .actions {
+  #view-torrents .t-table td:nth-child(7) .actions {
     justify-content: flex-start;
     gap: 7px;
     white-space: nowrap;
@@ -384,7 +388,7 @@ body.light #view-torrents .empty-icon {
 /* Below the full composition: Name, Provider, Status, Progress and Actions,
    with Size and Date set aside. */
 @media (min-width: 901px) and (width < 1440px) {
-  #view-torrents .t-table :is(th, td):is(:nth-child(6), :nth-child(7)) { display: none; }
+  #view-torrents .t-table :is(th, td):is(:nth-child(5), :nth-child(6)) { display: none; }
 }
 
 /* The compact shell also sets the hash line aside (as at 700px). */
@@ -395,38 +399,38 @@ body.light #view-torrents .empty-icon {
 /* Narrowest of all, Progress steps aside too (as at 700px): Name, the whole
    provider identity, Status and Actions remain. */
 @media (min-width: 901px) and (width <= 1050px) {
-  #view-torrents .t-table :is(th, td):nth-child(5) { display: none; }
-  #view-torrents .t-table :is(th, td):nth-child(2) { width: 22.7%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 37.3%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 40%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { display: none; }
+  #view-torrents .t-table :is(th, td):nth-child(1) { width: 22.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 37.3%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 40%; }
 }
 
 @media (width > 1050px) and (width < 1180px) {
-  #view-torrents .t-table :is(th, td):nth-child(2) { width: 19.7%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 27.4%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 29.3%; }
-  #view-torrents .t-table :is(th, td):nth-child(5) { width: 23.6%; }
+  #view-torrents .t-table :is(th, td):nth-child(1) { width: 19.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 27.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 29.3%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 23.6%; }
 }
 
 /* The full desktop shell: every badge, the hash line and the widest provider
    block fit whole. */
 @media (min-width: 1180px) and (width < 1440px) {
-  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25.4%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 25%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 26%; }
-  #view-torrents .t-table :is(th, td):nth-child(5) { width: 23.6%; }
+  #view-torrents .t-table :is(th, td):nth-child(1) { width: 25.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 26%; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 23.6%; }
 }
 
 /* The full composition. Status holds every badge whole and Date the widest
    date the one formatter writes -- Friendly 12-hour with a year,
    "Dec 28, 2025 10:54 PM" -- on one line. */
 @media (min-width: 1440px) {
-  #view-torrents .t-table :is(th, td):nth-child(2) { width: 23.4%; }
-  #view-torrents .t-table :is(th, td):nth-child(3) { width: 25%; }
-  #view-torrents .t-table :is(th, td):nth-child(4) { width: 180px; }
-  #view-torrents .t-table :is(th, td):nth-child(5) { width: 38.7%; }
-  #view-torrents .t-table :is(th, td):nth-child(6) { width: 12.9%; }
-  #view-torrents .t-table :is(th, td):nth-child(7) { width: 178px; }
+  #view-torrents .t-table :is(th, td):nth-child(1) { width: 23.4%; }
+  #view-torrents .t-table :is(th, td):nth-child(2) { width: 25%; }
+  #view-torrents .t-table :is(th, td):nth-child(3) { width: 180px; }
+  #view-torrents .t-table :is(th, td):nth-child(4) { width: 38.7%; }
+  #view-torrents .t-table :is(th, td):nth-child(5) { width: 12.9%; }
+  #view-torrents .t-table :is(th, td):nth-child(6) { width: 178px; }
 }
 
 /* ── Pause shim, date menu, and provider/candidate row material (folded
@@ -459,3 +463,142 @@ body.light #view-torrents .empty-icon {
 .dp-downloads-provider-cell .dp-downloads-provider-block .dp-provider-chip{margin-bottom:0;padding-inline:4px;flex:0 1 auto;min-width:0}
 .dp-downloads-provider-line .dp-candidate-chip{flex:0 0 auto;min-height:18px;padding:1px 5px 1px 4px}
 .dp-downloads-provider-line .dp-candidate-chip svg,.dp-downloads-provider-line .dp-candidate-chip .lucide{width:11px;height:11px;min-width:11px;flex:0 0 11px}
+
+/* ── Operator queue: Name-cell grip, drag, page edges, selection column ──
+   The whole Name cell is the drag surface of a queue member in the Priority
+   view (ui-downloads.js); the grip only shows that it is. Restrained, in the
+   table's own colours: no new colour family, no animation system. */
+#view-torrents .dp-downloads-name-line {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+#view-torrents .dp-downloads-name-copy { flex: 1 1 auto; min-width: 0; }
+/* The hash line never wraps into a second line: the row keeps its height. */
+#view-torrents .dp-downloads-name-copy .t-hash { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#view-torrents .dp-queue-grip {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 14px;
+  width: 14px;
+  margin-left: -8px;
+  color: var(--dp-text-muted);
+  touch-action: none;
+}
+#view-torrents .dp-queue-grip svg { width: 14px; height: 14px; }
+#view-torrents td[data-queue-drag="true"] {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+#view-torrents td[data-queue-drag="true"]:is(:hover, :focus-visible) .dp-queue-grip { color: var(--dp-text-secondary); }
+#view-torrents td[data-queue-drag="true"]:focus-visible {
+  outline: none;
+  box-shadow: inset var(--dp-focus-ring);
+}
+#view-torrents #t-tbody.dp-queue-dragging,
+#view-torrents #t-tbody.dp-queue-dragging td[data-queue-drag="true"] { cursor: grabbing; }
+#view-torrents #t-tbody tr.dp-queue-drag-source { opacity: .45; }
+#view-torrents #t-tbody tr[data-drop="before"] > td { box-shadow: inset 0 2px 0 var(--dp-accent-purple-bright); }
+#view-torrents #t-tbody tr[data-drop="after"] > td { box-shadow: inset 0 -2px 0 var(--dp-accent-purple-bright); }
+.dp-queue-drag-ghost {
+  position: fixed;
+  z-index: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 320px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .24);
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+}
+.dp-queue-drag-ghost svg { flex: 0 0 14px; width: 14px; height: 14px; color: var(--dp-text-muted); }
+.dp-queue-drag-ghost span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dp-queue-page-zone {
+  position: fixed;
+  z-index: 590;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px dashed color-mix(in srgb, var(--dp-accent-purple-bright) 55%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--dp-accent-purple-bright) 9%, var(--surface));
+  color: var(--dp-text-secondary);
+  font-size: 11px;
+  font-weight: 650;
+  pointer-events: none;
+}
+.dp-queue-page-zone[hidden] { display: none; }
+.dp-queue-page-zone.is-armed {
+  background: color-mix(in srgb, var(--dp-accent-purple-bright) 18%, var(--surface));
+  color: var(--dp-text-primary);
+}
+.dp-queue-page-zone svg { width: 14px; height: 14px; }
+.dp-queue-assistive {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+#view-torrents .dp-downloads-order {
+  flex: 0 0 auto;
+  width: auto;
+  min-width: 112px;
+}
+#view-torrents .dp-downloads-select-cell { text-align: center; }
+#view-torrents .dp-downloads-select-cell input { margin: 0; }
+
+/* The row Remove is quiet until it is meant: theme text at rest, the danger
+   colour on hover and keyboard focus. Border, tinted surface, size and
+   behaviour are the shared .btn-danger's, unchanged. */
+#t-tbody .actions .dp-downloads-remove { color: var(--dp-text-primary); }
+/* The reaffirmation a promoted transfer offers, under its status badge. */
+#t-tbody .dp-queue-consent { display: block; margin-top: 4px; }
+#t-tbody .actions .dp-downloads-remove:is(:hover, :focus-visible) { color: var(--dp-state-error); }
+
+/* The restart confirmation: the title and every affected transfer read from
+   the left; only the two explanatory hints are centred (ui-modal-contract). */
+.dp-queue-restart-dialog .dp-queue-restart-list {
+  display: grid;
+  gap: 10px;
+  max-height: 240px;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+  text-align: left;
+}
+.dp-queue-restart-dialog .dp-queue-restart-item {
+  display: grid;
+  gap: 3px;
+  padding: 9px 11px;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: 8px;
+  text-align: left;
+}
+.dp-queue-restart-dialog .dp-queue-restart-name {
+  overflow: hidden;
+  color: var(--dp-text-primary);
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dp-queue-restart-dialog :is(.dp-queue-restart-progress, .dp-queue-restart-consequence) {
+  color: var(--dp-text-secondary);
+  font-size: 12px;
+  line-height: 1.45;
+}

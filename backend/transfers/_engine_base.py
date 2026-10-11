@@ -131,6 +131,7 @@ from transfers.errors import (
 from transfers.candidate_activation import reconcile_native_transition, resolve_candidate_index, retire_writer
 from transfers import material as mat
 from transfers.continuation import parks_on_pause, plan_continuation
+from transfers.manual_queue_move import displaced
 from transfers.filesystem import (
     adoptable_material, destination, flush_payload, material_initially_absent, materialization_plan,
     PayloadFacts, member_payload, payload_facts, retire_materialization, retire_native_state, safe_name,
@@ -398,6 +399,21 @@ class TransferEngine:
         # recovery lifecycle. Presentation only ever reads this set; it never
         # decides independently that capacity is the blocker.
         self._capacity_only_blocked: set[int] = set()
+        # The queue rank -- ``(-priority, id)`` -- of the highest-ranked
+        # transfer the real capacity check made wait in this pass (reset with
+        # ``_capacity_only_blocked``). A slot that frees later in the same pass
+        # is that transfer's turn: no lower-ranked transfer takes it first.
+        self._waiting_rank: tuple[int, int] | None = None
+        # The writers the real capacity check selected in this pass to yield
+        # their slots to an operator-promoted transfer it proved waits for one
+        # (``_displace_for``), by attempt id; reset with the two above. The
+        # queue walk reaches each later in the same pass, where the native
+        # control owner re-checks the promoted transfer before interrupting.
+        self._yielding: dict[str, dict] = {}
+        # The promoted transfers that check found waiting only on restarts
+        # the operator has not confirmed, with those attempts; reset with
+        # ``_capacity_only_blocked`` and read the same way, by presentation.
+        self._restart_consent: dict[int, frozenset[str]] = {}
         # Aggregate counts of the reconcile_executions() pass in progress, for
         # its one diagnostic summary line; ``None`` between passes.
         self._pass_counts: collections.Counter | None = None
@@ -512,7 +528,7 @@ class TransferEngine:
             return ""
         return direct_link_host(current.request.payload)
 
-    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=0, independent=True, deduplicate=True,
+    async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=None, independent=True, deduplicate=True,
                      alternative_groups: tuple[int | None, ...] | None = None):
         """Admit a submission. An independent submission of an object whose
         earlier lifecycle is terminal is a NEW lineage (``repository.admit``):
@@ -1015,10 +1031,20 @@ class TransferEngine:
         forward."""
         return frozenset(self._capacity_only_blocked)
 
+    def restart_consent_ids(self) -> frozenset[int]:
+        """Transfers whose operator promotion the REAL capacity check found
+        waiting only on restarts nobody confirmed (``_displace_for``) in the
+        most recent pass: the operator may reaffirm their place, confirming
+        the current consequence. Same staleness as ``capacity_only_blocked_ids``."""
+        return frozenset(self._restart_consent)
+
     async def reconcile_executions(self):
         """Reconcile cleanup obligations, then active execution attempts."""
         async with self._execution_cycle_lock:
             self._capacity_only_blocked = set()
+            self._waiting_rank = None
+            self._yielding = {}
+            self._restart_consent = {}
             started = time.monotonic()
             counts = self._pass_counts = collections.Counter()
             await self._cleanup_executions_pending()
@@ -1076,6 +1102,7 @@ class TransferEngine:
                     await self._continue_executor_input(challenge, await self.repository.artifacts(transfer.id))
             await self._release_runtime_reservations()
             self._pass_counts = None
+            self._yielding = {}
             # One aggregate line per completed pass: counts and durations only.
             logger.debug(
                 "Execution pass: %.3f s; transfers=%d artifacts=%d live=%d queued=%d stale=%d held=%d "
@@ -1327,7 +1354,7 @@ class TransferEngine:
             return observed
         handle = artifact.execution
         controllable = executor.capabilities.per_execution_pause
-        pause_writer = stale_writer = source_transition = unresolved_transition = False
+        pause_writer = stale_writer = source_transition = unresolved_transition = yield_writer = False
         async with self._convergence_lock(handle.attempt_id):
             current = await self._current_artifact(artifact.transfer_id, artifact.id)
             if current is None or current.execution is None or current.execution.attempt_id != handle.attempt_id:
@@ -1389,6 +1416,16 @@ class TransferEngine:
                             await self.repository.execution(observed)
                         return observed
 
+                    # Selected this pass to yield its slot to an operator-
+                    # promoted transfer: through the one writer retirement
+                    # below, never a pause intent, and only if the promoted
+                    # transfer is still eligible now.
+                    owed = self._yielding.pop(handle.attempt_id, None)
+                    if (owed is not None and observed.state in {ExecutionState.QUEUED, ExecutionState.RUNNING}
+                            and await self._yield_due(current, observed, owed)):
+                        yield_writer = True
+                        break
+
                     if observed.state == ExecutionState.PAUSED and ExecutionControl.RESUME in controls:
                         async with self._dispatch_lock:
                             current = await self._current_artifact(artifact.transfer_id, artifact.id)
@@ -1426,7 +1463,7 @@ class TransferEngine:
                                 self.clock(), exclude_artifact_id=artifact.id,
                             )
                             if (occupied >= max(1, self.policy.max_active_executions)
-                                    or not await self.runtime.admit(executor)):
+                                    or self._outranked(transfer) or not await self.runtime.admit(executor)):
                                 if persist_passive:
                                     await self.repository.execution(observed)
                                 return observed
@@ -1449,7 +1486,7 @@ class TransferEngine:
                         await self.repository.execution(observed)
                     return observed
 
-                if not (pause_writer or stale_writer or source_transition or unresolved_transition):
+                if not (pause_writer or stale_writer or source_transition or unresolved_transition or yield_writer):
                     return ExecutionObservation(handle, ExecutionState.UNKNOWN, observed.progress, NormalizedError(
                         Domain.RECONCILIATION, Category.RECONCILIATION_FAILED, Stage.RECONCILIATION,
                         retryability=Retryability.BACKOFF,
@@ -1459,6 +1496,8 @@ class TransferEngine:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN,
                     error=self._control_error(exc, executor.descriptor.id))
         # Outside the per-execution lock: the one writer retirement takes it.
+        if yield_writer:
+            return await self._yield_writer(replace(artifact, execution=handle), executor, observed)
         if stale_writer:
             return await self._retire_stale_writer(replace(artifact, execution=handle), executor, observed)
         if source_transition:
@@ -2755,6 +2794,104 @@ class TransferEngine:
         await self.repository.detach_retired_writer(artifact.id, artifact.execution.attempt_id, state="queued")
         return ExecutionObservation(artifact.execution, ExecutionState.CANCELLED)
 
+    async def free_execution_slots(self) -> int:
+        """Execution slots free now, by the one admission occupancy count."""
+        return max(0, max(1, self.policy.max_active_executions)
+                   - await self.repository.occupied_execution_slots(self.clock()))
+
+    def _outranked(self, transfer) -> bool:
+        """A higher-ranked transfer already waited for capacity this pass,
+        so a free slot is its turn, never ``transfer``'s."""
+        return (transfer is not None and self._waiting_rank is not None
+                and self._waiting_rank < (-int(transfer.priority or 0), int(transfer.id)))
+
+    def _waits_for_capacity(self, transfer) -> None:
+        if transfer is not None:
+            rank = (-int(transfer.priority or 0), int(transfer.id))
+            self._waiting_rank = rank if self._waiting_rank is None else min(self._waiting_rank, rank)
+
+    async def _displace_for(self, transfer, artifact: Artifact, occupied: int) -> None:
+        """Called by the real capacity check, under the admission lock, once
+        ``artifact`` is proven to wait for nothing but a slot: if its transfer
+        holds the operator's queue promotion, the writers ranked below it, by
+        current rank and actual occupancy, that yield it their slots
+        (``manual_queue_move.displaced``), a restart only for an attempt the
+        operator confirmed; a restart it would need that nobody confirmed is
+        reported (``restart_consent_ids``), never made. The pass walks the
+        queue in order, so every capacity-only waiter ranked above it is
+        already known and every selected writer is reached later in this same
+        pass. A transfer without a promotion -- any ordinary submission --
+        displaces nothing."""
+        promotion = await self.repository.queue_promotion(transfer.id)
+        queue = await self.repository.queue()
+        if promotion is None or transfer.id not in queue:
+            return
+        rank = {member: index for index, member in enumerate(queue)}
+        owners = await self.repository.artifact_transfers(self._capacity_only_blocked)
+        capacity = max(1, self.policy.max_active_executions)
+        victims, _unmet, withheld = displaced(
+            await self.repository.queue_writers(), rank, transfer.id,
+            wanted=sum(1 for owner in owners.values() if owner in rank and rank[owner] <= rank[transfer.id]),
+            free=max(0, capacity - occupied), capacity=capacity, executor_of=self.registry.executors.get,
+            restartable=frozenset(promotion.get("restart") or ()), releasing=frozenset(self._yielding))
+        for victim in victims:
+            self._yielding[victim["attempt_id"]] = {
+                "for": transfer.id, "artifact": artifact.id, "resumable": victim["kind"] == "resumable"}
+        if withheld:
+            self._restart_consent[transfer.id] = frozenset(writer["attempt_id"] for writer in withheld)
+
+    async def _yield_due(self, artifact: Artifact, observed: ExecutionObservation, owed: dict) -> bool:
+        """Whether a writer selected this pass yields its slot now. Re-checked
+        from current truth immediately before the native interruption, under
+        the admission lock: the promoted transfer still holds its promotion
+        and ranks above this writer's transfer, and its waiting artifact is
+        still dispatch-eligible -- live, not paused, not globally paused,
+        admission permitted, still queued with no writer and its retry due,
+        no outstanding executor question, materialization authorized, its
+        candidate unexpired. The writer is acquiring, not finalizing, and one
+        that would lose acquired progress is an attempt the operator
+        confirmed. Anything else leaves it running; the promotion stands."""
+        if observed.state == ExecutionState.RUNNING and not observed.activity.network_active:
+            return False                              # finalizing or between connections
+        async with self._dispatch_lock:
+            beneficiary = await self.repository.get(owed["for"])
+            victim = await self.repository.get(artifact.transfer_id)
+            promotion = await self.repository.queue_promotion(owed["for"])
+            if (promotion is None or beneficiary is None or victim is None or not self.dispatch_permitted
+                    or not await self._live(beneficiary.id, admission=True)
+                    or (-int(beneficiary.priority or 0), beneficiary.id) >= (-int(victim.priority or 0), victim.id)):
+                return False
+            if (not owed["resumable"] and observed.state == ExecutionState.RUNNING
+                    and artifact.execution.attempt_id not in (promotion.get("restart") or ())):
+                return False                          # a restart nobody confirmed
+            waiting = await self._current_artifact(beneficiary.id, owed["artifact"])
+            if (waiting is None or waiting.state != "queued" or waiting.execution is not None
+                    or waiting.retry_at > self.clock() or not waiting.candidates):
+                return False
+            challenge = await self.challenges.current(beneficiary.id)
+            if challenge is not None and challenge.origin == InputOrigin.EXECUTOR:
+                return False
+            candidate = waiting.candidates[waiting.selected]
+            if candidate.expires_at is not None and candidate.expires_at <= self.clock():
+                return False
+            admission = await self.repository.materialization_authorization(waiting)
+            return admission.kind == MaterializationAdmissionKind.PROCEED
+
+    async def _yield_writer(self, artifact: Artifact, executor, observed: ExecutionObservation) -> ExecutionObservation:
+        """A writer yields its execution slot to an operator-promoted transfer
+        through the one writer retirement -- quiesce, forced checkpoint, fence
+        -- and its artifact waits queued for its next turn, keeping exactly
+        the material the checkpoint committed. Never a pause intent. A stop
+        that is not proven leaves the slot occupied; the promotion stands, so
+        a later pass selects the writer again."""
+        attempt_id = artifact.execution.attempt_id
+        candidate = artifact.candidates[artifact.selected] if artifact.candidates else None
+        retired = await retire_writer(self, artifact, candidate, artifact, candidate, boundary="preemption")
+        if retired.reason:
+            return observed
+        await self.repository.detach_retired_writer(artifact.id, attempt_id, state="queued")
+        return ExecutionObservation(artifact.execution, ExecutionState.CANCELLED)
+
     async def checkpoint_live_material(self, boundary: str) -> int:
         """Forced checkpoint of every live writer's reported material at a
         clean lifecycle boundary (an executor about to stop cleanly). Returns
@@ -2907,14 +3044,18 @@ class TransferEngine:
                 occupied = await self.repository.occupied_execution_slots(
                     self.clock(), exclude_artifact_id=artifact.id,
                 )
-                if occupied >= max(1, self.policy.max_active_executions):
+                transfer = await self.repository.get(artifact.transfer_id)
+                if occupied >= max(1, self.policy.max_active_executions) or self._outranked(transfer):
                     # Positive evidence (Section 9): target validated, not an
                     # already-stable completed payload, candidate not
                     # expired, executor.prepare() succeeded with no
                     # InputRequirement, storage/pause admission already
-                    # confirmed above -- capacity is the ONLY remaining
-                    # reason this artifact did not dispatch this attempt.
+                    # confirmed above -- capacity (or a free slot that is a
+                    # higher-ranked waiting transfer's turn) is the ONLY
+                    # remaining reason this artifact did not dispatch.
                     self._capacity_only_blocked.add(artifact.id)
+                    self._waits_for_capacity(transfer)
+                    await self._displace_for(transfer, artifact, occupied)
                     return
                 # Global bandwidth admission: under a finite global cap the
                 # executor's assigned ceiling is proven (existing shares shrunk

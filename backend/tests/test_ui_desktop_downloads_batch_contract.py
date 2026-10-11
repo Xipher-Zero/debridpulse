@@ -28,8 +28,8 @@ def test_downloads_desktop_filter_contract_and_details_are_directly_owned():
 def test_downloads_desktop_column_rebalance_preserves_provider_identity_and_progress():
     # DP 1.0.12 canonical flattening: folded into ui-downloads-page.css.
     css = read("ui-downloads-page.css")
-    assert "nth-child(7) { width: 178px; }" in css
-    assert "nth-child(8) { width: 190px; }" in css
+    assert "nth-child(6) { width: 178px; }" in css
+    assert "nth-child(7) { width: 190px; }" in css
     assert "table-layout: fixed" in css
 
 

@@ -2,9 +2,11 @@
  * (DP 1.0.12 canonical flattening, CANON-001 closure).
  *
  * Sole owner of: list page state, the bounded /torrents fetch, final row
- * rendering, filtering/search, pagination, date mode/menu, measured
- * capacity/page sizing, list selection state, bulk actions, refresh, and
- * page-specific lifecycle/event wiring. Every row is emitted in final form
+ * rendering, filtering/search, pagination, the Priority/Newest order, the
+ * operator queue reorder (Name-cell drag, keyboard move, cross-page
+ * navigation while one is held, the restart confirmation), date mode/menu,
+ * measured capacity/page sizing, list selection state, bulk actions,
+ * refresh, and page-specific lifecycle/event wiring. Every row is emitted in final form
  * by a single render pass -- this file never replaces api/loadTorrents/
  * renderTorrentPagination/fmtDate on another owner, and never re-renders an
  * inherited Downloads implementation and repairs its DOM afterward.
@@ -30,6 +32,9 @@ const AUTO_RECOVERING_PRESENTATION = new Set(
 // ── List/page state ─────────────────────────────────────────────────────
 let currentFilter = '';
 let currentTorrentSearch = '';
+// 'queue': the operator queue, then settled history (the server orders the
+// whole collection before it cuts the page). 'newest': chronological.
+let currentOrder = 'queue';
 let torrentPage = 1;
 let torrentPageSize = 25;
 let torrentTotal = 0;
@@ -278,6 +283,15 @@ function onTorrentSearchInput() {
   if (_torrentSearchTimer) clearTimeout(_torrentSearchTimer);
   _torrentSearchTimer = setTimeout(() => { _torrentSearchTimer = null; loadTorrents().catch(() => {}); }, 250);
 }
+function onTorrentOrderChange(value) {
+  const next = value === 'newest' ? 'newest' : 'queue';
+  if (next === currentOrder) return;
+  currentOrder = next;
+  torrentPage = 1;
+  requestGeneration++;
+  clearSelection();
+  loadTorrents();
+}
 function goToTorrentPage(p) {
   const nextPage = Math.max(1, p);
   if (nextPage !== torrentPage) clearSelection();
@@ -347,6 +361,11 @@ function clearSelection() {
 
 // ── Row rendering (one pass: presentation status drives badge/progress/
 // action visibility directly, exactly as Dashboard Recent already does) ──
+// The queue can be rearranged only where the page shows a contiguous stretch
+// of the whole queue: the Priority order with no filter and no search.
+function queueEditable() {
+  return currentOrder === 'queue' && !currentFilter && !currentTorrentSearch;
+}
 function rowMarkup(t) {
   const presentation = window.DPProcessingPresentation
     ? window.DPProcessingPresentation.presentationStatus(t, t.status)
@@ -356,12 +375,24 @@ function rowMarkup(t) {
     {providerId: providerChipId(t)}) : '';
   const fileSelectionMarkup = window.DPFileSelection?.chipMarkup?.(t) || '';
   const groupMarkup = window.DPGroupCandidates?.launcherMarkup?.(t, 'compact', 'downloads') || '';
-  return `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" tabindex="0" onclick="if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
-    <td onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
-    <td>
-      <div class="t-name">${esc(t.display_name || t.name) || '(unnamed)'}</div>
-      <div class="t-hash">${(t.hash || '').substring(0, 16)}${t.hash ? '…' : ''}</div>
-    </td>
+  const name = esc(t.display_name || t.name) || '(unnamed)';
+  const movable = queueEditable() && t.queue_member === true;
+  // Admission found this promoted transfer waiting only on restarts nobody
+  // confirmed: the operator may reaffirm its place (reaffirmQueue).
+  const consent = t.queue_member === true && t.queue_restart_consent === true
+    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" title="Lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">Start Now</button>`
+    : '';
+  const nameCell = movable
+    ? `<td class="dp-downloads-name-cell" data-queue-drag="true" tabindex="0" aria-label="${name}" aria-describedby="dp-queue-help"><div class="dp-downloads-name-line">
+      <span class="dp-queue-grip" aria-hidden="true">${window.DPIcons?.svg?.('grip-vertical') || ''}</span>`
+    : '<td class="dp-downloads-name-cell"><div class="dp-downloads-name-line">';
+  return `<tr class="dp-downloads-detail-row" data-torrent-id="${t.id}" data-queue-member="${t.queue_member === true}" data-status="${esc(t.status)}" data-presentation-status="${esc(presentation)}" tabindex="0" onclick="onDownloadRowClick(event,${t.id})" onkeydown="if(event.target===this&&(event.key==='Enter'||event.key===' ')){event.preventDefault();showDetail(${t.id})}">
+    ${nameCell}
+      <div class="dp-downloads-name-copy">
+        <div class="t-name">${name}</div>
+        <div class="t-hash">${(t.hash || '').substring(0, 16)}${t.hash ? '…' : ''}</div>
+      </div>
+    </div></td>
     <td class="sz dp-downloads-provider-cell">
       <span class="dp-downloads-provider-block">
         <span class="dp-downloads-provider-line">${sourceMarkup}${providerChip(t, 'downloads')}${fileSelectionMarkup}${groupMarkup}</span>
@@ -369,7 +400,7 @@ function rowMarkup(t) {
       </span>
       ${t.label ? `<span class="lbl-badge">🏷 ${esc(t.label)}</span>` : ''}
     </td>
-    <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}</td>
+    <td data-role="transfer-status">${badge(transferDisplayStatus(t), t)}${consent}</td>
     <td data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis)}</td>
     <td class="sz">${fmtSize(t.size_bytes)}</td>
     <td class="sz">${dateMarkup(t.created_at)}</td>
@@ -378,9 +409,10 @@ function rowMarkup(t) {
         ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
         ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
         ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>` : ''}
-        <button class="btn btn-danger btn-sm" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>
+        <button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>
       </div>
     </td>
+    <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="Select ${name}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
   </tr>`;
 }
 
@@ -399,6 +431,7 @@ async function fetchAndRenderTorrents() {
     params.set('offset', String(_offset));
     if (currentFilter) params.set('status', currentFilter);
     if (currentTorrentSearch) params.set('search', currentTorrentSearch);
+    if (currentOrder === 'queue') params.set('order', 'queue');
     const {items, total} = await api('GET', '/torrents?' + params.toString());
     // A newer authoritative intent superseded this request while it was in
     // flight: this response is stale and must not become truth. Do not
@@ -428,7 +461,8 @@ async function fetchAndRenderTorrents() {
     torrentTotal = _total;
     const tb = document.getElementById('t-tbody');
     renderTorrentPagination(torrentTotal, _limit, _offset);
-    reconcileDownloadSelection(items);
+    // A page shown while a reorder is held is a preview: selection is kept.
+    if (!reorder) reconcileDownloadSelection(items);
     if (!items.length) {
       tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
       syncDownloadSelectionUi();
@@ -436,6 +470,7 @@ async function fetchAndRenderTorrents() {
       tb.innerHTML = items.map(rowMarkup).join('');
       syncDownloadSelectionUi();
     }
+    if (reorder) paintReorder();
   } catch (e) {
     if (_requestGeneration !== requestGeneration) return;
     toast(sanitizeErrorMsg(e.message), 'error');
@@ -444,6 +479,9 @@ async function fetchAndRenderTorrents() {
 }
 
 async function loadTorrents() {
+  // A held reorder (or its confirmation) owns the rows until it ends; the
+  // one authoritative refresh that follows it shows whatever changed.
+  if (reorder) { reorder.refreshPending = true; return; }
   await fetchAndRenderTorrents();
   ensureDateMenus();
   if (!busy) {
@@ -457,6 +495,397 @@ async function loadTorrents() {
   }
 }
 loadTorrents = coalesceAsync(loadTorrents);
+
+// ── Operator queue reorder ──────────────────────────────────────────────
+// One session at a time: a Name-cell pointer drag or a keyboard move. It is
+// identified by the transfer it moves and survives page replacement -- a page
+// shown while it is held is navigation only -- and it commits once, on drop,
+// as the transfer's new neighbours in the complete queue, never as page
+// positions. Nothing changes before the server accepts the move; a move that
+// would restart active downloads is confirmed first (409 restart_required).
+const DRAG_THRESHOLD = 6;
+const PAGE_DWELL_MS = 650;
+let reorder = null;
+let pressed = null;
+// The click that ends a drag never opens Details.
+let suppressClick = false;
+
+function onDownloadRowClick(event, id) {
+  if (suppressClick) { suppressClick = false; return; }
+  if (!dpIsInteractiveRowTarget(event.target)) showDetail(id);
+}
+function announce(text) {
+  const status = document.getElementById('dp-queue-status');
+  if (status) status.textContent = text;
+}
+function rowId(row) { return stableDownloadId(row?.dataset?.torrentId); }
+function rowName(row) { return row?.querySelector('.t-name')?.textContent || 'Transfer'; }
+function pageCount() { return Math.max(1, Math.ceil(torrentTotal / Math.max(1, torrentPageSize))); }
+/* The page's queue rows other than the held one, and how many of them
+ * precede the held one when it is on this page (-1 when it is not). */
+function candidates() {
+  const rows = [...document.querySelectorAll('#t-tbody tr[data-torrent-id][data-queue-member="true"]')];
+  return {rows: rows.filter(row => rowId(row) !== reorder.id), own: rows.findIndex(row => rowId(row) === reorder.id)};
+}
+/* ``reorder.gap`` is an insertion point among ``candidates().rows``. */
+function anchors() {
+  const {rows, own} = candidates();
+  const gap = reorder.gap;
+  if (gap === null || gap === undefined || gap < 0 || gap > rows.length) return null;
+  if (own >= 0 && gap === own) return 'unchanged';
+  const before = rows[gap] ? rowId(rows[gap]) : null;
+  const after = rows[gap - 1] ? rowId(rows[gap - 1]) : null;
+  return before === null && after === null ? null : {before_id: before, after_id: after};
+}
+function queueContinuesAfterPage() {
+  const last = document.querySelector('#t-tbody tr[data-torrent-id]:last-child');
+  return !!last && last.dataset.queueMember === 'true' && torrentPage < pageCount();
+}
+function zoneRects() {
+  const head = document.querySelector('#view-torrents .dp-downloads-table-wrap thead');
+  const pager = document.getElementById('torrent-pagination');
+  return {
+    previous: torrentPage > 1 && head ? head.getBoundingClientRect() : null,
+    next: queueContinuesAfterPage() && pager ? pager.getBoundingClientRect() : null,
+  };
+}
+function paintReorder() {
+  document.querySelectorAll('#t-tbody [data-drop], #t-tbody .dp-queue-drag-source').forEach(node => {
+    node.removeAttribute('data-drop');
+    node.classList.remove('dp-queue-drag-source');
+  });
+  document.querySelector(`#t-tbody tr[data-torrent-id="${reorder.id}"]`)?.classList.add('dp-queue-drag-source');
+  const {rows} = candidates();
+  const target = anchors();
+  if (target && target !== 'unchanged') {
+    if (rows[reorder.gap]) rows[reorder.gap].dataset.drop = 'before';
+    else rows[rows.length - 1]?.setAttribute('data-drop', 'after');
+  }
+  const rects = reorder.mode === 'pointer' ? zoneRects() : {};
+  for (const direction of ['previous', 'next']) {
+    const zone = reorder.zones?.[direction];
+    const rect = rects[direction];
+    if (!zone) continue;
+    zone.hidden = !rect;
+    if (rect) Object.assign(zone.style, {left: rect.left + 'px', top: rect.top + 'px', width: rect.width + 'px', height: Math.max(32, rect.height) + 'px'});
+    zone.classList.toggle('is-armed', reorder.dwellDirection === direction);
+  }
+}
+function beginReorder(id, mode) {
+  requestGeneration++;
+  const row = document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`);
+  reorder = {id, mode, name: rowName(row), page: torrentPage, originPage: torrentPage, gap: null,
+             refreshPending: false, navigating: false, committing: false, dwell: null, dwellDirection: '',
+             zones: null, ghost: null, pointer: null};
+  reorder.gap = candidates().own;
+  document.getElementById('t-tbody')?.classList.add('dp-queue-dragging');
+  if (mode === 'pointer') {
+    const ghost = document.createElement('div');
+    ghost.className = 'dp-queue-drag-ghost';
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.innerHTML = `${window.DPIcons?.svg?.('grip-vertical') || ''}<span></span>`;
+    ghost.querySelector('span').textContent = reorder.name;
+    document.body.appendChild(ghost);
+    reorder.ghost = ghost;
+    reorder.zones = {};
+    for (const [direction, label, icon] of [['previous', 'Previous page', 'chevronLeft'], ['next', 'Next page', 'chevronRight']]) {
+      const zone = document.createElement('div');
+      zone.className = 'dp-queue-page-zone';
+      zone.dataset.direction = direction;
+      zone.hidden = true;
+      zone.innerHTML = `${window.DPIcons?.svg?.(icon) || ''}<span>${label}</span>`;
+      document.body.appendChild(zone);
+      reorder.zones[direction] = zone;
+    }
+  }
+  document.addEventListener('keydown', onReorderKey, true);
+  announce(mode === 'keyboard'
+    ? `Picked up ${reorder.name}. Use the arrow keys to move it, Enter or Space to drop it, Escape to cancel.`
+    : `Moving ${reorder.name}.`);
+  paintReorder();
+}
+function disarmDwell() {
+  if (reorder?.dwell) clearTimeout(reorder.dwell);
+  if (reorder) { reorder.dwell = null; reorder.dwellDirection = ''; }
+}
+function endReorder() {
+  if (!reorder) return;
+  disarmDwell();
+  const ended = reorder;
+  reorder = null;
+  ended.ghost?.remove();
+  Object.values(ended.zones || {}).forEach(zone => zone.remove());
+  document.removeEventListener('keydown', onReorderKey, true);
+  document.getElementById('t-tbody')?.classList.remove('dp-queue-dragging');
+  document.querySelectorAll('#t-tbody [data-drop], #t-tbody .dp-queue-drag-source').forEach(node => {
+    node.removeAttribute('data-drop');
+    node.classList.remove('dp-queue-drag-source');
+  });
+  // Selection belongs to the page it was made on.
+  if (ended.page !== ended.originPage) clearSelection();
+  const focus = captureFocus();
+  loadTorrents().then(() => restoreFocus(focus)).catch(() => {});
+}
+async function navigateReorder(delta) {
+  const target = torrentPage + delta;
+  if (!reorder || reorder.navigating || target < 1 || target > pageCount()) return false;
+  reorder.navigating = true;
+  torrentPage = target;
+  requestGeneration++;
+  try { await fetchAndRenderTorrents(); } finally { if (reorder) reorder.navigating = false; }
+  if (!reorder) return false;
+  reorder.page = torrentPage;
+  announce(`Page ${torrentPage}.`);
+  return true;
+}
+function armDwell(direction) {
+  if (reorder.dwellDirection === direction) return;
+  disarmDwell();
+  reorder.dwellDirection = direction;
+  reorder.dwell = setTimeout(async () => {
+    if (!reorder || reorder.dwellDirection !== direction) return;
+    reorder.dwell = null;
+    reorder.dwellDirection = '';
+    await navigateReorder(direction === 'previous' ? -1 : 1);
+    // Still held over the edge: the next page follows after another dwell.
+    if (reorder?.pointer) trackPointer(reorder.pointer.x, reorder.pointer.y);
+  }, PAGE_DWELL_MS);
+  paintReorder();
+}
+function trackPointer(x, y) {
+  reorder.pointer = {x, y};
+  if (reorder.ghost) Object.assign(reorder.ghost.style, {left: x + 14 + 'px', top: y + 10 + 'px'});
+  const rects = zoneRects();
+  const inside = rect => rect && x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom;
+  const zone = inside(rects.previous) ? 'previous' : inside(rects.next) ? 'next' : '';
+  if (zone) {
+    reorder.gap = null;
+    armDwell(zone);
+    return;
+  }
+  disarmDwell();
+  const row = document.elementFromPoint(x, y)?.closest?.('#t-tbody tr[data-torrent-id]');
+  const {rows, own} = candidates();
+  if (!row) reorder.gap = null;
+  else if (rowId(row) === reorder.id) reorder.gap = own;
+  else if (row.dataset.queueMember === 'true') {
+    const box = row.getBoundingClientRect();
+    reorder.gap = rows.indexOf(row) + (y > box.top + box.height / 2 ? 1 : 0);
+  } else reorder.gap = rows.length ? rows.length : null;    // settled history: the end of the queue
+  paintReorder();
+}
+function releasePointer() {
+  pressed = null;
+  document.removeEventListener('pointermove', onPointerMove);
+  document.removeEventListener('pointerup', onPointerUp);
+  document.removeEventListener('pointercancel', onPointerCancel);
+}
+function onNamePointerDown(event) {
+  const cell = event.target.closest?.('td[data-queue-drag="true"]');
+  if (!cell || reorder || pressed || event.button !== 0 || !event.isPrimary) return;
+  // A touch on the name scrolls the table; the grip is the touch handle.
+  if (event.pointerType === 'touch' && !event.target.closest('.dp-queue-grip')) return;
+  suppressClick = false;
+  pressed = {id: rowId(cell.closest('tr')), x: event.clientX, y: event.clientY, pointerId: event.pointerId};
+  document.addEventListener('pointermove', onPointerMove);
+  document.addEventListener('pointerup', onPointerUp);
+  document.addEventListener('pointercancel', onPointerCancel);
+}
+function onPointerMove(event) {
+  if (!pressed || event.pointerId !== pressed.pointerId) return;
+  if (!reorder) {
+    if (Math.hypot(event.clientX - pressed.x, event.clientY - pressed.y) < DRAG_THRESHOLD) return;
+    beginReorder(pressed.id, 'pointer');
+  }
+  if (reorder.mode !== 'pointer' || reorder.committing) return;
+  event.preventDefault();
+  trackPointer(event.clientX, event.clientY);
+}
+function onPointerUp(event) {
+  if (!pressed || event.pointerId !== pressed.pointerId) return;
+  releasePointer();
+  if (!reorder || reorder.mode !== 'pointer' || reorder.committing) return;
+  suppressClick = true;
+  setTimeout(() => { suppressClick = false; }, 0);
+  dropReorder();
+}
+function onPointerCancel() {
+  releasePointer();
+  if (reorder && reorder.mode === 'pointer' && !reorder.committing) {
+    announce('Move cancelled. Nothing was moved.');
+    endReorder();
+  }
+}
+function onNameKeyDown(event) {
+  const cell = event.target.closest?.('td[data-queue-drag="true"]');
+  if (!cell || reorder || event.target !== cell || (event.key !== ' ' && event.key !== 'Enter')) return;
+  event.preventDefault();
+  event.stopPropagation();
+  beginReorder(rowId(cell.closest('tr')), 'keyboard');
+}
+async function stepReorder(delta) {
+  let {rows, own} = candidates();
+  let gap = (reorder.gap ?? own) + delta;
+  if (gap < 0) {
+    if (await navigateReorder(-1)) gap = Math.max(0, candidates().rows.length - 1);
+    else gap = 0;
+  } else if (gap > rows.length) {
+    if (queueContinuesAfterPage() && await navigateReorder(1)) gap = Math.min(1, candidates().rows.length);
+    else gap = rows.length;
+  }
+  if (!reorder) return;
+  reorder.gap = gap;
+  ({rows} = candidates());
+  paintReorder();
+  const target = rows[gap] || rows[gap - 1];
+  target?.querySelector('td[data-queue-drag="true"]')?.focus({preventScroll: false});
+  const place = anchors();
+  announce(place === 'unchanged' ? `${reorder.name}: its current place.`
+    : rows[gap] ? `${reorder.name}: before ${rowName(rows[gap])}.` : `${reorder.name}: after ${rowName(rows[gap - 1])}.`);
+}
+function onReorderKey(event) {
+  if (!reorder || reorder.committing) return;
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    event.stopPropagation();
+    announce('Move cancelled. Nothing was moved.');
+    endReorder();
+    return;
+  }
+  if (reorder.mode !== 'keyboard') return;
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (!reorder.navigating) stepReorder(event.key === 'ArrowDown' ? 1 : -1);
+  } else if (event.key === ' ' || event.key === 'Enter') {
+    event.preventDefault();
+    event.stopPropagation();
+    dropReorder();
+  }
+}
+async function dropReorder() {
+  disarmDwell();
+  const place = anchors();
+  if (!place || place === 'unchanged') {
+    announce(place ? `${reorder.name} was not moved.` : 'Move cancelled. Nothing was moved.');
+    endReorder();
+    return;
+  }
+  reorder.committing = true;
+  reorder.ghost?.remove();
+  Object.values(reorder.zones || {}).forEach(zone => { zone.hidden = true; });
+  await commitMove(reorder.id, place);
+  endReorder();
+}
+function restartProgress(item) {
+  const total = Number(item?.total_bytes) || 0;
+  const done = Math.max(0, Number(item?.completed_bytes) || 0);
+  const estimate = item?.estimated_percentage;
+  if (total > 0) return `${fmtSize(done)} of ${fmtSize(total)} downloaded`;
+  if (typeof estimate === 'number' && Number.isFinite(estimate)) return `About ${Math.floor(estimate)}% downloaded (estimated)`;
+  return done > 0 ? `${fmtSize(done)} downloaded` : '';
+}
+/* The destructive-preemption confirmation, through the canonical dialog
+ * owner. Resolves to every attempt the operator confirmed, or null. */
+async function confirmRestart(transfers) {
+  const modal = window.DPSettingsModal;
+  if (!modal || typeof modal.open !== 'function') {
+    toast('Reorder confirmation is unavailable. Nothing was moved.', 'error');
+    return null;
+  }
+  const one = transfers.length === 1;
+  const handle = modal.open({
+    role: 'alertdialog', tone: 'warning', title: 'Transfer Restart Required',
+    acceptLabel: 'Confirm Reorder', acceptTone: 'warning', cancelLabel: 'Cancel',
+    className: 'dp-queue-restart-dialog',
+    mount(body) {
+      const hint = text => {
+        const node = document.createElement('p');
+        node.className = 'dp-modal-message dp-modal-message--center';
+        node.textContent = text;
+        return node;
+      };
+      const top = hint(one
+        ? 'Reordering the queue will interrupt 1 active transfer that cannot resume its current download.'
+        : `Reordering the queue will interrupt ${transfers.length} active transfers that cannot resume their current downloads.`);
+      const list = document.createElement('ul');
+      list.className = 'dp-queue-restart-list';
+      for (const item of transfers) {
+        const entry = document.createElement('li');
+        entry.className = 'dp-queue-restart-item';
+        const name = document.createElement('strong');
+        name.className = 'dp-queue-restart-name';
+        name.textContent = name.title = String(item?.name || 'Transfer');
+        entry.appendChild(name);
+        const progress = restartProgress(item);
+        if (progress) {
+          const line = document.createElement('span');
+          line.className = 'dp-queue-restart-progress';
+          line.textContent = progress;
+          entry.appendChild(line);
+        }
+        const consequence = document.createElement('span');
+        consequence.className = 'dp-queue-restart-consequence';
+        consequence.textContent = 'This transfer will restart downloading from the beginning when it becomes eligible again.';
+        entry.appendChild(consequence);
+        list.appendChild(entry);
+      }
+      body.append(top, list, hint(one
+        ? 'Downloaded progress for this transfer will be lost. Are you sure you want to proceed?'
+        : 'Downloaded progress for these transfers will be lost. Are you sure you want to proceed?'));
+      return top;
+    },
+  });
+  const result = await handle.closed;
+  return result.accepted ? transfers.flatMap(item => (item?.attempt_ids || []).map(String)) : null;
+}
+async function commitMove(id, place, confirmed) {
+  const body = {before_id: place.before_id, after_id: place.after_id};
+  if (confirmed) body.confirm_restart = confirmed;
+  try {
+    const result = await api('PATCH', `/torrents/${id}/priority`, body);
+    announce(result?.outcome === 'preempting'
+      ? `${reorder?.name || 'Transfer'} moved. It starts once lower-ranked work has stopped.`
+      : `${reorder?.name || 'Transfer'} moved.`);
+  } catch (e) {
+    if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
+      const attempts = await confirmRestart(e.detail.transfers);
+      if (attempts) return commitMove(id, place, attempts);
+      announce('Reorder cancelled. Nothing was moved.');
+      return;
+    }
+    toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
+  }
+}
+/* The transfer keeps its place and renews the promotion it holds there,
+ * through the same restart confirmation a move asks for: nothing changes
+ * unless the operator confirms the restarts the server names now. */
+async function reaffirmQueue(id, button) {
+  const name = button?.closest('tr')?.querySelector('.t-name')?.textContent || 'Transfer';
+  setButtonPending(button, true, 'Checking…');
+  try {
+    let confirmed = null;
+    for (;;) {
+      try {
+        const result = await api('PATCH', `/torrents/${id}/priority`,
+          confirmed ? {reaffirm: true, confirm_restart: confirmed} : {reaffirm: true});
+        announce(result?.outcome === 'preempting'
+          ? `${name} starts once lower-ranked work has stopped.`
+          : `${name} keeps its place. No restart needs confirming now.`);
+        break;
+      } catch (e) {
+        if (e.status === 409 && e.detail?.confirmation === 'restart_required' && Array.isArray(e.detail.transfers)) {
+          confirmed = await confirmRestart(e.detail.transfers);
+          if (confirmed) continue;
+          announce('Cancelled. Nothing changed.');
+          return;
+        }
+        toast(sanitizeErrorMsg(e.message), e.status === 409 ? 'warn' : 'error');
+        return;
+      }
+    }
+    await loadTorrents();
+  } finally { setButtonPending(button, false); }
+}
 
 // ── Row/bulk actions ─────────────────────────────────────────────────────
 // A confirmed removal re-renders the list, so the control that started it is gone or replaced. Once the
@@ -543,7 +972,8 @@ async function setLabel(id) {
   });
   if (label === null) return;
   try {
-    await api('PUT', `/torrents/${id}/label`, {label: label.trim(), priority: 0});
+    // A label edit never carries a priority: the queue position stays.
+    await api('PUT', `/torrents/${id}/label`, {label: label.trim()});
     toast('Label updated', 'success');
     loadTorrents();
   } catch (e) { toast(e.message, 'error'); }
@@ -553,6 +983,9 @@ async function setLabel(id) {
 function init() {
   ensureDateMenus();
   observeResize();
+  const body = document.getElementById('t-tbody');
+  body?.addEventListener('pointerdown', onNamePointerDown);
+  body?.addEventListener('keydown', onNameKeyDown);
   window.addEventListener('resize', scheduleCapacityCheck, {passive: true});
   document.addEventListener('debridpulse:navigation', e => {
     if (e.detail?.view === 'torrents') { observeResize(); scheduleCapacityCheck(); }
@@ -565,6 +998,9 @@ window.downloadsDateMarkup = dateMarkup;
 window.updateDownloadsTrackedCopy = updateDownloadsTrackedCopy;
 window.setFilter = setFilter;
 window.onTorrentSearchInput = onTorrentSearchInput;
+window.onTorrentOrderChange = onTorrentOrderChange;
+window.onDownloadRowClick = onDownloadRowClick;
+window.reaffirmQueue = reaffirmQueue;
 window.goToTorrentPage = goToTorrentPage;
 window.onPageSizeChange = onPageSizeChange;
 window.toggleAllCheckboxes = toggleAllCheckboxes;

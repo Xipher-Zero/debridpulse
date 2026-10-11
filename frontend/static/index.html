@@ -299,7 +299,13 @@
         <div style="padding:10px 14px 0">
           <div class="ev-search-row">
             <input class="input" id="torrent-search" placeholder="Search downloads…" oninput="onTorrentSearchInput()"/>
+            <select class="input dp-downloads-order" id="torrent-order" aria-label="Order downloads" onchange="onTorrentOrderChange(this.value)">
+              <option value="queue" selected>Priority</option>
+              <option value="newest">Newest</option>
+            </select>
           </div>
+          <p id="dp-queue-help" class="dp-queue-assistive">Drag a name to move the transfer in the queue, or press Space or Enter on it, move it with the arrow keys, and press Space or Enter to drop it or Escape to cancel.</p>
+          <div id="dp-queue-status" class="dp-queue-assistive" role="status" aria-live="polite"></div>
         </div>
         <div class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar">
           <div class="dp-card__header dp-downloads-bulk-toolbar">
@@ -318,7 +324,7 @@
         </div>
         <div class="dp-downloads-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="t-table" style="min-width:500px">
-          <thead><tr><th style="width:32px"><input type="checkbox" id="chk-all" onchange="toggleAllCheckboxes(this)"/></th><th>Name</th><th>Provider / Source</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><th>Actions</th></tr></thead>
+          <thead><tr><th>Name</th><th>Provider / Source</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><th>Actions</th><th class="dp-downloads-select-cell"><input type="checkbox" id="chk-all" aria-label="Select every download on this page" onchange="toggleAllCheckboxes(this)"/></th></tr></thead>
           <tbody id="t-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
         </div>

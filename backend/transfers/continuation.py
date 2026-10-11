@@ -66,6 +66,21 @@ def parks_on_pause(capabilities: ExecutorCapabilities) -> bool:
             and ContinuationCapability.NATIVE_QUIESCE in continuation)
 
 
+def retirement_keeps_progress(capabilities: ExecutorCapabilities, strategy: str | None = None) -> bool:
+    """Whether retiring a writer now -- the one writer retirement: quiesce,
+    forced checkpoint, fence -- keeps what it acquired, decided from declared
+    capabilities only: its work becomes DebridPulse material at the forced
+    checkpoint (``EXPORT_MATERIAL_RANGES``, never inside a DESTINATION_AWARE
+    reconstruction, whose work is no material before it completes) and a fresh
+    writer of the same executor continues from that material (contiguously,
+    or by importing it sparsely). A private native resume is not counted: a
+    retired job is cancelled, so whatever it kept natively is gone."""
+    continuation = capabilities.continuation
+    return (ContinuationCapability.EXPORT_MATERIAL_RANGES in continuation
+            and strategy != ContinuationStrategy.DESTINATION_AWARE.value
+            and (_CONTINUES <= continuation or ContinuationCapability.IMPORT_SPARSE_MATERIAL in continuation))
+
+
 def continuation_conflict() -> TransferError:
     """A supposedly equivalent source whose authoritative size contradicts the
     artifact's: an identity/reconciliation conflict, never a harmless resize."""

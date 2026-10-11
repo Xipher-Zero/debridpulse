@@ -32,8 +32,8 @@ from db.database import get_db
 from transfers import codec
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, active_execution_progress_sql, active_execution_projection,
-    canonical_artifact_membership_sql,
+    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, _QUEUE_MEMBER_SQL, active_execution_progress_sql,
+    active_execution_projection, canonical_artifact_membership_sql,
 )
 from transfers.display_name import normalized_transfer_display_name
 from transfers.errors import Category, TransferError
@@ -464,6 +464,18 @@ async def list_activity_events(
 
 
 _ACTIVITY_ORDER = "activity"
+# Downloads' Priority view: the operator queue (``TransferRepository.queue``)
+# -- unfinished transfers by durable priority, then the older transfer -- and
+# after it the settled history, most recently settled first (completion time,
+# else the admission time: a cancellation records none), ordered over the
+# complete filtered collection BEFORE the page is cut from it. Without it the
+# collection is chronological, newest first, exactly as before.
+_QUEUE_ORDER = "queue"
+_QUEUE_MEMBER = _QUEUE_MEMBER_SQL.replace("status", "t.status")
+_QUEUE_ORDER_SQL = f"""CASE WHEN {_QUEUE_MEMBER} THEN 0 ELSE 1 END,
+            CASE WHEN {_QUEUE_MEMBER} THEN -t.priority END,
+            CASE WHEN {_QUEUE_MEMBER} THEN t.id END,
+            COALESCE(t.completed_at, t.created_at) DESC, t.id DESC"""
 
 
 async def _bounded_status_candidates(db, base_where: str, params: list, statuses: tuple, limit: int) -> list:
@@ -614,15 +626,16 @@ async def list_operational_torrents(
     if activity_mode:
         candidate_ids = await _activity_cohort_candidate_ids(clauses, params, limit)
         if candidate_ids:
-            values_sql = ", ".join(f"({int(cid)})" for cid in candidate_ids)
-            page_sql = f"SELECT column1 AS id FROM (VALUES {values_sql})"
+            values_sql = ", ".join(f"({int(cid)}, {ordinal})" for ordinal, cid in enumerate(candidate_ids))
+            page_sql = f"SELECT column1 AS id, column2 AS page_ordinal FROM (VALUES {values_sql})"
         else:
-            page_sql = "SELECT NULL AS id WHERE 0"
+            page_sql = "SELECT NULL AS id, NULL AS page_ordinal WHERE 0"
         query_params = []
     else:
-        page_sql = f"""SELECT t.id
+        ordering = _QUEUE_ORDER_SQL if order == _QUEUE_ORDER else "t.created_at DESC"
+        page_sql = f"""SELECT t.id, ROW_NUMBER() OVER (ORDER BY {ordering}) AS page_ordinal
             FROM torrents t {where}
-            ORDER BY t.created_at DESC"""
+            ORDER BY {ordering}"""
         query_params = list(params)
         if limit > 0:
             page_sql += " LIMIT ? OFFSET ?"
@@ -1458,7 +1471,8 @@ async def list_operational_torrents(
             page_current_file_selection.decision AS _file_selection_decision,
             page_current_file_selection.manifest_committed_at AS _file_selection_committed_at,
             COALESCE(page_file_selection_manifest_counts.manifest_entry_count, 0) AS _file_selection_entry_count,
-            COALESCE(page_file_selection_manifest_counts.independent_members, 0) AS _file_selection_explicit_only
+            COALESCE(page_file_selection_manifest_counts.independent_members, 0) AS _file_selection_explicit_only,
+            CASE WHEN {_QUEUE_MEMBER} THEN 1 ELSE 0 END AS queue_member
         FROM page
         JOIN torrents t
           ON t.id = page.id
@@ -1512,7 +1526,7 @@ async def list_operational_torrents(
           ON page_current_file_selection.transfer_id = t.id
         LEFT JOIN page_file_selection_manifest_counts
           ON page_file_selection_manifest_counts.manifest_id = page_current_file_selection.manifest_id
-        ORDER BY t.created_at DESC
+        ORDER BY page.page_ordinal
     """
 
     async with get_db() as db:
@@ -1535,11 +1549,16 @@ async def list_operational_torrents(
     # Details path reads via api.routes.get_torrent -- never a
     # presentation-side reconstruction from durable columns.
     capacity_only_blocked_ids = live_admission.capacity_only_blocked_ids(getattr(application, "engine", None))
+    # Likewise the admission owner's record of promoted transfers waiting
+    # only on a restart nobody confirmed: the row offers the reaffirmation.
+    restart_consent_ids = live_admission.restart_consent_ids(getattr(application, "engine", None))
     registry = getattr(getattr(application, "engine", None), "registry", None)
 
     items = []
     for row in rows:
         projected = dict(row)
+        projected["queue_member"] = bool(projected.get("queue_member"))
+        projected["queue_restart_consent"] = projected["queue_member"] and int(projected["id"]) in restart_consent_ids
         current_root_resource_state = projected.pop("_current_root_resource_state", None)
         paused = bool(int(projected.pop("_paused_intent", 0) or 0))
         challenge_row = _decode_projection_value(projected.pop("_input_challenge", None), None)

@@ -22,13 +22,16 @@ def test_downloads_rows_use_row_level_details_and_retire_drag_semantics() -> Non
     # DP 1.0.12 canonical flattening: ui-downloads.js is the sole owner of
     # the Downloads row template; app.js keeps only the shared
     # dpIsInteractiveRowTarget guard that both Downloads and Dashboard
-    # Recent call.
+    # Recent call. 1.0.13 operator queue: the row click goes through the one
+    # Downloads row-click owner, which applies the same guard and also
+    # swallows the single click that ends a Name-cell drag.
     app = read("app.js")
     downloads = read("ui-downloads.js")
     required = (
         "dp-downloads-detail-row", 'tabindex="0"',
         "event.key==='Enter'", "showDetail(${t.id})",
-        "if(!dpIsInteractiveRowTarget(event.target))showDetail(${t.id})",
+        'onclick="onDownloadRowClick(event,${t.id})"',
+        "if (!dpIsInteractiveRowTarget(event.target)) showDetail(id);",
     )
     missing = [fragment for fragment in required if fragment not in downloads]
     assert not missing, f"row detail contract is missing: {missing}"
@@ -102,11 +105,13 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
     # from a px column and the table never outgrows its viewport. Where the
     # full composition cannot fit whole, Size and Date (and, narrowest,
     # Progress) step aside rather than squeezing the rest; at full width
-    # Status holds every badge and Date its widest one-line value.
+    # Status holds every badge and Date its widest one-line value. 1.0.13
+    # operator queue: Name is the first column and the selection column the
+    # last, after Actions.
     import re
 
     css = read("ui-downloads-page.css")
-    assert "nth-child(8) { width: 190px; }" in css and "gap: 7px;" in css
+    assert "nth-child(7) { width: 190px; }" in css and "nth-child(8) { width: 36px; }" in css and "gap: 7px;" in css
 
     def block(query):
         return css.split(query + " {", 1)[1].split("\n}", 1)[0]
@@ -115,20 +120,20 @@ def test_downloads_desktop_columns_preserve_provider_identity_status_progress_an
         return dict(re.findall(r"nth-child\((\d)\) \{ width: ([\d.]+(?:%|px)); \}", block(query)))
 
     hidden_below_full = block("@media (min-width: 901px) and (width < 1440px)")
-    assert ":is(:nth-child(6), :nth-child(7)) { display: none; }" in hidden_below_full
-    assert "nth-child(5) { display: none; }" in block("@media (min-width: 901px) and (width <= 1050px)")
+    assert ":is(:nth-child(5), :nth-child(6)) { display: none; }" in hidden_below_full
+    assert "nth-child(4) { display: none; }" in block("@media (min-width: 901px) and (width <= 1050px)")
     bands = {
-        "@media (min-width: 901px) and (width <= 1050px)": {"2", "3", "4"},
-        "@media (width > 1050px) and (width < 1180px)": {"2", "3", "4", "5"},
-        "@media (min-width: 1180px) and (width < 1440px)": {"2", "3", "4", "5"},
-        "@media (min-width: 1440px)": {"2", "3", "4", "5", "6", "7"},
+        "@media (min-width: 901px) and (width <= 1050px)": {"1", "2", "3"},
+        "@media (width > 1050px) and (width < 1180px)": {"1", "2", "3", "4"},
+        "@media (min-width: 1180px) and (width < 1440px)": {"1", "2", "3", "4"},
+        "@media (min-width: 1440px)": {"1", "2", "3", "4", "5", "6"},
     }
     for query, columns in bands.items():
         widths = weights(query)
         assert set(widths) == columns, query
         assert sum(float(value[:-1]) for value in widths.values() if value.endswith("%")) == 100, query
     full = weights("@media (min-width: 1440px)")
-    assert full["4"] == "180px" and full["7"] == "178px"
+    assert full["3"] == "180px" and full["6"] == "178px"
 
 
 def test_downloads_uses_shell_height_and_has_no_legacy_card_bottom_margin() -> None:

@@ -19,7 +19,7 @@ from urllib.parse import urlparse, urlsplit
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from starlette.background import BackgroundTask
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ValidationError
 
 from core.branding import APP_SHORT_NAME, REPOSITORY_API_URL
 from core.config import (
@@ -40,6 +40,7 @@ from transfers.requests import (
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
+from transfers.manual_queue_move import QueueMoveRefused, RestartConfirmationRequired
 from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
 from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource
@@ -96,6 +97,8 @@ from executors.aria2.presentation import public_aria2_download
 
 logger = logging.getLogger("debridpulse.routes")
 router = APIRouter()
+# A stored transfer priority is a signed 32-bit value: never an overflow.
+_PRIORITY_MIN, _PRIORITY_MAX = -(2 ** 31), 2 ** 31 - 1
 
 
 def _duplicate_candidate_from_payload(payload: dict, source: str = "preview"):
@@ -1125,7 +1128,10 @@ async def resume_torrent(torrent_id: int, application: ApplicationService = Depe
 
 class LabelUpdate(BaseModel):
     label: str = ""
-    priority: int = 0
+    # Older clients sent a priority with every label edit; only an explicitly
+    # supplied one is applied, so a label edit never moves the transfer in
+    # the queue.
+    priority: int | None = Field(default=None, ge=_PRIORITY_MIN, le=_PRIORITY_MAX)
 
 
 @router.put("/torrents/{torrent_id}/label")
@@ -2291,18 +2297,61 @@ async def prometheus_metrics():
 
 # ── Priority Queue ────────────────────────────────────────────────────────────
 
+class QueuePosition(BaseModel):
+    """Exactly one of: an operator queue move -- the transfer's new
+    neighbours in the complete queue (``before_id`` and/or ``after_id``); a
+    ``reaffirm`` of the place it already holds, renewing the promotion it
+    holds there; or, as older clients send it, an absolute ``priority``
+    (higher = sooner), applied as given and never displacing running work.
+    A move or a reaffirmation carries the attempts whose restart the operator
+    confirmed."""
+    priority: int | None = Field(default=None, ge=_PRIORITY_MIN, le=_PRIORITY_MAX)
+    before_id: int | None = Field(default=None, ge=1)
+    after_id: int | None = Field(default=None, ge=1)
+    reaffirm: bool = False
+    confirm_restart: list[str] = Field(default_factory=list, max_length=64)
+
+
+def _queue_move_error(exc: Exception) -> HTTPException:
+    if isinstance(exc, RestartConfirmationRequired):
+        count = len(exc.transfers)
+        return HTTPException(409, {
+            "confirmation": "restart_required", "changed": exc.changed, "transfers": list(exc.transfers),
+            "message": ("The transfers this reorder interrupts changed; nothing was moved." if exc.changed
+                        else f"Reordering the queue interrupts {count} active transfer{'s' if count != 1 else ''} "
+                             "that cannot resume."),
+        })
+    if exc.reason == "not_queued":
+        return HTTPException(409, {"reason": "not_queued",
+                                   "message": "Only unfinished transfers have a place in the queue."})
+    return HTTPException(409, {"reason": "queue_changed", "message": "The queue changed; nothing was moved."})
+
+
 @router.patch("/torrents/{torrent_id}/priority")
 async def set_torrent_priority(torrent_id: int, body: dict, application: ApplicationService = Depends(get_application)):
-    """Set the dispatch priority for a torrent.
-    Higher priority = dispatched sooner.  Default: 0.
-    Body: {"priority": <int>}
-    """
-    priority = int(body.get("priority") or 0)
+    """The transfer's place in the queue (``QueuePosition``)."""
+    try:
+        position = QueuePosition.model_validate(body or {})
+    except ValidationError as exc:
+        raise HTTPException(422, "Invalid queue position") from exc
+    moving = position.before_id is not None or position.after_id is not None
+    if sum((moving, position.reaffirm, position.priority is not None)) != 1:
+        raise HTTPException(422, "Give the transfer's new neighbours, a reaffirmation or a priority")
     if not await application.repository.get(torrent_id):
         raise HTTPException(404, "Transfer not found")
-    await application.repository.update_metadata(torrent_id, priority=priority)
-    await _sse_broadcast("torrent_updated", {"torrent_id": torrent_id, "priority": priority})
-    return {"ok": True, "torrent_id": torrent_id, "priority": priority}
+    if position.priority is not None:
+        await application.repository.update_metadata(torrent_id, priority=position.priority)
+        await _sse_broadcast("torrent_updated", {"torrent_id": torrent_id, "priority": position.priority})
+        return {"ok": True, "torrent_id": torrent_id, "priority": position.priority}
+    try:
+        moved = await application.move_in_queue(torrent_id, before_id=position.before_id, after_id=position.after_id,
+                                                reaffirm=position.reaffirm, confirm_restart=position.confirm_restart)
+    except KeyError:
+        raise HTTPException(404, "Transfer not found") from None
+    except (QueueMoveRefused, RestartConfirmationRequired) as exc:
+        raise _queue_move_error(exc) from None
+    return {"ok": True, "torrent_id": torrent_id, "priority": moved.priority, "moved": moved.moved,
+            "outcome": moved.outcome, "preempting": list(moved.preempting)}
 
 
 # ── Recovery ──────────────────────────────────────────────────────────────────

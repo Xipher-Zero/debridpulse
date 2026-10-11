@@ -22,6 +22,7 @@ from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
 from transfers.filesystem import safe_name
+from transfers.manual_queue_move import move_in_queue
 from transfers.models import TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
@@ -821,6 +822,20 @@ class ApplicationService:
             self.execution_wakeup.set()
             await self._publish(transfer_id)
             return self._control_result(errors)
+
+    async def move_in_queue(self, transfer_id, *, before_id=None, after_id=None, reaffirm=False, confirm_restart=()):
+        """One operator queue move or reaffirmation (``transfers
+        .manual_queue_move``), on the same serialized operator-control boundary
+        as Pause and Resume."""
+        async with self.operator_controls, self.application_operation():
+            await self.require(transfer_id)
+            moved = await move_in_queue(self.engine, int(transfer_id), before_id=before_id, after_id=after_id,
+                                        reaffirm=reaffirm, confirmed=frozenset(confirm_restart))
+            if moved.moved or moved.preempting:
+                self.resolution_wakeup.set()
+                self.execution_wakeup.set()
+                await self._publish(transfer_id)
+            return moved
 
     @staticmethod
     def _control_result(errors):
