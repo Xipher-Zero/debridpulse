@@ -119,7 +119,9 @@ class ObservationBatch(dict):
         self.writes: dict[str, int] = {}
 
 from transfers.canonical import CanonicalOwnership
-from transfers.contracts import CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation
+from transfers.contracts import (
+    CandidateRefresh, Cleanup, DiscoveryResolution, Inventory, ProviderInputContinuation, UpstreamSelection,
+)
 from transfers import codec
 from transfers.errors import (
     Category, Domain, MutationOutcome, NormalizedError, Recovery, Retryability, Stage,
@@ -1688,7 +1690,11 @@ class TransferEngine:
             await self._materialize(record, result.candidates)
         elif result.observation:
             await self._converge_root_observation_name(record, result.observation)
-            if result.observation.state == ResourceState.AVAILABLE:
+            # An executable resource -- or one whose provider executes only what
+            # is selected on it and waits for that selection -- is observed in
+            # this same unit by the one observation owner, never a poll later.
+            if result.observation.state == ResourceState.AVAILABLE or (
+                    result.observation.state == ResourceState.PREPARING and isinstance(provider, UpstreamSelection)):
                 return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
         else:
             raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))

@@ -2777,41 +2777,53 @@ class TransferRepository(_QualifiedTransferRepository):
         ``start`` (the immediate predecessor) only through generations that
         legitimately carried the established selection -- or ``None``.
 
-        A generation is the anchor when it is committed and ``proven``, holds
-        a recorded complete manifest, and its binding's own resolution of THIS
-        root reported exactly ``digest`` (``_binding_fingerprints``). A
-        generation that attested nothing is crossed only when it, too, is
-        committed and ``proven``, was born carrying the selection
-        (``inherited``), was produced for this very root
-        (``_resolved_for_root``), is no legacy compatibility reconstruction,
-        and names a predecessor. Anything else ends the walk with no anchor:
+        The anchor is the generation ``_nearest_attested`` reaches; it anchors
+        only when every generation crossed to reach it is its torrent as a
+        complete collection (``_bridged``) and its own identity reaches back
+        to where the selection was made (``_identity_lineage``). Durable rows
+        only: reproduced identically after a restart."""
+        found = await self._nearest_attested(db, record, start, digest, set())
+        if found is None:
+            return None
+        anchor, crossed = found
+        return anchor if (await self._bridged(db, anchor, crossed)
+                          and await self._identity_lineage(db, record, anchor, digest)) else None
+
+    async def _nearest_attested(self, db, record, start, digest: str, seen: set):
+        """``(anchor, crossed)``: the nearest generation from ``start`` whose
+        binding's own resolution of THIS root reported exactly ``digest``
+        (``_binding_fingerprints``), and the fingerprint-less generations
+        crossed on the way (nearest first) -- or ``None``.
+
+        Every generation walked is committed and ``proven`` with a recorded
+        complete manifest. A generation that attested nothing is crossed only
+        when it was born carrying the selection (``inherited``), was produced
+        for this very root (``_resolved_for_root``), is no legacy compatibility
+        reconstruction, and names a predecessor. Anything else ends the walk:
         an uncommitted, held or never-proven generation, another root's, a
-        missing or repeated link, a truncated manifest, or any other hash.
+        missing link, a generation already in ``seen`` (the caller's walk, so
+        no cycle is ever followed), a truncated manifest, or any other hash.
 
         ``proven`` is SELECTION continuity -- a commit may have proven only the
         selected members by exact path while the unselected ones differ -- so
-        it never makes a crossed generation an identity bridge by itself. Each
-        crossed generation's complete list must also correspond, as a whole
-        (``_bridged``), to the list of the generation it was carried from or
-        to the anchor's own, reconstructed from the frozen committed
-        manifests. Durable rows only: reproduced identically after a
-        restart."""
-        seen, crossed, row = set(), [], start
+        reaching an anchor proves nothing by itself: the caller still requires
+        each crossed generation to correspond, as a whole collection, to it
+        (``_bridged``)."""
+        crossed, row = [], start
         for _ in range(self._ANCHOR_LINEAGE_LIMIT):
             if (row is None or row["id"] in seen or str(row["request_id"]) != str(record.id)
                     or row["manifest_committed_at"] is None or row["continuity"] != str(fs.Continuity.PROVEN)
                     or not row["manifest_id"]
                     or (await self._manifest_collection(db, row["manifest_id"]))["source_truncated"]):
                 return None
-            seen.add(row["id"])
             attested = _attested(await self._binding_fingerprints(db, record.id, row["provider_resource_id"]))
             if attested:
-                return row if (attested == {digest} and await self._bridged(db, row, crossed)
-                               and await self._identity_lineage(db, record, row, digest)) else None
+                return (row, crossed) if attested == {digest} else None
             if (str(row["decision_reason"] or "") != str(fs.DecisionReason.INHERITED) or not row["predecessor_id"]
                     or row["continuity_reason"] == self.COMPATIBILITY_RECONSTRUCTION
                     or not await self._resolved_for_root(db, record.id, row["provider_resource_id"])):
                 return None
+            seen.add(row["id"])
             crossed.append(row)
             row = await db.fetchone("SELECT * FROM transfer_file_selections WHERE id=?", (row["predecessor_id"],))
         return None
@@ -2847,16 +2859,28 @@ class TransferRepository(_QualifiedTransferRepository):
         what it carries and vouches for nothing. Every generation on the way
         is this root's, committed and ``proven`` -- never a legacy
         compatibility reconstruction -- and attests no hash other than
-        ``digest``. Each edge is an identity
-        edge only when both ends' own providers attested exactly ``digest``,
-        or else both recorded lists are complete (neither source truncated)
-        and correspond as wholes (``_corresponds``): an exact-path carry of
-        the selected members alone is continuity of the selection, never of
-        the collection. Anything else -- a missing, repeated or foreign link,
-        a lineage longer than the bound -- vouches for nothing. Reconstructed
-        from durable rows and frozen committed manifests only."""
-        seen = set()
-        for _ in range(self._ANCHOR_LINEAGE_LIMIT):
+        ``digest``. Each step is an identity edge (``_identity_edge``) to its
+        predecessor -- or, where that predecessor attested no hash, to the
+        identity anchor beneath it (``_anchor_beneath``): exactly the
+        whole-collection proof the commit of an anchored generation rests on
+        (``_inherited_migration``), reconstructed, after which the walk goes
+        on from the anchor. An exact-path carry of the selected members alone
+        is continuity of the selection, never of the collection. Anything else
+        -- a missing, repeated or foreign link, a lineage longer than the
+        bound -- vouches for nothing. Reconstructed from durable rows and
+        frozen committed manifests only.
+
+        The bound is the commit's own, per proof: a walk follows at most
+        ``_ANCHOR_LINEAGE_LIMIT`` generations of direct edges; an anchor proof
+        crosses at most that many generations to its anchor, the anchor
+        included (``_nearest_attested``), and the anchor's lineage is that
+        proof's own walk under a fresh bound -- exactly what
+        ``_identity_anchor`` granted the commit being reconstructed, never
+        more. One ``seen`` across the whole reconstruction visits no
+        generation twice, so it is finite whatever the history."""
+        seen, steps = set(), 0
+        while steps < self._ANCHOR_LINEAGE_LIMIT:
+            steps += 1
             if (row is None or row["id"] in seen or str(row["request_id"]) != str(record.id)
                     or row["manifest_committed_at"] is None or row["continuity"] != str(fs.Continuity.PROVEN)
                     or row["continuity_reason"] == self.COMPATIBILITY_RECONSTRUCTION or not row["manifest_id"]):
@@ -2872,15 +2896,56 @@ class TransferRepository(_QualifiedTransferRepository):
             older = await db.fetchone("SELECT * FROM transfer_file_selections WHERE id=?", (row["predecessor_id"],))
             if older is None or not older["manifest_id"]:
                 return False
-            older_attested = _attested(await self._binding_fingerprints(db, record.id, older["provider_resource_id"]))
-            if not (newer == {digest} and older_attested == {digest}):
-                if (await self._manifest_collection(db, row["manifest_id"]))["source_truncated"] \
-                        or (await self._manifest_collection(db, older["manifest_id"]))["source_truncated"] \
-                        or not _corresponds(await self._manifest_members(db, older["manifest_id"]),
-                                            await self._manifest_members(db, row["manifest_id"])):
-                    return False
+            if not await self._identity_edge(db, record, older, row, digest):
+                older = await self._anchor_beneath(db, record, older, row, digest, seen)
+                steps = 0                       # the anchor's lineage: that proof's own walk
             row = older
         return False
+
+    async def _identity_edge(self, db, record, older, newer, digest: str) -> bool:
+        """THE identity edge between two generations of this root: both ends'
+        own providers attested exactly ``digest``, or both recorded lists are
+        complete (neither source truncated) and correspond as wholes
+        (``_corresponds``)."""
+        if (_attested(await self._binding_fingerprints(db, record.id, older["provider_resource_id"])) == {digest}
+                and _attested(await self._binding_fingerprints(db, record.id, newer["provider_resource_id"]))
+                == {digest}):
+            return True
+        if ((await self._manifest_collection(db, newer["manifest_id"]))["source_truncated"]
+                or (await self._manifest_collection(db, older["manifest_id"]))["source_truncated"]):
+            return False
+        return _corresponds(await self._manifest_members(db, older["manifest_id"]),
+                            await self._manifest_members(db, newer["manifest_id"]))
+
+    async def _anchor_beneath(self, db, record, older, newer, digest: str, seen: set):
+        """The identity anchor ``newer`` was proven against when its own
+        predecessor ``older`` attested no hash -- or ``None``.
+
+        The commit of such a generation (``_inherited_migration``) proves it
+        against the nearest attested generation of the root's lineage
+        (``_identity_anchor``), never against the fingerprint-less list it was
+        carried from; this is that same proof, reconstructed: the root's own
+        validated info-hash is ``digest``, ``newer`` was produced for this very
+        root, every generation crossed down to the anchor corresponds to it as
+        a complete collection (``_bridged``), and ``newer``'s complete
+        collection is the anchor's (``_identity_edge``). The crossing is
+        bounded exactly as ``_identity_anchor``'s; the anchor's own lineage is
+        the caller's walk to continue, under its own bound, sharing ``seen``."""
+        from transfers.requests import bittorrent_root_hash
+
+        root_hash = bittorrent_root_hash(record.request)
+        if (not root_hash or root_hash != digest or bittorrent_root_hash(record.resolvable) != root_hash
+                or _attested(await self._binding_fingerprints(db, record.id, older["provider_resource_id"]))
+                or not await self._resolved_for_root(db, record.id, newer["provider_resource_id"])):
+            return None
+        found = await self._nearest_attested(db, record, older, digest, seen)
+        if found is None:
+            return None
+        anchor, crossed = found
+        if not (await self._bridged(db, anchor, crossed)
+                and await self._identity_edge(db, record, anchor, newer, digest)):
+            return None
+        return anchor
 
     async def _carried_from_anchor(self, db, record, anchor, binding_id: str, intent, replacement,
                                    replacement_fingerprints, full_entries, established,

@@ -182,13 +182,15 @@ class UpstreamSelection(Protocol):
     provider's own manifest coordinates
     (``TransferRepository.upstream_selection``) -- never a choice of its own.
     The provider expresses them natively -- answering ``True``: its resource
-    changed and is observed again at once -- or verifies a selection already
+    changed and is read back once, at once -- or verifies a selection already
     made (``False``), and raises a normalized error when its resource does not
-    or cannot reflect them. A provider without it keeps every member
-    executable as before."""
+    or cannot reflect them. ``submit=False`` is that read-back: the provider
+    only reads and verifies, never sends, and answers ``True`` when its
+    resource still waits for a selection. A provider without it keeps every
+    member executable as before."""
 
     async def synchronize_selection(self, resource: ProviderResource,
-                                    members: tuple[FileManifestEntry, ...]) -> bool: ...
+                                    members: tuple[FileManifestEntry, ...], *, submit: bool = True) -> bool: ...
 
 
 @runtime_checkable

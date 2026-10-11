@@ -301,6 +301,12 @@ AWAITING_SELECTION = "waiting_files_selection"
 CONVERTING = "magnet_conversion"
 
 
+def status_label(status: object) -> str:
+    """Real-Debrid's native torrent status as a bounded diagnostic word: one
+    of its documented statuses, never whatever text an answer carried."""
+    return status if status in _PREPARING or status in _FAILED_STATUSES or status == "downloaded" else "unrecognized"
+
+
 def _nonnegative(value) -> int:
     if value is None:
         return 0

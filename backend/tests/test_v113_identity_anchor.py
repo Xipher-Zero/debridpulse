@@ -21,6 +21,8 @@ neutral local providers; the #593 coordinates are its own shapes.
 """
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 from test_v113_collection_route_generic_closure import Clock
 from test_v113_root_provider_switch import (
@@ -32,6 +34,7 @@ from test_v113_root_provider_switch import (
     first_hold,
     magnet_provider,
     members_of,
+    offer,
     offer_source,
     root_of,
     rows,
@@ -621,3 +624,221 @@ async def test_an_attested_inherited_generation_that_lost_its_predecessor_bridge
         await db.commit()
     error = await chain.hop("parcel-c", _with(SEASONS, EXTRA_B, "Show/"), "", outcome="conflict")
     assert error is not None and (await chain.generation("parcel-c"))["manifest_committed_at"] is None
+
+
+# -- #595: a proof the commit accepted is the proof the next hop reconstructs ---------------------------------------
+
+async def _generations(transfer_id, identity):
+    return await rows("SELECT * FROM transfer_file_selections WHERE transfer_id=? AND provider_id=? ORDER BY rowid",
+                      (transfer_id, identity))
+
+
+async def _identities(repository, transfer_id):
+    """The root's established decomposition: every member request and
+    artifact, with its logical destination."""
+    requests = sorted((item.id, item.entry.relative_path) for item in await repository.requests(transfer_id)
+                      if item.parent_id)
+    artifacts = sorted((row["id"], row["request_id"], row["local_path"]) for row in await rows(
+        "SELECT id, request_id, local_path FROM download_files WHERE torrent_id=?", (transfer_id,)))
+    return requests, artifacts
+
+
+async def _renewed(chain, identity, files, native):
+    """A switch back to a provider used before, onto a NEW torrent of it
+    (its own native id), attesting the root hash -- as TorBox re-added #595."""
+    provider = chain.providers[identity]
+    resource = offer(provider, files, native=native)
+    observed = provider.resources[resource.id] = replace(provider.resources[resource.id], fingerprint=ROOT_HASH)
+    provider.responses[-1] = replace(provider.responses[-1], observation=observed)
+    await switch_root_provider(chain.engine, chain.transfer.id, identity, expected_provider_id=chain.current)
+    chain.current = identity
+    await settle(chain.engine)
+
+
+@pytest.mark.asyncio
+async def test_transfer_595_continues_after_debrid_link_with_every_member(tmp_path, monkeypatch):
+    """The live #595 sequence, all 133 members selected: TorBox (confirmed,
+    attests the root hash) -> a Real-Debrid-like generation that inherits but
+    never commits -> TorBox again (attested) -> Premiumize (one extra wrapper
+    directory, no hash) -> Debrid-Link (attested, flat; proven against the
+    TorBox anchor) -> AllDebrid (attested, season paths) -> TorBox (attested,
+    season paths), the process restarted before each of the last two. On the
+    deployed baseline AllDebrid and TorBox each refused with
+    fallback_lineage_unproven although Debrid-Link had committed through that
+    very anchor."""
+    from transfers.models import ProviderObservation, ResolutionResult, ResourceState
+
+    members = _593()
+    wrapped = [(name, f"The Real Ghostbusters/{path}", size) for name, path, size in members]
+    flat = [(name, name, size) for name, _path, size in members]
+    chain = await Chain(tmp_path).start(monkeypatch, members, ROOT_HASH, everything=True)
+    preparing = chain.providers["parcel-e"] = magnet_provider("parcel-e")
+    chain.registry.register_provider(preparing)
+    established = await _identities(chain.repository, chain.transfer.id)
+    assert len(established[0]) == len(established[1]) == 133
+
+    resource = offer_source(preparing, members, ROOT_HASH)                  # bound, inherits, never ready
+    observed = preparing.resources[resource.id]
+    preparing.resources[resource.id] = ProviderObservation(
+        observed.resource, ResourceState.PREPARING, observed.name, observed.fingerprint, observed.progress,
+        None, observed.request, file_manifest=observed.file_manifest)
+    preparing.responses[-1] = ResolutionResult(ResourceState.PREPARING, observation=preparing.resources[resource.id])
+    await switch_root_provider(chain.engine, chain.transfer.id, "parcel-e", expected_provider_id="parcel-a")
+    chain.current = "parcel-e"
+    await settle(chain.engine)
+    (uncommitted,) = await _generations(chain.transfer.id, "parcel-e")
+    assert uncommitted["manifest_committed_at"] is None
+
+    await _renewed(chain, "parcel-a", members, "renewed")                  # TorBox renewed: a new torrent
+    origin, renewed = await _generations(chain.transfer.id, "parcel-a")
+    assert renewed["predecessor_id"] == origin["id"] and renewed["manifest_committed_at"] is not None
+    await chain.hop("parcel-b", wrapped, "")                                # Premiumize
+    assert len(await chain.carried("parcel-b")) == 133
+    await chain.hop("parcel-c", flat, ROOT_HASH)                            # Debrid-Link
+    assert await chain.carried("parcel-c") == {path: f"x:{name}" for name, path, _size in members}
+    assert await _lineage(chain, "parcel-c") is True                        # the proof its commit used
+
+    await chain.boot()
+    assert await _lineage(chain, "parcel-c") is True                        # reconstructed after a restart
+    await chain.hop("parcel-d", members, ROOT_HASH)                         # AllDebrid
+    assert await chain.carried("parcel-d") == {path: f"x:{path}" for _name, path, _size in members}
+    assert await _identities(chain.repository, chain.transfer.id) == established
+
+    await chain.boot()
+    await _renewed(chain, "parcel-a", members, "again")                    # TorBox again: another torrent
+    latest = (await _generations(chain.transfer.id, "parcel-a"))[-1]
+    assert latest["manifest_committed_at"] is not None and latest["continuity"] == "proven"
+    root = await root_of(chain.repository, chain.transfer.id)
+    assert root.resource.provider_id == "parcel-a" and root.error is None
+    assert dict(await members_of(chain.repository, chain.transfer.id)) == {
+        path: f"again:{path}" for _name, path, _size in members}
+    assert await _identities(chain.repository, chain.transfer.id) == established
+
+
+OTHER = [(name, f"Other/{path}", size) for name, path, size in SEASONS]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("first, first_fp, hops, accepted", [
+    (SEASONS, ROOT_HASH, [("parcel-b", WRAPPED, ""), ("parcel-c", FLAT, ROOT_HASH)], True),
+    (SEASONS, ROOT_HASH, [("parcel-b", WRAPPED, ""), ("parcel-c", OTHER, "")], True),
+    (SEASONS, ROOT_HASH, [("parcel-b", WRAPPED, "")], True),
+    (SEASONS, "", [("parcel-b", WRAPPED, ""), ("parcel-c", FLAT, ROOT_HASH)], False),
+    (_with(SEASONS, EXTRA_A), "", [("parcel-b", _with(SEASONS, EXTRA_B), ROOT_HASH), ("parcel-c", FLAT_B, ROOT_HASH)],
+     False),
+    (_with(SEASONS, EXTRA_A), ROOT_HASH, [("parcel-b", _with(SEASONS, EXTRA_B), ""), ("parcel-c", FLAT_B, ROOT_HASH)],
+     False),
+], ids=["anchor-then-attested-flat", "anchor-then-fingerprintless-other-folder", "anchor-then-wrapped",
+        "no-attested-ancestor", "selected-only-bridge", "non-corresponding-intermediate"])
+async def test_the_commit_and_the_later_reconstruction_agree(tmp_path, monkeypatch, first, first_fp, hops, accepted):
+    """Differential: a generation the commit proof accepted is one the
+    lineage reconstruction -- what the next hop relies on -- accepts too,
+    before and after a restart; one the commit refused is never reconstructed
+    as proven. Each fixture's last hop is decided by the identity owner, never
+    by an exact-path selection carry."""
+    chain = await Chain(tmp_path).start(monkeypatch, first, first_fp)
+    for identity, files, fp in hops[:-1]:
+        await chain.hop(identity, files, fp)
+    identity, files, fp = hops[-1]
+    await chain.hop(identity, files, fp, outcome=None if accepted else "conflict")
+    committed = (await chain.generation(identity))["manifest_committed_at"] is not None
+    assert committed is accepted
+    assert await _lineage(chain, identity) is committed
+    await chain.boot()
+    assert await _lineage(chain, identity) is committed
+
+
+# -- the lineage bound is the commit's own, per proof ----------------------------------------------------------------
+
+async def _splice(chain, identity, count):
+    """Splice ``count`` committed copies of ``identity``'s generation in
+    directly beneath it, each its own binding of this root with its own
+    recorded resolution (so attested exactly as the original, or not at all):
+    a lineage that many generations longer at that point, built from the
+    durable records a real history would have left."""
+    import json
+    import uuid
+
+    template = await chain.generation(identity)
+    (binding,) = await rows("SELECT * FROM provider_resources WHERE id=?", (template["provider_resource_id"],))
+    key = binding["resource_key"] or binding["id"]
+    attempts = [attempt for attempt in await rows(
+        "SELECT * FROM resolution_attempts WHERE request_id=? AND result IS NOT NULL", (template["request_id"],))
+        if ((json.loads(attempt["result"]) or {}).get("observation") or {}).get("resource", {}).get("id") == key]
+    below = template["predecessor_id"]
+    async with database.get_db() as db:
+        await db.execute("PRAGMA foreign_keys=OFF")
+        for index in range(count):
+            clone_key, binding_id, generation_id = f"{key}#{index}", uuid.uuid4().hex, uuid.uuid4().hex
+            columns = {**dict(binding), "id": binding_id, "resource_key": clone_key}
+            await db.execute(
+                f"INSERT INTO provider_resources({','.join(columns)}) VALUES({','.join('?' * len(columns))})",
+                tuple(columns.values()))
+            for attempt in attempts:
+                result = json.loads(attempt["result"])
+                result["observation"]["resource"]["id"] = clone_key
+                columns = {**dict(attempt), "id": uuid.uuid4().hex, "result": json.dumps(result)}
+                await db.execute(
+                    f"INSERT INTO resolution_attempts({','.join(columns)}) VALUES({','.join('?' * len(columns))})",
+                    tuple(columns.values()))
+            columns = {**dict(template), "id": generation_id, "provider_resource_id": binding_id,
+                       "predecessor_id": below}
+            await db.execute(
+                f"INSERT INTO transfer_file_selections({','.join(columns)}) VALUES({','.join('?' * len(columns))})",
+                tuple(columns.values()))
+            below = generation_id
+        await db.execute("UPDATE transfer_file_selections SET predecessor_id=? WHERE id=?", (below, template["id"]))
+        await db.commit()
+        await db.execute("PRAGMA foreign_keys=ON")
+
+
+async def _proofs(chain, premiumize, debrid_link):
+    """The commit's anchor proof for Debrid-Link (``_identity_anchor`` from
+    its predecessor, what its commit ran) and the later reconstruction of
+    Debrid-Link's lineage (what the next hop relies on)."""
+    root = await root_of(chain.repository, chain.transfer.id)
+    (start,) = await rows("SELECT * FROM transfer_file_selections WHERE id=?", (premiumize,))
+    (committed,) = await rows("SELECT * FROM transfer_file_selections WHERE id=?", (debrid_link,))
+    async with database.get_db() as db:
+        anchor = await chain.repository._identity_anchor(db, root, start, ROOT_HASH)
+        return anchor is not None, await chain.repository._identity_lineage(db, root, committed, ROOT_HASH)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("spliced, count, accepted", [
+    ("parcel-b", 62, True),     # the anchor's own lineage: 64 generations -- the commit's bound, met
+    ("parcel-b", 63, False),    # 65: beyond the anchor proof's lineage bound
+    ("parcel-c", 62, True),     # crossing: 63 fingerprint-less generations + the anchor = 64
+    ("parcel-c", 63, False),    # 64 crossed + the anchor: beyond the crossing bound
+    ("parcel-d", 63, True),     # Debrid-Link's own direct walk: 64 generations, then the anchor proof
+    ("parcel-d", 64, False),    # 65 direct generations before the anchor proof is even reached
+], ids=["anchor-lineage-64", "anchor-lineage-65", "crossing-64", "crossing-65", "direct-64", "direct-65"])
+async def test_a_reconstructed_anchor_proof_keeps_the_commit_s_own_bounds(tmp_path, monkeypatch, spliced, count,
+                                                                         accepted):
+    """TorBox (origin, attested) -> TorBox (attested) -> Premiumize (no hash,
+    wrapped) -> Debrid-Link (attested, flat; committed through the anchor),
+    then the history lengthened at one point. The reconstruction grants each
+    proof exactly the bound the commit granted it -- 64 generations of direct
+    walk, 64 to the anchor, 64 for the anchor's own lineage -- never the sum
+    of one outer loop's iterations: it accepts what the commit's anchor proof
+    accepts and refuses what it refuses, at every boundary and after a
+    restart. Accepted at the boundary, the next attested provider commits."""
+    chain = await Chain(tmp_path).start(monkeypatch, SEASONS, ROOT_HASH)
+    await chain.hop("parcel-b", SEASONS, ROOT_HASH)
+    await chain.hop("parcel-c", WRAPPED, "")
+    await chain.hop("parcel-d", FLAT, ROOT_HASH)
+    assert await chain.carried("parcel-d") == {"S1/A.mkv": "x:A.mkv", "S3/C.mkv": "x:C.mkv"}
+    generations = ((await chain.generation("parcel-c"))["id"], (await chain.generation("parcel-d"))["id"])
+    await _splice(chain, spliced, count)
+    commit, reconstruction = await _proofs(chain, *generations)
+    if spliced != "parcel-d":
+        assert commit is accepted                                           # the commit's own verdict
+    assert reconstruction is accepted
+    await chain.boot()
+    assert await _proofs(chain, *generations) == (commit, reconstruction)   # identical after a restart
+    if accepted and spliced == "parcel-b":
+        await _renewed(chain, "parcel-a", SEASONS, "again")
+        latest = (await _generations(chain.transfer.id, "parcel-a"))[-1]
+        assert latest["manifest_committed_at"] is not None
+        assert dict(await members_of(chain.repository, chain.transfer.id)) == {
+            "S1/A.mkv": "again:S1/A.mkv", "S3/C.mkv": "again:S3/C.mkv"}

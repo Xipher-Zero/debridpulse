@@ -1,6 +1,8 @@
 """Real-Debrid resolution implementation; no transfer state or policy ownership."""
 from __future__ import annotations
 
+import logging
+import time
 from dataclasses import replace
 from functools import wraps
 from urllib.parse import urlsplit
@@ -12,7 +14,7 @@ from providers.realdebrid.translation import (
     NativeFileIdsAmbiguous, archive_indicated, creation_error, link_identity_evidence, malformed_links_evidence,
     manifest_evidence, native_file_ids, native_members, native_name, observation_from_native, protocol_error,
     resource_from_native,
-    selection_error, selection_evidence, translate_error, unrestricted_matches,
+    selection_error, selection_evidence, status_label, translate_error, unrestricted_matches,
 )
 from services.network_safety import validate_provider_download_url
 from transfers.applicability import ApplicabilityReadiness, ProviderApplicability
@@ -27,6 +29,8 @@ from transfers.models import (
     ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState, SourceEntry,
     SourceIdentity, TransferCandidate, TransferOutcome, TransferRequest,
 )
+
+logger = logging.getLogger(__name__)
 
 # Real-Debrid's own "this torrent is already on the account" refusal.
 _ALREADY_ACTIVE = 33
@@ -248,7 +252,7 @@ class RealDebridProvider:
 
     @normalized_boundary(Stage.RECONCILIATION)
     async def synchronize_selection(self, resource: ProviderResource,
-                                    members: tuple[FileManifestEntry, ...]) -> bool:
+                                    members: tuple[FileManifestEntry, ...], *, submit: bool = True) -> bool:
         """Make this torrent's selected files exactly DebridPulse's
         authorized ``members`` (``contracts.UpstreamSelection``), or say why
         it cannot.
@@ -265,7 +269,8 @@ class RealDebridProvider:
         set is a selection this torrent cannot change, refused -- never
         reselected, never reused for another subset. An acknowledgement is
         no verification: the next observation is. ``True`` only when a
-        selection was sent."""
+        selection was sent -- or, reading back (``submit=False``, which never
+        sends), when the torrent still waits for one."""
         stage = Stage.RECONCILIATION
         native_id = self._native_id(resource)
         native = await self._call(self.client.torrent_info, native_id, stage=stage)
@@ -273,7 +278,7 @@ class RealDebridProvider:
             raise TransferError(protocol_error(stage, "torrent identity mismatch"))
         status = native.get("status")
         if status == CONVERTING:
-            return False                                               # no file list to select from yet
+            return not submit                                          # no file list to select from yet
         try:
             listed = native_members(native.get("files"), root_name=native_name(native))
         except ManifestInvalid:
@@ -293,6 +298,9 @@ class RealDebridProvider:
                 selection_evidence(native, native_id, listed, wanted=len(wanted), outcome="unmapped"),
                 category=Category.PROVIDER_PROTOCOL_VIOLATION)) from None
         if status == AWAITING_SELECTION:
+            if not submit:
+                return True
+            started = time.monotonic()
             try:
                 await self.client.select_files(native_id, ",".join(requested))
             except RealDebridAPIError as exc:
@@ -310,6 +318,8 @@ class RealDebridProvider:
                 # never connected proves it did not). The next observation
                 # reads the torrent before anything is sent again.
                 raise TransferError(replace(creation_error(exc, secrets=self._secrets()), stage=stage)) from None
+            logger.info("Real-Debrid selection sent: status=%s files=%d elapsed_ms=%d", status_label(status),
+                        len(requested), round((time.monotonic() - started) * 1000))
             return True
         if {index for index, member in enumerate(listed) if member.selected} != {
                 index for index, record in enumerate(native["files"]) if str(record.get("id")) in requested}:
@@ -317,6 +327,7 @@ class RealDebridProvider:
                 stage, "the torrent's selected files are not this selection",
                 selection_evidence(native, native_id, listed, wanted=len(wanted), requested=requested,
                                    outcome="mismatch")))
+        logger.debug("Real-Debrid selection verified: status=%s files=%d", status_label(status), len(requested))
         return False
 
     # -- executable members -------------------------------------------------------

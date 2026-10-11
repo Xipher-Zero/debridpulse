@@ -55,11 +55,11 @@ MAGNET_591 = f"magnet:?xt=urn:btih:{HASH_591}"
 
 class Torrent:
     def __init__(self, native_id, name, files, *, wrapped, fingerprint, converting=0, archive=False,
-                 preselected=False):
+                 preselected=False, ready=True):
         self.id, self.name, self.fingerprint = native_id, name, fingerprint
         self.files = [{"id": file_id, "path": f"/{name}/{path}" if wrapped else f"/{path}", "bytes": size,
                        "selected": int(preselected)} for file_id, path, size in files]
-        self.converting, self.archive, self.selected = converting, archive, preselected
+        self.converting, self.archive, self.selected, self.ready = converting, archive, preselected, ready
 
     def native(self):
         if self.converting:
@@ -67,11 +67,14 @@ class Torrent:
             return {"id": self.id, "filename": "", "hash": self.fingerprint, "bytes": 0, "progress": 0,
                     "status": "magnet_conversion", "speed": 0, "files": [], "links": []}
         chosen = [record for record in self.files if record["selected"]]
-        links = ([f"https://real-debrid.com/d/{self.id}-archive"] if self.archive and chosen else
+        links = ([] if not self.ready else
+                 [f"https://real-debrid.com/d/{self.id}-archive"] if self.archive and chosen else
                  [f"https://real-debrid.com/d/{self.id}-{record['id']}" for record in chosen])
         return {"id": self.id, "filename": self.name, "original_filename": self.name, "hash": self.fingerprint,
-                "bytes": sum(record["bytes"] for record in chosen), "progress": 100 if self.selected else 0,
-                "status": "downloaded" if self.selected else "waiting_files_selection", "speed": 0,
+                "bytes": sum(record["bytes"] for record in chosen),
+                "progress": 100 if self.selected and self.ready else 0,
+                "status": ("downloaded" if self.ready else "downloading") if self.selected
+                else "waiting_files_selection", "speed": 0,
                 "files": [dict(record) for record in self.files], "links": links}
 
 
@@ -81,15 +84,17 @@ class FakeRealDebrid:
     being cached, finishes at once); links are one per selected file, or one
     archive of them all when the torrent is ``archive``. ``select_errors``
     script the next selections' failures -- ``"lost"`` applies the selection
-    and then loses the answer."""
+    and then loses the answer. Not ``ready``, a selected torrent keeps
+    downloading until the test makes it ready; ``during_select`` runs while
+    a selection is being answered (an operator action landing meanwhile)."""
     configured = True
 
     def __init__(self, files=FILES_592, *, name=WHALE, wrapped=True, fingerprint=HASH_592, converting=0,
-                 archive=False, preselected=False):
+                 archive=False, preselected=False, ready=True):
         self.template = dict(files=files, name=name, wrapped=wrapped, fingerprint=fingerprint,
-                             converting=converting, archive=archive, preselected=preselected)
+                             converting=converting, archive=archive, preselected=preselected, ready=ready)
         self.torrents: dict[str, Torrent] = {}
-        self.calls, self.select_errors = [], []
+        self.calls, self.select_errors, self.during_select = [], [], None
 
     def secrets(self):
         return ("refresh-token-value",)
@@ -115,6 +120,8 @@ class FakeRealDebrid:
 
     async def select_files(self, native_id, files):
         self.calls.append(("select_files", native_id, files))
+        if self.during_select is not None:
+            await self.during_select()
         failure = self.select_errors.pop(0) if self.select_errors else None
         if isinstance(failure, Exception):
             raise failure
@@ -847,3 +854,221 @@ async def test_a_provider_without_the_capability_keeps_its_preparing_path_unchan
     (generation,) = await rows("SELECT decision FROM transfer_file_selections WHERE transfer_id=?", (transfer.id,))
     assert generation["decision"] == "pending"
     assert not [item for item in await repository.requests(transfer.id) if item.parent_id]
+
+
+# -- E: the selection inside one resolution cycle (#594 switch latency) ----------------------------------------------
+#
+# ``engine.resolve_pending()`` is one production resolution cycle: the scheduler
+# (``core.scheduler.sync_status_loop``) runs exactly one per wake and then sleeps
+# until the next persisted deadline, at most the 30 s resource poll interval.
+# ``ticks`` starts a new cycle every time, so it cannot see a wait the cycle
+# itself imposes; these tests hold the virtual clock still instead.
+
+CREATED = ["add_magnet", "torrent_info"]                                  # the torrent created, then read
+SELECTED = ["torrent_info", "torrent_info", "select_files"]               # observed; read again, then selected
+VERIFIED = ["torrent_info", "torrent_info"]                               # the one immediate re-read and its check
+EXECUTABLE = ["torrent_info", "unrestrict_link"]                          # the selected file's own link
+
+
+def phases(fake):
+    return [call[0] for call in fake.calls]
+
+
+async def switched_to_real_debrid(tmp_path, monkeypatch, fake, *, adopted=False):
+    """A movie-only selection confirmed on another provider, then the operator
+    switches the root to Real-Debrid -- onto a fresh torrent, or onto the
+    backup Prepare Backup Torrents already created (adopted)."""
+    from transfers.manual_route_switch import switch_root_provider
+
+    files = [(path.rsplit("/", 1)[-1], path, size) for _i, path, size in FILES_592]
+    first = preparing_parcel("parcel-a", files) if adopted else parcel("parcel-a")
+    if not adopted:
+        offer_source(first, [(name, f"{WHALE}/{path}", size) for name, path, size in files], HASH_592)
+    repository, engine = await lab(tmp_path, monkeypatch, first,
+                                   RealDebridProvider(fake, prepare_backup_torrents=adopted))
+    transfer = await submit(engine, preferred="parcel-a")
+    await ticks(engine, 6, step=30.0 if adopted else 1.0)
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    await repository.confirm_file_selection(transfer.id, view["manifest_id"], [
+        entry["entry_id"] for entry in view["entries"] if entry["relative_path"].endswith(MOVIE)], now=engine.clock())
+    await ticks(engine, 2)
+    assert fake.selects() == []
+    await switch_root_provider(engine, transfer.id, "realdebrid", expected_provider_id="parcel-a")
+    fake.calls.clear()
+    return repository, engine, transfer
+
+
+async def real_debrid_members(repository, transfer):
+    return [(path, payload) for path, payload in await members(repository, transfer) if "real-debrid" in payload]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("adopted", [False, True], ids=["fresh-torrent", "adopted-backup"])
+async def test_a_switch_to_real_debrid_is_selected_verified_and_executable_in_its_first_cycle(
+        tmp_path, monkeypatch, adopted):
+    """W1 + W2: bound while it waits for its selection, the torrent is
+    observed at once, selected, read back once and fanned out -- all in the
+    switch's own resolution cycle, the clock never advancing a poll."""
+    fake = FakeRealDebrid()
+    repository, engine, transfer = await switched_to_real_debrid(tmp_path, monkeypatch, fake, adopted=adopted)
+    now = engine.clock()
+    await engine.resolve_pending()
+    assert engine.clock() == now
+    bound = ["torrent_info"] if adopted else CREATED                     # an adopted backup is read, not created
+    assert phases(fake) == bound + SELECTED + VERIFIED + EXECUTABLE
+    assert fake.selects() == ["3"] and list(fake.torrents) == ["T1"]       # one torrent, selected once
+    logical = MOVIE if adopted else f"{WHALE}/{MOVIE}"                    # the established path, unchanged
+    assert await real_debrid_members(repository, transfer) == [(logical, "https://real-debrid.com/d/T1-3")]
+    (generation,) = await rows("SELECT manifest_committed_at FROM transfer_file_selections WHERE provider_id=?",
+                               ("realdebrid",))
+    assert generation["manifest_committed_at"] == now                     # committed in this very cycle
+
+
+@pytest.mark.asyncio
+async def test_a_selection_still_preparing_is_read_back_once_then_waits_for_the_ordinary_poll(tmp_path, monkeypatch):
+    """The one immediate re-read finds the torrent still downloading: the
+    unit ends on the ordinary poll deadline, nothing is sent again, and the
+    cycle does not touch Real-Debrid until that deadline; later polls only
+    read, and the selection executes once Real-Debrid is ready."""
+    fake = FakeRealDebrid(ready=False)
+    repository, engine, transfer = await switched_to_real_debrid(tmp_path, monkeypatch, fake)
+    now = engine.clock()
+    await engine.resolve_pending()
+    assert phases(fake) == CREATED + SELECTED + VERIFIED
+    record = await root(repository, transfer)
+    assert record.state == "waiting" and record.error is None
+    assert record.retry_at == now + engine.policy.resource_poll_interval
+    assert engine.resolution_deadline == record.retry_at                  # the scheduler's own next wake
+    fake.calls.clear()
+    await engine.resolve_pending()                                        # an unrelated wake: nothing is due
+    assert phases(fake) == []
+    for _ in range(2):
+        engine.clock.now += engine.policy.resource_poll_interval
+        await engine.resolve_pending()
+        assert phases(fake) == VERIFIED                                    # read and checked, never re-sent
+        fake.calls.clear()
+    fake.torrents["T1"].ready = True
+    engine.clock.now += engine.policy.resource_poll_interval
+    await engine.resolve_pending()
+    assert phases(fake) == VERIFIED + EXECUTABLE
+    assert fake.selects() == []                                           # the whole time: the one selection
+    assert await real_debrid_members(repository, transfer) == [(f"{WHALE}/{MOVIE}", "https://real-debrid.com/d/T1-3")]
+
+
+@pytest.mark.asyncio
+async def test_an_open_decision_is_the_operator_s_wait_and_its_confirmation_executes_in_one_cycle(
+        tmp_path, monkeypatch):
+    """A first interactive torrent: offered, never selected while the
+    operator decides, no cycle spinning on it, no early timeout; Confirm
+    selects, verifies and fans out within the next cycle."""
+    fake = FakeRealDebrid()
+    repository, engine = await lab(tmp_path, monkeypatch, RealDebridProvider(fake))
+    transfer = await submit(engine)
+    await engine.resolve_pending()
+    assert fake.selects() == [] and fake.count("add_magnet") == 1
+    record = await root(repository, transfer)
+    assert record.state == "waiting" and record.error is None and record.retry_at > engine.clock()
+    fake.calls.clear()
+    await engine.resolve_pending()                                        # woken early: the decision is not due
+    assert phases(fake) == []
+    engine.clock.now += 60.0                                              # inside the 120 s decision hold
+    await engine.resolve_pending()
+    assert fake.selects() == [] and await members(repository, transfer) == []
+    view = await repository.file_selection_presentation(transfer.id, now=engine.clock())
+    assert view["entries"]                                                # still offered
+    await choose(repository, engine, transfer, {MOVIE})
+    fake.calls.clear()
+    await engine.resolve_pending()
+    assert phases(fake) == SELECTED + VERIFIED + EXECUTABLE
+    assert await members(repository, transfer) == [(MOVIE, "https://real-debrid.com/d/T1-3")]
+
+
+@pytest.mark.asyncio
+async def test_a_selection_sent_is_read_back_and_executable_in_the_cycle_that_sent_it(tmp_path, monkeypatch):
+    """W2 alone: the offer reached and confirmed without any binding-cycle
+    wait, the cycle that sends the selection also reads it back, verifies
+    it and fans it out -- not one poll later."""
+    fake = FakeRealDebrid()
+    repository, engine = await lab(tmp_path, monkeypatch, RealDebridProvider(fake))
+    transfer = await submit(engine)
+    await ticks(engine)
+    await choose(repository, engine, transfer, {MOVIE})
+    fake.calls.clear()
+    now = engine.clock()
+    await engine.resolve_pending()
+    assert engine.clock() == now
+    assert phases(fake) == SELECTED + VERIFIED + EXECUTABLE
+    assert await members(repository, transfer) == [(MOVIE, "https://real-debrid.com/d/T1-3")]
+
+
+@pytest.mark.asyncio
+async def test_a_pause_landing_while_the_selection_is_sent_executes_nothing(tmp_path, monkeypatch):
+    """The operator pauses while Real-Debrid answers the selection: the
+    immediate re-read is not taken past the pause, nothing fans out or
+    executes, and the paused root is not polled again until it is resumed."""
+    fake = FakeRealDebrid()
+    repository, engine, transfer = await switched_to_real_debrid(tmp_path, monkeypatch, fake)
+
+    async def pause():
+        await engine.pause(transfer.id)
+
+    fake.during_select = pause
+    await engine.resolve_pending()
+    assert fake.selects() == ["3"]
+    assert phases(fake) == CREATED + SELECTED
+    assert await real_debrid_members(repository, transfer) == []
+    fake.calls.clear()
+    engine.clock.now += engine.policy.resource_poll_interval
+    await engine.resolve_pending()
+    assert phases(fake) == [] and await real_debrid_members(repository, transfer) == []
+
+
+@pytest.mark.asyncio
+async def test_a_provider_without_the_capability_is_not_observed_again_inside_its_binding_cycle(
+        tmp_path, monkeypatch):
+    """A preparing manifest provider that does not declare upstream
+    selection keeps its ordinary cadence: bound PREPARING, it is not read
+    again until its next poll."""
+    from transfers.models import ProviderObservation, ResolutionResult
+
+    preparing = parcel("parcel-a")
+    repository, engine = await lab(tmp_path, monkeypatch, preparing)
+    resource = offer_source(preparing, [(path.rsplit("/", 1)[-1], path, size) for _i, path, size in FILES_592],
+                            HASH_592)
+    observed = preparing.resources[resource.id]
+    preparing.resources[resource.id] = ProviderObservation(
+        observed.resource, ResourceState.PREPARING, observed.name, observed.fingerprint, observed.progress,
+        None, observed.request, file_manifest=observed.file_manifest)
+    preparing.responses[-1] = ResolutionResult(ResourceState.PREPARING, observation=preparing.resources[resource.id])
+    await submit(engine)
+    await engine.resolve_pending()
+    assert [call[0] for call in preparing.calls] == ["resolve"]
+
+
+@pytest.mark.asyncio
+async def test_the_selection_diagnostics_name_phases_never_secrets_and_add_no_journal_events(
+        tmp_path, monkeypatch, caplog):
+    """Bounded diagnostics: the native status, how many files were sent, how
+    long the call took and whether the immediate re-read verified it or the
+    root went back to its poll -- never a link, magnet, token or path; and a
+    torrent polled while it prepares adds no journal event per poll."""
+    import logging
+
+    fake = FakeRealDebrid(ready=False)
+    repository, engine, transfer = await switched_to_real_debrid(tmp_path, monkeypatch, fake)
+    caplog.set_level(logging.INFO)
+    await engine.resolve_pending()
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    assert "Real-Debrid selection sent: status=waiting_files_selection files=1" in text
+    assert "upstream selection read back on realdebrid: preparing; next poll in 30 s" in text
+    journal = len(await rows("SELECT id FROM event_journal WHERE transfer_id=?", (transfer.id,)))
+    for _ in range(3):
+        engine.clock.now += engine.policy.resource_poll_interval
+        await engine.resolve_pending()
+    assert len(await rows("SELECT id FROM event_journal WHERE transfer_id=?", (transfer.id,))) == journal
+    fake.torrents["T1"].ready = True
+    engine.clock.now += engine.policy.resource_poll_interval
+    await engine.resolve_pending()
+    text = "\n".join(record.getMessage() for record in caplog.records)
+    for secret in ("magnet:", "http", "real-debrid.com", "refresh-token-value", HASH_592, MOVIE, WHALE, "T1"):
+        assert secret not in text

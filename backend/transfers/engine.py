@@ -1102,34 +1102,43 @@ class TransferEngine(_RecoveryTransferEngine):
                     domain=Domain.REQUEST,
                     retryability=Retryability.NEVER,
                 ))
-            observation = await provider.observe(record.resource)
-            await self.repository.resource_observation(
-                record.transfer_id, observation.resource, observation.state,
-            )
-            await self._converge_root_observation_name(record, observation)
-            if not await self._live(record.transfer_id, admission=True):
-                return first_commitment
-            # Fail-closed materialization guard. Whatever path bound this
-            # resource (resolution, adoption, reuse, restart reconciliation,
-            # recovery, failover, a future provider), the canonical selection owner
-            # decides here, before any manifest can expand, whether a generation
-            # governs this (request, binding): it creates the current one if the
-            # request needs selection and none exists, and reports ``held`` if it
-            # cannot. A missing generation is therefore never read as ALL -- only a
-            # request that genuinely never needed selection reaches the executable
-            # manifest ungoverned.
-            authority = await self._secure_root_selection(
-                record, provider, observation, resource=record.resource,
-            )
-            if authority.held:
-                await self.repository.poll_after(
-                    record.id, self.clock() + self.policy.resource_poll_interval,
+            # One observation decides this unit -- or two, when the first one
+            # hands a provider that declares upstream selection its selection
+            # (``verifying``): what the provider then holds is read back once,
+            # at once, and that second observation is the one the single
+            # decision below acts on. Never a third, never a second mutation.
+            for verifying in (False, True):
+                if verifying and not await self._live(record.transfer_id, admission=True):
+                    return first_commitment
+                observation = await provider.observe(record.resource)
+                await self.repository.resource_observation(
+                    record.transfer_id, observation.resource, observation.state,
                 )
-                return first_commitment
-            binding_id = authority.binding_id
-            selecting = authority.governed
-            if (selecting and isinstance(provider, UpstreamSelection) and observation.error is None
-                    and observation.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}):
+                await self._converge_root_observation_name(record, observation)
+                if not await self._live(record.transfer_id, admission=True):
+                    return first_commitment
+                # Fail-closed materialization guard. Whatever path bound this
+                # resource (resolution, adoption, reuse, restart reconciliation,
+                # recovery, failover, a future provider), the canonical selection owner
+                # decides here, before any manifest can expand, whether a generation
+                # governs this (request, binding): it creates the current one if the
+                # request needs selection and none exists, and reports ``held`` if it
+                # cannot. A missing generation is therefore never read as ALL -- only a
+                # request that genuinely never needed selection reaches the executable
+                # manifest ungoverned.
+                authority = await self._secure_root_selection(
+                    record, provider, observation, resource=record.resource,
+                )
+                if authority.held:
+                    await self.repository.poll_after(
+                        record.id, self.clock() + self.policy.resource_poll_interval,
+                    )
+                    return first_commitment
+                binding_id = authority.binding_id
+                selecting = authority.governed
+                if not (selecting and isinstance(provider, UpstreamSelection) and observation.error is None
+                        and observation.state in {ResourceState.PREPARING, ResourceState.AVAILABLE}):
+                    break
                 # A provider that executes only what is selected on its own
                 # resource waits for DebridPulse's decision, never past it:
                 # the one gate settles the decision (the operator's choice,
@@ -1144,15 +1153,28 @@ class TransferEngine(_RecoveryTransferEngine):
                 )
                 if gate == fs.SelectionGate.WAIT_FOR_DECISION:
                     return first_commitment
-                if gate == fs.SelectionGate.PROCEED:
-                    members = await self.repository.upstream_selection(
-                        record, binding_id, observation.file_manifest, now=self.clock())
-                    if members is not None and await provider.synchronize_selection(observation.resource, members):
-                        # The provider's own resource just changed: its next
-                        # observation -- the one that verifies what it now
-                        # holds -- is due now, not a preparation poll later.
-                        await self.repository.poll_after(record.id, self.clock())
-                        return first_commitment
+                if gate != fs.SelectionGate.PROCEED:
+                    break
+                members = await self.repository.upstream_selection(
+                    record, binding_id, observation.file_manifest, now=self.clock())
+                if members is None or not await provider.synchronize_selection(
+                        observation.resource, members, submit=not verifying):
+                    break
+                if verifying:
+                    # Read back, the resource still waits for a selection:
+                    # nothing more is sent in this unit, and the ordinary
+                    # poll reads it again (and settles it read-first).
+                    await self.repository.poll_after(
+                        record.id, self.clock() + self.policy.resource_poll_interval,
+                    )
+                    logger.info("Request %s: upstream selection read back on %s: not yet applied; next poll in %g s",
+                                record.id, provider.descriptor.id, self.policy.resource_poll_interval)
+                    return first_commitment
+            if verifying:
+                logger.info("Request %s: upstream selection read back on %s: %s%s", record.id,
+                            provider.descriptor.id, observation.state.value,
+                            f"; next poll in {self.policy.resource_poll_interval:g} s"
+                            if observation.state == ResourceState.PREPARING and observation.error is None else "")
 
             if observation.error:
                 await self._request_failure(record, observation.error, waiting=True)
