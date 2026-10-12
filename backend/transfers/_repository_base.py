@@ -4696,6 +4696,22 @@ class TransferRepository:
             row = await db.fetchone("SELECT value FROM transfer_controls WHERE key='paused'")
         return bool(row and row["value"] == "1")
 
+    async def throughput_sustained_peak(self) -> int | None:
+        """The highest validated sustained download throughput ever observed
+        (bytes/second), or ``None`` before the first."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT value FROM transfer_controls WHERE key='throughput_sustained_peak'")
+        return int(row["value"]) if row else None
+
+    async def raise_throughput_sustained_peak(self, bytes_per_second: int) -> None:
+        """Record a higher sustained peak; a lower or equal one changes nothing."""
+        async with get_db() as db:
+            await db.execute("""INSERT INTO transfer_controls(key,value) VALUES('throughput_sustained_peak',?)
+                ON CONFLICT(key) DO UPDATE SET value=excluded.value
+                WHERE CAST(transfer_controls.value AS INTEGER) < CAST(excluded.value AS INTEGER)""",
+                (str(int(bytes_per_second)),))
+            await db.commit()
+
     async def global_pause(self, paused: bool):
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")

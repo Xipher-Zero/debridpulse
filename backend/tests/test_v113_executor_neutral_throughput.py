@@ -219,6 +219,90 @@ def _observation(state=ExecutionState.RUNNING, completed=10, rate=999_999, netwo
                                 error=error, activity=ExecutionActivity(network_active=network_active))
 
 
+# --- the sustained rate: the same counting rule over 30 s -------------------
+
+def _steady(meter, clock, counters, rate, seconds, *, step=0.5, key="a"):
+    """``key`` acquires at ``rate`` bytes/s for ``seconds``, one pass per ``step``."""
+    for _ in range(int(round(seconds / step))):
+        clock.now += step
+        counters[key] = counters.get(key, 0) + int(rate * step)
+        meter.record({k: (clock.now, v) for k, v in counters.items()})
+
+
+def test_a_new_meter_has_no_sustained_rate_or_peak():
+    clock = Clock()
+    meter = _meter(clock)
+    assert meter.sustained() is None and meter.sustained_peak is None
+    _steady(meter, clock, {}, 10 * MIB, 20)
+    assert meter.sustained() is None, "20 s is not a sustained window"
+    assert meter.raise_sustained_peak() is None and meter.sustained_peak is None
+
+
+def test_a_sustained_window_is_the_byte_growth_over_30_seconds_across_executions():
+    clock = Clock()
+    meter = _meter(clock)
+    counters = {}
+    for _ in range(62):                                    # two executions, 4 + 6 MiB/s, 31 s
+        clock.now += 0.5
+        counters = {"a": counters.get("a", 0) + 2 * MIB, "b": counters.get("b", 0) + 3 * MIB}
+        meter.record({k: (clock.now, v) for k, v in counters.items()})
+    assert meter.sustained() == pytest.approx(10 * MIB)
+
+
+def test_uneven_pass_intervals_are_time_weighted():
+    clock = Clock()
+    meter = _meter(clock)
+    counter = 0
+    for step in [0.3, 0.7] * 32:                           # 32 s of passes at uneven spacing
+        clock.now += step
+        counter += int(8 * MIB * step)
+        meter.record({"a": (clock.now, counter)})
+    assert meter.sustained() == pytest.approx(8 * MIB, rel=1e-3)
+
+
+def test_unobserved_time_is_not_a_sustained_zero():
+    clock = Clock()
+    meter = _meter(clock)
+    counters = {}
+    _steady(meter, clock, counters, 5 * MIB, 31)
+    clock.now += 6                                         # observation stopped for 6 s
+    _steady(meter, clock, counters, 5 * MIB, 20)
+    assert meter.sustained() is None, "a window spanning the gap is not evidence"
+    _steady(meter, clock, counters, 5 * MIB, 11)
+    assert meter.sustained() == pytest.approx(5 * MIB)
+
+
+def test_an_isolated_burst_is_not_a_sustained_rate():
+    clock = Clock()
+    meter = _meter(clock)
+    counters = {"a": 0}
+    _steady(meter, clock, counters, 1 * MIB, 31)
+    assert meter.raise_sustained_peak() == 1 * MIB
+    counters["a"] += 900 * MIB                             # one anomalous counter jump
+    clock.now += 0.5
+    meter.record({"a": (clock.now, counters["a"])})
+    _steady(meter, clock, counters, 1 * MIB, 20)
+    assert meter.sustained() is None
+    assert meter.raise_sustained_peak() is None and meter.sustained_peak == 1 * MIB
+    _steady(meter, clock, counters, 1 * MIB, 11)           # the burst has left the window
+    assert meter.sustained() == pytest.approx(1 * MIB)
+
+
+def test_the_sustained_peak_rises_with_a_higher_sustained_rate_and_never_falls_idle():
+    clock = Clock()
+    meter = _meter(clock)
+    counters = {}
+    _steady(meter, clock, counters, 42 * MIB, 31)
+    assert meter.raise_sustained_peak() == int(42 * MIB)
+    _steady(meter, clock, counters, 55 * MIB, 31)
+    assert meter.raise_sustained_peak() == int(55 * MIB)
+    _steady(meter, clock, counters, 0, 60)                 # idle: a valid sustained zero
+    assert meter.sustained() == 0
+    assert meter.raise_sustained_peak() is None and meter.sustained_peak == int(55 * MIB)
+    _steady(meter, clock, counters, 30 * MIB, 31)
+    assert meter.raise_sustained_peak() is None and meter.sustained_peak == int(55 * MIB)
+
+
 def test_only_an_acquiring_execution_contributes_its_counter():
     from transfers._engine_base import TransferEngine
     assert TransferEngine._acquired_bytes(_observation()) == 10

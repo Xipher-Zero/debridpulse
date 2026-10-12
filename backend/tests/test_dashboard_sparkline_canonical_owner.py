@@ -47,13 +47,15 @@ def test_dashboard_kpi_hover_copy_describes_the_numbers():
 
 def test_dashboard_pulse_owner_is_lifecycle_bound():
     app = (STATIC / "app.js").read_text()
-    assert "const DASHBOARD_HEARTBEAT_INTERVAL_MS = 2000;" in app
+    assert "const DASHBOARD_HEARTBEAT_BPM = [30, 75];" in app
+    assert "const DASHBOARD_HEARTBEAT_EASE_MS = 4000;" in app
     assert "const DASHBOARD_HEARTBEAT_SPEED = 0.24;" in app
+    assert "setDashboardHeartbeatThroughput(data.download_bytes_per_second, data.sustained_peak_bytes_per_second);" in app
     assert "matchMedia('(prefers-reduced-motion: reduce)')" in app
     assert app.count("syncDashboardSparkPulses();") == 2  # nav() and boot
     assert "document.addEventListener('visibilitychange', syncDashboardSparkPulses);" in app
     assert "new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));" in app
-    assert app.count("setTimeout(dashboardHeartbeat,") == 2  # first and every following heartbeat: one timer chain
+    assert app.count("setTimeout(dashboardHeartbeat,") == 1  # one timer chain, scheduled in one place
     assert app.count("requestAnimationFrame(dashboardHeartbeatFrame)") == 2
 
 

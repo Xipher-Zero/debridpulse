@@ -129,14 +129,15 @@ async def test_the_speed_projection_is_delivered_while_occupancy_is_blocked():
         await blocked.wait()  # a slow repository-backed runtime fact
         return 1
 
-    engine = SimpleNamespace(throughput=SimpleNamespace(current=lambda: 6 * MIB),
+    engine = SimpleNamespace(throughput=SimpleNamespace(current=lambda: 6 * MIB, sustained_peak=None),
                              runtime=SimpleNamespace(configured=10 * MIB), clock=lambda: 1000.0,
                              repository=SimpleNamespace(occupied_execution_slots=occupancy))
     service = ApplicationService(engine)
     started = time.monotonic()
     speed = await asyncio.wait_for(service.execution_throughput(), 0.2)
     assert time.monotonic() - started < 0.2
-    assert speed == {"download_bytes_per_second": 6 * MIB, "max_download_bytes_per_second": 10 * MIB}
+    assert speed == {"download_bytes_per_second": 6 * MIB, "sustained_peak_bytes_per_second": None,
+                     "max_download_bytes_per_second": 10 * MIB}
     # The slower facts keep their own, unchanged projection.
     blocked.set()
     status = await service.execution_runtime_status()
@@ -151,6 +152,46 @@ async def test_a_neutral_speed_route_exists_beside_the_runtime_status_route():
         return {"download_bytes_per_second": 4096, "max_download_bytes_per_second": 0}
     result = await routes.get_execution_throughput(application=SimpleNamespace(execution_throughput=throughput))
     assert result == {"ok": True, "download_bytes_per_second": 4096, "max_download_bytes_per_second": 0}
+
+
+# ── the sustained peak: the heartbeat's historical reference ────────────────
+
+@pytest.mark.asyncio
+async def test_a_sustained_peak_is_recorded_durably_and_projected_from_memory(acquiring, tmp_path):
+    from application.service import ApplicationService
+
+    engine = acquiring.engine
+    assert engine.throughput.sustained_peak is None, "a new installation has no sustained peak"
+    await _moving(acquiring, 8 * MIB, engine.sample_throughput, seconds=31)
+    assert engine.throughput.sustained_peak == 8 * MIB
+    # Written when it clears the last written value by 2%: within 2% of the peak.
+    stored = await acquiring.repository.throughput_sustained_peak()
+    assert stored == pytest.approx(8 * MIB, rel=0.02)
+    speed = await ApplicationService(engine).execution_throughput()
+    assert speed["sustained_peak_bytes_per_second"] == 8 * MIB
+    # Slower activity, then none, never lowers it.
+    await _moving(acquiring, 2 * MIB, engine.sample_throughput, seconds=31)
+    await _moving(acquiring, 0, engine.sample_throughput, seconds=31)
+    assert engine.throughput.sustained_peak == 8 * MIB
+    assert await acquiring.repository.throughput_sustained_peak() == stored
+    # A higher sustained rate raises it; a restart reads it back.
+    await _moving(acquiring, 11 * MIB, engine.sample_throughput, seconds=31)
+    stored = await acquiring.repository.throughput_sustained_peak()
+    assert stored == pytest.approx(11 * MIB, rel=0.02)
+    reborn = TransferEngine(acquiring.repository, engine.registry, download_root=str(tmp_path / "payloads"),
+                            clock=engine.clock, policy=engine.policy)
+    await reborn.initialize()
+    assert reborn.throughput.sustained_peak == stored
+
+
+@pytest.mark.asyncio
+async def test_the_durable_sustained_peak_only_ever_rises(acquiring):
+    repository = acquiring.repository
+    await repository.raise_throughput_sustained_peak(42 * MIB)
+    await repository.raise_throughput_sustained_peak(30 * MIB)
+    assert await repository.throughput_sustained_peak() == 42 * MIB
+    await repository.raise_throughput_sustained_peak(55 * MIB)
+    assert await repository.throughput_sustained_peak() == 55 * MIB
 
 
 # ── the sampling cadence is core's, and bounded ─────────────────────────────

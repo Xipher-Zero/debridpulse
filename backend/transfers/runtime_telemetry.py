@@ -25,6 +25,17 @@ its execution is late and ignored, so out-of-order passes cannot fabricate a
 spike. ``max_age_seconds`` guards the case where observation itself stops:
 past it the meter reports nothing rather than a frozen figure. For ordinary
 operator presentation, "nothing currently measurable" is ``0``.
+
+Sustained throughput is the same counting rule over a longer span: every
+counted byte delta also accrues to one aggregate acquired-byte total, and the
+sustained rate is that total's growth over the trailing
+``SUSTAINED_WINDOW_SECONDS`` divided by the window -- time-weighted by
+construction. It is reported only for a window observed throughout (no gap of
+more than ``_SUSTAINED_GAP_SECONDS`` between passes: missing observation is not
+evidence of zero) and not dominated by an isolated burst (no one of its
+``_SUSTAINED_BUCKETS`` equal parts holding more than half of its bytes).
+``sustained_peak`` is the highest such rate seen -- seeded from, and raised
+into, its durable record by the engine -- and it never falls.
 """
 from __future__ import annotations
 
@@ -48,6 +59,13 @@ _SAMPLE_GRACE_SECONDS = 2 * THROUGHPUT_SAMPLE_SECONDS
 # Bounds one execution's history whatever the observation frequency; dropping
 # the oldest sample only shortens the measured span, never falsifies it.
 _MAX_SAMPLES = 64
+# The span a sustained rate is measured over.
+SUSTAINED_WINDOW_SECONDS = 30.0
+# A pass gap longer than this restarts sustained coverage.
+_SUSTAINED_GAP_SECONDS = 5.0
+# A sustained window is refused when one of these equal parts holds more than
+# half its bytes: an isolated burst, not a sustained rate.
+_SUSTAINED_BUCKETS = 6
 
 
 class ExecutionThroughputMeter:
@@ -60,6 +78,10 @@ class ExecutionThroughputMeter:
         self._window = float(window_seconds)
         self._series: dict[str, deque] = {}
         self._sampled_at: float | None = None
+        self._acquired = 0                                 # aggregate counted bytes since construction
+        self._totals: deque = deque()                      # (pass time, _acquired) over the sustained window
+        self._covered_since: float | None = None
+        self.sustained_peak: int | None = None
 
     def record(self, samples: Mapping[str, tuple[float, int | None]]) -> None:
         """One complete observation pass of the live executions.
@@ -68,7 +90,11 @@ class ExecutionThroughputMeter:
         completed_bytes)``, ``completed_bytes`` being ``None`` while it is not
         acquiring. An execution this pass does not contain is retired unless a
         newer pass already sampled it."""
-        oldest = min((at for at, _value in samples.values()), default=self.clock())
+        passed = self.clock()
+        if self._sampled_at is None or passed - self._sampled_at > _SUSTAINED_GAP_SECONDS:
+            self._totals.clear()
+            self._covered_since = passed
+        oldest = min((at for at, _value in samples.values()), default=passed)
         for key in [key for key, series in self._series.items()
                     if key not in samples and series[-1][0] < oldest]:
             del self._series[key]
@@ -82,10 +108,15 @@ class ExecutionThroughputMeter:
             value = max(0, int(value))
             if not series or value < series[-1][1]:
                 self._series[key] = series = deque(maxlen=_MAX_SAMPLES)
+            else:
+                self._acquired += value - series[-1][1]
             series.append((at, value))
             while len(series) > 2 and series[1][0] <= at - self._window:
                 series.popleft()                           # keep one sample at or before the window
-        self._sampled_at = self.clock()
+        self._sampled_at = passed
+        self._totals.append((passed, self._acquired))
+        while len(self._totals) > 2 and self._totals[1][0] <= passed - SUSTAINED_WINDOW_SECONDS:
+            self._totals.popleft()                         # keep one total at or before the window
 
     def rate(self, key: str) -> int:
         """One execution's bytes/second over the trailing window, or 0."""
@@ -99,6 +130,31 @@ class ExecutionThroughputMeter:
             return 0
         now = self.clock()
         return int(sum(self._rate(series, now) for series in self._series.values()))
+
+    def sustained(self) -> float | None:
+        """Aggregate bytes/second over the trailing sustained window, or
+        ``None`` when that window was not observed throughout or is one burst."""
+        if not self._totals or self._covered_since is None:
+            return None
+        end = self._totals[-1][0]
+        start = end - SUSTAINED_WINDOW_SECONDS
+        if self._covered_since > start:
+            return None
+        edges = [self._bytes_at(self._totals, start + SUSTAINED_WINDOW_SECONDS * i / _SUSTAINED_BUCKETS)
+                 for i in range(_SUSTAINED_BUCKETS + 1)]
+        total = edges[-1] - edges[0]
+        if total > 0 and max(b - a for a, b in zip(edges, edges[1:])) > total / 2:
+            return None
+        return max(0.0, total) / SUSTAINED_WINDOW_SECONDS
+
+    def raise_sustained_peak(self) -> int | None:
+        """Raise ``sustained_peak`` to the current sustained rate when that is
+        higher; the new peak, or ``None`` when it did not rise."""
+        rate = self.sustained()
+        if not rate or rate <= (self.sustained_peak or 0):
+            return None
+        self.sustained_peak = int(rate)
+        return self.sustained_peak
 
     def _fresh(self) -> bool:
         if self._sampled_at is None:

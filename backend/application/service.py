@@ -390,13 +390,17 @@ class ApplicationService:
         """The volatile speed facts alone, read from memory.
 
         ``download_bytes_per_second`` is the core throughput meter (sampled
-        at presentation cadence by its owner) and ``max_download_bytes_per_second``
-        the configured runtime limit. Neither awaits anything, so the speed an
-        operator sees is never serialized behind a slower repository-backed
-        runtime fact (``execution_runtime_status``'s occupancy)."""
+        at presentation cadence by its owner), ``sustained_peak_bytes_per_second``
+        the same meter's highest validated sustained rate (``None`` before the
+        first) and ``max_download_bytes_per_second`` the configured runtime
+        limit. None awaits anything, so the speed an operator sees is never
+        serialized behind a slower repository-backed runtime fact
+        (``execution_runtime_status``'s occupancy)."""
         engine = self.engine
+        peak = engine.throughput.sustained_peak
         return {
             "download_bytes_per_second": int(engine.throughput.current()),
+            "sustained_peak_bytes_per_second": int(peak) if peak else None,
             "max_download_bytes_per_second": int(engine.runtime.configured),
         }
 

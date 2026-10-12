@@ -425,6 +425,8 @@ class TransferEngine:
         # complete observation pass -- the reconcile cycle and, between cycles,
         # ``sample_throughput`` -- so a retired execution leaves no rate behind.
         self.throughput = ExecutionThroughputMeter()
+        # The sustained peak last written to its durable record.
+        self._persisted_sustained_peak = 0
         # Succeeded executions awaiting their stability-delayed verification,
         # and the one tracked verification task per attempt (``_verify_pending``).
         self._pending_verifications: dict[str, tuple] = {}
@@ -436,6 +438,8 @@ class TransferEngine:
         await self.repository.initialize()
         await self.canonical.initialize()
         await self.challenges.initialize()
+        self.throughput.sustained_peak = await self.repository.throughput_sustained_peak()
+        self._persisted_sustained_peak = self.throughput.sustained_peak or 0
 
     def configure_policy(self, policy):
         """Called only after application admission has drained active work."""
@@ -1165,6 +1169,12 @@ class TransferEngine:
                 except TransferError:
                     continue
         self.throughput.record(samples)
+        # A higher sustained peak is recorded once it clears the last written one
+        # by 2%, so a rising transfer does not write at every pass.
+        peak = self.throughput.raise_sustained_peak()
+        if peak and peak >= self._persisted_sustained_peak * 1.02:
+            await self.repository.raise_throughput_sustained_peak(peak)
+            self._persisted_sustained_peak = peak
         for transfer_id in sorted(moved):
             await self._aggregate(transfer_id)
 

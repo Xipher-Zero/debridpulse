@@ -965,22 +965,33 @@ function updateOperatorTitle(stats) {
  * cards' lines form one virtual ECG strip. Its route follows the cards as
  * rendered -- rows top to bottom, each row right to left -- with the gaps
  * between cards and rows travelled at their real distance, unseen. One owner
- * starts a heartbeat every DASHBOARD_HEARTBEAT_INTERVAL_MS; every heartbeat
- * travels the whole strip right to left at one fixed speed, so several may be
- * on the strip at once. Each card's single line is the signal: a flat
- * baseline deformed into the ECG complex wherever a heartbeat is, its stroke
- * gradient bright at the complex's leading edge and tapering back into the
- * dim baseline behind it. Heartbeats run only while the Dashboard is the
- * active view, the document is visible and motion is not reduced. */
-const DASHBOARD_HEARTBEAT_INTERVAL_MS = 2000;  // one heartbeat every 2 s (30 BPM)
+ * starts the heartbeats; every heartbeat travels the whole strip right to left
+ * at one fixed speed, so several may be on it at once. Each card's single line
+ * is the signal: a flat baseline deformed into the ECG complex wherever a
+ * heartbeat is, its stroke gradient bright through the complex's leading QRS
+ * and fading behind it back into the dim baseline -- a fade measured in strip
+ * distance, ending just before the next heartbeat reaches the same place.
+ *
+ * The cadence is ambient: 30 BPM at rest rising linearly to 75 BPM as the
+ * aggregate download throughput (the core meter's own 4 s window) reaches the
+ * highest sustained rate this installation has shown; with no sustained peak
+ * recorded yet it stays at 30. At each heartbeat the cadence eases toward that
+ * target with a 4 s time constant and the next heartbeat is scheduled one
+ * cadence interval later, so a change never resets, bunches or doubles beats,
+ * and beats already travelling keep their place and speed. Heartbeats run only
+ * while the Dashboard is the active view, the document is visible and motion is
+ * not reduced. */
+const DASHBOARD_HEARTBEAT_BPM = [30, 75];
+const DASHBOARD_HEARTBEAT_EASE_MS = 4000;      // time constant of the cadence's approach to its target
 const DASHBOARD_HEARTBEAT_SPEED = 0.24;        // px per ms along the strip
 const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y in the 24-unit viewBox]
   [0, 16], [6, 16], [9, 13.5], [12, 16], [16, 16], [18, 17.5], [22, 2], [26, 23],
   [29, 14], [31, 15], [36, 9], [41, 16], [44, 14.5], [47, 16], [48, 16]
 ];
 const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
-const DASHBOARD_HEARTBEAT_TAPER = 60;          // px of brightness fading back into the baseline behind the complex
-const _dashboardHeartbeat = {running: false, timer: 0, frame: 0, beats: [], route: null};
+const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left before the following heartbeat
+const _dashboardHeartbeat = {running: false, timer: 0, frame: 0, beats: [], route: null,
+  bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], lastBeat: 0, nextAt: 0};
 const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function dashboardSparkPulsesWanted() {
@@ -989,13 +1000,27 @@ function dashboardSparkPulsesWanted() {
     && !!document.getElementById('view-dashboard')?.classList.contains('active');
 }
 
+/* The live throughput facts, from their one poll (loadRuntimeSpeed). */
+function setDashboardHeartbeatThroughput(bytesPerSecond, sustainedPeak) {
+  _dashboardHeartbeat.bytesPerSecond = Math.max(0, Number(bytesPerSecond) || 0);
+  _dashboardHeartbeat.sustainedPeak = Math.max(0, Number(sustainedPeak) || 0);
+}
+
+function dashboardHeartbeatTargetBpm() {
+  const [low, high] = DASHBOARD_HEARTBEAT_BPM;
+  const {bytesPerSecond, sustainedPeak} = _dashboardHeartbeat;
+  if (!sustainedPeak) return low;
+  return low + (high - low) * Math.min(1, Math.max(0, bytesPerSecond / sustainedPeak));
+}
+
 /* The strip as rendered: each card's line, where the heartbeat's leading edge
- * reaches its right edge (entry, px along the strip), and the strip's length. */
+ * reaches its right edge (entry, px along the strip), and where it leaves the
+ * last card (end). */
 function measureDashboardHeartbeatRoute() {
   const cards = [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
     const box = svg.getBoundingClientRect();
     return {svg, line: svg.querySelector('.dp-card-spark-line'), gradient: svg.querySelector('linearGradient'),
-      left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width, d: ''};
+      left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width, d: '', paint: ''};
   }).filter(card => card.width > 0);
   const rows = [];
   cards.sort((a, b) => a.top - b.top).forEach(card => {
@@ -1013,47 +1038,67 @@ function measureDashboardHeartbeatRoute() {
       : previous.width + Math.hypot(card.right - previous.left, card.middle - previous.middle);
     card.entry = entry;
     card.svg.setAttribute('viewBox', `0 0 ${card.width} 24`);
-    card.gradient.setAttribute('x2', String(card.width));
     route.push(card);
   }));
   const last = route[route.length - 1];
-  const length = last ? last.entry + last.width + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER : 0;
-  return {cards: route, length};
+  return {cards: route, end: last ? last.entry + last.width : 0};
 }
 
 /* Draw every card's line for the heartbeats on the strip at `now`. */
 function renderDashboardHeartbeat(now) {
-  const {cards, length} = _dashboardHeartbeat.route;
-  _dashboardHeartbeat.beats = _dashboardHeartbeat.beats.filter(born => (now - born) * DASHBOARD_HEARTBEAT_SPEED <= length);
+  const state = _dashboardHeartbeat;
+  const {cards, end} = state.route;
   const fmt = value => Number(value.toFixed(2));
+  // Each heartbeat with its trail: the strip distance to the heartbeat that
+  // follows it (or will, at the scheduled next beat), less the clearance.
+  const beats = state.beats.map((born, i) => {
+    const following = i + 1 < state.beats.length ? state.beats[i + 1] : state.nextAt;
+    const trail = Math.max(0, DASHBOARD_HEARTBEAT_SPEED * (following - born) - DASHBOARD_HEARTBEAT_WIDTH - DASHBOARD_HEARTBEAT_CLEARANCE);
+    return {born, travelled: (now - born) * DASHBOARD_HEARTBEAT_SPEED, trail};
+  });
+  state.beats = beats.filter(beat => beat.travelled - DASHBOARD_HEARTBEAT_WIDTH - beat.trail <= end).map(beat => beat.born);
   for (const card of cards) {
     const width = card.width;
-    const leads = _dashboardHeartbeat.beats
-      .map(born => width - ((now - born) * DASHBOARD_HEARTBEAT_SPEED - card.entry))
-      .filter(x => x < width && x + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER > 0)
-      .sort((a, b) => a - b);
-    let d = `M ${fmt(Math.min(0, leads[0] ?? 0))} 16`;
-    for (const x of leads) d += DASHBOARD_HEARTBEAT_COMPLEX.map(([dx, y]) => ` L ${fmt(x + dx)} ${y}`).join('');
-    d += ` L ${fmt(Math.max(width, (leads[leads.length - 1] ?? 0) + DASHBOARD_HEARTBEAT_WIDTH))} 16`;
-    if (d === card.d) continue;
-    card.d = d;
-    card.line.setAttribute('d', d);
-    // One rest stop, then four per heartbeat (rest, lead, body, rest); unused groups wait at the end.
+    const here = beats
+      .map(beat => ({x: width - (beat.travelled - card.entry), trail: beat.trail}))
+      .filter(({x, trail}) => x - 4 < width && x + DASHBOARD_HEARTBEAT_WIDTH + trail > 0)
+      .sort((a, b) => a.x - b.x);
+    const complexes = here.filter(({x}) => x < width && x + DASHBOARD_HEARTBEAT_WIDTH > 0).map(({x}) => x);
+    let d = `M ${fmt(Math.min(0, complexes[0] ?? 0))} 16`;
+    for (const x of complexes) d += DASHBOARD_HEARTBEAT_COMPLEX.map(([dx, y]) => ` L ${fmt(x + dx)} ${y}`).join('');
+    d += ` L ${fmt(Math.max(width, (complexes[complexes.length - 1] ?? 0) + DASHBOARD_HEARTBEAT_WIDTH))} 16`;
+    if (d !== card.d) {
+      card.d = d;
+      card.line.setAttribute('d', d);
+    }
+    // Per heartbeat: rest before its leading edge, bright through P-QRS, the
+    // body colour at the complex's end, then fading through the tail to rest
+    // where its trail ends.
+    const groups = here.map(({x, trail}) => {
+      const tail = x + DASHBOARD_HEARTBEAT_WIDTH;
+      return [x - 4, x + 4, x + 26, tail, tail + trail * 0.3, tail + trail];
+    });
+    const from = Math.min(0, ...groups.map(group => group[0]));
+    const to = Math.max(width, ...groups.map(group => group[5]));
+    const paint = `${fmt(from)} ${fmt(to)} ${groups.flat().map(fmt).join(' ')}`;
+    if (paint === card.paint) continue;
+    card.paint = paint;
+    card.gradient.setAttribute('x1', String(fmt(from)));
+    card.gradient.setAttribute('x2', String(fmt(to)));
     const stops = card.gradient.children;
-    while (stops.length < 1 + 4 * leads.length) {
-      ['rest', 'lead', 'body', 'rest'].forEach(role => {
+    while (stops.length < 1 + 6 * groups.length) {
+      ['rest', 'lead', 'lead', 'body', 'tail', 'rest'].forEach(role => {
         const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
         stop.setAttribute('class', `dp-card-spark-${role}`);
         stop.setAttribute('offset', '1');
         card.gradient.appendChild(stop);
       });
     }
-    const at = x => String(Math.min(1, Math.max(0, x / width)));
-    for (let group = 0; 1 + 4 * group < stops.length; group++) {
-      const x = leads[group];
-      const offsets = x === undefined ? ['1', '1', '1', '1']
-        : [at(x - 4), at(x + 6), at(x + DASHBOARD_HEARTBEAT_WIDTH * 0.6), at(x + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER)];
-      offsets.forEach((offset, i) => stops[1 + 4 * group + i].setAttribute('offset', offset));
+    for (let group = 0; 1 + 6 * group < stops.length; group++) {
+      const positions = groups[group];
+      for (let i = 0; i < 6; i++) {
+        stops[1 + 6 * group + i].setAttribute('offset', positions ? String((positions[i] - from) / (to - from)) : '1');
+      }
     }
   }
 }
@@ -1064,10 +1109,21 @@ function dashboardHeartbeatFrame(now) {
   if (_dashboardHeartbeat.beats.length) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
 }
 
+/* Schedule the next heartbeat one interval of the current cadence from `now`. */
+function scheduleDashboardHeartbeat(now) {
+  const interval = 60000 / _dashboardHeartbeat.bpm;
+  _dashboardHeartbeat.nextAt = now + interval;
+  _dashboardHeartbeat.timer = setTimeout(dashboardHeartbeat, interval);
+}
+
 function dashboardHeartbeat() {
-  _dashboardHeartbeat.beats.push(performance.now());
-  _dashboardHeartbeat.timer = setTimeout(dashboardHeartbeat, DASHBOARD_HEARTBEAT_INTERVAL_MS);
-  if (!_dashboardHeartbeat.frame) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
+  const state = _dashboardHeartbeat;
+  const now = performance.now();
+  state.bpm += (dashboardHeartbeatTargetBpm() - state.bpm) * (1 - Math.exp(-(now - state.lastBeat) / DASHBOARD_HEARTBEAT_EASE_MS));
+  state.lastBeat = now;
+  state.beats.push(now);
+  scheduleDashboardHeartbeat(now);
+  if (!state.frame) state.frame = requestAnimationFrame(dashboardHeartbeatFrame);
 }
 
 function syncDashboardSparkPulses() {
@@ -1081,9 +1137,9 @@ function syncDashboardSparkPulses() {
     return;
   }
   if (state.running) return;
-  state.running = true;
-  state.route = measureDashboardHeartbeatRoute();
-  state.timer = setTimeout(dashboardHeartbeat, DASHBOARD_HEARTBEAT_INTERVAL_MS);
+  const now = performance.now();
+  Object.assign(state, {running: true, route: measureDashboardHeartbeatRoute(), bpm: dashboardHeartbeatTargetBpm(), lastBeat: now});
+  scheduleDashboardHeartbeat(now);
 }
 
 /* A reflow re-measures the strip under the heartbeats already on it. */
@@ -2317,6 +2373,7 @@ async function loadRuntimeSpeed() {
   _runtimeSpeedBusy = true;
   try {
     const data = await api('GET', '/execution/throughput', null, 3000);
+    setDashboardHeartbeatThroughput(data.download_bytes_per_second, data.sustained_peak_bytes_per_second);
     updateRuntimeStatusBadge({
       liveBps: Number(data.download_bytes_per_second) || 0,
       limitBps: Number(data.max_download_bytes_per_second) || 0,

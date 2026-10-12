@@ -418,12 +418,13 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   filter: drop-shadow(0 0 3px currentColor);
 }
 /* The line is the signal: its stroke gradient (app.js) is the dim resting
-   baseline everywhere except where a heartbeat deforms it -- a bright leading
-   edge whose brightness tapers back into the baseline behind the complex. */
+   baseline everywhere except where a heartbeat deforms it -- the leading P-QRS
+   at its most intense, then fading through the tail back into the baseline. */
 .dp-card-spark .dp-card-spark-rest { stop-color: currentColor; stop-opacity: .4; }
-.dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 62%, #fff); stop-opacity: 1; }
+.dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 40%, #fff); stop-opacity: 1; }
 .dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: 1; }
-body.light .dp-card-spark .dp-card-spark-lead { stop-color: currentColor; }
+.dp-card-spark .dp-card-spark-tail { stop-color: currentColor; stop-opacity: .62; }
+body.light .dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 72%, #000); }
 
 
 #view-dashboard .dp-dashboard-quick-add,
