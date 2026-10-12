@@ -4925,7 +4925,9 @@
     }
   }
 
+  // The one Settings entry (app.js navigation): every entry opens on Services.
   async function load() {
+    state.activeTab = 'sources';
     document.getElementById('content')?.classList.remove('settings-active');
     // A one-time disclosure belongs to the act that produced it. Re-entering
     // Settings is not that act, so the freshly minted token is dropped here

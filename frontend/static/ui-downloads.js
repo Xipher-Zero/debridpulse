@@ -253,14 +253,13 @@ function renderTorrentPagination(total, limit, offset) {
   if (!info || !buttons) return;
   const from = n === 0 ? 0 : o + 1, to = Math.min(o + l, n);
   info.textContent = downloadPaginationSummary(n, from, to);
-  const icon = name => window.DPIcons?.svg?.(name) || '';
-  const prev = current > 1
-    ? `<button type="button" class="btn btn-ghost btn-sm dp-pager-btn" aria-label="Previous page" onclick="goToTorrentPage(${current - 1})">${icon('chevronLeft')}</button>`
-    : '<span class="dp-pager-placeholder" aria-hidden="true"></span>';
-  const next = current < pages
-    ? `<button type="button" class="btn btn-ghost btn-sm dp-pager-btn" aria-label="Next page" onclick="goToTorrentPage(${current + 1})">${icon('chevronRight')}</button>`
-    : '<span class="dp-pager-placeholder" aria-hidden="true"></span>';
-  buttons.innerHTML = `<span class="dp-pager-slot">${prev}</span><span class="btn btn-primary btn-sm dp-pager-current" aria-current="page">${current}</span><span class="dp-pager-slot">${next}</span>`;
+  // The shared DP pager presents; this owner keeps the page arithmetic.
+  window.DPPager.render(buttons, {page: current, following: pages - current, actions: {
+    first: () => goToTorrentPage(1),
+    previous: () => goToTorrentPage(current - 1),
+    next: () => goToTorrentPage(current + 1),
+    last: () => goToTorrentPage(pages),
+  }});
 }
 function setFilter(element, status) {
   document.querySelectorAll('#view-torrents .filter-tabs .ftab').forEach(tab => {
@@ -297,6 +296,8 @@ function goToTorrentPage(p) {
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
   requestGeneration++;
+  // Inert until the requested page is rendered (or its request fails).
+  window.DPPager?.pending(document.getElementById('torrent-page-btns'), true);
   loadTorrents();
 }
 function onPageSizeChange(v) {
@@ -481,6 +482,7 @@ async function fetchAndRenderTorrents() {
     if (reorder) paintReorder();
   } catch (e) {
     if (_requestGeneration !== requestGeneration) return;
+    window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);
     toast(sanitizeErrorMsg(e.message), 'error');
   }
   document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));

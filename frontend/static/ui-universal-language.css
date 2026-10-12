@@ -491,7 +491,7 @@ textarea.input { resize: vertical; }
   vertical-align: middle;
 }
 
-/* ── Status pills + compact progress ─────────────────────────────────── */
+/* ── Status badges (6px rounded rectangles) + compact progress ───────── */
 .badge {
   --dp-badge-color: var(--dp-text-secondary);
   display: inline-flex;
@@ -500,7 +500,7 @@ textarea.input { resize: vertical; }
   min-height: 22px;
   padding: 3px 8px;
   border: 1px solid color-mix(in srgb, var(--dp-badge-color) 22%, transparent);
-  border-radius: var(--dp-radius-pill);
+  border-radius: 6px;
   background: color-mix(in srgb, var(--dp-badge-color) 9%, transparent);
   color: var(--dp-badge-color);
   font-size: 11px;

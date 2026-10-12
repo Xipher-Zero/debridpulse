@@ -95,7 +95,7 @@ def test_downloads_page_layer_is_page_specific_only() -> None:
         ".dp-downloads-refresh",
         ".dp-downloads-table-wrap",
         "#torrent-pagination",
-        ".dp-pager-btn",
+        "#torrent-page-btns",
         "#torrent-page-info",
     )
     missing = [fragment for fragment in required if fragment not in css]
@@ -123,7 +123,7 @@ def test_downloads_app_carries_header_copy_search_and_empty_language() -> None:
     required_app = (
         "download tracked", "downloads tracked", "No downloads yet. Add a link, magnet, or torrent file to get started.",
         "No downloads match your current filters.", "No downloads match your search.",
-        "Showing all ", "matching downloads", "dp-pager-current", "chevronLeft", "chevronRight",
+        "Showing all ", "matching downloads", "window.DPPager.render(",
         "function renderTorrentPagination(", "function setFilter(",
     )
     missing = [fragment for fragment in required_app if fragment not in app]

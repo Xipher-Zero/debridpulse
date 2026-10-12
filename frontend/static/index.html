@@ -330,7 +330,7 @@
         </table>
         </div>
         <div id="torrent-pagination" style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;flex-wrap:wrap;gap:8px">
-          <div id="torrent-page-btns" style="display:flex;gap:4px;align-items:center"></div>
+          <div id="torrent-page-btns" role="group" aria-label="Download pages" style="display:flex;gap:4px;align-items:center"></div>
           <div id="torrent-page-info" style="font-size:12px;color:var(--text3)"></div>
         </div>
       </div>
@@ -392,12 +392,9 @@
         <div id="dp-activity-result-note" class="dp-activity-result-note" role="status" hidden></div>
         <div id="event-list" class="dp-activity-list" aria-live="polite"><div class="empty">Loading…</div></div>
         <nav id="dp-activity-pagination" class="dp-pagination dp-activity-pagination" aria-label="Activity Log pages" hidden>
+          <button type="button" id="ev-newest" class="btn btn-ghost btn-sm dp-activity-newest" hidden>Show newest events</button>
+          <div id="dp-activity-page-btns" class="dp-activity-page-btns" role="group" aria-label="Activity Log page navigation"></div>
           <span id="dp-activity-page-info" class="dp-activity-page-info"></span>
-          <div class="dp-pagination__controls">
-            <button type="button" id="ev-newest" class="btn btn-ghost btn-sm dp-activity-newest" hidden>Show newest events</button>
-            <button type="button" id="ev-newer" class="dp-page-btn" aria-label="Previous page (newer events)">Previous</button>
-            <button type="button" id="ev-older" class="dp-page-btn" aria-label="Next page (older events)">Next</button>
-          </div>
         </nav>
       </div>
     </div>
@@ -502,6 +499,7 @@
 <script src="/ui-processing-presentation.js?v=4" defer></script>
 <script src="/ui-transfer-source-presentation.js?v=1" defer></script>
 <script src="/ui-file-selection.js?v=1" defer></script>
+<script src="/ui-pager.js?v=1" defer></script>
 <script src="/ui-downloads.js?v=1" defer></script>
 <script src="/ui-dashboard-transfer-presentation.js?v=4" defer></script>
 <script src="/ui-activity-log-runtime.js?v=4" defer></script>

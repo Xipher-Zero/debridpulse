@@ -82,7 +82,7 @@ test('Downloads owner exposes fixed three-slot pager and date options',async({pa
  await expect(page.locator('#torrent-page-btns .dp-pager-btn')).toHaveCount(2);await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveCount(1);
  await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('2');
  const release=await parkDownloadsList(page);
- const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();await release();expect(Math.abs(group.width-116)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
+ const group=await page.locator('#torrent-page-btns').boundingBox(),current=await page.locator('.dp-pager-current').boundingBox();await release();expect(Math.abs(group.width-196)).toBeLessThanOrEqual(1);expect(Math.abs(current.width-36)).toBeLessThanOrEqual(1);
  const trigger=page.locator('#view-torrents .dp-date-menu-trigger');await trigger.click();for(const name of ['Friendly','US','International','ISO','24-hour','12-hour'])await expect(page.locator('#view-torrents').getByRole('menuitemradio',{name})).toBeVisible();
 });
 
@@ -322,24 +322,27 @@ test('Activity Log pages through history by cursor and never jumps off a histori
  const requests=[];let total=260;
  await page.route('**/api/events*',route=>{const url=new URL(route.request().url());const q=Object.fromEntries(url.searchParams);requests.push(q);
   if(q.category==='storage')return route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({detail:'The Activity Log search index is being rebuilt. Try the search again shortly.'})});
-  const snapshot=q.snapshot?Number(q.snapshot):total,limit=Number(q.limit),top=q.before?Number(q.before)-1:snapshot;
+  const snapshot=q.snapshot?Number(q.snapshot):total,limit=Number(q.limit),top=q.before?Number(q.before)-1:q.after?Math.min(snapshot,Number(q.after)+limit):snapshot;
   const items=[];for(let id=top;id>0&&items.length<limit;id--)items.push({id,severity:id%7?'info':'error',category:'transfer',type:'transfer.synthetic',message:`Event ${id}`,name:`transfer-${id}`,transfer_id:id,detail:id===snapshot?'Safe diagnostic detail':null,occurred_at:'2026-10-09T12:00:00Z'});
   const last=items.at(-1)?.id??0;
-  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,limit,snapshot,has_more:last>1,next_before:last>1?last:null,newer_available:total>snapshot,search:{text:'none',pending:0,complete:true}})});});
+  return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items,limit,snapshot,has_more:last>1,next_before:last>1?last:null,more_after_next:last-1>limit,...(q.after?{has_newer:top<snapshot}:{}),newer_available:total>snapshot,search:{text:'none',pending:0,complete:true}})});});
  await page.evaluate(()=>{settingsData.activity_log_page_size=100;nav(document.querySelector('[data-view="events"]'));});
  const rows=page.locator('#event-list .dp-activity-row');
  await expect(rows).toHaveCount(100);await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');
- await expect(page.locator('#dp-activity-page-info')).toHaveText('Page 1');await expect(page.locator('#ev-newer')).toBeDisabled();
+ const pager=page.locator('#dp-activity-page-btns');
+ await expect(pager.locator('.dp-pager-current')).toHaveText('1');await expect(pager.locator('[aria-label="Previous page"]')).toHaveCount(0);
  // Safe detail is disclosed on demand, never inline.
  const detail=rows.first().locator('details.dp-activity-detail');await expect(detail).not.toHaveAttribute('open','');await detail.locator('summary').click();await expect(detail).toContainText('Safe diagnostic detail');
  total=300; // events recorded during the investigation
- await page.locator('#ev-older').focus();await page.keyboard.press('Enter');
- await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 160');await expect(page.locator('#dp-activity-page-info')).toHaveText('Page 2');
+ await pager.locator('[aria-label="Next page"]').focus();await page.keyboard.press('Enter');
+ await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 160');await expect(pager.locator('.dp-pager-current')).toHaveText('2');
  expect(requests.at(-1)).toMatchObject({limit:'100',snapshot:'260',before:'161'});
  await expect(page.locator('#ev-newest')).toBeVisible(); // newer events are announced, not forced on the operator
- await page.locator('#ev-older').click();await expect(rows).toHaveCount(60);await expect(page.locator('#ev-older')).toBeDisabled();
- await page.locator('#ev-newer').click();await page.locator('#ev-newer').click();
- await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');await expect(page.locator('#ev-newer')).toBeDisabled();
+ await pager.locator('[aria-label="Next page"]').click();await expect(rows).toHaveCount(60);await expect(pager.locator('[aria-label="Next page"]')).toHaveCount(0);
+ await pager.locator('[aria-label="Previous page"]').click();await expect(pager.locator('.dp-pager-current')).toHaveText('2');
+ expect(requests.at(-1)).toMatchObject({snapshot:'260',after:'60'});
+ await pager.locator('[aria-label="Previous page"]').click();
+ await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 260');await expect(pager.locator('[aria-label="Previous page"]')).toHaveCount(0);
  await page.locator('#ev-newest').click();await expect(rows.first().locator('.dp-activity-message')).toHaveText('Event 300');
  // A filter change starts a new investigation; a failure is shown as a failure, not as an empty history.
  await page.locator('#ev-category').selectOption('storage');

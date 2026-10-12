@@ -250,3 +250,15 @@ test('an empty projection says so, and offers nothing to control', async ({page}
     .toHaveText('No download engine activity right now.');
   await expect(card(page).locator('[data-executor-action]')).toHaveCount(0);
 });
+
+
+test('the execution state badge is the DP 6px rounded rectangle, and pill controls keep their shape', async ({page}) => {
+  await installExecutorWork(page);
+  await openDownloads(page);
+  const badge = rowFor(page, 'ubuntu-desktop.iso').locator('.badge').first();
+  await expect(badge).toBeVisible();
+  expect(await badge.evaluate(node => getComputedStyle(node).borderRadius)).toBe('6px');
+  // A real pill control (a toggle track) is not a status badge and keeps its geometry.
+  const track = page.locator('#view-settings .toggle .ttrack').first();
+  expect(await track.evaluate(node => getComputedStyle(node).borderRadius)).not.toBe('6px');
+});

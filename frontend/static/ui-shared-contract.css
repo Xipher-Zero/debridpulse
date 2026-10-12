@@ -13,10 +13,27 @@
   text-transform: capitalize;
 }
 
-/* Legacy Downloads pagination is still emitted as .dp-pager-btn by the
-   presentation shim. Bridge that legacy class to the canonical DP page-button
-   material until the runtime markup is retired; Downloads may still own the
-   hit-target geometry in its page layer. */
+/* The one DP pager (ui-pager.js), shared by Downloads and the Activity Log:
+   five fixed 36 x 34 positions -- First, Previous, the current page, Next,
+   Last -- in one centred group, so the current page never moves; an absent
+   control leaves its slot empty. Pages place the group; this owns its
+   geometry and material. */
+.dp-pager {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 4px !important;
+}
+.dp-pager-slot,.dp-pager-placeholder,.dp-pager-current,.dp-pager-btn{width:36px!important;min-width:36px!important;max-width:36px!important;height:34px!important;min-height:34px!important;max-height:34px!important;box-sizing:border-box}
+.dp-pager-slot{display:grid;place-items:center}
+.dp-pager-placeholder{display:block}
+.dp-pager-current,.dp-pager-btn{display:inline-flex!important;align-items:center;justify-content:center;padding:0!important}
+.dp-pager-current{pointer-events:none}
+.dp-pager .dp-pager-btn svg {
+  width: 16px;
+  height: 16px;
+  stroke-width: 2.25;
+}
 .dp-pager-btn {
   min-width: 30px;
   height: 30px;

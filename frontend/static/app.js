@@ -103,7 +103,9 @@ function nav(el) {
   if (subtitle) subtitle.textContent = subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
   if (v === 'dashboard') { loadStats(); loadRecent(); }
-  if (v === 'torrents')  { clearSelection(); loadTorrents(); }
+  // Every sidebar selection is a new entry: Downloads opens on page 1 (its
+  // search, filter and order are kept), Settings on Services, Help on Quick Start.
+  if (v === 'torrents')  { clearSelection(); goToTorrentPage(1); }
   if (v === 'events')    window.DPActivityLog.load();
   if (v === 'stats')     loadDetailedStats();
   if (v === 'settings')  loadSettings();

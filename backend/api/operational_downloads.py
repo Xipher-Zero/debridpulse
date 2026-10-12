@@ -420,6 +420,9 @@ async def list_activity_events(
     limit: Annotated[int, Query(ge=1, le=event_journal.MAX_PAGE_SIZE)] = event_journal.DEFAULT_PAGE_SIZE,
     before: Annotated[Optional[int], Query(ge=1)] = None,
     snapshot: Annotated[Optional[int], Query(ge=0)] = None,
+    after: Annotated[Optional[int], Query(ge=0)] = None,
+    last: bool = False,
+    window_start: Annotated[Optional[float], Query(ge=0)] = None,
 ):
     """One newest-first page of the durable event journal, across its whole
     retained history.
@@ -432,8 +435,25 @@ async def list_activity_events(
     case-insensitive over message, detail and transfer name through the
     derived FTS5 index, plus the exact transfer id for a bare number or
     ``#number``; ``search.complete`` is false while the index has not yet
-    caught up with every event, never silently."""
-    since = time.time() - _EVENT_TIMEFRAME_SECONDS[timeframe] if timeframe != "all" else None
+    caught up with every event, never silently.
+
+    Within one snapshot, ``after`` (the first item's id) returns the newer
+    neighbouring page and ``last`` the final page of the same partition with
+    its ``page`` number, from one bounded count of the frozen, filtered
+    matches; a final page that cannot be proven (an index still catching up,
+    or more matches than the count bound) is refused with 409, never guessed.
+    One cursor direction at a time.
+
+    A relative ``timeframe`` is measured from now once, by the investigation's
+    first page, which reports that cutoff as ``window_start``; its later pages
+    send it back so every one of them -- Last's count included -- filters by
+    the same window as the snapshot it shares."""
+    if sum((before is not None, after is not None, bool(last))) > 1:
+        raise HTTPException(status_code=400, detail="Use only one of before, after or last.")
+    if window_start is not None and timeframe == "all":
+        raise HTTPException(status_code=400, detail="window_start applies only to a relative timeframe.")
+    since = None if timeframe == "all" else (
+        float(window_start) if window_start is not None else time.time() - _EVENT_TIMEFRAME_SECONDS[timeframe])
     try:
         terms = event_journal.search_terms(search)
     except event_journal.SearchRejected as exc:
@@ -449,7 +469,10 @@ async def list_activity_events(
     async with get_db() as db:
         try:
             return await event_journal.page(db, limit=limit, before=before, snapshot=snapshot, category=category,
-                                            severity=severity, since=since, terms=terms)
+                                            severity=severity, since=since, terms=terms, after=after, last=last)
+        except event_journal.LastPageUnavailable as exc:
+            raise HTTPException(status_code=409, detail={"code": "last_page_unavailable",
+                                                         "message": str(exc)}) from None
         except event_journal.SearchUnavailable as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from None
         except sqlite3.DatabaseError as exc:

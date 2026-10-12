@@ -52,6 +52,9 @@ async def _page(**query):
     query.setdefault("before", None)
     query.setdefault("snapshot", None)
     query.setdefault("search", None)
+    query.setdefault("after", None)
+    query.setdefault("last", False)
+    query.setdefault("window_start", None)
     return await activity_routes.list_activity_events(**query)
 
 
@@ -274,3 +277,149 @@ async def test_recorded_count_is_every_committed_journal_record_and_nothing_else
     await _index_all()
     assert (await _page(category="routing", limit=50))["has_more"] is True
     assert await activity_routes.count_activity_events() == {"recorded": 1300}
+
+
+async def _forward_pages(**query):
+    """Every page of one frozen investigation, walked Next by Next."""
+    page = await _page(**query)
+    pages = [[item["id"] for item in page["items"]]]
+    while page["has_more"]:
+        page = await _page(**query, before=page["next_before"], snapshot=page["snapshot"])
+        pages.append([item["id"] for item in page["items"]])
+    return pages, page["snapshot"]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("query", [{}, {"category": "routing"}, {"search": "needle"}])
+async def test_last_is_the_forward_partitions_remainder_and_previous_walks_it_back(journal_db, query):
+    """Last is the final page of exactly the partition Next walks -- the
+    remainder, not the oldest ``limit`` rows -- with its page number from one
+    count of the frozen, filtered snapshot; Previous walks back page by page
+    with no overlap or gap, and events recorded meanwhile change nothing."""
+    await _record(_event(index, category="routing" if index % 3 else "transfer", message=f"needle {index}")
+                  for index in range(1, 1202))
+    await _index_all()
+    pages, snapshot = await _forward_pages(limit=100, **query)
+    assert len(pages[-1]) not in (0, 100)                     # a genuine remainder
+    await _record(_event(index, category="routing", message=f"needle {index}") for index in range(1202, 1252))
+    await _index_all()
+
+    last = await _page(limit=100, snapshot=snapshot, last=True, **query)
+    assert last["snapshot"] == snapshot and last["page"] == len(pages)
+    assert [item["id"] for item in last["items"]] == pages[-1]
+    assert last["has_more"] is False and last["next_before"] is None and last["has_newer"] is True
+
+    walked, page = [[item["id"] for item in last["items"]]], last
+    while page["has_newer"]:
+        page = await _page(limit=100, snapshot=snapshot, after=page["items"][0]["id"], **query)
+        walked.insert(0, [item["id"] for item in page["items"]])
+        # Next from any page reached this way continues the same partition.
+        assert page["has_more"] and page["next_before"] == page["items"][-1]["id"]
+        # Pages after this one: len(walked) - 1; Last shows only for two or more.
+        assert page["more_after_next"] is (len(walked) >= 3)
+    assert walked == pages
+
+
+@pytest.mark.asyncio
+async def test_more_after_next_tells_whether_a_page_beyond_the_next_exists(journal_db):
+    await _record(_event(index) for index in range(1, 251))
+    first = await _page(limit=100)
+    assert first["has_more"] and first["more_after_next"] is True        # 100 + 100 + 50
+    second = await _page(limit=100, before=first["next_before"], snapshot=first["snapshot"])
+    assert second["has_more"] and second["more_after_next"] is False     # the next page is the last
+    third = await _page(limit=100, before=second["next_before"], snapshot=first["snapshot"])
+    assert not third["has_more"] and third["more_after_next"] is False
+
+
+@pytest.mark.asyncio
+async def test_last_is_refused_truthfully_when_it_cannot_be_proven(journal_db, monkeypatch):
+    # More than two search batches behind, so each search's own catch-up leaves a lag.
+    await _record(_event(index, message=f"needle {index}") for index in range(1, 3 * event_journal.INDEX_BATCH + 301))
+    first = await _page(search="needle", limit=50)
+    assert first["search"]["complete"] is False
+    # An index still catching up cannot say which page is last.
+    with pytest.raises(HTTPException) as lagging:
+        await _page(search="needle", limit=50, snapshot=first["snapshot"], last=True)
+    assert lagging.value.status_code == 409 and lagging.value.detail["code"] == "last_page_unavailable"
+    await _index_all()
+    assert (await _page(search="needle", limit=50, snapshot=first["snapshot"], last=True))["page"] > 1
+    # A match set beyond the count bound is never counted past it.
+    monkeypatch.setattr(event_journal, "LAST_PAGE_COUNT_LIMIT", 100)
+    with pytest.raises(HTTPException) as bounded:
+        await _page(limit=50, snapshot=first["snapshot"], last=True)
+    assert bounded.value.status_code == 409 and "too large" in bounded.value.detail["message"]
+    # Cursors are one direction at a time.
+    for conflicting in ({"before": 10, "after": 5}, {"last": True, "before": 10}, {"last": True, "after": 5}):
+        with pytest.raises(HTTPException) as invalid:
+            await _page(limit=50, snapshot=first["snapshot"], **conflicting)
+        assert invalid.value.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_last_and_previous_query_plans_are_bounded_and_indexed(journal_db):
+    await _record(_event(index, category="routing" if index % 2 else "execution") for index in range(1, 201))
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        shapes = {
+            "after": ("SELECT j.id FROM event_journal j WHERE j.id <= ? AND j.id > ? ORDER BY j.id ASC LIMIT 101",
+                      [999, 5]),
+            "after+category": ("SELECT j.id FROM event_journal j WHERE j.id <= ? AND j.id > ? AND j.category = ? "
+                               "ORDER BY j.id ASC LIMIT 101", [999, 5, "routing"]),
+            "after+search": ("SELECT j.id FROM event_journal_fts f CROSS JOIN event_journal j ON j.id = f.rowid "
+                             "WHERE f.event_journal_fts MATCH ? AND f.rowid <= ? AND f.rowid > ? "
+                             "ORDER BY f.rowid ASC LIMIT 101", ['"abc"', 999, 5]),
+            "bounded count": ("SELECT COUNT(*) FROM (SELECT 1 FROM event_journal j WHERE j.id <= ? AND j.category = ? "
+                              "LIMIT 1001)", [999, "routing"]),
+        }
+        for name, (sql, params) in shapes.items():
+            plan = " | ".join(row[3] for row in conn.execute(f"EXPLAIN QUERY PLAN {sql}", params))
+            assert "TEMP B-TREE" not in plan and "SCAN j " not in plan + " ", (name, plan)
+    finally:
+        conn.close()
+
+
+@pytest.mark.asyncio
+async def test_a_relative_timeframe_is_frozen_for_the_whole_investigation(journal_db, monkeypatch):
+    """The time window an investigation started with is the window every one
+    of its pages uses: wall-clock time passing between the first page and a
+    Last jump changes neither the final page nor its neighbours. A new
+    investigation takes a new window."""
+    import time as real_time
+    now = [real_time.time()]
+    monkeypatch.setattr(activity_routes.time, "time", lambda: now[0])
+    await _record(_event(index) for index in range(1, 1001))
+    async with database.get_db() as db:
+        # One event every two minutes, none on a window edge: 720 fall in the last 24 hours.
+        await db.execute("UPDATE event_journal SET occurred_at = ? - (1000 - id) * 120 - 60", (now[0],))
+        await db.commit()
+    first = await _page(timeframe="24h", limit=100)
+    window = first["window_start"]
+    assert window == pytest.approx(now[0] - 86400)
+    frozen = {"timeframe": "24h", "limit": 100, "snapshot": first["snapshot"], "window_start": window}
+    pages, page = [[item["id"] for item in first["items"]]], first
+    while page["has_more"]:
+        page = await _page(**frozen, before=page["next_before"])
+        pages.append([item["id"] for item in page["items"]])
+    assert sum(map(len, pages)) == 720 and len(pages[-1]) == 20
+
+    now[0] += 2 * 3600                                                    # two hours pass
+    last = await _page(**frozen, last=True)
+    assert last["window_start"] == window and last["page"] == len(pages)
+    assert [item["id"] for item in last["items"]] == pages[-1]
+    walked, page = [pages[-1]], last
+    while page["has_newer"]:
+        page = await _page(**frozen, after=page["items"][0]["id"])
+        walked.insert(0, [item["id"] for item in page["items"]])
+    assert walked == pages
+    following = await _page(**frozen, before=pages[-2][-1])                   # Next from the page before Last
+    assert [item["id"] for item in following["items"]] == pages[-1]
+
+    # A new investigation measures its own window from now.
+    fresh = await _page(timeframe="24h", limit=100, snapshot=first["snapshot"], last=True)
+    assert fresh["window_start"] == pytest.approx(now[0] - 86400)
+    assert [item["id"] for item in fresh["items"]] != pages[-1]
+    # Without a relative window there is nothing to freeze.
+    assert (await _page(limit=100))["window_start"] is None
+    with pytest.raises(HTTPException) as invalid:
+        await _page(limit=100, window_start=window)
+    assert invalid.value.status_code == 400

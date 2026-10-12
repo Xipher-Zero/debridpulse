@@ -247,13 +247,34 @@ body.light #view-events .dp-activity-search-band {
   white-space: pre-wrap;
 }
 
-/* Page navigation through the journal: the shared pagination grammar. */
+/* Page navigation through the journal: the shared DP pager centred in the
+   footer, "Show newest events" (a new investigation, not a page) to its left
+   and the page count, when known, to its right. */
 #view-events .dp-activity-pagination {
   position: relative;
   z-index: 1;
   flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
   padding: 10px 16px;
   border-top: 1px solid var(--dp-table-row-border);
+}
+
+#view-events .dp-activity-newest {
+  grid-column: 1;
+  justify-self: start;
+}
+
+#view-events .dp-activity-page-btns {
+  grid-column: 2;
+}
+
+#view-events .dp-activity-page-info {
+  grid-column: 3;
+  justify-self: end;
+  white-space: nowrap;
 }
 
 #view-events .dp-activity-pagination[hidden],
@@ -261,9 +282,16 @@ body.light #view-events .dp-activity-search-band {
   display: none;
 }
 
-#view-events .dp-activity-pagination .dp-page-btn {
-  width: auto;
-  padding-inline: 12px;
+@media (max-width: 700px) {
+  #view-events .dp-activity-pagination {
+    grid-template-columns: 1fr;
+    justify-items: center;
+  }
+
+  #view-events :is(.dp-activity-newest, .dp-activity-page-btns, .dp-activity-page-info) {
+    grid-column: 1;
+    justify-self: center;
+  }
 }
 
 /* ── Full-height desktop workspace ───────────────────────────────────── */

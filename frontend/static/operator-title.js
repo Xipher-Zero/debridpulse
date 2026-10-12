@@ -22,6 +22,8 @@
     chevronDown: '<path d="m6 9 6 6 6-6"/>',
     chevronLeft: '<path d="m15 18-6-6 6-6"/>',
     chevronRight: '<path d="m9 18 6-6-6-6"/>',
+    chevronFirst: '<path d="m17 18-6-6 6-6"/><path d="M7 6v12"/>',
+    chevronLast: '<path d="m7 18 6-6-6-6"/><path d="M17 6v12"/>',
     arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
     refresh: '<path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/>',
     upload: '<path d="M12 16V4"/><path d="m7 9 5-5 5 5"/><path d="M5 20h14"/>',

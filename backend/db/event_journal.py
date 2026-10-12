@@ -402,16 +402,38 @@ def _phrase(text: str) -> str:
     return '"' + text.replace('"', '""') + '"'
 
 
+# One explicit Last-page jump counts the frozen, filtered snapshot -- never an
+# ordinary page -- and never past this many matches: the count walks the same
+# index the page does and stops here, so its cost is bounded whatever the
+# journal holds (measured: ~30 ms unfiltered, ~270 ms for a text match on every
+# row, warm). A larger match set cannot be proven cheaply and is refused.
+LAST_PAGE_COUNT_LIMIT = 500_000
+
+
+class LastPageUnavailable(RuntimeError):
+    """The final page of this investigation cannot be proven right now;
+    ``message`` is safe to show."""
+
+
 async def page(db, *, limit: int, before: int | None, snapshot: int | None, category: str | None,
-               severity: str | None, since: float | None, terms: SearchTerms | None) -> dict:
+               severity: str | None, since: float | None, terms: SearchTerms | None,
+               after: int | None = None, last: bool = False) -> dict:
     """One newest-first page of the journal at or below ``snapshot``.
 
-    Navigation is by the unique, commit-ordered id: ``before`` is the
-    exclusive upper bound of an older page and ``snapshot`` freezes the
-    investigation's newest edge, so events committed meanwhile never shift,
-    duplicate or skip a page already navigated. Every predicate -- search
-    included -- applies before LIMIT, and ``limit + 1`` rows decide
-    ``has_more`` without counting the journal."""
+    Navigation is by the unique, commit-ordered id, so one frozen snapshot and
+    one filter set partition the matching events into fixed pages of ``limit``
+    from the newest: ``before`` (exclusive upper bound) walks to the older
+    page, ``after`` (exclusive lower bound) to the newer one, and ``last``
+    jumps to the final page -- the remainder of that partition, located by ONE
+    bounded count of the snapshot's matches. ``snapshot`` freezes the newest
+    edge and the journal is append-only beneath it, so events committed
+    meanwhile never shift, duplicate or skip a page; ``since`` is the
+    investigation's own fixed cutoff, reported back as ``window_start``. Every
+    predicate -- search
+    included -- applies before LIMIT; ``limit + 1`` rows decide each
+    direction's continuation without counting the journal, and at most
+    ``limit + 1`` older index entries tell whether a page lies beyond the next
+    (``more_after_next``)."""
     limit = max(1, min(int(limit), MAX_PAGE_SIZE))
     if snapshot is None:
         top = await db.fetchone("SELECT COALESCE(MAX(id), 0) AS id FROM event_journal")
@@ -419,6 +441,8 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
     # ONE inclusive upper bound: SQLite seeks a rowid range on a single
     # bound, so two would walk every row between them.
     upper = int(snapshot) if before is None else min(int(snapshot), int(before) - 1)
+    search = {"text": "none", "pending": 0, "complete": True}
+    text_driven = False
     clauses = ["j.id <= ?"]
     params: list = [upper]
     if category:
@@ -433,8 +457,7 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
         clauses.append("""j.id >= COALESCE((SELECT w.id FROM event_journal w WHERE w.occurred_at >= ?
             ORDER BY w.occurred_at LIMIT 1), 9223372036854775807) AND j.occurred_at >= ?""")
         params.extend([float(since), float(since)])
-    search = {"text": "none", "pending": 0, "complete": True}
-    source, order = "event_journal j", "j.id DESC"
+    match: list = []
     if terms is not None:
         alternatives = []
         alternative_params: list = []
@@ -455,10 +478,8 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
                     # first from the cursor bound, and every other filter is
                     # checked per match -- the walk stops at the page instead
                     # of first collecting every match the history holds.
-                    source = f"{FTS_TABLE} f CROSS JOIN event_journal j ON j.id = f.rowid"
-                    order = "f.rowid DESC"
-                    clauses.insert(0, f"f.{FTS_TABLE} MATCH ? AND f.rowid <= ?")
-                    params[:0] = [_phrase(terms.text), upper]
+                    text_driven = True
+                    match = [_phrase(terms.text)]
                 else:
                     alternatives.append(f"j.id IN (SELECT rowid FROM {FTS_TABLE} WHERE {FTS_TABLE} MATCH ? "
                                         "AND rowid <= ?)")
@@ -466,31 +487,90 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
         if alternatives:
             clauses.append("(" + " OR ".join(alternatives) + ")")
             params.extend(alternative_params)
-    rows = await db.fetchall(
-        f"""SELECT j.id, j.occurred_at, j.category, j.event_type, j.severity, j.outcome, j.subject_kind,
-                   j.subject_id, j.transfer_id, j.related_transfer_id, j.integration_id, j.subject_name,
-                   j.message, j.detail, j.error_category, j.error_domain,
-                   strftime('%Y-%m-%dT%H:%M:%fZ', j.occurred_at, 'unixepoch') AS occurred_at_iso,
-                   EXISTS(SELECT 1 FROM torrents t WHERE t.id = j.transfer_id AND t.status != 'deleted')
-                       AS transfer_available
-            FROM {source} WHERE {' AND '.join(clauses)}
-            ORDER BY {order} LIMIT ?""",
-        [*params, limit + 1],
-    )
-    newer = await db.fetchone("SELECT EXISTS(SELECT 1 FROM event_journal WHERE id > ?) AS newer", (int(snapshot),))
+    source = f"{FTS_TABLE} f CROSS JOIN event_journal j ON j.id = f.rowid" if text_driven else "event_journal j"
+    key = "f.rowid" if text_driven else "j.id"
+
+    def where(*bounds: tuple[str, int]) -> tuple[str, list]:
+        """The one filter predicate, plus id bounds on the walking key."""
+        extra = [f"{key} {op} ?" for op, _ in bounds]
+        values = [value for _, value in bounds]
+        if text_driven:
+            head = [f"f.{FTS_TABLE} MATCH ? AND f.rowid <= ?", *extra]
+            return " AND ".join(head + clauses), [*match, upper, *values, *params]
+        return " AND ".join(clauses + extra), [*params, *values]
+
+    async def rows(predicate: tuple[str, list], direction: str, count: int) -> list:
+        sql, values = predicate
+        return await db.fetchall(
+            f"""SELECT j.id, j.occurred_at, j.category, j.event_type, j.severity, j.outcome, j.subject_kind,
+                       j.subject_id, j.transfer_id, j.related_transfer_id, j.integration_id, j.subject_name,
+                       j.message, j.detail, j.error_category, j.error_domain,
+                       strftime('%Y-%m-%dT%H:%M:%fZ', j.occurred_at, 'unixepoch') AS occurred_at_iso,
+                       EXISTS(SELECT 1 FROM torrents t WHERE t.id = j.transfer_id AND t.status != 'deleted')
+                           AS transfer_available
+                FROM {source} WHERE {sql}
+                ORDER BY {key} {direction} LIMIT ?""",
+            [*values, count],
+        )
+
+    async def matches(predicate: tuple[str, list], bound: int) -> int:
+        sql, values = predicate
+        row = await db.fetchone(f"SELECT COUNT(*) AS n FROM (SELECT 1 FROM {source} WHERE {sql} LIMIT ?)",
+                                [*values, bound])
+        return int(row["n"]) if row else 0
+
+    final_page = None
+    has_newer = None
+    if last:
+        # The final page is the REMAINDER of the newest-first partition, so it
+        # needs the number of matches in exactly this snapshot and filter --
+        # counted once, bounded, and only when that number is authoritative.
+        if not search["complete"]:
+            raise LastPageUnavailable(
+                "The last page can't be found while text search is unavailable or recent events are still "
+                "being indexed." if search["text"] == "unavailable" else
+                "The last page can't be found while recent events are still being indexed. Try again shortly.")
+        total = await matches(where(), LAST_PAGE_COUNT_LIMIT + 1)
+        if total > LAST_PAGE_COUNT_LIMIT:
+            raise LastPageUnavailable("This history is too large to count for a direct jump to the last page.")
+        final_page = max(1, -(-total // limit))
+        found = list(reversed(await rows(where(), "ASC", total - (final_page - 1) * limit)))
+        has_newer = final_page > 1
+    elif after is not None:
+        # The newer neighbour: the ``limit`` matches just above ``after``.
+        newer = await rows(where((">", int(after))), "ASC", limit + 1)
+        has_newer = len(newer) > limit
+        found = list(reversed(newer[:limit]))
+    else:
+        found = await rows(where(), "DESC", limit + 1)
+    items = found[:limit]
+    oldest = int(items[-1]["id"]) if items else None
+    older = 0
+    if oldest is not None and not last and (after is not None or len(found) > limit):
+        older = await matches(where(("<", oldest)), limit + 1)
+    newer_probe = await db.fetchone("SELECT EXISTS(SELECT 1 FROM event_journal WHERE id > ?) AS newer",
+                                    (int(snapshot),))
     started = await db.fetchone("SELECT started_at FROM event_journal_index WHERE id=1")
-    items = rows[:limit]
-    return {
+    result = {
         "items": [_public(row) for row in items],
         "limit": limit,
         "snapshot": int(snapshot),
-        "has_more": len(rows) > limit,
-        "next_before": int(items[-1]["id"]) if len(rows) > limit and items else None,
-        "newer_available": bool(newer and newer["newer"]),
+        "has_more": older > 0,
+        "next_before": oldest if older > 0 else None,
+        # Whether a page lies beyond the next one: the older matches exceed one page.
+        "more_after_next": older > limit,
+        "newer_available": bool(newer_probe and newer_probe["newer"]),
+        # The time-window cutoff this page filtered by (None without one).
+        "window_start": since,
         "history_started_at": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(started["started_at"])))
                                if started else None),
         "search": search,
     }
+    if has_newer is not None:
+        result["has_newer"] = has_newer
+    if final_page is not None:
+        result["page"] = final_page
+    return result
 
 
 def _public(row: dict) -> dict:

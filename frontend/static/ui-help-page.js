@@ -750,7 +750,9 @@
     document.dispatchEvent(new CustomEvent('debridpulse:help-rendered', {detail: {view: 'help'}}));
   }
 
+  // The one Help entry (app.js navigation): every entry opens on Quick Start.
   function load() {
+    state.activeTab = 'quickstart';
     render();
   }
 

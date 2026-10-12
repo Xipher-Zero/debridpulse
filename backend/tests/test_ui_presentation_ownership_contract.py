@@ -65,7 +65,7 @@ def test_bounded_runtime_owners_are_present() -> None:
     assert "window.DPDashboardTransferPresentation" not in read("ui-dashboard-transfer-presentation.js")
     downloads = read("ui-downloads.js")
     assert "window.DPDownloads" in downloads and "window.loadTorrents" in downloads and "ResizeObserver" in downloads
-    assert all(token in downloads for token in ("Friendly", "International", "ISO", "12-hour", "24-hour", "dp-pager-placeholder"))
+    assert all(token in downloads for token in ("Friendly", "International", "ISO", "12-hour", "24-hour", "window.DPPager.render("))
     assert "window.DPProcessingPresentation" in read("ui-processing-presentation.js")
     assert "window.DPTransferSourcePresentation" in read("ui-transfer-source-presentation.js")
     activity = read("ui-activity-log-runtime.js")
