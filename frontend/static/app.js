@@ -249,8 +249,10 @@ window.dpIsInteractiveRowTarget = dpIsInteractiveRowTarget;
 // field (Cut, Copy, Paste, spelling), a hyperlink (Open, Copy Link) or text the
 // operator selected where they right-clicked (Copy) -- and is otherwise
 // suppressed on DebridPulse's own surfaces, where the owner of a surface may
-// offer its own: Downloads' unfinished rows (DPDownloads.contextMenu), their
-// selection checkboxes included. No other module listens for contextmenu.
+// offer its own through the one menu below: Downloads' unfinished rows
+// (DPDownloads.contextMenu), their selection checkboxes included, and Details'
+// Original Resource when Copy URL is allowed. No other module listens for
+// contextmenu.
 const DP_EDITABLE_FIELD = 'textarea,input:not([type="checkbox"],[type="radio"],[type="button"],[type="submit"],'
   + '[type="reset"],[type="range"],[type="color"],[type="file"],[type="image"],[type="hidden"])';
 function dpKeepsNativeContextMenu(target) {
@@ -266,8 +268,67 @@ function dpKeepsNativeContextMenu(target) {
 document.addEventListener('contextmenu', event => {
   if (dpKeepsNativeContextMenu(event.target)) return;
   event.preventDefault();
+  dpCloseContextMenu(false);
+  if (dpOriginalResourceMenu(event)) return;
   window.DPDownloads?.contextMenu?.(event);
 });
+
+// The one application menu: one at a time, at the pointer, or at its anchor
+// when the keyboard opened it, always inside the viewport, and inside the
+// dialog that holds its anchor (above that dialog, below any over it) or else
+// above the page. Escape, Tab, a pointer outside it, scrolling, resizing,
+// navigation and closing Details close it; Escape, Tab and a chosen item
+// return focus through ``restore``.
+let dpContextMenu = null;
+function dpCloseContextMenu(restoreFocus) {
+  if (!dpContextMenu) return;
+  const {node, abort, restore} = dpContextMenu;
+  dpContextMenu = null;
+  abort.abort();
+  node.remove();
+  if (restoreFocus) restore?.();
+}
+function dpOpenContextMenu(event, anchor, {label, items, restore}) {
+  dpCloseContextMenu(false);
+  const node = document.createElement('div');
+  node.className = 'dp-row-menu';
+  node.setAttribute('role', 'menu');
+  node.setAttribute('aria-label', label);
+  const buttons = items.map(({text}) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.setAttribute('role', 'menuitem');
+    item.textContent = text;
+    node.appendChild(item);
+    return item;
+  });
+  (anchor.closest('#overlay') || document.body).appendChild(node);
+  const rect = anchor.getBoundingClientRect();
+  const atPointer = event.clientX >= rect.left && event.clientX <= rect.right
+    && event.clientY >= rect.top && event.clientY <= rect.bottom;
+  const x = atPointer ? event.clientX : rect.left + 16;
+  const y = atPointer ? event.clientY : rect.bottom;
+  const size = node.getBoundingClientRect();
+  node.style.left = `${Math.max(4, Math.min(x, window.innerWidth - size.width - 4))}px`;
+  node.style.top = `${Math.max(4, Math.min(y, window.innerHeight - size.height - 4))}px`;
+  const abort = new AbortController();
+  const signal = abort.signal;
+  dpContextMenu = {node, abort, restore};
+  buttons.forEach((item, index) => item.addEventListener('click', () => {
+    dpCloseContextMenu(true);
+    items[index].run();
+  }, {signal}));
+  node.addEventListener('keydown', e => {
+    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); dpCloseContextMenu(true); }
+  }, {signal});
+  document.addEventListener('pointerdown', e => { if (!node.contains(e.target)) dpCloseContextMenu(false); }, {signal, capture: true});
+  window.addEventListener('scroll', () => dpCloseContextMenu(false), {signal, capture: true});
+  window.addEventListener('resize', () => dpCloseContextMenu(false), {signal});
+  document.addEventListener('debridpulse:navigation', () => dpCloseContextMenu(false), {signal});
+  document.addEventListener('debridpulse:detail-closed', () => dpCloseContextMenu(false), {signal});
+  buttons[0].focus({preventScroll: true});
+  return true;
+}
 
 // ── Toast ──────────────────────────────────────────────────────────────────
 function esc(s) {
@@ -1942,9 +2003,89 @@ const DPModal = (function () {
 window.DPModal = DPModal;
 
 // ── Detail Modal ───────────────────────────────────────────────────────────
+// Original Resource: the backend's complete safe URL, shown on hover or focus,
+// and -- only when the backend allows it -- Copy URL in the application's one
+// menu, which copies exactly that value. The menu acts only on the rendering
+// it was opened from: any other rendering or a closed Details leaves nothing
+// to copy.
+let dpDetailResource = null;
+function dpOriginalResourceMenu(event) {
+  const snapshot = dpDetailResource;
+  const node = event.target.closest?.('.dp-detail-resource');
+  if (!snapshot || !node || node !== snapshot.node || !node.isConnected) return false;
+  return dpOpenContextMenu(event, node, {
+    label: 'Original Resource actions',
+    items: [{text: 'Copy URL', run: () => dpCopyOriginalResource(snapshot)}],
+    restore: () => { if (snapshot.node.isConnected) snapshot.node.focus({preventScroll: true}); },
+  });
+}
+async function dpCopyOriginalResource(snapshot) {
+  if (dpDetailResource !== snapshot || !snapshot.node.isConnected) {
+    toast('Details changed. Nothing was copied.', 'warn');
+    return;
+  }
+  try {
+    if (!navigator.clipboard?.writeText) throw new Error('Clipboard API unavailable');
+    await navigator.clipboard.writeText(snapshot.url);
+  } catch (_) {
+    toast('Could not copy the URL.', 'error');
+    return;
+  }
+  toast('URL copied.', 'success');
+}
+function dpRenderOriginalResource(modalBody, t) {
+  const full = typeof t.original_resource_sanitized_full === 'string' ? t.original_resource_sanitized_full : '';
+  const field = modalBody?.querySelector('.dp-detail-original-resource .dv');
+  if (!field) return;
+  if (!full) { field.textContent = t.original_resource || '—'; return; }
+  const value = document.createElement('span');
+  value.className = 'dp-detail-resource';
+  value.tabIndex = 0;
+  value.setAttribute('aria-describedby', 'dp-detail-resource-full');
+  value.textContent = t.original_resource || full;
+  const tip = document.createElement('span');
+  tip.className = 'dp-detail-resource-full';
+  tip.id = 'dp-detail-resource-full';
+  tip.setAttribute('role', 'tooltip');
+  tip.textContent = full;
+  // Below the row, or above it when that has more room, never past the
+  // viewport or anything that clips Details; it scrolls within what is left.
+  const place = () => {
+    const row = field.parentElement.getBoundingClientRect();
+    let top = 0, bottom = window.innerHeight;
+    for (let node = field.parentElement.parentElement; node && node !== document.body; node = node.parentElement) {
+      if (getComputedStyle(node).overflowY === 'visible') continue;
+      const clip = node.getBoundingClientRect();
+      top = Math.max(top, clip.top);
+      bottom = Math.min(bottom, clip.bottom);
+    }
+    const below = bottom - row.bottom - 8, above = row.top - top - 8;
+    const up = below < 120 && above > below;
+    tip.classList.toggle('is-above', up);
+    tip.style.maxHeight = `${Math.max(0, Math.min(240, up ? above : below))}px`;
+  };
+  value.addEventListener('pointerenter', place);
+  value.addEventListener('focus', place);
+  // Escape dismisses the tooltip without leaving the value; leaving restores it.
+  value.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || value.classList.contains('is-dismissed')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    value.classList.add('is-dismissed');
+  });
+  const restore = () => value.classList.remove('is-dismissed');
+  value.addEventListener('blur', restore);
+  field.addEventListener('pointerleave', restore);
+  field.replaceChildren(value, tip);
+  if (t.original_resource_copy_allowed === true) dpDetailResource = {url: full, node: value};
+}
+document.addEventListener('debridpulse:detail-closed', () => { dpDetailResource = null; });
+
 async function showDetail(id) {
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
+  dpDetailResource = null;
+  dpCloseContextMenu(false);
 
   DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details'});
   const traceButton = document.querySelector('#modal .dp-detail-trace');
@@ -1985,7 +2126,7 @@ async function showDetail(id) {
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>
         <div><div class="dk">Completed</div><div class="dv">${fmtDate(t.completed_at)}</div></div>
-        <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv">${esc(t.original_resource || '—')}</div></div>
+        <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv"></div></div>
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
@@ -2050,6 +2191,7 @@ async function showDetail(id) {
         </div>
       `:''}
     `;
+    dpRenderOriginalResource(modalBody, t);
 
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: t}}));

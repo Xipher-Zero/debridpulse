@@ -54,6 +54,9 @@ _ROUTE_REPLACEMENT_OPERATIONS = frozenset({"operator_switch", "readiness_promoti
 # Settled history (completed, cancelled) and the absorbed/deleted are never
 # queue entries.
 _QUEUE_MEMBER_SQL = "status NOT IN ('completed','consolidated','deleted','cancelled')"
+# The application event recording that a root request is exactly the resource
+# the admission boundary received (``TransferRepository.admit``).
+REQUEST_ADMITTED_VERBATIM = "request_admitted_verbatim"
 _MUTATING_EXECUTION_STATES = frozenset({"prepared", "queued", "running", "paused", "unknown"})
 
 # The forms a retired generation's unique ``torrents.hash`` takes once it no
@@ -335,6 +338,7 @@ async def _edit_selection_intent_member_in_db(db, root_id: str, transfer_id: int
 
 
 @dataclass(frozen=True)
+
 class AggregateLifecycleOutcome:
     """Result of one atomic ``TransferRepository.aggregate_lifecycle`` call.
 
@@ -2091,7 +2095,8 @@ class TransferRepository:
             return await self._predecessor_cleanup_blocks(db, transfer_id)
 
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=None, deduplicate=True,
-                    independent=True, alternative_groups: tuple[int | None, ...] | None = None) -> tuple[Transfer, bool]:
+                    independent=True, alternative_groups: tuple[int | None, ...] | None = None,
+                    verbatim: tuple[bool, ...] = ()) -> tuple[Transfer, bool]:
         """Admit one submission under the source's active dedupe identity.
 
         Matching live work (any non-terminal lifecycle, a failed one included:
@@ -2118,7 +2123,13 @@ class TransferRepository:
         A NEW transfer joins the tail of the unfinished queue (``queue``):
         ``priority=None`` takes the lowest priority any unfinished transfer
         holds (never above 0), which the older transfer wins on a tie, so no
-        existing position changes and nothing is displaced."""
+        existing position changes and nothing is displaced.
+
+        ``verbatim`` (one entry per request, from the admission boundary
+        alone) records, in this transaction, which roots are exactly the
+        resource that boundary received: one non-secret
+        ``request_admitted_verbatim`` application event naming the root
+        (claimed, so it is never delivered). No event is no proof."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -2156,18 +2167,39 @@ class TransferRepository:
                     state = "skipped" if group is not None and group in selected else "pending"
                     if group is not None:
                         selected.add(group)
+                    root = new_identity()
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state,alternative_group) "
                                      "VALUES(?,?,?,?,?,?)",
-                                     (new_identity(), transfer_id, ordinal, codec.dump(request), state, group))
+                                     (root, transfer_id, ordinal, codec.dump(request), state, group))
+                    await self._attest_verbatim(db, transfer_id, root, verbatim, ordinal)
             elif not existing:
                 for ordinal, request in enumerate(requests):
+                    root = new_identity()
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload) VALUES(?,?,?,?)",
-                                     (new_identity(), transfer_id, ordinal, codec.dump(request)))
+                                     (root, transfer_id, ordinal, codec.dump(request)))
+                    await self._attest_verbatim(db, transfer_id, root, verbatim, ordinal)
             if created:
                 await journal(db, je.accepted(transfer_id))
                 await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))
             await db.commit()
         return await self.get(transfer_id), created
+
+    @staticmethod
+    async def _attest_verbatim(db, transfer_id: int, request_id: str, verbatim: tuple[bool, ...], ordinal: int) -> None:
+        if ordinal < len(verbatim) and verbatim[ordinal] is True:
+            await db.execute("INSERT INTO application_events(transfer_id,kind,detail,claimed) VALUES(?,?,?,1)",
+                             (transfer_id, REQUEST_ADMITTED_VERBATIM, request_id))
+
+    async def first_root_admitted_verbatim(self, transfer_id: int) -> bool:
+        """Whether the root Details presents (the first root, in the order
+        ``presentation`` reads them) was attested at admission as the resource
+        received verbatim. Legacy and unattested roots are ``False``."""
+        async with get_db() as db:
+            row = await db.fetchone("""SELECT EXISTS(SELECT 1 FROM application_events e
+                    WHERE e.kind=? AND e.transfer_id=r.transfer_id AND e.detail=r.id) AS attested
+                FROM transfer_requests r WHERE r.transfer_id=? AND r.parent_id IS NULL
+                ORDER BY r.ordinal,r.id LIMIT 1""", (REQUEST_ADMITTED_VERBATIM, transfer_id))
+        return bool(row and row["attested"])
 
     @staticmethod
     async def _write_lifecycle_transition(

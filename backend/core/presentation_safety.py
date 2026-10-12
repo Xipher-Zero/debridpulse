@@ -10,8 +10,11 @@ import re
 from urllib.parse import urlsplit, urlunsplit
 
 
-def _middle_ellipsis(value: str, max_length: int) -> str:
-    """Bound presentation text while retaining both source and filename identity."""
+def _middle_ellipsis(value: str, max_length: int | None) -> str:
+    """Bound presentation text while retaining both source and filename identity.
+    ``None`` asks for the complete value: shortening is display, not redaction."""
+    if max_length is None:
+        return value
     limit = max(24, int(max_length))
     if len(value) <= limit:
         return value
@@ -95,7 +98,7 @@ _REMOTE_FILE_QUERYLESS = frozenset({"scp", "ssh", "rsync", "rsync+ssh"})
 _REMOTE_FILE_WITH_QUERY = frozenset({"ftp", "sftp", "webdav", "webdavs", "dav", "davs"})
 
 
-def safe_original_remote_file_resource(value: object, *, max_length: int = 180) -> str | None:
+def safe_original_remote_file_resource(value: object, *, max_length: int | None = 180) -> str | None:
     """Return a remote-file source label: ``scheme://host[:port]/path``, never
     any userinfo. For SCP/SSH the path is exactly as submitted (a raw ``?`` or
     ``*`` there is a file pattern -- these transports have no query); for
@@ -126,7 +129,7 @@ def safe_original_remote_file_resource(value: object, *, max_length: int = 180) 
     return _middle_ellipsis(origin + suffix, max_length)
 
 
-def safe_original_http_resource(value: object, *, max_length: int = 180) -> str | None:
+def safe_original_http_resource(value: object, *, max_length: int | None = 180) -> str | None:
     """Return a useful HTTP(S) source label without userinfo, query values, or fragments.
 
     The caller must supply the durable original user request, never a resolved or

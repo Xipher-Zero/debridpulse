@@ -43,7 +43,7 @@ from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.manual_queue_move import QueueMoveRefused, RestartConfirmationRequired
 from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
-from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource
+from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource, safe_public_host
 from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.models import AuthMechanism
 from auth.oidc_version import oidc_configuration_version
@@ -249,6 +249,40 @@ def _provider_theme(identity: str | None, definitions) -> str | None:
     return definition.presentation.transfer_theme if definition is not None else None
 
 
+_REMOTE_FILE_KINDS = frozenset({"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh", "webdav", "webdavs", "dav", "davs"})
+
+
+def _original_resource_url(request_payload, admitted_verbatim: bool = False) -> tuple[str | None, bool]:
+    """``(complete safe URL, copy allowed)`` for Details' Original Resource.
+
+    The URL is the same canonical sanitizer's output as the compact label,
+    only never shortened; ``None`` when that sanitizer yields no URL. Copy is
+    allowed only for an HTTP(S) request the admission boundary attested as
+    received verbatim (``admitted_verbatim``, read from the repository),
+    whose host is a plain DNS name or address, and which that sanitizer
+    returns byte for byte unchanged -- so the copied value is the safe value
+    itself and nothing was, or would be, removed."""
+    if not request_payload:
+        return None, False
+    try:
+        request = codec.request(request_payload)
+    except (TypeError, ValueError, KeyError):
+        return None, False
+    kind = str(request.kind or "").strip().lower()
+    if not isinstance(request.payload, str):
+        return None, False
+    raw = request.payload
+    if kind in {"http", "https"}:
+        full = safe_original_http_resource(raw, max_length=None)
+    elif kind in _REMOTE_FILE_KINDS:
+        full = safe_original_remote_file_resource(raw, max_length=None)
+    else:
+        return None, False
+    copy_allowed = (kind in {"http", "https"} and admitted_verbatim is True and full == raw
+                    and safe_public_host(urlsplit(raw).hostname) is not None)
+    return full, copy_allowed
+
+
 def _safe_original_resource(request_payload) -> str | None:
     """Return a normal-user source label without returning capability-bearing data."""
     if not request_payload:
@@ -264,7 +298,7 @@ def _safe_original_resource(request_payload) -> str | None:
     if kind in {"http", "https"}:
         return safe_original_http_resource(raw, max_length=180) or request.name or "HTTP/HTTPS resource"
 
-    if kind in {"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh", "webdav", "webdavs", "dav", "davs"}:
+    if kind in _REMOTE_FILE_KINDS:
         # The operator's own remote-file request (never, for SCP/SSH, the SFTP
         # address it executes as, nor, for WebDAV, the HTTP(S) address): scheme,
         # host, non-default port and path only.
@@ -279,7 +313,7 @@ def _safe_original_resource(request_payload) -> str | None:
     return request.name or (f"{kind.upper()} resource" if kind else "Source resource")
 
 
-def _public_transfer_presentation(value, definitions) -> dict:
+def _public_transfer_presentation(value, definitions, *, admitted_verbatim: bool = False) -> dict:
     """Decorate durable provenance with neutral display metadata before stripping capabilities."""
     raw_request = value.get("request") if isinstance(value, dict) else None
     result = public_payload(value)
@@ -307,6 +341,9 @@ def _public_transfer_presentation(value, definitions) -> dict:
 
     if raw_request is not None:
         result["original_resource"] = _safe_original_resource(raw_request)
+        full, result["original_resource_copy_allowed"] = _original_resource_url(raw_request, admitted_verbatim)
+        if full:
+            result["original_resource_sanitized_full"] = full
     return result
 
 
@@ -1033,7 +1070,9 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     )
     if item is None:
         raise HTTPException(404, "Transfer not found")
-    return _public_transfer_presentation(item, application.definitions)
+    return _public_transfer_presentation(
+        item, application.definitions,
+        admitted_verbatim=await application.repository.first_root_admitted_verbatim(torrent_id))
 
 
 @router.get("/torrents/{torrent_id}/trace")

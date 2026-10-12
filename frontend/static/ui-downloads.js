@@ -957,56 +957,18 @@ function moveSelectionToTop(button) {
 
 // The row menu: one command, Move to Top, for an unfinished transfer's row,
 // opened by the application's one context-menu policy (app.js) once it has
-// left the browser its own menu wherever that does real work. One menu at a
-// time; Escape, Tab, a pointer outside it, scrolling and navigation close it.
-let rowMenu = null;
-function closeRowMenu(restoreFocus) {
-  if (!rowMenu) return;
-  const {node, id, abort} = rowMenu;
-  rowMenu = null;
-  abort.abort();
-  node.remove();
-  if (restoreFocus) document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`)?.focus();
-}
+// left the browser its own menu wherever that does real work, and shown by
+// its one menu (dpOpenContextMenu), which closes it back to its row.
 function contextMenu(event) {
-  closeRowMenu(false);
   const row = event.target.closest?.('#t-tbody tr[data-torrent-id]');
   if (!row || row.dataset.queueMember !== 'true' || reorder) return false;
   const id = rowId(row);
   const name = rowName(row);
-  const node = document.createElement('div');
-  node.className = 'dp-row-menu';
-  node.setAttribute('role', 'menu');
-  node.setAttribute('aria-label', `${name} actions`);
-  const item = document.createElement('button');
-  item.type = 'button';
-  item.setAttribute('role', 'menuitem');
-  item.textContent = 'Move to Top';
-  node.appendChild(item);
-  document.body.appendChild(node);
-  // At the pointer, or at its row when the keyboard opened it; always inside the viewport.
-  const rect = row.getBoundingClientRect();
-  const atPointer = event.clientX >= rect.left && event.clientX <= rect.right
-    && event.clientY >= rect.top && event.clientY <= rect.bottom;
-  const x = atPointer ? event.clientX : rect.left + 16;
-  const y = atPointer ? event.clientY : rect.bottom;
-  const size = node.getBoundingClientRect();
-  node.style.left = `${Math.max(4, Math.min(x, window.innerWidth - size.width - 4))}px`;
-  node.style.top = `${Math.max(4, Math.min(y, window.innerHeight - size.height - 4))}px`;
-  const abort = new AbortController();
-  const signal = abort.signal;
-  rowMenu = {node, id, abort};
-  item.addEventListener('click', () => { closeRowMenu(true); moveToTop([id], {name, focusId: id}); }, {signal});
-  // Escape, or Tab out of its one item, closes it back to its row.
-  node.addEventListener('keydown', e => {
-    if (e.key === 'Escape' || e.key === 'Tab') { e.preventDefault(); e.stopPropagation(); closeRowMenu(true); }
-  }, {signal});
-  document.addEventListener('pointerdown', e => { if (!node.contains(e.target)) closeRowMenu(false); }, {signal, capture: true});
-  window.addEventListener('scroll', () => closeRowMenu(false), {signal, capture: true});
-  window.addEventListener('resize', () => closeRowMenu(false), {signal});
-  document.addEventListener('debridpulse:navigation', () => closeRowMenu(false), {signal});
-  item.focus({preventScroll: true});
-  return true;
+  return dpOpenContextMenu(event, row, {
+    label: `${name} actions`,
+    items: [{text: 'Move to Top', run: () => moveToTop([id], {name, focusId: id})}],
+    restore: () => document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`)?.focus(),
+  });
 }
 
 // ── Row/bulk actions ─────────────────────────────────────────────────────

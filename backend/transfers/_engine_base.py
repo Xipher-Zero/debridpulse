@@ -552,12 +552,14 @@ class TransferEngine:
             raise TransferError(self._error(Category.INVALID_REQUEST, Stage.SUBMISSION, domain=Domain.REQUEST, retryability=Retryability.NEVER))
         # The admission boundary: credentials a resource carries are split out
         # as USER_SUPPLIED material before anything is persisted, so only the
-        # sanitized resource is ever durable.
+        # sanitized resource is ever durable -- and the repository records
+        # which requests are exactly the resource as received.
         split = [split_user_supplied(item.payload) for item in requests]
         requests = tuple(replace(item, payload=payload) if values else item
                          for item, (payload, values) in zip(requests, split))
         transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate,
                                                         independent=independent,
+                                                        verbatim=tuple(not values for _payload, values in split),
                                                         **({"alternative_groups": alternative_groups} if alternative_groups else {}))
         if created and any(values for _payload, values in split):
             # An independent submission never joins another lineage's material,

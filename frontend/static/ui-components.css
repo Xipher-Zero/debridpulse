@@ -409,6 +409,15 @@ textarea.dp-field {
 .dp-tooltip[data-tooltip]:hover::after,
 .dp-tooltip[data-tooltip]:focus-within::after { opacity: 1; visibility: visible; transform: translate(-50%, 0); }
 
+/* ── Context menu ──────────────────────────────────────────────────── */
+/* The one application menu (app.js dpOpenContextMenu: Downloads' Move to Top,
+   Details' Copy URL): the date menu's panel and item material, opened at the
+   pointer, above the page or the dialog holding its anchor, below any dialog
+   over that. */
+.dp-row-menu{position:fixed;z-index:450;min-width:152px;padding:6px;border:1px solid var(--border);border-radius:8px;background:var(--surface);box-shadow:0 10px 28px rgba(0,0,0,.24)}
+.dp-row-menu button{display:block;width:100%;padding:6px 10px;text-align:left;border:0;border-radius:5px;color:var(--text2);background:transparent;font:inherit;font-size:12px;cursor:pointer}
+.dp-row-menu button:hover,.dp-row-menu button:focus-visible{color:var(--text);background:var(--surface2);outline:none}
+
 /* ── Dialog / drawer / toast ───────────────────────────────────────── */
 .dp-backdrop { position: fixed; inset: 0; z-index: 800; display: grid; place-items: center; padding: var(--dp-space-9); background: rgba(0, 3, 12, .66); backdrop-filter: blur(8px); }
 .dp-dialog { width: min(calc(100vw - 48px), var(--dp-modal-width-md)); max-height: min(88vh, 860px); display: flex; flex-direction: column; border: 1px solid var(--dp-border-strong); border-radius: var(--dp-radius-xl); background: var(--dp-surface-overlay); box-shadow: var(--dp-shadow-raised); overflow: hidden; }
