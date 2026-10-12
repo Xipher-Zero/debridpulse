@@ -41,15 +41,16 @@
   --dp-accent-contrast: #ffffff;
 
   /* Semantic state colors */
-  /* Success is one emerald family in three roles: the semantic colour (labels,
-     values, other foregrounds), its mark (status glyphs, icons, health dots)
-     and its fill (progress), with a restrained #34D399 highlight for glow
-     only. Dark theme draws all three in the primary emerald; light theme
-     deepens the label and the mark for contrast on white. */
-  --dp-state-success: #10B981;
-  --dp-state-success-mark: #10B981;
-  --dp-state-success-fill: #10B981;
-  --dp-state-success-highlight: #34D399;
+  /* Success is one vivid emerald family in three roles: the semantic colour
+     (labels, values, other foregrounds), its mark (status glyphs, icons,
+     health dots) and its fill (progress, and the light its glows give off),
+     with a deeper emerald leading the progress gradient. Dark theme draws all
+     three in the primary #00E676; light theme deepens the label and the mark,
+     in the same hue, for contrast on white. */
+  --dp-state-success: #00E676;
+  --dp-state-success-mark: #00E676;
+  --dp-state-success-fill: #00E676;
+  --dp-state-success-deep: #00C853;
   --dp-state-active: #3b89ff;
   --dp-state-processing: #ffb52b;
   --dp-state-caution: #ffc13d;
@@ -88,7 +89,7 @@
   --dp-shadow-raised: 0 18px 46px rgba(0, 0, 10, .36);
   --dp-shadow-control: 0 5px 16px rgba(0, 0, 8, .22);
   --dp-glow-accent: 0 0 22px rgba(155, 69, 255, .18);
-  --dp-glow-success: 0 0 16px rgba(52, 211, 153, .13);
+  --dp-glow-success: 0 0 16px rgba(0, 230, 118, .13);
   --dp-glow-active: 0 0 16px rgba(59, 137, 255, .13);
   --dp-glow-caution: 0 0 16px rgba(255, 193, 61, .12);
   --dp-glow-error: 0 0 16px rgba(255, 82, 100, .12);
@@ -190,8 +191,8 @@ body.light,
   --dp-accent-cyan: #009dcb;
   --dp-accent-rgb: 132, 40, 237;
 
-  --dp-state-success: #047857;
-  --dp-state-success-mark: #059669;
+  --dp-state-success: #01783B;
+  --dp-state-success-mark: #01974B;
   /* The alias resolves where it is declared, so it follows the light value here too. */
   --green: var(--dp-state-success);
   --dp-state-active: #2779ee;
@@ -221,7 +222,7 @@ body.light,
   --dp-shadow-raised: 0 14px 34px rgba(45, 61, 96, .12);
   --dp-shadow-control: 0 3px 10px rgba(45, 61, 96, .075);
   --dp-glow-accent: 0 0 18px rgba(132, 40, 237, .08);
-  --dp-glow-success: 0 0 13px rgba(52, 211, 153, .07);
+  --dp-glow-success: 0 0 13px rgba(0, 230, 118, .07);
   --dp-glow-active: 0 0 13px rgba(39, 121, 238, .07);
   --dp-glow-caution: 0 0 13px rgba(217, 138, 0, .07);
   --dp-glow-error: 0 0 13px rgba(230, 66, 85, .07);

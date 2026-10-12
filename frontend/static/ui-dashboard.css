@@ -1002,7 +1002,7 @@ body.light #t-tbody .prog {
 #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
 #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
   color: var(--dp-state-success) !important;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-highlight) 30%, transparent);
+  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-fill) 30%, transparent);
 }
 #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
 #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
@@ -1241,13 +1241,13 @@ body.light .theme-toggle {
   color: var(--dp-state-success-mark) !important;
   background: var(--dp-state-success-mark) !important;
   box-shadow:
-    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 78%, transparent),
-    0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 34%, transparent) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-fill) 78%, transparent),
+    0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 34%, transparent) !important;
 }
 body.light #dot-api.ok {
   box-shadow:
-    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 66%, transparent),
-    0 0 12px color-mix(in srgb, var(--dp-state-success-highlight) 28%, transparent) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-fill) 66%, transparent),
+    0 0 12px color-mix(in srgb, var(--dp-state-success-fill) 28%, transparent) !important;
 }
 
 /* ── Sidebar selected endpoint + download-count badge ─────────────────── */
@@ -1383,16 +1383,15 @@ body.light #view-dashboard #btn-add-transfer {
 #dash-tbody .prog-fill,
 #t-tbody .prog-fill {
   height: 7px !important;
-  background: linear-gradient(90deg, var(--dp-state-success-fill),
-    color-mix(in srgb, var(--dp-state-success-fill) 78%, var(--dp-state-success-highlight))) !important;
+  background: linear-gradient(90deg, var(--dp-state-success-deep), var(--dp-state-success-fill)) !important;
   /* DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow reduced by
      a relative 15% (alpha * 0.85) from the prior .78/.34 -- blur radii,
      color, and dimensions unchanged. This is the sole effective ordinary
      progress-glow declaration for Dashboard + Downloads (see the removed
      data-status-scoped duplicates above). */
   box-shadow:
-    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 66.3%, transparent),
-    0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-fill) 66.3%, transparent),
+    0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-fill,
 #t-tbody tr:has(.badge-partial) .prog-fill {
@@ -1412,12 +1411,12 @@ body.light #view-dashboard #btn-add-transfer {
   line-height: 1 !important;
   font-weight: 800 !important;
   letter-spacing: -.025em !important;
-  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-highlight) 30%, transparent) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-fill) 30%, transparent) !important;
 }
 body.light #dash-tbody .prog-pct,
 body.light #t-tbody .prog-pct {
   color: var(--dp-state-success) !important;
-  text-shadow: 0 0 7px color-mix(in srgb, var(--dp-state-success-highlight) 18%, transparent) !important;
+  text-shadow: 0 0 7px color-mix(in srgb, var(--dp-state-success-fill) 18%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-pct,
 #t-tbody tr:has(.badge-partial) .prog-pct {

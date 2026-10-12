@@ -135,7 +135,7 @@ def test_canonical_dashboard_keeps_sidebar_provider_and_badge_presentation() -> 
             "#premium-row::before",
             "top: 17px !important",
             "#dot-api.ok",
-            "color-mix(in srgb, var(--dp-state-success-highlight) 78%, transparent)",
+            "color-mix(in srgb, var(--dp-state-success-fill) 78%, transparent)",
             "ellipse 78% 46% at 52% 50%",
             "#nb-active.nav-badge",
             "#eadcff",
@@ -157,7 +157,7 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
             "height: 7px !important",
             # DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow
             # reduced by a relative 15% (.34 * 0.85 = .289).
-            "0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent)",
+            "0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent)",
             "font-size: 16px !important",
             "font-weight: 800 !important",
             ".dash-activity-table-wrap",

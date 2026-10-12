@@ -27,9 +27,9 @@ def test_status_scoped_duplicate_glow_blocks_are_removed() -> None:
 
 def test_ordinary_and_partial_progress_glow_reduced_by_fifteen_percent() -> None:
     css = read("ui-dashboard.css")
-    # Ordinary (emerald highlight): 0.78 * 0.85 = 66.3%, 0.34 * 0.85 = 28.9%.
-    assert "color-mix(in srgb, var(--dp-state-success-highlight) 66.3%, transparent)" in css
-    assert "color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent)" in css
+    # Ordinary (emerald glow): 0.78 * 0.85 = 66.3%, 0.34 * 0.85 = 28.9%.
+    assert "color-mix(in srgb, var(--dp-state-success-fill) 66.3%, transparent)" in css
+    assert "color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent)" in css
     assert "rgba(48,211,130," not in css
     # Partial (amber): 0.76 * 0.85 = 0.646, 0.32 * 0.85 = 0.272.
     assert "rgba(242,189,63,.646)" in css
@@ -40,8 +40,8 @@ def test_ordinary_and_partial_progress_glow_reduced_by_fifteen_percent() -> None
 
 def test_progress_glow_blur_radii_and_geometry_are_unchanged() -> None:
     css = read("ui-dashboard.css")
-    assert "0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 66.3%, transparent)" in css
-    assert "0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent)" in css
+    assert "0 0 6px color-mix(in srgb, var(--dp-state-success-fill) 66.3%, transparent)" in css
+    assert "0 0 13px color-mix(in srgb, var(--dp-state-success-fill) 28.9%, transparent)" in css
     assert "height: 7px !important" in css
 
 

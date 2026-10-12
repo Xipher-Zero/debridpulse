@@ -6,13 +6,15 @@ const { test, expect } = require('@playwright/test');
  * Provider Status dot -- in both themes, and provider identity chips beside
  * them unchanged. The Downloads collection is answered by the page itself. */
 
-const EMERALD = 'rgb(16, 185, 129)';           // #10B981: primary (dark labels and marks; fills in both themes)
-const LABEL_LIGHT = 'rgb(4, 120, 87)';         // #047857: light-theme labels, percentages
-const MARK_LIGHT = 'rgb(5, 150, 105)';         // #059669: light-theme glyphs and dots
+const EMERALD = 'rgb(0, 230, 118)';            // #00E676: primary (dark labels and marks; fills in both themes)
+const LABEL_LIGHT = 'rgb(1, 120, 59)';         // #01783B: light-theme labels, percentages
+const MARK_LIGHT = 'rgb(1, 151, 75)';          // #01974B: light-theme glyphs and dots
 const IDENTITY_INK = {                          // the locked identity colours, as the chip draws them
   dark: {TorBox: 'oklch(0.707893 0.148228 164.215)', 'Real-Debrid': 'oklch(0.691582 0.126192 132.063)'},
   light: {TorBox: 'oklch(0.48 0.148228 164.215)', 'Real-Debrid': 'oklch(0.48 0.126192 132.063)'},
 };
+
+const DEEP = 'rgb(0, 200, 83)';                 // #00C853: the progress gradient's leading stop
 
 const row = (id, provider, name, status, progress) => ({id, name: `${name} sample`, hash: `h${id}`, status, progress,
   size_bytes: 1 << 30, created_at: '2026-10-11T12:00:00Z', source: 'magnet', label: null,
@@ -59,7 +61,7 @@ test('success reads emerald in both themes, with locked identity chips beside it
           const at = `${theme} ${view} ${provider} ${status}`, r = rows[`${provider}:${status}`];
           expect(r.badge, `${at} badge label`).toBe(label);
           if (view === 'dashboard') expect(r.glyph, `${at} badge glyph`).toBe(mark);
-          expect(r.fill, `${at} progress fill`).toMatch(new RegExp(`^linear-gradient\\(90deg, ${EMERALD.replace(/[()]/g, '\\$&')}`));
+          expect(r.fill, `${at} progress fill`).toBe(`linear-gradient(90deg, ${DEEP}, ${EMERALD})`);
           if (status === 'downloading') expect(r.pct, `${at} percentage`).toBe(label);
           expect(r.chip, `${at} identity chip`).toBe(IDENTITY_INK[theme][provider]);
         }
