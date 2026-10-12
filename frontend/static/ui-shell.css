@@ -178,7 +178,7 @@ body {
 }
 .conn-row:last-child { margin-bottom: 0; }
 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text3); flex-shrink: 0; }
-.dot.ok     { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,.4); }
+.dot.ok     { background: var(--dp-state-success-mark); box-shadow: 0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 40%, transparent); }
 .dot.error  { background: var(--red); animation: blink 1.5s infinite; }
 .dot.check  { background: var(--yellow); animation: pulse 1.2s infinite; }
 .dot.warn   { background: var(--yellow); }

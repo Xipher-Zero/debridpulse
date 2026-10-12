@@ -555,8 +555,8 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   font-weight: 600;
 }
 #view-dashboard .badge-completed {
-  background: rgba(15, 159, 89, .15);
-  color: #44dc8d;
+  background: color-mix(in srgb, var(--dp-state-success-fill) 15%, transparent);
+  color: var(--dp-state-success);
 }
 #view-dashboard .badge-completed::before {
   content: '✓';
@@ -918,7 +918,7 @@ body.light .nav-item.active::after {
 }
 #dash-tbody tr[data-status="downloading"] .badge-downloading::before {
   content: '↓';
-  color: #34d382;
+  color: var(--dp-state-success-mark);
 }
 #dash-tbody tr[data-status="downloading"] .badge-partial::before {
   content: '↓';
@@ -932,7 +932,7 @@ body.light .nav-item.active::after {
 }
 #dash-tbody tr[data-status="completed"] .badge-completed::before {
   content: '✓';
-  color: #34d382;
+  color: var(--dp-state-success-mark);
 }
 #dash-tbody tr[data-status="error"] .badge-error::before {
   content: '×';
@@ -945,14 +945,14 @@ body.light .nav-item.active::after {
   font-family: var(--dp-font-sans), 'Segoe UI Symbol', 'Noto Sans Symbols 2', sans-serif;
 }
 #t-tbody tr[data-status="downloading"] .badge-downloading {
-  color: #34d382 !important;
+  color: var(--dp-state-success) !important;
 }
 #t-tbody tr[data-status="downloading"] .badge-partial,
 #t-tbody tr[data-status="paused"] .badge-paused {
   color: #f2bd3f !important;
 }
 #t-tbody tr[data-status="completed"] .badge-completed {
-  color: #34d382 !important;
+  color: var(--dp-state-success) !important;
 }
 #t-tbody tr[data-status="error"] .badge-error {
   color: #ff676f !important;
@@ -1001,8 +1001,8 @@ body.light #t-tbody .prog {
 }
 #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
 #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
-  color: #34d382 !important;
-  text-shadow: 0 0 8px rgba(52, 211, 130, .30);
+  color: var(--dp-state-success) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-highlight) 30%, transparent);
 }
 #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
 #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
@@ -1011,7 +1011,7 @@ body.light #t-tbody .prog {
 }
 body.light #dash-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct,
 body.light #t-tbody tr[data-status="downloading"]:not(:has(.badge-partial)) .prog-pct {
-  color: #198e55 !important;
+  color: var(--dp-state-success) !important;
 }
 body.light #dash-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct,
 body.light #t-tbody tr[data-status="downloading"]:has(.badge-partial) .prog-pct {
@@ -1238,18 +1238,16 @@ body.light .theme-toggle {
 
 /* Connected means green. Never let inherited currentColor create a warm halo. */
 #dot-api.ok {
-  color: #34d382 !important;
-  background: #34d382 !important;
+  color: var(--dp-state-success-mark) !important;
+  background: var(--dp-state-success-mark) !important;
   box-shadow:
-    0 0 6px rgba(52,211,130,.78),
-    0 0 13px rgba(52,211,130,.34) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 78%, transparent),
+    0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 34%, transparent) !important;
 }
 body.light #dot-api.ok {
-  color: #2bc979 !important;
-  background: #2bc979 !important;
   box-shadow:
-    0 0 6px rgba(43,201,121,.66),
-    0 0 12px rgba(43,201,121,.28) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 66%, transparent),
+    0 0 12px color-mix(in srgb, var(--dp-state-success-highlight) 28%, transparent) !important;
 }
 
 /* ── Sidebar selected endpoint + download-count badge ─────────────────── */
@@ -1385,15 +1383,16 @@ body.light #view-dashboard #btn-add-transfer {
 #dash-tbody .prog-fill,
 #t-tbody .prog-fill {
   height: 7px !important;
-  background: linear-gradient(90deg, #28c879, #43dc91) !important;
+  background: linear-gradient(90deg, var(--dp-state-success-fill),
+    color-mix(in srgb, var(--dp-state-success-fill) 78%, var(--dp-state-success-highlight))) !important;
   /* DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow reduced by
      a relative 15% (alpha * 0.85) from the prior .78/.34 -- blur radii,
      color, and dimensions unchanged. This is the sole effective ordinary
      progress-glow declaration for Dashboard + Downloads (see the removed
      data-status-scoped duplicates above). */
   box-shadow:
-    0 0 6px rgba(48,211,130,.663),
-    0 0 13px rgba(48,211,130,.289) !important;
+    0 0 6px color-mix(in srgb, var(--dp-state-success-highlight) 66.3%, transparent),
+    0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-fill,
 #t-tbody tr:has(.badge-partial) .prog-fill {
@@ -1408,17 +1407,17 @@ body.light #view-dashboard #btn-add-transfer {
 #t-tbody .prog-pct {
   display: inline-block !important;
   margin-top: 6px !important;
-  color: #42dc8c !important;
+  color: var(--dp-state-success) !important;
   font-size: 16px !important;
   line-height: 1 !important;
   font-weight: 800 !important;
   letter-spacing: -.025em !important;
-  text-shadow: 0 0 8px rgba(52,211,130,.30) !important;
+  text-shadow: 0 0 8px color-mix(in srgb, var(--dp-state-success-highlight) 30%, transparent) !important;
 }
 body.light #dash-tbody .prog-pct,
 body.light #t-tbody .prog-pct {
-  color: #198e55 !important;
-  text-shadow: 0 0 7px rgba(52,211,130,.18) !important;
+  color: var(--dp-state-success) !important;
+  text-shadow: 0 0 7px color-mix(in srgb, var(--dp-state-success-highlight) 18%, transparent) !important;
 }
 #dash-tbody tr:has(.badge-partial) .prog-pct,
 #t-tbody tr:has(.badge-partial) .prog-pct {
@@ -1615,7 +1614,7 @@ body.light .nav-item.active::after {
 /* The live speed remains semantically green, but light-mode contrast needs to
    be substantially stronger than the generic success green on white. */
 body.light #runtime-badge-speed {
-  color: #087a46 !important;
+  color: var(--dp-state-success) !important;
   font-weight: 700 !important;
 }
 

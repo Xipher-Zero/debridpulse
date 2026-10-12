@@ -135,7 +135,7 @@ def test_canonical_dashboard_keeps_sidebar_provider_and_badge_presentation() -> 
             "#premium-row::before",
             "top: 17px !important",
             "#dot-api.ok",
-            "rgba(52,211,130,.78)",
+            "color-mix(in srgb, var(--dp-state-success-highlight) 78%, transparent)",
             "ellipse 78% 46% at 52% 50%",
             "#nb-active.nav-badge",
             "#eadcff",
@@ -157,7 +157,7 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
             "height: 7px !important",
             # DP 1.0.12 UI Finishing (Correction 9): ordinary progress glow
             # reduced by a relative 15% (.34 * 0.85 = .289).
-            "0 0 13px rgba(48,211,130,.289)",
+            "0 0 13px color-mix(in srgb, var(--dp-state-success-highlight) 28.9%, transparent)",
             "font-size: 16px !important",
             "font-weight: 800 !important",
             ".dash-activity-table-wrap",
@@ -248,7 +248,7 @@ def test_canonical_dashboard_keeps_live_micro_refinements() -> None:
             "max-height: 38px !important",
             "ellipse 100% 74% at 98% 50%",
             "#runtime-badge-speed",
-            "color: #087a46 !important",
+            "body.light #runtime-badge-speed {\n  color: var(--dp-state-success) !important",
             ".dash-hero-stat:hover",
             "transform: none !important",
             "transition: none !important",
