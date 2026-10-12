@@ -77,7 +77,7 @@ def test_downloads_rows_emit_final_status_and_action_language() -> None:
 def test_downloads_footer_language_tracks_selected_filter() -> None:
     app = read("ui-downloads.js")
     matrix = (
-        "No Items Added Yet", "Showing 1 Added Item", "Added Items",
+        "No Retained Items", "Showing 1 Retained Item", "Retained Items",
         "No Active Downloads", "1 Active Download", "Active Downloads",
         "No Paused Downloads", "1 Paused Download", "Paused Downloads",
         "No Downloads Currently Processing", "1 Download Currently Processing", "Downloads Currently Processing",

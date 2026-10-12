@@ -609,21 +609,6 @@ function parseApiDate(d) {
   const parsed = new Date(value);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
-function fmtDate(d) {
-  const x = parseApiDate(d);
-  if (!x) return '—';
-  const timeZone = String((settingsData && settingsData.timezone) || '').trim() || undefined;
-  const dateOptions = {day:'2-digit',month:'2-digit'};
-  const timeOptions = {hour:'2-digit',minute:'2-digit',hour12:false};
-  if (timeZone) {
-    dateOptions.timeZone = timeZone;
-    timeOptions.timeZone = timeZone;
-  }
-  // Use en-GB for consistent DD.MM HH:MM format regardless of browser locale.
-  const dateStr = x.toLocaleDateString('en-GB',dateOptions).replace('/','.').replace('/','.');
-  const timeStr = x.toLocaleTimeString('en-GB',timeOptions);
-  return dateStr + ' ' + timeStr;
-}
 function pct(part, total) {
   if (!total) return 0;
   return Math.round((part / total) * 100);
@@ -2163,8 +2148,8 @@ async function showDetail(id) {
         <div><div class="dk">Progress</div><div class="dv">${dpDetailProgress(t)}</div></div>
         <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
-        <div><div class="dk">Added</div><div class="dv">${fmtDate(t.created_at)}</div></div>
-        <div><div class="dk">Completed</div><div class="dv">${fmtDate(t.completed_at)}</div></div>
+        <div><div class="dk">Added</div><div class="dv">${window.downloadsDateMarkup(t.created_at)}</div></div>
+        <div><div class="dk">Completed</div><div class="dv">${window.downloadsDateMarkup(t.completed_at)}</div></div>
         <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv"></div></div>
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
@@ -2224,7 +2209,7 @@ async function showDetail(id) {
               <div class="event-item">
                 <div class="elevel ${esc(ev.level)}"></div>
                 <div class="emsg">${esc(ev.message)}</div>
-                <div class="etime">${fmtDate(ev.created_at)}</div>
+                <div class="etime">${window.downloadsDateMarkup(ev.created_at)}</div>
               </div>`).join('')}
           </div>
         </div>

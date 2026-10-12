@@ -376,7 +376,7 @@ def test_downloads_has_exactly_one_owner_with_no_wrapper_patch_composition() -> 
         assert "const baseApi=api" not in source, name.name
         assert "const canonical=loadTorrents" not in source, name.name
         assert "loadTorrents=async function" not in source, name.name
-    assert 'Most of them followed instructions.' in downloads
+    assert 'Most of them behaved.' in downloads
 
 def test_dashboard_has_no_inherited_startup_status_surface_or_writer() -> None:
     html = read(INDEX)

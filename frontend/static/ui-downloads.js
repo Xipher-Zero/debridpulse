@@ -10,7 +10,7 @@
  * request's identity belong to the shared search
  * lifecycle (DPSearch, ui-search.js), as on the Activity Log. Every row is emitted in final form
  * by a single render pass -- this file never replaces api/loadTorrents/
- * renderTorrentPagination/fmtDate on another owner, and never re-renders an
+ * renderTorrentPagination on another owner, and never re-renders an
  * inherited Downloads implementation and repairs its DOM afterward.
  */
 (function () {
@@ -232,7 +232,7 @@ function downloadPaginationSummary(total, from, to) {
   }
   const status = activeDownloadFilterStatus();
   const language = {
-    '': ['No Items Added Yet', 'Showing 1 Added Item', n => 'Showing ' + n + ' Added Items'],
+    '': ['No Retained Items', 'Showing 1 Retained Item', n => 'Showing ' + n + ' Retained Items'],
     downloading: ['No Active Downloads', '1 Active Download', n => n + ' Active Downloads'],
     paused: ['No Paused Downloads', '1 Paused Download', n => n + ' Paused Downloads'],
     processing: ['No Downloads Currently Processing', '1 Download Currently Processing', n => n + ' Downloads Currently Processing'],
@@ -245,7 +245,7 @@ function downloadPaginationSummary(total, from, to) {
 }
 function updateDownloadsTrackedCopy(total) {
   const count = Math.max(0, Number(total) || 0);
-  const copy = count === 1 ? '1 download tracked. It followed instructions.' : count + ' downloads tracked. Most of them followed instructions.';
+  const copy = count === 1 ? '1 download tracked. It behaved.' : count + ' downloads tracked. Most of them behaved.';
   const title = document.getElementById('torrent-card-title');
   const subtitle = title?.querySelector('.dp-downloads-subtitle');
   if (subtitle) subtitle.textContent = copy;
