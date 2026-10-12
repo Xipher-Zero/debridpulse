@@ -1,6 +1,7 @@
 // The one search lifecycle (ui-search.js, DPSearch) on Downloads and the
-// Activity Log: which answer is shown under which typed text, what the status
-// line says, and that the search box keeps its value, focus and caret.
+// Activity Log: which answer is shown under which typed text, what the
+// operator is told, that the search box keeps its value, focus and caret, and
+// that searching never moves the page or repeats itself.
 const { test, expect } = require('@playwright/test');
 
 const meta = (query, extra = {}) => ({
@@ -103,8 +104,7 @@ test('Downloads: an invalid query is explained and the last accepted results sta
   await box.fill('alpha');
   await expect.poll(() => rowNames(page)).toEqual(['alpha one', 'alpha two']);
   await box.fill('ab');
-  const status = page.locator('#torrent-search-status');
-  await expect(status).toHaveText('Search needs at least 3 characters, or a transfer ID like #580. Results below are for “alpha”.');
+  await expect(page.locator('.toast', {hasText: 'Results are still for “alpha”.'})).toHaveCount(1);
   await expect(box).toHaveAttribute('aria-invalid', 'true');
   // Asked once, rejected, and the accepted query asked again.
   expect(requests.filter(search => search === 'ab')).toHaveLength(1);
@@ -113,9 +113,9 @@ test('Downloads: an invalid query is explained and the last accepted results sta
   await expect(page.locator('#torrent-page-info')).toHaveText('Showing all 2 matching downloads');
   await expect(box).toHaveValue('ab');
   await expect(box).toBeFocused();
-  // Typing again clears the explanation; Enter commits at once.
+  // Typing again clears the rejection; Enter commits at once.
   await box.pressSequentially('c');
-  await expect(status).toBeHidden();
+  await expect(box).toHaveAttribute('aria-invalid', 'false');
   await box.press('Enter');
   await expect.poll(() => requests.at(-1)).toBe('abc');
   await expect(box).toHaveAttribute('aria-invalid', 'false');
@@ -147,8 +147,7 @@ test('Activity Log shares the lifecycle: newest answer only, invalid explained, 
   await page.waitForTimeout(300);
   await expect(page.locator('#event-list .emsg')).toHaveText(['event for quick']);
   await box.fill('ab');
-  await expect(page.locator('#dp-activity-result-note')).toHaveText(
-    'Search needs at least 3 characters, or a transfer ID like #580. Results below are for “quick”.');
+  await expect(page.locator('.toast', {hasText: 'Results are still for “quick”.'})).toHaveCount(1);
   expect(requests.slice(-2)).toEqual(['ab', 'quick']);
   await expect(page.locator('#event-list .emsg')).toHaveText(['event for quick']);
   await expect(box).toBeFocused();
@@ -159,12 +158,84 @@ test('Both lists read the real server\'s one language', async ({ page }) => {
   await ready(page);
   await openDownloads(page);
   await page.locator('#torrent-search').fill('#0');
-  await expect(page.locator('#torrent-search-status')).toHaveText('Transfer IDs start at #1. Showing all downloads.');
+  await expect(page.locator('.toast', {hasText: 'Transfer IDs start at #1. Showing all downloads.'})).toHaveCount(1);
   await page.locator('#torrent-search').fill('58');
-  await expect(page.locator('#torrent-search-status')).toHaveText('Showing transfer #58 only: text search needs at least 3 characters.');
+  await expect(page.locator('.toast', {hasText: 'Showing transfer #58 only'})).toHaveCount(1);
   await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
   await page.locator('#ev-search').fill('#0');
-  await expect(page.locator('#dp-activity-result-note')).toHaveText('Transfer IDs start at #1. Showing all events.');
-  await page.locator('#ev-search').fill('58');
-  await expect(page.locator('#dp-activity-result-note')).toHaveText('Showing transfer #58 only: text search needs at least 3 characters.');
+  await expect(page.locator('.toast', {hasText: 'Transfer IDs start at #1. Showing all events.'})).toHaveCount(1);
+});
+
+test('Searching never adds a line, moves the page or searches itself again', async ({ page }) => {
+  await page.setViewportSize({width: 1440, height: 900});
+  await ready(page);
+  // Answers take a moment, as a real server's do.
+  const requests = await routeDownloads(page, async (route, search) => {
+    await new Promise(resolve => setTimeout(resolve, 150));
+    return route.fulfill(listAnswer(search));
+  });
+  await openDownloads(page);
+  await expect(page.locator('#torrent-search-status, #dp-activity-result-note, .dp-search-status')).toHaveCount(0);
+  const geometry = () => page.evaluate(() => ['#torrent-search', '#view-torrents .dp-downloads-table-wrap', '#t-tbody']
+    .map(selector => { const box = document.querySelector(selector).getBoundingClientRect(); return [Math.round(box.top), Math.round(box.height)]; }));
+  await page.waitForTimeout(600);
+  const before = await geometry();
+  await page.locator('#torrent-search').fill('alpha');
+  await expect.poll(() => rowNames(page)).toEqual(['alpha one', 'alpha two']);
+  await page.waitForTimeout(600);
+  const settled = requests.length;
+  const shifts = await page.evaluate(() => new Promise(resolve => {
+    const seen = [];
+    const observer = new ResizeObserver(entries => entries.forEach(entry => seen.push(entry.contentRect.height)));
+    observer.observe(document.querySelector('#view-torrents .dp-downloads-table-wrap'));
+    setTimeout(() => { observer.disconnect(); resolve(seen.length); }, 3000);
+  }));
+  // Three quiet seconds with the text left in the box: no request, no resize
+  // beyond the observer's first report.
+  expect(requests.length).toBe(settled);
+  expect(shifts).toBeLessThanOrEqual(1);
+  const after = await geometry();
+  expect(after[0]).toEqual(before[0]);
+  expect(after[1][0]).toEqual(before[1][0]);
+  // A refresh with nothing changed shows the same answer and asks once.
+  await page.evaluate(() => window.loadTorrents());
+  await expect.poll(() => requests.length).toBe(settled + 1);
+  await page.waitForTimeout(1000);
+  expect(requests.length).toBe(settled + 1);
+  expect(await rowNames(page)).toEqual(['alpha one', 'alpha two']);
+  await expect(page.locator('#torrent-page-info')).toHaveText('Showing all 2 matching downloads');
+});
+
+test('Activity Log tells an index still catching up apart from text search that is unavailable', async ({ page }) => {
+  await ready(page);
+  let status = 'index_incomplete';
+  await page.route('**/api/events?*', route => {
+    const url = new URL(route.request().url());
+    const search = url.searchParams.get('search') || '';
+    const items = Array.from({length: 3}, (_, index) => ({id: 30 - index, occurred_at: '2026-10-01T12:00:00Z',
+      category: 'transfer', type: 'transfer.synthetic', severity: 'info', message: `event ${index}`}));
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
+      items, limit: 3, snapshot: 30, has_more: true, next_before: 28, more_after_next: true, newer_available: false,
+      search: meta(search, {mode: search ? 'id_or_text' : 'none', status: search ? status : 'complete',
+        pending: status === 'index_incomplete' ? 7 : 0, finality: search ? 'unproven' : 'bounded'})})});
+  });
+  await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
+  const info = page.locator('#dp-activity-page-info');
+  const last = page.locator('#dp-activity-page-btns button[aria-label^="Last page"]');
+  await page.locator('#ev-search').fill('4242');
+  await expect(info).toHaveText('Recent events are still being indexed; matches among them may be missing.');
+  status = 'unavailable';
+  await page.locator('#ev-search').fill('4243');
+  await expect(info).toHaveText('Text search is unavailable on this installation; only the transfer ID was matched.');
+  await expect(page.locator('.toast', {hasText: 'Text search is unavailable'})).toHaveCount(1);
+  // Neither is described as the other, and neither line is a row of its own.
+  await expect(info).not.toContainText('indexed');
+  await expect(page.locator('#dp-activity-result-note, .dp-search-status')).toHaveCount(0);
+  // Finality is its own fact: an unproven final page keeps Last unavailable either way.
+  await expect(last).toBeDisabled();
+  await expect(last).toHaveAttribute('aria-label', /^Last page unavailable: /);
+  // A complete answer says neither.
+  status = 'complete';
+  await page.locator('#ev-search').fill('4244');
+  await expect(info).toHaveText('');
 });

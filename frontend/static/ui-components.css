@@ -489,8 +489,6 @@ body.light .dp-backdrop,
   .dp-table td { padding-inline: 10px; }
 }
 
-/* The shared search status line (DPSearch, ui-search.js): what the search
-   box's results answer, a rejected query or an incomplete index. */
-.dp-search-status { margin: 0 0 10px; padding: 6px 10px; border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--border)); border-radius: 7px; color: var(--text2); background: color-mix(in srgb, var(--accent) 6%, transparent); font-size: 11px; }
-.dp-search-status[hidden] { display: none; }
+/* A search box (DPSearch, ui-search.js) holding a query the server rejected;
+   colour only, never geometry. */
 .input[data-dp-search-state="invalid"] { border-color: color-mix(in srgb, var(--red) 60%, var(--border)); }

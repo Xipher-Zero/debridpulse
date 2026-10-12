@@ -6,8 +6,8 @@
  * operator queue reorder (Name-cell drag, keyboard move, cross-page
  * navigation while one is held, the restart confirmation), date mode/menu,
  * measured capacity/page sizing, list selection state, bulk actions,
- * refresh, and page-specific lifecycle/event wiring. The search box, every
- * request's identity and the search status line belong to the shared search
+ * refresh, and page-specific lifecycle/event wiring. The search box and every
+ * request's identity belong to the shared search
  * lifecycle (DPSearch, ui-search.js), as on the Activity Log. Every row is emitted in final form
  * by a single render pass -- this file never replaces api/loadTorrents/
  * renderTorrentPagination/fmtDate on another owner, and never re-renders an
@@ -51,7 +51,6 @@ function searchControl() {
   if (!search) {
     search = window.DPSearch.attach({
       input: document.getElementById('torrent-search'),
-      status: document.getElementById('torrent-search-status'),
       noun: 'downloads',
       onCommit() { clearSelection(); torrentPage = 1; loadTorrents().catch(() => {}); },
     });
@@ -198,9 +197,18 @@ function restoreFocus(s) {
   }
   target?.focus?.({preventScroll: true});
 }
+/* A resize fetches again only when it changes how many rows fit: a page
+ * whose own rendering (or anything else) moved the layout without changing
+ * its capacity keeps the rows it has -- otherwise every refresh that shifts a
+ * pixel would schedule the next one. A held reorder, a selection or a
+ * measurement already in progress keeps the page as loadTorrents does. */
 function scheduleCapacityCheck() {
   if (capacityTimer != null) clearTimeout(capacityTimer);
-  capacityTimer = setTimeout(() => { capacityTimer = null; loadTorrents().catch(() => {}); }, 120);
+  capacityTimer = setTimeout(() => {
+    capacityTimer = null;
+    if (reorder || busy || _selectedIds.size) return;
+    if (applySize(measuredSize())) loadTorrents().catch(() => {});
+  }, 120);
 }
 function observeResize() {
   const card = document.querySelector('#view-torrents > .card');

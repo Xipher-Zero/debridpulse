@@ -49,7 +49,6 @@ def test_activity_functional_controls_are_unchanged() -> None:
         'id="ev-timeframe"',
         'id="ev-level"',
         'id="ev-reset"',
-        'id="dp-activity-result-note"',
         'onclick="DPActivityLog.load()"',
         'id="event-list"',
     ):
@@ -59,6 +58,9 @@ def test_activity_functional_controls_are_unchanged() -> None:
     # inline handler names a global function, and app.js holds no second
     # implementation of loading, filtering or rendering.
     assert "filterEvents" not in html and "loadEvents" not in html
+    # Searching never adds a line of its own to either list (DPSearch tells
+    # the operator through toasts and the lists' own result presentation).
+    assert "dp-activity-result-note" not in html and "torrent-search-status" not in html
     assert "function filterEvents" not in app and "function loadEvents" not in app
     assert "_allEvents" not in app
 

@@ -358,15 +358,16 @@ test('Activity Log never presents an incomplete search as "no matches"',async({p
  await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await page.locator('#ev-search').fill('needle');
  await expect(page.locator('#event-list .empty')).toHaveText('No matching events among those searched so far.');
- await expect(page.locator('#dp-activity-result-note')).toContainText('still being indexed (12)');
+ await expect(page.locator('#dp-activity-page-info')).toContainText('Recent events are still being indexed');
  search=meta('4242','id_or_text','unavailable',0,'unproven');
  await page.locator('#ev-search').fill('4242');
  await expect(page.locator('#event-list .empty')).toHaveText('No matching events among those searched so far.');
- await expect(page.locator('#dp-activity-result-note')).toContainText('Text search is unavailable');
+ await expect(page.locator('.toast', {hasText: 'Text search is unavailable'})).toHaveCount(1);
+ await expect(page.locator('#dp-activity-page-info')).toHaveText('Text search is unavailable on this installation; only the transfer ID was matched.');
  search=meta('nothing','text','complete',0,'bounded');
  await page.locator('#ev-search').fill('nothing');
  await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
- await expect(page.locator('#dp-activity-result-note')).toBeHidden();
+ await expect(page.locator('#dp-activity-pagination')).toBeHidden();
 });
 
 test('Activity Log Reset Filters restores every visible filter label, value and the unfiltered request at once',async({page})=>{

@@ -328,13 +328,12 @@
         <div class="dp-downloads-pause-shim">Processing paused. Queued and newly added downloads will not start until processing is resumed.</div>
         <div style="padding:10px 14px 0">
           <div class="ev-search-row">
-            <input class="input" id="torrent-search" type="search" aria-label="Search downloads" aria-describedby="torrent-search-status" placeholder="Search downloads…"/>
+            <input class="input" id="torrent-search" type="search" aria-label="Search downloads" placeholder="Search downloads…"/>
             <select class="input dp-downloads-order" id="torrent-order" aria-label="Order downloads" onchange="onTorrentOrderChange(this.value)">
               <option value="queue" selected>Priority</option>
               <option value="newest">Newest</option>
             </select>
           </div>
-          <div id="torrent-search-status" class="dp-search-status" role="status" hidden></div>
           <p id="dp-queue-help" class="dp-queue-assistive">Drag a name to move the transfer in the queue, or press Space or Enter on it, move it with the arrow keys, and press Space or Enter to drop it or Escape to cancel.</p>
           <div id="dp-queue-status" class="dp-queue-assistive" role="status" aria-live="polite"></div>
         </div>
@@ -376,7 +375,7 @@
         </div>
         <div class="dp-activity-search-band">
           <div class="ev-search-row dp-activity-search-row">
-            <input class="input" id="ev-search" type="search" aria-label="Search events" aria-describedby="dp-activity-result-note" placeholder="Search events, names or #transfer ID…"/>
+            <input class="input" id="ev-search" type="search" aria-label="Search events" placeholder="Search events, names or #transfer ID…"/>
             <label class="dp-activity-filter-field dp-activity-filter-field--time">
               <span class="dp-activity-filter-label"><span>Time</span><span>Window</span></span>
               <select class="input" id="ev-timeframe">
@@ -420,7 +419,6 @@
             <button type="button" id="ev-reset" class="btn btn-ghost btn-sm" hidden>Reset Filters</button>
           </div>
         </div>
-        <div id="dp-activity-result-note" class="dp-activity-result-note dp-search-status" role="status" hidden></div>
         <div id="event-list" class="dp-activity-list" aria-live="polite"><div class="empty">Loading…</div></div>
         <nav id="dp-activity-pagination" class="dp-pagination dp-activity-pagination" aria-label="Activity Log pages" hidden>
           <button type="button" id="ev-newest" class="btn btn-ghost btn-sm dp-activity-newest" hidden>Show newest events</button>
