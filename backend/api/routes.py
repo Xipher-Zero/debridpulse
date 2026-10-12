@@ -249,6 +249,38 @@ def _provider_theme(identity: str | None, definitions) -> str | None:
     return definition.presentation.transfer_theme if definition is not None else None
 
 
+# The normalized-error facts Details may disclose beneath its ERROR message,
+# in display order: who reported it, the reported reason and native code, and
+# how it is classified. Scalars only -- never the free-form ``context`` or the
+# trace-only ``diagnostic_evidence`` -- and never the category, which the
+# message already states.
+_ERROR_DISCLOSURE_FIELDS = ("origin", "domain", "diagnostic", "native_code", "stage", "permanence", "retryability")
+
+
+def _error_disclosure(error, displayed, definitions) -> dict | None:
+    """What Details discloses about the error it displays, or ``None``.
+
+    ``error`` is the transfer's decoded normalized error and ``displayed`` the
+    public projection Details shows for it; nothing is disclosed unless they
+    are the same error (a transition between the two reads, a malformed or a
+    missing error fails closed to the message alone). Every value has already
+    crossed ``NormalizedError``'s own sanitization; unknown and empty values
+    are left out."""
+    if error is None or not isinstance(displayed, dict) or error.as_dict() != displayed:
+        return None
+    facts = {}
+    if error.integration_id:
+        facts["integration_id"] = error.integration_id
+        name = _provider_display_name(error.integration_id, definitions)
+        if name:
+            facts["integration_name"] = name
+    for name in _ERROR_DISCLOSURE_FIELDS:
+        value = str(getattr(getattr(error, name), "value", getattr(error, name)) or "")
+        if value and value != "unknown":
+            facts[name] = value
+    return facts or None
+
+
 _REMOTE_FILE_KINDS = frozenset({"ftp", "sftp", "scp", "ssh", "rsync", "rsync+ssh", "webdav", "webdavs", "dav", "davs"})
 
 
@@ -1070,9 +1102,15 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     )
     if item is None:
         raise HTTPException(404, "Transfer not found")
-    return _public_transfer_presentation(
+    transfer = await application.repository.get(torrent_id)
+    result = _public_transfer_presentation(
         item, application.definitions,
         admitted_verbatim=await application.repository.first_root_admitted_verbatim(torrent_id))
+    # Details alone discloses its error's facts: not the list, not the event stream.
+    disclosure = _error_disclosure(transfer.error if transfer else None, item.get("error"), application.definitions)
+    if disclosure:
+        result["error_disclosure"] = disclosure
+    return result
 
 
 @router.get("/torrents/{torrent_id}/trace")

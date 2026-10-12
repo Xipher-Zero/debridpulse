@@ -2081,6 +2081,45 @@ function dpRenderOriginalResource(modalBody, t) {
 }
 document.addEventListener('debridpulse:detail-closed', () => { dpDetailResource = null; });
 
+/* Details' ERROR: the message as it always was, and -- when the backend
+ * discloses facts of that very error (error_disclosure, bound to it by the
+ * Details route) -- the same message as a collapsed disclosure revealing
+ * them. Every value is text; nothing here interprets a provider or an error. */
+const DP_ERROR_FACTS = Object.freeze([
+  ['integration_id', 'Reported by'], ['origin', 'Origin'], ['domain', 'Domain'], ['diagnostic', 'Diagnostic'],
+  ['native_code', 'Native code'], ['stage', 'Stage'], ['permanence', 'Permanence'], ['retryability', 'Retry'],
+]);
+// Classifications read as words; a diagnostic, native code or identifier is shown exactly.
+const DP_ERROR_VERBATIM = new Set(['diagnostic', 'native_code', 'integration_id']);
+function dpRenderErrorDisclosure(modalBody, t) {
+  const field = modalBody?.querySelector('.dp-detail-error .dv');
+  const facts = t.error_disclosure && typeof t.error_disclosure === 'object' ? t.error_disclosure : null;
+  if (!field || !facts) return;
+  const rows = [];
+  for (const [key, label] of DP_ERROR_FACTS) {
+    const raw = facts[key];
+    if (typeof raw !== 'string' || !raw) continue;
+    let value = DP_ERROR_VERBATIM.has(key) ? raw : raw.replace(/_/g, ' ');
+    if (key === 'integration_id' && typeof facts.integration_name === 'string' && facts.integration_name && facts.integration_name !== raw) {
+      value = `${facts.integration_name} (${raw})`;
+    }
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const detail = document.createElement('dd');
+    detail.textContent = value;
+    rows.push(term, detail);
+  }
+  if (!rows.length) return;
+  const disclosure = document.createElement('details');
+  disclosure.className = 'dp-detail-error-disclosure';
+  const summary = document.createElement('summary');
+  summary.textContent = field.textContent;
+  const list = document.createElement('dl');
+  list.append(...rows);
+  disclosure.append(summary, list);
+  field.replaceChildren(disclosure);
+}
+
 async function showDetail(id) {
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
@@ -2130,7 +2169,7 @@ async function showDetail(id) {
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
-        ${t.error_message?`<div style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
+        ${t.error_message?`<div class="dp-detail-error" style="grid-column:1/-1"><div class="dk">Error</div><div class="dv" style="color:var(--red)">${esc(t.error_message)}</div></div>`:''}
         ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
@@ -2192,6 +2231,7 @@ async function showDetail(id) {
       `:''}
     `;
     dpRenderOriginalResource(modalBody, t);
+    dpRenderErrorDisclosure(modalBody, t);
 
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: t}}));
