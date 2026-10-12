@@ -47,7 +47,8 @@ def test_dashboard_kpi_hover_copy_describes_the_numbers():
 
 def test_dashboard_pulse_owner_is_lifecycle_bound():
     app = (STATIC / "app.js").read_text()
-    assert "const DASHBOARD_HEARTBEAT_BPM = [30, 75];" in app
+    assert "const DASHBOARD_HEARTBEAT_BPM = [7, 90];" in app
+    assert "const DASHBOARD_HEARTBEAT_TRAIL = 416;" in app
     assert "const DASHBOARD_HEARTBEAT_EASE_MS = 4000;" in app
     assert "const DASHBOARD_HEARTBEAT_SPEED = 0.24;" in app
     assert "setDashboardHeartbeatThroughput(data.download_bytes_per_second, data.sustained_peak_bytes_per_second);" in app

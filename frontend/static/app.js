@@ -970,18 +970,24 @@ function updateOperatorTitle(stats) {
  * is the signal: a flat baseline deformed into the ECG complex wherever a
  * heartbeat is, its stroke gradient bright through the complex's leading QRS
  * and fading behind it back into the dim baseline -- a fade measured in strip
- * distance, ending just before the next heartbeat reaches the same place.
+ * distance, at most 416 px long and always ending just before the next
+ * heartbeat reaches the same place, so a slow cadence leaves the strip quiet
+ * between heartbeats.
  *
- * The cadence is ambient: 30 BPM at rest rising linearly to 75 BPM as the
+ * The cadence is ambient: 7 BPM at rest rising linearly to 90 BPM as the
  * aggregate download throughput (the core meter's own 4 s window) reaches the
  * highest sustained rate this installation has shown; with no sustained peak
- * recorded yet it stays at 30. At each heartbeat the cadence eases toward that
- * target with a 4 s time constant and the next heartbeat is scheduled one
- * cadence interval later, so a change never resets, bunches or doubles beats,
- * and beats already travelling keep their place and speed. Heartbeats run only
+ * recorded yet it stays at 7. The cadence eases continuously toward that
+ * target with a 4 s time constant, and a heartbeat clock advances with it: the
+ * next heartbeat comes when its phase completes. The clock is brought up to
+ * date at each heartbeat and each throughput reading, and the pending
+ * heartbeat re-timed from the phase it has reached, so a change of throughput
+ * moves it earlier or later at once without resetting the clock, bunching,
+ * doubling or catching up beats, and never later than one 7 BPM interval;
+ * beats already travelling keep their place and speed. Heartbeats run only
  * while the Dashboard is the active view, the document is visible and motion is
  * not reduced. */
-const DASHBOARD_HEARTBEAT_BPM = [30, 75];
+const DASHBOARD_HEARTBEAT_BPM = [7, 90];
 const DASHBOARD_HEARTBEAT_EASE_MS = 4000;      // time constant of the cadence's approach to its target
 const DASHBOARD_HEARTBEAT_SPEED = 0.24;        // px per ms along the strip
 const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y in the 24-unit viewBox]
@@ -990,8 +996,9 @@ const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y
 ];
 const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
 const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left before the following heartbeat
+const DASHBOARD_HEARTBEAT_TRAIL = 416;         // px: the longest a trail fades over, however far behind the next heartbeat is
 const _dashboardHeartbeat = {running: false, timer: 0, frame: 0, beats: [], route: null,
-  bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], lastBeat: 0, nextAt: 0};
+  bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0};
 const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 function dashboardSparkPulsesWanted() {
@@ -1000,10 +1007,16 @@ function dashboardSparkPulsesWanted() {
     && !!document.getElementById('view-dashboard')?.classList.contains('active');
 }
 
-/* The live throughput facts, from their one poll (loadRuntimeSpeed). */
+/* The live throughput facts, from their one poll (loadRuntimeSpeed). The
+ * heartbeat clock runs up to now on the facts it had, then the pending
+ * heartbeat is re-timed. */
 function setDashboardHeartbeatThroughput(bytesPerSecond, sustainedPeak) {
-  _dashboardHeartbeat.bytesPerSecond = Math.max(0, Number(bytesPerSecond) || 0);
-  _dashboardHeartbeat.sustainedPeak = Math.max(0, Number(sustainedPeak) || 0);
+  const state = _dashboardHeartbeat;
+  const now = performance.now();
+  if (state.running) advanceDashboardHeartbeat(now);
+  state.bytesPerSecond = Math.max(0, Number(bytesPerSecond) || 0);
+  state.sustainedPeak = Math.max(0, Number(sustainedPeak) || 0);
+  if (state.running) scheduleDashboardHeartbeat(now);
 }
 
 function dashboardHeartbeatTargetBpm() {
@@ -1050,10 +1063,13 @@ function renderDashboardHeartbeat(now) {
   const {cards, end} = state.route;
   const fmt = value => Number(value.toFixed(2));
   // Each heartbeat with its trail: the strip distance to the heartbeat that
-  // follows it (or will, at the scheduled next beat), less the clearance.
+  // follows it (or will, at the scheduled next beat), less the clearance, and
+  // never longer than DASHBOARD_HEARTBEAT_TRAIL.
   const beats = state.beats.map((born, i) => {
     const following = i + 1 < state.beats.length ? state.beats[i + 1] : state.nextAt;
-    const trail = Math.max(0, DASHBOARD_HEARTBEAT_SPEED * (following - born) - DASHBOARD_HEARTBEAT_WIDTH - DASHBOARD_HEARTBEAT_CLEARANCE);
+    const spacing = DASHBOARD_HEARTBEAT_SPEED * (following - born);
+    const trail = Math.min(DASHBOARD_HEARTBEAT_TRAIL,
+      Math.max(0, spacing - DASHBOARD_HEARTBEAT_WIDTH - DASHBOARD_HEARTBEAT_CLEARANCE));
     return {born, travelled: (now - born) * DASHBOARD_HEARTBEAT_SPEED, trail};
   });
   state.beats = beats.filter(beat => beat.travelled - DASHBOARD_HEARTBEAT_WIDTH - beat.trail <= end).map(beat => beat.born);
@@ -1109,18 +1125,32 @@ function dashboardHeartbeatFrame(now) {
   if (_dashboardHeartbeat.beats.length) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
 }
 
-/* Schedule the next heartbeat one interval of the current cadence from `now`. */
+/* Run the heartbeat clock up to `now`: the cadence eases toward its target
+ * and the phase advances by the beats that eased cadence made (its integral). */
+function advanceDashboardHeartbeat(now) {
+  const state = _dashboardHeartbeat;
+  const target = dashboardHeartbeatTargetBpm();
+  const elapsed = Math.max(0, now - state.advancedAt);
+  const settled = 1 - Math.exp(-elapsed / DASHBOARD_HEARTBEAT_EASE_MS);
+  state.phase += (target * elapsed + (state.bpm - target) * DASHBOARD_HEARTBEAT_EASE_MS * settled) / 60000;
+  state.bpm += (target - state.bpm) * settled;
+  state.advancedAt = now;
+}
+
+/* (Re)time the pending heartbeat: when the phase completes at the current cadence. */
 function scheduleDashboardHeartbeat(now) {
-  const interval = 60000 / _dashboardHeartbeat.bpm;
-  _dashboardHeartbeat.nextAt = now + interval;
-  _dashboardHeartbeat.timer = setTimeout(dashboardHeartbeat, interval);
+  const state = _dashboardHeartbeat;
+  const wait = Math.max(0, 1 - state.phase) * 60000 / state.bpm;
+  clearTimeout(state.timer);
+  state.nextAt = now + wait;
+  state.timer = setTimeout(dashboardHeartbeat, wait);
 }
 
 function dashboardHeartbeat() {
   const state = _dashboardHeartbeat;
   const now = performance.now();
-  state.bpm += (dashboardHeartbeatTargetBpm() - state.bpm) * (1 - Math.exp(-(now - state.lastBeat) / DASHBOARD_HEARTBEAT_EASE_MS));
-  state.lastBeat = now;
+  advanceDashboardHeartbeat(now);
+  state.phase = 0;                                  // a completed phase is one heartbeat, never more
   state.beats.push(now);
   scheduleDashboardHeartbeat(now);
   if (!state.frame) state.frame = requestAnimationFrame(dashboardHeartbeatFrame);
@@ -1138,7 +1168,7 @@ function syncDashboardSparkPulses() {
   }
   if (state.running) return;
   const now = performance.now();
-  Object.assign(state, {running: true, route: measureDashboardHeartbeatRoute(), bpm: dashboardHeartbeatTargetBpm(), lastBeat: now});
+  Object.assign(state, {running: true, route: measureDashboardHeartbeatRoute(), bpm: dashboardHeartbeatTargetBpm(), phase: 0, advancedAt: now});
   scheduleDashboardHeartbeat(now);
 }
 
@@ -1179,7 +1209,7 @@ async function loadStats() {
       const errCount = s.error_count ?? bs.error ?? 0;
       document.getElementById('s-error').textContent = errCount;
       const errCard = document.getElementById('dash-error-card');
-      if (errCard) errCard.style.opacity = errCount > 0 ? '1' : '.6';
+      if (errCard) errCard.classList.toggle('dash-hero-stat--quiet', !(errCount > 0));
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;

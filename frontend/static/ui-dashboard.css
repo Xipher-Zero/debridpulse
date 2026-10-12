@@ -419,12 +419,19 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 }
 /* The line is the signal: its stroke gradient (app.js) is the dim resting
    baseline everywhere except where a heartbeat deforms it -- the leading P-QRS
-   at its most intense, then fading through the tail back into the baseline. */
+   at its most intense, then fading through the tail back into the baseline.
+   The heartbeat is the card's own accent at full strength: more chroma at the
+   same hue, a little lighter on the dark theme and a little deeper on the
+   light one, never mixed toward white, grey or black. */
 .dp-card-spark .dp-card-spark-rest { stop-color: currentColor; stop-opacity: .4; }
-.dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 40%, #fff); stop-opacity: 1; }
-.dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: 1; }
-.dp-card-spark .dp-card-spark-tail { stop-color: currentColor; stop-opacity: .62; }
-body.light .dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 72%, #000); }
+.dp-card-spark .dp-card-spark-lead {
+  stop-color: currentColor;
+  stop-color: oklch(from currentColor calc(l + .03) calc(c * 1.1) h);
+  stop-opacity: 1;
+}
+.dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: .9; }
+.dp-card-spark .dp-card-spark-tail { stop-color: currentColor; stop-opacity: .6; }
+body.light .dp-card-spark .dp-card-spark-lead { stop-color: oklch(from currentColor calc(l - .05) calc(c * 1.1) h); }
 
 
 #view-dashboard .dp-dashboard-quick-add,
@@ -1638,6 +1645,27 @@ body.light #runtime-badge-speed {
 }
 body.light #view-dashboard #dash-error-card {
   --c: #e93f4d !important;
+}
+/* No errors: the card recedes -- its content, edges and resting baseline, as
+   the whole card at 60% did -- but not the heartbeat crossing it. */
+#view-dashboard #dash-error-card.dash-hero-stat--quiet > :not(.dp-card-spark),
+#view-dashboard #dash-error-card.dash-hero-stat--quiet::after { opacity: .6; }
+#view-dashboard #dash-error-card.dash-hero-stat--quiet::before { opacity: .552; }
+#view-dashboard #dash-error-card.dash-hero-stat--quiet .dp-card-spark-rest { stop-opacity: .24; }
+/* ... and its surface, under its content: the page showing 40% through it. */
+#view-dashboard #dash-error-card.dash-hero-stat--quiet {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.014),
+    inset 0 0 0 100vmax color-mix(in srgb, var(--dp-bg-app) 40%, transparent),
+    -6px 8px 14px -8px rgba(0,0,0,.4),
+    0 5px 11px -8px rgba(0,0,0,.28) !important;
+}
+body.light #view-dashboard #dash-error-card.dash-hero-stat--quiet {
+  box-shadow:
+    inset 0 1px rgba(255,255,255,.47),
+    inset 0 0 0 100vmax color-mix(in srgb, var(--dp-bg-app) 40%, transparent),
+    -6px 8px 14px -8px rgba(35, 41, 66, .24),
+    0 5px 11px -8px rgba(41, 47, 72, .15) !important;
 }
 #view-dashboard #dash-error-card .dhs-icon .dp-icon {
   filter:
