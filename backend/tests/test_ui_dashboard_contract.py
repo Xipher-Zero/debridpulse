@@ -36,7 +36,7 @@ def test_dashboard_stylesheet_is_active() -> None:
 def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry() -> None:
     css = DASHBOARD_CSS.read_text(encoding="utf-8")
 
-    assert "height: 31px;" in css
+    assert "height: 38px;" in css  # 31 px of line art over a 7 px raised floor
     assert "opacity: 1;" in css
     assert "stroke-width: 1.55;" in css
     assert ".dp-card-spark .dp-card-spark-rest" in css
@@ -46,7 +46,7 @@ def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry(
     assert ".dp-dashboard-activity .card-header" in css
     assert "min-height: 70px;" in css
     assert "width: calc(100% + 2px) !important;" in css
-    assert ".dp-card-spark-fill" not in css
+    assert "#view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark-fill { mask: none; opacity: var(--dp-card-spark-rest); }" in css
     assert ".dp-dashboard-quick-add .card-title > .dp-icon" in css
     assert "flex: 0 0 51px !important;" in css
 

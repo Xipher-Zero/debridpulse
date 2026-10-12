@@ -403,8 +403,9 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   right: 10px;
   bottom: 7px;
   width: calc(100% - 20px);
-  height: 31px;
+  height: 38px;                     /* 31 px of line art (24 units) over a 7 px raised floor */
   color: var(--c);
+  --dp-card-spark-rest: .4;
   opacity: 1;
   pointer-events: none;
   overflow: visible;
@@ -423,7 +424,7 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
    The heartbeat is the card's own accent at full strength: more chroma at the
    same hue, a little lighter on the dark theme and a little deeper on the
    light one, never mixed toward white, grey or black. */
-.dp-card-spark .dp-card-spark-rest { stop-color: currentColor; stop-opacity: .4; }
+.dp-card-spark .dp-card-spark-rest { stop-color: currentColor; stop-opacity: var(--dp-card-spark-rest); }
 .dp-card-spark .dp-card-spark-lead {
   stop-color: currentColor;
   stop-color: oklch(from currentColor calc(l + .03) calc(c * 1.1) h);
@@ -432,6 +433,13 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 .dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: .9; }
 .dp-card-spark .dp-card-spark-tail { stop-color: currentColor; stop-opacity: .6; }
 body.light .dp-card-spark .dp-card-spark-lead { stop-color: oklch(from currentColor calc(l - .05) calc(c * 1.1) h); }
+/* The glow beneath the line (app.js): the card's accent fading from the
+   baseline toward the card's floor, masked by the line's own stroke gradient,
+   so its intensity at every point is the signal's. */
+.dp-card-spark .dp-card-spark-glow-top { stop-color: var(--c); stop-opacity: .55; }
+.dp-card-spark .dp-card-spark-glow-bottom { stop-color: var(--c); stop-opacity: .12; }
+body.light .dp-card-spark .dp-card-spark-glow-top { stop-opacity: .5; }
+body.light .dp-card-spark .dp-card-spark-glow-bottom { stop-opacity: .1; }
 /* Global Pause All, once the strip has drained (app.js): every line is the
    same flat, saturated red, breathing in step -- still under reduced motion.
    Only the lines change; the cards keep their own colours. */
@@ -439,6 +447,8 @@ body.light .dp-card-spark .dp-card-spark-lead { stop-color: oklch(from currentCo
 body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color: #e0001f; --dp-card-spark-flatline-dim: .55; }
 #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark .dp-card-spark-rest { stop-opacity: 1; }
 #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark-line { animation: dp-card-spark-flatline 2.5s ease-in-out infinite; }
+/* The glow keeps the card's accent at its resting level, still. */
+#view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark-fill { mask: none; opacity: var(--dp-card-spark-rest); }
 @keyframes dp-card-spark-flatline {
   0%, 100% { opacity: var(--dp-card-spark-flatline-dim); }
   50% { opacity: 1; }
@@ -1665,7 +1675,7 @@ body.light #view-dashboard #dash-error-card {
 #view-dashboard #dash-error-card.dash-hero-stat--quiet > :not(.dp-card-spark),
 #view-dashboard #dash-error-card.dash-hero-stat--quiet::after { opacity: .6; }
 #view-dashboard #dash-error-card.dash-hero-stat--quiet::before { opacity: .552; }
-#view-dashboard #dash-error-card.dash-hero-stat--quiet .dp-card-spark-rest { stop-opacity: .24; }
+#view-dashboard #dash-error-card.dash-hero-stat--quiet .dp-card-spark { --dp-card-spark-rest: .24; }
 /* ... and its surface, under its content: the page showing 40% through it. */
 #view-dashboard #dash-error-card.dash-hero-stat--quiet {
   box-shadow:

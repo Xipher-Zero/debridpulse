@@ -6,14 +6,19 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 
 def test_dashboard_sparkline_surface_is_static_base_markup():
     """Each card has one line -- the signal itself -- resting flat, stroked by its
-    own pixel-space gradient; no second pulse path is drawn over it."""
+    own pixel-space gradient; no second pulse path is drawn over it. Beneath it
+    one glow fill, the area under the same line, masked by the same gradient."""
     html = (STATIC / "index.html").read_text()
-    assert html.count('class="dp-card-spark"') == 6
+    assert html.count('class="dp-card-spark" viewBox="0 0 100 29.42"') == 6
     for i in range(6):
         assert (f'<path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-{i})" d="M 0 16 H 100"></path>') in html
         assert f'<linearGradient id="dp-card-spark-signal-{i}" gradientUnits="userSpaceOnUse"' in html
+        assert (f'<path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-{i})" mask="url(#dp-card-spark-glow-mask-{i})" '
+                'd="M 0 16 H 100 V 29.42 H 0 Z"></path>') in html
+        assert f'<rect x="-100000" y="-100" width="200000" height="200" fill="url(#dp-card-spark-signal-{i})"></rect>' in html
     assert html.count('<stop class="dp-card-spark-rest" offset="0"></stop>') == 6
-    for retired in ("dp-card-spark-pulse", "dp-card-spark-point", "dp-card-spark-fill", "pathLength"):
+    assert html.count('class="dp-card-spark-fill"') == 6
+    for retired in ("dp-card-spark-pulse", "dp-card-spark-point", "pathLength"):
         assert retired not in html
     assert '<polyline class="dp-card-spark-line"' not in html
 

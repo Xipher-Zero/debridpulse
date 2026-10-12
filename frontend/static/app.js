@@ -972,7 +972,9 @@ function updateOperatorTitle(stats) {
  * and fading behind it back into the dim baseline -- a fade measured in strip
  * distance, at most 416 px long and always ending just before the next
  * heartbeat reaches the same place, so a slow cadence leaves the strip quiet
- * between heartbeats.
+ * between heartbeats. Beneath the line, the card's accent glows down toward
+ * the card's floor: the area under the very same path, masked by the very same
+ * stroke gradient, so it rests faint and brightens and fades with the signal.
  *
  * The cadence is ambient: 7 BPM at rest rising linearly to 90 BPM as the
  * aggregate download throughput (the core meter's own 4 s window) reaches the
@@ -1011,6 +1013,7 @@ const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y
 const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
 const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left before the following heartbeat
 const DASHBOARD_HEARTBEAT_TRAIL = 416;         // px: the longest a trail fades over, however far behind the next heartbeat is
+const DASHBOARD_HEARTBEAT_VIEW_HEIGHT = 29.42; // viewBox units in the 38 px line box: 24 units per 31 px, the baseline 16 units down
 const _dashboardHeartbeat = {running: false, held: false, timer: 0, frame: 0, beats: [], route: null,
   bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0};
 
@@ -1098,7 +1101,8 @@ function dashboardHeartbeatTargetBpm() {
 function measureDashboardHeartbeatRoute() {
   const cards = [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
     const box = svg.getBoundingClientRect();
-    return {svg, line: svg.querySelector('.dp-card-spark-line'), gradient: svg.querySelector('linearGradient'),
+    return {svg, line: svg.querySelector('.dp-card-spark-line'), fill: svg.querySelector('.dp-card-spark-fill'),
+      gradient: svg.querySelector('linearGradient[id^="dp-card-spark-signal-"]'),
       left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width, d: '', paint: ''};
   }).filter(card => card.width > 0);
   const rows = [];
@@ -1116,7 +1120,7 @@ function measureDashboardHeartbeatRoute() {
       ? previous.right - card.right
       : previous.width + Math.hypot(card.right - previous.left, card.middle - previous.middle);
     card.entry = entry;
-    card.svg.setAttribute('viewBox', `0 0 ${card.width} 24`);
+    card.svg.setAttribute('viewBox', `0 0 ${card.width} ${DASHBOARD_HEARTBEAT_VIEW_HEIGHT}`);
     route.push(card);
   }));
   const last = route[route.length - 1];
@@ -1148,13 +1152,17 @@ function renderDashboardHeartbeat(now) {
       .filter(({x, shape, trail}) => x - 4 < width && x + shape.width + trail > 0)
       .sort((a, b) => a.x - b.x);
     const complexes = here.filter(({x, shape}) => x < width && x + shape.width > 0);
-    let d = `M ${fmt(Math.min(0, complexes[0]?.x ?? 0))} 16`;
+    const start = fmt(Math.min(0, complexes[0]?.x ?? 0));
+    let d = `M ${start} 16`;
     for (const {x, shape} of complexes) d += shape.points.map(([dx, y]) => ` L ${fmt(x + dx)} ${fmt(y)}`).join('');
     const last = complexes[complexes.length - 1];
-    d += ` L ${fmt(Math.max(width, last ? last.x + last.shape.width : 0))} 16`;
+    const finish = fmt(Math.max(width, last ? last.x + last.shape.width : 0));
+    d += ` L ${finish} 16`;
     if (d !== card.d) {
       card.d = d;
       card.line.setAttribute('d', d);
+      // The glow: the area under the same line, down to the line box's floor.
+      card.fill.setAttribute('d', `${d} V ${DASHBOARD_HEARTBEAT_VIEW_HEIGHT} H ${start} Z`);
     }
     // Per heartbeat: rest before its leading edge, bright through P-QRS, the
     // body colour at the complex's end, then fading through the tail to rest

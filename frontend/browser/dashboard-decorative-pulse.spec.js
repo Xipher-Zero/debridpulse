@@ -72,12 +72,12 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
 const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
   const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
   const box = svg.getBoundingClientRect();
-  const gradient = svg.querySelector('linearGradient');
+  const gradient = svg.querySelector('linearGradient[id^="dp-card-spark-signal-"]');
   return {width: box.width, left: box.left, right: box.right, middle: (box.top + box.bottom) / 2,
     from: Number(gradient.getAttribute('x1')), to: Number(gradient.getAttribute('x2')),
     points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])]),
-    paths: svg.querySelectorAll('path').length,
-    stops: [...svg.querySelectorAll('stop')].map(stop => ({role: stop.getAttribute('class'), offset: Number(stop.getAttribute('offset')),
+    paths: svg.querySelectorAll('path[stroke]').length,
+    stops: [...gradient.querySelectorAll('stop')].map(stop => ({role: stop.getAttribute('class'), offset: Number(stop.getAttribute('offset')),
       opacity: Number(getComputedStyle(stop).stopOpacity)}))};
 }));
 /* Each complex drawn on a card's line: its leading edge and its points
@@ -132,7 +132,7 @@ async function enterAndSample(page, ms) {
 
 function expectOneContinuousLine(cards) {
   for (const card of cards) {
-    expect(card.paths).toBe(1);                                         // no second path over the baseline
+    expect(card.paths).toBe(1);                                         // one stroked line: no second over the baseline
     const xs = card.points.map(([x]) => x);
     expect(xs).toEqual([...xs].sort((a, b) => a - b));                  // never doubles back: no doubled line
     expect(card.points[0][1]).toBe(16);
@@ -855,6 +855,97 @@ test('entering the Dashboard while paused shows the red flat lines at once, stil
   expect(await flatline()).toBe(false);
   await page.clock.runFor(10000);
   expect((await strip(page)).every(flat)).toBe(true);                // still baselines, no motion
+});
+
+/* Each card's glow beneath its line, against the line and its stroke gradient. */
+const glow = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => {
+  const svg = card.querySelector('.dp-card-spark'), fill = svg.querySelector('.dp-card-spark-fill');
+  const line = svg.querySelector('.dp-card-spark-line'), rect = svg.querySelector('mask rect');
+  const fillGradient = svg.querySelector(fill.getAttribute('fill').slice(4, -1));
+  const box = svg.getBoundingClientRect(), cardBox = card.getBoundingClientRect();
+  const view = Number(svg.getAttribute('viewBox').split(' ')[3]);
+  const text = Math.max(...[...card.querySelectorAll('.dhs-body *, .dhs-icon')].map(e => e.getBoundingClientRect().bottom));
+  return {
+    elements: [svg.querySelectorAll('path').length, svg.querySelectorAll('mask').length, svg.querySelectorAll('linearGradient').length, svg.querySelectorAll('mask rect').length],
+    lineD: line.getAttribute('d'), fillD: fill.getAttribute('d'), view,
+    stroke: line.getAttribute('stroke'), maskedBy: rect.getAttribute('fill'), mask: getComputedStyle(fill).mask,
+    fillOpacity: Number(getComputedStyle(fill).opacity), fillAnimations: fill.getAnimations().length,
+    glowColours: [...fillGradient.querySelectorAll('stop')].map(stop => getComputedStyle(stop).stopColor),
+    glowOpacities: [...fillGradient.querySelectorAll('stop')].map(stop => Number(getComputedStyle(stop).stopOpacity)),
+    glowFrom: Number(fillGradient.getAttribute('y1')), glowTo: Number(fillGradient.getAttribute('y2')),
+    accent: getComputedStyle(card).getPropertyValue('--c').trim(), line: getComputedStyle(svg).color,
+    rest: Number(getComputedStyle(svg).getPropertyValue('--dp-card-spark-rest')),
+    // css px above the card's floor: the baseline, the highest a heartbeat can reach (R at y=-0.1), and the text
+    baseline: cardBox.bottom - (box.top + 16 * box.height / view),
+    peak: cardBox.bottom - (box.top - 0.1 * box.height / view), text: cardBox.bottom - text, card: [cardBox.width, cardBox.height],
+  };
+}));
+
+/* The glow is the area under the line itself, down to the line box's floor. */
+function expectGlowFollowsLine(cards) {
+  for (const card of cards) {
+    expect(card.elements).toEqual([2, 1, 2, 1]);                    // one fill, one line; nothing doubled
+    const start = card.lineD.match(/^M (-?[\d.]+) 16/)[1];
+    expect(card.fillD).toBe(`${card.lineD} V ${card.view} H ${start} Z`);
+    expect(card.maskedBy).toBe(card.stroke);                         // masked by the line's own stroke gradient
+  }
+}
+
+test('each card glows in its accent beneath a baseline raised 7 px, the glow the area under that very line, brightening and fading with it', async ({page}) => {
+  test.setTimeout(90000);
+  await boot(page, {throughput: {bps: 42e6, peak: 42e6}});
+  const rest = await glow(page);
+  for (const card of rest) {
+    expect(card.baseline).toBeCloseTo(17.33, 1);                     // 10.33 px before
+    expect(card.text - card.peak).toBeGreaterThan(3 + 3);            // the tallest heartbeat and its 3 px glow clear the text
+    expect(card.glowFrom).toBe(16);                                  // from the baseline ...
+    expect(card.glowTo).toBe(card.view);                             // ... down to the floor
+    expect(card.glowOpacities[0]).toBeGreaterThan(card.glowOpacities[1]);   // fading down
+    card.glowColours.forEach(colour => expect(colour).toBe(card.line));    // the card's accent
+  }
+  expect(new Set(rest.map(card => card.baseline.toFixed(2))).size).toBe(1);  // all six aligned
+  expectGlowFollowsLine(rest);
+  // Every frame at 90 BPM, several heartbeats on the strip: the glow is still
+  // the area under the line as drawn, masked by its one gradient.
+  let shaped = 0;
+  for (let t = 0; t < 4000; t += 50) {
+    await page.clock.runFor(50);
+    const cards = await glow(page);
+    expectGlowFollowsLine(cards);
+    shaped += cards.filter(card => /L [\d.-]+ [\d.]+ L/.test(card.lineD) && card.lineD.split(' L ').length > 3).length;
+  }
+  expect(shaped).toBeGreaterThan(20);
+});
+
+test('fully paused, the red lines breathe over each card\'s still accent glow at its resting level, and nothing is doubled on re-entry or reflow', async ({page}) => {
+  test.setTimeout(90000);
+  const pause = {paused: true};
+  await boot(page, {pause});
+  await expect.poll(() => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'))).toBe(true);
+  for (const card of await glow(page)) {
+    expect(card.line).not.toBe(card.glowColours[0]);                // the line is red ...
+    card.glowColours.forEach(colour => expect(colour).not.toBe(card.line));   // ... the glow is not
+    expect(card.mask).toBe('none');
+    expect(card.fillOpacity).toBe(card.rest);                        // the resting level
+    expect(card.fillAnimations).toBe(0);                             // still: it does not breathe
+  }
+  // Re-entry, reflow and stats refreshes add nothing.
+  for (let i = 0; i < 3; i++) {
+    await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
+    await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
+    await page.evaluate(() => loadStats());
+  }
+  await page.setViewportSize({width: 1000, height: 900});
+  await expect.poll(async () => route(await strip(page)).rows.length).toBe(2);
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  await page.clock.runFor(3000);
+  const resumed = await glow(page);
+  expectGlowFollowsLine(resumed);
+  resumed.forEach(card => {
+    expect(card.mask).not.toBe('none');
+    card.glowColours.forEach(colour => expect(colour).toBe(card.line));
+  });
 });
 
 test('leaving the Dashboard, hiding the document or reducing motion flattens every line, and each return starts afresh', async ({page}) => {
