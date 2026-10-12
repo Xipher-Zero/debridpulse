@@ -417,19 +417,24 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px currentColor);
+  opacity: .4;
 }
-/* The decorative pulse: a short luminous dash over the same fixed waveform,
-   idle (invisible) until app.js animates its dash offset left to right. */
+/* The decorative heartbeat: one angular ECG complex followed by a 100-unit
+   trail along the resting baseline, invisible until app.js moves it in from
+   the right edge and lets its trail fade back into the baseline. */
 .dp-card-spark .dp-card-spark-pulse {
   fill: none;
-  stroke: currentColor;
-  stroke-width: 1.5;
+  stroke-width: 1.55;
   stroke-linecap: round;
-  stroke-dasharray: 16 200;
-  stroke-dashoffset: 16;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
   opacity: 0;
-  filter: drop-shadow(0 0 1.5px currentColor) drop-shadow(0 0 4px currentColor);
+  filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
 }
+.dp-card-spark .dp-card-spark-beat-lead { stop-color: color-mix(in srgb, currentColor 62%, #fff); stop-opacity: 1; }
+.dp-card-spark .dp-card-spark-beat-body { stop-color: currentColor; stop-opacity: .9; }
+.dp-card-spark .dp-card-spark-beat-trail { stop-color: currentColor; stop-opacity: 0; }
+body.light .dp-card-spark .dp-card-spark-beat-lead { stop-color: currentColor; }
 
 
 #view-dashboard .dp-dashboard-quick-add,
@@ -638,12 +643,6 @@ body.light #view-dashboard .t-table td { color: #454b67; }
   right: -1px !important;
   width: calc(100% + 2px) !important;
   bottom: -1px !important;
-}
-#view-dashboard .dp-card-spark-fill {
-  opacity: .88 !important;
-}
-body.light #view-dashboard .dp-card-spark-fill {
-  opacity: .72 !important;
 }
 #view-dashboard .dhs-icon,
 #view-dashboard .dhs-icon .dp-icon,
@@ -1327,23 +1326,6 @@ body.light #nb-active.nav-badge {
   box-shadow:
     inset 0 1px rgba(255,255,255,.72),
     0 2px 7px rgba(103,52,163,.20) !important;
-}
-
-/* ── Metric-card sparkline fill ───────────────────────────────────────── */
-/* Keep the semantic area tint alive almost to the card floor. The runtime's
-   two-stop SVG gradient remains intact; the terminal stop is intentionally
-   faint rather than fully transparent so the fade no longer dies early. */
-#view-dashboard .dp-card-spark stop:first-child {
-  stop-opacity: .38 !important;
-}
-#view-dashboard .dp-card-spark stop:last-child {
-  stop-opacity: .095 !important;
-}
-body.light #view-dashboard .dp-card-spark stop:first-child {
-  stop-opacity: .34 !important;
-}
-body.light #view-dashboard .dp-card-spark stop:last-child {
-  stop-opacity: .075 !important;
 }
 
 /* ── Primary Add action ───────────────────────────────────────────────── */

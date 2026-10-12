@@ -7,24 +7,26 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 def test_dashboard_sparkline_surface_is_static_base_markup():
     html = (STATIC / "index.html").read_text()
     assert html.count('class="dp-card-spark"') == 6
-    assert html.count('class="dp-card-spark-line"') == 6
-    assert html.count('class="dp-card-spark-fill"') == 6
-    assert html.count('class="dp-card-spark-pulse" pathLength="100"') == 6
-    assert "dp-card-spark-point" not in html
+    assert html.count('class="dp-card-spark-line" d="M 0 16 H 100"') == 6
+    assert html.count('class="dp-card-spark-pulse" stroke="url(#dp-card-spark-beat-') == 6
+    for retired in ("dp-card-spark-point", "dp-card-spark-fill", "pathLength"):
+        assert retired not in html
     assert '<polyline class="dp-card-spark-line"' not in html
 
 
-def test_dashboard_sparklines_are_fixed_decorative_waveforms():
-    """Each card's waveform is fixed artwork in the markup: line, fill and pulse
-    share one path, and no two cards share a shape."""
+def test_dashboard_heartbeat_is_one_angular_ecg_complex_on_the_baseline():
+    """Every card shares one beat: straight segments only (no curves), a
+    24-unit PQRST complex rising to y=2 and dropping to y=23 from the y=16
+    baseline, then a 100-unit trail along that baseline."""
     html = (STATIC / "index.html").read_text()
-    lines = re.findall(r'<path class="dp-card-spark-line" d="([^"]+)"', html)
-    pulses = re.findall(r'<path class="dp-card-spark-pulse" pathLength="100" d="([^"]+)"', html)
-    fills = re.findall(r'<path class="dp-card-spark-fill" fill="url\(#dp-card-spark-fill-\d\)" d="([^"]+)"', html)
-    assert len(lines) == 6 and len(set(lines)) == 6
-    assert pulses == lines
-    assert fills == [f"{line} L 100 24 L 0 24 Z" for line in lines]
-    assert all(line.startswith("M 0.00 ") and " 100.00 " in line for line in lines)
+    beats = re.findall(r'<path class="dp-card-spark-pulse" stroke="url\(#dp-card-spark-beat-(\d)\)" d="([^"]+)"', html)
+    assert [int(i) for i, _ in beats] == list(range(6))
+    assert len({d for _, d in beats}) == 1
+    d = beats[0][1]
+    assert d.startswith("M 0 16 ") and d.endswith(" L 24 16 L 124 16")
+    assert not re.search(r"[CcQqSsTtAa]", d)
+    ys = [float(y) for y in re.findall(r"-?\d+(?:\.\d+)? (-?\d+(?:\.\d+)?)", d)]
+    assert min(ys) == 2 and max(ys) == 23
 
 
 def test_dashboard_sparklines_have_no_metric_history_owner():
@@ -45,8 +47,9 @@ def test_dashboard_kpi_hover_copy_describes_the_numbers():
 
 def test_dashboard_pulse_owner_is_lifecycle_bound():
     app = (STATIC / "app.js").read_text()
-    assert "const DASHBOARD_SPARK_PULSE_IDLE_MS = [3000, 10000];" in app
-    assert "const DASHBOARD_SPARK_PULSE_TRAVEL_MS = [1000, 1500];" in app
+    assert "const DASHBOARD_SPARK_PULSE_INTERVAL_MS = [1000, 3000];" in app
+    assert "const DASHBOARD_SPARK_PULSE_TRAVEL_MS = 800;" in app
+    assert "const DASHBOARD_SPARK_PULSE_SETTLE_MS = 60;" in app
     assert "matchMedia('(prefers-reduced-motion: reduce)')" in app
     assert app.count("syncDashboardSparkPulses();") == 2  # nav() and boot
     assert "document.addEventListener('visibilitychange', syncDashboardSparkPulses);" in app

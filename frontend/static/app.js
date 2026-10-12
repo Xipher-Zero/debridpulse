@@ -961,20 +961,19 @@ function updateOperatorTitle(stats) {
 }
 
 
-/* Dashboard KPI sparklines are decorative artwork: index.html carries one
- * fixed waveform per card, and no KPI value, sample or history shapes it. Each
- * card's own timer sends one short pulse left to right along that waveform
- * after an independent random 3-10 s pause, and schedules the next pulse only
- * once the last has finished. Pulses run only while the Dashboard is the
- * active view, the document is visible and motion is not reduced. */
-const DASHBOARD_SPARK_PULSE_IDLE_MS = [3000, 10000];
-const DASHBOARD_SPARK_PULSE_TRAVEL_MS = [1000, 1500];
-const DASHBOARD_SPARK_PULSE_KEYFRAMES = [
-  {strokeDashoffset: 16, opacity: 0},
-  {opacity: 1, offset: 0.12},
-  {opacity: 1, offset: 0.8},
-  {strokeDashoffset: -100, opacity: 0}
-];
+/* Dashboard KPI sparklines are decorative artwork, not telemetry: a dim flat
+ * baseline and one ECG heartbeat that no KPI value, sample or history shapes.
+ * Each card's own timer starts a beat after an independent random 1-3 s
+ * interval and draws the interval to its next beat at once. The beat enters
+ * from the right edge and crosses the card at one fixed speed, its complex
+ * leaving the left edge after TRAVEL_MS; its trail then lies along the
+ * baseline and fades back into it, finishing SETTLE_MS before that card's
+ * next beat. Beats run only while the Dashboard is the active view, the
+ * document is visible and motion is not reduced. */
+const DASHBOARD_SPARK_PULSE_INTERVAL_MS = [1000, 3000];
+const DASHBOARD_SPARK_PULSE_TRAVEL_MS = 800;
+const DASHBOARD_SPARK_PULSE_SETTLE_MS = 60;
+const DASHBOARD_SPARK_PULSE_COMPLEX = 24;   // the ECG complex's width in viewBox units (index.html)
 const _dashboardSparkPulses = new Map();
 const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
@@ -988,19 +987,24 @@ function dashboardSparkPulsesWanted() {
     && !!document.getElementById('view-dashboard')?.classList.contains('active');
 }
 
+function dashboardSparkBeat(path, state) {
+  const interval = dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_INTERVAL_MS);
+  const duration = interval - DASHBOARD_SPARK_PULSE_SETTLE_MS;
+  const crossed = `translateX(-${DASHBOARD_SPARK_PULSE_COMPLEX}px)`;
+  state.animation?.cancel();
+  state.animation = path.animate([
+    {transform: 'translateX(100px)', opacity: 1},
+    {transform: crossed, opacity: 1, offset: DASHBOARD_SPARK_PULSE_TRAVEL_MS / duration, easing: 'ease-in-out'},
+    {transform: crossed, opacity: 0}
+  ], {duration});
+  state.timer = setTimeout(() => dashboardSparkBeat(path, state), interval);
+}
+
 function scheduleDashboardSparkPulse(path) {
   const state = {timer: 0, animation: null};
   _dashboardSparkPulses.set(path, state);
-  state.timer = setTimeout(() => {
-    state.timer = 0;
-    state.animation = path.animate(DASHBOARD_SPARK_PULSE_KEYFRAMES, {
-      duration: dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_TRAVEL_MS),
-      easing: 'ease-in-out'
-    });
-    state.animation.finished.then(() => {
-      if (_dashboardSparkPulses.get(path) === state) scheduleDashboardSparkPulse(path);
-    }, () => {});
-  }, dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_IDLE_MS));
+  state.timer = setTimeout(() => dashboardSparkBeat(path, state),
+    dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_INTERVAL_MS));
 }
 
 function syncDashboardSparkPulses() {

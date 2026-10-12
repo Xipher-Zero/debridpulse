@@ -149,8 +149,6 @@ def test_canonical_dashboard_keeps_progress_add_and_activity_depth() -> None:
     require(
         dashboard_css(),
         (
-            ".dp-card-spark stop:last-child",
-            "stop-opacity: .075 !important",
             "#btn-add-transfer",
             "#8950d4",
             "#6551c3",

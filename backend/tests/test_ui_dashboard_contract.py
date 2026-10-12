@@ -46,9 +46,7 @@ def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry(
     assert ".dp-dashboard-activity .card-header" in css
     assert "min-height: 70px;" in css
     assert "width: calc(100% + 2px) !important;" in css
-    assert ".dp-card-spark-fill" in css
-    assert "opacity: .88 !important;" in css
-    assert "opacity: .72 !important;" in css
+    assert ".dp-card-spark-fill" not in css
     assert ".dp-dashboard-quick-add .card-title > .dp-icon" in css
     assert "flex: 0 0 51px !important;" in css
 
