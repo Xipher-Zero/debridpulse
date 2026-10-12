@@ -16,13 +16,42 @@ const { test, expect } = require('@playwright/test');
 const SPEED = 0.24;          // px per ms
 const INTERVAL = 2000;       // ms between heartbeats
 const STEP = 50;
-const R_OFFSET = 22;         // the R peak (y=2) sits 22 px behind the complex's leading edge
+const COMPLEX_POINTS = 15;   // points in one complex, its R peak the 7th (the only point above y=6)
 const TRAIL = 416;           // px: the longest trail
 
-async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-preference', throughput = {bps: 23, peak: 83}} = {}) {
+async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-preference', throughput = {bps: 23, peak: 83}, pause, events} = {}) {
   await page.setViewportSize({width, height});
   await page.emulateMedia({reducedMotion});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+  // Deterministic heartbeat shapes: a seeded Math.random.
+  await page.addInitScript(() => {
+    let a = 20261012;
+    Math.random = () => {
+      a = (a + 0x6D2B79F5) >>> 0;
+      let t = Math.imul(a ^ (a >>> 15), a | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  });
+  // The authoritative global pause state, when the case owns it: {paused,
+  // transfersPaused} read at every GET /stats.
+  if (pause) await page.route('**/api/stats', async route => {
+    const response = await route.fetch();
+    const stats = await response.json();
+    route.fulfill({response, json: {...stats, paused: pause.paused,
+      by_status: {...stats.by_status, paused: pause.transfersPaused ?? stats.by_status?.paused ?? 0}}});
+  });
+  // The application event stream, when the case owns it: each events.emit()
+  // delivers one stats_changed, as a change made in another session would.
+  if (events) {
+    let release = () => {};
+    events.emit = () => release();
+    await page.route('**/api/events/stream', async route => {
+      await new Promise(resolve => { release = resolve; });
+      route.fulfill({status: 200, contentType: 'text/event-stream',
+        body: 'event: connected\ndata: {}\n\nevent: stats_changed\ndata: {}\n\n'});
+    });
+  }
   // The throughput facts: {bps, peak}, read at every poll.
   await page.route('**/api/execution/throughput', route => route.fulfill({status: 200, contentType: 'application/json',
     body: JSON.stringify({ok: true, download_bytes_per_second: throughput.bps, sustained_peak_bytes_per_second: throughput.peak,
@@ -51,7 +80,12 @@ const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-d
     stops: [...svg.querySelectorAll('stop')].map(stop => ({role: stop.getAttribute('class'), offset: Number(stop.getAttribute('offset')),
       opacity: Number(getComputedStyle(stop).stopOpacity)}))};
 }));
-const leads = card => card.points.filter(([, y]) => y === 2).map(([x]) => x - R_OFFSET);
+/* Each complex drawn on a card's line: its leading edge and its points
+ * relative to it (x px, y units). */
+const complexes = card => card.points.flatMap(([, y], i) => (y < 6 ? [i - 6] : []))
+  .map(start => card.points.slice(start, start + COMPLEX_POINTS))
+  .map(points => ({lead: points[0][0], points: points.map(([x, y]) => [x - points[0][0], y])}));
+const leads = card => complexes(card).map(complex => complex.lead);
 const flat = card => card.points.every(([, y]) => y === 16);
 /* Each heartbeat's gradient group in px: [rest, lead, lead, body, tail, rest]. */
 const groups = card => {
@@ -166,7 +200,8 @@ test('one heartbeat strip crosses the single row right to left at one speed, the
   const after = await strip(page);
   for (const [i, card] of mid.entries()) {
     const now = leads(after[i]);
-    for (const x of leads(card).filter(x => x - SPEED * STEP > -48)) {
+    // (A complex is drawn until its own width has left the card.)
+    for (const {lead: x, points} of complexes(card).filter(({lead, points}) => lead - SPEED * STEP + points[COMPLEX_POINTS - 1][0] > 0)) {
       expect(now.some(y => Math.abs(y - (x - SPEED * STEP)) < 0.5)).toBe(true);
     }
   }
@@ -245,10 +280,12 @@ function stripBeats(cards) {
   const beats = [];
   cards.forEach((card, i) => groups(card).forEach(group => {
     const lead = entries[i] + card.width - group[0] - 4, end = entries[i] + card.width - group[5];
+    const width = group[3] - group[0] - 4;                       // the heartbeat's own complex
     const row = rows.findIndex(r => r.includes(i));
     const broken = end < Math.min(...rows[row].map(j => entries[j]));
     const known = beats.find(beat => Math.abs(beat.lead - lead) < 0.5);
-    if (!known) return beats.push({lead, end, cards: 1, broken});
+    const envelope = group.map(x => x - group[0]);                // its stops, from its own rest stop
+    if (!known) return beats.push({lead, end, width, envelope, cards: 1, broken});
     expect(end).toBeCloseTo(known.end, 0);
     known.cards++;
     known.broken ||= broken;
@@ -258,18 +295,18 @@ function stripBeats(cards) {
 
 /* No heartbeat ever runs into a trail; a trail is never longer than 416 px,
  * and shorter than that its next heartbeat (heartbeats are at least 160 px
- * apart) meets rest 16 px behind where it ends. Returns the spacing-limited
+ * apart) meets rest 16 px behind where it ends, whatever the leader's width. Returns the spacing-limited
  * trails checked against a seen follower, and how many were at the cap. */
-function expectClearTrails(beats) {
+function expectClearTrails(beats, {held = false} = {}) {
   const checked = [];
   let capped = 0;
   beats.forEach((leader, i) => {
     beats.slice(i + 1).forEach(other => expect(other.lead).toBeLessThanOrEqual(leader.end - 16 + 0.5));
-    const trail = leader.lead - 48 - leader.end;
+    const trail = leader.lead - leader.width - leader.end;
     expect(trail).toBeLessThanOrEqual(TRAIL + 0.5);
     if (trail > TRAIL - 0.5) return void capped++;
     const follower = beats[i + 1];
-    if (!follower || leader.end - 16 - follower.lead > 150) return;
+    if (!follower || leader.end - 16 - follower.lead > 150 || held) return;   // (a held trail may end sooner)
     expect(leader.end - 16 - follower.lead).toBeCloseTo(0, 0);
     checked.push(trail);
   });
@@ -359,14 +396,14 @@ for (const [label, throughput, interval] of [['7 BPM', {bps: 0, peak: 42e6}, IDL
       for (const card of await strip(page)) {
         const here = groups(card);
         for (const group of here) {
-          expect(group[5] - group[3]).toBeCloseTo(Math.min(TRAIL, spacing - 48 - 16), 0);
+          expect(group[5] - group[3]).toBeCloseTo(Math.min(TRAIL, spacing - (group[3] - group[0] - 4) - 16), 0);
           lit += Math.max(0, Math.min(card.width, group[5]) - Math.max(0, group[0]));
         }
         here.slice(1).forEach((group, i) => pairs.push(group[0] - here[i][5]));
         expectOneContinuousLine([card]);
       }
       // At idle one heartbeat lights at most its complex and trail; the rest of the strip rests.
-      if (interval === IDLE) expect(lit).toBeLessThanOrEqual(4 + 48 + TRAIL + 0.5);
+      if (interval === IDLE) expect(lit).toBeLessThanOrEqual(4 + 48 * 1.07 + TRAIL + 0.5);
     }
     if (interval === FULL) {
       expect(pairs.length).toBeGreaterThan(0);
@@ -516,6 +553,308 @@ test('without a recorded sustained peak the heartbeat rests at 7 BPM whatever th
   const seen = await births(page, 3 * IDLE + 500);
   expect(seen.times.length).toBeGreaterThanOrEqual(3);
   intervals(seen.times).forEach(gap => expect(Math.abs(gap - IDLE)).toBeLessThanOrEqual(QUANTUM));
+});
+
+/* Every complex on the strip now, with when its heartbeat was born (from
+ * where it is: the strip distance it has travelled at 0.24 px/ms). */
+async function observe(page) {
+  const now = await page.evaluate(() => Date.now());
+  const cards = await strip(page);
+  const {entries} = route(cards);
+  const seen = cards.flatMap((card, i) => complexes(card).map(complex =>
+    ({...complex, card: i, born: now - (entries[i] + card.width - complex.lead) / SPEED})));
+  return {now, cards, seen};
+}
+
+/* The heartbeats in a series of observations, keyed by birth (one frame is 16 ms). */
+function heartbeats(observations) {
+  const found = [];
+  for (const {seen} of observations) for (const complex of seen) {
+    const known = found.find(beat => Math.abs(beat.born - complex.born) <= 20);
+    if (known) known.sightings.push(complex); else found.push({born: complex.born, sightings: [complex]});
+  }
+  return found.sort((a, b) => a.born - b.born);
+}
+
+test('each heartbeat has its own bounded complex, kept unchanged across every card and frame', async ({page}) => {
+  test.setTimeout(120000);
+  await boot(page, {throughput: {bps: 42e6, peak: 42e6}});
+  const base = await page.evaluate(() => DASHBOARD_HEARTBEAT_COMPLEX);
+  const observations = [];
+  for (let t = 0; t < 9000; t += 50) {
+    await page.clock.runFor(50);
+    observations.push(await observe(page));
+  }
+  const beats = heartbeats(observations).filter(beat => new Set(beat.sightings.map(s => s.card)).size >= 3);
+  expect(beats.length).toBeGreaterThan(5);
+  const shapes = new Set();
+  for (const beat of beats) {
+    const [first] = beat.sightings;
+    // Unchanged in every card and every frame it was seen in.
+    for (const sighting of beat.sightings) {
+      sighting.points.forEach(([x, y], i) => {
+        expect(x).toBeCloseTo(first.points[i][0], 1);
+        expect(y).toBeCloseTo(first.points[i][1], 1);
+      });
+    }
+    shapes.add(first.points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
+    // In order, on the baseline at both ends, each deflection the same way
+    // as the established complex and within its bound.
+    const xs = first.points.map(([x]) => x);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    const width = xs[xs.length - 1];
+    expect(width).toBeGreaterThanOrEqual(48 * 0.93 - 0.02);
+    expect(width).toBeLessThanOrEqual(48 * 1.07 + 0.02);
+    first.points.forEach(([x, y], i) => {
+      const [bx, by] = base[i];
+      expect(x).toBeCloseTo(bx * width / 48, 1);                  // one horizontal scale
+      if (by === 16) return expect(y).toBeCloseTo(16, 2);
+      const factor = (y - 16) / (by - 16);                           // > 0: same polarity
+      const [low, high] = by === 2 ? [0.85, 1.15] : by === 23 ? [0.85, 1.0] : [0.9, 1.1];
+      expect(factor).toBeGreaterThanOrEqual(low - 0.01);
+      expect(factor).toBeLessThanOrEqual(high + 0.01);
+    });
+    expect(Math.max(...first.points.map(([, y]) => y))).toBeLessThanOrEqual(23 + 0.01);   // never below the card's edge
+  }
+  expect(shapes.size).toBe(beats.length);                          // every heartbeat its own
+});
+
+test('Global Pause All from another session drains the strip, then all six lines breathe one red; resuming starts a heartbeat at once', async ({page}) => {
+  test.setTimeout(180000);
+  const pause = {paused: false}, events = {};
+  await boot(page, {pause, events});
+  await page.clock.runFor(INTERVAL + 2500);                          // heartbeats on the strip
+  const accents = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color));
+  const edges = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => getComputedStyle(card, '::before').backgroundColor));
+  const flatline = () => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'));
+
+  pause.paused = true;
+  events.emit();                                                    // stats_changed: loadStats reads the pause
+  await expect.poll(() => page.evaluate(() => processingPaused)).toBe(true);
+  const confirmed = await page.evaluate(() => Date.now());
+  const observations = [await observe(page)];
+  const inFlight = heartbeats(observations);
+  expect(inFlight.length).toBeGreaterThan(0);
+  expect(await flatline()).toBe(false);
+
+  // Draining: the heartbeats on the strip travel on unchanged, nothing new
+  // starts, the cards keep their colours, the last trail fades within 416 px.
+  let drained = null;
+  for (let t = 0; t < 14000 && drained === null; t += 100) {
+    await page.clock.runFor(100);
+    const observation = await observe(page);
+    observations.push(observation);
+    const lit = observation.cards.some(card => groups(card).length || complexes(card).length);
+    if (lit) {
+      expect(await flatline()).toBe(false);                          // never before the strip is clear
+      expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color))).toEqual(accents);
+      for (const card of observation.cards) for (const group of groups(card)) {
+        const trail = group[5] - group[3];
+        expect(trail).toBeLessThanOrEqual(TRAIL + 0.5);
+      }
+    } else drained = observation.now;
+  }
+  expect(drained).not.toBeNull();
+  const all = heartbeats(observations);
+  all.forEach(beat => expect(beat.born).toBeLessThan(confirmed));   // none started after the pause
+  for (const beat of inFlight) {
+    const later = all.find(b => Math.abs(b.born - beat.born) <= 20);
+    later.sightings.forEach(s => s.points.forEach(([x, y], i) => {
+      expect(x).toBeCloseTo(beat.sightings[0].points[i][0], 1);
+      expect(y).toBeCloseTo(beat.sightings[0].points[i][1], 1);
+    }));
+  }
+  // The last one left with the whole trail it had behind it, not sooner.
+  const last = all[all.length - 1];
+  const end = Math.max(...route(observations[0].cards).entries.map((e, i) => e + observations[0].cards[i].width));
+  const lastTrail = stripBeats(observations[0].cards).reduce((a, b) => (a.lead < b.lead ? a : b));
+  expect(drained - last.born).toBeGreaterThanOrEqual((end + lastTrail.lead - lastTrail.end) / SPEED - 120);
+
+  // Paused: flat, one saturated red on all six, breathing in step; nothing starts.
+  await expect.poll(flatline).toBe(true);
+  const red = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
+    const line = svg.querySelector('.dp-card-spark-line');
+    const [animation] = line.getAnimations();
+    return {color: getComputedStyle(svg).color, rest: Number(getComputedStyle(svg.querySelector('.dp-card-spark-rest')).stopOpacity),
+      name: animation?.animationName, start: animation?.startTime};
+  }));
+  expect(new Set(red.map(r => r.color)).size).toBe(1);
+  const [r, g, b] = red[0].color.match(/\d+/g).map(Number);
+  expect(r).toBeGreaterThan(200);
+  expect(Math.max(g, b)).toBeLessThan(60);                         // saturated red, not pink or white
+  red.forEach(line => expect(line).toMatchObject({rest: 1, name: 'dp-card-spark-flatline', start: red[0].start}));
+  expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => getComputedStyle(card, '::before').backgroundColor))).toEqual(edges);
+  for (let t = 0; t < 5000; t += 250) {
+    await page.clock.runFor(250);
+    expect((await strip(page)).every(flat)).toBe(true);
+  }
+
+  // Resumed (the event stream reconnects 10 s after its last event): colours
+  // back, and a heartbeat at once, then the cadence.
+  await page.clock.runFor(10000);
+  pause.paused = false;
+  events.emit();
+  await expect.poll(() => page.evaluate(() => processingPaused)).toBe(false);
+  const resumed = await page.evaluate(() => Date.now());
+  expect(await flatline()).toBe(false);
+  expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color))).toEqual(accents);
+  const after = await births(page, 2 * INTERVAL + 500);
+  expect(after.times[0] - resumed).toBeLessThanOrEqual(QUANTUM);
+  intervals(after.times).forEach(gap => expect(Math.abs(gap - INTERVAL)).toBeLessThanOrEqual(QUANTUM));
+});
+
+/* Every heartbeat on the strip now, in strip coordinates, with its gradient
+ * envelope; and a check that each one seen before is where it travelled to
+ * with the very same envelope -- no trail lengthened, shortened or brightened. */
+const snapshot = async page => ({now: await page.evaluate(() => Date.now()), beats: stripBeats(await strip(page))});
+function expectSameTrails(before, after) {
+  let matched = 0;
+  for (const beat of before.beats) {
+    const lead = beat.lead + SPEED * (after.now - before.now);
+    const same = after.beats.find(b => Math.abs(b.lead - lead) < 4);   // (frames land on 16 ms ticks)
+    if (!same) continue;                                        // (left the strip, or is in a gap)
+    matched++;
+    same.envelope.forEach((x, i) => expect(x).toBeCloseTo(beat.envelope[i], 1));
+  }
+  return matched;
+}
+
+test('Global Pause All at high throughput keeps each heartbeat\'s short trail exactly as it was while the strip drains, and resuming keeps it too', async ({page}) => {
+  test.setTimeout(120000);
+  const pause = {paused: false};
+  await boot(page, {pause, throughput: {bps: 42e6, peak: 42e6}});
+  await page.clock.runFor(14000);                                  // settled near 90 BPM
+  let before = await snapshot(page);
+  const short = before.beats.filter(beat => beat.envelope[5] - beat.envelope[3] < 150);
+  expect(short.length).toBeGreaterThan(0);                         // short trails, laid out for close followers
+
+  pause.paused = true;
+  await page.evaluate(() => loadStats());                          // what a stats_changed event runs
+  expect(await page.evaluate(() => processingPaused)).toBe(true);
+  await page.clock.runFor(16);                                     // the first frame held
+  let after = await snapshot(page);
+  expect(expectSameTrails({...before, beats: short}, after)).toBe(short.length);   // the short trails, unchanged
+  // (Including the newest heartbeat, whatever frame it was born in: none of
+  // the trails, read from their gradient stops, lengthens.)
+  const shortTrails = snap => snap.beats.forEach(beat => expect(beat.envelope[5] - beat.envelope[3]).toBeLessThan(150));
+  shortTrails(after);
+  // Draining: every heartbeat keeps its envelope, frame after frame.
+  for (let t = 0; t < 1000; t += 50) {
+    before = after;
+    await page.clock.runFor(50);
+    after = await snapshot(page);
+    expectSameTrails(before, after);
+    shortTrails(after);
+    expect(after.beats.length).toBeGreaterThan(0);
+  }
+  // Resumed while still draining (past the heartbeat that was due): one starts
+  // at once, the trails in flight carry on unchanged, each clear of its follower.
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  const resumed = await page.evaluate(() => Date.now());
+  const observations = [];
+  for (let t = 0; t < 2000; t += 50) {
+    before = after;
+    await page.clock.runFor(50);
+    after = await snapshot(page);
+    expect(expectSameTrails(before, after)).toBeGreaterThan(0);
+    expectClearTrails(after.beats, {held: true});
+    observations.push(await observe(page));
+  }
+  const fresh = heartbeats(observations).filter(beat => beat.born > resumed - 20);
+  expect(fresh.length).toBeGreaterThan(0);
+  expect(fresh[0].born - resumed).toBeLessThanOrEqual(20);
+});
+
+test('resuming before the held trail allows waits only for that trail\'s clearance, never erasing, restarting or reshaping a heartbeat', async ({page}) => {
+  test.setTimeout(90000);
+  const pause = {paused: false};
+  await boot(page, {pause});
+  await page.clock.runFor(INTERVAL + 2500);                         // 30 BPM: last heartbeat 500 ms ago
+  pause.paused = true;
+  await page.evaluate(() => loadStats());
+  let after = await snapshot(page);
+  const last = after.beats.reduce((a, b) => (a.lead < b.lead ? a : b));
+  const lastBorn = after.now - last.lead / SPEED;
+  // The earliest a follower may start: where the held trail leaves it 16 px.
+  const clearance = lastBorn + (last.lead - last.end + 16) / SPEED;
+  await page.clock.runFor(300);
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  const resumed = await page.evaluate(() => Date.now());
+  expect(resumed).toBeLessThan(clearance);                          // resumed before the trail allows a follower
+  const observations = [];
+  let before;
+  for (let t = 0; t < 3000; t += 50) {
+    before = after;
+    await page.clock.runFor(50);
+    after = await snapshot(page);
+    expect(expectSameTrails(before, after)).toBeGreaterThan(0);     // not erased, restarted or reshaped
+    expectClearTrails(after.beats, {held: true});
+    observations.push(await observe(page));
+    expect(await page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'))).toBe(false);
+  }
+  const fresh = heartbeats(observations).filter(beat => beat.born > resumed - 20);
+  expect(fresh.length).toBeGreaterThan(0);
+  expect(Math.abs(fresh[0].born - clearance)).toBeLessThanOrEqual(20);
+});
+
+test('only a confirmed Global Pause All holds the strip: a failed or pending request, paused transfers or idle throughput do not', async ({page}) => {
+  test.setTimeout(120000);
+  const pause = {paused: false, transfersPaused: 4};                // every transfer paused individually
+  let answer = null, answered = 0;
+  await page.route('**/api/processing/pause', async route => {
+    const reply = await new Promise(resolve => { answer = resolve; });
+    await route.fulfill(reply);
+    answered++;
+  });
+  const throughput = {bps: 0, peak: 42e6};
+  await boot(page, {pause, throughput});
+  const flatline = () => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'));
+  const idle = await births(page, IDLE + 500);
+  expect(idle.times.length).toBe(1);                                 // the 7 BPM heartbeat runs
+  expect(await flatline()).toBe(false);
+
+  await page.evaluate(() => { pauseProcessing(); });                // the Pause All control
+  await expect.poll(() => answer !== null).toBe(true);
+  answer({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'refused'})});
+  await expect.poll(() => answered).toBe(1);
+  await expect.poll(() => page.evaluate(() => document.getElementById('btn-pause-all')?.dataset.pending !== '1')).toBe(true);
+  expect(await page.evaluate(() => processingPaused)).toBe(false);
+  expect(await flatline()).toBe(false);
+  answer = null;
+  throughput.bps = 42e6;                                             // a busy strip (90 BPM) ...
+  await page.evaluate(() => { pauseProcessing(); });
+  await expect.poll(() => answer !== null).toBe(true);               // ... and a request pending, unconfirmed
+  const pending = await births(page, 4000);                          // (inside the request's 8 s timeout)
+  expect(pending.times.length).toBeGreaterThanOrEqual(2);            // heartbeats still start (easing up from 7 BPM)
+  expect(await flatline()).toBe(false);
+
+  pause.paused = true;                                               // now confirmed
+  answer({status: 200, contentType: 'application/json', body: JSON.stringify({ok: true, paused: true, count: 0, failed: 0})});
+  await expect.poll(() => page.evaluate(() => processingPaused)).toBe(true);
+  await page.clock.runFor(12000);
+  await expect.poll(flatline).toBe(true);
+});
+
+test('entering the Dashboard while paused shows the red flat lines at once, still under reduced motion, and plain baselines once resumed', async ({page}) => {
+  test.setTimeout(90000);
+  const pause = {paused: true};
+  await boot(page, {pause});
+  const flatline = () => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'));
+  await expect.poll(flatline).toBe(true);
+  for (let t = 0; t < 10000; t += 500) {
+    await page.clock.runFor(500);
+    expect((await strip(page)).every(flat)).toBe(true);              // nothing replayed, nothing started
+  }
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await expect.poll(() => page.evaluate(() => document.querySelector('#view-dashboard .dp-card-spark-line').getAnimations().length)).toBe(0);
+  expect(await flatline()).toBe(true);                               // still red, still
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  expect(await flatline()).toBe(false);
+  await page.clock.runFor(10000);
+  expect((await strip(page)).every(flat)).toBe(true);                // still baselines, no motion
 });
 
 test('leaving the Dashboard, hiding the document or reducing motion flattens every line, and each return starts afresh', async ({page}) => {

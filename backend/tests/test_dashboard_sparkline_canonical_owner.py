@@ -58,6 +58,9 @@ def test_dashboard_pulse_owner_is_lifecycle_bound():
     assert "new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));" in app
     assert app.count("setTimeout(dashboardHeartbeat,") == 1  # one timer chain, scheduled in one place
     assert app.count("requestAnimationFrame(dashboardHeartbeatFrame)") == 2
+    # Global Pause All reaches the owner from one place: loadStats, after it reads /stats.
+    assert app.count("processingPaused = !!s.paused;\n      syncDashboardHeartbeatPause();") == 1
+    assert app.count("syncDashboardHeartbeatPause()") == 3   # loadStats, the held-timer guard, its definition
 
 
 def test_dashboard_sparkline_curve_has_canonical_rounded_paint():

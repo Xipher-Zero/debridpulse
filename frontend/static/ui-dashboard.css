@@ -432,6 +432,20 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 .dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: .9; }
 .dp-card-spark .dp-card-spark-tail { stop-color: currentColor; stop-opacity: .6; }
 body.light .dp-card-spark .dp-card-spark-lead { stop-color: oklch(from currentColor calc(l - .05) calc(c * 1.1) h); }
+/* Global Pause All, once the strip has drained (app.js): every line is the
+   same flat, saturated red, breathing in step -- still under reduced motion.
+   Only the lines change; the cards keep their own colours. */
+#view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color: #ff1f35; --dp-card-spark-flatline-dim: .38; }
+body.light #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark { color: #e0001f; --dp-card-spark-flatline-dim: .55; }
+#view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark .dp-card-spark-rest { stop-opacity: 1; }
+#view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark-line { animation: dp-card-spark-flatline 2.5s ease-in-out infinite; }
+@keyframes dp-card-spark-flatline {
+  0%, 100% { opacity: var(--dp-card-spark-flatline-dim); }
+  50% { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #view-dashboard #dash-hero.dash-hero--flatline .dp-card-spark-line { animation: none; }
+}
 
 
 #view-dashboard .dp-dashboard-quick-add,
