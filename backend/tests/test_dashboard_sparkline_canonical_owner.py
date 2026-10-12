@@ -5,28 +5,28 @@ STATIC = Path(__file__).resolve().parents[2] / "frontend" / "static"
 
 
 def test_dashboard_sparkline_surface_is_static_base_markup():
+    """Each card has one line -- the signal itself -- resting flat, stroked by its
+    own pixel-space gradient; no second pulse path is drawn over it."""
     html = (STATIC / "index.html").read_text()
     assert html.count('class="dp-card-spark"') == 6
-    assert html.count('class="dp-card-spark-line" d="M 0 16 H 100"') == 6
-    assert html.count('class="dp-card-spark-pulse" stroke="url(#dp-card-spark-beat-') == 6
-    for retired in ("dp-card-spark-point", "dp-card-spark-fill", "pathLength"):
+    for i in range(6):
+        assert (f'<path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-{i})" d="M 0 16 H 100"></path>') in html
+        assert f'<linearGradient id="dp-card-spark-signal-{i}" gradientUnits="userSpaceOnUse"' in html
+    assert html.count('<stop class="dp-card-spark-rest" offset="0"></stop>') == 6
+    for retired in ("dp-card-spark-pulse", "dp-card-spark-point", "dp-card-spark-fill", "pathLength"):
         assert retired not in html
     assert '<polyline class="dp-card-spark-line"' not in html
 
 
 def test_dashboard_heartbeat_is_one_angular_ecg_complex_on_the_baseline():
-    """Every card shares one beat: straight segments only (no curves), a
-    24-unit PQRST complex rising to y=2 and dropping to y=23 from the y=16
-    baseline, then a 100-unit trail along that baseline."""
-    html = (STATIC / "index.html").read_text()
-    beats = re.findall(r'<path class="dp-card-spark-pulse" stroke="url\(#dp-card-spark-beat-(\d)\)" d="([^"]+)"', html)
-    assert [int(i) for i, _ in beats] == list(range(6))
-    assert len({d for _, d in beats}) == 1
-    d = beats[0][1]
-    assert d.startswith("M 0 16 ") and d.endswith(" L 24 16 L 124 16")
-    assert not re.search(r"[CcQqSsTtAa]", d)
-    ys = [float(y) for y in re.findall(r"-?\d+(?:\.\d+)? (-?\d+(?:\.\d+)?)", d)]
-    assert min(ys) == 2 and max(ys) == 23
+    """Straight segments only: a 48 px PQRST complex rising to y=2 and dropping
+    to y=23 from the y=16 baseline, starting and ending on it."""
+    app = (STATIC / "app.js").read_text()
+    block = app[app.index("const DASHBOARD_HEARTBEAT_COMPLEX = ["):app.index("const DASHBOARD_HEARTBEAT_WIDTH = 48;")]
+    points = [(float(x), float(y)) for x, y in re.findall(r"\[(-?[\d.]+), (-?[\d.]+)\]", block)]
+    assert points[0] == (0, 16) and points[-1] == (48, 16)
+    assert [x for x, _ in points] == sorted(x for x, _ in points)
+    assert min(y for _, y in points) == 2 and max(y for _, y in points) == 23
 
 
 def test_dashboard_sparklines_have_no_metric_history_owner():
@@ -47,12 +47,14 @@ def test_dashboard_kpi_hover_copy_describes_the_numbers():
 
 def test_dashboard_pulse_owner_is_lifecycle_bound():
     app = (STATIC / "app.js").read_text()
-    assert "const DASHBOARD_SPARK_PULSE_INTERVAL_MS = [1000, 3000];" in app
-    assert "const DASHBOARD_SPARK_PULSE_TRAVEL_MS = 800;" in app
-    assert "const DASHBOARD_SPARK_PULSE_SETTLE_MS = 60;" in app
+    assert "const DASHBOARD_HEARTBEAT_INTERVAL_MS = 2000;" in app
+    assert "const DASHBOARD_HEARTBEAT_SPEED = 0.24;" in app
     assert "matchMedia('(prefers-reduced-motion: reduce)')" in app
     assert app.count("syncDashboardSparkPulses();") == 2  # nav() and boot
     assert "document.addEventListener('visibilitychange', syncDashboardSparkPulses);" in app
+    assert "new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));" in app
+    assert app.count("setTimeout(dashboardHeartbeat,") == 2  # first and every following heartbeat: one timer chain
+    assert app.count("requestAnimationFrame(dashboardHeartbeatFrame)") == 2
 
 
 def test_dashboard_sparkline_curve_has_canonical_rounded_paint():

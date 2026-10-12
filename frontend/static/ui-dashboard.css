@@ -411,30 +411,19 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
 }
 .dp-card-spark .dp-card-spark-line {
   fill: none;
-  stroke: currentColor;
   stroke-width: 1.55;
   stroke-linecap: round;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px currentColor);
-  opacity: .4;
 }
-/* The decorative heartbeat: one angular ECG complex followed by a 100-unit
-   trail along the resting baseline, invisible until app.js moves it in from
-   the right edge and lets its trail fade back into the baseline. */
-.dp-card-spark .dp-card-spark-pulse {
-  fill: none;
-  stroke-width: 1.55;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  vector-effect: non-scaling-stroke;
-  opacity: 0;
-  filter: drop-shadow(0 0 2px currentColor) drop-shadow(0 0 5px currentColor);
-}
-.dp-card-spark .dp-card-spark-beat-lead { stop-color: color-mix(in srgb, currentColor 62%, #fff); stop-opacity: 1; }
-.dp-card-spark .dp-card-spark-beat-body { stop-color: currentColor; stop-opacity: .9; }
-.dp-card-spark .dp-card-spark-beat-trail { stop-color: currentColor; stop-opacity: 0; }
-body.light .dp-card-spark .dp-card-spark-beat-lead { stop-color: currentColor; }
+/* The line is the signal: its stroke gradient (app.js) is the dim resting
+   baseline everywhere except where a heartbeat deforms it -- a bright leading
+   edge whose brightness tapers back into the baseline behind the complex. */
+.dp-card-spark .dp-card-spark-rest { stop-color: currentColor; stop-opacity: .4; }
+.dp-card-spark .dp-card-spark-lead { stop-color: color-mix(in srgb, currentColor 62%, #fff); stop-opacity: 1; }
+.dp-card-spark .dp-card-spark-body { stop-color: currentColor; stop-opacity: 1; }
+body.light .dp-card-spark .dp-card-spark-lead { stop-color: currentColor; }
 
 
 #view-dashboard .dp-dashboard-quick-add,

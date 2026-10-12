@@ -961,25 +961,27 @@ function updateOperatorTitle(stats) {
 }
 
 
-/* Dashboard KPI sparklines are decorative artwork, not telemetry: a dim flat
- * baseline and one ECG heartbeat that no KPI value, sample or history shapes.
- * Each card's own timer starts a beat after an independent random 1-3 s
- * interval and draws the interval to its next beat at once. The beat enters
- * from the right edge and crosses the card at one fixed speed, its complex
- * leaving the left edge after TRAVEL_MS; its trail then lies along the
- * baseline and fades back into it, finishing SETTLE_MS before that card's
- * next beat. Beats run only while the Dashboard is the active view, the
- * document is visible and motion is not reduced. */
-const DASHBOARD_SPARK_PULSE_INTERVAL_MS = [1000, 3000];
-const DASHBOARD_SPARK_PULSE_TRAVEL_MS = 800;
-const DASHBOARD_SPARK_PULSE_SETTLE_MS = 60;
-const DASHBOARD_SPARK_PULSE_COMPLEX = 24;   // the ECG complex's width in viewBox units (index.html)
-const _dashboardSparkPulses = new Map();
+/* Dashboard KPI sparklines are decorative artwork, not telemetry: the six
+ * cards' lines form one virtual ECG strip. Its route follows the cards as
+ * rendered -- rows top to bottom, each row right to left -- with the gaps
+ * between cards and rows travelled at their real distance, unseen. One owner
+ * starts a heartbeat every DASHBOARD_HEARTBEAT_INTERVAL_MS; every heartbeat
+ * travels the whole strip right to left at one fixed speed, so several may be
+ * on the strip at once. Each card's single line is the signal: a flat
+ * baseline deformed into the ECG complex wherever a heartbeat is, its stroke
+ * gradient bright at the complex's leading edge and tapering back into the
+ * dim baseline behind it. Heartbeats run only while the Dashboard is the
+ * active view, the document is visible and motion is not reduced. */
+const DASHBOARD_HEARTBEAT_INTERVAL_MS = 2000;  // one heartbeat every 2 s (30 BPM)
+const DASHBOARD_HEARTBEAT_SPEED = 0.24;        // px per ms along the strip
+const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y in the 24-unit viewBox]
+  [0, 16], [6, 16], [9, 13.5], [12, 16], [16, 16], [18, 17.5], [22, 2], [26, 23],
+  [29, 14], [31, 15], [36, 9], [41, 16], [44, 14.5], [47, 16], [48, 16]
+];
+const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
+const DASHBOARD_HEARTBEAT_TAPER = 60;          // px of brightness fading back into the baseline behind the complex
+const _dashboardHeartbeat = {running: false, timer: 0, frame: 0, beats: [], route: null};
 const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
-
-function dashboardSparkPulseBetween([low, high]) {
-  return low + Math.random() * (high - low);
-}
 
 function dashboardSparkPulsesWanted() {
   return !document.hidden
@@ -987,37 +989,108 @@ function dashboardSparkPulsesWanted() {
     && !!document.getElementById('view-dashboard')?.classList.contains('active');
 }
 
-function dashboardSparkBeat(path, state) {
-  const interval = dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_INTERVAL_MS);
-  const duration = interval - DASHBOARD_SPARK_PULSE_SETTLE_MS;
-  const crossed = `translateX(-${DASHBOARD_SPARK_PULSE_COMPLEX}px)`;
-  state.animation?.cancel();
-  state.animation = path.animate([
-    {transform: 'translateX(100px)', opacity: 1},
-    {transform: crossed, opacity: 1, offset: DASHBOARD_SPARK_PULSE_TRAVEL_MS / duration, easing: 'ease-in-out'},
-    {transform: crossed, opacity: 0}
-  ], {duration});
-  state.timer = setTimeout(() => dashboardSparkBeat(path, state), interval);
+/* The strip as rendered: each card's line, where the heartbeat's leading edge
+ * reaches its right edge (entry, px along the strip), and the strip's length. */
+function measureDashboardHeartbeatRoute() {
+  const cards = [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
+    const box = svg.getBoundingClientRect();
+    return {svg, line: svg.querySelector('.dp-card-spark-line'), gradient: svg.querySelector('linearGradient'),
+      left: box.left, right: box.right, top: box.top, middle: (box.top + box.bottom) / 2, width: box.width, d: ''};
+  }).filter(card => card.width > 0);
+  const rows = [];
+  cards.sort((a, b) => a.top - b.top).forEach(card => {
+    const row = rows[rows.length - 1];
+    if (row && Math.abs(card.middle - row[0].middle) < 8) row.push(card);
+    else rows.push([card]);
+  });
+  const route = [];
+  let entry = 0;
+  rows.forEach(row => row.sort((a, b) => b.right - a.right).forEach(card => {
+    const previous = route[route.length - 1];
+    card.row = row;
+    if (previous) entry += previous.row === row
+      ? previous.right - card.right
+      : previous.width + Math.hypot(card.right - previous.left, card.middle - previous.middle);
+    card.entry = entry;
+    card.svg.setAttribute('viewBox', `0 0 ${card.width} 24`);
+    card.gradient.setAttribute('x2', String(card.width));
+    route.push(card);
+  }));
+  const last = route[route.length - 1];
+  const length = last ? last.entry + last.width + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER : 0;
+  return {cards: route, length};
 }
 
-function scheduleDashboardSparkPulse(path) {
-  const state = {timer: 0, animation: null};
-  _dashboardSparkPulses.set(path, state);
-  state.timer = setTimeout(() => dashboardSparkBeat(path, state),
-    dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_INTERVAL_MS));
+/* Draw every card's line for the heartbeats on the strip at `now`. */
+function renderDashboardHeartbeat(now) {
+  const {cards, length} = _dashboardHeartbeat.route;
+  _dashboardHeartbeat.beats = _dashboardHeartbeat.beats.filter(born => (now - born) * DASHBOARD_HEARTBEAT_SPEED <= length);
+  const fmt = value => Number(value.toFixed(2));
+  for (const card of cards) {
+    const width = card.width;
+    const leads = _dashboardHeartbeat.beats
+      .map(born => width - ((now - born) * DASHBOARD_HEARTBEAT_SPEED - card.entry))
+      .filter(x => x < width && x + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER > 0)
+      .sort((a, b) => a - b);
+    let d = `M ${fmt(Math.min(0, leads[0] ?? 0))} 16`;
+    for (const x of leads) d += DASHBOARD_HEARTBEAT_COMPLEX.map(([dx, y]) => ` L ${fmt(x + dx)} ${y}`).join('');
+    d += ` L ${fmt(Math.max(width, (leads[leads.length - 1] ?? 0) + DASHBOARD_HEARTBEAT_WIDTH))} 16`;
+    if (d === card.d) continue;
+    card.d = d;
+    card.line.setAttribute('d', d);
+    // One rest stop, then four per heartbeat (rest, lead, body, rest); unused groups wait at the end.
+    const stops = card.gradient.children;
+    while (stops.length < 1 + 4 * leads.length) {
+      ['rest', 'lead', 'body', 'rest'].forEach(role => {
+        const stop = document.createElementNS('http://www.w3.org/2000/svg', 'stop');
+        stop.setAttribute('class', `dp-card-spark-${role}`);
+        stop.setAttribute('offset', '1');
+        card.gradient.appendChild(stop);
+      });
+    }
+    const at = x => String(Math.min(1, Math.max(0, x / width)));
+    for (let group = 0; 1 + 4 * group < stops.length; group++) {
+      const x = leads[group];
+      const offsets = x === undefined ? ['1', '1', '1', '1']
+        : [at(x - 4), at(x + 6), at(x + DASHBOARD_HEARTBEAT_WIDTH * 0.6), at(x + DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TAPER)];
+      offsets.forEach((offset, i) => stops[1 + 4 * group + i].setAttribute('offset', offset));
+    }
+  }
+}
+
+function dashboardHeartbeatFrame(now) {
+  _dashboardHeartbeat.frame = 0;
+  renderDashboardHeartbeat(now);
+  if (_dashboardHeartbeat.beats.length) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
+}
+
+function dashboardHeartbeat() {
+  _dashboardHeartbeat.beats.push(performance.now());
+  _dashboardHeartbeat.timer = setTimeout(dashboardHeartbeat, DASHBOARD_HEARTBEAT_INTERVAL_MS);
+  if (!_dashboardHeartbeat.frame) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
 }
 
 function syncDashboardSparkPulses() {
+  const state = _dashboardHeartbeat;
   if (!dashboardSparkPulsesWanted()) {
-    _dashboardSparkPulses.forEach(state => {
-      clearTimeout(state.timer);
-      state.animation?.cancel();
-    });
-    _dashboardSparkPulses.clear();
+    if (!state.running) return;
+    clearTimeout(state.timer);
+    cancelAnimationFrame(state.frame);
+    Object.assign(state, {running: false, timer: 0, frame: 0, beats: []});
+    renderDashboardHeartbeat(performance.now());   // back to the flat baselines
     return;
   }
-  if (_dashboardSparkPulses.size) return;
-  document.querySelectorAll('#view-dashboard .dp-card-spark-pulse').forEach(scheduleDashboardSparkPulse);
+  if (state.running) return;
+  state.running = true;
+  state.route = measureDashboardHeartbeatRoute();
+  state.timer = setTimeout(dashboardHeartbeat, DASHBOARD_HEARTBEAT_INTERVAL_MS);
+}
+
+/* A reflow re-measures the strip under the heartbeats already on it. */
+function remeasureDashboardHeartbeat() {
+  if (!_dashboardHeartbeat.running) return;
+  _dashboardHeartbeat.route = measureDashboardHeartbeatRoute();
+  renderDashboardHeartbeat(performance.now());
 }
 
 async function loadStats() {
@@ -1903,6 +1976,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
   document.addEventListener('visibilitychange', syncDashboardSparkPulses);
+  new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));
   syncDashboardSparkPulses();
   const isLight = localStorage.getItem('theme') === 'light';
   document.body.classList.toggle('light', isLight);
