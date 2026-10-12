@@ -39,7 +39,7 @@ def test_dashboard_canonical_owner_keeps_reviewed_header_and_sparkline_geometry(
     assert "height: 31px;" in css
     assert "opacity: 1;" in css
     assert "stroke-width: 1.55;" in css
-    assert ".dp-card-spark .dp-card-spark-point" in css
+    assert ".dp-card-spark .dp-card-spark-pulse" in css
     assert "filter: drop-shadow(0 0 3px currentColor);" in css
     assert ".dp-dashboard-quick-add .card-header" in css
     assert "min-height: 78px;" in css

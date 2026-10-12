@@ -418,9 +418,17 @@ body.light #view-dashboard .t-table thead th { background: #f7f9fd; }
   vector-effect: non-scaling-stroke;
   filter: drop-shadow(0 0 3px currentColor);
 }
-.dp-card-spark .dp-card-spark-point {
-  fill: currentColor;
-  filter: drop-shadow(0 0 3px currentColor);
+/* The decorative pulse: a short luminous dash over the same fixed waveform,
+   idle (invisible) until app.js animates its dash offset left to right. */
+.dp-card-spark .dp-card-spark-pulse {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-dasharray: 16 200;
+  stroke-dashoffset: 16;
+  opacity: 0;
+  filter: drop-shadow(0 0 1.5px currentColor) drop-shadow(0 0 4px currentColor);
 }
 
 

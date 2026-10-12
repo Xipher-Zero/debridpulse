@@ -102,6 +102,7 @@ function nav(el) {
   const subtitle = document.getElementById('page-subtitle');
   if (subtitle) subtitle.textContent = subtitles[v] || '';
   document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
+  syncDashboardSparkPulses();
   if (v === 'dashboard') { loadStats(); loadRecent(); }
   // Every sidebar selection is a new entry: Downloads opens on page 1 (its
   // search, filter and order are kept), Settings on Services, Help on Quick Start.
@@ -960,210 +961,59 @@ function updateOperatorTitle(stats) {
 }
 
 
-const DASHBOARD_METRIC_HISTORY_KEY = 'debridpulse.dashboard.metric-history.v2';
-const DASHBOARD_METRIC_HISTORY_LIMIT = 30;
-const DASHBOARD_METRIC_SAMPLE_INTERVAL_MS = 15000;
-const DASHBOARD_HERO_METRICS = {
-  's-total':      {key: 'total',      label: 'Total downloads',  kind: 'cumulative',    hint: 'recent downloads added per sample interval'},
-  's-completed':  {key: 'completed',  label: 'Completed',        kind: 'cumulative',    hint: 'recent completions per sample interval'},
-  's-active':     {key: 'active',     label: 'Active now',       kind: 'instantaneous', hint: 'recent sampled active-transfer count'},
-  's-processing': {key: 'processing', label: 'Processing',       kind: 'instantaneous', hint: 'recent sampled processing count'},
-  's-error':      {key: 'errors',     label: 'Errors',           kind: 'instantaneous', hint: 'recent sampled error count'},
-  's-size':       {key: 'downloaded', label: 'Total downloaded', kind: 'cumulative',    hint: 'bytes completed per sample interval'}
-};
+/* Dashboard KPI sparklines are decorative artwork: index.html carries one
+ * fixed waveform per card, and no KPI value, sample or history shapes it. Each
+ * card's own timer sends one short pulse left to right along that waveform
+ * after an independent random 3-10 s pause, and schedules the next pulse only
+ * once the last has finished. Pulses run only while the Dashboard is the
+ * active view, the document is visible and motion is not reduced. */
+const DASHBOARD_SPARK_PULSE_IDLE_MS = [3000, 10000];
+const DASHBOARD_SPARK_PULSE_TRAVEL_MS = [1000, 1500];
+const DASHBOARD_SPARK_PULSE_KEYFRAMES = [
+  {strokeDashoffset: 16, opacity: 0},
+  {opacity: 1, offset: 0.12},
+  {opacity: 1, offset: 0.8},
+  {strokeDashoffset: -100, opacity: 0}
+];
+const _dashboardSparkPulses = new Map();
+const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-function dashboardMetricNumber(value) {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+function dashboardSparkPulseBetween([low, high]) {
+  return low + Math.random() * (high - low);
 }
 
-function readDashboardMetricHistory() {
-  try {
-    const parsed = JSON.parse(localStorage.getItem(DASHBOARD_METRIC_HISTORY_KEY) || '[]');
-    if (!Array.isArray(parsed)) return [];
-    return parsed.filter(sample => sample && Number.isFinite(Number(sample.ts)))
-      .slice(-DASHBOARD_METRIC_HISTORY_LIMIT);
-  } catch (_) {
-    return [];
+function dashboardSparkPulsesWanted() {
+  return !document.hidden
+    && !_dashboardSparkReducedMotion.matches
+    && !!document.getElementById('view-dashboard')?.classList.contains('active');
+}
+
+function scheduleDashboardSparkPulse(path) {
+  const state = {timer: 0, animation: null};
+  _dashboardSparkPulses.set(path, state);
+  state.timer = setTimeout(() => {
+    state.timer = 0;
+    state.animation = path.animate(DASHBOARD_SPARK_PULSE_KEYFRAMES, {
+      duration: dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_TRAVEL_MS),
+      easing: 'ease-in-out'
+    });
+    state.animation.finished.then(() => {
+      if (_dashboardSparkPulses.get(path) === state) scheduleDashboardSparkPulse(path);
+    }, () => {});
+  }, dashboardSparkPulseBetween(DASHBOARD_SPARK_PULSE_IDLE_MS));
+}
+
+function syncDashboardSparkPulses() {
+  if (!dashboardSparkPulsesWanted()) {
+    _dashboardSparkPulses.forEach(state => {
+      clearTimeout(state.timer);
+      state.animation?.cancel();
+    });
+    _dashboardSparkPulses.clear();
+    return;
   }
-}
-
-function writeDashboardMetricHistory(samples) {
-  try {
-    localStorage.setItem(
-      DASHBOARD_METRIC_HISTORY_KEY,
-      JSON.stringify(samples.slice(-DASHBOARD_METRIC_HISTORY_LIMIT))
-    );
-  } catch (_) {
-    // Storage can be unavailable in hardened/private browser contexts.
-  }
-}
-
-function dashboardCumulativeDeltas(values) {
-  return values.map((value, index) => {
-    if (index === 0) return 0;
-    const previous = values[index - 1];
-    return value >= previous ? value - previous : 0;
-  });
-}
-
-function dashboardSparkCoordinates(values) {
-  if (!Array.isArray(values) || values.length < 2) return [];
-  const clean = values.map(dashboardMetricNumber);
-  const min = Math.min(...clean);
-  const max = Math.max(...clean);
-  const span = max - min;
-  return clean.map((value, index) => ({
-    x: (index / (clean.length - 1)) * 100,
-    y: span === 0 ? 12 : 20 - ((value - min) / span) * 16
-  }));
-}
-
-function dashboardMonotoneSparkPath(points) {
-  if (!Array.isArray(points) || points.length < 2) return '';
-  const fmt = value => Number(value).toFixed(2);
-  const clamp = (value, low, high) => Math.min(high, Math.max(low, value));
-  const intervals = points.slice(0, -1).map((point, index) => {
-    const next = points[index + 1];
-    const width = next.x - point.x;
-    return {
-      width,
-      slope: width > 0 ? (next.y - point.y) / width : 0
-    };
-  });
-  const tangents = new Array(points.length).fill(0);
-
-  if (points.length === 2) {
-    tangents[0] = intervals[0].slope;
-    tangents[1] = intervals[0].slope;
-  } else {
-    const endpointTangent = (nearWidth, farWidth, nearSlope, farSlope) => {
-      if (!nearWidth || !farWidth || !nearSlope) return 0;
-      let tangent = (
-        ((2 * nearWidth + farWidth) * nearSlope) -
-        (nearWidth * farSlope)
-      ) / (nearWidth + farWidth);
-      if (tangent * nearSlope <= 0) return 0;
-      if (
-        nearSlope * farSlope < 0 &&
-        Math.abs(tangent) > Math.abs(3 * nearSlope)
-      ) {
-        tangent = 3 * nearSlope;
-      }
-      return tangent;
-    };
-
-    tangents[0] = endpointTangent(
-      intervals[0].width,
-      intervals[1].width,
-      intervals[0].slope,
-      intervals[1].slope
-    );
-    tangents[tangents.length - 1] = endpointTangent(
-      intervals[intervals.length - 1].width,
-      intervals[intervals.length - 2].width,
-      intervals[intervals.length - 1].slope,
-      intervals[intervals.length - 2].slope
-    );
-
-    for (let index = 1; index < points.length - 1; index++) {
-      const left = intervals[index - 1];
-      const right = intervals[index];
-      if (!left.slope || !right.slope || left.slope * right.slope <= 0) {
-        tangents[index] = 0;
-        continue;
-      }
-      const leftWeight = 2 * right.width + left.width;
-      const rightWeight = right.width + 2 * left.width;
-      tangents[index] = (leftWeight + rightWeight) / (
-        (leftWeight / left.slope) + (rightWeight / right.slope)
-      );
-    }
-  }
-
-  let path = `M ${fmt(points[0].x)} ${fmt(points[0].y)}`;
-  for (let index = 0; index < points.length - 1; index++) {
-    const start = points[index];
-    const end = points[index + 1];
-    const width = end.x - start.x;
-    const lowY = Math.min(start.y, end.y);
-    const highY = Math.max(start.y, end.y);
-    const cp1 = {
-      x: start.x + width / 3,
-      y: clamp(start.y + (tangents[index] * width) / 3, lowY, highY)
-    };
-    const cp2 = {
-      x: end.x - width / 3,
-      y: clamp(end.y - (tangents[index + 1] * width) / 3, lowY, highY)
-    };
-    path += ` C ${fmt(cp1.x)} ${fmt(cp1.y)}, ${fmt(cp2.x)} ${fmt(cp2.y)}, ${fmt(end.x)} ${fmt(end.y)}`;
-  }
-  return path;
-}
-
-function renderDashboardMetricHistory(samples) {
-  Object.entries(DASHBOARD_HERO_METRICS).forEach(([valueId, metric]) => {
-    const value = document.getElementById(valueId);
-    const card = value?.closest('.dash-hero-stat');
-    const svg = card?.querySelector('.dp-card-spark');
-    if (!card || !svg) return;
-
-    const rawValues = samples.map(sample => dashboardMetricNumber(sample[metric.key]));
-    const values = metric.kind === 'cumulative'
-      ? dashboardCumulativeDeltas(rawValues)
-      : rawValues;
-    const line = svg.querySelector('.dp-card-spark-line');
-    const fill = svg.querySelector('.dp-card-spark-fill');
-    const point = svg.querySelector('.dp-card-spark-point');
-    if (!line || !fill || !point) return;
-
-    const coordinates = dashboardSparkCoordinates(values);
-    const path = dashboardMonotoneSparkPath(coordinates);
-    card.dataset.dpMetric = metric.key;
-    card.title = `${metric.label} — ${metric.hint}.`;
-
-    if (path) {
-      line.setAttribute('d', path);
-      fill.setAttribute('d', `${path} L 100 24 L 0 24 Z`);
-      point.setAttribute('opacity', '0');
-    } else if (values.length === 1) {
-      line.setAttribute('d', '');
-      fill.setAttribute('d', '');
-      point.setAttribute('cx', '50');
-      point.setAttribute('cy', '12');
-      point.setAttribute('opacity', '1');
-    } else {
-      line.setAttribute('d', '');
-      fill.setAttribute('d', '');
-      point.setAttribute('opacity', '0');
-    }
-  });
-}
-
-function recordDashboardMetricHistory(metrics) {
-  if (!metrics || typeof metrics !== 'object') return;
-  const snapshot = {
-    ts: Date.now(),
-    total: dashboardMetricNumber(metrics.total),
-    completed: dashboardMetricNumber(metrics.completed),
-    active: dashboardMetricNumber(metrics.active),
-    processing: dashboardMetricNumber(metrics.processing),
-    errors: dashboardMetricNumber(metrics.errors),
-    downloaded: dashboardMetricNumber(metrics.downloaded)
-  };
-  const samples = readDashboardMetricHistory();
-  const last = samples[samples.length - 1];
-  const changed = !last || Object.values(DASHBOARD_HERO_METRICS).some(metric =>
-    dashboardMetricNumber(last[metric.key]) !== snapshot[metric.key]
-  );
-  const due = !last || snapshot.ts - dashboardMetricNumber(last.ts) >= DASHBOARD_METRIC_SAMPLE_INTERVAL_MS;
-
-  if (changed || due) {
-    samples.push(snapshot);
-    while (samples.length > DASHBOARD_METRIC_HISTORY_LIMIT) samples.shift();
-    writeDashboardMetricHistory(samples);
-  }
-  renderDashboardMetricHistory(samples);
+  if (_dashboardSparkPulses.size) return;
+  document.querySelectorAll('#view-dashboard .dp-card-spark-pulse').forEach(scheduleDashboardSparkPulse);
 }
 
 async function loadStats() {
@@ -1199,14 +1049,6 @@ async function loadStats() {
       if (errCard) errCard.style.opacity = errCount > 0 ? '1' : '.6';
       document.getElementById('s-size').textContent = fmtSize(s.total_completed_bytes);
       document.getElementById('s-blocked').textContent = `${s.total_blocked_files||0} blocked files`;
-      recordDashboardMetricHistory({
-        total,
-        completed,
-        active: s.active_operations ?? s.active_downloads ?? 0,
-        processing: (Number(bs.processing) || 0) + (Number(bs.uploading) || 0),
-        errors: errCount,
-        downloaded: s.total_completed_bytes
-      });
       document.getElementById('i-last-day').textContent = s.completed_last_24h||0;
       document.getElementById('i-last-week').textContent = s.completed_last_7d||0;
       document.getElementById('i-success-rate').textContent = s.success_rate_pct != null ? s.success_rate_pct+'%' : '—';
@@ -2055,6 +1897,9 @@ document.addEventListener('DOMContentLoaded', () => {
       }
     }, 120);
   });
+  _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
+  document.addEventListener('visibilitychange', syncDashboardSparkPulses);
+  syncDashboardSparkPulses();
   const isLight = localStorage.getItem('theme') === 'light';
   document.body.classList.toggle('light', isLight);
   updateThemeToggle(isLight);

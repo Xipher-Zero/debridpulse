@@ -126,7 +126,7 @@ test('cold load keeps only canonical owners and all six surfaces survive repeate
   expect(runtime.errors).toEqual([]);
 });
 
-test('Dashboard runtime hydrates KPI and sparkline state and submission field preserves the five-line cap', async ({ page }) => {
+test('Dashboard runtime hydrates KPI values beside decorative sparklines and submission field preserves the five-line cap', async ({ page }) => {
   await isolateExternalFonts(page);
   const runtime = observeRuntime(page);
   await page.goto('/');
@@ -136,7 +136,7 @@ test('Dashboard runtime hydrates KPI and sparkline state and submission field pr
   await expect(page.locator('.dp-card-spark')).toHaveCount(6);
   await expect(page.locator('.dp-card-spark-line')).toHaveCount(6);
   await expect(page.locator('#s-total')).not.toHaveText('—');
-  await expect.poll(() => page.evaluate(() => Boolean(localStorage.getItem('debridpulse.dashboard.metric-history.v2')))).toBeTruthy();
+  await expect.poll(() => page.evaluate(() => localStorage.getItem('debridpulse.dashboard.metric-history.v2'))).toBeNull();
 
   const input = page.locator('#q-transfer-input');
   await expect(input).toBeVisible();

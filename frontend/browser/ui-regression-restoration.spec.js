@@ -131,20 +131,6 @@ test('Downloads and Activity Log master-card titles change without touching side
  await expect(page.locator('.dp-stats-heading')).toHaveText('By the Numbers');
 });
 
-test('Dashboard hero sparklines graph cumulative deltas for cumulative metrics and raw samples for instantaneous metrics',async({page})=>{
- await ready(page);
- const result=await page.evaluate(()=>{
-  const cumulative=dashboardCumulativeDeltas([10,10,12,15]);
-  const reset=dashboardCumulativeDeltas([15,17,3,5]);
-  const kinds=Object.fromEntries(Object.values(DASHBOARD_HERO_METRICS).map(m=>[m.key,m.kind]));
-  return {cumulative,reset,kinds};
- });
- expect(result.cumulative).toEqual([0,0,2,3]);
- expect(result.reset).toEqual([0,2,0,2]);
- expect(result.reset).not.toContain(-14);
- expect(result.kinds).toEqual({total:'cumulative',completed:'cumulative',active:'instantaneous',processing:'instantaneous',errors:'instantaneous',downloaded:'cumulative'});
-});
-
 /* DP 1.0.13 Settings consolidation.
  *
  * Archive Passwords stopped depending on Apply Settings. The specialized
