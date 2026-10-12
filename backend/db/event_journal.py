@@ -26,6 +26,8 @@ failure can never refuse a transfer transition; ``catch_up`` indexes the tail
 idempotently (FTS rows and the watermark commit together) and ``reset_index``
 drops a broken index for a bounded rebuild. A search reports how much of the
 journal it could not cover instead of presenting a partial answer as complete.
+What a search means is ``core.search_contract``'s; this module only executes
+its plan against the journal and the index.
 """
 from __future__ import annotations
 
@@ -36,6 +38,9 @@ import time
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
+
+from core import search_contract
+from core.search_contract import SearchPlan
 
 logger = logging.getLogger("debridpulse.event_journal")
 
@@ -56,15 +61,12 @@ MAX_PAGE_SIZE = 250
 MESSAGE_LIMIT = 200
 DETAIL_LIMIT = 500
 NAME_LIMIT = 255
-SEARCH_MIN_TEXT = 3
-SEARCH_MAX_TEXT = 200
 # Derived-index catch-up batch: what one maintenance pass or one search indexes
 # before answering. A larger backlog is reported, never hidden.
 INDEX_BATCH = 2000
 
 _TYPE = re.compile(r"[a-z]+\.[a-z0-9_.]{1,80}")
 _TOKEN = re.compile(r"[a-z0-9_]{1,64}")
-_TRANSFER_REF = re.compile(r"#?(\d{1,18})")
 
 SCHEMA = (
     """CREATE TABLE IF NOT EXISTS event_journal (
@@ -360,45 +362,16 @@ async def pending_index_rows(db, bound: int) -> int:
 # ── reading ─────────────────────────────────────────────────────────────────
 
 
-class SearchRejected(ValueError):
-    """An operator search this journal cannot answer as asked; ``message`` is
-    safe to show."""
-
-
 class SearchUnavailable(RuntimeError):
     """Text search cannot run on this installation right now; ``message`` is
     safe to show."""
 
 
-@dataclass(frozen=True)
-class SearchTerms:
-    text: str | None
-    transfer_id: int | None
-
-
-def search_terms(raw: str | None) -> SearchTerms | None:
-    """Literal, case-insensitive substring search over the message, detail and
-    transfer name, plus -- for a bare number or ``#number`` -- the exact
-    transfer id (every event correlated to that transfer). Text shorter than
-    three characters cannot be answered from the index; a short number still
-    matches the transfer id alone."""
-    query = " ".join(str(raw or "").split())
-    if not query:
-        return None
-    if len(query) > SEARCH_MAX_TEXT:
-        raise SearchRejected(f"Search text is limited to {SEARCH_MAX_TEXT} characters.")
-    reference = _TRANSFER_REF.fullmatch(query)
-    transfer_id = int(reference.group(1)) if reference else None
-    text = query if len(query) >= SEARCH_MIN_TEXT else None
-    if text is None and transfer_id is None:
-        raise SearchRejected(f"Search needs at least {SEARCH_MIN_TEXT} characters, or an exact transfer ID.")
-    return SearchTerms(text, transfer_id)
-
-
 def _phrase(text: str) -> str:
-    # One FTS5 string: with the trigram tokenizer a string matches as a
-    # contiguous, case-insensitive substring -- punctuation, spaces and quotes
-    # included -- never as query syntax.
+    # THE translation of a plan's literal text into FTS5: one string, which
+    # with the trigram tokenizer matches as a contiguous, case-insensitive
+    # substring -- punctuation, spaces and quotes included -- never as query
+    # syntax.
     return '"' + text.replace('"', '""') + '"'
 
 
@@ -416,7 +389,7 @@ class LastPageUnavailable(RuntimeError):
 
 
 async def page(db, *, limit: int, before: int | None, snapshot: int | None, category: str | None,
-               severity: str | None, since: float | None, terms: SearchTerms | None,
+               severity: str | None, since: float | None, search: SearchPlan | None,
                after: int | None = None, last: bool = False) -> dict:
     """One newest-first page of the journal at or below ``snapshot``.
 
@@ -441,7 +414,7 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
     # ONE inclusive upper bound: SQLite seeks a rowid range on a single
     # bound, so two would walk every row between them.
     upper = int(snapshot) if before is None else min(int(snapshot), int(before) - 1)
-    search = {"text": "none", "pending": 0, "complete": True}
+    status, pending = search_contract.COMPLETE, 0
     text_driven = False
     clauses = ["j.id <= ?"]
     params: list = [upper]
@@ -458,32 +431,32 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
             ORDER BY w.occurred_at LIMIT 1), 9223372036854775807) AND j.occurred_at >= ?""")
         params.extend([float(since), float(since)])
     match: list = []
-    if terms is not None:
+    if search is not None:
         alternatives = []
         alternative_params: list = []
-        if terms.transfer_id is not None:
+        if search.transfer_id is not None:
             alternatives.append("j.transfer_id = ? OR j.related_transfer_id = ?")
-            alternative_params.extend([terms.transfer_id, terms.transfer_id])
-        if terms.text is not None:
+            alternative_params.extend([search.transfer_id, search.transfer_id])
+        if search.text is not None:
             if not await _fts_present(db):
-                if terms.transfer_id is None:
+                if search.transfer_id is None:
                     raise SearchUnavailable("Text search is unavailable on this installation "
                                             "(its SQLite runtime has no FTS5 trigram support).")
-                search = {"text": "unavailable", "pending": 0, "complete": False}
+                status = search_contract.UNAVAILABLE
             else:
                 pending = await pending_index_rows(db, INDEX_BATCH + 1)
-                search = {"text": "indexed", "pending": pending, "complete": pending == 0}
-                if terms.transfer_id is None:
+                status = search_contract.COMPLETE if pending == 0 else search_contract.INDEX_INCOMPLETE
+                if search.transfer_id is None:
                     # Text alone: the index drives the page, newest match
                     # first from the cursor bound, and every other filter is
                     # checked per match -- the walk stops at the page instead
                     # of first collecting every match the history holds.
                     text_driven = True
-                    match = [_phrase(terms.text)]
+                    match = [_phrase(search.text)]
                 else:
                     alternatives.append(f"j.id IN (SELECT rowid FROM {FTS_TABLE} WHERE {FTS_TABLE} MATCH ? "
                                         "AND rowid <= ?)")
-                    alternative_params.extend([_phrase(terms.text), upper])
+                    alternative_params.extend([_phrase(search.text), upper])
         if alternatives:
             clauses.append("(" + " OR ".join(alternatives) + ")")
             params.extend(alternative_params)
@@ -525,11 +498,10 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
         # The final page is the REMAINDER of the newest-first partition, so it
         # needs the number of matches in exactly this snapshot and filter --
         # counted once, bounded, and only when that number is authoritative.
-        if not search["complete"]:
+        if status != search_contract.COMPLETE:
             raise LastPageUnavailable(
-                "The last page can't be found while text search is unavailable or recent events are still "
-                "being indexed." if search["text"] == "unavailable" else
-                "The last page can't be found while recent events are still being indexed. Try again shortly.")
+                "The last page can't be found while text search is unavailable." if status == search_contract.UNAVAILABLE
+                else "The last page can't be found while recent events are still being indexed. Try again shortly.")
         total = await matches(where(), LAST_PAGE_COUNT_LIMIT + 1)
         if total > LAST_PAGE_COUNT_LIMIT:
             raise LastPageUnavailable("This history is too large to count for a direct jump to the last page.")
@@ -564,7 +536,9 @@ async def page(db, *, limit: int, before: int | None, snapshot: int | None, cate
         "window_start": since,
         "history_started_at": (time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime(float(started["started_at"])))
                                if started else None),
-        "search": search,
+        "search": search_contract.describe(
+            search, status, search_contract.FINAL_BOUNDED if status == search_contract.COMPLETE
+            else search_contract.FINAL_UNPROVEN, pending),
     }
     if has_newer is not None:
         result["has_newer"] = has_newer

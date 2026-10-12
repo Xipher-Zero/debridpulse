@@ -11,6 +11,7 @@ from __future__ import annotations
 import pytest
 
 import db.database as database
+from core import search_contract
 from core.config import AppSettings, configuration_changes
 from db import event_journal
 from services import db_maintenance
@@ -72,7 +73,7 @@ async def test_a_subordinate_route_failure_and_its_failover_are_correlated_facts
     # One exact transfer id finds every related route, attempt and artifact event.
     async with database.get_db() as db:
         page = await event_journal.page(db, limit=250, before=None, snapshot=None, category=None, severity=None,
-                                        since=None, terms=event_journal.search_terms(f"#{transfer.id}"))
+                                        since=None, search=search_contract.plan(f"#{transfer.id}"))
     assert [item["id"] for item in page["items"]] == [row["id"] for row in reversed(events)]
 
     # A restart replays nothing that already happened.
@@ -119,7 +120,7 @@ async def test_history_survives_transfer_deletion_and_only_the_explicit_reset_cl
     assert {row["subject_name"] for row in events} == {"kept history"}
     async with database.get_db() as db:
         page = await event_journal.page(db, limit=50, before=None, snapshot=None, category="transfer", severity=None,
-                                        since=None, terms=None)
+                                        since=None, search=None)
     assert page["items"] and not any(item["transfer_available"] for item in page["items"])
 
     while await event_journal.catch_up():
@@ -134,7 +135,7 @@ async def test_history_survives_transfer_deletion_and_only_the_explicit_reset_cl
         assert (await db.fetchone("SELECT indexed_through FROM event_journal_index"))["indexed_through"] == last
         assert await event_journal.pending_index_rows(db, 10) == 1
         page = await event_journal.page(db, limit=50, before=None, snapshot=None, category=None, severity=None,
-                                        since=None, terms=event_journal.search_terms("kept history"))
+                                        since=None, search=search_contract.plan("kept history"))
     assert page["items"] == []
 
 

@@ -133,6 +133,12 @@ class _FakeDb:
         self.calls.append(("fetchone", query, list(params)))
         return {"cnt": len(self.rows)}
 
+    async def create_function(self, name, arity, function):
+        self.calls.append(("create_function", name, arity))
+
+    async def execute(self, query, params=()):
+        self.calls.append(("execute", query, list(params)))
+
 
 @asynccontextmanager
 async def _fake_db(db):
@@ -189,13 +195,20 @@ async def test_torrents_explicit_status_filters_by_parameter(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_torrents_search_is_parameterized_across_columns(monkeypatch):
+async def test_torrents_search_is_one_parameterized_plan_predicate(monkeypatch):
     db, _ = await _list_torrents(
-        monkeypatch, status=None, search="Example", limit=0, offset=0
+        monkeypatch, status=None, search="Ex%_ample 580", limit=0, offset=0
     )
-    projection_sql, params = db.calls[0][1], db.calls[0][2]
-    assert "LOWER(COALESCE(t.name, '')) LIKE ?" in projection_sql
-    assert params.count("%example%") == 5
+    assert db.calls[0] == ("create_function", downloads._DOWNLOADS_MATCH, 9)
+    evaluate_sql, evaluate_params = next((sql, values) for kind, sql, values in db.calls[1:]
+                                         if kind == "execute" and sql.startswith("INSERT"))
+    # The text is a bound, folded parameter -- never SQL text, never a LIKE pattern.
+    assert "Ex%_ample" not in evaluate_sql and " LIKE ?" not in evaluate_sql
+    assert downloads._DOWNLOADS_MATCH in evaluate_sql and evaluate_params[-1] == "ex%_ample 580"
+    # Evaluated once; the page and its total both read that one result.
+    reads = [sql for kind, sql, _values in db.calls if kind in ("fetchall", "fetchone")]
+    assert len(reads) == 2 and all(f"temp.{downloads._DOWNLOADS_HITS}" in sql for sql in reads)
+    assert not any(downloads._DOWNLOADS_MATCH in sql for sql in reads)
 
 
 @pytest.mark.asyncio

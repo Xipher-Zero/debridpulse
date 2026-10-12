@@ -2,11 +2,13 @@
  * (DP 1.0.12 canonical flattening, CANON-001 closure).
  *
  * Sole owner of: list page state, the bounded /torrents fetch, final row
- * rendering, filtering/search, pagination, the Priority/Newest order, the
+ * rendering, filtering, pagination, the Priority/Newest order, the
  * operator queue reorder (Name-cell drag, keyboard move, cross-page
  * navigation while one is held, the restart confirmation), date mode/menu,
  * measured capacity/page sizing, list selection state, bulk actions,
- * refresh, and page-specific lifecycle/event wiring. Every row is emitted in final form
+ * refresh, and page-specific lifecycle/event wiring. The search box, every
+ * request's identity and the search status line belong to the shared search
+ * lifecycle (DPSearch, ui-search.js), as on the Activity Log. Every row is emitted in final form
  * by a single render pass -- this file never replaces api/loadTorrents/
  * renderTorrentPagination/fmtDate on another owner, and never re-renders an
  * inherited Downloads implementation and repairs its DOM afterward.
@@ -31,23 +33,31 @@ const AUTO_RECOVERING_PRESENTATION = new Set(
 
 // ── List/page state ─────────────────────────────────────────────────────
 let currentFilter = '';
-let currentTorrentSearch = '';
 // 'queue': the operator queue, then settled history (the server orders the
 // whole collection before it cuts the page). 'newest': chronological.
 let currentOrder = 'queue';
 let torrentPage = 1;
 let torrentPageSize = 25;
 let torrentTotal = 0;
-let _torrentSearchTimer = null;
 let _selectedIds = new Set();
-// Bumped by every authoritative state mutation that changes the requested
-// list projection (page, filter, search, page size -- including a
-// capacity-derived page-size transition). A fetch snapshots this value when
-// it starts; if it no longer matches on completion, a newer intent has
-// superseded it and the response must be discarded rather than rendered --
-// an in-flight response for an older view state must never overwrite newer
-// user/application intent.
-let requestGeneration = 0;
+// Every authoritative state mutation that changes the requested list
+// projection (page, filter, order, page size -- including a capacity-derived
+// page-size transition -- and a committed search) supersedes the requests in
+// flight; each fetch takes its own ticket and a response that is no longer
+// the newest is discarded rather than rendered -- an in-flight response for
+// an older view state must never overwrite newer user/application intent.
+let search = null;
+function searchControl() {
+  if (!search) {
+    search = window.DPSearch.attach({
+      input: document.getElementById('torrent-search'),
+      status: document.getElementById('torrent-search-status'),
+      noun: 'downloads',
+      onCommit() { clearSelection(); torrentPage = 1; loadTorrents().catch(() => {}); },
+    });
+  }
+  return search;
+}
 
 // ── Date presentation preference ────────────────────────────────────────
 let pref = loadPref();
@@ -169,7 +179,7 @@ function applySize(size) {
   const offset = Math.max(0, (Math.max(1, Number(torrentPage) || 1) - 1) * old);
   torrentPageSize = size;
   torrentPage = Math.floor(offset / size) + 1;
-  requestGeneration++;
+  searchControl().invalidate();
   return true;
 }
 function captureFocus() {
@@ -206,8 +216,7 @@ function activeDownloadFilterStatus() {
   return document.querySelector('#view-torrents .filter-tabs .ftab.active')?.dataset.dpStatus || '';
 }
 function downloadPaginationSummary(total, from, to) {
-  const search = document.getElementById('torrent-search');
-  if (search && search.value.trim()) {
+  if (searchControl().accepted()) {
     if (total <= 0) return 'No downloads match your search';
     if (total === 1 && from === 1 && to === 1) return 'Showing 1 matching download';
     if (from === 1 && to === total) return 'Showing all ' + total + ' matching downloads';
@@ -235,8 +244,7 @@ function updateDownloadsTrackedCopy(total) {
   if (title) title.setAttribute('aria-label', 'On the Books. ' + copy);
 }
 function downloadEmptyMessage() {
-  const search = document.getElementById('torrent-search');
-  if (search && search.value.trim()) return 'No downloads match your search.';
+  if (searchControl().accepted()) return 'No downloads match your search.';
   if (activeDownloadFilterStatus()) return 'No downloads match your current filters.';
   return 'No downloads yet. Add a link, magnet, or torrent file to get started.';
 }
@@ -269,25 +277,16 @@ function setFilter(element, status) {
   if (element) { element.classList.add('active'); element.setAttribute('aria-selected', 'true'); }
   currentFilter = status;
   torrentPage = 1;
-  requestGeneration++;
+  searchControl().invalidate();
   clearSelection();
   loadTorrents();
-}
-function onTorrentSearchInput() {
-  const nextSearch = (document.getElementById('torrent-search')?.value || '').trim();
-  if (nextSearch !== currentTorrentSearch) clearSelection();
-  currentTorrentSearch = nextSearch;
-  torrentPage = 1;
-  requestGeneration++;
-  if (_torrentSearchTimer) clearTimeout(_torrentSearchTimer);
-  _torrentSearchTimer = setTimeout(() => { _torrentSearchTimer = null; loadTorrents().catch(() => {}); }, 250);
 }
 function onTorrentOrderChange(value) {
   const next = value === 'newest' ? 'newest' : 'queue';
   if (next === currentOrder) return;
   currentOrder = next;
   torrentPage = 1;
-  requestGeneration++;
+  searchControl().invalidate();
   clearSelection();
   loadTorrents();
 }
@@ -295,7 +294,7 @@ function goToTorrentPage(p) {
   const nextPage = Math.max(1, p);
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
-  requestGeneration++;
+  searchControl().invalidate();
   // Inert until the requested page is rendered (or its request fails).
   window.DPPager?.pending(document.getElementById('torrent-page-btns'), true);
   loadTorrents();
@@ -305,7 +304,7 @@ function onPageSizeChange(v) {
   if (nextSize !== torrentPageSize || torrentPage !== 1) clearSelection();
   torrentPageSize = nextSize;
   torrentPage = 1;
-  requestGeneration++;
+  searchControl().invalidate();
   loadTorrents();
 }
 
@@ -373,7 +372,7 @@ function selectedQueueMembers() {
 // The queue can be rearranged only where the page shows a contiguous stretch
 // of the whole queue: the Priority order with no filter and no search.
 function queueEditable() {
-  return currentOrder === 'queue' && !currentFilter && !currentTorrentSearch;
+  return currentOrder === 'queue' && !currentFilter && !searchControl().accepted();
 }
 function rowMarkup(t) {
   const presentation = window.DPProcessingPresentation
@@ -427,11 +426,10 @@ function rowMarkup(t) {
 
 // ── Bounded fetch + render ──────────────────────────────────────────────
 async function fetchAndRenderTorrents() {
-  // Immutable snapshot of the request this call represents. Captured before
-  // the await so a later authoritative-state mutation (page/filter/search/
-  // page-size change) cannot retroactively change what this in-flight
-  // request "was for".
-  const _requestGeneration = requestGeneration;
+  // This request's identity, taken before the await so a later
+  // authoritative-state mutation (page/filter/search/page-size change)
+  // cannot retroactively change what this in-flight request "was for".
+  const ticket = searchControl().request();
   const _limit = Math.min(Math.max(parseInt(torrentPageSize) || 25, 1), 100);
   const _offset = (torrentPage - 1) * _limit;
   try {
@@ -439,16 +437,16 @@ async function fetchAndRenderTorrents() {
     params.set('limit', String(_limit));
     params.set('offset', String(_offset));
     if (currentFilter) params.set('status', currentFilter);
-    if (currentTorrentSearch) params.set('search', currentTorrentSearch);
+    if (ticket.query) params.set('search', ticket.query);
     if (currentOrder === 'queue') params.set('order', 'queue');
-    const {items, total} = await api('GET', '/torrents?' + params.toString());
+    const {items, total, search: searched} = await api('GET', '/torrents?' + params.toString());
     // A newer authoritative intent superseded this request while it was in
     // flight: this response is stale and must not become truth. Do not
     // render it, do not mutate torrentPage, do not replace rows, do not
     // reconcile selection, do not overwrite pagination. The coalesced
     // trailing run already queued behind this one will fetch and render the
     // current state.
-    if (_requestGeneration !== requestGeneration) return;
+    if (!searchControl().settle(ticket, searched)) return;
     const _total = total ?? items.length;
     // The requested page can fall out of range while this request was in
     // flight (e.g. the last item(s) on the last page were just deleted).
@@ -463,7 +461,7 @@ async function fetchAndRenderTorrents() {
     const _clampedPage = Math.min(_requestedPage, _pages);
     if (_clampedPage !== _requestedPage) {
       torrentPage = _clampedPage;
-      requestGeneration++;
+      searchControl().invalidate();
       await fetchAndRenderTorrents();
       return;
     }
@@ -481,8 +479,9 @@ async function fetchAndRenderTorrents() {
     }
     if (reorder) paintReorder();
   } catch (e) {
-    if (_requestGeneration !== requestGeneration) return;
+    if (!searchControl().current(ticket)) return;
     window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);
+    if (searchControl().fail(ticket, e) === 'retried') return;
     toast(sanitizeErrorMsg(e.message), 'error');
   }
   document.dispatchEvent(new CustomEvent('debridpulse:downloads-rendered'));
@@ -585,7 +584,7 @@ function paintReorder() {
   }
 }
 function beginReorder(id, mode) {
-  requestGeneration++;
+  searchControl().invalidate();
   const row = document.querySelector(`#t-tbody tr[data-torrent-id="${id}"]`);
   reorder = {id, mode, name: rowName(row), page: torrentPage, originPage: torrentPage, gap: null,
              refreshPending: false, navigating: false, committing: false, dwell: null, dwellDirection: '',
@@ -644,7 +643,7 @@ async function navigateReorder(delta) {
   if (!reorder || reorder.navigating || target < 1 || target > pageCount()) return false;
   reorder.navigating = true;
   torrentPage = target;
-  requestGeneration++;
+  searchControl().invalidate();
   try { await fetchAndRenderTorrents(); } finally { if (reorder) reorder.navigating = false; }
   if (!reorder) return false;
   reorder.page = torrentPage;
@@ -1068,6 +1067,7 @@ async function setLabel(id) {
 
 // ── Init/wiring ──────────────────────────────────────────────────────────
 function init() {
+  searchControl();
   ensureDateMenus();
   observeResize();
   const body = document.getElementById('t-tbody');
@@ -1084,7 +1084,6 @@ window.loadTorrents = loadTorrents;
 window.downloadsDateMarkup = dateMarkup;
 window.updateDownloadsTrackedCopy = updateDownloadsTrackedCopy;
 window.setFilter = setFilter;
-window.onTorrentSearchInput = onTorrentSearchInput;
 window.onTorrentOrderChange = onTorrentOrderChange;
 window.onDownloadRowClick = onDownloadRowClick;
 window.reaffirmQueue = reaffirmQueue;

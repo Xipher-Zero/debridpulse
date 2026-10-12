@@ -150,6 +150,10 @@ class _DbConnection:
         row = await cur.fetchone()
         return dict(row) if row else None
 
+    async def create_function(self, name: str, arity: int, function) -> None:
+        """A deterministic SQL function for this connection only."""
+        await self._raw.create_function(name, arity, function, deterministic=True)
+
     async def execute_returning_id(self, sql: str, params: tuple = ()) -> Optional[int]:
         cur = await self._raw.execute(sql, params)
         return cur.lastrowid

@@ -14,6 +14,7 @@ import pytest_asyncio
 from fastapi import HTTPException
 
 import api.operational_downloads as activity_routes
+from core import search_contract
 from db import database, event_journal
 from db.event_journal import JournalEvent
 
@@ -139,15 +140,17 @@ async def test_search_reports_index_lag_and_becomes_complete_once_caught_up(jour
     await _record(_event(index, message=f"needle {index}") for index in range(1, 2 * event_journal.INDEX_BATCH + 101))
     async with database.get_db() as db:
         lagging = await event_journal.page(db, limit=10, before=None, snapshot=None, category=None, severity=None,
-                                           since=None, terms=event_journal.search_terms("needle"))
-    assert lagging["search"] == {"text": "indexed", "pending": event_journal.INDEX_BATCH + 1, "complete": False}
+                                           since=None, search=search_contract.plan("needle"))
+    assert (lagging["search"]["status"], lagging["search"]["pending"], lagging["search"]["finality"]) == (
+        "index_incomplete", event_journal.INDEX_BATCH + 1, "unproven")
     assert lagging["items"] == []  # nothing is indexed yet, and the result says so
     # A search indexes one bounded batch first; the rest is still reported.
     partial = await _page(search="needle")
-    assert partial["search"]["complete"] is False and partial["search"]["pending"] > 0
+    assert partial["search"]["status"] == "index_incomplete" and partial["search"]["pending"] > 0
     await _index_all()
     complete = await _page(search="needle", limit=50)
-    assert complete["search"] == {"text": "indexed", "pending": 0, "complete": True}
+    assert (complete["search"]["status"], complete["search"]["pending"], complete["search"]["finality"]) == (
+        "complete", 0, "bounded")
     assert complete["items"][0]["id"] == 2 * event_journal.INDEX_BATCH + 100
 
 
@@ -163,11 +166,11 @@ async def test_a_corrupt_index_is_detected_dropped_and_rebuilt_without_touching_
         conn.close()
     assert await event_journal.verify_index() is False
     rebuilding = await _page(search="alpha", limit=50)
-    assert rebuilding["search"]["complete"] is False
+    assert rebuilding["search"]["status"] == "index_incomplete"
     await _index_all()
     assert await event_journal.verify_index() is True
     rebuilt = await _page(search="alpha", limit=50)
-    assert rebuilt["search"]["complete"] is True and rebuilt["items"][0]["id"] == 3000
+    assert rebuilt["search"]["status"] == "complete" and rebuilt["items"][0]["id"] == 3000
     async with database.get_db() as db:
         assert (await db.fetchone("SELECT COUNT(*) AS n FROM event_journal"))["n"] == 3000
 
@@ -177,18 +180,21 @@ async def test_without_fts5_the_journal_boots_and_text_search_is_truthfully_unav
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "no-fts.sqlite")
     monkeypatch.setattr(event_journal, "fts_supported", lambda: False)
     await database.init_db()
-    await _record([_event(1, message="plain text", transfer_id=55), _event(2, message="other")])
+    await _record([_event(1, message="plain text", transfer_id=555), _event(2, message="other")])
     assert await event_journal.catch_up() == 0
     async with database.get_db() as db:
         assert await db.fetchone("SELECT 1 FROM sqlite_master WHERE name='event_journal_fts'") is None
     assert [item["id"] for item in (await _page())["items"]] == [2, 1]
     with pytest.raises(HTTPException) as unavailable:
         await _page(search="plain")
-    assert unavailable.value.status_code == 503
-    # A transfer id still answers, and says the text half could not run.
-    by_id = await _page(search="#55")
+    assert unavailable.value.status_code == 503 and unavailable.value.detail["code"] == "search_unavailable"
+    # A bare number's transfer id still answers, and says its text half could not run.
+    by_id = await _page(search="555")
     assert [item["id"] for item in by_id["items"]] == [1]
-    assert by_id["search"] == {"text": "unavailable", "pending": 0, "complete": False}
+    assert (by_id["search"]["mode"], by_id["search"]["status"], by_id["search"]["finality"]) == (
+        "id_or_text", "unavailable", "unproven")
+    # An exact #ID has no text half: its answer is complete.
+    assert (await _page(search="#555"))["search"]["status"] == "complete"
 
 
 @pytest.mark.asyncio
@@ -336,7 +342,7 @@ async def test_last_is_refused_truthfully_when_it_cannot_be_proven(journal_db, m
     # More than two search batches behind, so each search's own catch-up leaves a lag.
     await _record(_event(index, message=f"needle {index}") for index in range(1, 3 * event_journal.INDEX_BATCH + 301))
     first = await _page(search="needle", limit=50)
-    assert first["search"]["complete"] is False
+    assert first["search"]["status"] == "index_incomplete"
     # An index still catching up cannot say which page is last.
     with pytest.raises(HTTPException) as lagging:
         await _page(search="needle", limit=50, snapshot=first["snapshot"], last=True)

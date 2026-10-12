@@ -149,7 +149,7 @@ test('Downloads pager: a stale in-flight refresh cannot overwrite a newer page c
  // page-1 refresh is in flight (held unresolved here) when the user clicks
  // Next through the real control. The stale page-1 response must be
  // discarded as non-authoritative rather than reverting the newer page-2
- // intent -- see ui-downloads.js's requestGeneration mechanism. Only the
+ // intent -- see the request tickets of the shared search lifecycle (ui-search.js). Only the
  // real bounded list GET is intercepted (mirrors downloads-large-history.spec.js);
  // every other /api/torrents* call (candidate refresh, dashboard recent,
  // SSE-driven housekeeping, etc.) falls through to the real local backend so
@@ -352,18 +352,21 @@ test('Activity Log pages through history by cursor and never jumps off a histori
 
 test('Activity Log never presents an incomplete search as "no matches"',async({page})=>{
  await ready(page);
- let search={text:'indexed',pending:12,complete:false};
+ const meta=(query,mode,status,pending,finality)=>({query,mode,transfer_id:null,status,pending,finality,notice:null});
+ let search=meta('needle','text','index_incomplete',12,'unproven');
  await page.route('**/api/events*',route=>route.fulfill({status:200,contentType:'application/json',body:JSON.stringify({items:[],limit:100,snapshot:40,has_more:false,next_before:null,newer_available:false,search})}));
  await page.evaluate(()=>nav(document.querySelector('[data-view="events"]')));
  await page.locator('#ev-search').fill('needle');
- await expect(page.locator('#event-list .empty')).toHaveText('No matches in the searchable history yet. Recent events are still being indexed and may match; try again shortly.');
- await expect(page.locator('#dp-activity-result-note')).toContainText('still catching up with 12 recent event(s)');
- search={text:'unavailable',pending:0,complete:false};
- await page.locator('#ev-search').fill('#4242');
- await expect(page.locator('#event-list .empty')).toHaveText('No events for this transfer ID. Text search is unavailable on this installation, so text matches could not be checked.');
- search={text:'indexed',pending:0,complete:true};
+ await expect(page.locator('#event-list .empty')).toHaveText('No matching events among those searched so far.');
+ await expect(page.locator('#dp-activity-result-note')).toContainText('still being indexed (12)');
+ search=meta('4242','id_or_text','unavailable',0,'unproven');
+ await page.locator('#ev-search').fill('4242');
+ await expect(page.locator('#event-list .empty')).toHaveText('No matching events among those searched so far.');
+ await expect(page.locator('#dp-activity-result-note')).toContainText('Text search is unavailable');
+ search=meta('nothing','text','complete',0,'bounded');
  await page.locator('#ev-search').fill('nothing');
  await expect(page.locator('#event-list .empty')).toHaveText('No events match your filters.');
+ await expect(page.locator('#dp-activity-result-note')).toBeHidden();
 });
 
 test('Activity Log Reset Filters restores every visible filter label, value and the unfiltered request at once',async({page})=>{

@@ -27,6 +27,8 @@ from application.manual_candidate_failover import preview_switch, switch_candida
 from application.manual_route_switch import root_route_providers, switch_route_provider
 from transfers.manual_route_switch import switch_available, torrent_root
 from application.service import ApplicationService
+from core import search_contract
+from core.presentation_safety import safe_public_host
 from db import event_journal
 from db.database import get_db
 from transfers import codec
@@ -210,6 +212,113 @@ def _decode_projection_value(value, default=None):
         return codec.load(value, default)
     except (TypeError, ValueError, KeyError):
         return default
+
+
+def _search_plan(raw: Optional[str]):
+    """Both lists' one reading of what the operator typed; a search the
+    language cannot answer is a 400 ``invalid_query`` with a safe message."""
+    try:
+        return search_contract.plan(raw)
+    except search_contract.InvalidSearch as exc:
+        raise HTTPException(status_code=400, detail={"code": "invalid_query", "message": str(exc)}) from None
+
+
+# Downloads' text search, evaluated by SQLite on every row the list's other
+# filters admit, before the page is cut: the fields a Downloads row and its
+# Details present, read from the transfer's own durable rows -- the root
+# request's kind and name, the canonical artifacts' file names (from which the
+# displayed name is derived, by the same owner the list uses), the label, the
+# hash as displayed, the current error message, the canonical artifacts' source
+# hosts and the names of transfers consolidated into this one. Never a request
+# URL or payload, a credential or a provider's native detail. It runs ONCE per
+# request, into a table private to the request's own connection, which the
+# page and its total then both read.
+_DOWNLOADS_MATCH = "dp_downloads_search_match"
+_DOWNLOADS_HITS = "dp_downloads_search_hits"
+_DOWNLOADS_MATCH_SQL = f"""{_DOWNLOADS_MATCH}(?,
+            t.name,
+            (SELECT json_extract(r.payload, '$.kind') FROM transfer_requests r WHERE r.transfer_id = t.id
+             ORDER BY CASE WHEN r.parent_id IS NULL THEN 0 ELSE 1 END, r.ordinal, r.id LIMIT 1),
+            (SELECT json_group_array(member.filename) FROM (
+                SELECT f.filename FROM download_files f WHERE f.torrent_id = t.id AND {_CANONICAL_ARTIFACT_SQL}
+                ORDER BY f.id) member),
+            t.label,
+            CASE WHEN t.hash LIKE 'deleted:%' OR t.hash LIKE 'retired:%' THEN COALESCE(t.source_fingerprint, '')
+                 ELSE t.hash END,
+            t.error_message,
+            (SELECT json_group_array(b.source_key) FROM download_files f
+             JOIN canonical_candidate_bindings b ON b.canonical_artifact_id = f.id
+             WHERE f.torrent_id = t.id AND {_CANONICAL_ARTIFACT_SQL} AND lower(COALESCE(b.source_scope, '')) = 'host'),
+            (SELECT json_group_array(contributor.name) FROM artifact_consolidations c
+             JOIN download_files f ON f.id = c.canonical_artifact_id
+             JOIN torrents contributor ON contributor.id = c.source_transfer_id
+             WHERE f.torrent_id = t.id))"""
+# Joins the fields into one text folded once. The search language admits no
+# control character, so no match can span two fields.
+_FIELD_SEPARATOR = "\x01"
+
+
+def _json_strings(value) -> list[str]:
+    try:
+        decoded = json.loads(value) if value else []
+    except (TypeError, ValueError):
+        return []
+    return [str(item) for item in decoded if item] if isinstance(decoded, list) else []
+
+
+def _downloads_search_match(needle, root_name, request_kind, filenames, label, display_hash, error_message,
+                            hosts, contributors) -> int:
+    names = _json_strings(filenames)
+    fields = (root_name, label, display_hash, error_message, *names, *_json_strings(contributors))
+    if needle in search_contract.fold(_FIELD_SEPARATOR.join(field for field in fields if field)):
+        return 1
+    # A safe host is its raw value lower-cased and trimmed, so it can only
+    # match where the raw value does.
+    for host in _json_strings(hosts):
+        if needle in search_contract.fold(host) and needle in (safe_public_host(host) or ""):
+            return 1
+    # The displayed name is the root name or a file name (both matched above)
+    # unless it names a collection -- a file name or a prefix of one, then
+    # " + N files" -- or nothing at all, so only those can add a match: one
+    # reaching into " + N files" holds its "+" or lies within it.
+    if len(names) < 2:
+        if names or root_name:
+            return 0
+    elif "+" not in needle and all(needle not in f" + {count} files" for count in (len(names), len(names) - 1)):
+        return 0
+    displayed = normalized_transfer_display_name(
+        names, root_name=root_name,
+        root_is_canonical_identity=public_source_identity(request_kind).get("kind") in {"magnet", "torrent_file"})
+    return int(needle in search_contract.fold(displayed))
+
+
+def _downloads_search_clause(plan) -> tuple[str, list]:
+    """The plan as one predicate over ``torrents t``: the exact id alone, or
+    membership in the request's evaluated text search (which includes the
+    exact id of a bare number) -- one row per transfer however many of its
+    fields match."""
+    if plan.text is None:
+        return "t.id = ?", [plan.transfer_id]
+    return f"t.id IN (SELECT id FROM temp.{_DOWNLOADS_HITS})", []
+
+
+async def _prepare_search(db, plan, scope: tuple[list, list]) -> None:
+    """Evaluate a text search once on ``db``, over the collection ``scope``
+    (the list's other filters) admits."""
+    if plan is None or plan.text is None:
+        return
+    await db.create_function(_DOWNLOADS_MATCH, 9, _downloads_search_match)
+    await db.execute(f"CREATE TEMP TABLE IF NOT EXISTS {_DOWNLOADS_HITS}(id INTEGER PRIMARY KEY)")
+    await db.execute(f"DELETE FROM temp.{_DOWNLOADS_HITS}")
+    clauses, params = scope
+    match = [_DOWNLOADS_MATCH_SQL]
+    values = [search_contract.fold(plan.text)]
+    if plan.transfer_id is not None:
+        match.insert(0, "t.id = ?")
+        values.insert(0, plan.transfer_id)
+    where = " AND ".join([*clauses, "(" + " OR ".join(match) + ")"])
+    await db.execute(f"INSERT INTO temp.{_DOWNLOADS_HITS}(id) SELECT t.id FROM torrents t WHERE {where}",
+                     [*params, *values])
 
 
 def _bounded_request_kinds(row) -> list[str]:
@@ -413,7 +522,7 @@ async def count_activity_events():
 
 @router.get("/events")
 async def list_activity_events(
-    search: Annotated[Optional[str], Query(max_length=event_journal.SEARCH_MAX_TEXT)] = None,
+    search: Optional[str] = None,
     level: Optional[EventLevel] = None,
     category: Optional[EventCategory] = None,
     timeframe: EventTimeframe = "all",
@@ -431,11 +540,12 @@ async def list_activity_events(
     applies before the page limit. ``before`` (the previous page's
     ``next_before``) walks older; ``snapshot`` (returned by the first page)
     freezes the newest edge, so events recorded meanwhile never shift an
-    investigation (``newer_available`` reports them). Search is literal and
-    case-insensitive over message, detail and transfer name through the
-    derived FTS5 index, plus the exact transfer id for a bare number or
-    ``#number``; ``search.complete`` is false while the index has not yet
-    caught up with every event, never silently.
+    investigation (``newer_available`` reports them). ``search`` is the one
+    search language (``core.search_contract``), answered over message, detail
+    and transfer name through the derived FTS5 index and over the event's
+    transfer and related transfer ids; ``search.status`` is
+    ``index_incomplete`` while the index has not yet caught up with every
+    event, never silently.
 
     Within one snapshot, ``after`` (the first item's id) returns the newer
     neighbouring page and ``last`` the final page of the same partition with
@@ -454,11 +564,8 @@ async def list_activity_events(
         raise HTTPException(status_code=400, detail="window_start applies only to a relative timeframe.")
     since = None if timeframe == "all" else (
         float(window_start) if window_start is not None else time.time() - _EVENT_TIMEFRAME_SECONDS[timeframe])
-    try:
-        terms = event_journal.search_terms(search)
-    except event_journal.SearchRejected as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from None
-    if terms is not None and terms.text is not None and event_journal.fts_supported():
+    plan = _search_plan(search)
+    if plan is not None and plan.text is not None and event_journal.fts_supported():
         try:
             # Bounded, idempotent: a search first covers what it can of the
             # unindexed tail, and reports whatever remains.
@@ -469,21 +576,22 @@ async def list_activity_events(
     async with get_db() as db:
         try:
             return await event_journal.page(db, limit=limit, before=before, snapshot=snapshot, category=category,
-                                            severity=severity, since=since, terms=terms, after=after, last=last)
+                                            severity=severity, since=since, search=plan, after=after, last=last)
         except event_journal.LastPageUnavailable as exc:
             raise HTTPException(status_code=409, detail={"code": "last_page_unavailable",
                                                          "message": str(exc)}) from None
         except event_journal.SearchUnavailable as exc:
-            raise HTTPException(status_code=503, detail=str(exc)) from None
+            raise HTTPException(status_code=503, detail={"code": "search_unavailable", "message": str(exc)}) from None
         except sqlite3.DatabaseError as exc:
-            if terms is None or terms.text is None:
+            if plan is None or plan.text is None:
                 raise
             # The derived index is unreadable: drop it for a bounded rebuild
             # by the maintenance cadence. Nothing authoritative is touched.
             logger.warning("Event search index failed and will be rebuilt: %s", type(exc).__name__)
             await event_journal.reset_index()
-            raise HTTPException(status_code=503, detail="The Activity Log search index is being rebuilt. "
-                                                       "Try the search again shortly.") from None
+            raise HTTPException(status_code=503, detail={
+                "code": "search_unavailable",
+                "message": "The Activity Log search index is being rebuilt. Try the search again shortly."}) from None
 
 
 _ACTIVITY_ORDER = "activity"
@@ -619,18 +727,12 @@ async def list_operational_torrents(
     else:
         clauses.append("t.status NOT IN ('deleted', 'consolidated')")
 
-    if search:
-        clauses.append(
-            """(
-                LOWER(COALESCE(t.name, '')) LIKE ?
-                OR LOWER(COALESCE(t.source_fingerprint, t.hash, '')) LIKE ?
-                OR LOWER(COALESCE(t.source, '')) LIKE ?
-                OR LOWER(COALESCE(t.label, '')) LIKE ?
-                OR LOWER(COALESCE(t.error_message, '')) LIKE ?
-            )"""
-        )
-        needle = f"%{search.strip().lower()}%"
-        params.extend([needle, needle, needle, needle, needle])
+    plan = _search_plan(search)
+    search_scope = (list(clauses), list(params))
+    if plan is not None:
+        predicate, predicate_params = _downloads_search_clause(plan)
+        clauses.append(predicate)
+        params.extend(predicate_params)
 
     where = f"WHERE {' AND '.join(clauses)}" if clauses else ""
 
@@ -643,7 +745,7 @@ async def list_operational_torrents(
     # page_sql below, so default Downloads/list behavior and pagination
     # semantics are untouched.
     activity_mode = bool(
-        order == _ACTIVITY_ORDER and status is None and offset == 0 and limit > 0
+        order == _ACTIVITY_ORDER and status is None and plan is None and offset == 0 and limit > 0
     )
 
     if activity_mode:
@@ -655,7 +757,7 @@ async def list_operational_torrents(
             page_sql = "SELECT NULL AS id, NULL AS page_ordinal WHERE 0"
         query_params = []
     else:
-        ordering = _QUEUE_ORDER_SQL if order == _QUEUE_ORDER else "t.created_at DESC"
+        ordering = _QUEUE_ORDER_SQL if order == _QUEUE_ORDER else "t.created_at DESC, t.id DESC"
         page_sql = f"""SELECT t.id, ROW_NUMBER() OVER (ORDER BY {ordering}) AS page_ordinal
             FROM torrents t {where}
             ORDER BY {ordering}"""
@@ -669,6 +771,7 @@ async def list_operational_torrents(
     # presentation semantics while keeping the default/current list bounded.
     if status == "consolidated":
         async with get_db() as db:
+            await _prepare_search(db, plan, search_scope)
             history_rows = await db.fetchall(page_sql, query_params)
             total_row = await db.fetchone(
                 f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
@@ -686,7 +789,7 @@ async def list_operational_torrents(
             for item in presentations
             if item is not None
         ]
-        return {"items": items, "total": total}
+        return {"items": items, "total": total, "search": search_contract.describe(plan)}
 
     # Durable, page-global provider-enablement facts (see _disabled_provider_ids
     # docstring) — computed once per request from the already-injected
@@ -1553,6 +1656,7 @@ async def list_operational_torrents(
     """
 
     async with get_db() as db:
+        await _prepare_search(db, plan, search_scope)
         rows = await db.fetchall(query, query_params)
         total_row = await db.fetchone(
             f"SELECT COUNT(*) AS cnt FROM torrents t {where}", params
@@ -1715,4 +1819,4 @@ async def list_operational_torrents(
         items.append(item)
     if activity_mode:
         items = _apply_activity_priority_order(items)
-    return {"items": items, "total": total}
+    return {"items": items, "total": total, "search": search_contract.describe(plan)}

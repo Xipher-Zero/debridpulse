@@ -90,4 +90,6 @@ async def test_explicit_consolidated_query_preserves_durable_history_access(oper
     assert result == {
         "items": [{"id": consolidated_id, "status": "consolidated"}],
         "total": 1,
+        "search": {"query": None, "mode": "none", "transfer_id": None, "status": "complete", "pending": 0,
+                   "finality": "exact", "notice": None},
     }
