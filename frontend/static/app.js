@@ -1017,23 +1017,33 @@ const DASHBOARD_HEARTBEAT_VIEW_HEIGHT = 29.42; // viewBox units in the 38 px lin
 const _dashboardHeartbeat = {running: false, held: false, timer: 0, frame: 0, beats: [], route: null,
   bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0};
 
-/* One heartbeat's own complex, drawn at its birth. Every factor scales a
- * deflection from the y=16 baseline and stays inside its bound however the
- * draws combine: overall amplitude +-10%; R +-15% (10% overall x 4.5% own); S
- * 85-100% of its depth, which already reaches the card's bottom edge; the
- * smaller deflections +-10% (6% overall + 4% own); the width +-7%. Points stay
- * in order and both ends rest on the baseline. */
+/* One heartbeat's own complex, drawn at its birth, every bound holding however
+ * the draws combine. Height: each deflection from the y=16 baseline scales by
+ * an overall factor (+-15%) times its own -- R +-15% (0.72-1.32), S +-18%
+ * (0.70-1.36), each smaller hump +-22% (0.66-1.40), so R always stands well
+ * above T. Length: the P, QRS and T-U stretches of the complex scale by their
+ * own factors (+-18%, +-10%, +-22%) times an overall one (+-12%), so the
+ * complex runs 0.72-1.32 of its 48 px. Points stay in order, every deflection
+ * keeps its direction, and both ends rest on the baseline; S at its deepest,
+ * with its glow, still clears the card's floor. */
 function dashboardHeartbeatShape(random = Math.random) {
   const draw = () => random() * 2 - 1;
-  const overall = draw(), width = 1 + 0.07 * draw();
-  const factor = y => {
-    if (y === 2) return (1 + 0.10 * overall) * (1 + 0.045 * draw());          // R
-    if (y === 23) return 0.925 + 0.075 * (0.6 * overall + 0.4 * draw());       // S
-    return 1 + 0.06 * overall + 0.04 * draw();                                 // P, Q, notch, T, U
+  const height = 1 + 0.15 * draw(), length = 1 + 0.12 * draw();
+  const factor = y => height * (1 + (y === 2 ? 0.15 : y === 23 ? 0.18 : 0.22) * draw());   // R, S, the rest
+  // Where each base x lands: the P (0-16), QRS (16-29) and T-U (29-48) stretches each scaled.
+  const stretches = [[16, 1 + 0.18 * draw()], [13, 1 + 0.10 * draw()], [19, 1 + 0.22 * draw()]];
+  const place = dx => {
+    let from = 0, to = 0;
+    for (const [span, scale] of stretches) {
+      if (dx <= from + span) return length * (to + (dx - from) * scale);
+      from += span; to += span * scale;
+    }
+    return length * to;
   };
   const points = DASHBOARD_HEARTBEAT_COMPLEX.map(([dx, y]) =>
-    Object.freeze([dx * width, y === 16 ? 16 : 16 + (y - 16) * factor(y)]));
-  return Object.freeze({points: Object.freeze(points), width: DASHBOARD_HEARTBEAT_WIDTH * width});
+    Object.freeze([place(dx), y === 16 ? 16 : 16 + (y - 16) * factor(y)]));
+  return Object.freeze({points: Object.freeze(points), width: points[points.length - 1][0],
+    qrs: points[7][0]});                                   // where S, the end of the bright P-QRS lead, lands
 }
 
 /* Global Pause All holds the strip; once nothing is left on it, the flat red lines. */
@@ -1169,7 +1179,7 @@ function renderDashboardHeartbeat(now) {
     // where its trail ends.
     const groups = here.map(({x, shape, trail}) => {
       const tail = x + shape.width;
-      return [x - 4, x + 4, x + shape.width * 26 / DASHBOARD_HEARTBEAT_WIDTH, tail, tail + trail * 0.3, tail + trail];
+      return [x - 4, x + 4, x + shape.qrs, tail, tail + trail * 0.3, tail + trail];
     });
     const from = Math.min(0, ...groups.map(group => group[0]));
     const to = Math.max(width, ...groups.map(group => group[5]));

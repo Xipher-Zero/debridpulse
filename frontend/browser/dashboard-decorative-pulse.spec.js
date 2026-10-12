@@ -403,7 +403,7 @@ for (const [label, throughput, interval] of [['7 BPM', {bps: 0, peak: 42e6}, IDL
         expectOneContinuousLine([card]);
       }
       // At idle one heartbeat lights at most its complex and trail; the rest of the strip rests.
-      if (interval === IDLE) expect(lit).toBeLessThanOrEqual(4 + 48 * 1.07 + TRAIL + 0.5);
+      if (interval === IDLE) expect(lit).toBeLessThanOrEqual(4 + 48 * 1.32 + TRAIL + 0.5);
     }
     if (interval === FULL) {
       expect(pairs.length).toBeGreaterThan(0);
@@ -587,7 +587,7 @@ test('each heartbeat has its own bounded complex, kept unchanged across every ca
   }
   const beats = heartbeats(observations).filter(beat => new Set(beat.sightings.map(s => s.card)).size >= 3);
   expect(beats.length).toBeGreaterThan(5);
-  const shapes = new Set();
+  const shapes = new Set(), widths = [], peaks = [];
   for (const beat of beats) {
     const [first] = beat.sightings;
     // Unchanged in every card and every frame it was seen in.
@@ -603,20 +603,34 @@ test('each heartbeat has its own bounded complex, kept unchanged across every ca
     const xs = first.points.map(([x]) => x);
     expect(xs).toEqual([...xs].sort((a, b) => a - b));
     const width = xs[xs.length - 1];
-    expect(width).toBeGreaterThanOrEqual(48 * 0.93 - 0.02);
-    expect(width).toBeLessThanOrEqual(48 * 1.07 + 0.02);
+    widths.push(width);
+    expect(width).toBeGreaterThanOrEqual(48 * 0.7267 - 0.05);
+    expect(width).toBeLessThanOrEqual(48 * 1.3151 + 0.05);
+    // The P (0-16), QRS (16-29) and T-U (29-48) stretches each scale evenly within their bounds.
+    for (const [from, to, low, high] of [[0, 16, 0.7216, 1.3216], [16, 29, 0.792, 1.232], [29, 48, 0.6864, 1.3664]]) {
+      const inside = base.map(([bx], i) => i).filter(i => base[i][0] >= from && base[i][0] <= to);
+      const a = inside[0], b = inside[inside.length - 1];
+      const scale = (first.points[b][0] - first.points[a][0]) / (base[b][0] - base[a][0]);
+      expect(scale).toBeGreaterThanOrEqual(low - 0.01);
+      expect(scale).toBeLessThanOrEqual(high + 0.01);
+      inside.forEach(i => expect(first.points[i][0]).toBeCloseTo(first.points[a][0] + (base[i][0] - base[a][0]) * scale, 1));
+    }
     first.points.forEach(([x, y], i) => {
-      const [bx, by] = base[i];
-      expect(x).toBeCloseTo(bx * width / 48, 1);                  // one horizontal scale
+      const [, by] = base[i];
       if (by === 16) return expect(y).toBeCloseTo(16, 2);
       const factor = (y - 16) / (by - 16);                           // > 0: same polarity
-      const [low, high] = by === 2 ? [0.85, 1.15] : by === 23 ? [0.85, 1.0] : [0.9, 1.1];
+      const [low, high] = by === 2 ? [0.7225, 1.3225] : by === 23 ? [0.697, 1.357] : [0.663, 1.403];
       expect(factor).toBeGreaterThanOrEqual(low - 0.01);
       expect(factor).toBeLessThanOrEqual(high + 0.01);
     });
-    expect(Math.max(...first.points.map(([, y]) => y))).toBeLessThanOrEqual(23 + 0.01);   // never below the card's edge
+    peaks.push(16 - first.points[6][1]);
+    expect(first.points[6][1]).toBeLessThan(Math.min(...first.points.filter((_, i) => i !== 6).map(([, y]) => y)));   // R always the tallest
+    expect(Math.max(...first.points.map(([, y]) => y))).toBeLessThanOrEqual(25.5 + 0.01);   // clear of the card's floor
   }
   expect(shapes.size).toBe(beats.length);                          // every heartbeat its own
+  // ... and visibly so: lengths and R heights spread well apart.
+  expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThan(8);
+  expect(Math.max(...peaks) - Math.min(...peaks)).toBeGreaterThan(2);
 });
 
 test('Global Pause All from another session drains the strip, then all six lines breathe one red; resuming starts a heartbeat at once', async ({page}) => {
@@ -875,9 +889,9 @@ const glow = page => page.evaluate(() => [...document.querySelectorAll('#view-da
     glowFrom: Number(fillGradient.getAttribute('y1')), glowTo: Number(fillGradient.getAttribute('y2')),
     accent: getComputedStyle(card).getPropertyValue('--c').trim(), line: getComputedStyle(svg).color,
     rest: Number(getComputedStyle(svg).getPropertyValue('--dp-card-spark-rest')),
-    // css px above the card's floor: the baseline, the highest a heartbeat can reach (R at y=-0.1), and the text
+    // css px above the card's floor: the baseline, the highest a heartbeat can reach (R at y=-2.51), and the text
     baseline: cardBox.bottom - (box.top + 16 * box.height / view),
-    peak: cardBox.bottom - (box.top - 0.1 * box.height / view), text: cardBox.bottom - text, card: [cardBox.width, cardBox.height],
+    peak: cardBox.bottom - (box.top - 2.51 * box.height / view), text: cardBox.bottom - text, card: [cardBox.width, cardBox.height],
   };
 }));
 

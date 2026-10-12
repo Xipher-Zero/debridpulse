@@ -15,7 +15,10 @@ def test_dashboard_sparkline_surface_is_static_base_markup():
         assert f'<linearGradient id="dp-card-spark-signal-{i}" gradientUnits="userSpaceOnUse"' in html
         assert (f'<path class="dp-card-spark-fill" fill="url(#dp-card-spark-glow-{i})" mask="url(#dp-card-spark-glow-mask-{i})" '
                 'd="M 0 16 H 100 V 29.42 H 0 Z"></path>') in html
-        assert f'<rect x="-100000" y="-100" width="200000" height="200" fill="url(#dp-card-spark-signal-{i})"></rect>' in html
+        # Masked by the line's own gradient, sheared about the baseline so the
+        # glow's edge slants back to the right as it falls away.
+        assert (f'<rect x="-100000" y="-100" width="200000" height="200" transform="matrix(1 0 1.5 1 -24 0)" '
+                f'fill="url(#dp-card-spark-signal-{i})"></rect>') in html
     assert html.count('<stop class="dp-card-spark-rest" offset="0"></stop>') == 6
     assert html.count('class="dp-card-spark-fill"') == 6
     for retired in ("dp-card-spark-pulse", "dp-card-spark-point", "pathLength"):
