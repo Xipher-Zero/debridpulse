@@ -69,7 +69,7 @@ const purple = ([r, g, b, a]) => a > 30 && b > g + 20 && r > g && r < 0.9 * b;
 // each channel by up to 255/alpha: the tolerance follows the alpha.
 const channelTolerance = a => Math.max(3, Math.ceil(2 * 255 / Math.max(1, a)));
 // Exactly the family colour at a translucent alpha: nothing of the purple mixed in.
-const family = (rgb, [r, g, b, a]) => a >= 0.18 * 255 && a <= 0.47 * 255
+const family = (rgb, [r, g, b, a]) => a >= 0.18 * 255 && a <= 0.57 * 255
   && [r, g, b].every((value, c) => Math.abs(value - rgb[c]) <= channelTolerance(a));
 const rgbOf = (page, role) => page.evaluate(role => {
   if (role === 'premium') return document.body.classList.contains('light') ? [194, 5, 212] : [245, 56, 255];
@@ -115,6 +115,21 @@ for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
       expect(family(premium, bars[small].premiumCentre)).toBe(true);
     }
     expect(family(network, bars.two.networkCentre)).toBe(true);
+    // Each family fades within itself: about 55% just below its own top, about 20% just above
+    // its own bottom -- never one gradient across the stack, never reversed.
+    const alphaAt = (x, y) => page.evaluate(([x, y]) => {
+      const chart = document.getElementById('daily-chart')._ci;
+      const ratio = chart.currentDevicePixelRatio;
+      return chart.ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data[3] / 255;
+    }, [x, y]);
+    const near = (value, target) => Math.abs(value - target) <= 0.05;
+    const premiumTop = mixed.premiumTop, networkTop = mixed.attributedTop;
+    for (const [segmentTop, segmentBottom] of [[premiumTop, mixed.base], [networkTop, premiumTop]]) {
+      const top = await alphaAt(mixed.x, segmentTop + 2), bottom = await alphaAt(mixed.x, segmentBottom - 2);
+      expect(top).toBeGreaterThan(bottom);
+      expect(near(top, 0.55)).toBe(true);
+      expect(near(bottom, 0.2)).toBe(true);
+    }
   });
 }
 

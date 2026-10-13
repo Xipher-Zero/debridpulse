@@ -350,9 +350,10 @@
     ctx.globalCompositeOperation = 'source-over';
     segments.forEach(([role, bottom, segmentTop], index) => {
       const [r, g, b] = familyRgb(role);
+      // Each family its own gradient: 20% at its bottom, strongest (55%) at its top.
       const gradient = ctx.createLinearGradient(0, bottom, 0, segmentTop);
       gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, .2)`);
-      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, .45)`);
+      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, .55)`);
       ctx.fillStyle = gradient;
       ctx.beginPath();
       const uppermost = index === segments.length - 1;
