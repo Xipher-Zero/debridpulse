@@ -1060,7 +1060,7 @@ const DASHBOARD_HEARTBEAT_WIDTH = 48;          // px
 const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left before the following heartbeat
 const DASHBOARD_HEARTBEAT_TRAIL = 416;         // px: the longest a trail fades over, however far behind the next heartbeat is
 const DASHBOARD_HEARTBEAT_VIEW_HEIGHT = 29.42; // viewBox units in the 38 px line box: 24 units per 31 px, the baseline 16 units down
-const _dashboardHeartbeat = {running: false, held: false, timer: 0, frame: 0, beats: [], route: null,
+const _dashboardHeartbeat = {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: [], route: null,
   bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0};
 
 /* One heartbeat's own complex, drawn at its birth, every bound holding however
@@ -1099,10 +1099,11 @@ function syncDashboardHeartbeatFlatline() {
 }
 const _dashboardSparkReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
-function dashboardSparkPulsesWanted() {
-  return !document.hidden
-    && !_dashboardSparkReducedMotion.matches
-    && !!document.getElementById('view-dashboard')?.classList.contains('active');
+/* Whether the strip is on screen: the Dashboard is the active view of a visible
+ * document. Only then is anything painted; leaving the Dashboard for another
+ * view never stops the heartbeat clock. */
+function dashboardHeartbeatShown() {
+  return !document.hidden && !!document.getElementById('view-dashboard')?.classList.contains('active');
 }
 
 /* The live throughput facts, from their one poll (loadRuntimeSpeed). The
@@ -1114,7 +1115,7 @@ function setDashboardHeartbeatThroughput(bytesPerSecond, sustainedPeak) {
   if (state.running) advanceDashboardHeartbeat(now);
   state.bytesPerSecond = Math.max(0, Number(bytesPerSecond) || 0);
   state.sustainedPeak = Math.max(0, Number(sustainedPeak) || 0);
-  if (state.running && !state.held) scheduleDashboardHeartbeat(now);
+  if (state.running && !state.held && !state.suspended) scheduleDashboardHeartbeat(now);
 }
 
 /* The authoritative global pause state, as loadStats has just read it: hold
@@ -1138,7 +1139,7 @@ function syncDashboardHeartbeatPause() {
       state.earliest = last
         ? last.born + (dashboardHeartbeatTrail(last, Infinity) + last.shape.width + DASHBOARD_HEARTBEAT_CLEARANCE) / DASHBOARD_HEARTBEAT_SPEED
         : 0;
-      scheduleDashboardHeartbeat(now);
+      if (!state.suspended) scheduleDashboardHeartbeat(now);
     }
   }
   syncDashboardHeartbeatFlatline();
@@ -1192,15 +1193,23 @@ function dashboardHeartbeatTrail(beat, following) {
   return Math.min(DASHBOARD_HEARTBEAT_TRAIL, Math.max(0, spacing - beat.shape.width - DASHBOARD_HEARTBEAT_CLEARANCE));
 }
 
-/* Draw every card's line for the heartbeats on the strip at `now`. */
-function renderDashboardHeartbeat(now) {
+/* The heartbeats on the strip at `now`, with how far each has travelled and
+ * its trail; those whose trail has left the strip are dropped. */
+function liveDashboardHeartbeats(now) {
   const state = _dashboardHeartbeat;
-  const {cards, end} = state.route;
-  const fmt = value => Number(value.toFixed(2));
   const beats = state.beats.map((beat, i) => ({beat, shape: beat.shape,
     travelled: (now - beat.born) * DASHBOARD_HEARTBEAT_SPEED,
     trail: dashboardHeartbeatTrail(beat, i + 1 < state.beats.length ? state.beats[i + 1].born : state.nextAt)}));
-  state.beats = beats.filter(({shape, travelled, trail}) => travelled - shape.width - trail <= end).map(({beat}) => beat);
+  const live = beats.filter(({shape, travelled, trail}) => travelled - shape.width - trail <= state.route.end);
+  state.beats = live.map(({beat}) => beat);
+  return live;
+}
+
+/* Draw every card's line for the heartbeats on the strip at `now`. */
+function renderDashboardHeartbeat(now) {
+  const {cards} = _dashboardHeartbeat.route;
+  const fmt = value => Number(value.toFixed(2));
+  const beats = liveDashboardHeartbeats(now);
   for (const card of cards) {
     const width = card.width;
     const here = beats
@@ -1293,31 +1302,67 @@ function dashboardHeartbeat() {
   state.earliest = 0;
   state.beats.push({born: now, shape: dashboardHeartbeatShape()});
   scheduleDashboardHeartbeat(now);
-  if (!state.frame) state.frame = requestAnimationFrame(dashboardHeartbeatFrame);
+  if (!dashboardHeartbeatShown()) liveDashboardHeartbeats(now);   // off screen: only those still on the strip are kept
+  else if (!state.frame) state.frame = requestAnimationFrame(dashboardHeartbeatFrame);
 }
 
+/* The heartbeat's one lifecycle, on every view change, document visibility
+ * change and motion-preference change.
+ *
+ * Its clock starts where the Dashboard is first seen and then runs for the
+ * life of the page: another view being selected stops only the painting, so
+ * heartbeats are born on time and travel on unseen, and returning shows the
+ * strip exactly as it stands now, at once, before the next paint. A hidden
+ * document suspends the clock's timer (frames stop with it): on return the
+ * clock is run up to now and continues from the fraction of a heartbeat it has
+ * reached -- the heartbeats due while hidden are never replayed -- and those
+ * whose trails have left the strip are gone. Reduced motion stops it and
+ * leaves the flat baselines, as it always has. Global Pause All needs nothing
+ * here: its state reaches syncDashboardHeartbeatPause on every view, so a
+ * strip held while unseen has drained by the time it is shown. */
 function syncDashboardSparkPulses() {
   const state = _dashboardHeartbeat;
-  if (!dashboardSparkPulsesWanted()) {
+  if (_dashboardSparkReducedMotion.matches) {
     if (!state.running) return;
     clearTimeout(state.timer);
     cancelAnimationFrame(state.frame);
-    Object.assign(state, {running: false, held: false, timer: 0, frame: 0, beats: []});
+    Object.assign(state, {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: []});
     renderDashboardHeartbeat(performance.now());   // back to the flat baselines
     syncDashboardHeartbeatFlatline();
     return;
   }
-  if (state.running) return;
+  const shown = dashboardHeartbeatShown();
   const now = performance.now();
-  const held = processingPaused === true;          // entering a held strip: the flat red lines at once
-  Object.assign(state, {running: true, held, route: measureDashboardHeartbeatRoute(), bpm: dashboardHeartbeatTargetBpm(), phase: 0, advancedAt: now, nextAt: Infinity, earliest: 0});
-  if (!held) scheduleDashboardHeartbeat(now);
-  syncDashboardHeartbeatFlatline();
+  if (!state.running) {
+    if (!shown) return;
+    const held = processingPaused === true;        // entering a held strip: the flat red lines at once
+    Object.assign(state, {running: true, suspended: false, held, route: measureDashboardHeartbeatRoute(),
+      bpm: dashboardHeartbeatTargetBpm(), phase: 0, advancedAt: now, nextAt: Infinity, earliest: 0});
+    if (!held) scheduleDashboardHeartbeat(now);
+  } else if (document.hidden) {
+    if (state.suspended) return;
+    clearTimeout(state.timer);
+    cancelAnimationFrame(state.frame);
+    Object.assign(state, {suspended: true, timer: 0, frame: 0});
+    return;
+  } else if (state.suspended) {
+    advanceDashboardHeartbeat(now);
+    state.phase %= 1;
+    state.suspended = false;
+    if (!state.held) scheduleDashboardHeartbeat(now);
+  }
+  cancelAnimationFrame(state.frame);
+  state.frame = 0;
+  if (!shown) return;
+  // Shown: this very frame is the strip as it stands now, then the frames go on.
+  state.route = measureDashboardHeartbeatRoute();
+  dashboardHeartbeatFrame(now);
 }
 
-/* A reflow re-measures the strip under the heartbeats already on it. */
+/* A reflow of the shown strip re-measures it under the heartbeats already on
+ * it (hiding the Dashboard collapses it, which is no reflow of the strip). */
 function remeasureDashboardHeartbeat() {
-  if (!_dashboardHeartbeat.running) return;
+  if (!_dashboardHeartbeat.running || !dashboardHeartbeatShown()) return;
   _dashboardHeartbeat.route = measureDashboardHeartbeatRoute();
   renderDashboardHeartbeat(performance.now());
 }

@@ -21,7 +21,9 @@ const TRAIL = 416;           // px: the longest trail
 
 async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-preference', throughput = {bps: 23, peak: 83}, pause, events} = {}) {
   await page.setViewportSize({width, height});
-  await page.emulateMedia({reducedMotion});
+  // The strip's clock runs for the life of the page once motion is allowed on
+  // the shown Dashboard; it is held still until the test owns time.
+  await page.emulateMedia({reducedMotion: 'reduce'});
   await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   // Deterministic heartbeat shapes: a seeded Math.random.
   await page.addInitScript(() => {
@@ -63,9 +65,9 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
   await facts;
   // From here only the test moves time.
   await page.clock.pauseAt(await page.evaluate(() => Date.now() + 50));
-  // Enter the Dashboard afresh, its cadence starting from those facts.
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
+  // The strip starts afresh now, its cadence from those facts.
+  await page.emulateMedia({reducedMotion});
+  await expect.poll(() => page.evaluate(() => _dashboardHeartbeat.running)).toBe(reducedMotion !== 'reduce');
 }
 
 /* Each card in DOM order: its geometry, line points, path count and gradient stops. */
@@ -117,11 +119,8 @@ function route(cards) {
   return {rows, entries};
 }
 
-/* Enter the Dashboard afresh and sample the strip every STEP ms for `ms`. */
-async function enterAndSample(page, ms) {
-  // Through the navigation owner itself: at phone widths the sidebar is collapsed.
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
+/* Sample the strip every STEP ms for `ms`, from a fresh start (boot). */
+async function sampleFromStart(page, ms) {
   const samples = [];
   for (let t = 0; t < ms; t += STEP) {
     await page.clock.runFor(STEP);
@@ -149,7 +148,7 @@ async function expectStripFollowsLayout(page, {rowsExpected}) {
   const cards = await strip(page);
   const {rows, entries} = route(cards);
   // Long enough for the first heartbeat to reach the last card in the route.
-  const samples = await enterAndSample(page, INTERVAL + Math.max(...entries) / SPEED + 1000);
+  const samples = await sampleFromStart(page, INTERVAL + Math.max(...entries) / SPEED + 1000);
   expect(rows.length).toBe(rowsExpected);
 
   // Resting until the first heartbeat, two seconds after entry.
@@ -380,8 +379,6 @@ for (const [label, throughput, interval] of [['7 BPM', {bps: 0, peak: 42e6}, IDL
   test(`at ${label} each trail fades to rest in strip distance, within 416 px and just before the following heartbeat`, async ({page}) => {
     test.setTimeout(120000);
     await boot(page, {throughput});
-    await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-    await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
     const seen = await births(page, 3 * interval + 3000);
     expect(seen.times.length).toBeGreaterThanOrEqual(3);
     intervals(seen.times).forEach(gap => expect(Math.abs(gap - interval)).toBeLessThanOrEqual(QUANTUM));
@@ -416,8 +413,6 @@ test('while the cadence changes and across row breaks every trail reaches rest i
   test.setTimeout(120000);
   const throughput = {bps: 23, peak: 83};
   await boot(page, {width: 560, height: 1400, throughput});
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
   await page.clock.runFor(5000);                          // heartbeats at 30 BPM on the strip
   throughput.bps = 83;                                    // the cadence now eases towards 90 BPM
   const trails = [];
@@ -446,8 +441,6 @@ test('the cadence eases to the throughput between 7 and 90 BPM without bunching,
   test.setTimeout(300000);
   const throughput = {bps: 0, peak: 42e6};
   await boot(page, {throughput});
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
   const rest = await births(page, 2 * IDLE + 1500);                // idle: one heartbeat per 8571 ms
   expect(rest.times.length).toBeGreaterThanOrEqual(2);
   intervals(rest.times).forEach(gap => expect(Math.abs(gap - IDLE)).toBeLessThanOrEqual(QUANTUM));
@@ -548,8 +541,6 @@ test('repeatedly changing throughput re-times the pending heartbeat without burs
 test('without a recorded sustained peak the heartbeat rests at 7 BPM whatever the live speed', async ({page}) => {
   test.setTimeout(120000);
   await boot(page, {throughput: {bps: 500e6, peak: null}});
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
-  await page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]')));
   const seen = await births(page, 3 * IDLE + 500);
   expect(seen.times.length).toBeGreaterThanOrEqual(3);
   intervals(seen.times).forEach(gap => expect(Math.abs(gap - IDLE)).toBeLessThanOrEqual(QUANTUM));
@@ -962,32 +953,151 @@ test('fully paused, the red lines breathe over each card\'s still accent glow at
   });
 });
 
-test('leaving the Dashboard, hiding the document or reducing motion flattens every line, and each return starts afresh', async ({page}) => {
+/* The heartbeats on the strip, by birth time relative to the strip's start. */
+const heartbeatState = page => page.evaluate(() => ({
+  born: _dashboardHeartbeat.beats.map(beat => beat.born), timer: _dashboardHeartbeat.timer,
+  frame: _dashboardHeartbeat.frame, phase: _dashboardHeartbeat.phase, now: performance.now()}));
+const lines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d')));
+const leaveDashboard = page => page.evaluate(() => nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]')));
+/* Return to the Dashboard and read the strip in the same task: what the first painted frame shows. */
+const returnAndRead = page => page.evaluate(() => {
+  nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
+  return {flatline: document.getElementById('dash-hero').classList.contains('dash-hero--flatline'),
+    lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d'))};
+});
+const allLeads = cards => cards.map(card => leads(card).map(x => Math.round(x)));
+/* Two pages' strips agree: the same heartbeats on every card, each within one
+ * animation frame of travel (each page's frames tick on its own clock origin). */
+const expectSameStrip = (a, b) => {
+  expect(a.map(card => card.length)).toEqual(b.map(card => card.length));
+  a.flat().forEach((x, i) => expect(Math.abs(x - b.flat()[i])).toBeLessThanOrEqual(SPEED * 16 + 1));
+};
+
+for (const [label, away, resize] of [['a short stay', 3000, null], ['a long stay', 30000, null],
+                                     ['a stay during which the cards wrap', 6000, {width: 560, height: 1400}]]) {
+  test(`leaving the Dashboard for another view keeps its clock: after ${label} the strip is exactly the one that never left`, async ({browser}) => {
+    test.setTimeout(120000);
+    const stayed = await browser.newPage(), left = await browser.newPage();
+    try {
+      await boot(stayed);
+      await boot(left);
+      // Each page's own clock origin: births compared from each strip's start.
+      const origin = {stayed: (await heartbeatState(stayed)).now, left: (await heartbeatState(left)).now};
+      const bornSince = async (page, key) => (await heartbeatState(page)).born.map(born => Math.round(born - origin[key]));
+      await stayed.clock.runFor(INTERVAL + 1500);
+      await left.clock.runFor(INTERVAL + 1500);
+      await leaveDashboard(left);
+      const unseen = await lines(left);
+      for (let t = 0; t < away; t += 500) {
+        if (resize && t === 1000) await Promise.all([stayed.setViewportSize(resize), left.setViewportSize(resize)]);
+        await stayed.clock.runFor(500);
+        await left.clock.runFor(500);
+        // Off screen: nothing is painted, no frame is pending, only the heartbeats still on the strip are kept.
+        const state = await heartbeatState(left);
+        expect(state.frame).toBe(0);
+        expect(state.born.length).toBeLessThanOrEqual(8);
+        expect(await lines(left)).toEqual(unseen);
+      }
+      const first = await returnAndRead(left);
+      // The same heartbeats, born at the same instants: nothing reset, replayed or doubled.
+      expect(await bornSince(left, 'left')).toEqual(await bornSince(stayed, 'stayed'));
+      // The first frame back is the strip at this very instant (the stayed page last drew one
+      // frame earlier), so one step on it has moved exactly one step's travel -- never a fresh
+      // start or a stale strip -- and both pages draw the same strip from then on.
+      const firstLeads = allLeads(first.lines.map(d => ({points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)]
+        .map(m => [Number(m[1]), Number(m[2])])})));
+      await stayed.clock.runFor(STEP);
+      await left.clock.runFor(STEP);
+      const next = allLeads(await strip(left));
+      expectSameStrip(next, allLeads(await strip(stayed)));
+      expect(next.map(card => card.length)).toEqual(firstLeads.map(card => card.length));
+      next.flat().forEach((x, i) => expect(Math.abs(firstLeads.flat()[i] - x - SPEED * STEP)).toBeLessThanOrEqual(5));
+      await stayed.clock.runFor(INTERVAL);
+      await left.clock.runFor(INTERVAL);
+      expectSameStrip(allLeads(await strip(left)), allLeads(await strip(stayed)));
+    } finally {
+      await stayed.close();
+      await left.close();
+    }
+  });
+}
+
+test('Global Pause All while another view is shown: the first frame back is already the drained red flatline', async ({page}) => {
+  test.setTimeout(90000);
+  const pause = {paused: false}, events = {};
+  await boot(page, {pause, events});
+  await page.clock.runFor(INTERVAL + 1500);
+  expect((await strip(page)).some(c => !flat(c))).toBe(true);
+  await leaveDashboard(page);
+  // Paused in another session; the event stream brings it to this page whatever view it shows.
+  pause.paused = true;
+  events.emit();
+  await expect.poll(() => page.evaluate(() => processingPaused)).toBe(true);
+  await page.clock.runFor(20000);                                     // every heartbeat has left the strip
+  const refreshed = page.waitForResponse('**/api/stats');            // the Dashboard's own refresh on entry
+  const first = await returnAndRead(page);
+  expect(first.flatline).toBe(true);
+  expect(first.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16))).toBe(true);
+  await refreshed;
+  expect(await page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'))).toBe(true);
+});
+
+test('a hidden document suspends the clock and, shown again, goes on from the heartbeat it had reached without replaying any', async ({page}) => {
+  test.setTimeout(90000);
   await boot(page);
-  const stopsAndResumes = async (leave, back) => {
-    await page.clock.runFor(INTERVAL + 1500);
-    expect((await strip(page)).some(c => !flat(c))).toBe(true);
-    await leave();
-    // (A media-query change reaches the page at its next rendering step.)
-    await expect.poll(async () => (await strip(page)).every(flat)).toBe(true);
-    await page.clock.runFor(8000);
-    expect((await strip(page)).every(flat)).toBe(true);
-    await back();
-    await expect.poll(() => page.evaluate(() => !document.hidden && !matchMedia('(prefers-reduced-motion: reduce)').matches)).toBe(true);
-    await page.clock.runFor(INTERVAL - 100);
-    expect((await strip(page)).every(flat)).toBe(true);                // a fresh start: the first heartbeat is 2 s away
-  };
-  await stopsAndResumes(
-    () => page.locator('#sidebar .nav-item[data-view="torrents"]').click(),
-    () => page.locator('#sidebar .nav-item[data-view="dashboard"]').click());
+  const start = (await heartbeatState(page)).now;
+  await page.clock.runFor(2 * INTERVAL + 500);
   const visibility = hidden => page.evaluate(hidden => {
     Object.defineProperty(document, 'hidden', {configurable: true, get: () => hidden});
     document.dispatchEvent(new Event('visibilitychange'));
   }, hidden);
-  await stopsAndResumes(() => visibility(true), () => visibility(false));
-  await stopsAndResumes(
-    () => page.emulateMedia({reducedMotion: 'reduce'}),
-    () => page.emulateMedia({reducedMotion: 'no-preference'}));
+  await visibility(true);
+  const hiddenAt = (await heartbeatState(page)).now;
+  const suspended = await heartbeatState(page);
+  expect([suspended.timer, suspended.frame]).toEqual([0, 0]);
+  await page.clock.runFor(9 * INTERVAL + 700);
+  await visibility(false);
+  // Nothing born while hidden, and none of the heartbeats it had is still drawn after its trail left the strip.
+  const back = await heartbeatState(page);
+  expect(back.born.every(born => born <= hiddenAt)).toBe(true);
+  await page.clock.runFor(3 * INTERVAL);
+  const after = (await heartbeatState(page)).born.filter(born => born > hiddenAt);
+  expect(after.length).toBeGreaterThanOrEqual(2);
+  // On the same 30 BPM lattice as before: no burst, no restart.
+  after.forEach(born => {
+    const offset = (born - start) % INTERVAL;
+    expect(Math.min(offset, INTERVAL - offset)).toBeLessThanOrEqual(QUANTUM);
+  });
+  intervals(after).forEach(gap => expect(Math.abs(gap - INTERVAL)).toBeLessThanOrEqual(QUANTUM));
+});
+
+test('repeated navigation adds no clock, frame loop or heartbeat', async ({page}) => {
+  test.setTimeout(90000);
+  await boot(page);
+  await page.evaluate(() => {
+    for (let i = 0; i < 25; i++) {
+      nav(document.querySelector('#sidebar .nav-item[data-view="torrents"]'));
+      nav(document.querySelector('#sidebar .nav-item[data-view="dashboard"]'));
+    }
+  });
+  const seen = await births(page, 5 * INTERVAL + 500);
+  expect(seen.times.length).toBe(5);
+  intervals(seen.times).forEach(gap => expect(Math.abs(gap - INTERVAL)).toBeLessThanOrEqual(QUANTUM));
+});
+
+test('reducing motion flattens every line and stops the clock; allowing it again starts afresh', async ({page}) => {
+  await boot(page);
+  await page.clock.runFor(INTERVAL + 1500);
+  expect((await strip(page)).some(c => !flat(c))).toBe(true);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  // (A media-query change reaches the page at its next rendering step.)
+  await expect.poll(async () => (await strip(page)).every(flat)).toBe(true);
+  await page.clock.runFor(8000);
+  expect((await strip(page)).every(flat)).toBe(true);
+  await page.emulateMedia({reducedMotion: 'no-preference'});
+  await expect.poll(() => page.evaluate(() => _dashboardHeartbeat.running)).toBe(true);
+  await page.clock.runFor(INTERVAL - 100);
+  expect((await strip(page)).every(flat)).toBe(true);                // a fresh start: the first heartbeat is 2 s away
 });
 
 test('reduced motion from the start shows only the still flat baselines', async ({page}) => {
