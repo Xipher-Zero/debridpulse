@@ -144,8 +144,8 @@ def test_notice_preserves_legal_attribution_without_obsolete_single_provider_pro
     assert "AllDebrid + aria2 Download Manager" not in notice
 
 
-def test_help_page_explains_both_current_provider_paths_without_claiming_every_http_url_uses_alldebrid():
+def test_help_page_explains_specialist_and_generic_paths_without_claiming_every_http_url_uses_alldebrid():
     help_page = _text("frontend/static/ui-help-page.js")
-    assert "General Sources → HTTP &amp; HTTPS" in help_page
-    assert "specialized provider claim wins over a generic one" in help_page
+    assert "Specialist services come first." in help_page
+    assert "A web link goes to a debrid service only if that service lists the link's host as supported." in help_page
     assert "For a normal HTTP or HTTPS source, DebridPulse sends the source to AllDebrid" not in help_page

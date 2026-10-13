@@ -82,14 +82,17 @@ body.light #view-help .dp-help-tab-glyph {
 #view-help .dp-help-tab[data-tab='quickstart'] {
   --dp-help-tab-color: #b866f5;
 }
+#view-help .dp-help-tab[data-tab='using'] {
+  --dp-help-tab-color: #e0609f;
+}
 #view-help .dp-help-tab[data-tab='howitworks'] {
   --dp-help-tab-color: #39c6e8;
 }
-#view-help .dp-help-tab[data-tab='aria2'] {
-  --dp-help-tab-color: #4c8fff;
-}
-#view-help .dp-help-tab[data-tab='integrations'] {
+#view-help .dp-help-tab[data-tab='services'] {
   --dp-help-tab-color: #3ab8a8;
+}
+#view-help .dp-help-tab[data-tab='engines'] {
+  --dp-help-tab-color: #4c8fff;
 }
 #view-help .dp-help-tab[data-tab='settings'] {
   --dp-help-tab-color: #e0a02b;
@@ -161,7 +164,10 @@ body.light #view-help .dp-help-tab-glyph {
   color: var(--dp-accent-purple-bright);
 }
 
-@media (max-width: 1180px) {
+/* The title and the centred section selector share one row only where the
+   selector's width plus the title on either side fits; below that the title
+   sits above a full-width selector instead of under it. */
+@media (max-width: 1699px) {
   #view-help .dp-help-master-header {
     grid-template-columns: minmax(0, 1fr);
   }

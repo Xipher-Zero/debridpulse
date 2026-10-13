@@ -204,13 +204,14 @@ def test_non_auth_settings_contracts_remain_in_canonical_owner_or_semantic_modul
         assert fragment in combined
 
 
-def test_help_is_direct_final_owner_with_seven_reviewed_sections() -> None:
+def test_help_is_direct_final_owner_with_eight_reviewed_sections() -> None:
     source = read(HELP)
     for tab in (
         "['quickstart', 'Quick Start', 'rocket']",
-        "['howitworks', 'How it works', 'workflow']",
-        "['aria2', 'Download Engine', 'download']",
-        "['integrations', 'Integrations', 'plug']",
+        "['using', 'Everyday Use', 'activity']",
+        "['howitworks', 'How It Works', 'workflow']",
+        "['services', 'Services', 'plug']",
+        "['engines', 'Engines', 'download']",
         "['settings', 'Settings', 'settings']",
         "['trouble', 'Troubleshooting', 'wrench']",
         "['license', 'License', 'scale']",

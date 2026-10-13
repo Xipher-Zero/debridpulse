@@ -16,189 +16,258 @@ def _panel(function_name: str, next_function_name: str) -> str:
     return source[start:end]
 
 
-def test_how_it_works_explains_current_multi_stage_pipeline_without_legacy_fixed_polling():
-    panel = _panel("howItWorksPanel", "aria2Panel")
+def _manual() -> str:
+    """Every documentation panel except the preserved License panel."""
+    source = _source()
+    start = source.index("  function quickStartPanel() {")
+    end = source.index("\n  function licensePanel(", start)
+    return source[start:end]
+
+
+def test_everyday_use_covers_the_pages_controls_and_prompts_an_operator_meets():
+    panel = _panel("usingPanel", "howItWorksPanel")
 
     for phrase in (
-        "How DebridPulse moves a download",
-        "1. Intake",
-        "2. Provider resolution",
-        "3. Transfer planning",
-        "4. aria2 delivery",
-        "5. Verification and finish",
-        "6. Optional extraction",
-        "verified alternate mirror links",
-        "Recover All",
-        "Pause All is a processing gate",
+        "Pause All", "Resume All", "Resume Paused (N)",
+        "Custom cap (MB/s)", "Set Custom",
+        "Provider Status (sidebar)", "Network Sources share one row",
+        "Quick Add", "<b>100 unique links</b>", "separated by a Tab",
+        "<code>.torrent</code>: a torrent file, up to 16 MB.",
+        "<code>.nzb</code>: a Usenet download, up to 1 GB.",
+        "<code>.meta4</code>: a Metalink file, up to 16 MB.",
+        "read as a list of links, up to 1 MB",
+        "Recover All", "Download Activity",
+        "Connect to a local network address?",
+        "Download the item or its collection?",
+        "Authentication Required", "Verify Server Identity",
+        "Select files", "Cancel Transfer",
+        "Priority", "Newest", "Move to Top", "Start Now",
+        "Submitted As", "Route History", "Advanced acquisition details",
+        "Discard downloaded progress?", "Transfer Trace Log",
+        "Activity Log", "Event Type",
+        "Overall &amp; Rolling Metrics", "Transfer Methods", "Unattributed",
     ):
-        assert phrase in panel
-
-    for legacy in (
-        "Polls every 30 s",
-        "status: uploading",
-        "upload_fail_retry_count",
-        "stuck_download_timeout_hours",
-    ):
-        assert legacy not in panel
+        assert phrase in panel, phrase
 
 
-def test_aria2_help_uses_current_downloads_ui_and_one_managed_engine():
-    panel = _panel("aria2Panel", "integrationsPanel")
+def test_how_it_works_explains_routing_failure_scope_and_controls_without_guarantees():
+    panel = _panel("howItWorksPanel", "servicesPanel")
 
     for phrase in (
-        "Settings → Downloads → Download Engine",
-        "How DebridPulse runs aria2",
-        "Download Folder",
-        "reconnects to its own tracked downloads",
-        "Maximum Concurrent Downloads",
-        "Continue Partial Downloads",
-        "Segments per File",
-        "Connections per Server",
-        "Download Safety &amp; Recovery",
-        "speed-cap control",
-        # DP 1.0.13 made Downloads a field-boundary surface: the Settings
-        # footer's Test Download Engine is gone, so Help no longer tells the
-        # operator to press it. Engine health is the sidebar indicator's, and
-        # Downloads settings save themselves.
-        "Checking the download engine",
-        "aria2</b> indicator in the sidebar",
-        "Downloads settings save themselves",
+        "1. Add", "2. Choose a service", "3. Prepare", "4. Download",
+        "5. Check and finish", "6. Extract (optional)",
+        "Specialist services come first.",
+        "the ordinary HTTP(S) source is not used for it, not even if that service later fails",
+        "It waits rather than guesses.",
+        "No ranking setting.",
+        "Enabled is not the same as usable.",
+        "A temporary problem", "A problem with one service", "A problem with the download itself",
+        "it does not replace a service that is working",
+        "never assumes two files match because of their names or positions",
+        "Prepare Backup Torrents", "off by default",
+        "Files that finished downloading stay in your folder.",
+        "Already in queue", "Consolidated",
+        "What survives a restart",
+        "are removed from the link before it is saved",
     ):
-        assert phrase in panel
+        assert phrase in panel, phrase
 
-    for retired in ("Test Download Engine", "Tuning changes take effect"):
-        assert retired not in panel, retired
-
-    for legacy in (
-        "Settings → Download Client",
-        "aria2 Config",
-        "Auto-memory tuning",
-        "Downloads → ↓ Limit",
-    ):
-        assert legacy not in panel
+    # Failover is conditional; byte-resume across a switch is never promised.
+    assert "does not always keep the progress already made" in panel
+    for promise in ("seamless", "always resumes", "every provider supports"):
+        assert promise not in panel.casefold()
 
 
-def test_integrations_cover_current_discord_prometheus_api_and_oidc_workflows():
-    panel = _panel("integrationsPanel", "settingsPanel")
+def test_specialist_authority_is_documented_for_the_whole_submission_not_per_link():
+    """One Quick Add (or link-list file) of direct links is ONE transfer with
+    one root per link (``ApplicationService.submit_links``); a specialized
+    claim on any root closes generic routing for every root
+    (``IntegrationRegistry.collection_route_authority``), while each root
+    keeps its own specialized claimants. Magnets are separate submissions,
+    and Media Downloads claims do not carry that authority."""
+    panel = _panel("howItWorksPanel", "servicesPanel")
+    rule = panel[panel.index("<b>Links added together are one download.</b>"):]
+    rule = rule[:rule.index("</li>")]
 
     for phrase in (
-        "Settings → Notifications → Discord Notifications",
-        "Added-event Webhook",
-        "Statistics Reports",
-        "Automatic Report Interval",
-        "GET /api/metrics",
-        "metrics_path: /api/metrics",
-        "Settings → Authentication → API Access",
-        "Authorization: Bearer &lt;token&gt;",
-        "API Access does not replace browser authentication",
-        "Public DebridPulse Base URL",
-        "/auth/oidc/callback",
-        "Test OIDC Sign-In",
-        "PUBLIC_BASE_URL",
+        "All the links you add at once in Quick Add, or in one link-list file, become a single download",
+        "only magnets each become a download of their own",
+        "If a debrid service supports any link in that download, the whole download is left to debrid services",
+        "each of its links goes to a debrid service that supports that particular link",
+        "a link that none of them supports is not downloaded as an ordinary web file",
+        "add them separately from links meant for a debrid service",
+        "Media Downloads links do not have this effect",
     ):
-        assert phrase in panel
+        assert phrase in rule, phrase
+    # The retired per-download reduction must not return.
+    assert "When a specialist service claims a download, DebridPulse does not also hand it" not in panel
 
-    assert "upload failed, no peers" not in panel.casefold()
+
+def test_services_document_every_registered_user_facing_integration():
+    panel = _panel("servicesPanel", "enginesPanel")
+
+    for name in (
+        "AllDebrid", "Debrid-Link", "Premiumize", "Real-Debrid", "TorBox", "Usenet",
+        "HTTP(S)", "(S)FTP", "SCP", "rsync", "WebDAV", "Metalink (Multimeta)", "Media Downloads",
+    ):
+        assert f"accordion('{name}'" in panel, name
+    assert "<h3>Premium Services</h3>" in panel
+    assert "<h3>Network Sources</h3>" in panel
 
 
-def test_settings_reference_matches_the_six_current_settings_sections_and_save_semantics():
+def test_services_distinguish_api_key_and_device_authorization_accounts():
+    panel = _panel("servicesPanel", "enginesPanel")
+
+    def entry(name: str) -> str:
+        start = panel.index(f"accordion('{name}'")
+        return panel[start:panel.index("`)}", start)]
+
+    for api_key_service in ("AllDebrid", "Debrid-Link", "Premiumize"):
+        assert "<b>API Key</b>" in entry(api_key_service), api_key_service
+    for device_service, button in (("Real-Debrid", "Connect Real-Debrid"), ("TorBox", "Connect TorBox")):
+        text = entry(device_service)
+        assert f"<b>{button}</b>" in text
+        assert "API Key</b>" not in text
+    assert "There is no key to paste." in entry("Real-Debrid")
+    assert "<b>Add Server</b>" in entry("Usenet")
+
+
+def test_nzb_preferences_and_plan_entitlement_are_not_presented_as_participation_or_guarantees():
+    panel = _panel("servicesPanel", "enginesPanel")
+
+    assert "<b>Use Premiumize Before Usenet</b>" in panel
+    assert "<b>Use TorBox Before Usenet</b>" in panel
+    assert "That switch only changes the order for NZBs" in panel
+    assert "<b>Requires TorBox Pro.</b>" in panel
+    # Plan and limit facts that come from the provider are qualified as such.
+    for qualified in (
+        "per TorBox's documentation",
+        "per Premiumize's documentation",
+        "per AllDebrid's documentation",
+        "Per Real-Debrid's documentation",
+    ):
+        assert qualified in panel, qualified
+
+
+def test_media_downloads_guidance_claims_neither_transcoding_nor_authenticated_media():
+    panel = _panel("servicesPanel", "enginesPanel")
+    media = panel[panel.index("accordion('Media Downloads'"):]
+
+    for phrase in (
+        "without re-encoding", "DebridPulse never converts media",
+        "Preferred Subtitle Language", "Current Video", "Playlist",
+        "media that needs a sign-in, cookies or a subscription",
+        "starts that item again from the beginning",
+    ):
+        assert phrase in media, phrase
+
+
+def test_engines_are_presented_as_four_managed_engines_not_one():
+    panel = _panel("enginesPanel", "settingsPanel")
+
+    for engine in ("aria2", "rsync", "Usenet (SABnzbd)", "Media Downloads (yt-dlp)"):
+        assert f"inset('{engine}'" in panel, engine
+    for phrase in (
+        "there is nothing to install or connect",
+        "one limit for all engines together",
+        "shared equally between the engines that are downloading",
+        "Transfer Method Settings → Network Sources",
+        "Download Engine Activity",
+    ):
+        assert phrase in panel, phrase
+
+
+def test_settings_reference_matches_the_six_current_settings_tabs_and_save_semantics():
     panel = _panel("settingsPanel", "troubleshootingPanel")
 
-    for section in (
-        "Sources &amp; Providers",
-        "Downloads",
-        "Extraction",
-        "Notifications",
-        "Authentication",
-        "Data &amp; Maintenance",
-    ):
-        assert f"<summary>{section}</summary>" in panel
+    for section in ("Services", "Downloads", "Extraction", "Authentication", "Notifications", "Data &amp; Maintenance"):
+        assert f"accordion('{section}'" in panel, section
 
     for phrase in (
-        # Every setting saves on its own: generic Apply is retired, so the
-        # reference describes the boundaries that actually exist.
-        "Every setting is saved on its own.",
-        "a switch is saved the moment you flip it",
-        "leaving its replacement field blank keeps the stored value",
-        "Test AllDebrid",
-        "Download Safety &amp; Recovery",
-        "Archive Passwords",
-        "Discord Notifications",
-        "Authentication Status",
-        "Username &amp; Password",
-        "OpenID Connect",
-        "Public DebridPulse Base URL",
-        "API Access",
-        "Run Backup",
-        "Allow Database Wipe",
-        "always creates a safety backup first",
+        "There is no Save button.",
+        "leaving it blank keeps the stored value",
+        "Download Behavior &amp; Limits", "Transfer Method Settings", "Disk Space &amp; Recovery",
+        "Local Network Connections", "Skip Local Connection Confirmation",
+        "Delete Archives After Extraction", "Archive Passwords", "Clear Passwords",
+        "Authentication Status", "Username &amp; Password", "OpenID Connect",
+        "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
+        "Generate Token", "Rotate Token", "Revoke Token", "Authorization: Bearer &lt;token&gt;",
+        "API Access does not protect the web pages",
+        "Discord Notifications", "Download Added Webhook", "Statistics Reporting",
+        "Automatic Report Interval", "/api/metrics",
+        "Event Logging", "Backups &amp; Retention", "Run Backup",
+        "Save Backup", "Restore Backup", "Add Backup",
+        "Allow Database Reset", "Reset Database", "<code>WIPE</code>",
+        "always makes a safety backup first",
     ):
-        assert phrase in panel
-    # The wipe owns its own pause; the operator is never told to pause first.
+        assert phrase in panel, phrase
+    # The reset owns its own pause; the operator is never told to pause first.
     assert "processing to be paused" not in panel
 
-    for retired in (
-        "Apply Settings",
-        "Run Backup Now",
-        "<summary>General</summary>",
-        "<summary>Download Client</summary>",
-        "<summary>AllDebrid API</summary>",
-        "<summary>Advanced / Maintenance</summary>",
-        "Optional HTTP Basic Auth",
-        "Leave either empty to disable",
-    ):
-        assert retired not in panel
 
-
-def test_troubleshooting_is_user_facing_and_covers_current_recovery_paths():
+def test_troubleshooting_is_symptom_first_and_covers_every_failure_family():
     panel = _panel("troubleshootingPanel", "licensePanel")
 
     for phrase in (
         "Before changing anything",
-        "I added something, but no work starts",
-        "Pause All",
-        "Test AllDebrid",
-        "Provider processing appears stuck",
-        "Recover All",
-        "A download is stalled or aria2 reports an error",
-        "Download Safety &amp; Recovery",
-        "Files are not appearing in the expected folder",
+        "I added something, but nothing starts",
+        "Quick Add refuses a link or file",
+        "A service is amber or red, or its Test fails",
+        "A download stays in Processing for a long time",
+        "A download is slow, stalls or fails",
+        "A server keeps asking for a password, or rejects its identity",
+        "A Usenet download fails",
+        "A media download fails",
+        "Files are not where I expect, or disk space runs out",
         "Automatic extraction did not run or failed",
-        "Discord or Prometheus integration is not working",
+        "Discord or Prometheus is not working",
         "Server-Sent Events",
-        "Username, password, or OIDC sign-in is failing",
-        "Public DebridPulse Base URL",
-        "auth_password_enabled",
-        "auth_oidc_enabled",
-        "Database maintenance will not run",
+        "I cannot sign in",
+        "auth_password_enabled", "auth_oidc_enabled",
+        "Backup, restore or reset will not run",
     ):
-        assert phrase in panel
+        assert phrase in panel, phrase
+
+    # The last-resort sign-in recovery stays qualified and non-destructive.
+    recovery = panel[panel.index("Last resort, if no sign-in method works:"):]
+    assert "back up its configuration file" in recovery
+    assert "keeping the file valid JSON" in recovery
+    assert "Your stored password and OIDC settings are kept" in recovery
 
     for retired in (
         "/api/torrents/diagnose",
         "min_free_disk_gb",
         "upload_fail_retry_count",
-        "Upload Failed (code 5)",
-        "No peers (code 8)",
         '"auth_username": ""',
         '"auth_password": ""',
-        "15-second polling",
     ):
         assert retired not in panel
 
 
+def test_manual_removes_retired_names_and_single_provider_or_single_engine_claims():
+    manual = _manual()
 
-
-def test_remaining_help_overhaul_removes_known_legacy_user_copy():
-    source = _source()
-
-    for legacy in (
-        "Settings → Download Client → aria2 Config",
-        "Settings → AllDebrid → Test",
+    for stale in (
+        "Sources &amp; Providers",
+        "External Providers",
+        "Downloads → Download Engine</b>",
+        "Download Safety &amp; Recovery",
+        "Additional Engine Tuning",
+        "Allow Database Wipe",
+        "Test AllDebrid",
+        "Test aria2",
+        "Test Discord",
+        "Test OIDC Sign-In",
+        "Send Test Report",
+        "Statistics Reports",
+        "Delete Archive After Extraction",
+        "AllDebrid is the current specialized debrid provider",
+        "current architecture has",
+        "aria2 is the component that performs the actual file transfer",
+        "Recent Activity",
+        "Direct Sources",
+        "Multi" + "link",
         "Polls every 30 s",
-        "upload_fail_retry_count",
-        "stuck_download_timeout_hours",
-        "min_free_disk_gb",
-        "Auth is enabled but I'm locked out",
+        "Settings → Download Client",
     ):
-        assert legacy not in source
+        assert stale not in manual, stale

@@ -8,93 +8,66 @@ HELP_RUNTIME = ROOT / "frontend" / "static" / "ui-help-page.js"
 def _quick_start_source() -> str:
     source = HELP_RUNTIME.read_text(encoding="utf-8")
     start = source.index("  function quickStartPanel() {")
-    end = source.index("\n  function howItWorksPanel() {", start)
+    end = source.index("\n  function usingPanel() {", start)
     return source[start:end]
 
 
-def test_quick_start_is_rewritten_for_normal_application_users():
+def test_quick_start_needs_no_premium_account_to_reach_a_first_download():
     quick = _quick_start_source()
 
-    required_orientation = (
+    for phrase in (
         "Getting started with DebridPulse",
         "DebridPulse is the application you use to submit, route, track, and manage downloads.",
+        "You do not need a paid account to start.",
+        "Ordinary web (HTTP and HTTPS), FTP, SFTP, SCP, rsync and WebDAV links",
+        "is switched on in a new installation, so ordinary links work straight away",
+    ):
+        assert phrase in quick, phrase
+
+    # A premium service is offered, never required, and AllDebrid is one of five.
+    assert quick.index("Network Sources") < quick.index("To use a premium service")
+    for retired in (
+        "Connect your AllDebrid account",
         "AllDebrid is the current specialized debrid provider.",
-        "API key is a private credential",
-        "aria2 is the component that performs the actual file transfer.",
-        "isolated environment called a <b>container</b>",
-        "Login protection:",
-    )
-    for phrase in required_orientation:
-        assert phrase in quick
+        "You also need an <b>AllDebrid account</b>",
+    ):
+        assert retired not in quick
 
 
-def test_quick_start_uses_current_ui_names_and_first_download_flow():
+def test_quick_start_uses_current_settings_paths_and_account_connection_styles():
     quick = _quick_start_source()
 
-    required_current_ui = (
-        "Settings → Sources &amp; Providers",
-        "External Providers → AllDebrid",
-        # Generic Apply is retired: a credential saves when the field is left.
-        "The key is saved at that point.",
-        "Settings → Downloads → Download Engine",
+    for phrase in (
+        "Settings → Downloads → Download Behavior &amp; Limits",
         "Download Folder",
-        "DebridPulse runs and manages aria2 for you",
-        "Dashboard",
-        "Downloads",
+        "isolated environment called a <b>container</b>",
+        "Settings → Services",
+        "<b>AllDebrid, Debrid-Link and Premiumize:</b> paste the API key",
+        "<b>Connect Real-Debrid</b> or <b>Connect TorBox</b>",
+        "<b>Add Server</b>",
+        "Settings → Authentication",
+        "Quick Add",
+        "Download Activity",
         "Activity Log",
-        "Statistics",
-        "Data &amp; Maintenance",
-    )
-    for phrase in required_current_ui:
-        assert phrase in quick
+    ):
+        assert phrase in quick, phrase
 
-    retired_legacy_copy = (
+    for retired in (
         "Apply Settings",
-        "Settings → AllDebrid",
+        "Sources &amp; Providers",
+        "Downloads → Download Engine",
         "Click <b>Save</b>",
-        "Settings → Download</b>",
-        "polls AllDebrid every 30 s",
-        "Five steps to your first download",
-    )
-    for phrase in retired_legacy_copy:
-        assert phrase not in quick
+    ):
+        assert retired not in quick
 
 
-def test_quick_start_explains_source_types_and_safe_defaults_before_advanced_options():
+def test_quick_start_stays_proportionate():
     quick = _quick_start_source()
 
-    for phrase in (
-        "HTTP or HTTPS link:",
-        "Magnet link:",
-        ".torrent file:",
-        "Direct-link batches can contain up to <b>100 unique links</b>",
-        "You do not need to manually unlock links on AllDebrid first.",
-        "Your DebridPulse aria2 process does <b>not</b> need to join the torrent swarm.",
-        "The defaults are appropriate for a normal installation",
-    ):
-        assert phrase in quick
-
-
-def test_quick_start_teaches_optional_features_and_recovery_without_internal_config_keys():
-    quick = _quick_start_source()
-
-    for phrase in (
-        "Useful settings to explore next",
-        "webhook",
-        "OpenID Connect, usually shortened to OIDC",
-        "Pause All stops processing, not intake",
-        "Most failed transfers can be investigated or retried",
-        "Recover All",
-    ):
-        assert phrase in quick
-
-    for internal_name in (
-        "poll_interval_seconds",
-        "upload_fail_retry_count",
-        "stuck_download_timeout_hours",
-        "min_free_disk_gb",
-    ):
-        assert internal_name not in quick
+    # Four steps; protocol detail lives in the Services tab, not here.
+    assert quick.count("${step(") == 4
+    for detail in ("rsync+ssh://", "Directory Depth", "Collection Scan Timeout", "~name"):
+        assert detail not in quick
 
 
 def test_help_copy_does_not_use_em_dashes():
