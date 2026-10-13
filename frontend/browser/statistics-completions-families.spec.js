@@ -72,7 +72,7 @@ const channelTolerance = a => Math.max(3, Math.ceil(2 * 255 / Math.max(1, a)));
 const family = (rgb, [r, g, b, a]) => a >= 0.18 * 255 && a <= 0.47 * 255
   && [r, g, b].every((value, c) => Math.abs(value - rgb[c]) <= channelTolerance(a));
 const rgbOf = (page, role) => page.evaluate(role => {
-  if (role === 'premium') return document.body.classList.contains('light') ? [186, 36, 196] : [234, 88, 242];
+  if (role === 'premium') return document.body.classList.contains('light') ? [194, 5, 212] : [245, 56, 255];
   const hex = getComputedStyle(document.body).getPropertyValue('--dp-accent-cyan').trim().replace('#', '');
   const v = parseInt(hex, 16);
   return [v >> 16 & 255, v >> 8 & 255, v & 255];

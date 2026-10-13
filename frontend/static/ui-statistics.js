@@ -310,7 +310,7 @@
   const COMPLETION_INNER_RADIUS = 3;
 
   function familyRgb(role) {
-    if (role === 'premium') return document.body.classList.contains('light') ? [186, 36, 196] : [234, 88, 242];
+    if (role === 'premium') return document.body.classList.contains('light') ? [194, 5, 212] : [245, 56, 255];
     const hex = completionColor('network').replace('#', '');
     const value = parseInt(hex.length === 3 ? hex.replace(/./g, '$&$&') : hex.slice(0, 6), 16);
     return Number.isFinite(value) ? [value >> 16 & 255, value >> 8 & 255, value & 255] : [23, 216, 255];
@@ -381,7 +381,7 @@
 
   function completionColor(role) {
     const isLight = document.body.classList.contains('light');
-    if (role === 'premium') return isLight ? 'rgba(186, 36, 196, .86)' : 'rgba(234, 88, 242, .9)';
+    if (role === 'premium') return isLight ? 'rgba(194, 5, 212, .86)' : 'rgba(245, 56, 255, .9)';
     if (role === 'network') return getComputedStyle(document.body).getPropertyValue('--dp-accent-cyan').trim() || '#17d8ff';
     return isLight ? 'rgba(126, 75, 187, .72)' : 'rgba(166, 70, 244, .84)';
   }
