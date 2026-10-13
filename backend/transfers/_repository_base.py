@@ -33,8 +33,8 @@ from transfers.models import (
     BITTORRENT_REQUEST_KINDS, Artifact, CachePresence, CleanupAuthority, ContinuationCapability, ContinuationPlan,
     ContinuationStrategy, DeliveryKind, ExecutionAttempt, ExecutionHandle, ExecutionState, MaterializationAdmission,
     MaterializationAdmissionKind, MaterializationResult, OutcomeKind, Ownership, ProviderResource, RequestRecord, ResolutionAttempt, ResolutionResult,
-    ResourceState, SizeKnowledge, SourceEntry, Transfer, TransferCandidate, TransferOutcome, TransferRequest,
-    TransferState, TransferProgress, new_identity,
+    ResourceState, SizeKnowledge, SourceEntry, SubmissionDemand, Transfer, TransferCandidate, TransferOutcome,
+    TransferRequest, TransferState, TransferProgress, new_identity,
 )
 from transfers.policy import SIDE_STATE_RETIRING_TRANSFER_STATES, TERMINAL_TRANSFER_STATES, transition_allowed
 
@@ -943,6 +943,12 @@ def _project_route_history(route_attempts, requests, *, lineage_attempts=()):
 # so the SQL parameter order is stable.
 _TERMINAL_TRANSFER_STATUSES = tuple(sorted(str(state) for state in TERMINAL_TRANSFER_STATES))
 
+
+
+class DemandChanged(Exception):
+    """A destructive act was refused, nothing changed: the transfer's
+    outstanding demand is no longer the demand the act was authorized
+    against (another account's demand arrived meanwhile)."""
 
 class TransferRepository:
     async def has_integration_references(self, identity=None):
@@ -2096,7 +2102,7 @@ class TransferRepository:
 
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=None, deduplicate=True,
                     independent=True, alternative_groups: tuple[int | None, ...] | None = None,
-                    verbatim: tuple[bool, ...] = ()) -> tuple[Transfer, bool]:
+                    verbatim: tuple[bool, ...] = (), demand: SubmissionDemand | None = None) -> tuple[Transfer, bool]:
         """Admit one submission under the source's active dedupe identity.
 
         Matching live work (any non-terminal lifecycle, a failed one included:
@@ -2129,7 +2135,13 @@ class TransferRepository:
         alone) records, in this transaction, which roots are exactly the
         resource that boundary received: one non-secret
         ``request_admitted_verbatim`` application event naming the root
-        (claimed, so it is never delivered). No event is no proof."""
+        (claimed, so it is never delivered). No event is no proof.
+
+        ``demand`` is the accepted submission's own demand, recorded in this
+        transaction whether the submission created the transfer or converged
+        on an existing one (which admits no request of its own). A transfer
+        created without one (an inventory observation) records an
+        ``unattributed`` demand: nobody owns it and it keeps the work."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -2161,6 +2173,7 @@ class TransferRepository:
                     VALUES(?,?,'pending',?,?,'',?)""", (fingerprint, name, source, priority, fingerprint))
                 created = True
             existing = await db.fetchone("SELECT id FROM transfer_requests WHERE transfer_id=? LIMIT 1", (transfer_id,))
+            first_root = None
             if not existing and alternative_groups:
                 selected: set[int] = set()
                 for ordinal, (request, group) in enumerate(zip(requests, alternative_groups, strict=True)):
@@ -2168,6 +2181,7 @@ class TransferRepository:
                     if group is not None:
                         selected.add(group)
                     root = new_identity()
+                    first_root = first_root or root
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload,state,alternative_group) "
                                      "VALUES(?,?,?,?,?,?)",
                                      (root, transfer_id, ordinal, codec.dump(request), state, group))
@@ -2175,14 +2189,130 @@ class TransferRepository:
             elif not existing:
                 for ordinal, request in enumerate(requests):
                     root = new_identity()
+                    first_root = first_root or root
                     await db.execute("INSERT INTO transfer_requests(id,transfer_id,ordinal,payload) VALUES(?,?,?,?)",
                                      (root, transfer_id, ordinal, codec.dump(request)))
                     await self._attest_verbatim(db, transfer_id, root, verbatim, ordinal)
+            if demand is not None or created:
+                await db.execute(
+                    "INSERT INTO transfer_demands(id,transfer_id,request_id,account_id,credential_id,origin,created_at) "
+                    "VALUES(?,?,?,?,?,?,?)",
+                    (demand.id if demand is not None else new_identity(), transfer_id, first_root,
+                     demand.account_id if demand is not None else None,
+                     demand.credential_id if demand is not None else None,
+                     "submission" if demand is not None else "unattributed", time.time()))
             if created:
                 await journal(db, je.accepted(transfer_id))
                 await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))
             await db.commit()
         return await self.get(transfer_id), created
+
+    # ── submitter demand (1.0.13 ACL) ───────────────────────────────────────
+    # Demand is an input to the existing lifecycle, never a lifecycle of its
+    # own. A transfer's AFFECTED demand is its own plus the demand of every
+    # transfer consolidated into one of its artifacts: destroying or stopping
+    # it would deprive all of them. Outstanding = not withdrawn.
+
+    _AFFECTED_DEMAND_SQL = """
+        SELECT d.* FROM transfer_demands d WHERE d.transfer_id=:t AND d.withdrawn_at IS NULL
+        UNION
+        SELECT d.* FROM artifact_consolidations ac
+            JOIN download_files f ON f.id=ac.canonical_artifact_id
+            JOIN transfer_demands d ON d.transfer_id=ac.source_transfer_id AND d.withdrawn_at IS NULL
+        WHERE f.torrent_id=:t"""
+
+    async def hold_demand(self, db, transfer_id: int, expected) -> bool:
+        """Inside a destructive transaction: whether the transfer's affected
+        outstanding demand is still within ``expected``, the demand the act
+        was authorized against (``None``: unconditional). Read under the
+        same write transaction that commits the act, so no demand admitted
+        or consolidated afterwards can be destroyed by it."""
+        if expected is None:
+            return True
+        rows = await db.fetchall(self._AFFECTED_DEMAND_SQL, {"t": int(transfer_id)})
+        return {str(row["id"]) for row in rows} <= {str(item) for item in expected}
+
+    async def outstanding_demand(self, transfer_id: int) -> list[dict]:
+        """Every outstanding demand that the transfer's work serves."""
+        async with get_db() as db:
+            return await db.fetchall(self._AFFECTED_DEMAND_SQL, {"t": int(transfer_id)})
+
+    async def demand(self, demand_id: str) -> dict | None:
+        async with get_db() as db:
+            return await db.fetchone("SELECT * FROM transfer_demands WHERE id=?", (str(demand_id),))
+
+    async def demands(self, *, account_ids=None, limit: int = 200) -> list[dict]:
+        """Demand rows, newest first, with their transfer's public status;
+        ``account_ids`` confines them to those owners."""
+        where, params = "", []
+        if account_ids is not None:
+            ids = sorted({str(item) for item in account_ids if item})
+            if not ids:
+                return []
+            where = f"WHERE d.account_id IN ({','.join('?' * len(ids))})"
+            params.extend(ids)
+        async with get_db() as db:
+            return await db.fetchall(
+                f"""SELECT d.id, d.transfer_id, d.account_id, d.credential_id, d.origin, d.created_at,
+                        d.withdrawn_at, d.withdrawn_by, t.name, t.status, t.progress
+                    FROM transfer_demands d JOIN torrents t ON t.id=d.transfer_id {where}
+                    ORDER BY d.created_at DESC, d.id LIMIT ?""",
+                (*params, max(1, min(int(limit), 1000))))
+
+    @staticmethod
+    async def withdraw_demand_in(db, *, demand_ids=(), account_id: str | None = None, by: str) -> list[int]:
+        """Withdraw demand inside the caller's transaction: the given rows, or
+        every outstanding demand of ``account_id``. Idempotent: a withdrawn
+        row keeps its first withdrawal. Returns the transfers whose demand
+        changed."""
+        now = time.time()
+        if account_id is not None:
+            rows = await db.fetchall(
+                "SELECT DISTINCT transfer_id FROM transfer_demands WHERE account_id=? AND withdrawn_at IS NULL",
+                (str(account_id),))
+            await db.execute(
+                "UPDATE transfer_demands SET withdrawn_at=?, withdrawn_by=? WHERE account_id=? AND withdrawn_at IS NULL",
+                (now, str(by), str(account_id)))
+        else:
+            ids = [str(item) for item in demand_ids]
+            if not ids:
+                return []
+            marks = ",".join("?" * len(ids))
+            rows = await db.fetchall(
+                f"SELECT DISTINCT transfer_id FROM transfer_demands WHERE id IN ({marks}) AND withdrawn_at IS NULL", ids)
+            await db.execute(
+                f"UPDATE transfer_demands SET withdrawn_at=?, withdrawn_by=? WHERE id IN ({marks}) AND withdrawn_at IS NULL",
+                (now, str(by), *ids))
+        return [int(row["transfer_id"]) for row in rows]
+
+    async def withdraw_demand(self, demand_ids, *, by: str) -> list[int]:
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            changed = await self.withdraw_demand_in(db, demand_ids=demand_ids, by=by)
+            await db.commit()
+        return changed
+
+    async def unwanted_transfers(self) -> list[int]:
+        """Live transfers that had demand and now serve none: every demand of
+        their own and of every transfer consolidated into their artifacts is
+        withdrawn. Derived from durable demand alone, so an interrupted
+        withdrawal is found again by the next cycle."""
+        terminal = sorted(str(state) for state in TERMINAL_TRANSFER_STATES)
+        marks = ",".join("?" * len(terminal))
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT t.id FROM torrents t
+                    WHERE t.status NOT IN ({marks})
+                      AND EXISTS (SELECT 1 FROM transfer_demands d WHERE d.transfer_id=t.id)
+                      AND NOT EXISTS (SELECT 1 FROM transfer_demands d
+                                      WHERE d.transfer_id=t.id AND d.withdrawn_at IS NULL)
+                      AND NOT EXISTS (SELECT 1 FROM artifact_consolidations ac
+                                      JOIN download_files f ON f.id=ac.canonical_artifact_id
+                                      JOIN transfer_demands d ON d.transfer_id=ac.source_transfer_id
+                                           AND d.withdrawn_at IS NULL
+                                      WHERE f.torrent_id=t.id)
+                    ORDER BY t.id""", terminal)
+        return [int(row["id"]) for row in rows]
 
     @staticmethod
     async def _attest_verbatim(db, transfer_id: int, request_id: str, verbatim: tuple[bool, ...], ordinal: int) -> None:
@@ -2243,10 +2373,14 @@ class TransferRepository:
             await db.commit()
         return True
 
-    async def cancel_with_execution_cleanup(self, transfer_id: int, *, expected_epoch: int, now: float) -> bool:
+    async def cancel_with_execution_cleanup(self, transfer_id: int, *, expected_epoch: int, now: float,
+                                            expected_demand=None) -> bool:
         """Atomically close logical lifecycle and persist external cleanup responsibility."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            if not await self.hold_demand(db, transfer_id, expected_demand):
+                await db.rollback()
+                raise DemandChanged(transfer_id)
             row = await db.fetchone(
                 "SELECT status,progress,lifecycle_epoch,normalized_error FROM torrents WHERE id=?",
                 (transfer_id,),
@@ -4756,7 +4890,7 @@ class TransferRepository:
                     "info", "Processing paused" if paused else "Processing resumed", "installation"))
             await db.commit()
 
-    async def delete(self, transfer_id: int, *, remote: bool, now: float = 0) -> None:
+    async def delete(self, transfer_id: int, *, remote: bool, now: float = 0, expected_demand=None) -> None:
         """Atomically tombstone a transfer and retain responsibility for launched executions.
 
         Delete also permanently retires the transfer's active dedupe identity: the
@@ -4769,6 +4903,9 @@ class TransferRepository:
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            if not await self.hold_demand(db, transfer_id, expected_demand):
+                await db.rollback()
+                raise DemandChanged(transfer_id)
             row = await db.fetchone("SELECT id,hash,source_fingerprint,status FROM torrents WHERE id=?", (transfer_id,))
             if row and row["status"] != "deleted":
                 await journal(db, je.deleted(transfer_id, remote=remote))
@@ -4930,9 +5067,12 @@ class TransferRepository:
             await db.commit()
         return True
 
-    async def select_artifact(self, transfer_id: int, artifact_id: int, selected: bool):
+    async def select_artifact(self, transfer_id: int, artifact_id: int, selected: bool, *, expected_demand=None):
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            if not await self.hold_demand(db, transfer_id, expected_demand):
+                await db.rollback()
+                raise DemandChanged(transfer_id)
             row = await db.fetchone("SELECT * FROM download_files WHERE id=? AND torrent_id=?", (artifact_id, transfer_id))
             if not row or not row["request_id"]:
                 raise KeyError(artifact_id)

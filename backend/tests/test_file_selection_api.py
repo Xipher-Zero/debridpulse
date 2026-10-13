@@ -27,6 +27,7 @@ from transfers.models import ResourceState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.presentation_repository import TransferRepository
+from account_support import standalone_boundary
 
 FILES6 = [
     ("e01.mkv", "Season 1/e01.mkv", 100), ("e02.mkv", "Season 1/e02.mkv", 200),
@@ -57,6 +58,7 @@ async def api(tmp_path, monkeypatch):
     application.observability = Observability(repository)
 
     app = FastAPI()
+    standalone_boundary(app)
     app.state.application = application
     app.include_router(file_selection_router, prefix="/api")
     app.include_router(operational_downloads_router, prefix="/api")

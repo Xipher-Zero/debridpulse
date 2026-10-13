@@ -39,6 +39,7 @@ from transfers.models import ExecutionState, TransferState
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from account_support import standalone_boundary
 
 pytestmark = pytest.mark.asyncio
 
@@ -375,6 +376,7 @@ async def served(installation, monkeypatch):
     application = _universe(installation)
     await application.engine.initialize()
     app = FastAPI()
+    standalone_boundary(app)
     app.state.application = application
     app.state.compose = compose
     app.include_router(router, prefix="/api")
@@ -1041,6 +1043,43 @@ async def test_a_backup_that_would_leave_no_usable_admin_is_refused_before_anyth
     assert app.state.application is before and calls == []
     assert backup.schema_version(database.DB_PATH) == live
     assert len(backup.list_restore_points()) == 1  # no safety backup for a refused restore
+
+
+# Written by the pinned Stage 1 build's own backup service (e77455d5),
+# immediately before submitter demand and Integration tokens: one transfer and
+# its request (no demand of any kind), and the operator's Admin password.
+PRE_DEMAND_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-e77455d5.zip"
+
+
+async def test_the_pinned_pre_demand_backup_restores_with_ownerless_legacy_demand(served):
+    """Upgraded on the private staged copy only: its transfer gets exactly one
+    ``legacy`` demand that names no owner (nobody is credited with history),
+    it holds no API token, and its accounts are kept."""
+    from auth import accounts
+    from auth.passwords import verify_password
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_DEMAND_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) in backup._UPGRADABLE_SCHEMAS and backup._fingerprint(conn) != live
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert conn.execute("SELECT transfer_id, account_id, origin, withdrawn_at FROM transfer_demands").fetchall() \
+            == [(1, None, "legacy", None)]
+        assert conn.execute("SELECT COUNT(*) FROM account_tokens").fetchone() == (0,)
+    finally:
+        conn.close()
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "stage1-secret")
 
 
 async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(

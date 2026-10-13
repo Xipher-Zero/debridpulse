@@ -78,6 +78,12 @@ async def prepare_settings_and_migrate():
         if await import_legacy_credential(*credential):
             logger.warning("The configuration file's local credential was installed on the default Admin account")
         retire_legacy_credential_input()
+    # The pre-account global API token never becomes any account's credential.
+    from auth.accounts import retire_legacy_api_token
+    from core.config import CONFIG_PATH
+
+    if await retire_legacy_api_token(CONFIG_PATH.parent / "api-token.json"):
+        logger.warning("The global API token was retired; issue a token for an Integration account")
     return cfg
 
 

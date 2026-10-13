@@ -33,6 +33,7 @@ from test_operational_downloads_projection import _ExplodingRepository
 from transfers.models import ContinuationStrategy, ExecutionState, TransferRequest
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
+from account_support import standalone_boundary
 
 pytestmark = pytest.mark.asyncio
 
@@ -710,6 +711,8 @@ async def top(core, *ids, confirm_restart=None):
     from fastapi import FastAPI
 
     app = FastAPI()
+
+    standalone_boundary(app)
     app.state.application = core.application
     app.include_router(routes.router, prefix="/api")
     body = {"ids": list(ids)}

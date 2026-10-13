@@ -319,6 +319,19 @@ class CancellationInitiator(StrEnum):
 
 
 @dataclass(frozen=True)
+class SubmissionDemand:
+    """One accepted submission's demand for its transfer's work.
+
+    ``account_id`` is the authenticated submitter that owns the demand;
+    ``credential_id`` identifies the credential that carried it (an Integration
+    token), for attribution only. ``id`` is chosen by the admission edge so it
+    can name the demand it submitted."""
+    account_id: str | None
+    credential_id: str | None = None
+    id: str = field(default_factory=new_identity)
+
+
+@dataclass(frozen=True)
 class TransferRequest:
     kind: str
     # A request's input. Small inputs are carried inline. A large one is carried

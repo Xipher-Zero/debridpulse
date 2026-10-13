@@ -12,6 +12,7 @@ async def switch_candidate(
     *,
     discard_confirmed: bool = False,
     discard_confirmation: dict | None = None,
+    expected_demand=None,
 ) -> dict:
     async with application.application_operation():
         await application.require(int(transfer_id))
@@ -22,6 +23,7 @@ async def switch_candidate(
             str(candidate_id),
             discard_confirmed=bool(discard_confirmed),
             discard_confirmation=discard_confirmation,
+            expected_demand=expected_demand,
         )
         application.execution_wakeup.set()
         await application._publish(int(transfer_id))

@@ -17,7 +17,7 @@ import sqlite3
 import time
 from typing import Annotated, Literal, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
 from api.routes import _provider_display_name, _public_transfer_presentation
@@ -53,6 +53,7 @@ from transfers.presentation_repository import (
     recovery_presentation,
 )
 from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
+from auth.permissions import require_destruction
 
 logger = logging.getLogger("debridpulse.api.operational_downloads")
 router = APIRouter()
@@ -440,6 +441,8 @@ async def activate_artifact_candidate(
     candidate_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
     discard_confirmed: Annotated[bool, Body(embed=True)] = False,
     discard_confirmation: Annotated[Optional[DiscardConfirmationBody], Body(embed=True)] = None,
+    *,
+    request: Request,
     application: ApplicationService = Depends(get_application),
 ):
     """Request activation of one exact existing canonical acquisition candidate.
@@ -449,9 +452,11 @@ async def activate_artifact_candidate(
     (``discard_confirmed``); the refusal reports exactly how much is lost. A
     confirmation carrying the consequence it confirmed is refused
     (``changed``) once that consequence is no longer current."""
+    expected = await require_destruction(request, application.repository, transfer_id)
     try:
         return await switch_candidate(
             application, transfer_id, artifact_id, candidate_id, discard_confirmed=discard_confirmed,
+            expected_demand=expected,
             discard_confirmation=discard_confirmation.model_dump() if discard_confirmation else None)
     except (DiscardConfirmationRequired, KeyError, TransferError) as exc:
         raise _switch_http_error(exc) from None
@@ -497,6 +502,8 @@ async def replace_root_route(
     transfer_id: int,
     provider_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
     expected_provider_id: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+    *,
+    request: Request,
     application: ApplicationService = Depends(get_application),
 ):
     """Operator replacement of one torrent root's provider route with
@@ -504,9 +511,10 @@ async def replace_root_route(
     as current. Refused (nothing changed) with the normalized reason when the
     route moved since, the provider cannot take the root now, or capacity is
     not available; the requested provider is never substituted."""
+    expected = await require_destruction(request, application.repository, transfer_id)
     try:
         return await switch_route_provider(application, transfer_id, provider_id,
-                                           expected_provider_id=expected_provider_id)
+                                           expected_provider_id=expected_provider_id, expected_demand=expected)
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None
     except TransferError as exc:

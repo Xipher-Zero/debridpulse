@@ -142,7 +142,7 @@ async def test_selection_mode_survives_serialization_round_trip(api):
 async def test_add_magnet_route_passes_selection_mode_through(api, monkeypatch):
     captured = {}
 
-    async def _fake_submit_magnet(magnet, *, source="manual", selection_mode="all"):
+    async def _fake_submit_magnet(magnet, *, source="manual", selection_mode="all", demand=None):
         captured["magnet"] = magnet
         captured["selection_mode"] = selection_mode
         return {"id": 1, "status": "pending"}
@@ -163,7 +163,7 @@ async def test_add_magnet_route_passes_selection_mode_through(api, monkeypatch):
 async def test_add_file_route_accepts_selection_mode_form_field(api, monkeypatch):
     captured = {}
 
-    async def _fake_submit_torrent(data, filename, *, source="manual_file", selection_mode="all"):
+    async def _fake_submit_torrent(data, filename, *, source="manual_file", selection_mode="all", demand=None):
         captured["selection_mode"] = selection_mode
         return {"id": 2, "status": "pending"}
 

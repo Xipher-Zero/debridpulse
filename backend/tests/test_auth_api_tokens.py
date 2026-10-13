@@ -1,17 +1,21 @@
+"""Integration-account API tokens: the only bearer credential (1.0.13 ACL).
+
+The pre-account global token is retired; a token belongs to one Integration
+account, authenticates it with its own role, is shown once and is revoked at
+once."""
 import base64
 import json
-import os
-from http.cookies import SimpleCookie
+import sqlite3
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
 from account_support import account, account_database, admin_with_password
-from api import auth_config_routes
-from auth import middleware
-from auth.api_tokens import API_TOKEN_PREFIX, ApiTokenStore
+from auth import accounts, middleware
+from auth.accounts import DEFAULT_INTEGRATION_ID, TOKEN_PREFIX, AccountRefused, Role
 from auth.models import AuthMechanism, Principal
 from auth.sessions import session_store
 
@@ -61,205 +65,117 @@ def _json(response):
     return json.loads(response.body.decode())
 
 
-def test_api_token_store_persists_only_verifier_and_rotation_invalidates_old_token(tmp_path):
-    path = tmp_path / "api-token.json"
-    store = ApiTokenStore(path)
-
-    first = store.generate()
-    assert first.startswith(API_TOKEN_PREFIX)
-    assert store.enabled is True
-    assert store.configured is True
-    assert store.verify(first) is True
-    assert store.verify(first + "x") is False
-
-    persisted = path.read_text(encoding="utf-8")
-    assert first not in persisted
-    data = json.loads(persisted)
-    assert data["verifier"] == store.verifier_for(first)
-    if os.name == "posix":
-        assert path.stat().st_mode & 0o777 == 0o600
-
-    second = store.generate()
-    assert second != first
-    assert store.verify(first) is False
-    assert store.verify(second) is True
-
-    store.set_enabled(False)
-    assert store.configured is True
-    assert store.verify(second) is False
-    store.set_enabled(True)
-    assert store.verify(second) is True
-
-    store.clear()
-    assert store.enabled is False
-    assert store.configured is False
-    assert store.verify(second) is False
-    assert path.exists() is False
+@pytest_asyncio.fixture
+async def installation(tmp_path, monkeypatch):
+    path = await account_database(tmp_path, monkeypatch)
+    monkeypatch.setattr(middleware, "get_settings", lambda: _settings())
+    return path
 
 
-def test_api_token_store_cannot_enable_without_generated_verifier(tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    with pytest.raises(ValueError):
-        store.set_enabled(True)
-
-
-@pytest.mark.asyncio
-async def test_valid_bearer_admits_oidc_only_machine_request(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    token = store.generate()
-    cfg = _settings(auth_password_enabled=False, auth_oidc_enabled=True)
-    monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
-    monkeypatch.setattr(middleware, "api_token_store", store)
-    monkeypatch.setattr(middleware, "_oidc_ready", lambda _cfg: True)
+async def _admit(headers):
     seen = []
 
     async def call_next(request):
         seen.append(request.state.principal)
         return JSONResponse({"ok": True})
 
-    response = await middleware.enforce_authentication(
-        _request(headers={"Authorization": f"Bearer {token}"}),
-        call_next,
-    )
+    response = await middleware.enforce_authentication(_request(headers=headers), call_next)
+    return response, seen
+
+
+@pytest.mark.asyncio
+async def test_a_token_is_shown_once_stored_as_a_verifier_and_authenticates_its_integration(installation):
+    record, raw = await accounts.create_token(DEFAULT_INTEGRATION_ID, "scraper")
+
+    assert raw.startswith(TOKEN_PREFIX)
+    with sqlite3.connect(installation) as conn:
+        stored = conn.execute("SELECT * FROM account_tokens").fetchall()
+    assert raw not in repr(stored)
+    assert "token" not in json.dumps(await accounts.list_tokens(DEFAULT_INTEGRATION_ID))
+    response, seen = await _admit({"Authorization": f"Bearer {raw}"})
     assert response.status_code == 200
     assert seen[0].mechanism is AuthMechanism.API_TOKEN
-    assert seen[0].subject == "api-token"
+    assert (seen[0].account_id, seen[0].role, seen[0].credential_id) == (
+        DEFAULT_INTEGRATION_ID, Role.INTEGRATION.value, record["id"])
 
 
 @pytest.mark.asyncio
-async def test_invalid_explicit_bearer_is_rejected_when_authentication_is_required(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    store.generate()
-    cfg = _settings(auth_password_enabled=False, auth_oidc_enabled=True)
-    monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
-    monkeypatch.setattr(middleware, "api_token_store", store)
-    monkeypatch.setattr(middleware, "_oidc_ready", lambda _cfg: True)
+async def test_revocation_and_account_disable_end_a_token_at_once(installation):
+    _record, first = await accounts.create_token(DEFAULT_INTEGRATION_ID, "one")
+    record, second = await accounts.create_token(DEFAULT_INTEGRATION_ID, "two")
+    assert await accounts.revoke_token(DEFAULT_INTEGRATION_ID, record["id"]) is True
+    assert (await _admit({"Authorization": f"Bearer {second}"}))[0].status_code == 401
+    assert (await _admit({"Authorization": f"Bearer {first}"}))[0].status_code == 200
 
-    async def call_next(_request):
-        raise AssertionError("invalid bearer must not reach application")
-
-    response = await middleware.enforce_authentication(
-        _request(headers={"Authorization": "Bearer definitely-wrong"}),
-        call_next,
-    )
-    assert response.status_code == 401
-    assert response.headers["www-authenticate"] == "Bearer"
+    await accounts.set_enabled("someone-else", DEFAULT_INTEGRATION_ID, False)
+    assert (await _admit({"Authorization": f"Bearer {first}"}))[0].status_code == 401
 
 
 @pytest.mark.asyncio
-async def test_api_token_does_not_turn_open_mode_into_token_only_mode(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    store.generate()
-    cfg = _settings(auth_password_enabled=False, auth_oidc_enabled=False)
-    monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
-    monkeypatch.setattr(middleware, "api_token_store", store)
-    seen = []
-
-    async def call_next(request):
-        seen.append(request.state.principal)
-        return JSONResponse({"ok": True})
-
-    response = await middleware.enforce_authentication(
-        _request(headers={"Authorization": "Bearer wrong-but-open"}),
-        call_next,
-    )
-    assert response.status_code == 200
-    assert seen[0].authenticated is False
+async def test_only_integration_accounts_hold_tokens(installation):
+    operator = await admin_with_password()
+    with pytest.raises(AccountRefused):
+        await accounts.create_token(operator.id, "human")
+    response, _seen = await _admit({"Authorization": "Bearer dp_not-a-token"})
+    assert response.status_code == 401 and response.headers["WWW-Authenticate"] == "Bearer"
 
 
 @pytest.mark.asyncio
-async def test_application_session_precedes_unexpected_bearer_header(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    store.generate()
-    cfg = _settings()
-    monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
-    monkeypatch.setattr(middleware, "api_token_store", store)
+async def test_the_global_token_is_retired_and_never_authenticates(installation, tmp_path, monkeypatch):
+    from db import event_journal
+
+    legacy = tmp_path / "api-token.json"
+    legacy.write_text(json.dumps({"enabled": True, "verifier": "a" * 64}), encoding="utf-8")
+    monkeypatch.setattr(event_journal, "record_now", _recorded := _Recorder())
+
+    assert await accounts.retire_legacy_api_token(legacy) is True
+    assert not legacy.exists()
+    assert _recorded.events[0].event_type == "administration.api_token_retired"
+    assert await accounts.retire_legacy_api_token(legacy) is False
+
+
+class _Recorder:
+    def __init__(self):
+        self.events = []
+
+    async def __call__(self, event):
+        self.events.append(event)
+        return True
+
+
+@pytest.mark.asyncio
+async def test_application_session_precedes_unexpected_bearer_header(installation):
     session_store.clear()
-    token, _record = session_store.create(
-        Principal.password_session(account("operator")),
-        lifetime_seconds=3600,
-    )
-    seen = []
-
-    async def call_next(request):
-        seen.append(request.state.principal)
-        return JSONResponse({"ok": True})
-
-    response = await middleware.enforce_authentication(
-        _request(
-            headers={
-                "Cookie": f"debridpulse-session={token}",
-                "Authorization": "Bearer invalid-and-must-be-ignored",
-            }
-        ),
-        call_next,
-    )
+    token, _record = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
+    response, seen = await _admit({
+        "Cookie": f"debridpulse-session={token}",
+        "Authorization": "Bearer invalid-and-must-be-ignored",
+    })
     assert response.status_code == 200
     assert seen[0].mechanism is AuthMechanism.PASSWORD_SESSION
 
 
 @pytest.mark.asyncio
-async def test_http_basic_remains_available_with_api_token_configured(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    store.generate()
-    cfg = _settings()
-    monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
-    monkeypatch.setattr(middleware, "api_token_store", store)
-    await account_database(tmp_path, monkeypatch)
+async def test_http_basic_remains_available_beside_integration_tokens(installation):
+    await accounts.create_token(DEFAULT_INTEGRATION_ID, "scraper")
     await admin_with_password("operator", "secret")
-    seen = []
-
-    async def call_next(request):
-        seen.append(request.state.principal)
-        return JSONResponse({"ok": True})
-
     encoded = base64.b64encode(b"operator:secret").decode()
-    response = await middleware.enforce_authentication(
-        _request(headers={"Authorization": f"Basic {encoded}"}),
-        call_next,
-    )
+    response, seen = await _admit({"Authorization": f"Basic {encoded}"})
     assert response.status_code == 200
     assert seen[0].mechanism is AuthMechanism.HTTP_BASIC
 
 
 @pytest.mark.asyncio
-async def test_api_token_management_returns_raw_token_once_and_never_from_status(monkeypatch, tmp_path):
-    store = ApiTokenStore(tmp_path / "api-token.json")
-    monkeypatch.setattr(auth_config_routes, "api_token_store", store)
+async def test_open_mode_admits_a_valid_token_or_no_credential_but_never_an_invalid_bearer(installation, monkeypatch):
+    monkeypatch.setattr(middleware, "get_settings", lambda: _settings(auth_password_enabled=False))
+    record, raw = await accounts.create_token(DEFAULT_INTEGRATION_ID, "scraper")
+    await accounts.revoke_token(DEFAULT_INTEGRATION_ID, record["id"])
+    _record, valid = await accounts.create_token(DEFAULT_INTEGRATION_ID, "live")
 
-    generated = await auth_config_routes.generate_or_rotate_api_token()
-    generated_body = _json(generated)
-    first = generated_body["token"]
-    assert first.startswith(API_TOKEN_PREFIX)
-    assert generated_body["rotated"] is False
-    assert generated.headers["cache-control"] == "no-store"
-
-    status = await auth_config_routes.api_token_status()
-    status_body = _json(status)
-    assert status_body == {"enabled": True, "configured": True}
-    assert first not in status.body.decode()
-    assert "verifier" not in status.body.decode()
-
-    rotated = await auth_config_routes.generate_or_rotate_api_token()
-    rotated_body = _json(rotated)
-    second = rotated_body["token"]
-    assert rotated_body["rotated"] is True
-    assert second != first
-    assert store.verify(first) is False
-    assert store.verify(second) is True
-
-    disabled = await auth_config_routes.set_api_token_enabled(
-        auth_config_routes.ApiTokenEnableRequest(enabled=False)
-    )
-    assert _json(disabled)["enabled"] is False
-    assert store.configured is True
-
-    enabled = await auth_config_routes.set_api_token_enabled(
-        auth_config_routes.ApiTokenEnableRequest(enabled=True)
-    )
-    assert _json(enabled)["enabled"] is True
-    assert store.verify(second) is True
-
-    cleared = await auth_config_routes.clear_api_token()
-    assert _json(cleared) == {"ok": True, "enabled": False, "configured": False}
-    assert store.verify(second) is False
+    response, seen = await _admit({"Authorization": f"Bearer {valid}"})
+    assert response.status_code == 200 and seen[0].role == Role.INTEGRATION.value
+    for invalid in ("dp_never-issued", raw, "not-even-a-dp-token"):
+        response, seen = await _admit({"Authorization": f"Bearer {invalid}"})
+        assert response.status_code == 401 and seen == []
+    response, seen = await _admit({})
+    assert response.status_code == 200 and seen[0] == Principal.standalone()

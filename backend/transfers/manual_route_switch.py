@@ -224,7 +224,8 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
             "switchable": root_actionable(facts) and any(entry["selectable"] for entry in providers)}
 
 
-async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, expected_provider_id: str) -> dict:
+async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, expected_provider_id: str,
+                               expected_demand=None) -> dict:
     """Replace one torrent root's provider route with ``provider_id`` (see the
     module docstring). ``expected_provider_id`` is the provider the operator
     saw as current: if the committed route moved since, nothing changes.
@@ -303,7 +304,7 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
                                                    state="queued" if paused_here else "paused")
         outcome = await repository.replace_root_route(
             root.id, expected_attempt_id=str(latest["id"]), expected_provider_id=str(current),
-            target_provider_id=str(provider_id))
+            target_provider_id=str(provider_id), expected_demand=expected_demand)
         if outcome != "replaced":
             raise _refusal(Category.RESOURCE_STATE_CONFLICT,
                            retryability=Retryability.BACKOFF if outcome in {"busy", "writer_live"}

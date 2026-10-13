@@ -533,7 +533,7 @@ class TransferEngine:
         return direct_link_host(current.request.payload)
 
     async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=None, independent=True, deduplicate=True,
-                     alternative_groups: tuple[int | None, ...] | None = None):
+                     alternative_groups: tuple[int | None, ...] | None = None, demand=None):
         """Admit a submission. An independent submission of an object whose
         earlier lifecycle is terminal is a NEW lineage (``repository.admit``):
         it never reopens that history, inherits nothing of its routes,
@@ -558,7 +558,7 @@ class TransferEngine:
         requests = tuple(replace(item, payload=payload) if values else item
                          for item, (payload, values) in zip(requests, split))
         transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate,
-                                                        independent=independent,
+                                                        independent=independent, demand=demand,
                                                         verbatim=tuple(not values for _payload, values in split),
                                                         **({"alternative_groups": alternative_groups} if alternative_groups else {}))
         if created and any(values for _payload, values in split):
@@ -603,6 +603,7 @@ class TransferEngine:
         """
         async with self._resolution_cycle_lock:
             await self._cleanup_pending()
+            await self.settle_withdrawn_demand()
             cycle = self._resolution_cycle = _ResolutionCycle()
             try:
                 while cycle.failure is None:
@@ -3867,11 +3868,11 @@ class TransferEngine:
                 if await self.repository.finish_postprocessing(transfer_id, processor_id, outcome):
                     await self._delivered(transfer_id)
 
-    async def select_artifact(self, transfer_id: int, artifact_id: int, *, selected: bool):
+    async def select_artifact(self, transfer_id: int, artifact_id: int, *, selected: bool, expected_demand=None):
         transfer = await self.repository.get(transfer_id)
         if not transfer or transfer.state in {TransferState.DELETED, TransferState.CONSOLIDATED}:
             raise KeyError(transfer_id)
-        await self.repository.select_artifact(transfer_id, artifact_id, selected)
+        await self.repository.select_artifact(transfer_id, artifact_id, selected, expected_demand=expected_demand)
         if selected and transfer.state == TransferState.COMPLETED:
             await self.repository.state(transfer_id, TransferState.QUEUED, operator=True, expected_epoch=transfer.epoch)
 
@@ -3993,7 +3994,38 @@ class TransferEngine:
             if artifact.state == "input_required" and (current is None or current.artifact_id != artifact.id):
                 await self.repository.artifact_state(artifact.id, "queued", release=True)
 
-    async def cancel(self, transfer_id: int):
+    async def withdraw_demand(self, demand_ids, *, by: str) -> list[int]:
+        """Withdraw submitter demand and let the existing lifecycle decide
+        what that means: a transfer whose work no outstanding demand still
+        needs is cancelled (``settle_withdrawn_demand``); one that still
+        serves anyone else's demand continues untouched."""
+        await self.repository.withdraw_demand(demand_ids, by=by)
+        return await self.settle_withdrawn_demand()
+
+    async def settle_withdrawn_demand(self) -> list[int]:
+        """Cancel, through the canonical ``cancel``, every live transfer that
+        had demand and now serves none (``repository.unwanted_transfers``).
+        Derived from durable demand alone and run at the start of every
+        resolution cycle, so a withdrawal interrupted before this ran -- an
+        account disable, a crash -- is completed by the next cycle. A transfer
+        whose cancellation fails is reported and found again next cycle."""
+        settled = []
+        for transfer_id in await self.repository.unwanted_transfers():
+            try:
+                # Authorized against "no outstanding demand": a demand that
+                # arrived since ``unwanted_transfers`` read keeps the work.
+                await self.cancel(transfer_id, expected_demand=frozenset())
+            except Exception as exc:  # noqa: BLE001 - one transfer never stops the others
+                logger.warning("Withdrawn demand could not settle transfer %s yet: %s",
+                               transfer_id, type(exc).__name__)
+                continue
+            settled.append(transfer_id)
+        return settled
+
+    async def cancel(self, transfer_id: int, *, expected_demand=None):
+        """``expected_demand``: the outstanding demand the cancel was
+        authorized against; checked in the cancel's own transaction
+        (``repository.hold_demand``), so later demand is never cancelled."""
         lock = self._transfer_locks.setdefault(transfer_id, asyncio.Lock())
         async with lock:
             transfer = await self.repository.get(transfer_id)
@@ -4003,7 +4035,7 @@ class TransferEngine:
                 return ()
 
             if not await self.repository.cancel_with_execution_cleanup(
-                transfer_id, expected_epoch=transfer.epoch, now=self.clock(),
+                transfer_id, expected_epoch=transfer.epoch, now=self.clock(), expected_demand=expected_demand,
             ):
                 current = await self.repository.get(transfer_id)
                 if not current or current.state != TransferState.CANCELLED:
@@ -4113,13 +4145,18 @@ class TransferEngine:
                 errors.append(error)
         return tuple(errors)
 
-    async def delete(self, transfer_id: int, *, remote=True):
+    async def delete(self, transfer_id: int, *, remote=True, expected_demand=None):
+        """``expected_demand``: the outstanding demand the delete was
+        authorized against. The tombstone is the decisive write and checks it
+        in its own transaction, so it comes first: a refused delete has
+        changed nothing, and the transfer's input material is released only
+        once it can no longer accept input."""
         challenge = await self.challenges.current(transfer_id)
+        await self.repository.delete(transfer_id, remote=remote, now=self.clock(), expected_demand=expected_demand)
         if challenge:
             await self.inputs.clear(challenge.id)
         await self.challenges.clear_transfer(transfer_id)
         await self.inputs.discard_transfer(transfer_id)
-        await self.repository.delete(transfer_id, remote=remote, now=self.clock())
         await self._cleanup_executions_pending(transfer_id=transfer_id)
         await self._retire_detached_material(transfer_id)
         if remote:

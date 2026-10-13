@@ -5,13 +5,14 @@ import sqlite3
 import uuid
 from contextlib import asynccontextmanager
 from pathlib import Path
-from fastapi import FastAPI, Request, Response
+from fastapi import Depends, FastAPI, Request, Response
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from api.account_routes import router as account_router
 from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
@@ -21,6 +22,7 @@ from api.operational_downloads import router as operational_downloads_router
 from api.settings_validation_routes import router as settings_validation_router
 from api.storage_health_routes import router as storage_health_router
 from auth.middleware import enforce_authentication, enforce_general_web_security
+from auth.permissions import authorize_request
 from auth.policy import (
     interactive_auth_enabled,
     oidc_auth_enabled,
@@ -40,6 +42,7 @@ from application.lifetime import (
 )
 from services.maintenance_gate import ApplicationMaintenanceActive
 from transfers.errors import TransferError
+from transfers._repository_base import DemandChanged
 from transfers.storage import normalize_sqlite_storage_exception
 
 _log_cfg = _get_log_settings()
@@ -160,7 +163,6 @@ class RequestBodyLimitMiddleware:
             "/api/settings/validate-discord",
             "/api/auth/config",
             "/api/auth/oidc/verify-config",
-            "/api/auth/api-token",
         }:
             limit = min(self.max_bytes, 1024 * 1024)
         else:
@@ -213,6 +215,8 @@ app = FastAPI(
     redoc_url="/redoc",
     openapi_url="/openapi.json",
     lifespan=lifespan,
+    # The one authorization policy, applied to every routed action.
+    dependencies=[Depends(authorize_request)],
 )
 
 
@@ -294,6 +298,16 @@ async def application_mutation_admission_middleware(request: Request, call_next)
                 headers={"Retry-After": "2"},
             )
     return await call_next(request)
+
+
+@app.exception_handler(DemandChanged)
+async def demand_changed_handler(_request: Request, _exc: DemandChanged):
+    """A destructive act refused at commit: another account's demand arrived
+    after it was authorized. Nothing was changed."""
+    return JSONResponse(
+        status_code=409,
+        content={"detail": "Another account now needs this transfer; nothing was changed"},
+    )
 
 
 @app.exception_handler(PermissionError)
@@ -437,6 +451,7 @@ app.include_router(operational_downloads_router, prefix="/api")
 # confirm, dismiss). Kept out of the generic route file.
 app.include_router(executor_work_router, prefix="/api")
 app.include_router(file_selection_router, prefix="/api")
+app.include_router(account_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────

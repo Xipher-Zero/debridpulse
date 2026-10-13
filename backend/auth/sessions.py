@@ -53,6 +53,24 @@ class SessionStore:
         self._last_cleanup = self._clock()
         self._cleanup_task: asyncio.Task | None = None
         self._stop_cleanup: asyncio.Event | None = None
+        self._revocation_listeners: list[Callable[[frozenset[bytes], str | None], None]] = []
+
+    def on_revocation(self, listener: Callable[[frozenset[bytes], str | None], None]) -> None:
+        """Be told, synchronously, which sessions ended (by ``fingerprint``)
+        and, for an account change, which account -- so a long-lived
+        connection opened under a session ends with it."""
+        self._revocation_listeners.append(listener)
+
+    def _announce(self, fingerprints, account_id: str | None = None) -> None:
+        ended = frozenset(fingerprints)
+        if not ended and not account_id:
+            return
+        for listener in tuple(self._revocation_listeners):
+            listener(ended, account_id)
+
+    def fingerprint(self, token: str) -> bytes:
+        """The non-secret address of one session (its store key)."""
+        return self._fingerprint(token)
 
     def _fingerprint(self, token: str) -> bytes:
         return hmac.new(
@@ -124,7 +142,11 @@ class SessionStore:
     def revoke(self, token: str) -> bool:
         if not token:
             return False
-        return self._entries.pop(self._fingerprint(token), None) is not None
+        fingerprint = self._fingerprint(token)
+        removed = self._entries.pop(fingerprint, None) is not None
+        if removed:
+            self._announce({fingerprint})
+        return removed
 
     def revoke_mechanism(self, mechanism) -> int:
         targets = [
@@ -134,6 +156,7 @@ class SessionStore:
         ]
         for key in targets:
             self._entries.pop(key, None)
+        self._announce(targets)
         return len(targets)
 
     def revoke_account(self, account_id: str) -> int:
@@ -150,10 +173,13 @@ class SessionStore:
         ]
         for key in targets:
             self._entries.pop(key, None)
+        self._announce(targets, account_id)
         return len(targets)
 
     def clear(self) -> None:
+        ended = list(self._entries)
         self._entries.clear()
+        self._announce(ended)
 
     def cleanup(self, *, force: bool = False) -> int:
         now = self._clock()

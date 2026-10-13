@@ -29,6 +29,8 @@ restored state would leave no usable Admin (``restored_state_has_usable_admin``)
 """
 from __future__ import annotations
 
+import hashlib
+import secrets
 import sqlite3
 import uuid
 from contextlib import asynccontextmanager
@@ -57,13 +59,6 @@ HUMAN_ROLES = frozenset({Role.ADMIN, Role.USER, Role.READONLY})
 # The roles Authentication settings may give an account created by its first
 # admitted OIDC sign-in. Admin is never provisioned automatically.
 OIDC_PROVISION_ROLES = frozenset({Role.USER, Role.READONLY})
-
-# TRANSITIONAL (1.0.13 ACL Stage 1). The roles an account must hold to operate
-# DebridPulse once authenticated. Per-endpoint role enforcement does not exist
-# until Stage 2, so any other role would inherit full authority; such accounts
-# are recorded but refused at sign-in. Stage 2 deletes this set together with
-# ``admitted`` and enforces every role at its endpoints instead.
-OPERATIONAL_ROLES = frozenset({Role.ADMIN})
 
 DEFAULT_ADMIN_ID = "00000000-0000-4000-8000-000000000001"
 DEFAULT_INTEGRATION_ID = "00000000-0000-4000-8000-000000000002"
@@ -98,8 +93,22 @@ SCHEMA = (
         PRIMARY KEY (issuer, subject)
     )""",
     "CREATE INDEX IF NOT EXISTS idx_account_oidc_bindings_account ON account_oidc_bindings (account_id)",
+    # Integration accounts' API tokens. Only a SHA-256 verifier of a 256-bit
+    # random secret is stored; a revoked token keeps its row (and label) so
+    # every request it carried stays attributable.
+    """CREATE TABLE IF NOT EXISTS account_tokens (
+        id TEXT PRIMARY KEY,
+        account_id TEXT NOT NULL REFERENCES accounts(id),
+        label TEXT NOT NULL,
+        verifier TEXT NOT NULL UNIQUE,
+        created_at TEXT NOT NULL,
+        revoked_at TEXT
+    )""",
+    "CREATE INDEX IF NOT EXISTS idx_account_tokens_account ON account_tokens (account_id)",
 )
-TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings")
+TABLES = ("accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens")
+TOKEN_PREFIX = "dp_"
+_TOKEN_RANDOM_BYTES = 32
 
 
 class AccountRefused(Exception):
@@ -132,8 +141,9 @@ class Account:
 
 
 def admitted(account: Account | None) -> bool:
-    """Whether a resolved account may operate DebridPulse (transitional)."""
-    return bool(account is not None and account.active and account.role in OPERATIONAL_ROLES)
+    """Whether a resolved account may be signed in: it exists and is active.
+    What it may then do is its role's (``auth.permissions``)."""
+    return bool(account is not None and account.active)
 
 
 def _now() -> str:
@@ -615,17 +625,61 @@ async def set_role(actor_id: str, account_id: str, role) -> None:
         await db.execute("UPDATE accounts SET role=? WHERE id=?", (role.value, account.id))
 
 
-async def set_enabled(actor_id: str, account_id: str, enabled: bool) -> None:
-    """Disable revokes access at once; re-enabling restores access only."""
+async def _withdraw_owned_demand(db, account_id: str, reason: str) -> list[int]:
+    """Withdraw every outstanding demand the account owns, in the caller's
+    account transaction (accounts and transfers share one database), through
+    the transfer owner. Its consequences are the transfer core's
+    (``TransferEngine.settle_withdrawn_demand``), derived from this durable
+    withdrawal by the next resolution cycle even if nothing else runs."""
+    from transfers.recovery_repository import TransferRepository
+
+    changed: list[int] = []
+    for owner in await _owned_account_ids(db, account_id):
+        changed.extend(await TransferRepository.withdraw_demand_in(db, account_id=owner, by=reason))
+    return sorted(set(changed))
+
+
+async def _owned_account_ids(db, account_id: str) -> list[str]:
+    """The account and every account merged into it: demand recorded under
+    any of them is this account's (``canonical_account_id``)."""
+    rows = await db.fetchall("SELECT id, merged_into FROM accounts WHERE merged_into IS NOT NULL")
+    parent = {str(row["id"]): str(row["merged_into"]) for row in rows}
+
+    def root(identity: str) -> str:
+        seen = set()
+        while identity in parent and identity not in seen:
+            seen.add(identity)
+            identity = parent[identity]
+        return identity
+
+    return [str(account_id), *sorted(identity for identity in parent if root(identity) == str(account_id))]
+
+
+async def owned_account_ids(account_id: str) -> list[str]:
+    from db.database import get_db
+
+    async with get_db() as db:
+        return await _owned_account_ids(db, account_id)
+
+
+async def set_enabled(actor_id: str, account_id: str, enabled: bool) -> list[int]:
+    """Disable revokes access at once and, in the same transaction, withdraws
+    the account's outstanding demand. Re-enabling restores access only: a
+    withdrawn demand is never restored. Returns the transfers whose demand
+    was withdrawn."""
     _not_self(actor_id, account_id)
+    withdrawn: list[int] = []
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
         if account.protected == "default_admin" and not enabled:
             raise AccountRefused("The default Admin account cannot be disabled")
         await db.execute("UPDATE accounts SET enabled=? WHERE id=?", (int(bool(enabled)), account.id))
+        if not enabled:
+            withdrawn = await _withdraw_owned_demand(db, account.id, "account_disabled")
+    return withdrawn
 
 
-async def delete_account(actor_id: str, account_id: str) -> None:
+async def delete_account(actor_id: str, account_id: str) -> list[int]:
     """Remove an account from the active directory, keeping its tombstone.
 
     The ID stays interpretable for every historical record. The local
@@ -638,6 +692,9 @@ async def delete_account(actor_id: str, account_id: str) -> None:
             raise AccountRefused("A default account cannot be deleted")
         await db.execute("DELETE FROM account_local_credentials WHERE account_id=?", (account.id,))
         await db.execute("UPDATE accounts SET enabled=0, deleted_at=? WHERE id=?", (_now(), account.id))
+        await db.execute("UPDATE account_tokens SET revoked_at=? WHERE account_id=? AND revoked_at IS NULL",
+                         (_now(), account.id))
+        return await _withdraw_owned_demand(db, account.id, "account_deleted")
 
 
 async def merge_accounts(actor_id: str, source_id: str, target_id: str) -> None:
@@ -684,6 +741,44 @@ async def reset_password(actor_id: str, account_id: str, password: str, *, usern
         await _set_password_row(db, account.id, username, password)
 
 
+async def set_display_name(account_id: str, display_name: str) -> None:
+    """An account's display name, set by itself or by an Admin."""
+    name = str(display_name or "").strip()[:256]
+    if not name:
+        raise AccountRefused("A display name is required")
+    async with _locked_mutation([]) as db:
+        account = await _require(db, account_id)
+        await db.execute("UPDATE accounts SET display_name=?, updated_at=? WHERE id=?", (name, _now(), account.id))
+
+
+async def list_accounts() -> list[dict]:
+    """The account directory with each account's sign-in facts; never a
+    secret or verifier."""
+    from db.database import get_db
+
+    async with get_db() as db:
+        rows = await db.fetchall(
+            f"""SELECT a.*, COALESCE(c.username,'') AS username, COALESCE(c.password_hash,'') AS password_hash,
+                    (SELECT COUNT(*) FROM account_oidc_bindings b WHERE b.account_id=a.id) AS oidc_identities,
+                    (SELECT COUNT(*) FROM account_tokens t WHERE t.account_id=a.id AND t.revoked_at IS NULL)
+                        AS active_tokens
+                FROM accounts a LEFT JOIN account_local_credentials c ON c.account_id=a.id
+                ORDER BY a.created_at, a.id""")
+    result = []
+    for row in rows:
+        account = _account(row)
+        result.append({
+            "id": account.id, "role": account.role.value, "origin": account.origin,
+            "display_name": account.display_name, "email": account.email,
+            "email_verified": account.email_verified, "enabled": account.enabled,
+            "protected": account.protected or None, "generation": account.generation,
+            "merged_into": account.merged_into or None, "deleted_at": account.deleted_at or None,
+            "username": account.username, "has_password": account.has_password,
+            "oidc_identities": int(row["oidc_identities"]), "active_tokens": int(row["active_tokens"]),
+        })
+    return result
+
+
 async def change_own_password(account_id: str, current_password: str, new_password: str) -> None:
     """A signed-in account replaces its own password, proving the current one."""
     from auth.passwords import verify_password
@@ -715,3 +810,88 @@ async def link_oidc_identity(actor_id: str, account_id: str, issuer: str, subjec
             "INSERT INTO account_oidc_bindings(issuer,subject,account_id,created_at) VALUES(?,?,?,?)",
             (str(issuer), str(subject), account.id, _now()),
         )
+
+
+# ── Integration API tokens ──────────────────────────────────────────────────
+
+def _token_verifier(raw: str) -> str:
+    return hashlib.sha256(str(raw or "").encode("utf-8", errors="surrogatepass")).hexdigest()
+
+
+async def create_token(account_id: str, label: str) -> tuple[dict, str]:
+    """Issue a labeled token for an Integration account. The raw secret is
+    returned once, here, and never again."""
+    label = str(label or "").strip()[:128]
+    if not label:
+        raise AccountRefused("A token needs a label")
+    raw = TOKEN_PREFIX + secrets.token_urlsafe(_TOKEN_RANDOM_BYTES)
+    token_id = str(uuid.uuid4())
+    async with _transaction() as db:
+        account = await _require(db, account_id)
+        if account.role is not Role.INTEGRATION:
+            raise AccountRefused("Only Integration accounts hold API tokens")
+        await db.execute(
+            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at) VALUES(?,?,?,?,?)",
+            (token_id, account.id, label, _token_verifier(raw), _now()))
+    return {"id": token_id, "account_id": str(account_id), "label": label, "revoked_at": None}, raw
+
+
+async def list_tokens(account_id: str) -> list[dict]:
+    from db.database import get_db
+
+    async with get_db() as db:
+        return await db.fetchall(
+            "SELECT id, account_id, label, created_at, revoked_at FROM account_tokens "
+            "WHERE account_id=? ORDER BY created_at, id", (str(account_id),))
+
+
+async def revoke_token(account_id: str, token_id: str) -> bool:
+    """Revoke one token at once. Its row stays for attribution; work it
+    submitted is untouched."""
+    async with _transaction() as db:
+        cursor = await db.execute(
+            "UPDATE account_tokens SET revoked_at=? WHERE id=? AND account_id=? AND revoked_at IS NULL",
+            (_now(), str(token_id), str(account_id)))
+        return cursor.rowcount == 1
+
+
+async def resolve_token(raw: str) -> tuple[Account, str] | None:
+    """The active Integration account and token ID a bearer secret names.
+
+    Lookup is by verifier, so tokens cannot be enumerated or probed by
+    prefix; the matched verifier is still compared in constant time."""
+    from db.database import get_db
+
+    raw = str(raw or "")
+    if not raw.startswith(TOKEN_PREFIX) or len(raw) > 256:
+        return None
+    verifier = _token_verifier(raw)
+    async with get_db() as db:
+        row = await db.fetchone(
+            "SELECT id, account_id, verifier FROM account_tokens WHERE verifier=? AND revoked_at IS NULL",
+            (verifier,))
+        account = await _fetch(db, row["account_id"]) if row is not None else None
+    if row is None or not secrets.compare_digest(str(row["verifier"]), verifier):
+        return None
+    if account is None or not account.active or account.role is not Role.INTEGRATION:
+        return None
+    return account, str(row["id"])
+
+
+async def retire_legacy_api_token(path) -> bool:
+    """The pre-account global API token stops authenticating: its verifier
+    file is removed and the operator is told to issue an Integration token.
+    It never becomes any account's credential."""
+    from pathlib import Path
+
+    target = Path(path)
+    if not target.exists():
+        return False
+    target.unlink()
+    from db.event_journal import JournalEvent, record_now
+
+    await record_now(JournalEvent(
+        "administration", "administration.api_token_retired", "warning",
+        "The global API token was retired: issue a token for an Integration account and update its clients",
+        "installation"))
+    return True

@@ -22,6 +22,7 @@ from transfers.models import (
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from account_support import standalone_boundary
 
 
 @pytest_asyncio.fixture
@@ -48,6 +49,7 @@ async def runtime(tmp_path, monkeypatch):
     await engine.initialize()
     application = ApplicationService(engine)
     app = FastAPI()
+    standalone_boundary(app)
     app.state.application = application
     app.include_router(router, prefix="/api")
     @app.exception_handler(TransferError)

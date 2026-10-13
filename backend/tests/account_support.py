@@ -38,3 +38,15 @@ def account(username: str = "operator", *, account_id: str = DEFAULT_ADMIN_ID, r
         enabled=True, protected="", generation=generation, merged_into="", deleted_at="",
         username=username, credential_version=credential_version,
     )
+
+
+def standalone_boundary(app) -> None:
+    """Attach, to an application built without the authentication boundary,
+    the principal that boundary attaches in open mode: the standalone
+    installation's default Admin."""
+    from auth.models import Principal
+
+    @app.middleware("http")
+    async def _standalone(request, call_next):
+        request.state.principal = Principal.standalone()
+        return await call_next(request)

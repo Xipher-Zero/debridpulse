@@ -400,10 +400,10 @@ async def test_the_api_action_requires_a_link_and_delegates_to_the_ingress(tmp_p
     service, _store, repository, _provider = await build(tmp_path, monkeypatch)
 
     with pytest.raises(HTTPException) as missing:
-        await add_usenet_link({}, application=service)
+        await add_usenet_link({}, _open_mode_request(), application=service)
     assert missing.value.status_code == 400
 
-    result = await add_usenet_link({"url": f"{base}/posting.nzb"}, application=service)
+    result = await add_usenet_link({"url": f"{base}/posting.nzb"}, _open_mode_request(), application=service)
     assert result["id"] and [record.request.kind for record in await roots(repository)] == ["nzb"]
 
 
@@ -413,7 +413,7 @@ async def test_a_private_network_link_asks_for_this_submission_s_confirmation(tm
         tmp_path, monkeypatch, policy=TransferPolicy(private_lan_connections=True))
 
     with pytest.raises(HTTPException) as asked:
-        await add_usenet_link({"url": "http://10.0.0.5/posting.nzb"}, application=service)
+        await add_usenet_link({"url": "http://10.0.0.5/posting.nzb"}, _open_mode_request(), application=service)
 
     assert asked.value.status_code == 409
     assert asked.value.detail["confirmation"] == "local_network"
@@ -427,3 +427,12 @@ def test_no_request_kind_and_no_provider_or_executor_learned_about_links():
                  backend / "transfers" / "registry.py", backend / "transfers" / "applicability.py"]:
         text = path.read_text().casefold()
         assert "nzb_url" not in text and "http_body" not in text and "submit_nzb_link" not in text, path
+
+
+def _open_mode_request():
+    """The admitted request the boundary hands a route in open mode."""
+    from types import SimpleNamespace
+
+    from auth.models import Principal
+
+    return SimpleNamespace(state=SimpleNamespace(principal=Principal.standalone()))

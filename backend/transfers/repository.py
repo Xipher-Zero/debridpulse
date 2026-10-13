@@ -3291,7 +3291,8 @@ class TransferRepository(_QualifiedTransferRepository):
         return refusal
 
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
-                                 target_provider_id: str, operation: str = OPERATOR_SWITCH) -> str:
+                                 target_provider_id: str, operation: str = OPERATOR_SWITCH,
+                                 expected_demand=None) -> str:
         """THE operator root-route replacement, decided atomically.
 
         The root's current route -- its latest route attempt, which must still
@@ -3314,7 +3315,9 @@ class TransferRepository(_QualifiedTransferRepository):
 
         Returns ``"replaced"``, or why nothing changed: ``"gone"`` (not live
         root work), ``"busy"`` (resolution in flight), ``"stale"`` (another
-        transition committed first) or ``"writer_live"``."""
+        transition committed first), ``"writer_live"`` or ``"demand_changed"``
+        (outstanding demand is no longer ``expected_demand``, the demand the
+        switch was authorized against)."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             refusal, row, latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
@@ -3322,6 +3325,9 @@ class TransferRepository(_QualifiedTransferRepository):
             if refusal:
                 await db.rollback()
                 return refusal
+            if not await self.hold_demand(db, int(row["transfer_id"]), expected_demand):
+                await db.rollback()
+                return "demand_changed"
             if await db.fetchone(
                     """SELECT 1 FROM transfer_requests c JOIN download_files f ON f.request_id=c.id
                        JOIN execution_attempts e ON e.id=f.execution_attempt_id

@@ -333,6 +333,20 @@ async def _normalize_legacy_cleanup_claims(db: aiosqlite.Connection) -> None:
         raise RuntimeError("legacy cleanup-claim normalization failed") from exc
 
 
+async def _backfill_legacy_demand(db: aiosqlite.Connection) -> None:
+    """Give every transfer admitted before submitter demand existed one
+    explicit ``legacy`` demand with no owner. Who submitted it is not
+    recorded anywhere, so nobody is credited with it: it is outstanding
+    demand only an Admin may withdraw, and it keeps the transfer protected.
+    Idempotent: a transfer that has any demand row is never touched."""
+    await db.execute(
+        """INSERT INTO transfer_demands(id,transfer_id,origin,created_at)
+           SELECT lower(hex(randomblob(16))), t.id, 'legacy', ? FROM torrents t
+           WHERE NOT EXISTS (SELECT 1 FROM transfer_demands d WHERE d.transfer_id=t.id)""",
+        (time.time(),),
+    )
+
+
 async def _migrate_execution_identity(db: aiosqlite.Connection) -> None:
     """One bounded, one-way, idempotent migration of durable execution identity.
 
@@ -873,6 +887,24 @@ TRANSFER_REPOSITORY_SCHEMA = (
         promoted_at REAL,
         UNIQUE(request_id, provider_id, generation))""",
     "CREATE INDEX IF NOT EXISTS idx_standby_resources_transfer ON standby_resources(transfer_id,state)",
+    # Submitter demand (1.0.13 ACL): one row per accepted submission of a
+    # transfer's work -- including a repeat submission that converged on an
+    # existing transfer and so admitted no request of its own. ``account_id``
+    # owns it (NULL = legacy or unattributed, never a fictitious owner);
+    # ``credential_id`` only attributes it. Withdrawal sets ``withdrawn_at``
+    # and nothing else: the demand row, like every request, is history.
+    """CREATE TABLE IF NOT EXISTS transfer_demands (
+        id TEXT PRIMARY KEY,
+        transfer_id INTEGER NOT NULL REFERENCES torrents(id),
+        request_id TEXT REFERENCES transfer_requests(id),
+        account_id TEXT,
+        credential_id TEXT,
+        origin TEXT NOT NULL CHECK(origin IN ('submission','unattributed','legacy')),
+        created_at REAL NOT NULL,
+        withdrawn_at REAL,
+        withdrawn_by TEXT)""",
+    "CREATE INDEX IF NOT EXISTS idx_transfer_demands_transfer ON transfer_demands(transfer_id,withdrawn_at)",
+    "CREATE INDEX IF NOT EXISTS idx_transfer_demands_account ON transfer_demands(account_id,withdrawn_at)",
 )
 
 TRANSFER_REPOSITORY_COLUMNS = {
@@ -1115,6 +1147,8 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'standby_resources': {'id', 'transfer_id', 'request_id', 'provider_id', 'generation', 'state', 'binding_id', 'error',
                           'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at', 'promoted_at'},
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
+    'transfer_demands': {'id', 'transfer_id', 'request_id', 'account_id', 'credential_id', 'origin', 'created_at',
+                         'withdrawn_at', 'withdrawn_by'},
     'event_journal': {'id', 'occurrence_key', 'occurred_at', 'category', 'event_type', 'severity', 'outcome',
                       'subject_kind', 'subject_id', 'transfer_id', 'related_transfer_id', 'integration_id',
                       'subject_name', 'message', 'detail', 'error_domain', 'error_category', 'error_origin',
@@ -1316,6 +1350,7 @@ async def _init_db_sqlite(path: Path):
         await _normalize_legacy_cleanup_claims(db)
         await _migrate_recovery_state_from_events(db)
         await _migrate_execution_identity(db)
+        await _backfill_legacy_demand(db)
         from db.migrations.v113_decomposition_generations import (
             backfill_decomposition_generations,
         )

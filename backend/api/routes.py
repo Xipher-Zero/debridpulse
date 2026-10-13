@@ -12,6 +12,7 @@ import json as _json
 import logging
 import os
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Annotated, AsyncGenerator, Literal
 from urllib.parse import urlparse, urlsplit
@@ -41,12 +42,17 @@ from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
 from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.runtime_limits import ExecutionRuntimeLimits
+from transfers.models import SubmissionDemand
+from transfers._repository_base import DemandChanged
 from transfers.manual_queue_move import QueueMoveRefused, RestartConfirmationRequired
 from transfers.settings import TransferSettings
 from core.logging_utils import sanitize_exception, sanitize_log_value
 from core.presentation_safety import safe_original_http_resource, safe_original_remote_file_resource, safe_public_host
 from core.version import is_version_newer, normalize_version_tag, read_version
-from auth.models import AuthMechanism
+from auth.middleware import session_record_valid
+from auth.models import AuthMechanism, Principal
+from auth.policy import interactive_auth_enabled
+from auth.permissions import Capability, destruction_precondition, permits, require_destruction
 from auth.oidc_version import oidc_configuration_version
 from auth.passwords import basic_verification_cache
 from auth.sessions import session_store
@@ -795,8 +801,27 @@ async def aria2_download_action(gid: str, action: str, application: ApplicationS
 # view) and its bounded single-read projection differ from the historical
 # per-row presentation rebuild, so it is declared there rather than here.
 
+def _demand(request: Request) -> SubmissionDemand:
+    """The demand one accepted submission records: the authenticated
+    account that owns it and, for attribution, the token that carried it."""
+    principal = request.state.principal
+    return SubmissionDemand(principal.account_id or None, principal.credential_id or None)
+
+
+def _submitted(request: Request, result: dict, demands) -> dict:
+    """A submission's response. A caller that may read transfers gets the
+    transfer it submitted to; an Integration gets only its own request(s) and
+    their status -- a repeat submission may land on someone else's transfer."""
+    if permits(request.state.principal, Capability.TRANSFERS_READ):
+        return public_payload(result)
+    items = result.get("items") or [result]
+    return {"ok": True, "requests": [
+        {"id": demand.id, "transfer_id": item.get("id"), "status": item.get("status")}
+        for demand, item in zip(demands, items)]}
+
+
 @router.post("/torrents/add-magnet")
-async def add_magnet(body: dict, application: ApplicationService = Depends(get_application)):
+async def add_magnet(body: dict, request: Request, application: ApplicationService = Depends(get_application)):
     magnet = (body.get("magnet") or "").strip()
     if not magnet:
         raise HTTPException(400, "magnet is required")
@@ -804,10 +829,11 @@ async def add_magnet(body: dict, application: ApplicationService = Depends(get_a
     # a historical/headless caller sending the unchanged body shape never enters
     # the interactive file-selection lifecycle.
     try:
+        demand = _demand(request)
         row = await application.submit_magnet(
-            magnet, source="manual", selection_mode=body.get("selection_mode"),
+            magnet, source="manual", selection_mode=body.get("selection_mode"), demand=demand,
         )
-        return public_payload(row)
+        return _submitted(request, row, [demand])
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:
@@ -822,6 +848,7 @@ _UPLOAD_CHUNK_BYTES = 1024 * 1024
 
 @router.post("/torrents/add-file")
 async def add_torrent_file(
+    request: Request,
     file: UploadFile = File(...),
     selection_mode: str | None = Form(default=None),
     application: ApplicationService = Depends(get_application),
@@ -852,13 +879,15 @@ async def add_torrent_file(
         raise HTTPException(413, "Torrent file exceeds the 16 MB upload limit")
 
     try:
+        demand = _demand(request)
         result = await application.submit_torrent(
             data,
             filename,
             source="manual_file",
             selection_mode=selection_mode,
+            demand=demand,
         )
-        return public_payload(result)
+        return _submitted(request, result, [demand])
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc))
     except Exception as exc:
@@ -867,6 +896,7 @@ async def add_torrent_file(
 
 @router.post("/usenet/add-file")
 async def add_usenet_file(
+    request: Request,
     file: UploadFile = File(...),
     application: ApplicationService = Depends(get_application),
 ):
@@ -896,7 +926,9 @@ async def add_usenet_file(
             yield chunk
 
     try:
-        return public_payload(await application.submit_nzb(chunks(), filename, source="manual_file"))
+        demand = _demand(request)
+        return _submitted(request, await application.submit_nzb(chunks(), filename, source="manual_file",
+                                                                demand=demand), [demand])
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc)) from None
     except Exception as exc:
@@ -907,7 +939,7 @@ async def add_usenet_file(
 
 
 @router.post("/usenet/add-link")
-async def add_usenet_link(body: dict, application: ApplicationService = Depends(get_application)):
+async def add_usenet_link(body: dict, request: Request, application: ApplicationService = Depends(get_application)):
     """Add the NZB an HTTP(S) link names -- the explicit counterpart of
     ``/usenet/add-file`` for a posting that is published as a link.
 
@@ -921,14 +953,17 @@ async def add_usenet_link(body: dict, application: ApplicationService = Depends(
     if not isinstance(url, str) or not url.strip():
         raise HTTPException(400, "An NZB link is required")
     try:
-        return public_payload(await application.submit_nzb_link(
-            url, **({"allow_local_network": True} if body.get("allow_local_network") is True else {})))
+        demand = _demand(request)
+        return _submitted(request, await application.submit_nzb_link(
+            url, demand=demand,
+            **({"allow_local_network": True} if body.get("allow_local_network") is True else {})), [demand])
     except LocalNetworkConfirmationRequired as exc:
         raise _local_network_confirmation(exc) from None
 
 
 @router.post("/multimeta/add-file")
 async def add_multimeta_file(
+    request: Request,
     file: UploadFile = File(...),
     selection_mode: str | None = Form(default=None),
     application: ApplicationService = Depends(get_application),
@@ -956,8 +991,9 @@ async def add_multimeta_file(
             yield chunk
 
     try:
-        return public_payload(await application.submit_meta4(
-            chunks(), filename, source="manual_file", selection_mode=selection_mode))
+        demand = _demand(request)
+        return _submitted(request, await application.submit_meta4(
+            chunks(), filename, source="manual_file", selection_mode=selection_mode, demand=demand), [demand])
     except ValueError as exc:
         raise HTTPException(400, _sanitize_error(exc)) from None
     except Exception as exc:
@@ -968,7 +1004,7 @@ async def add_multimeta_file(
 
 
 @router.post("/links/add")
-async def add_debrid_links(body: dict, application: ApplicationService = Depends(get_application)):
+async def add_debrid_links(body: dict, request: Request, application: ApplicationService = Depends(get_application)):
     """Submit one or more ordinary hoster URLs as a tracked transfer batch."""
     raw_links = body.get("links", [])
     if isinstance(raw_links, str):
@@ -994,10 +1030,11 @@ async def add_debrid_links(body: dict, application: ApplicationService = Depends
         if scopes is not None and not (isinstance(scopes, dict)
                                        and all(isinstance(value, str) for value in scopes.values())):
             raise HTTPException(400, "acquisition_scopes must map each link to a scope")
-        return public_payload(await application.submit_links(
-            links, selection_mode=body.get("selection_mode"),
+        demand = _demand(request)
+        return _submitted(request, await application.submit_links(
+            links, selection_mode=body.get("selection_mode"), demand=demand,
             **({"allow_local_network": True} if body.get("allow_local_network") is True else {}),
-            **({"acquisition_scopes": scopes} if scopes else {})))
+            **({"acquisition_scopes": scopes} if scopes else {})), [demand])
     except AcquisitionScopeRequired as exc:
         raise _acquisition_scope_required(exc) from None
     except LocalNetworkConfirmationRequired as exc:
@@ -1028,6 +1065,7 @@ def _local_network_confirmation(exc: LocalNetworkConfirmationRequired) -> HTTPEx
 
 @router.post("/links/add-file")
 async def add_link_file(
+    request: Request,
     file: UploadFile = File(...),
     selection_mode: str | None = Form(default=None),
     allow_local_network: bool = Form(default=False),
@@ -1058,13 +1096,17 @@ async def add_link_file(
                     direct.append(value)
             except ValueError:
                 raise ValueError(f"{location} is not a supported link") from None
-        items = []
+        items, demands = [], []
         if direct:
+            demands.append(_demand(request))
             items.extend((await application.submit_links(
-                direct, selection_mode=selection_mode, allow_local_network=allow_local_network))["items"])
+                direct, selection_mode=selection_mode, allow_local_network=allow_local_network,
+                demand=demands[-1]))["items"])
         for magnet in magnets:
-            items.append(await application.submit_magnet(magnet, source="manual", selection_mode=selection_mode))
-        return public_payload({"ok": True, "accepted": len(direct) + len(magnets), "items": items})
+            demands.append(_demand(request))
+            items.append(await application.submit_magnet(magnet, source="manual", selection_mode=selection_mode,
+                                                         demand=demands[-1]))
+        return _submitted(request, {"ok": True, "accepted": len(direct) + len(magnets), "items": items}, demands)
     except AcquisitionScopeRequired as exc:
         # A link file carries no answers: it is declined, never guessed.
         raise _acquisition_scope_required(exc) from None
@@ -1130,9 +1172,11 @@ async def torrent_files_preview(torrent_id: int, application: ApplicationService
 
 
 @router.post("/torrents/{torrent_id}/files/{file_id}/block")
-async def block_file(torrent_id: int, file_id: int, blocked: bool = True, application: ApplicationService = Depends(get_application)):
+async def block_file(torrent_id: int, file_id: int, request: Request, blocked: bool = True,
+                     application: ApplicationService = Depends(get_application)):
+    expected = await require_destruction(request, application.repository, torrent_id)
     try:
-        return await application.select_artifact(torrent_id, file_id, selected=not blocked)
+        return await application.select_artifact(torrent_id, file_id, selected=not blocked, expected_demand=expected)
     except KeyError:
         raise HTTPException(404, "File not found")
     except ValueError as exc:
@@ -1174,10 +1218,12 @@ async def export_transfer_trace(torrent_id: int, application: ApplicationService
 
 
 @router.delete("/torrents/{torrent_id}")
-async def delete_torrent(torrent_id: int, from_alldebrid: bool = True, application: ApplicationService = Depends(get_application)):
+async def delete_torrent(torrent_id: int, request: Request, from_alldebrid: bool = True,
+                         application: ApplicationService = Depends(get_application)):
+    expected = await require_destruction(request, application.repository, torrent_id)
     # The old query parameter is retained as an external API compatibility alias.
     try:
-        return await application.delete(torrent_id, remote=from_alldebrid)
+        return await application.delete(torrent_id, remote=from_alldebrid, expected_demand=expected)
     except KeyError:
         raise HTTPException(404, "Transfer not found")
 
@@ -1217,9 +1263,10 @@ async def submit_transfer_input(torrent_id: int, request: Request, application: 
 
 
 @router.post("/torrents/{torrent_id}/cancel")
-async def cancel_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
+async def cancel_torrent(torrent_id: int, request: Request, application: ApplicationService = Depends(get_application)):
+    expected = await require_destruction(request, application.repository, torrent_id)
     try:
-        return await application.cancel(torrent_id)
+        return await application.cancel(torrent_id, expected_demand=expected)
     except KeyError:
         raise HTTPException(404, "Transfer not found") from None
 
@@ -1269,15 +1316,31 @@ class BulkAction(BaseModel):
 
 
 @router.post("/torrents/bulk")
-async def bulk_action(body: BulkAction, application: ApplicationService = Depends(get_application)):
+async def bulk_action(body: BulkAction, request: Request, application: ApplicationService = Depends(get_application)):
+    """Each target is authorized on its own: an ordinary action applies to
+    any transfer; ``delete`` applies only where the caller may destroy that
+    transfer's work (``destruction_precondition``), re-checked when the
+    delete commits. A denied target is reported and left untouched; it never
+    stops the others."""
     if not body.ids:
         raise HTTPException(400, "No IDs provided")
-    ok = failed = 0
+    principal = request.state.principal
+    ok = failed = denied = 0
+    results = []
     for value in body.ids:
         try:
             tid = int(value)
             if body.action == "delete":
-                await application.delete(tid, remote=True)
+                permitted, expected = await destruction_precondition(principal, application.repository, tid)
+                if permitted:
+                    try:
+                        await application.delete(tid, remote=True, expected_demand=expected)
+                    except DemandChanged:
+                        permitted = False
+                if not permitted:
+                    denied += 1
+                    results.append({"id": tid, "outcome": "denied"})
+                    continue
             elif body.action in {"retry", "reset"}:
                 await application.retry(tid)
             elif body.action == "pause":
@@ -1287,9 +1350,11 @@ async def bulk_action(body: BulkAction, application: ApplicationService = Depend
             elif body.action == "remove_label":
                 await application.repository.update_metadata(tid, label="")
             ok += 1
+            results.append({"id": tid, "outcome": "applied"})
         except Exception:
             failed += 1
-    return {"ok": ok, "failed": failed}
+            results.append({"id": value, "outcome": "failed"})
+    return {"ok": ok, "failed": failed, "denied": denied, "results": results}
 
 
 # ── Events ─────────────────────────────────────────────────────────────────────
@@ -2341,13 +2406,29 @@ async def trigger_deep_sync( application: ApplicationService = Depends(get_appli
 #
 # This requires NO external dependencies (no Redis, no WebSocket library).
 
-_sse_subscribers: set[asyncio.Queue] = set()
+_sse_subscribers: dict[asyncio.Queue, "_SseSubscriber"] = {}
 _sse_lock = asyncio.Lock()
+# Put on a connection's own queue when the session or account that opened it
+# ends: the stream says so and closes.
+_SSE_SESSION_ENDED = object()
+
+
+@dataclass(frozen=True)
+class _SseSubscriber:
+    """Who one live connection streams to: its principal and, for a browser
+    application session, that session's address (``session_store.fingerprint``)."""
+    principal: Principal
+    session_token: str = ""
+    session: bytes = b""
 
 
 async def _sse_broadcast(event_type: str, data: dict) -> None:
-    """Push an SSE event to all connected clients (fire-and-forget)."""
-    payload = f"event: {event_type}\ndata: {_json.dumps(data)}\n\n"
+    """Push an SSE event to every connected client (fire-and-forget).
+
+    Every payload is the public projection (``public_payload``): the same
+    capability-free fields REST serves to every role allowed to read
+    transfers -- never a stored request, candidate, endpoint or credential."""
+    payload = f"event: {event_type}\ndata: {_json.dumps(public_payload(data))}\n\n"
     dead: list[asyncio.Queue] = []
     async with _sse_lock:
         for q in _sse_subscribers:
@@ -2356,17 +2437,45 @@ async def _sse_broadcast(event_type: str, data: dict) -> None:
             except asyncio.QueueFull:
                 dead.append(q)
         for q in dead:
-            _sse_subscribers.discard(q)
+            _sse_subscribers.pop(q, None)
+
+
+def _sse_sessions_ended(fingerprints: frozenset[bytes], account_id: str | None) -> None:
+    """End every live connection opened under an ended session or, for an
+    account change, by that account through any credential."""
+    for queue, subscriber in list(_sse_subscribers.items()):
+        if (subscriber.session and subscriber.session in fingerprints) or (
+                account_id and subscriber.principal.account_id == account_id):
+            try:
+                queue.put_nowait(_SSE_SESSION_ENDED)
+            except asyncio.QueueFull:
+                _sse_subscribers.pop(queue, None)
 
 
 bind_publisher(_sse_broadcast)
+session_store.on_revocation(_sse_sessions_ended)
+
+
+def _sse_still_authorized(subscriber: _SseSubscriber) -> bool:
+    """Re-checked at every event and heartbeat: a connection outlives neither
+    its session, nor the standalone installation it opened in."""
+    settings = get_settings()
+    if subscriber.session_token:
+        record = session_store.resolve(subscriber.session_token)
+        return record is not None and session_record_valid(record, settings)
+    if not subscriber.principal.authenticated:
+        return not interactive_auth_enabled(settings)
+    return True
 
 
 async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
-    """Yield SSE frames until the client disconnects."""
+    """Yield SSE frames until the client disconnects or its access ends."""
+    token = str(getattr(request.state, "auth_session_token", "") or "")
+    subscriber = _SseSubscriber(request.state.principal, token,
+                                session_store.fingerprint(token) if token else b"")
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     async with _sse_lock:
-        _sse_subscribers.add(queue)
+        _sse_subscribers[queue] = subscriber
     try:
         yield "event: connected\ndata: {}\n\n"
         while True:
@@ -2374,13 +2483,16 @@ async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
                 break
             try:
                 frame = await asyncio.wait_for(queue.get(), timeout=30)
-                yield frame
             except asyncio.TimeoutError:
                 # Send heartbeat so proxies don't close the connection
-                yield "event: ping\ndata: {}\n\n"
+                frame = "event: ping\ndata: {}\n\n"
+            if frame is _SSE_SESSION_ENDED or not _sse_still_authorized(subscriber):
+                yield "event: session_ended\ndata: {}\n\n"
+                break
+            yield frame
     finally:
         async with _sse_lock:
-            _sse_subscribers.discard(queue)
+            _sse_subscribers.pop(queue, None)
 
 
 @router.get("/events/stream")

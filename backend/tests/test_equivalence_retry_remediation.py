@@ -969,6 +969,8 @@ async def test_quiescent_equivalence_hold_with_no_artifacts_is_queued_not_perpet
     )
     transfer_id = transfer[0].id
     async with database.get_db() as db:
+        # The submission's demand stays; only its link to the replaced root goes.
+        await db.execute("UPDATE transfer_demands SET request_id=NULL WHERE transfer_id=?", (transfer_id,))
         await db.execute("DELETE FROM transfer_requests WHERE transfer_id=?", (transfer_id,))
         await db.commit()
     await _insert_held_sibling_request(transfer_id, "held-solo")

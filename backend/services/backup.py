@@ -91,12 +91,16 @@ _COPY_CHUNK = 1024 * 1024
 # * the v1.0.13 schema immediately before accounts (03123a72), which it extends
 #   with the account tables and the two default accounts; the backup's own
 #   configuration-file credential becomes the default Admin's at start
-#   (``auth.accounts.import_legacy_credential``).
+#   (``auth.accounts.import_legacy_credential``);
+# * the v1.0.13 schema immediately before submitter demand and Integration
+#   tokens (e77455d5), which it extends with both tables: every transfer it
+#   holds gets one ownerless ``legacy`` demand, and it holds no token.
 _UPGRADABLE_SCHEMAS = frozenset({
     "sha256:a4d2f83098507bdf25863ca99a69111511929143094b395d67e94da0cf94767d",
     "sha256:4877a1c666288a4fbef8d6b8fdf9c92165cf7c153a246ce3cfbf3dd2727c7078",
     "sha256:8c1f182d8be7c67c4d3b7a471c0878e8dd9304e5b9b2a704a393a7d7cbc7dc1a",
     "sha256:0d67b1b7cd78a1106f9c01b045a6db098d20acc2cd019e33d95493a37ac95134",
+    "sha256:f6b9501c65aa76476e587ebc1910854c55952ab0e1021b8f82c7a2e5b596804b",
 })
 _MAX_MANIFEST_BYTES = 64 * 1024
 CONTENTS_LABEL = "DP State"

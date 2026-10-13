@@ -37,6 +37,7 @@ TABLES = [
     "deferred_provider_submissions",
     "transfer_controls",
     "transfer_requests",
+    "transfer_demands",
     "provider_resources",
     "standby_resources",
     "transfer_file_manifests",
@@ -65,9 +66,10 @@ TABLES = [
     "accounts",
     "account_local_credentials",
     "account_oidc_bindings",
+    "account_tokens",
 ]
 _KEPT = frozenset({"transfer_controls", "schema_migrations", "event_journal_index",
-                   "accounts", "account_local_credentials", "account_oidc_bindings"})
+                   "accounts", "account_local_credentials", "account_oidc_bindings", "account_tokens"})
 
 
 async def wipe_database(*, verified_quiesced: bool = False) -> dict:
@@ -109,6 +111,8 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             # A standby preparation references its root request and its
             # provider_resources binding: it goes first.
             "standby_resources", "provider_resources",
+            # Submitter demand references its transfer and root request.
+            "transfer_demands",
         ):
             await db.execute(f"DELETE FROM {table}")
         await db.execute("DELETE FROM transfer_requests WHERE parent_id IS NOT NULL")

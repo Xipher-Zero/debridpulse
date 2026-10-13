@@ -326,6 +326,7 @@ async def manual_candidate_failover(
     *,
     discard_confirmed: bool = False,
     discard_confirmation: Mapping | None = None,
+    expected_demand=None,
 ) -> dict:
     """Make one existing candidate authoritative without creating a new artifact.
 
@@ -361,7 +362,8 @@ async def manual_candidate_failover(
         # preview that the new plan would discard refuses the switch, and the
         # operator is shown that consequence to confirm instead.
         claim_result = await engine.activate_candidate_command(int(transfer_id), int(artifact_id), index,
-                                                              permit_discard=bool(discard_confirmed))
+                                                              permit_discard=bool(discard_confirmed),
+                                                              expected_demand=expected_demand)
         if claim_result is not None and claim_result.reason == "material_discard_refused":
             fallback = await engine.preview_continuation(artifact, candidate)
             if fallback is not None and fallback.discarded_bytes:

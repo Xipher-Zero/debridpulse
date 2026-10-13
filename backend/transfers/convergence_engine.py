@@ -2008,6 +2008,7 @@ class TransferEngine(_QualifiedTransferEngine):
 
     async def activate_candidate_command(
         self, transfer_id: int, artifact_id: int, target_index: int, *, permit_discard: bool = True,
+        expected_demand=None,
     ) -> ActivationResult | None:
         """Operator-requested candidate activation entry point: the manual
         counterpart to ``recover_artifact``, fenced by the SAME exclusive
@@ -2030,6 +2031,7 @@ class TransferEngine(_QualifiedTransferEngine):
         claim = await self.repository.claim_recovery(
             artifact_id, RecoveryTrigger.USER_CANDIDATE_SWITCH, self.clock(),
             lease_seconds=max(300.0, float(self.policy.max_retry_delay)),
+            expected_demand=expected_demand,
         )
         if claim is None:
             return None

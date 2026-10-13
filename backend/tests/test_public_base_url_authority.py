@@ -117,7 +117,7 @@ def test_bootstrap_closes_when_the_environment_supplies_authority(monkeypatch):
     "kwargs",
     [
         {"path": "/api/settings"},                 # another route
-        {"path": "/api/auth/api-token"},           # another auth route
+        {"path": "/api/auth/oidc/verify-config"},  # another auth route
         {"method": "POST"},                        # another method
         {"fetch_site": "cross-site"},              # another site
         {"origin": "http://dp.example.com"},       # not HTTPS

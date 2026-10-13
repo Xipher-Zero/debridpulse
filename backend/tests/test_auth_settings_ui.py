@@ -1,6 +1,5 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
@@ -260,11 +259,6 @@ async def test_authentication_payload_is_secret_free(monkeypatch, operator):
     cfg = _settings()
     monkeypatch.setattr(auth_config_routes, "get_settings", lambda: cfg)
     monkeypatch.setattr(auth_config_routes, "_oidc_runtime_available", lambda *_args: _false_async())
-    monkeypatch.setattr(
-        auth_config_routes,
-        "api_token_store",
-        SimpleNamespace(enabled=True, configured=True),
-    )
 
     request = _request("/api/auth/config", {})
     request.state.principal = Principal.oidc_session("issuer|subject").bound_to(operator)
@@ -274,7 +268,7 @@ async def test_authentication_payload_is_secret_free(monkeypatch, operator):
     assert payload["mode"] == "Username & Password + OIDC"
     assert payload["password_configured"] is True
     assert payload["oidc_client_secret_configured"] is True
-    assert payload["api_token_configured"] is True
+    assert "api_token_configured" not in payload  # the global token is retired
     assert payload["current_session_mechanism"] == "oidc_session"
     assert "super-private-oidc-value" not in encoded
     assert "$argon2id$" not in encoded

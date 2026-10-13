@@ -27,6 +27,7 @@ from transfers.models import (
     ResolutionResult, ResourceSnapshot, ResourceState, TransferOutcome,
 )
 from transfers.policy import TransferPolicy
+from account_support import standalone_boundary
 
 pytestmark = pytest.mark.asyncio
 
@@ -454,6 +455,7 @@ async def test_the_http_connection_surface_owns_its_admission_and_never_deadlock
     monkeypatch.setattr(application, "configuration_admission",
                         lambda: (exclusive.append(True), admission())[1])
     app = FastAPI()
+    standalone_boundary(app)
     app.state.application = application
     app.middleware("http")(main.application_mutation_admission_middleware)
     app.include_router(routes.router, prefix="/api")

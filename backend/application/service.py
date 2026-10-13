@@ -504,11 +504,11 @@ class ApplicationService:
         return TransferRequest("magnet", magnet, name=name, fingerprint=fingerprint,
                                selection_mode=selection_mode)
 
-    async def submit_magnet(self, magnet, *, source="manual", selection_mode="all"):
+    async def submit_magnet(self, magnet, *, source="manual", selection_mode="all", demand=None):
         request = self.magnet_request(magnet, selection_mode=selection_mode)
-        return await self.submit((request,), name=request.name, source=source)
+        return await self.submit((request,), name=request.name, source=source, demand=demand)
 
-    async def submit_torrent(self, data, filename, *, source="manual_file", selection_mode="all"):
+    async def submit_torrent(self, data, filename, *, source="manual_file", selection_mode="all", demand=None):
         selection_mode = file_selection.normalize_selection_mode(selection_mode)
         # Validated before anything is admitted: an unidentifiable or v2-only
         # metainfo is refused with its actionable reason (a ValueError), never
@@ -525,9 +525,9 @@ class ApplicationService:
         return await self.submit(
             (TransferRequest("torrent", data, name=filename, fingerprint=fingerprint,
                              selection_mode=selection_mode),),
-            name=name, source=source)
+            name=name, source=source, demand=demand)
 
-    async def submit_nzb(self, data, filename, *, source="manual_file"):
+    async def submit_nzb(self, data, filename, *, source="manual_file", demand=None):
         """Admit one uploaded NZB through the canonical submission seam.
 
         The application layer deliberately does not interpret the posting: the
@@ -554,9 +554,9 @@ class ApplicationService:
                 raise ValueError(str(exc)) from None
         return await self.submit(
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
-            name=name, source=source)
+            name=name, source=source, demand=demand)
 
-    async def submit_nzb_link(self, url, *, source="direct_link", allow_local_network=False):
+    async def submit_nzb_link(self, url, *, source="direct_link", allow_local_network=False, demand=None):
         """Admit the NZB an explicitly submitted link names, as the SAME
         canonical ``nzb`` request an uploaded NZB becomes.
 
@@ -626,9 +626,10 @@ class ApplicationService:
         # and reclaimed by the same owner (``reclaim_staged_input``) if
         # admission never completes.
         name = safe_name(manifest.name) or request_name.rsplit(".", 1)[0] or "usenet-download"
-        return await self.submit((TransferRequest("nzb", payload, name=request_name),), name=name, source=source)
+        return await self.submit((TransferRequest("nzb", payload, name=request_name),), name=name, source=source,
+                                 demand=demand)
 
-    async def submit_meta4(self, data, filename, *, source="manual_file", selection_mode="all"):
+    async def submit_meta4(self, data, filename, *, source="manual_file", selection_mode="all", demand=None):
         """Admit one uploaded Metalink4 descriptor through the canonical
         submission seam. As for an NZB, the application does not interpret
         it: the Multimeta provider reads it during resolution. The stream is
@@ -646,7 +647,7 @@ class ApplicationService:
             raise ValueError("Metalink file is empty")
         return await self.submit(
             (TransferRequest("meta4", payload, name=filename or f"{name}.meta4", selection_mode=selection_mode),),
-            name=name, source=source)
+            name=name, source=source, demand=demand)
 
     async def reclaim_staged_input(self) -> int:
         """Reclaim every staged input no live request still references.
@@ -663,7 +664,8 @@ class ApplicationService:
         referenced = await self.repository.referenced_staged_inputs()
         return self.staged_input.sweep(referenced)
 
-    async def submit_links(self, links, *, selection_mode="all", allow_local_network=False, acquisition_scopes=None):
+    async def submit_links(self, links, *, selection_mode="all", allow_local_network=False, acquisition_scopes=None,
+                           demand=None):
         # DP 1.0.12 corrective: one Quick Add batch is one user submission
         # and admits as ONE durable transfer owning N independent root
         # requests -- submission scope is not the same thing as equivalence
@@ -706,7 +708,7 @@ class ApplicationService:
                                          acquisition_scope=scopes.get(url, ""))
                          for index, url in enumerate(urls, 1))
         item = await self.submit(requests, name=direct_link_collection_name([], members), source="direct_link",
-                                 deduplicate=False, **({"alternative_groups": groups} if groups else {}))
+                                 deduplicate=False, demand=demand, **({"alternative_groups": groups} if groups else {}))
         return {"ok": True, "id": item["id"], "torrent_id": item["id"], "accepted": len(urls), "items": [item], **item}
 
 
@@ -782,10 +784,10 @@ class ApplicationService:
             await self._publish(transfer_id)
             return {"ok": True, "accepted": True, "id": transfer_id, "challenge_id": challenge.id}
 
-    async def cancel(self, transfer_id):
+    async def cancel(self, transfer_id, *, expected_demand=None):
         async with self.application_operation():
             await self.require(transfer_id)
-            errors = await self.engine.cancel(transfer_id)
+            errors = await self.engine.cancel(transfer_id, expected_demand=expected_demand)
             await self._publish(transfer_id)
             return {
                 "ok": not errors,
@@ -890,16 +892,35 @@ class ApplicationService:
             self.execution_wakeup.set()
             return {"ok": True, **await self._publish(transfer_id)}
 
-    async def delete(self, transfer_id, *, remote=True):
+    async def withdraw_demand(self, demand_ids, *, by: str) -> dict:
+        """Withdraw submitter demand through the canonical engine, which
+        decides each affected transfer's fate by its remaining demand."""
+        async with self.application_operation():
+            settled = await self.engine.withdraw_demand(tuple(demand_ids), by=by)
+            for transfer_id in settled:
+                await self._publish(transfer_id)
+            return {"ok": True, "cancelled_transfers": settled}
+
+    async def settle_withdrawn_demand(self) -> list[int]:
+        """Apply demand that was withdrawn elsewhere (an account disabled or
+        deleted) now, rather than at the next resolution cycle."""
+        async with self.application_operation():
+            settled = await self.engine.settle_withdrawn_demand()
+            for transfer_id in settled:
+                await self._publish(transfer_id)
+            return settled
+
+    async def delete(self, transfer_id, *, remote=True, expected_demand=None):
         async with self.application_operation():
             await self.require(transfer_id)
-            await self.engine.delete(transfer_id, remote=remote)
+            await self.engine.delete(transfer_id, remote=remote, expected_demand=expected_demand)
             await self._publish(transfer_id)
             return {"ok": True}
 
-    async def select_artifact(self, transfer_id, artifact_id, *, selected):
+    async def select_artifact(self, transfer_id, artifact_id, *, selected, expected_demand=None):
         async with self.application_operation():
-            await self.engine.select_artifact(transfer_id, artifact_id, selected=selected)
+            await self.engine.select_artifact(transfer_id, artifact_id, selected=selected,
+                                              expected_demand=expected_demand)
             self.execution_wakeup.set()
             await self._publish(transfer_id)
             return {"ok": True, "file_id": artifact_id, "blocked": not selected}

@@ -8,9 +8,16 @@ from __future__ import annotations
 import pytest
 
 import api.routes as routes
+from auth.models import Principal
 from test_v113_transfer_auth_context import lab  # noqa: F401
 
 pytestmark = pytest.mark.asyncio
+
+
+class _Request:
+    """The admitted request the boundary hands a route: an open-mode caller."""
+    def __init__(self):
+        self.state = type("State", (), {"principal": Principal.standalone()})()
 
 
 class _Recorder:
@@ -18,19 +25,20 @@ class _Recorder:
         self.calls = []
 
     async def submit_links(self, links, **kwargs):
+        kwargs.pop("demand")
         self.calls.append((list(links), kwargs))
         return {"ok": True, "id": 1}
 
 
 async def test_the_links_route_threads_explicit_interactive_intent():
     app = _Recorder()
-    await routes.add_debrid_links({"links": ["https://h.example/f"], "selection_mode": "interactive"}, app)
+    await routes.add_debrid_links({"links": ["https://h.example/f"], "selection_mode": "interactive"}, _Request(), app)
     assert app.calls == [(["https://h.example/f"], {"selection_mode": "interactive"})]
 
 
 async def test_a_headless_caller_that_omits_intent_keeps_the_all_default():
     app = _Recorder()
-    await routes.add_debrid_links({"links": ["https://h.example/f"]}, app)
+    await routes.add_debrid_links({"links": ["https://h.example/f"]}, _Request(), app)
     assert app.calls == [(["https://h.example/f"], {"selection_mode": None})]
 
 

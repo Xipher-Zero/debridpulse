@@ -19,6 +19,7 @@ from __future__ import annotations
 from db.database import get_db
 from db.event_journal import record as journal
 from transfers import journal_events as je
+from transfers._repository_base import DemandChanged
 from transfers.errors import NormalizedError
 from transfers.manual_repository import TransferRepository as _QualifiedRepository
 from transfers.models import new_identity
@@ -41,6 +42,7 @@ class TransferRepository(_QualifiedRepository):
         now: float,
         *,
         lease_seconds: float = 300.0,
+        expected_demand=None,
     ) -> RecoveryClaim | None:
         trigger = RecoveryTrigger(trigger)
         async with get_db() as db:
@@ -53,6 +55,10 @@ class TransferRepository(_QualifiedRepository):
             if not row:
                 await db.rollback()
                 return None
+            # An operator's claim is authorized against the demand it saw.
+            if not await self.hold_demand(db, int(row["torrent_id"]), expected_demand):
+                await db.rollback()
+                raise DemandChanged(int(row["torrent_id"]))
             snapshot = await self._recovery_snapshot(db, artifact_id, row=row)
             token = snapshot.get("recovery_claim_token")
             claim_until = float(snapshot.get("recovery_claim_until") or 0)

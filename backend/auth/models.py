@@ -30,11 +30,13 @@ class Principal:
     credential_version: str = ""
     # The durable account (``auth.accounts``) this request acts as, its role
     # and the account generation the principal was resolved at. Empty only for
-    # the unauthenticated principal and the legacy global API token, which
-    # belongs to no account until its Stage 2 replacement.
+    # the unauthenticated principal.
     account_id: str = ""
     role: str = ""
     account_generation: int = 0
+    # The credential that carried the request when it has its own identity
+    # (an Integration token), for attribution only.
+    credential_id: str = ""
 
     @classmethod
     def anonymous(cls) -> "Principal":
@@ -87,13 +89,14 @@ class Principal:
         ).bound_to(account)
 
     @classmethod
-    def api_token(cls) -> "Principal":
+    def integration_token(cls, account, token_id: str) -> "Principal":
         return cls(
             authenticated=True,
             mechanism=AuthMechanism.API_TOKEN,
-            subject="api-token",
-            display_name="API token",
-        )
+            subject=account.display_name,
+            display_name=account.display_name,
+            credential_id=str(token_id),
+        ).bound_to(account)
 
     def bound_to(self, account) -> "Principal":
         """This principal acting as ``account``."""

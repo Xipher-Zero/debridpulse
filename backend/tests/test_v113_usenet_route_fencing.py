@@ -19,6 +19,7 @@ from application.dependencies import get_application
 from application.service import ApplicationService
 from integrations.catalog import definitions
 from transfers.models import TransferRequest
+from account_support import standalone_boundary
 
 VALID_NZB = (b'<?xml version="1.0"?><nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">'
              b'<file poster="p@e.net" date="1700000000" subject="job [1/1] - &quot;job.bin&quot; yEnc (1/1)">'
@@ -87,6 +88,8 @@ def usenet_app(tmp_path, monkeypatch):
     service.configuration_appliers = {}
 
     app = FastAPI()
+
+    standalone_boundary(app)
     app.include_router(router, prefix="/api")
     app.dependency_overrides[get_application] = lambda: service
 

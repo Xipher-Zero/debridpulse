@@ -335,7 +335,7 @@ def test_configuration_payload_and_mutation_paths_do_not_own_live_discovery():
     source = AUTH_ROUTES.read_text(encoding="utf-8")
     payload_block = source.split("async def _authentication_payload", 1)[1].split("\ndef _build_proposed_settings", 1)[0]
     get_block = source.split('@router.get("/api/auth/config")', 1)[1].split('@router.get("/api/auth/oidc/runtime-status")', 1)[0]
-    put_block = source.split('@router.put("/api/auth/config")', 1)[1].split('@router.get("/api/auth/api-token")', 1)[0]
+    put_block = source.split('@router.put("/api/auth/config")', 1)[1].split('@router.post("/api/auth/oidc/verify-config")', 1)[0]
     runtime_block = source.split('@router.get("/api/auth/oidc/runtime-status")', 1)[1].split('@router.put("/api/auth/config")', 1)[0]
 
     assert "discover_oidc" not in payload_block

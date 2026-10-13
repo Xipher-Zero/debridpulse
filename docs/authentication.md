@@ -4,7 +4,7 @@ DebridPulse 1.0.6 supports three authentication mechanisms while retaining inten
 
 - **Username & Password** for browser sign-in, with the same credentials also available to REST clients through HTTP Basic authentication;
 - **OpenID Connect (OIDC)** for browser sign-in through a standards-compliant identity provider;
-- **API bearer token** for automation, Prometheus, scripts, and other machine clients.
+- **Integration-account API tokens** for automation, Prometheus, scripts, and other machine clients.
 
 Authentication is configured under **Settings → Authentication**. The normal application settings page no longer owns authentication controls.
 
@@ -15,11 +15,11 @@ The interactive authentication state is one of:
 | Mode | Browser access | Machine access |
 |---|---|---|
 | No authentication | Open | API is open as well |
-| Username & Password | DebridPulse login page | HTTP Basic; bearer token if configured |
-| OIDC | OIDC login | Bearer token if configured |
-| Username & Password + OIDC | OIDC is presented as the preferred path; local password remains available | HTTP Basic and/or bearer token |
+| Username & Password | DebridPulse login page | HTTP Basic; Integration tokens |
+| OIDC | OIDC login | Integration tokens |
+| Username & Password + OIDC | OIDC is presented as the preferred path; local password remains available | HTTP Basic and/or Integration tokens |
 
-The API token is supplemental. Configuring one does **not** create a separate API-token-only deployment mode, and it does not turn an intentionally open installation into a protected one.
+Integration tokens are supplemental. They do **not** create a token-only deployment mode, and they do not turn an intentionally open installation into a protected one.
 
 ## External access and canonical origin
 
@@ -49,7 +49,22 @@ Two default accounts always exist:
 
 Accounts are kept by the database. A backup therefore contains them, **including every local password's Argon2id verifier**, and restoring a backup is a privileged operation that replaces every account and authentication setting with the backup's. A restore is refused when its restored state would leave no enabled Admin who could sign in with the restored authentication settings; every browser session ends with a successful restore. The database wipe keeps all accounts.
 
-> **1.0.13 transition.** Until per-role enforcement arrives in the next stage of the access-control work, only **Admin** accounts may sign in. An OIDC identity that is admitted by the authorization policy but not linked to an Admin account is recorded as a new account with the configured default role (`auth_oidc_default_role`: `user` or `readonly`) and is refused with *This account cannot sign in to DebridPulse*. To sign in with OIDC as an Admin, complete **Verify Sign-In** while signed in as that Admin: the proven identity is linked to your account.
+### Roles
+
+The server enforces every role on every request, including direct API calls, file downloads and the live event stream; an action nobody classified is refused.
+
+| Role | May |
+|---|---|
+| **Admin** | Everything: settings, services, engines, authentication, accounts and tokens, the Activity Log, global controls (Pause All, Recover All, speed cap), executor-level actions, diagnostics, backup, restore and wipe. |
+| **User** | See every transfer, its Details and Statistics; submit with Quick Add; pause, resume, retry, reprioritize and reorder any transfer; withdraw their own requests. Delete, cancel, block files or switch a source or route only when every outstanding request that work serves is their own. |
+| **ReadOnly User** | See the Dashboard, Downloads, every transfer's Details and Statistics. Nothing else. |
+| **Integration** | Bearer-token only: submit, see and withdraw its own requests, scrape `/api/metrics`. |
+
+An OIDC identity admitted by the authorization policy that is not yet linked to an account gets a new account with the configured default role (`auth_oidc_default_role`: `user` or `readonly`). To sign in with OIDC as an Admin, complete **Verify Sign-In** while signed in as that Admin: the proven identity is linked to your account. `GET /api/auth/session` returns the caller's role, capabilities and account generation; disabling an account or changing its role ends its sessions and live event streams at once.
+
+### Requests and withdrawal
+
+Every accepted submission records a **request** owned by the submitting account (and, for an Integration, the token that carried it), even when it lands on a transfer someone else already submitted. Withdrawing a request (`POST /api/requests/{id}/withdraw`) is idempotent; the transfer stops only when no outstanding request — its own or one consolidated into its downloads — still needs it, and then through the ordinary cancel. Completed downloads and history are never touched. Disabling or deleting an account withdraws its outstanding requests in the same step; re-enabling it never restores them. Transfers from before this release carry one ownerless *legacy* request that only an Admin can withdraw.
 
 ## Username & Password
 
@@ -121,21 +136,19 @@ When OIDC is already the sole interactive mechanism, security-critical OIDC chan
 
 Use **Verify Sign-In** in the Authentication settings tab after entering proposed OIDC changes.
 
-## API bearer token
+## API bearer tokens (Integration accounts)
 
-Generate the token under **Settings → Authentication → API Access**. Tokens use a recognizable `dp_...` format and are shown in full only once on generation or rotation.
-
-The raw token is never persisted. DebridPulse stores only a SHA-256 verifier in `api-token.json` beside `config.json`, using restrictive file permissions where supported.
-
-Use it as:
+Bearer tokens belong to **Integration** accounts. An Admin issues one with `POST /api/accounts/{id}/tokens` (a label is required); tokens use a recognizable `dp_...` format and the raw token is in that response **only**. DebridPulse stores only a SHA-256 verifier in its database; an account may hold several labeled tokens, and several Integration accounts may exist. The default **Automation** Integration account holds no token until one is issued.
 
 ```bash
 curl \
   -H 'Authorization: Bearer dp_REPLACE_WITH_TOKEN' \
-  https://debridpulse.example/api/stats
+  https://debridpulse.example/api/requests
 ```
 
-Rotation immediately invalidates the previous token. Clearing removes the persisted verifier. Disabling bearer authentication retains the verifier so the same token can be re-enabled later; **Clear token** is the destructive operation.
+A token authenticates its Integration account with that account's role, and nothing more: submitting transfers, listing its own requests (`GET /api/requests`), withdrawing its own outstanding requests (`POST /api/requests/{id}/withdraw`), and reading `/api/metrics` for Prometheus scraping. It has no access to the Dashboard, Downloads, statistics, settings, diagnostics or other accounts' requests. Revoking a token (`DELETE /api/accounts/{id}/tokens/{token_id}`) or disabling its account stops it at once; revoking a token never withdraws work it submitted. There are no Admin, User or ReadOnly tokens.
+
+> **Upgrade note.** The single global API token of earlier releases is **retired**: at the first start of this release its verifier (`api-token.json`) is removed and an *API token retired* event is recorded. It never becomes any account's credential. Issue a token for an Integration account and update every client that used the old one (including Prometheus).
 
 When interactive authentication is enabled, request authentication precedence is:
 
@@ -219,4 +232,4 @@ OIDC plus Password fallback:
 }
 ```
 
-Do not copy a password hash or client secret into documentation, logs, bug reports, or screenshots. The API token verifier is stored separately in `api-token.json`; never place the raw bearer token in `config.json`.
+Do not copy a password hash or client secret into documentation, logs, bug reports, or screenshots. Integration token verifiers are stored in the database (and therefore in backups); never place a raw bearer token in `config.json`.

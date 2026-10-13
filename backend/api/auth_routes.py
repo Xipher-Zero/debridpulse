@@ -26,6 +26,7 @@ from auth.manager import (
     verify_local_credentials,
 )
 from auth.middleware import session_record_valid
+from auth.permissions import capabilities
 from auth.models import AuthMechanism, Principal
 from auth.oidc import (
     OIDC_CORRELATION_COOKIE,
@@ -289,8 +290,8 @@ _BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidd
 </svg>"""
 
 
-# The sign-in was genuine but its account may not operate DebridPulse: it is
-# disabled, or (until 1.0.13 ACL Stage 2 enforces roles) not an Admin.
+# The sign-in was genuine but its account may not sign in: it is disabled or
+# deleted.
 _NOT_OPERATIONAL = "This account cannot sign in to DebridPulse."
 
 
@@ -810,6 +811,9 @@ async def auth_session_status(request: Request, response: Response = None):
         "account_id": principal.account_id or None,
         "role": principal.role or None,
         "account_generation": principal.account_generation or None,
+        # The caller's capabilities, from the one policy (``auth.permissions``):
+        # what the interface may offer; the backend enforces it regardless.
+        "capabilities": sorted(capabilities(principal)),
         "csrf_token": session_store.csrf_token(session_token) if record is not None else "",
         "session_expires_in_seconds": (
             max(0, int(record.expires_at - time.monotonic())) if record is not None else None

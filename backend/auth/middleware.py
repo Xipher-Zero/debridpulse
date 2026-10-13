@@ -8,14 +8,14 @@ from urllib.parse import quote
 from fastapi import Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from auth.api_tokens import api_token_store
-from auth.accounts import admitted
+from auth.accounts import admitted, resolve_token
 from auth.manager import (
     PasswordAuthenticationBusy,
     password_proof_current,
     verify_local_credentials,
 )
 from auth.models import AuthMechanism, Principal
+from auth.permissions import non_route_capability, permits
 from auth.policy import (
     MUTATING_HTTP_METHODS,
     interactive_auth_enabled,
@@ -153,6 +153,13 @@ async def _admit_authenticated(
     principal: Principal,
     cfg,
 ) -> Response:
+    if not request.url.path.startswith("/api/") and not permits(
+        principal, non_route_capability(request.url.path),
+    ):
+        # The interface and the API documentation are not routed actions, so
+        # the one policy is applied to them here; routed actions are
+        # authorized by the application dependency (``authorize_request``).
+        return JSONResponse(content={"detail": "Forbidden"}, status_code=403)
     rejection = await settings_transition_rejection(request, principal, cfg)
     if rejection is not None:
         return rejection
@@ -257,11 +264,15 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     auth_header = str(request.headers.get("Authorization", "") or "")
 
     if _has_bearer_scheme(auth_header):
-        if not interactive_auth_enabled(cfg):
-            return await _admit_standalone(request, call_next, cfg)
+        # Only an active Integration account's own token authenticates a
+        # bearer request, as that account, with its role -- even in open
+        # mode, so its work stays attributed to it. A bearer credential that
+        # names no active token is refused in every mode: an explicit,
+        # invalid credential never falls back to the standalone Admin.
         provided_token = _decode_bearer_token(auth_header)
-        if provided_token is not None and api_token_store.verify(provided_token):
-            principal = Principal.api_token()
+        resolved = await resolve_token(provided_token) if provided_token is not None else None
+        if resolved is not None:
+            principal = Principal.integration_token(*resolved)
             _attach_principal(request, principal)
             return await _admit_authenticated(request, call_next, principal, cfg)
         return _unauthorized(bearer_challenge=True)
@@ -298,8 +309,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
                 current = get_settings()
                 account = await password_proof_current(proven, current)
         # HTTP Basic authenticates exactly the account whose credential
-        # matched -- never a role by username -- and only an account that may
-        # operate DebridPulse.
+        # matched -- never a role by username -- and only an active one.
         if not admitted(account):
             return _unauthorized(basic_challenge=True)
         principal = Principal.http_basic(account)
@@ -314,7 +324,6 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     if not (
         password_auth_enabled(cfg)
         or _oidc_ready(cfg)
-        or (api_token_store.enabled and api_token_store.configured)
     ):
         return JSONResponse(
             content={"detail": "Configured authentication is unavailable"},

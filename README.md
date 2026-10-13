@@ -276,7 +276,7 @@ Transfers can be searched and filtered by state, with retry, reset, pause, resum
 
 DebridPulse exposes a REST API used by the web interface and available for external automation.
 
-When Username & Password authentication is enabled, REST clients may use standard HTTP Basic with the same credentials as the browser login. When an API token is enabled, clients may instead send `Authorization: Bearer dp_...`. In an intentional no-auth deployment the API remains open. See [docs/authentication.md](docs/authentication.md) for precedence and security details.
+When Username & Password authentication is enabled, REST clients may use standard HTTP Basic with the same credentials as the browser login. Automation clients use an Integration account's token, `Authorization: Bearer dp_...`, which grants only submission, its own requests and `/api/metrics`. In an intentional no-auth deployment the API remains open. See [docs/authentication.md](docs/authentication.md) for precedence and security details.
 
 ### Download submission and management
 
@@ -315,7 +315,8 @@ When Username & Password authentication is enabled, REST clients may use standar
 | `GET` | `/api/auth/config` | Redacted authentication configuration/status |
 | `PUT` | `/api/auth/config` | Update native authentication configuration through the lockout state machine |
 | `POST` | `/api/auth/oidc/verify-config` | Stage proposed OIDC settings and start full verification sign-in |
-| `GET/PUT/POST/DELETE` | `/api/auth/api-token` | Inspect, enable/disable, generate/rotate, or clear the machine bearer credential |
+| `GET/POST/DELETE` | `/api/accounts/{id}/tokens` | List, issue (shown once) or revoke an Integration account's bearer tokens (Admin) |
+| `GET` / `POST` | `/api/requests`, `/api/requests/{id}/withdraw` | List and withdraw your own submitted requests (Admin: anyone's) |
 
 ---
 

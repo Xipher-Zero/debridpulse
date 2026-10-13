@@ -213,6 +213,13 @@ async def test_wipe_keeps_every_account_credential_and_oidc_binding(db_path):
     await _seed_canonical_state()
     local = await accounts.create_local_account("operator", "secret", role=accounts.Role.ADMIN)
     linked = await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="readonly")
+    await accounts.create_token(accounts.DEFAULT_INTEGRATION_ID, "scraper")  # kept with its account
+    from transfers.models import SubmissionDemand, TransferRequest
+    from transfers.recovery_repository import TransferRepository
+
+    await TransferRepository().admit(  # its demand is transfer state and goes with it
+        (TransferRequest("magnet", "magnet:?xt=urn:btih:" + "e" * 40, name="owned.bin", fingerprint="e" * 40),),
+        name="owned.bin", demand=SubmissionDemand(local.id))
 
     def facts():
         with sqlite3.connect(db_path) as conn:
@@ -225,5 +232,7 @@ async def test_wipe_keeps_every_account_credential_and_oidc_binding(db_path):
     assert result["ok"] is True
     assert not set(accounts.TABLES) & set(result["wiped_tables"])
     assert facts() == before
+    async with database.get_db() as db:
+        assert (await db.fetchone("SELECT COUNT(*) AS n FROM transfer_demands"))["n"] == 0
     assert (await accounts.local_credential("operator"))[0].id == local.id
     assert (await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="user")).id == linked.id

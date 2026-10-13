@@ -91,9 +91,9 @@ async def test_identity_is_issuer_and_subject_never_email(installation):
 
 
 @pytest.mark.asyncio
-async def test_a_provisioned_account_keeps_its_role_and_cannot_operate_until_stage_2(installation):
+async def test_a_provisioned_account_keeps_its_role_and_signs_in_with_it(installation):
     provisioned = await accounts.resolve_oidc(ISSUER, "user-1", {}, default_role="user")
-    assert provisioned.role is Role.USER and accounts.admitted(provisioned) is False
+    assert provisioned.role is Role.USER and accounts.admitted(provisioned) is True
 
     await accounts.set_role(DEFAULT_ADMIN_ID, provisioned.id, Role.READONLY)
     again = await accounts.resolve_oidc(ISSUER, "user-1", {"groups": ["admins"]}, default_role="user")
@@ -183,9 +183,7 @@ async def test_default_accounts_exist_and_the_integration_account_holds_no_crede
     assert await _count("SELECT COUNT(*) AS n FROM account_local_credentials") == 0
     with pytest.raises(AccountRefused):
         await accounts.reset_password(DEFAULT_ADMIN_ID, DEFAULT_INTEGRATION_ID, "secret")
-    # The legacy global bearer token belongs to no account, so it can never
-    # stand in for one (its replacement is Stage 2's).
-    assert Principal.api_token().account_id == ""
+    assert await accounts.list_tokens(DEFAULT_INTEGRATION_ID) == []
 
 
 @pytest.mark.asyncio

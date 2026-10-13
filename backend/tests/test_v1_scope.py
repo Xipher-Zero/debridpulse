@@ -353,7 +353,7 @@ def test_statistics_history_strip_omits_duplicate_database_and_queue_health_tile
 def test_inherited_file_preview_and_block_routes_are_hardened():
     routes = (REPO_ROOT / "backend/api/routes.py").read_text()
     assert "size_bytes, status, blocked, progress" not in routes
-    block_route = routes.split('async def block_file(torrent_id: int, file_id: int, blocked: bool = True,', 1)[1].split('@router.get("/torrents/{torrent_id}")', 1)[0]
+    block_route = routes.split('async def block_file(torrent_id: int, file_id: int, request: Request, blocked: bool = True,', 1)[1].split('@router.get("/torrents/{torrent_id}")', 1)[0]
     assert "application.select_artifact" in block_route
     assert "selected=not blocked" in block_route
     assert "409" in block_route

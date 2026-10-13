@@ -160,12 +160,10 @@ def test_sensitive_atomic_json_is_0600_before_payload_write_even_without_chmod(t
     assert stat.S_IMODE(target.stat().st_mode) == 0o600
 
 
-def test_sensitive_config_and_api_token_writers_use_secure_atomic_helper():
+def test_sensitive_config_writer_uses_secure_atomic_helper():
     root = os.path.dirname(os.path.dirname(__file__))
     config_source = open(os.path.join(root, "core", "config.py"), encoding="utf-8").read()
-    token_source = open(os.path.join(root, "auth", "api_tokens.py"), encoding="utf-8").read()
     assert "atomic_write_json(CONFIG_PATH, data, indent=2)" in config_source
-    assert "atomic_write_json(" in token_source and "self.path," in token_source
 
 
 @pytest.mark.asyncio
@@ -205,22 +203,6 @@ def test_prospective_oidc_readiness_does_not_treat_false_string_as_allow_all():
         "oidc_allow_all": "false",
     }
     assert transitions._prospective_oidc_ready(payload, current) is False
-
-
-def test_api_token_clear_fsyncs_parent_directory(tmp_path, monkeypatch):
-    from auth import api_tokens
-
-    path = tmp_path / "api-token.json"
-    store = api_tokens.ApiTokenStore(path)
-    store.generate()
-    calls = []
-    monkeypatch.setattr(api_tokens, "fsync_parent_directory", lambda target: calls.append(target))
-    store.clear()
-    assert calls == [path]
-    assert path.exists() is False
-    assert store.configured is False
-    assert store.enabled is False
-
 
 
 

@@ -30,6 +30,7 @@ from transfers.models import (
 from transfers.policy import TransferPolicy
 from transfers.registry import IntegrationRegistry
 from transfers.repository import TransferRepository
+from account_support import standalone_boundary
 
 # One capability URL both providers resolve to (so the two submissions are
 # provably one artifact), carrying a path token and a signed query.
@@ -250,6 +251,7 @@ async def test_trace_generation_never_mutates_durable_state(traced):
 @pytest.mark.asyncio
 async def test_trace_endpoint_returns_a_downloadable_json_file(traced):
     app = FastAPI()
+    standalone_boundary(app)
     app.include_router(router, prefix="/api")
     app.state.application = traced.application
     async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://test") as client:

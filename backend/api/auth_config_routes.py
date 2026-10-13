@@ -13,7 +13,6 @@ from pydantic import BaseModel, Field
 
 from api import auth_routes as interactive_routes
 from auth.accounts import AccountRefused, admin_password_holders, local_credential_status, set_own_local_credential
-from auth.api_tokens import api_token_store
 from auth.csrf import clear_login_csrf_cookie
 from auth.manager import peer_key
 from auth.models import AuthMechanism, Principal
@@ -97,10 +96,6 @@ class AuthenticationConfigUpdate(BaseModel):
     oidc_group_claim: str | None = Field(default=None, max_length=256)
     public_base_url: str | None = Field(default=None, max_length=2048)
     confirm_open_mode: bool = False
-
-
-class ApiTokenEnableRequest(BaseModel):
-    enabled: bool
 
 
 def _valid_public_base_url(value: str) -> bool:
@@ -198,8 +193,6 @@ async def _authentication_payload(request: Request, *, cfg=None) -> dict:
         "public_base_url_effective": effective_public_base,
         "public_base_url_env_override": bool(env_public_base),
         "oidc_callback_url": callback_url,
-        "api_token_enabled": api_token_store.enabled,
-        "api_token_configured": api_token_store.configured,
         "current_session_mechanism": principal.mechanism.value if principal.mechanism else None,
         "session_count": session_store.size,
     }
@@ -561,57 +554,6 @@ async def update_authentication_config(request: Request, update: AuthenticationC
         "enabled" if oidc_auth_enabled(clean) else "disabled",
     )
     response = JSONResponse({"ok": True, **(await _authentication_payload(request, cfg=clean))})
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@router.get("/api/auth/api-token")
-async def api_token_status():
-    response = JSONResponse(api_token_store.status())
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@router.put("/api/auth/api-token")
-async def set_api_token_enabled(update: ApiTokenEnableRequest):
-    try:
-        api_token_store.set_enabled(update.enabled)
-    except ValueError:
-        return JSONResponse(
-            {"detail": "Generate an API token before enabling bearer authentication"},
-            status_code=409,
-            headers={"Cache-Control": "no-store"},
-        )
-    logger.info("API token authentication %s", "enabled" if update.enabled else "disabled")
-    payload = {"ok": True, **api_token_store.status()}
-    response = JSONResponse(payload)
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@router.post("/api/auth/api-token")
-async def generate_or_rotate_api_token():
-    rotated = api_token_store.configured
-    token = api_token_store.generate()
-    logger.info("API token %s", "rotated" if rotated else "generated")
-    response = JSONResponse(
-        {
-            "ok": True,
-            "enabled": True,
-            "configured": True,
-            "rotated": rotated,
-            "token": token,
-        }
-    )
-    response.headers["Cache-Control"] = "no-store"
-    return response
-
-
-@router.delete("/api/auth/api-token")
-async def clear_api_token():
-    api_token_store.clear()
-    logger.info("API token cleared")
-    response = JSONResponse({"ok": True, "enabled": False, "configured": False})
     response.headers["Cache-Control"] = "no-store"
     return response
 

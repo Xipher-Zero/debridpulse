@@ -24,6 +24,7 @@ from transfers.models import (
 from transfers.policy import TransferPolicy
 from transfers.recovery_repository import TransferRepository
 from transfers.registry import IntegrationRegistry
+from auth.models import Principal
 
 SIZE = 5 * MIB + 12345
 
@@ -594,6 +595,7 @@ async def test_candidate_switch_http_contract_refuses_previews_and_reports_chang
 
     class Application:
         engine = ctx.engine
+        repository = ctx.repository
 
         async def require(self, transfer_id):
             return None
@@ -612,13 +614,17 @@ async def test_candidate_switch_http_contract_refuses_previews_and_reports_chang
         return await manual_candidate_failover(ctx.engine, transfer_id, artifact_id, candidate_id, **kwargs)
 
     monkeypatch.setattr(downloads, "switch_candidate", switch_candidate)
+    # What the authentication boundary attaches in open mode.
+    _OPEN_MODE = SimpleNamespace(state=SimpleNamespace(principal=Principal.standalone()))
     with pytest.raises(HTTPException) as first:
-        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, False, None, Application())
+        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, False, None,
+                                                    request=_OPEN_MODE, application=Application())
     assert first.value.status_code == 409
     assert first.value.detail["confirmation"] == "discard_material" and first.value.detail["changed"] is False
     assert first.value.detail["material_generation"] == preview["material_generation"]
     with pytest.raises(HTTPException) as changed:
-        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, True, stale, Application())
+        await downloads.activate_artifact_candidate(transfer.id, artifact.id, target, True, stale,
+                                                    request=_OPEN_MODE, application=Application())
     assert changed.value.status_code == 409 and changed.value.detail["changed"] is True
     assert (await ctx.repository.artifacts(transfer.id))[0].selected == 0
 
