@@ -3,7 +3,8 @@ const { test, expect } = require('@playwright/test');
 /* DP 1.0.13 Statistics cleanup: copy and card titles, the separator between
  * the period and the overall/rolling KPI rows (and the page still fitting
  * where it did), Completions bucket labels in the viewer's date preference,
- * whole-number count ticks, and uploads named by what they contained. */
+ * whole-number count ticks, Transfer Methods as the server names them, and
+ * Events Severity in its fixed order. */
 
 const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
 const bucket = (date, count) => ({date, count, premium: 0, network: 0, unattributed: count});
@@ -18,9 +19,10 @@ const PERIODS = {
 const BREAKDOWN = {
   torrent_status: [{status: 'completed', count: 9}, {status: 'deleted', count: 2}],
   file_status: [{status: 'completed', count: 9}],
-  event_levels: [{level: 'info', count: 4}],
-  sources: [{source: 'manual', count: 6}, {source: 'nzb_file', count: 4}, {source: 'torrent_file', count: 3},
-            {source: 'manual_file', count: 2}, {source: 'metalink_file', count: 1}],
+  // In the query's own order, which is not the display order.
+  event_levels: [{level: 'error', count: 2}, {level: 'info', count: 4}, {level: 'warning', count: 3}],
+  transfer_methods: [{method: 'Debrid', count: 6}, {method: 'Media Downloads', count: 4}, {method: 'HTTP(S)', count: 3},
+                     {method: 'Unattributed', count: 2}, {method: 'Usenet', count: 1}],
 };
 
 async function boot(page, {width = 1440, height = 1000, pref, timezone = 'UTC', daily} = {}) {
@@ -57,17 +59,55 @@ test('copy and card titles', async ({ page }) => {
   await expect(kpi.locator('.dash-kpi-lbl')).toHaveText('LIFETIME SUCCESS RATE');
   await expect(kpi.locator('.dash-kpi-sub')).toHaveText('Share of all recorded, finished downloads completed successfully.');
   const titles = await page.locator('#view-stats .dp-stats-breakdown-grid .card-title').allTextContents();
-  expect(titles).toEqual(['Transfer Disposition', 'File Status', 'Monitor Levels', 'Most Used Sources']);
+  expect(titles).toEqual(['Transfer Disposition', 'File Status', 'Events Severity', 'Transfer Methods']);
   const view = await page.locator('#view-stats').innerText();
   for (const old of ['LIFE-TIME', 'Top Sources', 'Download Status', 'recorded finished']) expect(view).not.toContain(old);
 });
 
-test('uploads are listed by what they contained, in their own ranking', async ({ page }) => {
+const rowsOf = (page, id) => page.locator(`#${id} .kv-row`).evaluateAll(nodes => nodes.map(node => [
+  node.querySelector('.kv-key').textContent, node.querySelector('.kv-val').textContent]));
+
+test('Transfer Methods lists the methods the server names, in its ranking', async ({ page }) => {
   await boot(page);
   await show(page, '7d');
-  const rows = await page.locator('#detail-sources .kv-row').evaluateAll(nodes => nodes.map(node => [
-    node.querySelector('.kv-key').textContent, node.querySelector('.kv-val').textContent]));
-  expect(rows).toEqual([['Magnet Link', '6'], ['NZB File', '4'], ['Torrent File', '3'], ['Uploaded File', '2'], ['Metalink File', '1']]);
+  expect(await rowsOf(page, 'detail-sources')).toEqual(
+    [['Debrid', '6'], ['Media Downloads', '4'], ['HTTP(S)', '3'], ['Unattributed', '2'], ['Usenet', '1']]);
+});
+
+for (const width of [1440, 900, 390]) {
+  test(`every Transfer Methods label is read whole, its count on its first line (${width}px)`, async ({ page }) => {
+    await boot(page, {width});
+    await page.unroute(url => url.pathname === '/api/stats/detail');
+    await page.route(url => url.pathname === '/api/stats/detail', route => route.fulfill({status: 200,
+      contentType: 'application/json', body: JSON.stringify({period: '7d', totals: {}, ...BREAKDOWN,
+        transfer_methods: [['Debrid', 4], ['HTTP(S)', 4], ['FTP / SFTP', 2], ['Media Downloads', 2], ['SCP', 1],
+          ['Unattributed', 1], ['Usenet', 1], ['WebDAV', 1], ['rsync', 1]].map(([method, count]) => ({method, count})),
+        daily_completions: PERIODS['7d']})}));
+    await show(page, '7d');
+    const rows = await page.locator('#detail-sources .kv-row').evaluateAll(nodes => nodes.map(node => {
+      const [key, value] = [node.querySelector('.kv-key'), node.querySelector('.kv-val')];
+      const [k, v, card] = [key.getBoundingClientRect(), value.getBoundingClientRect(),
+                            node.closest('.list-card').getBoundingClientRect()];
+      return {label: key.textContent, whole: key.scrollWidth <= key.clientWidth + 0.5,
+              firstLine: Math.abs(v.top - k.top) < 2, apart: v.left >= k.right, inside: v.right <= card.right};
+    }));
+    expect(rows).toHaveLength(9);
+    for (const row of rows) expect(row, row.label).toMatchObject({whole: true, firstLine: true, apart: true, inside: true});
+    expect(await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth)).toBe(0);
+  });
+}
+
+test('Events Severity is always Errors, Warnings, Informational', async ({ page }) => {
+  await boot(page);
+  await show(page, '7d');
+  expect(await rowsOf(page, 'detail-event-levels')).toEqual([['Errors', '2'], ['Warnings', '3'], ['Informational', '4']]);
+  // A severity with no events is simply absent; the others keep their order.
+  await page.unroute(url => url.pathname === '/api/stats/detail');
+  await page.route(url => url.pathname === '/api/stats/detail', route => route.fulfill({status: 200,
+    contentType: 'application/json', body: JSON.stringify({period: '30d', totals: {}, ...BREAKDOWN,
+      event_levels: [{level: 'info', count: 9}, {level: 'error', count: 1}], daily_completions: PERIODS['30d']})}));
+  await show(page, '30d');
+  expect(await rowsOf(page, 'detail-event-levels')).toEqual([['Errors', '1'], ['Informational', '9']]);
 });
 
 test('one separator, between the period row and the overall/rolling row, centred and about half as wide', async ({ page }) => {

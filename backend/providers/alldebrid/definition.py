@@ -99,6 +99,7 @@ definition = IntegrationDefinition(
     verification_subjects=_verification_subjects,
     presentation=IntegrationPresentation(
         status_name="AllDebrid",
+        acquisition_method="Debrid",
         premium=True,
         status_endpoint="/integration-status/alldebrid",
         display_order=10,

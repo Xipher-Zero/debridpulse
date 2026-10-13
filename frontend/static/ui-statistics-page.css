@@ -603,11 +603,12 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   min-width: 0;
 }
 
+/* A label is read whole: one longer than its column ("Media Downloads" in a
+   narrow two-column card) wraps onto a second line, its count staying on the
+   first; it is never cut to an ellipsis. */
 #view-stats .dp-stats-adaptive-list .kv-row > :first-child {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 #view-stats .dp-stats-breakdown-grid > .list-card > .card-header {

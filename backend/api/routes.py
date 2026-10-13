@@ -132,7 +132,6 @@ def _sql_date(field: str) -> str:
 from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
-from transfers.models import TORRENT_FILE_REQUEST_KINDS
 from application.service import AcquisitionScopeRequired, ApplicationService, LocalNetworkConfirmationRequired
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
@@ -1460,6 +1459,49 @@ async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions) 
     return [{**row, "unattributed": int(row["count"]) - int(row["premium"]) - int(row["network"])} for row in rows]
 
 
+async def _transfer_methods(db, where_sql: str, definitions) -> list[dict]:
+    """Statistics -> Transfer Methods: how DebridPulse actually acquired the
+    transfers added in the period, ranked, at most ten rows.
+
+    A transfer counts ONCE under each acquisition method that delivered any of
+    its current canonical artifacts -- by that artifact's latest delivered
+    execution (``execution_attempt_provenance.delivered``, the same delivery
+    truth the Completions families read; failed, replaced or standby attempts
+    never count). The method is the one the delivering integration declares
+    (``IntegrationPresentation.acquisition_method``), so three debrid services
+    are one "Debrid" and a transfer that also took material over HTTP(S)
+    counts there too. What was submitted (a magnet, an NZB, a Metalink) is
+    never a method. A transfer that completed with no delivery attributable to
+    any declared method -- history from before provenance, an adopted payload
+    -- is "Unattributed", never guessed into one."""
+    methods: dict[str, list[str]] = {}
+    for definition in definitions:
+        method = getattr(definition.presentation, "acquisition_method", None)
+        if method:
+            methods.setdefault(method, []).append(definition.id)
+    method_sql = " ".join(
+        f"WHEN p.provider_id IN ({', '.join('?' for _ in ids)}) THEN ?" for ids in methods.values()) or "WHEN 0 THEN NULL"
+    parameters = [value for method, ids in methods.items() for value in (*ids, method)]
+    return await db.fetchall(f"""
+        WITH scope AS (
+            SELECT id, completed_at FROM torrents {where_sql}
+        ),
+        delivered AS (
+            SELECT DISTINCT f.torrent_id AS transfer_id,
+                   (SELECT CASE {method_sql} END FROM execution_attempt_provenance p
+                    WHERE p.artifact_id = f.id AND p.delivered = 1 ORDER BY p.ordinal DESC LIMIT 1) AS method
+            FROM download_files f JOIN scope ON scope.id = f.torrent_id
+            WHERE {canonical_artifact_membership_sql("f")}
+        ),
+        attributed AS (SELECT transfer_id, method FROM delivered WHERE method IS NOT NULL)
+        SELECT method, COUNT(*) AS count FROM attributed GROUP BY method
+        UNION ALL
+        SELECT 'Unattributed', COUNT(*) FROM scope
+        WHERE completed_at IS NOT NULL AND id NOT IN (SELECT transfer_id FROM attributed)
+        HAVING COUNT(*) > 0
+        ORDER BY count DESC, method ASC LIMIT 10""", parameters)
+
+
 @router.get("/stats/detail")
 async def get_stats_detail(period: str = "all", application: ApplicationService = Depends(get_application)):
     """
@@ -1532,26 +1574,7 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
                                       "1y": 365 * 86400}[period_label]) if cutoff else None
         event_levels = [{"level": level, "count": count}
                         for level, count in (await severity_counts(db, event_since)).items()]
-        # An upload is named by what it contained: the one distinct, non-empty
-        # kind its durable ROOT requests record (as Details' "Submitted As"
-        # reads it). An upload recording none, several, or one no upload label
-        # names -- a pre-NZB history row rebuilt as a magnet, say -- keeps the
-        # channel's own "manual_file". Every other channel is unchanged.
-        sources = await db.fetchall(
-            f"""WITH root_kinds AS (
-                    SELECT transfer_id, COUNT(DISTINCT kind) AS kinds, MIN(kind) AS kind FROM (
-                        SELECT transfer_id, LOWER(COALESCE(json_extract(payload, '$.kind'), '')) AS kind
-                        FROM transfer_requests WHERE parent_id IS NULL)
-                    WHERE kind != '' GROUP BY transfer_id)
-                SELECT CASE WHEN torrents.source = 'manual_file' AND root_kinds.kinds = 1 THEN
-                           CASE WHEN root_kinds.kind IN ({",".join("?" * len(TORRENT_FILE_REQUEST_KINDS))}) THEN 'torrent_file'
-                                WHEN root_kinds.kind = 'nzb' THEN 'nzb_file'
-                                WHEN root_kinds.kind = 'meta4' THEN 'metalink_file'
-                                ELSE torrents.source END
-                           ELSE torrents.source END AS source,
-                       COUNT(*) as count
-                FROM torrents LEFT JOIN root_kinds ON root_kinds.transfer_id = torrents.id {where_ts}
-                GROUP BY 1 ORDER BY count DESC LIMIT 10""", sorted(TORRENT_FILE_REQUEST_KINDS))
+        transfer_methods = await _transfer_methods(db, where_ts, application.definitions)
 
         # ── Chart data (period-aware grouping) ───────────────────────────────
         _cutoff_90d = _sql_now_minus("90 days")
@@ -1575,7 +1598,7 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
             "file_status":        file_status,
             "event_levels":       event_levels,
             "daily_completions":  daily_completions,
-            "sources":            sources,
+            "transfer_methods":   transfer_methods,
         }
 
 

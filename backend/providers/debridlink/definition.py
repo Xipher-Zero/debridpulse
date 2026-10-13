@@ -82,6 +82,7 @@ definition = IntegrationDefinition(
     verification_subjects=_verification_subjects,
     presentation=IntegrationPresentation(
         status_name="Debrid-Link",
+        acquisition_method="Debrid",
         premium=True,
         status_endpoint="/integration-status/debridlink",
         # No display_order: an ordinary premium entry takes the presentation

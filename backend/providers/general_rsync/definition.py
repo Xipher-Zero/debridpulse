@@ -29,6 +29,7 @@ definition = IntegrationDefinition(
     "general_rsync", "provider", "rsync", GeneralRsyncOptions, build,
     presentation=IntegrationPresentation(
         status_name="rsync",
+        acquisition_method="rsync",
         static_status="healthy",
         # The fourth member of the Network Sources group, inside the reserved
         # STANDARD band documented on ``general_http``.

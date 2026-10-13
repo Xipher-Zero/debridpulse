@@ -8,25 +8,16 @@
 (function () {
   'use strict';
 
-  const SOURCE_LABELS = Object.freeze({
-    direct_link: 'Debrid Link',
-    manual: 'Magnet Link',
-    // The server names an upload by its one recorded root request kind; an
-    // upload without one (or with several) keeps the channel's name.
-    manual_file: 'Uploaded File',
-    nzb_file: 'NZB File',
-    torrent_file: 'Torrent File',
-    metalink_file: 'Metalink File',
-    alldebrid_existing: 'AllDebrid Import',
-    import_existing: 'AllDebrid Import',
-    api: 'API Submission',
-  });
+  // Events Severity reads the journal's stored severities, always in this
+  // order whatever the counts or the query's order.
+  const SEVERITIES = Object.freeze([['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]);
   const PRIMARY_ORDER = Object.freeze(['downloads', 'completed', 'progress', 'success', 'data']);
   const BREAKDOWNS = Object.freeze([
     {id: 'detail-torrent-status', title: 'Transfer Disposition', kind: 'status'},
     {id: 'detail-file-status', title: 'File Status', kind: 'status'},
-    {id: 'detail-event-levels', title: 'Monitor Levels', kind: 'status'},
-    {id: 'detail-sources', title: 'Most Used Sources', kind: 'source'},
+    {id: 'detail-event-levels', title: 'Events Severity', kind: 'severity'},
+    // The server names each acquisition method (its integrations declare it).
+    {id: 'detail-sources', title: 'Transfer Methods', kind: 'method'},
   ]);
   const MAX_VISIBLE = 10;
   const TWO_COLUMN_THRESHOLD = 6;
@@ -100,15 +91,18 @@
       completed: 'Completed', deleted: 'Deleted', error: 'Error', missing: 'Missing',
       duplicate: 'Duplicate', pending: 'Pending', uploading: 'Uploading', processing: 'Processing',
       ready: 'Ready', queued: 'Queued', downloading: 'Downloading', paused: 'Paused',
-      partial: 'Partial', blocked: 'Blocked', extracting: 'Extracting', info: 'Info',
-      warn: 'Warning', warning: 'Warning',
+      partial: 'Partial', blocked: 'Blocked', extracting: 'Extracting',
     };
     return labels[key] || titleCaseCode(key);
   }
 
-  function statisticsSourceLabel(value) {
-    const key = String(value || '').trim();
-    return SOURCE_LABELS[key] || 'Unknown Source';
+  function severityEntries(input) {
+    const counts = new Map((Array.isArray(input) ? input : []).map(function (item) {
+      return [String(item.level || '').trim().toLowerCase(), item.count];
+    }));
+    return SEVERITIES.filter(function (pair) { return counts.has(pair[0]); }).map(function (pair) {
+      return {raw: pair[0], label: pair[1], value: String(counts.get(pair[0]) ?? '—')};
+    });
   }
 
   function metricCard(key) {
@@ -143,10 +137,11 @@
 
   function dataEntries(input, kind) {
     if (!input) return [];
+    if (kind === 'severity') return severityEntries(input);
     const rawEntries = Array.isArray(input)
       ? input.map(function (item) {
           if (item && typeof item === 'object') {
-            const raw = item.status ?? item.level ?? item.source ?? Object.keys(item).find(function (key) { return key !== 'count'; }) ?? 'unknown';
+            const raw = item.status ?? item.method ?? Object.keys(item).find(function (key) { return key !== 'count'; }) ?? 'unknown';
             return [raw, item];
           }
           return [String(item), item];
@@ -156,7 +151,7 @@
       const raw = String(pair[0] ?? '').trim();
       return {
         raw: raw,
-        label: kind === 'source' ? statisticsSourceLabel(raw) : statusLabel(raw),
+        label: kind === 'method' ? raw : statusLabel(raw),
         value: String(entryValue(pair[1]) ?? '—'),
       };
     });
@@ -503,7 +498,7 @@
       renderBreakdown(BREAKDOWNS[0], stats.torrent_status);
       renderBreakdown(BREAKDOWNS[1], stats.file_status);
       renderBreakdown(BREAKDOWNS[2], stats.event_levels);
-      renderBreakdown(BREAKDOWNS[3], stats.sources);
+      renderBreakdown(BREAKDOWNS[3], stats.transfer_methods);
       renderCompletionChart(stats.daily_completions || []);
       document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: resolved}}));
       return stats;

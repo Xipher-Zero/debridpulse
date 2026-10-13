@@ -263,6 +263,7 @@ definition = IntegrationDefinition(
     durable_identities=frozenset({"usenet", "sabnzbd"}),
     presentation=IntegrationPresentation(
         status_name="Usenet",
+        acquisition_method="Usenet",
         premium=True,
         # A real readiness check: an enabled-but-unconfigured Usenet integration
         # must never render as ready, which a static status could not express.

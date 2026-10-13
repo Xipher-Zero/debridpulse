@@ -21,6 +21,7 @@ definition = IntegrationDefinition(
     "general_scp", "provider", "SCP", ScpOptions, build,
     presentation=IntegrationPresentation(
         status_name="SCP",
+        acquisition_method="SCP",
         static_status="healthy",
         # The third member of the Network Sources group, inside the reserved
         # STANDARD band documented on ``general_http``.

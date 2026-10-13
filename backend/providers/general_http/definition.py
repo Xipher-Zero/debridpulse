@@ -20,6 +20,7 @@ definition = IntegrationDefinition(
     "general_http", "provider", "HTTP(S)", GeneralHttpOptions, build,
     presentation=IntegrationPresentation(
         status_name="HTTP(S)",
+        acquisition_method="HTTP(S)",
         static_status="healthy",
         # The reserved STANDARD band. `display_order` is the one ordering
         # authority for both entry order and tier order (a tier takes the

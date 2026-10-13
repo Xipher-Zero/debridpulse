@@ -102,6 +102,7 @@ definition = IntegrationDefinition(
     renamed_options=(("usenet_enabled", "use_before_usenet"),),
     presentation=IntegrationPresentation(
         status_name="TorBox",
+        acquisition_method="Debrid",
         premium=True,
         status_endpoint="/integration-status/torbox",
         display_order=12,

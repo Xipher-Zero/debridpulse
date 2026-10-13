@@ -92,6 +92,7 @@ definition = IntegrationDefinition(
                                            "Requires an active Premiumize premium account."),),
     presentation=IntegrationPresentation(
         status_name="Premiumize",
+        acquisition_method="Debrid",
         premium=True,
         status_endpoint="/integration-status/premiumize",
         # No display_order: an ordinary premium entry takes the presentation

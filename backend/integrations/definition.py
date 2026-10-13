@@ -297,6 +297,13 @@ class IntegrationPresentation:
     # in the shared neutral badge treatment, exactly as before.
     transfer_label: Optional[str] = None
     transfer_theme: Optional[str] = None
+    # The acquisition method this integration's deliveries count under in
+    # Statistics -> Transfer Methods: how material actually arrived, never how
+    # it was submitted. Integrations of one method share it (every debrid
+    # service is "Debrid"). Absent: the integration delivers no material of its
+    # own -- a descriptor such as Metalink only names sources that other
+    # integrations deliver -- and a delivery recorded against it is unattributed.
+    acquisition_method: Optional[str] = None
 
     def public(self) -> dict:
         return {

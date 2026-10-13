@@ -148,10 +148,11 @@ def test_both_surfaces_use_the_one_formatter_with_the_canonical_fact():
 
 
 def test_channel_only_aggregates_stop_asserting_an_uploaded_file_is_a_torrent():
-    """Statistics and notifications group BY CHANNEL and have no request kind
-    available, so they must name the channel truthfully rather than repeat the
-    same legacy assumption."""
+    """Notifications group BY CHANNEL and have no request kind available, so
+    they must name the channel truthfully rather than repeat the same legacy
+    assumption. Statistics no longer groups by channel at all: Transfer
+    Methods counts how material was delivered."""
     statistics = (STATIC / "ui-statistics.js").read_text(encoding="utf-8")
-    assert "manual_file: 'Uploaded File'" in statistics
+    assert "manual_file" not in statistics and "Torrent File" not in statistics
     notifications = (BACKEND / "services" / "notifications.py").read_text(encoding="utf-8")
     assert '"manual_file":        "Uploaded file (UI)"' in notifications

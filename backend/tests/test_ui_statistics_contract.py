@@ -126,10 +126,17 @@ def test_breakdowns_keep_reviewed_labels_adaptive_top_ten_and_two_column_behavio
     source = read(STATS)
     css = read(STATS_CSS)
     view = statistics_view()
-    for heading in ("Transfer Disposition", "File Status", "Monitor Levels", "Most Used Sources"):
+    for heading in ("Transfer Disposition", "File Status", "Events Severity", "Transfer Methods"):
         assert heading in view
-    for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Info", "Warning", "Debrid Link", "Uploaded File", "Magnet Link", "Unknown"):
+    for old in ("Monitor Levels", "Most Used Sources"):
+        assert old not in view and old not in source
+    for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Unknown"):
         assert label in source
+    # Events Severity: fixed order and its own labels; the stored values stay.
+    assert "[['error', 'Errors'], ['warning', 'Warnings'], ['info', 'Informational']]" in source
+    # Transfer Methods: the server names each method; no submission-channel labels remain.
+    for old in ("Debrid Link", "Magnet Link", "Uploaded File", "Unknown Source", "SOURCE_LABELS"):
+        assert old not in source
     assert "MAX_VISIBLE = 10" in source
     assert "TWO_COLUMN_THRESHOLD = 6" in source
     assert "entries.slice(0, MAX_VISIBLE)" in source

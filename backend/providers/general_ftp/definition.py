@@ -20,6 +20,7 @@ definition = IntegrationDefinition(
     "general_ftp", "provider", "(S)FTP", GeneralFtpOptions, build,
     presentation=IntegrationPresentation(
         status_name="(S)FTP",
+        acquisition_method="FTP / SFTP",
         static_status="healthy",
         # The second member of the Network Sources group, inside the reserved
         # STANDARD band documented on ``general_http``; the GROUP renders at its

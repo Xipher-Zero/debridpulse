@@ -44,6 +44,7 @@ definition = IntegrationDefinition(
     "general_webdav", "provider", "WebDAV", GeneralWebdavOptions, build,
     presentation=IntegrationPresentation(
         status_name="WebDAV",
+        acquisition_method="WebDAV",
         static_status="healthy",
         # The fifth member of the Network Sources group, inside the reserved
         # STANDARD band documented on ``general_http``.

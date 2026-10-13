@@ -87,6 +87,7 @@ definition = IntegrationDefinition(
     durable_identities=frozenset({"media", "yt_dlp"}),
     presentation=IntegrationPresentation(
         status_name="Media Downloads",
+        acquisition_method="Media Downloads",
         # A real readiness answer: the packaged tools are checked, never assumed.
         status_endpoint="/integration-status/media",
         # The next member of the Network Sources group, inside the reserved

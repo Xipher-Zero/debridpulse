@@ -21,7 +21,7 @@ async function boot(page, {width = 1440, height = 900, light = false, clock = fa
     const period = new URL(route.request().url()).searchParams.get('period');
 
     return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
-      period, totals: {}, torrent_status: [], file_status: [], event_levels: [], sources: [],
+      period, totals: {}, torrent_status: [], file_status: [], event_levels: [], transfer_methods: [],
       daily_completions: PERIODS[period]})});
   });
   await page.goto('/');
