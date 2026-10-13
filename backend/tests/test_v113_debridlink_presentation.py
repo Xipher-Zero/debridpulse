@@ -41,6 +41,9 @@ nodes['premium-row'] = element('div');
 nodes['lbl-premium'] = element('span');
 const listeners = {};
 global.window = global;
+// The page's date owner (ui-downloads.js) formats the expiry day; this
+// renderer test only reads the wording around it.
+window.downloadsDayLabel = date => date.toISOString().slice(0, 10);
 global.document = {
   getElementById: id => nodes[id] || null,
   createElement: element,

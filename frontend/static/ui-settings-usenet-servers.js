@@ -168,7 +168,7 @@
       if (node && 'port' in sent && String(node.value) === String(sent.port)) {
         node.value = previousPort;
       }
-      toast(`Could not update ${serverName(card)}: ${error?.message || error}`, 'error');
+      toast(`Could not update ${serverName(card)}: ${failure(card, error)}`, 'error');
     } finally {
       control.disabled = false;
     }
@@ -193,6 +193,16 @@
   }
 
   /* The operator-facing name of one card, for the action results below. */
+  /* A refused server write, named by the card's own field when the server
+   * says which field it was; otherwise the server's message. */
+  function failure(card, error) {
+    const detail = Array.isArray(error?.detail) ? error.detail[0] : error?.detail;
+    // A refused setting names its key; a refused request body, its location.
+    const key = detail?.field || [...(detail?.loc || [])].reverse().find(part => typeof part === 'string');
+    const field = key ? card.querySelector(`[data-usenet-field="${CSS.escape(key)}"]`) : null;
+    return (field && window.DPSettingsPersistence.refusalMessage(error, field)) || error?.message || error;
+  }
+
   function serverName(card) {
     return String(card.querySelector('[data-usenet-display-name]')?.textContent || '').trim()
       || String(fieldValue(card, 'host') || '').trim()
@@ -651,7 +661,7 @@
       if (node && 'port' in sent && String(node.value) === String(sent.port)) {
         node.value = String(accepted.port ?? '');
       }
-      toast(`Could not update ${serverName(card)}: ${error?.message || error}`, 'error');
+      toast(`Could not update ${serverName(card)}: ${failure(card, error)}`, 'error');
     }
   }
 
@@ -666,7 +676,7 @@
       convergeName(card, await writeServer(card, {display_name: chosen}));
     } catch (error) {
       convergeName(card, {servers: [accepted]});
-      toast(`Could not rename ${serverName(card)}: ${error?.message || error}`, 'error');
+      toast(`Could not rename ${serverName(card)}: ${failure(card, error)}`, 'error');
     }
   }
 
@@ -709,7 +719,7 @@
       const native = nativeMessage(result);
       toast(native || `${name} saved`, native ? 'warn' : 'success');
     } catch (error) {
-      toast(`Could not save ${name}: ${error?.message || error}`, 'error');
+      toast(`Could not save ${name}: ${failure(card, error)}`, 'error');
     } finally {
       creations.delete(card);
       refreshClearGate(card);
@@ -827,7 +837,7 @@
     } catch (error) {
       card.dataset.usenetNameOverride = previous.override;
       label.textContent = previous.text;
-      toast(`Could not rename ${serverName(card)}: ${error?.message || error}`, 'error');
+      toast(`Could not rename ${serverName(card)}: ${failure(card, error)}`, 'error');
     }
   }
 

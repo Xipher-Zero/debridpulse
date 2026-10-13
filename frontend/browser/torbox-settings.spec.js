@@ -84,7 +84,7 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await expect(logo).toHaveAttribute('src', '/icons/providers/torbox.svg');
   expect(await logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(card.locator('.dp-settings-provider-header-copy'))
-    .toHaveText('Resolve supported links, torrents and NZBs through your TorBox account.');
+    .toHaveText('Resolve supported links, torrents, and NZBs through your TorBox account.');
   await expect(card.locator('.dp-settings-card-header [data-action="test-torbox"]')).toBeVisible();
   await expect(card.locator('[data-integration-enabled="torbox"]')).not.toBeChecked();
 
@@ -117,7 +117,7 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await expect(toggle).toHaveAttribute('data-commit-scope', 'integration:torbox');
   await expect(tuning).toContainText('Use TorBox Before Usenet');
   await expect(tuning).toContainText(
-    'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as fallback.');
+    'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.');
   const backups = tuning.locator('[data-setting="torbox_prepare_backup_torrents"]');
   await expect(backups).not.toBeChecked();
   await expect(backups).toHaveAttribute('data-commit', 'immediate');
@@ -126,7 +126,7 @@ test('the TorBox card uses the shipped mark, the shared island, and concise Addi
   await expect(tuning).toContainText('Uses TorBox create limits and active slots.');
   const ceiling = tuning.locator('[data-setting="torbox_max_active_torrents"]');
   await expect(ceiling).toHaveValue('');
-  await expect(ceiling).toHaveAttribute('placeholder', 'Plan maximum');
+  await expect(ceiling).toHaveAttribute('placeholder', 'Max');
   await expect(ceiling).toHaveAttribute('data-commit-scope', 'integration:torbox');
   await expect(tuning).toContainText('Maximum Active Torrents');
   for (const [key, value, min, max] of [
@@ -200,7 +200,7 @@ test('authorization opens in the operator browser, polls, connects, enables and 
   await page.clock.fastForward(5000);
   await expect(region.locator('.dp-settings-account-island')).toContainText('Connected as alice@example.com');
   // The shared premium owner's wording and TorBox's own plan as the tier.
-  await expect(region.locator('.dp-settings-account-expiry')).toHaveText(/^Pro until 31\.01\.2027 \(\d+ days remaining\)$/);
+  await expect(region.locator('.dp-settings-account-expiry')).toHaveText(/^Pro until Jan 31, 2027 \(\d+ days remaining\)$/);
   await expect(card.locator('[data-integration-enabled="torbox"]')).toBeChecked();
   expect((await islandGeometry(region)).overflow).toBeLessThanOrEqual(0);
 
@@ -264,7 +264,7 @@ test('TorBox joins the premium crown through the one premium-account owner', asy
   const alone = await compose(page, [torboxAccount()]);
   expect(alone.visible).toBe(true);
   expect(alone.blocks).toHaveLength(1);
-  expect(alone.blocks[0].lines[0]).toMatch(/^TorBox Pro until \d\d\.\d\d\.\d{4}$/);
+  expect(alone.blocks[0].lines[0]).toMatch(/^TorBox Pro until [A-Z][a-z]{2} \d{1,2}(?:, \d{4})?$/);
   expect(alone.blocks[0].lines[1]).toMatch(/^\(\d+ days remaining\)$/);
 
   const both = await compose(page, [rdAccount(), torboxAccount()]);

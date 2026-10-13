@@ -566,7 +566,6 @@
 
 #view-settings .dp-settings-download-limit-field .input {
   width: 96px;
-  text-align: center;
 }
 
 /* Inside the field's border the action is a compact chip, not a full-height
@@ -1012,6 +1011,13 @@
   max-width: 100%;
   box-sizing: border-box;
   text-align: left;
+}
+
+/* Every integer tunable in Settings shows its value centred, whatever grammar
+   holds it; a fractional quantity (a step with a decimal point), text and
+   credentials keep the ordinary alignment. */
+#view-settings input[type="number"].input:not([step*="."]) {
+  text-align: center;
 }
 
 /* A selector is the same cell control, sized for what it offers: it fills its

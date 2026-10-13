@@ -40,13 +40,13 @@
     return Math.ceil((until - Date.now()) / 86400000);
   }
 
-  // The one wording of a premium expiry: "Premium until DD.MM.YYYY" and its
-  // "(N days remaining)" / "(expired)" qualifier.
+  // The one wording of a premium expiry: "Premium until <date>", the date in
+  // the operator's date preference and time zone (the Downloads date owner),
+  // and its "(N days remaining)" / "(expired)" qualifier, counted from the
+  // instant itself.
   function describe(until, tier = 'Premium') {
-    const dd = String(until.getDate()).padStart(2, '0');
-    const mm = String(until.getMonth() + 1).padStart(2, '0');
     const days = remaining(until);
-    return {until: `${tier} until ${dd}.${mm}.${until.getFullYear()}`,
+    return {until: `${tier} until ${window.downloadsDayLabel(until)}`,
             days: days > 0 ? `(${days} days remaining)` : '(expired)'};
   }
 

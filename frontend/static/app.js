@@ -216,7 +216,9 @@ async function api(method, path, body, timeoutMs, options) {
     if (!r.ok) {
       // A structured refusal keeps its facts for the caller that asked.
       const detail = data.detail;
-      const error = new Error((detail && typeof detail === 'object' ? detail.message : detail) || r.statusText);
+      // A request-body refusal is a list of refused values: the first one speaks.
+      const first = Array.isArray(detail) ? detail[0] : detail;
+      const error = new Error((first && typeof first === 'object' ? first.message || first.msg : first) || r.statusText);
       error.detail = detail;
       error.status = r.status;
       throw error;
@@ -2286,8 +2288,12 @@ async function downloadTransferTrace(button) {
   try {
     const r = await window.debridPulseAuth.fetch(`${API}/torrents/${encodeURIComponent(id)}/trace`);
     if (!r.ok) {
-      const data = await r.json().catch(() => ({detail: r.statusText}));
-      throw new Error(data.detail || r.statusText);
+      const data = await r.json().catch(() => ({}));
+      // The same reading of a refusal as api(): a structured detail speaks
+      // through its message, never as "[object Object]".
+      const detail = data.detail;
+      throw new Error((detail && typeof detail === 'object' ? detail.message : detail)
+        || 'The trace log could not be downloaded.');
     }
     const named = /filename="([^"]+)"/.exec(r.headers.get('Content-Disposition') || '');
     const url = URL.createObjectURL(await r.blob());
@@ -2667,8 +2673,13 @@ async function _setDownloadSpeedCap(bps) {
     // surface, not the aria2-specific route, is the write authority for live
     // bandwidth (specification section 9.6).
     var limitResult = await api('PATCH', '/execution/runtime-limits', {max_download_bytes_per_second: bps});
+    // Saved first, then applied: a value the server now holds that downloads
+    // could not take yet is said as such (its error stays in the server log).
     if (limitResult && limitResult.ok === false) {
-      throw new Error(limitResult.last_apply_error || 'Bandwidth limit could not be applied');
+      toast(limitResult.configured?.max_download_bytes_per_second === bps
+        ? 'Speed limit saved, but running downloads could not take it yet.'
+        : 'Speed limit could not be applied.', 'error');
+      return false;
     }
     // The canonical cache follows the value the runtime-limits surface accepted.
     if (settingsData) {
@@ -2678,7 +2689,10 @@ async function _setDownloadSpeedCap(bps) {
     updateRuntimeStatusBadge({limitBps: bps});
     return true;
   } catch(e) {
-    toast('Speed limit error: '+e.message, 'error');
+    // A refusal is already a sentence about the speed limit; anything else
+    // (a timeout, a lost connection) is said with what failed.
+    toast(e.status === 400 ? sanitizeErrorMsg(e.message)
+      : 'Speed limit could not be changed: ' + sanitizeErrorMsg(e.message), 'error');
     return false;
   }
 }

@@ -80,7 +80,7 @@ const premiumWording = page => page.evaluate(expires => {
 test('a finite premium AllDebrid account states the shared premium line above its key island', async ({page}) => {
   const {card, region} = await prepare(page, {alldebrid: healthy(PREMIUM)});
   const expected = await premiumWording(page);
-  expect(expected).toMatch(/^Premium until 14\.03\.2027 \(\d+ days remaining\)$/);
+  expect(expected).toMatch(/^Premium until Mar 14, 2027 \(\d+ days remaining\)$/);
   await expect(region.locator('.dp-settings-provider-status-line .dp-settings-account-expiry')).toHaveText(expected);
   // Provider Status reads the same truth through the same owner.
   await expect(page.locator('#lbl-premium')).toContainText(`AllDebrid ${expected.split(' (')[0]}`);

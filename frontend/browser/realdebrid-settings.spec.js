@@ -172,7 +172,7 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   await expect(backups).toHaveAttribute('data-commit', 'immediate');
   const ceiling = tuning.locator('[data-setting="realdebrid_max_active_torrents"]');
   await expect(ceiling).toHaveValue('');
-  await expect(ceiling).toHaveAttribute('placeholder', 'Account maximum');
+  await expect(ceiling).toHaveAttribute('placeholder', 'Max');
   await expect(ceiling).toHaveAttribute('data-commit-scope', 'integration:realdebrid');
   for (const [key, value, min, max] of [
     ['realdebrid_rate_limit_per_minute', '240', '1', '250'],
@@ -232,7 +232,7 @@ test('authorization opens in the operator browser, polls, connects, enables and 
     expect(calls).not.toContain('POST /api/integrations/realdebrid/authorization/poll');
     await page.clock.fastForward(5000);
     await expect(region.locator('.dp-settings-account-island')).toContainText('Connected as alice');
-    await expect(region.locator('.dp-settings-account-expiry')).toHaveText(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
+    await expect(region.locator('.dp-settings-account-expiry')).toHaveText(/^Premium until Jan 31, 2027 \(\d+ days remaining\)$/);
     await expect(region.locator('[data-realdebrid-code], .dp-settings-account-waiting')).toHaveCount(0);
     await expect(region.locator('[data-action="connect-realdebrid"], [data-action="cancel-realdebrid"]'))
       .toHaveCount(0);
@@ -247,7 +247,7 @@ test('authorization opens in the operator browser, polls, connects, enables and 
       copy: parseFloat(getComputedStyle(node.querySelector('.dp-settings-account-island-copy > .dp-settings-copy')).fontSize),
     }));
     expect(sizes.expiry).toBe(sizes.copy);
-    expect(connected.text).toMatch(/^Premium until 31\.01\.2027 \(\d+ days remaining\)$/);
+    expect(connected.text).toMatch(/^Premium until Jan 31, 2027 \(\d+ days remaining\)$/);
     expect(connected.height).toBeCloseTo(disconnected.height, 0);
     expect(connected.card).toBeCloseTo(disconnected.card, 0);
 

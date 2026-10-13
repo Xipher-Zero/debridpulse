@@ -422,6 +422,6 @@ def test_each_provider_card_offers_backup_torrents_and_a_ceiling_only_where_a_ma
                 f"option: 'max_active_torrents', blank: null}}") in settings
         assert f"input('{identity}_max_active_torrents', 'Maximum Active Torrents'," in settings
     assert "debridlink_max_active_torrents" not in settings          # no maximum to state, no field
-    assert "min: 1, max: 30, placeholder: 'AllDebrid maximum (30)'" in settings
+    assert "min: 1, max: 30, placeholder: 'Max'" in settings
     for jargon in ("standby", "speculative", "reclaim"):
         assert jargon not in settings.casefold()

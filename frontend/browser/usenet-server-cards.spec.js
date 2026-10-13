@@ -1752,3 +1752,16 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
     expect(Math.abs(ssl.centerY - wrapper.centerY)).toBeGreaterThan(2);
   });
 });
+
+/* DP 1.0.13 Sierra batch 2: a refused new server is named by its own field,
+ * never as a validation dump, and nothing is created. */
+test('a new server refused for its port says which field and the bound', async ({page}) => {
+  const card = await draftCard(page);
+  await field(card, 'port').fill('70000');
+  await field(card, 'host').fill('news.refused.example');
+  await field(card, 'host').blur();
+  const toast = page.locator('.toast.error').last();
+  await expect(toast).toHaveText(/^Could not save .+: Port must be 65535 or less\.$/);
+  for (const raw of ['Invalid request value', 'Unprocessable', 'less_than_equal', 'body']) await expect(toast).not.toContainText(raw);
+  expect((await storedServers(page)).some(server => server.host === 'news.refused.example')).toBe(false);
+});

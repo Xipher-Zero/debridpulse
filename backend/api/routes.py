@@ -67,6 +67,53 @@ def _sanitize_error(exc: Exception) -> str:
     return sanitize_exception(exc, max_length=200)
 
 
+# What a refused value must be, by the rule it broke. Built only from the
+# schema's own bounds -- never the submitted value, which may be a secret.
+_VALIDATION_REQUIREMENTS = {
+    "less_than_equal": "must be {le} or less",
+    "greater_than_equal": "must be {ge} or more",
+    "less_than": "must be less than {lt}",
+    "greater_than": "must be more than {gt}",
+    "int_parsing": "must be a whole number",
+    "int_type": "must be a whole number",
+    "int_from_float": "must be a whole number",
+    "float_parsing": "must be a number",
+    "float_type": "must be a number",
+    "bool_parsing": "must be on or off",
+    "bool_type": "must be on or off",
+    "string_type": "must be text",
+    "string_too_short": "must be at least {min_length} characters",
+    "string_too_long": "must be at most {max_length} characters",
+    "missing": "is required",
+    "extra_forbidden": "is not a recognised setting",
+}
+
+
+def _validation_refusal(error: dict) -> dict:
+    """One refused value as an operator reads it: ``message`` stands alone,
+    ``requirement`` lets a caller that knows the field's label say "<label>
+    <requirement>.", and ``field`` names the schema key for that matching (it
+    is never shown). A validator's own sentence is its message; a rule not
+    listed here is "not valid" rather than Pydantic's wording."""
+    field = next((str(part) for part in reversed(error.get("loc") or ()) if isinstance(part, str)), "")
+    kind = str(error.get("type") or "")
+    if kind in ("value_error", "assertion_error"):
+        authored = str(error.get("msg") or "").removeprefix("Value error, ").removeprefix("Assertion failed, ")
+        return {"message": authored[:200] or "Value is not valid.", "field": field}
+    try:
+        requirement = _VALIDATION_REQUIREMENTS.get(kind, "is not valid").format(**(error.get("ctx") or {}))
+    except (KeyError, IndexError, ValueError):
+        requirement = "is not valid"
+    return {"message": f"Value {requirement}.", "requirement": requirement, "field": field}
+
+
+def _refused(exc: ValidationError) -> HTTPException:
+    """A 400 for a refused settings value: the first rule it broke, in words
+    (``_validation_refusal``); the full validation detail goes to the log."""
+    logger.info("Settings value refused: %s", _sanitize_error(exc))
+    return HTTPException(400, _validation_refusal(exc.errors(include_url=False)[0]))
+
+
 # ── SQL dialect helpers ────────────────────────────────────────────────────────
 def _sql_now_minus(interval: str) -> str:
     parts = interval.split()
@@ -1877,6 +1924,8 @@ async def aria2_set_global_options(body: dict, application: ApplicationService =
             if "max_concurrent_downloads" in body:
                 try:
                     update = TransferPolicyUpdate(max_concurrent_executions=body["max_concurrent_downloads"])
+                except ValidationError as exc:
+                    raise _refused(exc) from None
                 except Exception as exc:
                     raise HTTPException(400, _sanitize_error(exc)) from None
                 result = await patch_transfer_policy(update, application=application)
@@ -1942,11 +1991,11 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
     command already uses -- never application-wide maintenance merely because
     the value is persisted (specification section 2.6, 13.3)."""
     if "max_download_bytes_per_second" not in body:
-        raise HTTPException(400, "max_download_bytes_per_second is required")
+        raise HTTPException(400, "A speed limit is required.")
     try:
         value = max(0, int(body["max_download_bytes_per_second"]))
     except (TypeError, ValueError):
-        raise HTTPException(400, "max_download_bytes_per_second must be an integer") from None
+        raise HTTPException(400, "Speed limit must be a whole number.") from None
 
     async with application.application_operation():
         # The config-write lock serializes the full desired-write ->
@@ -2023,6 +2072,8 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
             try:
                 policy = base.model_copy(update=updates)
                 policy = TransferSettings(**policy.model_dump())  # re-validate bounds
+            except ValidationError as exc:
+                raise _refused(exc) from None
             except Exception as exc:
                 raise HTTPException(400, _sanitize_error(exc)) from None
             current.transfer_policy = policy
@@ -2124,6 +2175,8 @@ async def patch_integration_configuration(
             store=SettingsStore(get_settings, load_settings, save_settings, apply_settings, config_write_lock),
             apply_native=apply_aria2 if integration_id == "aria2" else None)
     except InvalidIntegrationOptions as exc:
+        if isinstance(exc.__cause__, ValidationError):
+            raise _refused(exc.__cause__) from None
         raise HTTPException(400, _sanitize_error(exc.__cause__ or exc)) from None
     except ConfigurationRefused as exc:
         raise HTTPException(409, str(exc)) from None
@@ -2602,6 +2655,8 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
                 updated, payload = mutate(UsenetOptions(**(stored or {})))
             except ServerMutationError as exc:
                 raise HTTPException(404, "Unknown Usenet server") from None
+            except ValidationError as exc:
+                raise _refused(exc) from None
             except ValueError as exc:
                 raise HTTPException(400, _sanitize_error(exc)) from None
             current.integrations = {**current.integrations, USENET_NAMESPACE: IntegrationSettings(

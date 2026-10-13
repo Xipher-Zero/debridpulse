@@ -185,8 +185,29 @@
     return baselines.has(key) && signature(control) !== baselines.get(key);
   }
 
-  function report(error) {
-    const message = String((error && error.message) || error || 'That setting could not be saved.');
+  /* A refused value above a field's ceiling, worded by the field (its
+   * data-limit-message) with the ceiling read from its own max -- the bound
+   * the server enforces -- instead of the server's raw validation text. */
+  function limitMessage(control, draft) {
+    const template = control?.dataset?.limitMessage;
+    const max = Number(control?.max);
+    if (!template || control.max === '' || !Number.isFinite(max) || !(Number(draft) > max)) return '';
+    return template.replace('{max}', control.max);
+  }
+
+  /* A refused value in its field's own words -- "<label> <requirement>." --
+   * when the server says which rule it broke (the requirement of its
+   * structured refusal) and the control has a label; otherwise ''. */
+  function refusalMessage(error, control) {
+    const detail = Array.isArray(error?.detail) ? error.detail[0] : error?.detail;
+    const label = String(control?.labels?.[0]?.textContent || control?.getAttribute?.('aria-label') || '')
+      .replace(/\s+/g, ' ').trim();
+    return detail && typeof detail === 'object' && detail.requirement && label ? `${label} ${detail.requirement}.` : '';
+  }
+
+  function report(error, control, draft) {
+    const message = limitMessage(control, draft) || refusalMessage(error, control)
+      || String((error && error.message) || error || 'That setting could not be saved.');
     // Failure is reported by the canonical toast owner; there is no second
     // notification system. Ordinary success is deliberately silent.
     if (typeof window.toast === 'function') window.toast(message, 'error');
@@ -291,7 +312,7 @@
         if (control.isConnected && signature(control) === draft) {
           present(control, baselines.has(key) ? baselines.get(key) : fallback);
         }
-        report(error);
+        report(error, control, draft);
       }
     }).finally(() => {
       outstanding -= 1;
@@ -419,7 +440,7 @@
   });
 
   window.DPSettingsPersistence = Object.freeze({
-    defineScope, adopt, baseline, dirty, commit, settle, perform, accept, resume, supersede,
+    defineScope, adopt, baseline, dirty, commit, settle, perform, accept, resume, supersede, refusalMessage,
     pending: () => outstanding,
   });
 })();

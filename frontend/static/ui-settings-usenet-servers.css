@@ -101,7 +101,6 @@
 .dp-usenet-row--host .dp-usenet-field--port > .form-label { grid-column: 2; grid-row: 1; }
 .dp-usenet-row--host .dp-usenet-field--port > .input { grid-column: 2; grid-row: 2; }
 
-.dp-usenet-field--port .input { text-align: center; }
 
 .dp-usenet-ssl {
   grid-column: 3;

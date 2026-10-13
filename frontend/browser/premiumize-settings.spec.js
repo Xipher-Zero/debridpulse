@@ -33,7 +33,7 @@ test('the Premiumize card is the API-key premium card with exactly the scoped Ad
   await expect(logo).toHaveAttribute('src', '/icons/providers/premiumize.svg');
   expect(await logo.evaluate(image => image.complete && image.naturalWidth > 0)).toBe(true);
   await expect(card.locator('.dp-settings-provider-header-copy'))
-    .toHaveText('Resolve supported links, torrents and NZBs through your Premiumize account.');
+    .toHaveText('Resolve supported links, torrents, and NZBs through your Premiumize account.');
 
   // The credential island is Debrid-Link's, exactly.
   const geometry = async id => {
@@ -66,7 +66,7 @@ test('the Premiumize card is the API-key premium card with exactly the scoped Ad
   await expect(nzb).not.toBeChecked();
   await expect(tuning).toContainText('Use Premiumize Before Usenet');
   await expect(tuning).toContainText(
-    'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as fallback.');
+    'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.');
   const backups = tuning.locator('[data-setting="premiumize_prepare_backup_torrents"]');
   await expect(backups).not.toBeChecked();
   await expect(tuning).toContainText('Prepare Backup Torrents');
@@ -114,7 +114,7 @@ test('a healthy premium Premiumize joins the crown and a free or unhealthy one a
   const entry = (state, status) => ({id: 'premiumize', name: 'Premiumize', state, status});
 
   const [alone] = await compose([entry('healthy', {account: account('premium', 40)})]);
-  expect(alone).toMatch(/^Premiumize Premium until \d\d\.\d\d\.\d{4}\(\d+ days remaining\)$/);
+  expect(alone).toMatch(/^Premiumize Premium until [A-Z][a-z]{2} \d{1,2}(?:, \d{4})?\(\d+ days remaining\)$/);
   expect(await compose([entry('healthy', {account: account('standard')})])).toEqual([]);
   expect(await compose([entry('auth_required', {account: account('premium', 40)})])).toEqual([]);
 });

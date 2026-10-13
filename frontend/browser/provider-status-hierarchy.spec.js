@@ -313,7 +313,7 @@ test('one premium account: one crown beside the full two-line block, tiers kept'
   expect(one.visible).toBe(true);
   expect(one.blocks).toHaveLength(1);
   expect(one.blocks[0].compact).toBe(false);
-  expect(one.blocks[0].lines[0]).toMatch(/^Real-Debrid Premium until \d\d\.\d\d\.\d{4}$/);
+  expect(one.blocks[0].lines[0]).toMatch(/^Real-Debrid Premium until [A-Z][a-z]{2} \d{1,2}(?:, \d{4})?$/);
   expect(one.blocks[0].lines[1]).toMatch(/^\(\d+ days remaining\)$/);
   expect(one.crowns).toEqual(['premium-row']);
   expect(one.align).toBe('center');
@@ -486,7 +486,7 @@ test('premium lapsing and returning moves tier and crown with no provider-specif
   let shown = await panel(page);
   expect(shown.tiers.find(tier => tier.id === 'premium_service').rows).toEqual(['TorBox', 'Usenet']);
   expect(shown.torbox.dot).toBe('dot ok');
-  expect(shown.crown).toMatch(/^TorBox Pro until \d\d\.\d\d\.\d{4}\(\d+ days remaining\)$/);
+  expect(shown.crown).toMatch(/^TorBox Pro until [A-Z][a-z]{2} \d{1,2}(?:, \d{4})?\(\d+ days remaining\)$/);
   expect(shown.flow.slice(0, 2)).toEqual(['CROWN', '# Premium Services']);
 
   // Premium ends while DebridPulse runs: the backend announces it, the panel re-observes.

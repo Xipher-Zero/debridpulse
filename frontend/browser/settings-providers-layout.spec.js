@@ -192,9 +192,9 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
           expect(Math.abs(partBox.centerX - cellBox.centerX),
             `cell ${i} ${part} is not centred`).toBeLessThanOrEqual(2);
         }
-        // The value inside the control keeps the canonical field alignment.
+        // Each of these is an integer tunable, so its value is centred.
         expect(await cell.locator('.input').evaluate(el =>
-          getComputedStyle(el).textAlign)).toBe('left');
+          getComputedStyle(el).textAlign)).toBe('center');
       }
 
       // The lane count drops on its own as the width falls, the rows left-fill

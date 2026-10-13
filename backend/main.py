@@ -307,13 +307,19 @@ async def request_validation_error_handler(_request: Request, exc: RequestValida
     otherwise be copied into browser, proxy, or diagnostic logs as response
     content. Keep only stable structural metadata and a generic message.
     """
+    from api.routes import _validation_refusal
+
     detail = []
     for error in exc.errors():
+        # The rule each value broke, worded from the schema's own bounds --
+        # never from the submitted input.
+        refusal = _validation_refusal(error)
         detail.append(
             {
                 "type": str(error.get("type") or "validation_error"),
                 "loc": list(error.get("loc") or ()),
-                "msg": "Invalid request value",
+                "msg": refusal["message"],
+                **({"requirement": refusal["requirement"]} if "requirement" in refusal else {}),
             }
         )
     return JSONResponse(

@@ -59,7 +59,7 @@ def test_use_torbox_before_usenet_is_one_precise_interactive_persisted_toggle():
     torbox = card("torbox")
     assert "tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet'," in torbox
     assert ("Try TorBox first when resolving NZB downloads. "
-            "Your configured Usenet service remains available as fallback.") in torbox
+            "Your configured Usenet service remains available as a fallback.") in torbox
     assert "torbox_use_before_usenet: {scope: 'integration:torbox', option: 'use_before_usenet', commit: 'immediate'}" \
         in SETTINGS_JS
     # F: never disabled for a plan; the canonical mutation refuses and the
@@ -88,7 +88,7 @@ def test_maximum_active_torrents_is_empty_unless_the_operator_sets_a_ceiling():
     torbox = card("torbox")
     assert "input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? ''," \
         in torbox
-    assert "placeholder: 'Plan maximum'" in torbox and "min: 1, max: 10" in torbox
+    assert "placeholder: 'Max'" in torbox and "min: 1, max: 10" in torbox
     # Empty commits null -- following the plan -- so rendering never stores a value.
     assert ("torbox_max_active_torrents: {scope: 'integration:torbox', option: 'max_active_torrents', blank: null}"
             in SETTINGS_JS)

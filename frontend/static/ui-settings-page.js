@@ -509,6 +509,11 @@
     return `dp-settings-field-${key.replaceAll('_', '-')}`;
   }
 
+  /* What an API rate field says when the server refuses a value above its
+   * ceiling. The ceiling is never written here: the persistence owner fills
+   * {max} from the control's own max, the same bound the server enforces. */
+  const apiLimitMessage = provider => `${provider} API limit must be {max} or fewer requests per minute.`;
+
   function input(key, label, value, options = {}) {
     // ``id``: a second control of the same setting elsewhere on the page.
     const id = options.id || fieldId(key);
@@ -529,6 +534,7 @@
       options.autocomplete ? `autocomplete="${html(options.autocomplete)}"` : '',
       options.maxlength != null ? `maxlength="${html(options.maxlength)}"` : '',
       options.ariaLabel ? `aria-label="${html(options.ariaLabel)}"` : '',
+      options.limitMessage ? `data-limit-message="${html(options.limitMessage)}"` : '',
     ].filter(Boolean).join(' ');
     const bare =
       `<input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>`;
@@ -1101,11 +1107,20 @@
   const SOURCE_BOX_COPY = Object.freeze({
     general_http: ['Direct downloads from', 'HTTP and HTTPS URLs.'],
     general_ftp: ['Direct downloads from', 'FTP and SFTP URLs.'],
-    general_scp: ['Direct downloads from', 'SCP and SSH file URLs.'],
+    general_scp: ['Direct downloads from', 'files over SCP.'],
     general_rsync: ['Direct downloads from', 'rsync sources.'],
     general_webdav: ['Direct downloads from', 'WebDAV files and folders.'],
     multimeta: ['Downloads described by', 'Metalink (.meta4) files.'],
     media: ['Downloads supported media from', 'compatible web pages and media sites.'],
+  });
+
+  /* A box title that differs from the integration's presentation name. On
+   * Services, Multimeta is named by the format it reads first, its own name
+   * beneath ("Metalink" / "(Multimeta)", set one word per line like every
+   * multi-word title). Provider Status and transfer badges keep the
+   * presentation name; the identity `multimeta` is untouched. */
+  const SOURCE_BOX_TITLES = Object.freeze({
+    multimeta: 'Metalink (Multimeta)',
   });
 
   function groupHeaderToggle(groupId, label, value) {
@@ -1793,7 +1808,7 @@
                 'Also add torrents to AllDebrid as backup sources while another provider delivers them. Uses AllDebrid active magnet slots.',
                 allDebridOf(s).prepare_backup_torrents === true),
               input('alldebrid_max_active_torrents', 'Maximum Active Torrents', allDebridOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, max: 30, placeholder: 'AllDebrid maximum (30)',
+                type: 'number', min: 1, max: 30, placeholder: 'Max',
                 hint: 'Leave empty to follow AllDebrid (30 active magnets). A lower number keeps fewer torrents active on AllDebrid; it never goes above 30.'
               }),
             ),
@@ -1844,17 +1859,17 @@
                 'Also add torrents to Real-Debrid as backup sources while another provider delivers them. Uses your Real-Debrid active torrent slots.',
                 realDebridOf(s).prepare_backup_torrents === true),
               input('realdebrid_max_active_torrents', 'Maximum Active Torrents', realDebridOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, placeholder: 'Account maximum',
+                type: 'number', min: 1, placeholder: 'Max',
                 hint: 'Leave empty to follow your Real-Debrid account limit. A lower number keeps fewer torrents active on Real-Debrid; it never goes above your account limit.'
               }),
             ),
             input('realdebrid_rate_limit_per_minute', 'API Calls per Minute', realDebridOf(s).rate_limit_per_minute ?? 240, {
-              type: 'number', min: 1, max: 250,
+              type: 'number', min: 1, max: 250, limitMessage: apiLimitMessage('Real-Debrid'),
               hint: 'Limits how many requests DebridPulse sends to Real-Debrid each minute. Real-Debrid allows at most 250.'
             }),
             input('realdebrid_request_timeout_seconds', 'Request Timeout (seconds)', realDebridOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'How long DebridPulse waits for an ordinary Real-Debrid API answer before treating the request as failed.'
+              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
             }),
             input('realdebrid_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', realDebridOf(s).torrent_upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
@@ -1892,20 +1907,20 @@
                 'Also add torrents to TorBox as backup sources while another provider delivers them. Uses TorBox create limits and active slots.',
                 torBoxOf(s).prepare_backup_torrents === true),
               input('torbox_max_active_torrents', 'Maximum Active Torrents', torBoxOf(s).max_active_torrents ?? '', {
-                type: 'number', min: 1, max: 10, placeholder: 'Plan maximum',
+                type: 'number', min: 1, max: 10, placeholder: 'Max',
                 hint: 'Leave empty to follow your TorBox plan (Free 1, Essential 3, Standard 5, Pro 10). A lower number keeps fewer torrents active on TorBox; it never goes above your plan.'
               }),
             ),
             tuningToggle('torbox_use_before_usenet', 'Use TorBox Before Usenet',
-              'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
+              'Try TorBox first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.',
               torBoxOf(s).use_before_usenet === true),
             input('torbox_rate_limit_per_minute', 'API Calls per Minute', torBoxOf(s).rate_limit_per_minute ?? 240, {
-              type: 'number', min: 1, max: 300,
+              type: 'number', min: 1, max: 300, limitMessage: apiLimitMessage('TorBox'),
               hint: 'Limits how many requests DebridPulse sends to TorBox each minute. TorBox allows at most 300.'
             }),
             input('torbox_request_timeout_seconds', 'Request Timeout (seconds)', torBoxOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'How long DebridPulse waits for an ordinary TorBox API answer before treating the request as failed.'
+              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
             }),
             input('torbox_upload_timeout_seconds', 'Upload Timeout (seconds)', torBoxOf(s).upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
@@ -1925,7 +1940,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--torbox" src="/icons/providers/torbox.svg" alt="">
       </span>`,
       displayName: 'TorBox',
-      headerCopy: 'Resolve supported links, torrents and NZBs through your TorBox account.',
+      headerCopy: 'Resolve supported links, torrents, and NZBs through your TorBox account.',
       headerAction: providerTestAction('test-torbox'),
     });
 
@@ -1956,7 +1971,7 @@
               debridLinkOf(s).prepare_backup_torrents === true),
             input('debridlink_request_timeout_seconds', 'Request Timeout (seconds)', debridLinkOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'How long DebridPulse waits for an ordinary Debrid-Link API answer before treating the request as failed.'
+              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
             }),
             input('debridlink_torrent_upload_timeout_seconds', 'Torrent Upload Timeout (seconds)', debridLinkOf(s).torrent_upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
@@ -1994,11 +2009,11 @@
               'Also add torrents to your Premiumize cloud as backup sources while another provider delivers them. Uses your Premiumize account resources.',
               premiumizeOf(s).prepare_backup_torrents === true),
             tuningToggle('premiumize_use_before_usenet', 'Use Premiumize Before Usenet',
-              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as fallback.',
+              'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.',
               premiumizeOf(s).use_before_usenet === true),
             input('premiumize_request_timeout_seconds', 'Request Timeout (seconds)', premiumizeOf(s).request_timeout_seconds ?? 30, {
               type: 'number', min: 5, max: 300,
-              hint: 'How long DebridPulse waits for an ordinary Premiumize API answer before treating the request as failed.'
+              hint: 'Time allowed for this provider to respond to a request. Defaults to 30 seconds.'
             }),
             input('premiumize_upload_timeout_seconds', 'Upload Timeout (seconds)', premiumizeOf(s).upload_timeout_seconds ?? 120, {
               type: 'number', min: 30, max: 900,
@@ -2018,7 +2033,7 @@
         <img class="dp-settings-provider-logo dp-settings-provider-logo--premiumize" src="/icons/providers/premiumize.svg" alt="">
       </span>`,
       displayName: 'Premiumize',
-      headerCopy: 'Resolve supported links, torrents and NZBs through your Premiumize account.',
+      headerCopy: 'Resolve supported links, torrents, and NZBs through your Premiumize account.',
       headerAction: providerTestAction('test-premiumize'),
     });
 
@@ -2048,7 +2063,7 @@
         || leftId.localeCompare(rightId)) : [];
     const generalSources = groupCard(groupLabel,
       `<div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
-        sourceProtocolBox(id, entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
+        sourceProtocolBox(id, SOURCE_BOX_TITLES[id] || entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
       titlePrefix: protocolIcon(groupId, true),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',

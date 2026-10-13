@@ -52,12 +52,12 @@ const CARDS = [
   ['general_ftp', '.dp-settings-provider-card--general-ftp', '(S)FTP',
    ['Direct downloads from', 'FTP and SFTP URLs.']],
   ['general_scp', '.dp-settings-provider-card--general-scp', 'SCP',
-   ['Direct downloads from', 'SCP and SSH file URLs.']],
+   ['Direct downloads from', 'files over SCP.']],
   ['general_rsync', '.dp-settings-provider-card--general-rsync', 'rsync',
    ['Direct downloads from', 'rsync sources.']],
   ['general_webdav', '.dp-settings-provider-card--general-webdav', 'WebDAV',
    ['Direct downloads from', 'WebDAV files and folders.']],
-  ['multimeta', '.dp-settings-provider-card--multimeta', 'Multimeta',
+  ['multimeta', '.dp-settings-provider-card--multimeta', 'Metalink (Multimeta)',
    ['Downloads described by', 'Metalink (.meta4) files.']],
   ['media', '.dp-settings-provider-card--media', 'Media Downloads',
    ['Downloads supported media from', 'compatible web pages and media sites.']],
@@ -251,8 +251,11 @@ test('only the really registered Network Source providers render, with their own
         identity: box.querySelector('[data-integration-enabled]').dataset.integrationEnabled,
         label: box.querySelector('.card-title').textContent.trim(),
       })));
+    // One named exception: on Services, Multimeta is titled by the format it
+    // reads, its own name beneath; its identity and status name are unchanged.
+    const titles = {multimeta: 'Metalink (Multimeta)'};
     expect(rendered).toEqual(expected.map(([id, entry]) =>
-      ({identity: id, label: entry.presentation.status_name})));
+      ({identity: id, label: titles[id] || entry.presentation.status_name})));
   });
 
 // The HTTP(S)/(S)FTP independence proof lives in general-sources-master.spec.js,

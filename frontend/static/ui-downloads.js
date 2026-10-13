@@ -112,6 +112,12 @@ function formatDownloadsDate(value) {
   if (!d || Number.isNaN(d.getTime())) return String(value);
   return formatCalendar(parts(d));
 }
+// An instant's calendar day alone, in the same preference and time zone.
+function formatDownloadsDay(date) {
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
+  const {year, month, day} = parts(date);
+  return formatCalendar({year, month, day});
+}
 function exactDate(value) {
   if (!value) return '';
   const d = typeof parseApiDate === 'function' ? parseApiDate(value) : new Date(value);
@@ -1110,6 +1116,8 @@ window.loadTorrents = loadTorrents;
 window.downloadsDateMarkup = dateMarkup;
 // The same preference applied to calendar fields the server already bucketed (Statistics).
 window.downloadsCalendarLabel = formatCalendar;
+// The same, for one instant's day (a premium account's expiry).
+window.downloadsDayLabel = formatDownloadsDay;
 window.updateDownloadsTrackedCopy = updateDownloadsTrackedCopy;
 window.setFilter = setFilter;
 window.onTorrentOrderChange = onTorrentOrderChange;
