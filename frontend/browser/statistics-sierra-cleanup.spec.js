@@ -25,13 +25,18 @@ const BREAKDOWN = {
                      {method: 'Unattributed', count: 2}, {method: 'Usenet', count: 1}],
 };
 
-async function boot(page, {width = 1440, height = 1000, pref, timezone = 'UTC', daily} = {}) {
+// Every acquisition method at once: "Media Downloads" wraps in the narrow two-column card.
+const ALL_METHODS = [['Debrid', 4], ['HTTP(S)', 4], ['FTP / SFTP', 2], ['Media Downloads', 2], ['SCP', 1],
+  ['Unattributed', 1], ['Usenet', 1], ['WebDAV', 1], ['rsync', 1]].map(([method, count]) => ({method, count}));
+
+async function boot(page, {width = 1440, height = 1000, pref, timezone = 'UTC', daily, methods} = {}) {
   await page.setViewportSize({width, height});
   if (pref) await page.addInitScript(([key, value]) => localStorage.setItem(key, JSON.stringify(value)), [PREF_KEY, pref]);
   await page.route(url => url.pathname === '/api/stats/detail', route => {
     const period = new URL(route.request().url()).searchParams.get('period');
     return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
-      period, totals: {torrent_total: 12, completed_count: 9}, ...BREAKDOWN, daily_completions: daily || PERIODS[period]})});
+      period, totals: {torrent_total: 12, completed_count: 9}, ...BREAKDOWN,
+      ...(methods ? {transfer_methods: methods} : {}), daily_completions: daily || PERIODS[period]})});
   });
   await page.goto('/');
   await page.waitForFunction(() => window.DPStatisticsLifecycle && typeof Chart !== 'undefined' && typeof window.downloadsCalendarLabel === 'function');
@@ -76,20 +81,16 @@ test('Transfer Methods lists the methods the server names, in its ranking', asyn
 
 for (const width of [1440, 900, 390]) {
   test(`every Transfer Methods label is read whole, its count on its first line (${width}px)`, async ({ page }) => {
-    await boot(page, {width});
-    await page.unroute(url => url.pathname === '/api/stats/detail');
-    await page.route(url => url.pathname === '/api/stats/detail', route => route.fulfill({status: 200,
-      contentType: 'application/json', body: JSON.stringify({period: '7d', totals: {}, ...BREAKDOWN,
-        transfer_methods: [['Debrid', 4], ['HTTP(S)', 4], ['FTP / SFTP', 2], ['Media Downloads', 2], ['SCP', 1],
-          ['Unattributed', 1], ['Usenet', 1], ['WebDAV', 1], ['rsync', 1]].map(([method, count]) => ({method, count})),
-        daily_completions: PERIODS['7d']})}));
+    await boot(page, {width, methods: ALL_METHODS});
     await show(page, '7d');
     const rows = await page.locator('#detail-sources .kv-row').evaluateAll(nodes => nodes.map(node => {
       const [key, value] = [node.querySelector('.kv-key'), node.querySelector('.kv-val')];
       const [k, v, card] = [key.getBoundingClientRect(), value.getBoundingClientRect(),
                             node.closest('.list-card').getBoundingClientRect()];
       return {label: key.textContent, whole: key.scrollWidth <= key.clientWidth + 0.5,
-              firstLine: Math.abs(v.top - k.top) < 2, apart: v.left >= k.right, inside: v.right <= card.right};
+              // The count's line centres on the label's first line, however many lines the label takes.
+              firstLine: v.top + v.height / 2 > k.top && v.top + v.height / 2 < k.top + 16,
+              apart: v.left >= k.right, inside: v.right <= card.right};
     }));
     expect(rows).toHaveLength(9);
     for (const row of rows) expect(row, row.label).toMatchObject({whole: true, firstLine: true, apart: true, inside: true});
@@ -140,6 +141,10 @@ test('one separator, between the period row and the overall/rolling row, centred
   expect(geometry.after).toContain('dp-stats-history-grid');
   expect(geometry.sep.top).toBeGreaterThanOrEqual(geometry.first.bottom);
   expect(geometry.sep.bottom).toBeLessThanOrEqual(geometry.second.top);
+  // Room to breathe, the same above and below: the body's own row gap.
+  const [above, below] = [geometry.sep.top - geometry.first.bottom, geometry.second.top - geometry.sep.bottom];
+  expect(above).toBeGreaterThanOrEqual(10);
+  expect(Math.abs(above - below)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.sep.width - geometry.inner / 2)).toBeLessThanOrEqual(1);
   expect(Math.abs(geometry.sep.left + geometry.sep.width / 2 - (geometry.bodyLeft + geometry.inner / 2))).toBeLessThanOrEqual(1);
   expect(geometry.colour).toBe(geometry.muted);
@@ -162,11 +167,20 @@ const chartInsideCard = page => page.evaluate(() => {
 });
 
 // 1440x914 is the shortest desktop height at which the page fit before the
-// separator; 950 lies in the band where the x-axis used to be cut off.
+// separator; 950 lies in the band where the x-axis used to be cut off. Every
+// acquisition method is listed, so at 1440 "Media Downloads" wraps.
 for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 914], [1920, 1080]]) {
   test(`the page still fits at ${width}x${height} with the separator, and the whole chart shows`, async ({ page }) => {
-    await boot(page, {width, height});
+    await boot(page, {width, height, methods: ALL_METHODS});
     await show(page, '7d');
+    const boxes = await page.evaluate(() => ({
+      heights: [...document.querySelectorAll('#view-stats .dp-stats-breakdown-grid > .list-card')]
+        .map(card => Math.round(card.getBoundingClientRect().height)),
+      wrapped: [...document.querySelectorAll('#detail-sources .kv-key')]
+        .some(key => key.getBoundingClientRect().height > 20)}));
+    // The four boxes keep one equal height, wrapped label or not.
+    expect(new Set(boxes.heights).size).toBe(1);
+    if (width === 1440) expect(boxes.wrapped).toBe(true);
     const fit = await page.evaluate(() => {
       const body = document.querySelector('#view-stats > .dp-stats-master-body');
       const doc = document.documentElement;

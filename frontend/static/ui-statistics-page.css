@@ -111,14 +111,15 @@ body.light #view-stats .dp-statistics-title-icon {
 }
 
 /* ── Separator between the period and the overall/rolling KPI rows ───── */
-/* Subdued, centred, about half the section wide; it sits partly inside the
-   body's row gaps so the chart's flex area gives up only its own height. */
+/* Subdued, centred, about half the section wide; the body's own row gap
+   above and below it is its breathing room, and the chart's flex area gives
+   up its height. */
 #view-stats .dp-stats-row-separator {
   flex: 0 0 auto;
   width: 50%;
   min-width: max-content;
   max-width: 100%;
-  margin: -4px auto;
+  margin: 0 auto;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -237,9 +238,10 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 /* ── Completion chart ─────────────────────────────────────────────────── */
 #view-stats .dp-stats-chart {
   flex: 1 1 240px;
-  /* 228px less the KPI row separator's 14px, so the page fits where it did;
-     the canvas regains those 14px from the whitespace above it. */
-  min-height: 214px;
+  /* 228px less the KPI row separator's 22px (its line and the body gap that
+     follows it), so the page fits where it did; the canvas regains 14px of
+     them from the whitespace above it. */
+  min-height: 206px;
   margin: 0 !important;
   display: flex;
   flex-direction: column;
@@ -259,11 +261,13 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   line-height: 1.2;
 }
 
+/* The x-axis labels sit as close to the card's lower edge as the canvas sits
+   to its header (4px each): the canvas, not padding, takes the card's height. */
 #view-stats .dp-stats-chart > .scard-body {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
-  padding: 4px 12px 12px !important;
+  padding: 4px 12px 4px !important;
 }
 
 /* The canvas takes exactly the card's body: a floor of its own let it spill
@@ -303,9 +307,11 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   padding-inline: 14px;
 }
 
+/* The bottom padding only shows when a list fills its card (under the card's
+   own minimum height it is never seen), so it is no more than a list needs. */
 #view-stats .dp-stats-breakdown-grid > .list-card > .card-body {
   min-height: 122px;
-  padding: 9px 14px 10px;
+  padding: 9px 14px 3px;
 }
 
 /* ── Full-height desktop workspace ───────────────────────────────────── */
@@ -605,10 +611,13 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 
 /* A label is read whole: one longer than its column ("Media Downloads" in a
    narrow two-column card) wraps onto a second line, its count staying on the
-   first; it is never cut to an ellipsis. */
+   first; it is never cut to an ellipsis. Its own lines sit closer than the
+   rows' cadence (a single-line row keeps the row's 20px), so a wrapped label
+   still fits the card's five-row height. */
 #view-stats .dp-stats-adaptive-list .kv-row > :first-child {
   min-width: 0;
   overflow-wrap: anywhere;
+  line-height: 16px;
 }
 
 #view-stats .dp-stats-breakdown-grid > .list-card > .card-header {
