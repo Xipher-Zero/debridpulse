@@ -288,6 +288,9 @@ test('Recorded Events shows the journal count with separators, and never zero wh
       status: reply.status, contentType: 'application/json', body: JSON.stringify(reply.body)}));
     await openMaintenance(page);
     await expect(field(page, 'event_journal_recorded')).toHaveValue('1,234,567');
+    // A compact reading: centred in its selector-sized field.
+    expect(await field(page, 'event_journal_recorded').evaluate(node =>
+      [getComputedStyle(node).textAlign, Math.round(node.getBoundingClientRect().width)])).toEqual(['center', 120]);
     // Revisiting Settings reads it again; a failed read is unavailable, not 0.
     reply = {status: 503, body: {detail: 'unavailable'}};
     await page.locator('#sidebar .nav-item[data-view="events"]').click();

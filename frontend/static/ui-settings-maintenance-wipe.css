@@ -107,9 +107,11 @@
   min-width: 0;
 }
 
-/* The reading takes the selector's footprint, not a free-text field's. */
+/* The reading takes the selector's footprint, not a free-text field's, and
+   shows its count centred as the selector beside it shows its value. */
 #view-settings .dp-settings-event-logging-recorded .input {
   width: 120px;
+  text-align: center;
 }
 
 /* Title over hint on the left, field on the right, the descriptive block

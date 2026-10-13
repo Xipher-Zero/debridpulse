@@ -134,6 +134,11 @@ test('the Archive Passwords guidance lives inside the editor and intercepts noth
     const editor = page.locator('.dp-settings-extraction-password-editor');
     const guidance = editor.locator('.dp-settings-password-guidance');
     await expect(guidance).toHaveCount(1);
+    // The entries flow into columns, so neither the title nor the guidance
+    // speaks of lines.
+    await expect(page.locator('.dp-settings-extraction-password-field > .form-label')).toHaveText('Archive Passwords');
+    await expect(guidance).toHaveText('Passwords are saved as you finish editing. Use Show all to reveal them, '
+      + 'and Clear Passwords to erase the stored list.');
     // It consumes no external row.
     await expect(page.locator('.dp-settings-extraction-password-field > .form-hint')).toHaveCount(0);
 
