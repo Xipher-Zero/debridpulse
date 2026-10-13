@@ -763,6 +763,32 @@ body.light #view-stats .dp-stats-chart-title-icon {
   font-weight: 400;
 }
 
+/* The Completions legend: right-aligned in the header, one item per line, a
+   square swatch the chart owner paints in each role's chart colour. */
+#view-stats .dp-stats-chart-legend {
+  margin-left: auto;
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  color: var(--dp-text-muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+}
+#view-stats .dp-stats-chart-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+#view-stats .dp-stats-chart-legend-swatch {
+  width: 9px;
+  height: 9px;
+  flex: 0 0 9px;
+  border-radius: 2px;
+}
+
 /* Five-row analytical cadence. */
 #view-stats .dp-stats-breakdown-grid .dp-stats-adaptive-list .kv-row {
   min-height: 20px !important;

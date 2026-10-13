@@ -39,6 +39,7 @@ from transfers.requests import (
 )
 from core.config_validator import validate_and_sanitise
 from integrations.definition import IntegrationSettings
+from transfers._repository_base import canonical_artifact_membership_sql
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.manual_queue_move import QueueMoveRefused, RestartConfirmationRequired
 from transfers.settings import TransferSettings
@@ -1358,8 +1359,69 @@ async def get_stats(application: ApplicationService = Depends(get_application)):
     return result
 
 
+# The Completions chart's source families, as Settings -> Services presents
+# them, from the metadata each integration declares: Premium Services are the
+# integrations whose static tier is the premium service tier, Network Sources
+# the members of the direct-sources group. No integration is named here.
+_COMPLETION_FAMILIES = (("premium", "status_tier", "premium_service"), ("network", "status_group", "direct_sources"))
+# The periods whose completion buckets are split by source family; 30 days and
+# all time keep their total-only bars.
+_STACKED_COMPLETION_PERIODS = frozenset({"1h", "24h", "7d", "1y"})
+
+
+def _completion_family_members(definitions) -> dict[str, list[str]]:
+    return {family: sorted(definition.id for definition in definitions
+                           if getattr(definition.presentation, field, None) == value)
+            for family, field, value in _COMPLETION_FAMILIES}
+
+
+async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions=None) -> list[dict]:
+    """Completed transfers per bucket since ``since_sql``: ``count`` as it has
+    always been counted and, given ``definitions``, how many of them each
+    source family delivered.
+
+    A completion belongs to a family only when every one of its current
+    canonical artifacts was delivered -- by its latest delivered execution
+    (``execution_attempt_provenance.delivered``, written by the one completion
+    funnel; earlier failed or replaced attempts never count) -- through a
+    provider of that same family. A completion whose material came through
+    both families, or any part of which has no recorded delivering provider
+    (history from before provenance, an adopted payload), is unattributed and
+    stays in ``count``: ``count == premium + network + unattributed``."""
+    if definitions is None:
+        return await db.fetchall(
+            f"SELECT {bucket_sql} AS date, COUNT(*) AS count FROM torrents "
+            f"WHERE completed_at >= {since_sql} AND status='completed' GROUP BY {bucket_sql} ORDER BY date ASC")
+    members = _completion_family_members(definitions)
+    family_sql = " ".join(
+        f"WHEN p.provider_id IN ({', '.join('?' for _ in ids) or 'NULL'}) THEN '{family}'"
+        for family, ids in members.items())
+    rows = await db.fetchall(f"""
+        WITH done AS (
+            SELECT id, {bucket_sql} AS date FROM torrents WHERE completed_at >= {since_sql} AND status='completed'
+        ),
+        artifact AS (
+            SELECT f.torrent_id AS transfer_id,
+                   (SELECT CASE {family_sql} END FROM execution_attempt_provenance p
+                    WHERE p.artifact_id = f.id AND p.delivered = 1 ORDER BY p.ordinal DESC LIMIT 1) AS family
+            FROM download_files f JOIN done ON done.id = f.torrent_id
+            WHERE {canonical_artifact_membership_sql("f")}
+        ),
+        attributed AS (
+            SELECT transfer_id,
+                   CASE WHEN COUNT(*) = COUNT(family) AND MIN(family) = MAX(family) THEN MIN(family) END AS family
+            FROM artifact GROUP BY transfer_id
+        )
+        SELECT done.date AS date, COUNT(*) AS count,
+               COUNT(CASE WHEN attributed.family = 'premium' THEN 1 END) AS premium,
+               COUNT(CASE WHEN attributed.family = 'network' THEN 1 END) AS network
+        FROM done LEFT JOIN attributed ON attributed.transfer_id = done.id
+        GROUP BY done.date ORDER BY done.date ASC""", [provider for ids in members.values() for provider in ids])
+    return [{**row, "unattributed": int(row["count"]) - int(row["premium"]) - int(row["network"])} for row in rows]
+
+
 @router.get("/stats/detail")
-async def get_stats_detail(period: str = "all"):
+async def get_stats_detail(period: str = "all", application: ApplicationService = Depends(get_application)):
     """
     period: "1h" | "24h" | "7d" | "30d" | "1y" | "all"
     All metrics (including totals) are filtered to the selected period.
@@ -1429,36 +1491,18 @@ async def get_stats_detail(period: str = "all"):
         # ── Chart data (period-aware grouping) ───────────────────────────────
         _cutoff_90d = _sql_now_minus("90 days")
         if period == "1h":
-            _grp = _sql_strftime("%H:%M", "completed_at")
-            daily_completions = await db.fetchall(
-                f"SELECT {_grp} as date, COUNT(*) as count "
-                f"FROM torrents WHERE completed_at >= {cutoff} AND status='completed' "
-                f"GROUP BY {_grp} ORDER BY date ASC")
+            _grp, _since = _sql_strftime("%H:%M", "completed_at"), cutoff
         elif period == "24h":
-            # Group and label by hour — both SELECT and GROUP BY use the same expression
-            _grp = _sql_strftime("%H:00", "completed_at")
-            daily_completions = await db.fetchall(
-                f"SELECT {_grp} as date, COUNT(*) as count "
-                f"FROM torrents WHERE completed_at >= {cutoff} AND status='completed' "
-                f"GROUP BY {_grp} ORDER BY {_grp} ASC")
+            # Group and label by hour -- both SELECT and GROUP BY use the same expression
+            _grp, _since = _sql_strftime("%H:00", "completed_at"), cutoff
         elif period in ("7d", "30d"):
-            _grp = _sql_date("completed_at")
-            daily_completions = await db.fetchall(
-                f"SELECT {_grp} as date, COUNT(*) as count "
-                f"FROM torrents WHERE completed_at >= {cutoff} AND status='completed' "
-                f"GROUP BY {_grp} ORDER BY date ASC")
+            _grp, _since = _sql_date("completed_at"), cutoff
         elif period == "1y":
-            _grp = _sql_strftime("%Y-%m", "completed_at")
-            daily_completions = await db.fetchall(
-                f"SELECT {_grp} as date, COUNT(*) as count "
-                f"FROM torrents WHERE completed_at >= {cutoff} AND status='completed' "
-                f"GROUP BY {_grp} ORDER BY date ASC")
-        else:  # all — last 90 days grouped by day
-            _grp = _sql_date("completed_at")
-            daily_completions = await db.fetchall(
-                f"SELECT {_grp} as date, COUNT(*) as count "
-                f"FROM torrents WHERE completed_at >= {_cutoff_90d} AND status='completed' "
-                f"GROUP BY {_grp} ORDER BY date ASC")
+            _grp, _since = _sql_strftime("%Y-%m", "completed_at"), cutoff
+        else:  # all -- last 90 days grouped by day
+            _grp, _since = _sql_date("completed_at"), _cutoff_90d
+        by_family = period in _STACKED_COMPLETION_PERIODS
+        daily_completions = await _completion_buckets(db, _grp, _since, application.definitions if by_family else None)
 
         return {
             "period":             period_label,
@@ -1467,6 +1511,8 @@ async def get_stats_detail(period: str = "all"):
             "file_status":        file_status,
             "event_levels":       event_levels,
             "daily_completions":  daily_completions,
+            # Whether daily_completions carries the source-family split.
+            "completions_by_family": by_family,
             "sources":            sources,
         }
 

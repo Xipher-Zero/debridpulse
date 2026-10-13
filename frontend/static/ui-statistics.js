@@ -292,50 +292,116 @@
     return gradient;
   }
 
-  function applyChartPalette() {
-    const chart = document.getElementById('daily-chart')?._ci;
-    const dataset = chart && chart.data && chart.data.datasets && chart.data.datasets[0];
-    if (!dataset) return;
+  /* Completions on the 1 Hour, 1 Day, 7 Days and 1 Year periods: each bar is
+   * the bucket's completion total, stacked from the completions the server
+   * attributed to each source family (by the provider that delivered them)
+   * and, in the chart's own purple, the remainder it could not attribute.
+   * The purple is the total's identity -- "Daily Completions" -- and never a
+   * third family. 30 Days and All Time carry no split and stay single bars. */
+  const COMPLETION_ROLES = Object.freeze([
+    ['premium', 'Premium Sources'],
+    ['network', 'Network Sources'],
+  ]);
+  const COMPLETIONS_LABEL = 'Daily Completions';
+
+  function completionColor(role) {
     const isLight = document.body.classList.contains('light');
-    dataset.backgroundColor = function (context) { return statisticsPurpleGradient(context.chart); };
-    dataset.borderColor = isLight ? 'rgba(126, 75, 187, .72)' : 'rgba(166, 70, 244, .84)';
+    if (role === 'premium') return isLight ? 'rgba(186, 36, 196, .86)' : 'rgba(234, 88, 242, .9)';
+    if (role === 'network') return getComputedStyle(document.body).getPropertyValue('--dp-accent-cyan').trim() || '#17d8ff';
+    return isLight ? 'rgba(126, 75, 187, .72)' : 'rgba(166, 70, 244, .84)';
+  }
+
+  function renderCompletionLegend(stacked) {
+    const legend = document.getElementById('completions-legend');
+    if (!legend) return;
+    legend.replaceChildren(...[['total', COMPLETIONS_LABEL], ...(stacked ? COMPLETION_ROLES : [])].map(function ([role, text]) {
+      const item = document.createElement('span');
+      item.className = 'dp-stats-chart-legend-item';
+      item.setAttribute('role', 'listitem');
+      item.dataset.dpRole = role;
+      const swatch = document.createElement('span');
+      swatch.className = 'dp-stats-chart-legend-swatch';
+      swatch.setAttribute('aria-hidden', 'true');
+      item.append(swatch, document.createTextNode(text));
+      return item;
+    }));
+  }
+
+  // Theme-dependent paint of one segment role; the total's is the purple gradient.
+  function paintCompletionDataset(dataset) {
+    dataset.backgroundColor = dataset.dpRole === 'total'
+      ? function (context) { return statisticsPurpleGradient(context.chart); }
+      : completionColor(dataset.dpRole);
+    dataset.borderColor = completionColor(dataset.dpRole);
     dataset.borderWidth = 1;
     dataset.fill = true;
+    return dataset;
+  }
+
+  // Repaint the chart's segments and the legend's swatches for the current theme.
+  function applyChartPalette() {
+    document.querySelectorAll('#completions-legend .dp-stats-chart-legend-swatch').forEach(function (swatch) {
+      swatch.style.background = completionColor(swatch.parentElement.dataset.dpRole);
+    });
+    const chart = document.getElementById('daily-chart')?._ci;
+    const datasets = chart && chart.data && chart.data.datasets;
+    if (!datasets || !datasets.length) return;
+    datasets.forEach(paintCompletionDataset);
     if (typeof chart.update === 'function') chart.update('none');
   }
 
-  function renderCompletionChart(daily) {
+  // A stacked bucket's tooltip: its total and each family's share, and the
+  // unattributed remainder only when there is one -- never a claim that the
+  // two families make up the total when they do not.
+  function completionTooltipLines(bucket) {
+    const lines = ['Total completions: ' + (bucket.count || 0)];
+    COMPLETION_ROLES.forEach(function ([role, text]) { lines.push(text + ': ' + (bucket[role] || 0)); });
+    if (bucket.unattributed > 0) lines.push('Unattributed: ' + bucket.unattributed);
+    return lines;
+  }
+
+  function renderCompletionChart(daily, stacked) {
     const canvas = document.getElementById('daily-chart');
     if (!canvas || typeof Chart === 'undefined') return;
     if (canvas._ci) canvas._ci.destroy();
     const themeStyles = getComputedStyle(document.body);
     const gridColor = themeStyles.getPropertyValue('--border').trim();
     const tickColor = themeStyles.getPropertyValue('--text3').trim();
-    const isLight = document.body.classList.contains('light');
+    // The server says which periods carry the source-family split.
+    renderCompletionLegend(stacked);
+    const datasets = (stacked ? [
+      ...COMPLETION_ROLES.map(function ([role, text]) {
+        return {label: text, dpRole: role, data: daily.map(function (item) { return item[role]; }), stack: 'completions'};
+      }),
+      {label: 'Unattributed', dpRole: 'total', data: daily.map(function (item) { return item.unattributed; }), stack: 'completions'},
+    ] : [{
+      label: 'Completions',
+      dpRole: 'total',
+      data: daily.map(function (item) { return item.count || 0; }),
+      borderRadius: 4,
+    }]).map(paintCompletionDataset);
     canvas._ci = new Chart(canvas, {
       type: 'bar',
-      data: {
-        labels: daily.map(function (item) { return item.date || ''; }),
-        datasets: [{
-          label: 'Completions',
-          data: daily.map(function (item) { return item.count || 0; }),
-          backgroundColor: function (context) { return statisticsPurpleGradient(context.chart); },
-          borderColor: isLight ? 'rgba(126, 75, 187, .72)' : 'rgba(166, 70, 244, .84)',
-          borderWidth: 1,
-          borderRadius: 4,
-          fill: true,
-        }],
-      },
+      data: {labels: daily.map(function (item) { return item.date || ''; }), datasets: datasets},
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: {legend: {display: false}},
+        plugins: {
+          legend: {display: false},
+          tooltip: stacked ? {
+            mode: 'index',
+            displayColors: false,
+            filter: function (item) { return item.datasetIndex === 0; },
+            callbacks: {label: function (context) { return completionTooltipLines(daily[context.dataIndex]); }},
+          } : {},
+        },
         scales: {
-          x: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
-          y: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}}, beginAtZero: true, precision: 0},
+          x: {stacked: stacked, grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
+          y: {stacked: stacked, grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}}, beginAtZero: true, precision: 0},
         },
       },
     });
+    applyChartPalette();
   }
 
   async function loadDetailedStats(period) {
@@ -349,8 +415,7 @@
       renderBreakdown(BREAKDOWNS[1], stats.file_status);
       renderBreakdown(BREAKDOWNS[2], stats.event_levels);
       renderBreakdown(BREAKDOWNS[3], stats.sources);
-      renderCompletionChart(stats.daily_completions || []);
-      applyChartPalette();
+      renderCompletionChart(stats.daily_completions || [], stats.completions_by_family === true);
       document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: resolved}}));
       return stats;
     } catch (error) {
