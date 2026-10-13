@@ -35,6 +35,8 @@ const show = async (page, period) => {
   await page.waitForFunction(() => { const chart = document.getElementById('daily-chart')._ci; return chart && !Chart.animator.running(chart); });
 };
 const legend = page => page.locator('#completions-legend .dp-stats-chart-legend-item').allTextContents();
+// 1 Year's two months as the viewer's date preference labels them.
+const MONTHS = page => page.evaluate(() => ['09', '10'].map(month => window.downloadsCalendarLabel({year: '2026', month})));
 
 /* Each bucket's drawn geometry and RGBA samples (0-255) at named points. */
 const drawn = page => page.evaluate(() => {
@@ -269,7 +271,8 @@ test('changing period mid-animation starts the new chart from the baseline, with
   await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
   await page.clock.runFor(300);
   await page.evaluate(() => window.DPStatisticsLifecycle.load('1y'));
-  await expect.poll(() => page.evaluate(() => document.getElementById('daily-chart')._ci.data.labels.join())).toBe('2026-09,2026-10');
+  const months = (await MONTHS(page)).join();
+  await expect.poll(() => page.evaluate(() => document.getElementById('daily-chart')._ci.data.labels.join())).toBe(months);
   await page.clock.runFor(32);
   const early = await frame(page);
   // The new bars begin near the baseline, and nothing of the old chart remains drawn above them.
@@ -290,7 +293,7 @@ test('1 Year keeps its monthly buckets and stacks; the tooltip gives the total a
     return {labels: instance.data.labels, datasets: instance.data.datasets.map(set => ({role: set.dpRole, data: set.data})),
       lines: instance.data.labels.map((_, index) => instance.options.plugins.tooltip.callbacks.label({dataIndex: index}))};
   });
-  expect(chart.labels).toEqual(['2026-09', '2026-10']);
+  expect(chart.labels).toEqual(await MONTHS(page));
   // One bar per bucket: the total. Unattributed is never a dataset of its own.
   expect(chart.datasets).toEqual([{role: 'total', data: [1, 13]}]);
   expect(chart.lines).toEqual([

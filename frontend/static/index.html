@@ -456,11 +456,12 @@
           <div class="metric-card" data-dp-stats-metric="success"><div class="metric-label">Success Rate</div><div class="metric-value">&#8212;</div><div class="metric-sub">Share of finished downloads completed successfully during the last 7 days.</div></div>
           <div class="metric-card" data-dp-stats-metric="data"><div class="metric-label">Total Data Downloaded</div><div class="metric-value">&#8212;</div><div class="metric-sub">Total data downloaded during the last 7 days.</div></div>
         </div>
+        <div class="dp-stats-row-separator" role="separator" aria-label="Overall &amp; Rolling Metrics"><span class="dp-stats-row-separator-rule" aria-hidden="true"></span><span class="dp-stats-row-separator-label">Overall &amp; Rolling Metrics</span><span class="dp-stats-row-separator-rule" aria-hidden="true"></span></div>
         <div class="dash-kpi-strip dp-stats-history-grid">
           <div class="dash-kpi dp-stats-kpi-day"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/calendar-24.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-day">&#8212;</div><div class="dash-kpi-lbl">Last 24 Hours</div><div class="dash-kpi-sub">Completed downloads over the last 24 hours.</div></div>
           <div class="dash-kpi dp-stats-kpi-week"><span class="dp-icon-frame dp-icon-frame--purple dp-kpi-icon"><img src="/icons/dp/calendar-7.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-last-week">&#8212;</div><div class="dash-kpi-lbl">Last 7 Days</div><div class="dash-kpi-sub">Completed downloads over the last 7 days.</div></div>
           <div class="dash-kpi dp-stats-kpi-duration"><span class="dp-icon-frame dp-icon-frame--amber dp-kpi-icon"><img src="/icons/dp/clock-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-duration">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD TIME</div><div class="dash-kpi-sub">Average completion time for downloads to finish.</div></div>
-          <div class="dash-kpi dp-stats-kpi-success"><span class="dp-icon-frame dp-icon-frame--green dp-kpi-icon"><img src="/icons/dp/heartbeat-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-success-rate">&#8212;</div><div class="dash-kpi-lbl">LIFE-TIME SUCCESS RATE</div><div class="dash-kpi-sub">Share of all recorded finished downloads completed successfully.</div></div>
+          <div class="dash-kpi dp-stats-kpi-success"><span class="dp-icon-frame dp-icon-frame--green dp-kpi-icon"><img src="/icons/dp/heartbeat-outline.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-success-rate">&#8212;</div><div class="dash-kpi-lbl">LIFETIME SUCCESS RATE</div><div class="dash-kpi-sub">Share of all recorded, finished downloads completed successfully.</div></div>
           <div class="dash-kpi dp-stats-kpi-size"><span class="dp-icon-frame dp-icon-frame--blue dp-kpi-icon"><img src="/icons/dp/cube.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--lg"></span><div class="dash-kpi-val" id="i-avg-size">&#8212;</div><div class="dash-kpi-lbl">MEAN DOWNLOAD SIZE</div><div class="dash-kpi-sub">Average size of completed downloads.</div></div>
         </div>
         <div class="scard dp-stats-chart dp-list-workspace-surface">
@@ -468,10 +469,10 @@
           <div class="scard-body"><div class="chart-wrap"><canvas id="daily-chart"></canvas></div></div>
         </div>
         <div class="dp-stats-breakdown-grid">
-          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Download Status</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Transfer Disposition</span></div><div class="card-body" id="detail-torrent-status"><div class="empty">Loading&#8230;</div></div></div>
           <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">File Status</span></div><div class="card-body" id="detail-file-status"><div class="empty">Loading&#8230;</div></div></div>
           <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Monitor Levels</span></div><div class="card-body" id="detail-event-levels"><div class="empty">Loading&#8230;</div></div></div>
-          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Top Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
+          <div class="list-card dp-list-workspace-surface"><div class="card-header"><span class="card-title">Most Used Sources</span></div><div class="card-body" id="detail-sources"><div class="empty">Loading&#8230;</div></div></div>
         </div>
       </div>
     </div>

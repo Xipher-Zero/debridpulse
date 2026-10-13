@@ -70,7 +70,7 @@ function savePref() { try { localStorage.setItem(DATE_PREF_KEY, JSON.stringify(p
 function timeZone() { try { return String(settingsData?.timezone || '').trim() || 'UTC'; } catch (_) { return 'UTC'; } }
 function parts(date) {
   return Object.fromEntries(
-    new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: pref.hour12})
+    new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})
       .formatToParts(date).filter(p => p.type !== 'literal').map(p => [p.type, p.value])
   );
 }
@@ -79,20 +79,38 @@ function previousKey(p) {
   const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day) - 86400000);
   return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
 }
-function clock(p) { return pref.hour12 ? `${p.hour}:${p.minute} ${p.dayPeriod || ''}`.trim() : `${p.hour}:${p.minute}`; }
+// A 24-hour wall-clock reading in the preferred time style.
+function clock(p) {
+  if (!pref.hour12) return `${p.hour}:${p.minute}`;
+  return `${String((+p.hour + 11) % 12 + 1).padStart(2, '0')}:${p.minute} ${+p.hour < 12 ? 'AM' : 'PM'}`;
+}
+/* One calendar reading in the preferred format. Its fields are wall-clock
+ * values already in the preference's time zone: a date with or without its
+ * time, a month, or a time of day -- never shifted, never given a field it
+ * does not have. */
+function formatCalendar(p) {
+  const c = p.hour == null ? '' : clock(p);
+  if (p.year == null) return c;
+  const timed = date => c ? `${date} ${c}` : date;
+  const now = parts(new Date());
+  const month = new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', month: 'short'}).format(Date.UTC(+p.year, +p.month - 1, 1));
+  if (p.day == null) {
+    if (pref.format === 'iso') return `${p.year}-${p.month}`;
+    if (pref.format === 'us' || pref.format === 'international') return `${p.month}/${p.year}`;
+    return +p.year === +now.year ? month : `${month} ${p.year}`;
+  }
+  if (pref.format === 'us') return timed(`${p.month}/${p.day}/${p.year}`);
+  if (pref.format === 'international') return timed(`${p.day}/${p.month}/${p.year}`);
+  if (pref.format === 'iso') return timed(`${p.year}-${p.month}-${p.day}`);
+  if (dateKey(p) === dateKey(now)) return timed('Today');
+  if (dateKey(p) === previousKey(now)) return timed('Yesterday');
+  return timed(+p.year === +now.year ? `${month} ${+p.day}` : `${month} ${+p.day}, ${p.year}`);
+}
 function formatDownloadsDate(value) {
   if (!value) return '—';
   const d = typeof parseApiDate === 'function' ? parseApiDate(value) : new Date(value);
   if (!d || Number.isNaN(d.getTime())) return String(value);
-  const p = parts(d), c = clock(p);
-  if (pref.format === 'us') return `${p.month}/${p.day}/${p.year} ${c}`;
-  if (pref.format === 'international') return `${p.day}/${p.month}/${p.year} ${c}`;
-  if (pref.format === 'iso') return `${p.year}-${p.month}-${p.day} ${c}`;
-  const now = parts(new Date());
-  if (dateKey(p) === dateKey(now)) return `Today ${c}`;
-  if (dateKey(p) === previousKey(now)) return `Yesterday ${c}`;
-  const month = new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), month: 'short'}).format(d);
-  return +p.year === +now.year ? `${month} ${+p.day} ${c}` : `${month} ${+p.day}, ${p.year} ${c}`;
+  return formatCalendar(parts(d));
 }
 function exactDate(value) {
   if (!value) return '';
@@ -1090,6 +1108,8 @@ function init() {
 window.loadTorrents = loadTorrents;
 // The one date cell markup, also drawn by Dashboard Recent Activity.
 window.downloadsDateMarkup = dateMarkup;
+// The same preference applied to calendar fields the server already bucketed (Statistics).
+window.downloadsCalendarLabel = formatCalendar;
 window.updateDownloadsTrackedCopy = updateDownloadsTrackedCopy;
 window.setFilter = setFilter;
 window.onTorrentOrderChange = onTorrentOrderChange;

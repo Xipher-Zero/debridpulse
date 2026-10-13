@@ -1,0 +1,227 @@
+const { test, expect } = require('@playwright/test');
+
+/* DP 1.0.13 Statistics cleanup: copy and card titles, the separator between
+ * the period and the overall/rolling KPI rows (and the page still fitting
+ * where it did), Completions bucket labels in the viewer's date preference,
+ * whole-number count ticks, and uploads named by what they contained. */
+
+const PREF_KEY = 'debridpulse.downloads.date-presentation.v1';
+const bucket = (date, count) => ({date, count, premium: 0, network: 0, unattributed: count});
+const PERIODS = {
+  '1h': [bucket('09:05', 1), bucket('14:06', 2)],
+  '24h': [bucket('00:00', 1), bucket('13:00', 3)],
+  '7d': [bucket('2025-10-05', 2), bucket('2025-12-31', 1)],
+  '30d': [bucket('2025-10-05', 2), bucket('2025-12-31', 1)],
+  '1y': [bucket('2025-11', 4), bucket('2025-12', 1)],
+  all: [bucket('2025-10-05', 2), bucket('2025-12-31', 1)],
+};
+const BREAKDOWN = {
+  torrent_status: [{status: 'completed', count: 9}, {status: 'deleted', count: 2}],
+  file_status: [{status: 'completed', count: 9}],
+  event_levels: [{level: 'info', count: 4}],
+  sources: [{source: 'manual', count: 6}, {source: 'nzb_file', count: 4}, {source: 'torrent_file', count: 3},
+            {source: 'manual_file', count: 2}, {source: 'metalink_file', count: 1}],
+};
+
+async function boot(page, {width = 1440, height = 1000, pref, timezone = 'UTC', daily} = {}) {
+  await page.setViewportSize({width, height});
+  if (pref) await page.addInitScript(([key, value]) => localStorage.setItem(key, JSON.stringify(value)), [PREF_KEY, pref]);
+  await page.route(url => url.pathname === '/api/stats/detail', route => {
+    const period = new URL(route.request().url()).searchParams.get('period');
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
+      period, totals: {torrent_total: 12, completed_count: 9}, ...BREAKDOWN, daily_completions: daily || PERIODS[period]})});
+  });
+  await page.goto('/');
+  await page.waitForFunction(() => window.DPStatisticsLifecycle && typeof Chart !== 'undefined' && typeof window.downloadsCalendarLabel === 'function');
+  await page.evaluate(zone => { settingsData = {...(settingsData || {}), timezone: zone}; }, timezone);
+  await page.evaluate(() => nav(document.querySelector('[data-view="stats"]')));
+}
+const show = async (page, period) => {
+  await page.evaluate(value => window.DPStatisticsLifecycle.load(value), period);
+  await page.waitForFunction(() => { const chart = document.getElementById('daily-chart')._ci; return chart && !Chart.animator.running(chart); });
+};
+// The axis labels and, for each bucket, the tooltip title Chart.js shows for it.
+const labels = page => page.evaluate(() => {
+  const chart = document.getElementById('daily-chart')._ci;
+  return chart.data.labels.map((label, index) => {
+    chart.tooltip.setActiveElements([{datasetIndex: 0, index}], {x: 0, y: 0});
+    chart.update('none');
+    return {axis: label, tooltip: chart.tooltip.title.join(' '), body: chart.tooltip.body.flatMap(item => item.lines)};
+  });
+});
+
+test('copy and card titles', async ({ page }) => {
+  await boot(page);
+  await show(page, '7d');
+  const kpi = page.locator('.dp-stats-kpi-success');
+  await expect(kpi.locator('.dash-kpi-lbl')).toHaveText('LIFETIME SUCCESS RATE');
+  await expect(kpi.locator('.dash-kpi-sub')).toHaveText('Share of all recorded, finished downloads completed successfully.');
+  const titles = await page.locator('#view-stats .dp-stats-breakdown-grid .card-title').allTextContents();
+  expect(titles).toEqual(['Transfer Disposition', 'File Status', 'Monitor Levels', 'Most Used Sources']);
+  const view = await page.locator('#view-stats').innerText();
+  for (const old of ['LIFE-TIME', 'Top Sources', 'Download Status', 'recorded finished']) expect(view).not.toContain(old);
+});
+
+test('uploads are listed by what they contained, in their own ranking', async ({ page }) => {
+  await boot(page);
+  await show(page, '7d');
+  const rows = await page.locator('#detail-sources .kv-row').evaluateAll(nodes => nodes.map(node => [
+    node.querySelector('.kv-key').textContent, node.querySelector('.kv-val').textContent]));
+  expect(rows).toEqual([['Magnet Link', '6'], ['NZB File', '4'], ['Torrent File', '3'], ['Uploaded File', '2'], ['Metalink File', '1']]);
+});
+
+test('one separator, between the period row and the overall/rolling row, centred and about half as wide', async ({ page }) => {
+  await boot(page);
+  await show(page, '7d');
+  const separator = page.locator('#view-stats [role="separator"]');
+  await expect(separator).toHaveCount(1);
+  await expect(separator).toHaveAttribute('aria-label', 'Overall & Rolling Metrics');
+  await expect(separator).toHaveText('Overall & Rolling Metrics');
+  const geometry = await page.evaluate(() => {
+    const box = selector => document.querySelector(selector).getBoundingClientRect();
+    const sep = document.querySelector('#view-stats [role="separator"]');
+    const body = document.querySelector('#view-stats > .dp-stats-master-body');
+    const style = getComputedStyle(body);
+    const inner = body.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const probe = document.createElement('span');
+    probe.style.color = 'var(--dp-text-muted)';
+    document.body.append(probe);
+    const muted = getComputedStyle(probe).color;
+    probe.remove();
+    return {
+      before: sep.previousElementSibling.id, after: sep.nextElementSibling.className,
+      sep: box('#view-stats [role="separator"]').toJSON(), first: box('#detail-stat-cards').toJSON(),
+      second: box('.dp-stats-history-grid').toJSON(), inner, bodyLeft: body.getBoundingClientRect().left + parseFloat(style.paddingLeft),
+      colour: getComputedStyle(sep.querySelector('.dp-stats-row-separator-label')).color, muted,
+      rules: [...sep.querySelectorAll('.dp-stats-row-separator-rule')].map(rule => rule.getBoundingClientRect().width),
+    };
+  });
+  expect(geometry.before).toBe('detail-stat-cards');
+  expect(geometry.after).toContain('dp-stats-history-grid');
+  expect(geometry.sep.top).toBeGreaterThanOrEqual(geometry.first.bottom);
+  expect(geometry.sep.bottom).toBeLessThanOrEqual(geometry.second.top);
+  expect(Math.abs(geometry.sep.width - geometry.inner / 2)).toBeLessThanOrEqual(1);
+  expect(Math.abs(geometry.sep.left + geometry.sep.width / 2 - (geometry.bodyLeft + geometry.inner / 2))).toBeLessThanOrEqual(1);
+  expect(geometry.colour).toBe(geometry.muted);
+  expect(geometry.rules).toHaveLength(2);
+  geometry.rules.forEach(width => expect(width).toBeGreaterThan(16));
+  // The period selector still drives only the first row.
+  const second = await page.locator('.dp-stats-history-grid').innerText();
+  await page.locator('#stats-period-tabs .ftab[data-period="30d"]').click();
+  await expect(page.locator('#detail-stat-cards [data-dp-stats-metric="completed"] .metric-sub')).toHaveText('Downloads completed during the last 30 days.');
+  expect(await page.locator('.dp-stats-history-grid').innerText()).toBe(second);
+});
+
+// The whole chart -- plot, zero line and x-axis -- lies inside its card.
+const chartInsideCard = page => page.evaluate(() => {
+  const chart = document.getElementById('daily-chart')._ci;
+  const card = document.querySelector('#view-stats .dp-stats-chart').getBoundingClientRect();
+  const canvas = chart.canvas.getBoundingClientRect();
+  return {canvasWithinCard: canvas.bottom <= card.bottom + 0.5, axisWithinCard: canvas.top + chart.scales.x.bottom <= card.bottom + 0.5,
+          plot: chart.chartArea.bottom - chart.chartArea.top};
+});
+
+// 1440x914 is the shortest desktop height at which the page fit before the
+// separator; 950 lies in the band where the x-axis used to be cut off.
+for (const [width, height] of [[1440, 914], [1440, 950], [1440, 1000], [1920, 914], [1920, 1080]]) {
+  test(`the page still fits at ${width}x${height} with the separator, and the whole chart shows`, async ({ page }) => {
+    await boot(page, {width, height});
+    await show(page, '7d');
+    const fit = await page.evaluate(() => {
+      const body = document.querySelector('#view-stats > .dp-stats-master-body');
+      const doc = document.documentElement;
+      return {body: body.scrollHeight - body.clientHeight, doc: doc.scrollHeight - doc.clientHeight};
+    });
+    expect(fit).toEqual({body: 0, doc: 0});
+    const chart = await chartInsideCard(page);
+    expect(chart.canvasWithinCard).toBe(true);
+    expect(chart.axisWithinCard).toBe(true);
+    expect(chart.plot).toBeGreaterThan(60);
+  });
+}
+
+test('on a phone the page keeps scrolling and the separator keeps its rows apart', async ({ page }) => {
+  await boot(page, {width: 390, height: 844});
+  await show(page, '7d');
+  const layout = await page.evaluate(() => {
+    const box = selector => document.querySelector(selector).getBoundingClientRect();
+    const content = document.getElementById('content');
+    const sep = box('#view-stats [role="separator"]');
+    return {scrolls: content.scrollHeight > content.clientHeight, sep: sep.toJSON(),
+            first: box('#detail-stat-cards').bottom, second: box('.dp-stats-history-grid').top, viewport: innerWidth};
+  });
+  expect(layout.scrolls).toBe(true);
+  expect(layout.sep.top).toBeGreaterThanOrEqual(layout.first);
+  expect(layout.sep.bottom).toBeLessThanOrEqual(layout.second);
+  expect(layout.sep.right).toBeLessThanOrEqual(layout.viewport);
+  const chart = await chartInsideCard(page);
+  expect(chart.canvasWithinCard).toBe(true);
+  expect(chart.axisWithinCard).toBe(true);
+});
+
+const EXPECTED = {
+  iso24: {'1h': ['09:05', '14:06'], '24h': ['00:00', '13:00'], '7d': ['2025-10-05', '2025-12-31'], '1y': ['2025-11', '2025-12']},
+  us12: {'1h': ['09:05 AM', '02:06 PM'], '24h': ['12:00 AM', '01:00 PM'], '7d': ['10/05/2025', '12/31/2025'], '1y': ['11/2025', '12/2025']},
+  intl24: {'1h': ['09:05', '14:06'], '24h': ['00:00', '13:00'], '7d': ['05/10/2025', '31/12/2025'], '1y': ['11/2025', '12/2025']},
+  friendly12: {'1h': ['09:05 AM', '02:06 PM'], '24h': ['12:00 AM', '01:00 PM'], '7d': ['Oct 5, 2025', 'Dec 31, 2025'], '1y': ['Nov 2025', 'Dec 2025']},
+};
+const PREFS = {iso24: {format: 'iso', hour12: false}, us12: {format: 'us', hour12: true},
+               intl24: {format: 'international', hour12: false}, friendly12: {format: 'friendly', hour12: true}};
+for (const [name, pref] of Object.entries(PREFS)) {
+  test(`Completions labels and tooltips follow the ${name} preference on all six periods`, async ({ page }) => {
+    // A time zone far from UTC: the buckets are the server's own, never shifted.
+    await boot(page, {pref, timezone: 'Asia/Tokyo'});
+    for (const period of ['1h', '24h', '7d', '30d', '1y', 'all']) {
+      await show(page, period);
+      const expected = EXPECTED[name][{'30d': '7d', all: '7d'}[period] || period];
+      const drawn = await labels(page);
+      expect(drawn.map(item => item.axis), period).toEqual(expected);
+      expect(drawn.map(item => item.tooltip), period).toEqual(expected);
+      // Counts and their tooltip lines are untouched.
+      expect(drawn.map(item => item.body[0]), period).toEqual(PERIODS[period].map(item => `Total completions: ${item.count}`));
+    }
+  });
+}
+
+test('friendly dates name today and yesterday, and a month of this year without its year', async ({ page }) => {
+  await boot(page, {pref: {format: 'friendly', hour12: false}, timezone: 'Asia/Tokyo'});
+  const today = await page.evaluate(() => {
+    const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {timeZone: 'Asia/Tokyo', year: 'numeric', month: '2-digit', day: '2-digit'})
+      .formatToParts(new Date()).map(part => [part.type, part.value]));
+    const yesterday = new Date(Date.UTC(+parts.year, +parts.month - 1, +parts.day) - 86400000);
+    return {day: `${parts.year}-${parts.month}-${parts.day}`, yesterday: yesterday.toISOString().slice(0, 10),
+            month: `${parts.year}-${parts.month}`, monthName: new Intl.DateTimeFormat('en-US', {timeZone: 'UTC', month: 'short'}).format(yesterday)};
+  });
+  await page.evaluate(([day, yesterday, month]) => {
+    window.__dpDaily = {'7d': [{date: yesterday, count: 1}, {date: day, count: 2}], '1y': [{date: month, count: 3}]};
+  }, [today.day, today.yesterday, today.month]);
+  await page.unroute(url => url.pathname === '/api/stats/detail');
+  await page.route(url => url.pathname === '/api/stats/detail', async route => {
+    const period = new URL(route.request().url()).searchParams.get('period');
+    const daily = await page.evaluate(value => window.__dpDaily[value], period);
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
+      period, totals: {}, ...BREAKDOWN, daily_completions: daily.map(item => bucket(item.date, item.count))})});
+  });
+  await show(page, '7d');
+  expect((await labels(page)).map(item => item.axis)).toEqual(['Yesterday', 'Today']);
+  await show(page, '1y');
+  const month = (await labels(page))[0].axis;
+  expect(month).not.toMatch(/\d{4}/);
+  expect(month).toMatch(/^[A-Z][a-z]{2}$/);
+});
+
+for (const [name, counts, ticks] of [
+  ['empty', [], [0, 1]], ['all zero', [0, 0], [0, 1]], ['one', [1], [0, 1]], ['two', [2, 0], [0, 1, 2]],
+  ['sparse', [0, 3, 0], [0, 1, 2, 3]], ['several', [7, 13], null],
+]) {
+  test(`the count axis has whole-number ticks, never a step below one: ${name}`, async ({ page }) => {
+    await boot(page, {daily: counts.map((count, index) => bucket(`2025-10-0${index + 1}`, count))});
+    await show(page, '7d');
+    const values = await page.evaluate(() => document.getElementById('daily-chart')._ci.scales.y.ticks.map(tick => tick.value));
+    values.forEach(value => expect(Number.isInteger(value)).toBe(true));
+    values.slice(1).forEach((value, index) => expect(value - values[index]).toBeGreaterThanOrEqual(1));
+    expect(values[0]).toBe(0);
+    if (ticks) expect(values).toEqual(ticks);
+    else expect(values[values.length - 1]).toBeGreaterThanOrEqual(Math.max(...counts));
+  });
+}

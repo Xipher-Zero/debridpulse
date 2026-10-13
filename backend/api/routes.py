@@ -85,6 +85,7 @@ def _sql_date(field: str) -> str:
 from application import dispatch_admission
 from application.dependencies import get_application
 from transfers import codec
+from transfers.models import TORRENT_FILE_REQUEST_KINDS
 from application.service import AcquisitionScopeRequired, ApplicationService, LocalNetworkConfirmationRequired
 from executors.aria2.runtime import runtime as aria2_runtime, _canonical_aria2_options
 from services.event_bus import bind_publisher
@@ -1464,9 +1465,17 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
         totals["partial_total"] = partial_row["c"] if partial_row else 0
 
         # ── Breakdowns ───────────────────────────────────────────────────────
+        # Transfer Disposition: each retained transfer at its current SETTLED
+        # status, at most once; anything still active, pending or extracting
+        # (the in-progress KPI's own rule) has no disposition yet. Remove
+        # persists `deleted`, so there is no separate Removed to count.
+        from api.operational_downloads import _SETTLED_RAW_STATUSES
         torrent_status = await db.fetchall(
-            f"SELECT status, COUNT(*) as count FROM torrents {where_ts} "
-            f"GROUP BY status ORDER BY count DESC")
+            f"SELECT status, COUNT(*) as count FROM torrents "
+            f"WHERE status IN ({','.join('?' * len(_SETTLED_RAW_STATUSES))}) "
+            f"AND COALESCE(extraction_status,'')!='extracting'"
+            + (f" AND created_at >= {cutoff}" if cutoff else "")
+            + " GROUP BY status ORDER BY count DESC", _SETTLED_RAW_STATUSES)
         where_files = (f"WHERE updated_at >= {cutoff}" if cutoff else "")
         file_status = await db.fetchall(
             f"SELECT status, COUNT(*) as count, COALESCE(SUM(size_bytes),0) as size_bytes "
@@ -1476,9 +1485,26 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
                                       "1y": 365 * 86400}[period_label]) if cutoff else None
         event_levels = [{"level": level, "count": count}
                         for level, count in (await severity_counts(db, event_since)).items()]
+        # An upload is named by what it contained: the one distinct, non-empty
+        # kind its durable ROOT requests record (as Details' "Submitted As"
+        # reads it). An upload recording none, several, or one no upload label
+        # names -- a pre-NZB history row rebuilt as a magnet, say -- keeps the
+        # channel's own "manual_file". Every other channel is unchanged.
         sources = await db.fetchall(
-            f"SELECT source, COUNT(*) as count FROM torrents {where_ts} "
-            f"GROUP BY source ORDER BY count DESC LIMIT 10")
+            f"""WITH root_kinds AS (
+                    SELECT transfer_id, COUNT(DISTINCT kind) AS kinds, MIN(kind) AS kind FROM (
+                        SELECT transfer_id, LOWER(COALESCE(json_extract(payload, '$.kind'), '')) AS kind
+                        FROM transfer_requests WHERE parent_id IS NULL)
+                    WHERE kind != '' GROUP BY transfer_id)
+                SELECT CASE WHEN torrents.source = 'manual_file' AND root_kinds.kinds = 1 THEN
+                           CASE WHEN root_kinds.kind IN ({",".join("?" * len(TORRENT_FILE_REQUEST_KINDS))}) THEN 'torrent_file'
+                                WHEN root_kinds.kind = 'nzb' THEN 'nzb_file'
+                                WHEN root_kinds.kind = 'meta4' THEN 'metalink_file'
+                                ELSE torrents.source END
+                           ELSE torrents.source END AS source,
+                       COUNT(*) as count
+                FROM torrents LEFT JOIN root_kinds ON root_kinds.transfer_id = torrents.id {where_ts}
+                GROUP BY 1 ORDER BY count DESC LIMIT 10""", sorted(TORRENT_FILE_REQUEST_KINDS))
 
         # ── Chart data (period-aware grouping) ───────────────────────────────
         _cutoff_90d = _sql_now_minus("90 days")

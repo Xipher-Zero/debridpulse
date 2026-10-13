@@ -11,19 +11,22 @@
   const SOURCE_LABELS = Object.freeze({
     direct_link: 'Debrid Link',
     manual: 'Magnet Link',
-    // Grouped BY CHANNEL: no request kind is available in this aggregate, so
-    // it names the channel rather than asserting what the upload contained.
+    // The server names an upload by its one recorded root request kind; an
+    // upload without one (or with several) keeps the channel's name.
     manual_file: 'Uploaded File',
+    nzb_file: 'NZB File',
+    torrent_file: 'Torrent File',
+    metalink_file: 'Metalink File',
     alldebrid_existing: 'AllDebrid Import',
     import_existing: 'AllDebrid Import',
     api: 'API Submission',
   });
   const PRIMARY_ORDER = Object.freeze(['downloads', 'completed', 'progress', 'success', 'data']);
   const BREAKDOWNS = Object.freeze([
-    {id: 'detail-torrent-status', title: 'Download Status', kind: 'status'},
+    {id: 'detail-torrent-status', title: 'Transfer Disposition', kind: 'status'},
     {id: 'detail-file-status', title: 'File Status', kind: 'status'},
     {id: 'detail-event-levels', title: 'Monitor Levels', kind: 'status'},
-    {id: 'detail-sources', title: 'Top Sources', kind: 'source'},
+    {id: 'detail-sources', title: 'Most Used Sources', kind: 'source'},
   ]);
   const MAX_VISIBLE = 10;
   const TWO_COLUMN_THRESHOLD = 6;
@@ -436,6 +439,18 @@
     return lines;
   }
 
+  /* A bucket's label as the server grouped it -- already wall-clock in the
+   * operator's time zone: an HH:MM minute, an HH:00 hour, a YYYY-MM-DD day or a
+   * YYYY-MM month -- in the viewer's date preference. Anything else as sent. */
+  function completionBucketLabel(value) {
+    const text = String(value || '');
+    let match = /^(\d{4})-(\d{2})(?:-(\d{2}))?$/.exec(text);
+    if (match) return window.downloadsCalendarLabel({year: match[1], month: match[2], day: match[3]});
+    match = /^(\d{2}):(\d{2})$/.exec(text);
+    if (match) return window.downloadsCalendarLabel({hour: match[1], minute: match[2]});
+    return text;
+  }
+
   function renderCompletionChart(daily) {
     const canvas = document.getElementById('daily-chart');
     if (!canvas || typeof Chart === 'undefined') return;
@@ -455,7 +470,7 @@
     })];
     canvas._ci = new Chart(canvas, {
       type: 'bar',
-      data: {labels: daily.map(function (item) { return item.date || ''; }), datasets: datasets},
+      data: {labels: daily.map(function (item) { return completionBucketLabel(item.date); }), datasets: datasets},
       plugins: [completionFamiliesPlugin],
       options: {
         responsive: true,
@@ -470,7 +485,8 @@
         },
         scales: {
           x: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
-          y: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}}, beginAtZero: true, precision: 0},
+          // Completions are counts: whole-number ticks, never a step below one.
+          y: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, precision: 0}, beginAtZero: true},
         },
       },
     });

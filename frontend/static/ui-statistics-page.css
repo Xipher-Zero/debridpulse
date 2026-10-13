@@ -110,6 +110,35 @@ body.light #view-stats .dp-statistics-title-icon {
   padding: 13px 14px;
 }
 
+/* ── Separator between the period and the overall/rolling KPI rows ───── */
+/* Subdued, centred, about half the section wide; it sits partly inside the
+   body's row gaps so the chart's flex area gives up only its own height. */
+#view-stats .dp-stats-row-separator {
+  flex: 0 0 auto;
+  width: 50%;
+  min-width: max-content;
+  max-width: 100%;
+  margin: -4px auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+#view-stats .dp-stats-row-separator-rule {
+  flex: 1 0 16px;
+  height: 1px;
+  background: color-mix(in srgb, var(--dp-divider) 70%, transparent);
+}
+
+#view-stats .dp-stats-row-separator-label {
+  color: var(--dp-text-muted);
+  font-size: 9.5px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+
 /* ── Historical KPI row ───────────────────────────────────────────────── */
 #view-stats .dp-stats-history-grid {
   width: 100%;
@@ -208,7 +237,9 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
 /* ── Completion chart ─────────────────────────────────────────────────── */
 #view-stats .dp-stats-chart {
   flex: 1 1 240px;
-  min-height: 228px;
+  /* 228px less the KPI row separator's 14px, so the page fits where it did;
+     the canvas regains those 14px from the whitespace above it. */
+  min-height: 214px;
   margin: 0 !important;
   display: flex;
   flex-direction: column;
@@ -232,13 +263,17 @@ body.light #view-stats .dp-stats-history-grid .dp-kpi-icon {
   flex: 1 1 auto;
   min-height: 0;
   display: flex;
-  padding: 10px 12px 12px !important;
+  padding: 4px 12px 12px !important;
 }
 
+/* The canvas takes exactly the card's body: a floor of its own let it spill
+   past a shorter card and lose its x-axis. The card's bounded flex height is
+   the chart's only size owner. */
 #view-stats .dp-stats-chart .chart-wrap {
   width: 100%;
   height: auto !important;
-  min-height: 180px;
+  min-height: 0;
+  margin-top: 0;
   flex: 1 1 auto;
 }
 

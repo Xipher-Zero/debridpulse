@@ -98,8 +98,8 @@ def test_statistics_reviewed_primary_and_historical_order_copy_are_locked_in_bas
     for reviewed_copy in (
         "Last 24 Hours", "Completed downloads over the last 24 hours.",
         "Last 7 Days", "Completed downloads over the last 7 days.",
-        "MEAN DOWNLOAD TIME", "LIFE-TIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
-        "Share of all recorded finished downloads completed successfully.",
+        "MEAN DOWNLOAD TIME", "LIFETIME SUCCESS RATE", "MEAN DOWNLOAD SIZE",
+        "Share of all recorded, finished downloads completed successfully.",
     ):
         assert reviewed_copy in view
     for flavor in (
@@ -126,7 +126,7 @@ def test_breakdowns_keep_reviewed_labels_adaptive_top_ten_and_two_column_behavio
     source = read(STATS)
     css = read(STATS_CSS)
     view = statistics_view()
-    for heading in ("Download Status", "File Status", "Monitor Levels", "Top Sources"):
+    for heading in ("Transfer Disposition", "File Status", "Monitor Levels", "Most Used Sources"):
         assert heading in view
     for label in ("Completed", "Deleted", "Error", "Missing", "Duplicate", "Info", "Warning", "Debrid Link", "Uploaded File", "Magnet Link", "Unknown"):
         assert label in source
