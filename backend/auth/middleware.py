@@ -9,13 +9,13 @@ from fastapi import Request, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from auth.api_tokens import api_token_store
+from auth.accounts import admitted
 from auth.manager import (
     PasswordAuthenticationBusy,
-    password_authentication_snapshot_current,
+    password_proof_current,
     verify_local_credentials,
 )
 from auth.models import AuthMechanism, Principal
-from auth.passwords import password_credential_version
 from auth.policy import (
     MUTATING_HTTP_METHODS,
     interactive_auth_enabled,
@@ -24,7 +24,6 @@ from auth.policy import (
     public_base_url_bootstrap_origin,
     oidc_auth_enabled,
     password_auth_enabled,
-    password_auth_ready,
     safe_return_path,
     trusted_request_origin,
 )
@@ -126,16 +125,18 @@ def _oidc_ready(cfg) -> bool:
     return oidc_auth_ready(cfg)
 
 
-def _session_record_still_valid(record, cfg) -> bool:
+def session_record_valid(record, cfg) -> bool:
+    """Whether a stored application session still admits its request.
+
+    The mechanism that issued it must still be enabled under the current
+    configuration (and, for OIDC, the exact configuration that proved it).
+    Its account is current by construction: every account change revokes the
+    account's sessions (``auth.accounts``) in the same critical section."""
+    if record is None or not record.principal.account_id:
+        return False
     mechanism = record.principal.mechanism
     if mechanism is AuthMechanism.PASSWORD_SESSION:
-        if not password_auth_ready(cfg):
-            return False
-        current_username = str(getattr(cfg, "auth_username", "") or "").strip()
-        if not current_username or record.principal.subject != current_username:
-            return False
-        current_version = password_credential_version(getattr(cfg, "auth_password_hash", ""))
-        return bool(current_version and record.credential_version == current_version)
+        return password_auth_enabled(cfg)
     if mechanism is AuthMechanism.OIDC_SESSION:
         if not _oidc_ready(cfg):
             return False
@@ -156,6 +157,15 @@ async def _admit_authenticated(
     if rejection is not None:
         return rejection
     return await call_next(request)
+
+
+async def _admit_standalone(request: Request, call_next: CallNext, cfg) -> Response:
+    """No interactive authentication: the request acts as the standalone
+    installation's one Admin-equivalent principal, never as an anonymous
+    tenant of a multi-user installation."""
+    principal = Principal.standalone()
+    _attach_principal(request, principal)
+    return await _admit_authenticated(request, call_next, principal, cfg)
 
 
 async def enforce_general_web_security(
@@ -231,7 +241,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     session_token = session_cookie_token(request)
     if session_token:
         record = session_store.resolve(session_token)
-        if record is not None and _session_record_still_valid(record, cfg):
+        if record is not None and session_record_valid(record, cfg):
             _attach_principal(request, record.principal)
             _attach_session(request, session_token)
             if request.method.upper() in MUTATING_HTTP_METHODS:
@@ -248,7 +258,7 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
 
     if _has_bearer_scheme(auth_header):
         if not interactive_auth_enabled(cfg):
-            return await _admit_authenticated(request, call_next, Principal.anonymous(), cfg)
+            return await _admit_standalone(request, call_next, cfg)
         provided_token = _decode_bearer_token(auth_header)
         if provided_token is not None and api_token_store.verify(provided_token):
             principal = Principal.api_token()
@@ -259,56 +269,50 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     if _has_basic_scheme(auth_header):
         if not password_auth_enabled(cfg):
             if not interactive_auth_enabled(cfg):
-                return await _admit_authenticated(request, call_next, Principal.anonymous(), cfg)
+                return await _admit_standalone(request, call_next, cfg)
             return _unauthorized(basic_challenge=True)
-        if not password_auth_ready(cfg):
-            return JSONResponse(
-                content={"detail": "Password authentication unavailable"},
-                status_code=503,
-            )
         credentials = _decode_basic_credentials(auth_header)
         try:
             if credentials is None:
                 await verify_local_credentials(request, "", "", settings=cfg)
                 return _unauthorized(basic_challenge=True)
             provided_user, provided_pass = credentials
-            if await verify_local_credentials(
+            proven = await verify_local_credentials(
                 request,
                 provided_user,
                 provided_pass,
                 allow_basic_success_cache=True,
                 settings=cfg,
-            ):
-                if is_auth_settings_mutation(request):
-                    # The settings-mutation path already owns the non-reentrant
-                    # configuration lock in enforce_authentication().
-                    current = get_settings()
-                    if not password_authentication_snapshot_current(cfg, current):
-                        return _unauthorized(basic_challenge=True)
-                    username = str(getattr(current, "auth_username", "") or "").strip()
-                    principal = Principal.http_basic(username)
-                    _attach_principal(request, principal)
-                    return await _admit_authenticated(request, call_next, principal, current)
-
-                async with authentication_configuration_lock:
-                    current = get_settings()
-                    if not password_authentication_snapshot_current(cfg, current):
-                        return _unauthorized(basic_challenge=True)
-                    username = str(getattr(current, "auth_username", "") or "").strip()
-                    principal = Principal.http_basic(username)
-                    _attach_principal(request, principal)
-                return await _admit_authenticated(request, call_next, principal, current)
-            return _unauthorized(basic_challenge=True)
+            )
         except PasswordAuthenticationBusy:
             return _authentication_busy()
+        if proven is None:
+            return _unauthorized(basic_challenge=True)
+        if is_auth_settings_mutation(request):
+            # The settings-mutation path already owns the non-reentrant
+            # configuration lock in enforce_authentication().
+            current = get_settings()
+            account = await password_proof_current(proven, current)
+        else:
+            async with authentication_configuration_lock:
+                current = get_settings()
+                account = await password_proof_current(proven, current)
+        # HTTP Basic authenticates exactly the account whose credential
+        # matched -- never a role by username -- and only an account that may
+        # operate DebridPulse.
+        if not admitted(account):
+            return _unauthorized(basic_challenge=True)
+        principal = Principal.http_basic(account)
+        _attach_principal(request, principal)
+        return await _admit_authenticated(request, call_next, principal, current)
 
     if not interactive_auth_enabled(cfg):
         # Open mode still runs the auth-transition state machine. This is
-        # critical when an anonymous operator enables the first mechanism.
-        return await _admit_authenticated(request, call_next, Principal.anonymous(), cfg)
+        # critical when the standalone operator enables the first mechanism.
+        return await _admit_standalone(request, call_next, cfg)
 
     if not (
-        password_auth_ready(cfg)
+        password_auth_enabled(cfg)
         or _oidc_ready(cfg)
         or (api_token_store.enabled and api_token_store.configured)
     ):

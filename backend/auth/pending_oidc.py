@@ -40,6 +40,9 @@ class PendingOidcConfiguration:
     expires_at: float
     baseline_configuration_version: str = ""
     apply_password_enabled: bool = False
+    # The account that started Verify Sign-In: the proven identity is linked
+    # to it (``auth.accounts.bind_verified_oidc``).
+    account_id: str = ""
 
 
 class PendingOidcConfigurationStore:
@@ -73,6 +76,7 @@ class PendingOidcConfigurationStore:
         configuration_version: str,
         baseline_configuration_version: str = "",
         apply_password_enabled: bool = False,
+        account_id: str = "",
     ) -> None:
         now = self._clock()
         self.cleanup()
@@ -84,6 +88,7 @@ class PendingOidcConfigurationStore:
             expires_at=now + self.ttl_seconds,
             baseline_configuration_version=str(baseline_configuration_version),
             apply_password_enabled=bool(apply_password_enabled),
+            account_id=str(account_id or ""),
         )
         self._entries.move_to_end(key)
         while len(self._entries) > self.max_entries:
@@ -141,15 +146,22 @@ def _merge_verified_oidc_settings(current: Any, item: PendingOidcConfiguration):
     return current.model_copy(update=updates, deep=True)
 
 
-def commit_verified_pending_oidc(
+async def commit_verified_pending_oidc(
     state: str,
     *,
     expected_configuration_version: str,
-) -> bool:
-    """Commit a staged config only after matching proof and unchanged baseline."""
+    issuer: str,
+    subject: str,
+):
+    """Commit a staged config only after matching proof and unchanged baseline.
+
+    The proven ``(issuer, subject)`` is first bound to the Admin who started
+    the verification (or must already belong to an active Admin), so the
+    committed configuration always signs in at least that Admin. Returns the
+    account the proof signs in as, or ``None`` when nothing was committed."""
     item = pending_oidc_store.consume_verified(state)
     if item is None:
-        return False
+        return None
 
     proof_version = str(expected_configuration_version or "")
     if not proof_version or not secrets.compare_digest(
@@ -159,8 +171,9 @@ def commit_verified_pending_oidc(
         # A successful OIDC proof is valid only for the exact staged snapshot
         # that produced it. Reject before persistence; a post-write comparison is
         # too late to protect the appliance from a stale/mismatched proof.
-        return False
+        return None
 
+    from auth.accounts import bind_verified_oidc
     from auth.models import AuthMechanism
     from auth.sessions import session_store
     from core.config import apply_settings, get_settings, save_settings
@@ -171,7 +184,11 @@ def commit_verified_pending_oidc(
         item.baseline_configuration_version,
         current_baseline,
     ):
-        return False
+        return None
+
+    account = await bind_verified_oidc(issuer, subject, item.account_id)
+    if account is None:
+        return None
 
     merged = _merge_verified_oidc_settings(current, item)
     # Record the proof before the configuration write. If proof persistence fails,
@@ -182,7 +199,7 @@ def commit_verified_pending_oidc(
     authoritative = merged.model_copy(update={"oidc_client_secret_clear": False}, deep=True)
     apply_settings(authoritative)
     session_store.revoke_mechanism(AuthMechanism.OIDC_SESSION)
-    return True
+    return account
 
 
 pending_oidc_store = PendingOidcConfigurationStore()

@@ -25,7 +25,6 @@ from auth.policy import (
     interactive_auth_enabled,
     oidc_auth_enabled,
     password_auth_enabled,
-    password_auth_ready,
 )
 from auth.sessions import CSRF_HEADER, session_store
 from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME
@@ -86,8 +85,13 @@ async def lifespan(app: FastAPI):
     )
     if not interactive_enabled:
         logger.warning("Interactive authentication is disabled; DebridPulse is intentionally operating in open mode")
-    if password_enabled and not password_auth_ready(cfg):
-        logger.error("Username & Password authentication is enabled but not fully configured; that mechanism is unavailable")
+    from auth.accounts import usable_admin_present
+    if not await usable_admin_present(cfg):
+        logger.error(
+            "No active Admin account can sign in with the enabled authentication methods. To recover, stop "
+            "DebridPulse and either set auth_username and a plaintext auth_password in config.json (installed on "
+            "the default Admin account at start) or set auth_password_enabled and auth_oidc_enabled to false"
+        )
     if oidc_enabled:
         from auth.oidc import oidc_auth_ready
         if not oidc_auth_ready(cfg):

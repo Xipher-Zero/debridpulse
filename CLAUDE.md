@@ -348,8 +348,12 @@ re-pointed at a digest that already passed every gate.
 ## 8. Settings secret-merge model (`backend/api/routes.py`)
 
 - `_SECRET_SETTINGS` = `{discord_webhook_url, discord_webhook_added,
-  stats_report_webhook_url, auth_password, extraction_password}` (integration-owned
+  stats_report_webhook_url, extraction_password}` (integration-owned
   secrets such as the AllDebrid `api_key` live in their `integrations.<id>` namespace).
+  Local sign-in credentials are not settings at all: they belong to accounts
+  (`backend/auth/accounts.py`, the one account owner; a `config.json`
+  `auth_username`/`auth_password[_hash]` is one-shot startup/recovery input
+  installed on the default Admin).
 - `GET /api/settings` (`_public_settings`) **redacts every secret to `""`** and adds
   `<field>_configured: bool`.
 - `PUT /api/settings` (`SettingsUpdate` = `AppSettings` + `clear_secrets: list[str]`),

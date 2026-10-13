@@ -3,7 +3,9 @@ from pathlib import Path
 import pytest
 from fastapi import Request
 
+from account_support import account_database
 from api import auth_config_routes
+from auth.accounts import DEFAULT_ADMIN_ID
 from auth.models import Principal
 from auth.oidc_verification import OidcVerificationStore
 from auth.oidc_version import (
@@ -19,8 +21,6 @@ from core.config import AppSettings
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
-        "auth_password_hash": "stored-hash",
         "auth_oidc_enabled": True,
         "oidc_provider_name": "OpenID Connect",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -97,6 +97,7 @@ async def test_auth_payload_retains_exact_proof_while_disabled_and_stales_on_cha
     verified_at = store.record(version)
     monkeypatch.setattr(auth_config_routes, "oidc_verification_store", store)
     monkeypatch.setattr(auth_config_routes, "get_settings", lambda: cfg)
+    await account_database(tmp_path, monkeypatch)
 
     payload = await auth_config_routes._authentication_payload(_request())
     assert payload["oidc_enabled"] is False
@@ -112,7 +113,8 @@ async def test_auth_payload_retains_exact_proof_while_disabled_and_stales_on_cha
     assert stale["oidc_verified_at"] == ""
 
 
-def test_verified_pending_commit_records_proof_before_configuration_persistence(monkeypatch, tmp_path: Path):
+@pytest.mark.asyncio
+async def test_verified_pending_commit_records_proof_before_configuration_persistence(monkeypatch, tmp_path: Path):
     current = _settings()
     candidate = _settings(oidc_client_id="replacement-client")
     version = oidc_configuration_version(candidate)
@@ -128,7 +130,9 @@ def test_verified_pending_commit_records_proof_before_configuration_persistence(
         candidate,
         configuration_version=version,
         baseline_configuration_version=authentication_configuration_baseline_version(current),
+        account_id=DEFAULT_ADMIN_ID,
     )
+    await account_database(tmp_path, monkeypatch)
 
     saved = []
 
@@ -138,9 +142,12 @@ def test_verified_pending_commit_records_proof_before_configuration_persistence(
 
     monkeypatch.setattr(config_module, "save_settings", fake_save)
 
-    assert commit_verified_pending_oidc(
+    committed = await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version=version,
-    ) is True
+        issuer="https://id.example/application/o/debridpulse",
+        subject="user-1",
+    )
+    assert committed is not None and committed.id == DEFAULT_ADMIN_ID
     assert saved and saved[0].oidc_client_id == "replacement-client"
     assert store.status(version).verified is True

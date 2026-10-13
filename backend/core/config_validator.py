@@ -150,7 +150,7 @@ def validate_and_sanitise(cfg) -> Any:
     sensitive = {
         "integrations.alldebrid.api_key", "discord_webhook_url",
         "discord_webhook_added", "stats_report_webhook_url",
-        "auth_password", "auth_password_hash", "oidc_client_secret",
+        "oidc_client_secret",
         "extraction_password",
     }
     fixes: Dict[str, Any] = {}
@@ -174,8 +174,6 @@ def validate_and_sanitise(cfg) -> Any:
     # forward; otherwise correcting an unrelated setting could silently convert
     # an authentication secret replacement/clear into "preserve existing".
     for field in (
-        "auth_password_hash",
-        "auth_password_hash_clear",
         "oidc_client_secret",
         "oidc_client_secret_clear",
     ):

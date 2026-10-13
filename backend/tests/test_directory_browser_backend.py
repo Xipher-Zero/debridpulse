@@ -14,7 +14,6 @@ import api.settings_validation_routes as directory_routes
 import auth.middleware as auth_middleware
 import transfers.storage as storage
 from auth.middleware import enforce_authentication
-from auth.passwords import hash_password
 from core.config import AppSettings
 from transfers.storage import DiskCapacity, StorageDomain, StorageReason, StorageState
 
@@ -420,8 +419,7 @@ def test_directory_browser_route_is_get_only_and_not_public_auth_exception():
 
 
 def test_enabled_auth_rejects_unauthenticated_directory_enumeration(monkeypatch):
-    cfg = AppSettings(auth_password_enabled=True, auth_username="operator")
-    cfg.auth_password_hash = hash_password("correct horse battery staple")
+    cfg = AppSettings(auth_password_enabled=True)
     monkeypatch.setattr(auth_middleware, "get_settings", lambda: cfg)
 
     app = FastAPI()

@@ -3,8 +3,10 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request
 
+from account_support import account, account_database, admin_with_password
 from api import auth_config_routes
 from auth.models import Principal
 from auth.transitions import settings_transition_rejection
@@ -21,8 +23,6 @@ AUTH_BOOTSTRAP_JS = ROOT / "frontend" / "static" / "auth.js"
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
-        "auth_password_hash": "$argon2id$v=19$m=65536,t=3,p=4$placeholder$placeholder",
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -71,7 +71,7 @@ def _request(path, payload, *, principal=None):
         },
         receive=receive,
     )
-    request.state.principal = principal or Principal.password_session("operator")
+    request.state.principal = principal or Principal.password_session(account("operator"))
     return request
 
 
@@ -104,56 +104,50 @@ def test_authentication_settings_are_owned_by_clean_settings_runtime():
 
 def test_auth_secret_clear_intents_are_transient_and_not_serialized():
     cfg = AppSettings(
-        auth_password_hash_clear=True,
         oidc_client_secret_clear=True,
-        auth_password_hash="stored-hash",
         oidc_client_secret="stored-secret",
     )
     dumped = cfg.model_dump()
-    assert "auth_password_hash_clear" not in dumped
     assert "oidc_client_secret_clear" not in dumped
-    assert "auth_password_hash" not in dumped
     assert "oidc_client_secret" not in dumped
 
 
 def test_validation_rebuild_preserves_hidden_auth_secret_state():
     cfg = AppSettings(
         discord_avatar_url="data:image/png;base64,invalid",
-        auth_password_hash_clear=True,
         oidc_client_secret_clear=True,
     )
-    cfg.auth_password_hash = "stored-password-hash"
     cfg.oidc_client_secret = "stored-oidc-secret"
 
     validated = validate_and_sanitise(cfg)
 
     assert validated.discord_avatar_url == ""
-    assert validated.auth_password_hash == "stored-password-hash"
     assert validated.oidc_client_secret == "stored-oidc-secret"
-    assert validated.auth_password_hash_clear is True
     assert validated.oidc_client_secret_clear is True
 
 
-def test_save_settings_explicitly_clears_password_hash_and_consumes_secret_intent(monkeypatch, tmp_path):
+def test_save_settings_explicitly_clears_oidc_secret_and_consumes_secret_intent(monkeypatch, tmp_path):
     config_path = tmp_path / "config.json"
-    previous = AppSettings(auth_password_enabled=True, auth_username="operator")
-    previous.auth_password_hash = "stored-hash"
+    previous = AppSettings(auth_password_enabled=True)
     previous.oidc_client_secret = "stored-oidc-secret"
     monkeypatch.setattr(config_module, "CONFIG_PATH", config_path)
     monkeypatch.setattr(config_module, "_settings", previous)
 
     candidate = previous.model_copy(deep=True)
-    candidate.auth_password_hash_clear = True
     candidate.oidc_client_secret_clear = True
     config_module.save_settings(candidate)
 
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
-    assert persisted["auth_password_hash"] == ""
     assert persisted["oidc_client_secret"] == ""
-    assert candidate.auth_password_hash == ""
     assert candidate.oidc_client_secret == ""
-    assert candidate.auth_password_hash_clear is False
     assert candidate.oidc_client_secret_clear is False
+
+
+@pytest_asyncio.fixture
+async def operator(tmp_path, monkeypatch):
+    """The default Admin, signing in as operator/secret."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password()
 
 
 @pytest.mark.asyncio
@@ -163,9 +157,9 @@ async def test_dedicated_auth_config_uses_same_password_disable_lockout_rule():
         _request(
             "/api/auth/config",
             {"auth_password_enabled": False, "auth_oidc_enabled": True},
-            principal=Principal.password_session("operator"),
+            principal=Principal.password_session(account("operator")),
         ),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         current,
     )
     assert response is not None
@@ -180,7 +174,7 @@ async def test_dedicated_auth_config_requires_open_mode_confirmation():
             "/api/auth/config",
             {"auth_password_enabled": False, "auth_oidc_enabled": False},
         ),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         current,
     )
     assert rejected is not None
@@ -195,14 +189,14 @@ async def test_dedicated_auth_config_requires_open_mode_confirmation():
                 "confirm_open_mode": True,
             },
         ),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         current,
     )
     assert accepted is None
 
 
 @pytest.mark.asyncio
-async def test_partial_auth_config_write_still_requires_open_mode_confirmation():
+async def test_partial_auth_config_write_still_requires_open_mode_confirmation(operator):
     """The field-boundary shape must hit the same gate as the whole payload.
 
     Settings now writes ONE field per request, so the mutation that disables the
@@ -218,7 +212,7 @@ async def test_partial_auth_config_write_still_requires_open_mode_confirmation()
 
     rejected = await settings_transition_rejection(
         _request("/api/auth/config", {"auth_password_enabled": False}),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         password_only,
     )
     assert rejected is not None
@@ -229,7 +223,7 @@ async def test_partial_auth_config_write_still_requires_open_mode_confirmation()
             "/api/auth/config",
             {"auth_password_enabled": False, "confirm_open_mode": True},
         ),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         password_only,
     )
     assert accepted is None
@@ -239,7 +233,7 @@ async def test_partial_auth_config_write_still_requires_open_mode_confirmation()
     assert (
         await settings_transition_rejection(
             _request("/api/auth/config", {"auth_oidc_enabled": False}),
-            Principal.oidc_session("operator"),
+            Principal.oidc_session("operator").bound_to(account("operator")),
             oidc_only,
         )
     ).status_code == 409
@@ -248,7 +242,7 @@ async def test_partial_auth_config_write_still_requires_open_mode_confirmation()
             "/api/auth/config",
             {"auth_oidc_enabled": False, "confirm_open_mode": True},
         ),
-        Principal.oidc_session("operator"),
+        Principal.oidc_session("operator").bound_to(account("operator")),
         oidc_only,
     ) is None
 
@@ -256,13 +250,13 @@ async def test_partial_auth_config_write_still_requires_open_mode_confirmation()
     # transition at all, so it needs no proof.
     assert await settings_transition_rejection(
         _request("/api/auth/config", {"auth_oidc_enabled": False}),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         _settings(),
     ) is None
 
 
 @pytest.mark.asyncio
-async def test_authentication_payload_is_secret_free(monkeypatch):
+async def test_authentication_payload_is_secret_free(monkeypatch, operator):
     cfg = _settings()
     monkeypatch.setattr(auth_config_routes, "get_settings", lambda: cfg)
     monkeypatch.setattr(auth_config_routes, "_oidc_runtime_available", lambda *_args: _false_async())
@@ -273,7 +267,7 @@ async def test_authentication_payload_is_secret_free(monkeypatch):
     )
 
     request = _request("/api/auth/config", {})
-    request.state.principal = Principal.oidc_session("issuer|subject")
+    request.state.principal = Principal.oidc_session("issuer|subject").bound_to(operator)
     payload = await auth_config_routes._authentication_payload(request)
     encoded = json.dumps(payload)
 
@@ -283,7 +277,7 @@ async def test_authentication_payload_is_secret_free(monkeypatch):
     assert payload["api_token_configured"] is True
     assert payload["current_session_mechanism"] == "oidc_session"
     assert "super-private-oidc-value" not in encoded
-    assert "placeholder$placeholder" not in encoded
+    assert "$argon2id$" not in encoded
     assert "oidc_client_secret" not in payload
     assert "auth_password_hash" not in payload
 

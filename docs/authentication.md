@@ -38,9 +38,22 @@ Use only an HTTPS origin in `scheme://host[:port]` form, with no path, query, fr
 
 `CORS_ORIGINS` is not a substitute for the canonical origin. CORS controls intentionally permitted cross-origin API callers; the External Base URL describes DebridPulse's own externally reachable browser origin.
 
+## Accounts
+
+Every sign-in resolves to one durable DebridPulse **account** with a stable ID. An account has one of four fixed roles (**Admin**, **User**, **ReadOnly User**, **Integration**), zero or one local Username & Password credential, and zero or more linked OpenID Connect identities, each identified by the provider-validated `(issuer, subject)` pair. A username or an email address is never the identity: email is display information only and never links, merges or grants anything.
+
+Two default accounts always exist:
+
+- the default **Admin**, which has no password until one is set. With no authentication enabled, DebridPulse runs as this single Admin (it is never an anonymous multi-user installation). It cannot be deleted, disabled, demoted or merged away;
+- the default **Automation** Integration account, which has no API token.
+
+Accounts are kept by the database. A backup therefore contains them, **including every local password's Argon2id verifier**, and restoring a backup is a privileged operation that replaces every account and authentication setting with the backup's. A restore is refused when its restored state would leave no enabled Admin who could sign in with the restored authentication settings; every browser session ends with a successful restore. The database wipe keeps all accounts.
+
+> **1.0.13 transition.** Until per-role enforcement arrives in the next stage of the access-control work, only **Admin** accounts may sign in. An OIDC identity that is admitted by the authorization policy but not linked to an Admin account is recorded as a new account with the configured default role (`auth_oidc_default_role`: `user` or `readonly`) and is refused with *This account cannot sign in to DebridPulse*. To sign in with OIDC as an Admin, complete **Verify Sign-In** while signed in as that Admin: the proven identity is linked to your account.
+
 ## Username & Password
 
-DebridPulse stores the local password only as an Argon2id verifier. The plaintext password is accepted only as transient input when setting or replacing the credential.
+DebridPulse stores the local password only as an Argon2id verifier, on the account it belongs to. The plaintext password is accepted only as transient input when setting or replacing the credential. Until the Users & Access surface exists, **Settings → Authentication** edits the signed-in account's own username and password (the default Admin's in open mode).
 
 Browser users authenticate through the DebridPulse login page. REST clients may use the same credentials with standard HTTP Basic authentication:
 
@@ -48,7 +61,7 @@ Browser users authenticate through the DebridPulse login page. REST clients may 
 curl -u operator:'your-password' https://debridpulse.example/api/stats
 ```
 
-Changing or clearing the password invalidates password-derived browser sessions and the HTTP Basic verification cache. Disabling Username & Password immediately disables HTTP Basic and invalidates password-derived browser sessions. Disabling the mechanism does not erase the stored hash unless **Clear stored password** is explicitly selected.
+Changing or clearing an account's password ends that account's browser sessions and clears the HTTP Basic verification cache. Disabling Username & Password immediately disables HTTP Basic and invalidates password-derived browser sessions. Disabling the mechanism does not erase the stored hash unless **Clear stored password** is explicitly selected.
 
 ## OpenID Connect
 
@@ -165,17 +178,24 @@ The automated test suite exercises OIDC protocol validation, state/nonce/PKCE ha
 
 Those tests do not prove a particular external identity-provider, public DNS, TLS termination, or reverse-proxy deployment. Before relying on OIDC as the sole interactive mechanism in production, complete **Verify Sign-In** through the actual externally reachable HTTPS URL and configured identity provider while the known-working Password fallback is still available.
 
+## Recovering access
+
+If no Admin can sign in any more (a forgotten password, or an identity provider that is down or no longer maps to the Admin), recovery needs access to the computer running DebridPulse. Stop DebridPulse, back up `config.json`, and either:
+
+- add `"auth_username": "<name>"` and a plaintext `"auth_password": "<new password>"`, and set `"auth_password_enabled": true`. At the next start the plaintext is converted to a verifier, installed as the **default Admin's** local credential, and removed from the file; or
+- set `auth_password_enabled` and `auth_oidc_enabled` to `false`. DebridPulse then starts open, as the default Admin, so repair authentication in **Settings → Authentication** and switch protection back on straight away.
+
+DebridPulse logs an error at startup whenever no enabled Admin can sign in with the enabled methods.
+
 ## Configuration-file examples
 
-The web UI is the supported configuration surface. The following JSON fragments document the persistent representation for recovery and automation; they are not a substitute for the lockout protections in the Authentication UI/API.
+The web UI is the supported configuration surface. The following JSON fragments document the persistent representation for recovery and automation; they are not a substitute for the lockout protections in the Authentication UI/API. Local credentials are not configuration: they belong to accounts in the database.
 
 Password only:
 
 ```json
 {
   "auth_password_enabled": true,
-  "auth_username": "operator",
-  "auth_password_hash": "$argon2id$...",
   "auth_oidc_enabled": false,
   "auth_session_lifetime_hours": 12
 }
@@ -186,9 +206,8 @@ OIDC plus Password fallback:
 ```json
 {
   "auth_password_enabled": true,
-  "auth_username": "operator",
-  "auth_password_hash": "$argon2id$...",
   "auth_oidc_enabled": true,
+  "auth_oidc_default_role": "user",
   "oidc_provider_name": "Authentik",
   "oidc_issuer_url": "https://id.example/application/o/debridpulse/",
   "oidc_client_id": "debridpulse",

@@ -5,13 +5,14 @@ from types import SimpleNamespace
 from urllib.parse import urlencode
 
 import pytest
+import pytest_asyncio
 from fastapi import Request, Response
 
+from account_support import account, account_database, admin_with_password
 from api import auth_routes
 from auth.csrf import LoginCsrfStore, login_csrf_store
 from auth.middleware import enforce_authentication
 from auth.models import AuthMechanism, Principal
-from auth.passwords import hash_password, password_credential_version
 from auth.policy import safe_return_path
 from auth.sessions import (
     HTTP_SESSION_COOKIE,
@@ -26,13 +27,18 @@ from auth.throttle import password_failure_throttle
 ROOT = Path(__file__).resolve().parents[2]
 
 
-def _settings(*, enabled=True, username="operator", password="secret", lifetime=12):
+def _settings(*, enabled=True, lifetime=12):
     return SimpleNamespace(
         auth_password_enabled=enabled,
-        auth_username=username,
-        auth_password_hash=hash_password(password) if password else "",
         auth_session_lifetime_hours=lifetime,
     )
+
+
+@pytest_asyncio.fixture
+async def operator(tmp_path, monkeypatch):
+    """The default Admin, signing in as operator/secret."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password()
 
 
 def _request(
@@ -130,7 +136,7 @@ def test_login_request_body_limit_is_narrower_than_general_application_limit():
 def test_process_restart_invalidates_browser_session_by_design():
     before_restart = SessionStore()
     token, _ = before_restart.create(
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         lifetime_seconds=3600,
     )
     assert before_restart.resolve(token) is not None
@@ -141,7 +147,7 @@ def test_process_restart_invalidates_browser_session_by_design():
 def test_session_store_is_bounded_absolute_and_opaque():
     now = [100.0]
     store = SessionStore(max_entries=2, clock=lambda: now[0])
-    principal = Principal.password_session("operator")
+    principal = Principal.password_session(account("operator"))
     first, _ = store.create(principal, lifetime_seconds=60, credential_version="v1")
     second, _ = store.create(principal, lifetime_seconds=60, credential_version="v1")
     third, _ = store.create(principal, lifetime_seconds=60, credential_version="v1")
@@ -161,8 +167,8 @@ def test_session_store_is_bounded_absolute_and_opaque():
 
 def test_session_csrf_is_derived_and_bound_to_session():
     store = SessionStore()
-    token_a, _ = store.create(Principal.password_session("a"), lifetime_seconds=60)
-    token_b, _ = store.create(Principal.password_session("b"), lifetime_seconds=60)
+    token_a, _ = store.create(Principal.password_session(account("a", account_id="a")), lifetime_seconds=60)
+    token_b, _ = store.create(Principal.password_session(account("b", account_id="b")), lifetime_seconds=60)
     csrf_a = store.csrf_token(token_a)
     assert csrf_a
     assert store.verify_csrf(token_a, csrf_a) is True
@@ -277,9 +283,8 @@ async def test_session_mutation_requires_csrf_and_correct_token_passes(monkeypat
     monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
     session_store.clear()
     token, _ = session_store.create(
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         lifetime_seconds=3600,
-        credential_version=password_credential_version(cfg.auth_password_hash),
     )
     cookie = f"{HTTP_SESSION_COOKIE}={token}"
 
@@ -302,9 +307,9 @@ async def test_session_mutation_requires_csrf_and_correct_token_passes(monkeypat
 @pytest.mark.asyncio
 async def test_auth_session_status_returns_csrf_only_for_server_session():
     session_store.clear()
-    token, _ = session_store.create(Principal.password_session("operator"), lifetime_seconds=3600)
+    token, _ = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
     request = _request("GET", path="/api/auth/session", headers={"Host": "debridpulse.local"})
-    request.state.principal = Principal.password_session("operator")
+    request.state.principal = Principal.password_session(account("operator"))
     request.state.auth_session_token = token
     data = await auth_routes.auth_session_status(request)
     assert data["authenticated"] is True
@@ -313,25 +318,20 @@ async def test_auth_session_status_returns_csrf_only_for_server_session():
     assert data["session_expires_in_seconds"] > 0
 
     basic = _request("GET", path="/api/auth/session", headers={"Host": "debridpulse.local"})
-    basic.state.principal = Principal.http_basic("operator")
+    basic.state.principal = Principal.http_basic(account("operator"))
     basic_data = await auth_routes.auth_session_status(basic)
     assert basic_data["csrf_token"] == ""
     assert basic_data["session_expires_in_seconds"] is None
 
 
 @pytest.mark.asyncio
-async def test_password_change_invalidates_existing_browser_session(monkeypatch):
+async def test_password_change_invalidates_existing_browser_session(operator, monkeypatch):
     import auth.middleware as middleware
 
-    old_cfg = _settings(password="old-secret")
-    new_cfg = _settings(password="new-secret")
-    monkeypatch.setattr(middleware, "get_settings", lambda: new_cfg)
+    monkeypatch.setattr(middleware, "get_settings", lambda: _settings())
     session_store.clear()
-    token, _ = session_store.create(
-        Principal.password_session("operator"),
-        lifetime_seconds=3600,
-        credential_version=password_credential_version(old_cfg.auth_password_hash),
-    )
+    token, _ = session_store.create(Principal.password_session(operator), lifetime_seconds=3600)
+    await admin_with_password(password="new-secret")
     request = _request(
         "GET",
         path="/",
@@ -348,17 +348,12 @@ async def test_password_change_invalidates_existing_browser_session(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_login_page_clears_stale_password_session(monkeypatch):
-    new_cfg = _settings(password="new-secret")
-    old_cfg = _settings(password="old-secret")
-    monkeypatch.setattr(auth_routes, "get_settings", lambda: new_cfg)
+async def test_login_page_clears_stale_password_session(operator, monkeypatch):
+    monkeypatch.setattr(auth_routes, "get_settings", lambda: _settings())
     session_store.clear()
     login_csrf_store.clear()
-    token, _ = session_store.create(
-        Principal.password_session("operator"),
-        lifetime_seconds=3600,
-        credential_version=password_credential_version(old_cfg.auth_password_hash),
-    )
+    token, _ = session_store.create(Principal.password_session(operator), lifetime_seconds=3600)
+    await admin_with_password(password="new-secret")
     request = _request(
         "GET",
         path="/login",
@@ -400,7 +395,7 @@ async def test_browser_navigation_redirects_but_api_get_is_json_401(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_machine_basic_mutation_does_not_require_browser_csrf(monkeypatch):
+async def test_machine_basic_mutation_does_not_require_browser_csrf(operator, monkeypatch):
     import auth.middleware as middleware
 
     cfg = _settings()
@@ -419,18 +414,14 @@ async def test_machine_basic_mutation_does_not_require_browser_csrf(monkeypatch)
 
 
 @pytest.mark.asyncio
-async def test_password_login_creates_rotated_application_session(monkeypatch):
+async def test_password_login_creates_rotated_application_session(operator, monkeypatch):
     cfg = _settings(lifetime=1)
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
     password_failure_throttle.clear()
     session_store.clear()
     login_csrf_store.clear()
 
-    old_token, _ = session_store.create(
-        Principal.password_session("operator"),
-        lifetime_seconds=3600,
-        credential_version=password_credential_version(cfg.auth_password_hash),
-    )
+    old_token, _ = session_store.create(Principal.password_session(operator), lifetime_seconds=3600)
     browser_nonce, csrf = login_csrf_store.issue()
     request = _form_request(
         "/login",
@@ -456,11 +447,12 @@ async def test_password_login_creates_rotated_application_session(monkeypatch):
     record = session_store.resolve(issued.value)
     assert record is not None
     assert record.principal.mechanism is AuthMechanism.PASSWORD_SESSION
-    assert record.credential_version == password_credential_version(cfg.auth_password_hash)
+    assert record.principal.account_id == operator.id
+    assert record.credential_version == operator.credential_version
 
 
 @pytest.mark.asyncio
-async def test_login_csrf_reuse_is_rejected(monkeypatch):
+async def test_login_csrf_reuse_is_rejected(operator, monkeypatch):
     cfg = _settings()
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
     password_failure_throttle.clear()
@@ -490,9 +482,9 @@ async def test_login_csrf_reuse_is_rejected(monkeypatch):
 @pytest.mark.asyncio
 async def test_logout_revokes_server_session_and_expires_cookie():
     session_store.clear()
-    token, _ = session_store.create(Principal.password_session("operator"), lifetime_seconds=3600)
+    token, _ = session_store.create(Principal.password_session(account("operator")), lifetime_seconds=3600)
     request = _request("POST", path="/api/auth/logout", headers={"Host": "debridpulse.local"})
-    request.state.principal = Principal.password_session("operator")
+    request.state.principal = Principal.password_session(account("operator"))
     request.state.auth_session_token = token
 
     response = await auth_routes.logout(request)

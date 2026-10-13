@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from auth.passwords import hash_password
@@ -144,14 +144,16 @@ class AppSettings(BaseModel):
     activity_log_page_size: int = 100
 
     # ── Authentication ────────────────────────────────────────────────────────
+    # Mechanisms and admission only. Local credentials belong to accounts
+    # (``auth.accounts``); a pre-account ``auth_username``/``auth_password``/
+    # ``auth_password_hash`` in this file is one-shot startup input
+    # (``legacy_credential_input``), never a setting.
     auth_password_enabled: bool = False
-    auth_username: str = ""
-    auth_password_hash: str = Field(default="", exclude=True)
-    auth_password: str = ""
-    auth_password_hash_clear: bool = Field(default=False, exclude=True)
     auth_session_lifetime_hours: int = 12
 
     auth_oidc_enabled: bool = False
+    # The role of an account created by its first admitted OIDC sign-in.
+    auth_oidc_default_role: Literal["user", "readonly"] = "user"
     oidc_provider_name: str = "OpenID Connect"
     oidc_issuer_url: str = ""
     oidc_client_id: str = ""
@@ -166,18 +168,6 @@ class AppSettings(BaseModel):
     # Canonical externally reachable origin used for OIDC callback construction
     # and secure-cookie classification behind a trusted HTTPS reverse proxy.
     public_base_url: str = ""
-
-    def model_dump(self, *args, **kwargs):
-        """Carry explicit legacy clear intent across the broad settings merge."""
-        data = super().model_dump(*args, **kwargs)
-        requested_clears = {
-            str(field)
-            for field in (getattr(self, "clear_secrets", []) or [])
-            if str(field)
-        }
-        if "auth_password" in requested_clears:
-            data["auth_password_hash_clear"] = True
-        return data
 
     # ── Disk space guard ─────────────────────────────────────────────────────
     # Minimum free disk space required on the download filesystem. At/below the
@@ -208,7 +198,11 @@ def _build_effective_settings(loaded: dict) -> AppSettings:
 
 
 def _migrate_password_settings(loaded: dict) -> bool:
-    """Migrate legacy plaintext Basic credentials to the owned password model."""
+    """Turn a configuration file's plaintext local password into a verifier.
+
+    ``loaded`` is the raw document. The resulting ``auth_username`` +
+    ``auth_password_hash`` pair is the pre-account credential, and remains the
+    offline recovery input for the default Admin (``legacy_credential_input``)."""
     changed = False
     auth_state_present = any(
         field in loaded
@@ -238,11 +232,35 @@ def _migrate_password_settings(loaded: dict) -> bool:
 # operational state whose only authority is the durable application state; the
 # legacy value is read once, here, and consumed only by the v1.0.12 database
 # migration (main.py) that seeds that state. It is never a setting.
-_legacy_startup_inputs: dict = {"paused": False}
+#
+# Likewise a local credential in this file -- the pre-account installation's
+# one credential, or an operator's offline recovery input -- is read here and
+# consumed by the account owner at startup (``auth.accounts.
+# import_legacy_credential``). Until then it stays in the file, as a verifier,
+# and every rewrite of the file carries it; once imported it is retired.
+_legacy_startup_inputs: dict = {"paused": False, "credential": None}
 
 
 def legacy_paused_input() -> bool:
     return bool(_legacy_startup_inputs["paused"])
+
+
+def legacy_credential_input() -> tuple[str, str] | None:
+    """The configuration file's pending ``(username, password_hash)``, if any."""
+    return _legacy_startup_inputs["credential"]
+
+
+def retire_legacy_credential_input() -> None:
+    """The credential now belongs to its account: drop it from the file."""
+    if _legacy_startup_inputs["credential"] is not None:
+        _legacy_startup_inputs["credential"] = None
+        save_settings(_settings)
+
+
+def _capture_legacy_credential(data: dict) -> None:
+    username = str(data.get("auth_username") or "").strip()
+    password_hash = str(data.get("auth_password_hash") or "").strip()
+    _legacy_startup_inputs["credential"] = (username, password_hash) if password_hash else None
 
 
 def get_settings() -> AppSettings:
@@ -254,6 +272,8 @@ def load_settings() -> AppSettings:
 
     loaded: dict = {}
     legacy_migrated = False
+    password_migrated = False
+    _legacy_startup_inputs["credential"] = None
     if CONFIG_PATH.exists():
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
@@ -268,6 +288,8 @@ def load_settings() -> AppSettings:
             for name in clamp_persisted_namespaces(data, definitions):
                 logger.warning("Config [%s]: value out of range - clamped", name)
                 legacy_migrated = True
+            password_migrated = _migrate_password_settings(data)
+            _capture_legacy_credential(data)
             loaded = {k: v for k, v in data.items() if k in AppSettings.model_fields}
         except Exception as exc:
             # A missing file is a fresh/default installation. An existing file
@@ -275,7 +297,6 @@ def load_settings() -> AppSettings:
             # silently turn configured authentication into open mode.
             raise RuntimeError("Existing configuration could not be read safely") from exc
 
-    password_migrated = _migrate_password_settings(loaded)
     try:
         # Loaded settings always carry complete, validated canonical namespaces.
         settings = normalize_settings(_build_effective_settings(loaded), definitions)
@@ -325,37 +346,26 @@ def validate_settings_document(data) -> AppSettings:
         raise LegacySettingsDocument("configuration requires legacy translation")
     if clamp_persisted_namespaces(candidate, definitions):
         raise ValueError("configuration holds out-of-range values")
-    loaded = {k: v for k, v in candidate.items() if k in AppSettings.model_fields}
-    if _migrate_password_settings(loaded):
+    if _migrate_password_settings(candidate):
         raise LegacySettingsDocument("configuration requires password migration")
+    loaded = {k: v for k, v in candidate.items() if k in AppSettings.model_fields}
     return normalize_settings(_build_effective_settings(loaded), definitions)
 
 
 def save_settings(s: AppSettings):
     """Atomically persist configuration with secret-safe filesystem permissions."""
-    global _settings
-    plaintext = str(getattr(s, "auth_password", "") or "")
-    if bool(getattr(s, "auth_password_hash_clear", False)):
-        s.auth_password_hash = ""
-        s.auth_password = ""
-    elif plaintext:
-        s.auth_password_hash = hash_password(plaintext)
-        s.auth_password = ""
-    elif not str(getattr(s, "auth_password_hash", "") or "").strip():
-        s.auth_password_hash = str(getattr(_settings, "auth_password_hash", "") or "")
-
     if bool(getattr(s, "oidc_client_secret_clear", False)):
         s.oidc_client_secret = ""
     elif not str(getattr(s, "oidc_client_secret", "") or "").strip():
         s.oidc_client_secret = str(getattr(_settings, "oidc_client_secret", "") or "")
 
     data = s.model_dump()
-    data.pop("auth_password", None)
-    data["auth_password_hash"] = str(getattr(s, "auth_password_hash", "") or "")
     data["oidc_client_secret"] = str(getattr(s, "oidc_client_secret", "") or "")
+    pending = _legacy_startup_inputs["credential"]
+    if pending is not None:
+        data["auth_username"], data["auth_password_hash"] = pending
     atomic_write_json(CONFIG_PATH, data, indent=2)
 
-    s.auth_password_hash_clear = False
     s.oidc_client_secret_clear = False
 
 
@@ -366,7 +376,7 @@ def apply_settings(s: AppSettings):
 
 # Metadata about configuration, never an operator's configuration change.
 _UNJOURNALED_SETTINGS = frozenset({"notification_verification", "integrations", "integration_groups"})
-_SECRET_ATTRIBUTES = ("auth_password_hash", "oidc_client_secret")
+_SECRET_ATTRIBUTES = ("oidc_client_secret",)
 
 
 def configuration_changes(previous: AppSettings, current: AppSettings) -> tuple[list[str], list[tuple[str, bool]]]:

@@ -48,7 +48,7 @@ from core.presentation_safety import safe_original_http_resource, safe_original_
 from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.models import AuthMechanism
 from auth.oidc_version import oidc_configuration_version
-from auth.passwords import basic_verification_cache, password_credential_version
+from auth.passwords import basic_verification_cache
 from auth.sessions import session_store
 from core import scheduler as scheduler_runtime
 from application.lifetime import RestoreFailed, restore_backup as restore_application_backup
@@ -211,7 +211,7 @@ def _is_public_url(url: str) -> bool:
 _SECRET_SETTINGS = {
     "discord_webhook_url",
     "discord_webhook_added", "stats_report_webhook_url",
-    "auth_password", "extraction_password",
+    "extraction_password",
 }
 
 # SettingsUpdate inherits AppSettings, so omitted values are otherwise populated
@@ -221,9 +221,9 @@ _SECRET_SETTINGS = {
 # cannot silently reset authentication behind the transition state machine.
 _AUTH_COMPAT_SETTINGS_FIELDS = (
     "auth_password_enabled",
-    "auth_username",
     "auth_session_lifetime_hours",
     "auth_oidc_enabled",
+    "auth_oidc_default_role",
     "oidc_provider_name",
     "oidc_issuer_url",
     "oidc_client_id",
@@ -427,12 +427,10 @@ def _public_transfer_presentation(value, definitions, *, admitted_verbatim: bool
     return result
 
 
-def _password_auth_binding(settings: AppSettings) -> tuple[bool, str, str]:
-    return (
-        bool(getattr(settings, "auth_password_enabled", False)),
-        str(getattr(settings, "auth_username", "") or "").strip(),
-        password_credential_version(getattr(settings, "auth_password_hash", "")),
-    )
+def _password_auth_binding(settings: AppSettings) -> bool:
+    # Local credentials are account state (``auth.accounts``): the broad
+    # document only enables or disables the mechanism.
+    return bool(getattr(settings, "auth_password_enabled", False))
 
 
 def _oidc_auth_binding(settings: AppSettings) -> tuple[bool, str]:

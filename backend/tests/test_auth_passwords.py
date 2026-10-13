@@ -1,5 +1,4 @@
 import json
-from types import SimpleNamespace
 
 from auth.passwords import BasicVerificationCache, hash_password, verify_password
 from auth.throttle import FailureThrottle
@@ -73,17 +72,18 @@ def test_legacy_plaintext_password_migrates_and_is_removed(monkeypatch, tmp_path
     }))
     monkeypatch.setattr(config, "CONFIG_PATH", config_path)
     monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setitem(config._legacy_startup_inputs, "credential", None)
 
     migrated = config.load_settings()
     persisted = json.loads(config_path.read_text())
+    username, password_hash = config.legacy_credential_input()
 
     assert migrated.auth_password_enabled is True
-    assert migrated.auth_username == "operator"
-    assert migrated.auth_password == ""
-    assert migrated.auth_password_hash.startswith("$argon2id$")
-    assert verify_password(migrated.auth_password_hash, "legacy-secret") is True
+    assert username == "operator"
+    assert password_hash.startswith("$argon2id$")
+    assert verify_password(password_hash, "legacy-secret") is True
     assert "auth_password" not in persisted
-    assert persisted["auth_password_hash"] == migrated.auth_password_hash
+    assert persisted["auth_password_hash"] == password_hash
     assert persisted["auth_password_enabled"] is True
 
 
@@ -94,13 +94,15 @@ def test_incomplete_legacy_auth_stays_open(monkeypatch, tmp_path):
     config_path.write_text(json.dumps({"auth_username": "operator", "auth_password": ""}))
     monkeypatch.setattr(config, "CONFIG_PATH", config_path)
     monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setitem(config._legacy_startup_inputs, "credential", None)
 
     migrated = config.load_settings()
     persisted = json.loads(config_path.read_text())
 
     assert migrated.auth_password_enabled is False
-    assert migrated.auth_password_hash == ""
+    assert config.legacy_credential_input() is None
     assert "auth_password" not in persisted
+    assert "auth_password_hash" not in persisted
     assert persisted["auth_password_enabled"] is False
 
 
@@ -116,57 +118,29 @@ def test_missing_config_does_not_get_created_for_auth_defaults(monkeypatch, tmp_
     assert config_path.exists() is False
 
 
-def test_unrelated_settings_save_preserves_hidden_password_hash(monkeypatch, tmp_path):
+def test_a_pending_file_credential_survives_settings_saves_until_retired(monkeypatch, tmp_path):
+    """Until the account owner installs it, the configuration file's credential
+    is carried by every rewrite of the file; once retired, no save writes it."""
     import core.config as config
 
     config_path = tmp_path / "config.json"
     password_hash = hash_password("secret")
-    previous = config.AppSettings(
-        auth_password_enabled=True,
-        auth_username="operator",
-        auth_password_hash=password_hash,
-    )
-    monkeypatch.setattr(config, "CONFIG_PATH", config_path)
-    monkeypatch.setattr(config, "_settings", previous)
-
-    replacement = config.AppSettings(
-        auth_password_enabled=True,
-        auth_username="operator",
-        max_concurrent_downloads=7,
-    )
-    config.save_settings(replacement)
-    persisted = json.loads(config_path.read_text())
-
-    assert replacement.auth_password_hash == password_hash
-    assert persisted["auth_password_hash"] == password_hash
-    assert "auth_password" not in persisted
-
-
-def test_new_plaintext_settings_input_is_hashed_before_persistence(monkeypatch, tmp_path):
-    import core.config as config
-
-    config_path = tmp_path / "config.json"
     monkeypatch.setattr(config, "CONFIG_PATH", config_path)
     monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setitem(config._legacy_startup_inputs, "credential", ("operator", password_hash))
 
-    settings = config.AppSettings(
-        auth_password_enabled=True,
-        auth_username="operator",
-        auth_password="new-secret",
-    )
-    config.save_settings(settings)
+    config.save_settings(config.AppSettings(auth_password_enabled=True, max_concurrent_downloads=7))
     persisted = json.loads(config_path.read_text())
+    assert (persisted["auth_username"], persisted["auth_password_hash"]) == ("operator", password_hash)
 
-    assert settings.auth_password == ""
-    assert settings.auth_password_hash.startswith("$argon2id$")
-    assert verify_password(settings.auth_password_hash, "new-secret") is True
-    assert "auth_password" not in persisted
-    assert persisted["auth_password_hash"] == settings.auth_password_hash
+    config.retire_legacy_credential_input()
+    persisted = json.loads(config_path.read_text())
+    assert config.legacy_credential_input() is None
+    assert not {"auth_username", "auth_password", "auth_password_hash"} & set(persisted)
 
 
-def test_password_hash_is_excluded_from_normal_model_dump():
-    settings = SimpleNamespace()
+def test_settings_hold_no_local_credential():
     from core.config import AppSettings
 
-    settings = AppSettings(auth_password_hash=hash_password("secret"))
-    assert "auth_password_hash" not in settings.model_dump()
+    assert not {"auth_username", "auth_password", "auth_password_hash"} & set(AppSettings.model_fields)
+    assert "auth_password_hash" not in AppSettings(auth_password_hash=hash_password("secret")).model_dump()

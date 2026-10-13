@@ -4,19 +4,18 @@ from types import SimpleNamespace
 import pytest
 from fastapi import Request
 
+from account_support import account, account_database
 from api import auth_routes
+from auth.accounts import DEFAULT_ADMIN_ID, bind_verified_oidc
 from auth.models import AuthMechanism, Principal
 from auth.oidc import OIDC_CORRELATION_COOKIE
 from auth.oidc_version import oidc_configuration_version
-from auth.passwords import hash_password
 from auth.sessions import HTTPS_SESSION_COOKIE, session_store
 
 
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
-        "auth_password_hash": hash_password("secret"),
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -84,7 +83,7 @@ async def test_unified_login_shows_password_and_oidc_when_both_enabled(monkeypat
 
 @pytest.mark.asyncio
 async def test_oidc_only_uses_local_landing_page_without_password_or_auto_redirect(monkeypatch):
-    cfg = _settings(auth_password_enabled=False, auth_username="", auth_password_hash="")
+    cfg = _settings(auth_password_enabled=False)
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
     request = _request(headers={"Host": "pulse.example"})
     response = await auth_routes.login_page(request, next="/")
@@ -122,13 +121,16 @@ async def test_oidc_start_sets_secure_bound_correlation_cookie(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_oidc_callback_rotates_old_session_and_forces_secure_application_cookie(monkeypatch):
+async def test_oidc_callback_rotates_old_session_and_forces_secure_application_cookie(monkeypatch, tmp_path):
     cfg = _settings()
     config_version = oidc_configuration_version(cfg)
     monkeypatch.setattr(auth_routes, "get_settings", lambda: cfg)
+    await account_database(tmp_path, monkeypatch)
+    issuer = "https://id.example/application/o/debridpulse"
+    await bind_verified_oidc(issuer, "user-1", DEFAULT_ADMIN_ID)
     session_store.clear()
     old_token, _ = session_store.create(
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         lifetime_seconds=3600,
         credential_version="old",
     )
@@ -141,6 +143,7 @@ async def test_oidc_callback_rotates_old_session_and_forces_secure_application_c
             Principal.oidc_session(
                 "https://id.example/application/o/debridpulse|user-1",
                 display_name="Operator",
+                claims={"iss": issuer, "sub": "user-1"},
                 credential_version=config_version,
             ),
             "/stats",
@@ -171,6 +174,7 @@ async def test_oidc_callback_rotates_old_session_and_forces_secure_application_c
     record = session_store.resolve(cookie.value)
     assert record is not None
     assert record.principal.mechanism is AuthMechanism.OIDC_SESSION
+    assert record.principal.account_id == DEFAULT_ADMIN_ID
     assert record.credential_version == config_version
 
     correlation = _response_cookie(response, OIDC_CORRELATION_COOKIE)

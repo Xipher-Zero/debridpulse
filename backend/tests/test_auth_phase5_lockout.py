@@ -3,12 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request
 
-from auth.middleware import _session_record_still_valid
+from account_support import account, account_database, admin_with_password
+from auth.middleware import session_record_valid
 from auth.models import AuthMechanism, Principal
 from auth.oidc_version import oidc_configuration_version
-from auth.passwords import hash_password
 from auth.pending_oidc import PendingOidcConfigurationStore
 from auth.transitions import oidc_critical_change, settings_transition_rejection
 
@@ -16,8 +17,6 @@ from auth.transitions import oidc_critical_change, settings_transition_rejection
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
-        "auth_password_hash": hash_password("secret"),
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -33,6 +32,13 @@ def _settings(**updates):
     }
     values.update(updates)
     return SimpleNamespace(**values)
+
+
+@pytest_asyncio.fixture
+async def operator(tmp_path, monkeypatch):
+    """The default Admin, holding a local password."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password()
 
 
 def _request(payload):
@@ -73,7 +79,7 @@ async def test_password_session_cannot_make_unverified_oidc_sole_auth():
     request = _request({"auth_password_enabled": False, "auth_oidc_enabled": True})
     response = await settings_transition_rejection(
         request,
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         current,
     )
     assert response is not None
@@ -126,7 +132,7 @@ async def test_oidc_only_critical_change_requires_pending_verification():
 
 
 @pytest.mark.asyncio
-async def test_oidc_only_change_is_allowed_when_same_update_restores_usable_password_fallback():
+async def test_oidc_only_change_is_allowed_when_same_update_restores_usable_password_fallback(operator):
     current = _settings(auth_password_enabled=False)
     request = _request(
         {
@@ -146,7 +152,7 @@ async def test_oidc_only_change_is_allowed_when_same_update_restores_usable_pass
 @pytest.mark.asyncio
 async def test_intentional_open_mode_requires_explicit_confirmation():
     current = _settings()
-    principal = Principal.password_session("operator")
+    principal = Principal.password_session(account("operator"))
 
     rejected = await settings_transition_rejection(
         _request({"auth_password_enabled": False, "auth_oidc_enabled": False}),
@@ -191,12 +197,12 @@ def test_oidc_session_admission_rejects_stale_critical_configuration(monkeypatch
     current = _settings()
     version = oidc_configuration_version(current)
     record = SimpleNamespace(
-        principal=Principal.oidc_session("https://id.example|user-1"),
+        principal=Principal.oidc_session("https://id.example|user-1").bound_to(account("user-1")),
         credential_version=version,
     )
     monkeypatch.setattr(middleware, "_oidc_ready", lambda _cfg: True)
-    assert _session_record_still_valid(record, current) is True
-    assert _session_record_still_valid(record, _settings(oidc_client_id="changed")) is False
+    assert session_record_valid(record, current) is True
+    assert session_record_valid(record, _settings(oidc_client_id="changed")) is False
 
 
 def test_pending_config_store_is_bounded_ephemeral_and_exact_version_bound():

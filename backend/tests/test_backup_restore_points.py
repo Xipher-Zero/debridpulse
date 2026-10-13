@@ -972,6 +972,77 @@ async def test_the_pinned_pre_queue_backup_restores_with_no_queue_promotion(serv
         conn.close()
 
 
+# Written by the pinned baseline's own backup service (03123a72), immediately
+# before accounts existed: its configuration holds that installation's one
+# local credential (operator / pre-account-secret), with password sign-in on.
+PRE_ACCOUNT_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-03123a72.zip"
+
+
+async def test_the_pinned_pre_account_backup_restores_its_operator_as_the_default_admin(served):
+    """Upgraded on the private staged copy only, then started: the backup's
+    configuration-file credential becomes the default Admin's and leaves the
+    file, the replaced accounts are gone with the replaced database, and no
+    session issued before the restore survives it."""
+    from auth import accounts
+    from auth.models import Principal
+    from auth.passwords import verify_password
+    from auth.sessions import session_store
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    replaced = await accounts.create_local_account("replaced-admin", "secret", role="admin")
+    token, _ = session_store.create(Principal.password_session(replaced), lifetime_seconds=3600)
+    added = await client.post("/api/admin/backups", content=PRE_ACCOUNT_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    with backup._open_frozen(_managed_database(point)) as conn:
+        assert backup._fingerprint(conn) in backup._UPGRADABLE_SCHEMAS and backup._fingerprint(conn) != live
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert backup.schema_version(database.DB_PATH) == live
+    assert session_store.resolve(token) is None
+    assert await accounts.get_account(replaced.id) is None
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.id == accounts.DEFAULT_ADMIN_ID and operator.role is accounts.Role.ADMIN
+    assert verify_password(password_hash, "pre-account-secret")
+    persisted = json.loads(config.CONFIG_PATH.read_text(encoding="utf-8"))
+    assert persisted["auth_password_enabled"] is True
+    assert not {"auth_username", "auth_password", "auth_password_hash"} & set(persisted)
+
+
+async def test_a_backup_that_would_leave_no_usable_admin_is_refused_before_anything_changes(served, tmp_path):
+    """A restore replaces every account and authentication setting. One whose
+    restored state no Admin could sign in to -- here a pre-account OIDC-only
+    installation, whose operator is bound to no account -- is refused before
+    anything is quiesced, backed up or replaced."""
+    app, client, _composed, calls = served
+    with zipfile.ZipFile(PRE_ACCOUNT_BACKUP) as package:
+        document = json.loads(package.read("config.json"))
+    for key in ("auth_username", "auth_password_hash"):
+        document.pop(key)
+    document.update(auth_password_enabled=False, auth_oidc_enabled=True, oidc_issuer_url="https://id.example/",
+                    oidc_client_id="debridpulse", oidc_allow_all=True, public_base_url="https://pulse.example")
+    package = _repack(PRE_ACCOUNT_BACKUP, tmp_path / "oidc-only.zip",
+                      replace_members={"config.json": json.dumps(document)})
+    added = await client.post("/api/admin/backups", content=package.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    before, live = app.state.application, backup.schema_version(database.DB_PATH)
+    calls.clear()
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": added.json()["backup"]["id"]})
+
+    assert restored.status_code == 400
+    assert backup.NO_USABLE_ADMIN in restored.json()["detail"]
+    assert "left unchanged" in restored.json()["detail"]
+    assert app.state.application is before and calls == []
+    assert backup.schema_version(database.DB_PATH) == live
+    assert len(backup.list_restore_points()) == 1  # no safety backup for a refused restore
+
+
 async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(
         served, monkeypatch):
     app, client, _composed, _calls = served

@@ -60,7 +60,14 @@ TABLES = [
     "integration_runtime_state",
     "transfer_input_challenges",
     "schema_migrations",
+    # Accounts are identity configuration, not transfer state or history: the
+    # wipe keeps every account, credential and OIDC binding (``auth.accounts``).
+    "accounts",
+    "account_local_credentials",
+    "account_oidc_bindings",
 ]
+_KEPT = frozenset({"transfer_controls", "schema_migrations", "event_journal_index",
+                   "accounts", "account_local_credentials", "account_oidc_bindings"})
 
 
 async def wipe_database(*, verified_quiesced: bool = False) -> dict:
@@ -126,5 +133,4 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
         await db.commit()
 
     logger.warning("Database wipe completed")
-    return {"ok": True, "wiped_tables": [table for table in TABLES
-                                         if table not in {"transfer_controls", "schema_migrations", "event_journal_index"}]}
+    return {"ok": True, "wiped_tables": [table for table in TABLES if table not in _KEPT]}

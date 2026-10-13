@@ -65,13 +65,13 @@ def authentication_configuration_baseline_version(settings: Any) -> str:
 
     Unlike ``oidc_configuration_version`` this intentionally operates on raw
     stored settings so disabled or temporarily incomplete OIDC state is still
-    distinguishable. It also includes the local-password state because a
-    pending OIDC commit may explicitly change whether Password remains enabled.
+    distinguishable. It also includes whether Username & Password is enabled
+    because a pending OIDC commit may explicitly change whether Password
+    remains enabled. Local credentials are account state (``auth.accounts``),
+    not authentication configuration.
     """
     payload: dict[str, Any] = {
         "auth_password_enabled": bool(getattr(settings, "auth_password_enabled", False)),
-        "auth_username": str(getattr(settings, "auth_username", "") or ""),
-        "auth_password_hash": str(getattr(settings, "auth_password_hash", "") or ""),
     }
     for field in _OIDC_BASELINE_FIELDS:
         value = getattr(settings, field, None)

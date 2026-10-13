@@ -6,6 +6,7 @@ import pytest
 from fastapi import Request
 from fastapi.responses import Response
 
+from account_support import account_database
 from auth import middleware, oidc
 from auth.models import Principal
 from auth.oidc_version import oidc_configuration_version_from_config
@@ -59,8 +60,6 @@ def _request(method, path, *, payload=None, headers=None, scheme="https"):
 def _open_settings():
     return SimpleNamespace(
         auth_password_enabled=False,
-        auth_username="",
-        auth_password_hash="",
         auth_oidc_enabled=False,
         oidc_provider_name="OpenID Connect",
         oidc_issuer_url="",
@@ -79,13 +78,12 @@ def _open_settings():
 def _protected_password_settings():
     cfg = _open_settings()
     cfg.auth_password_enabled = True
-    cfg.auth_username = "operator"
-    cfg.auth_password_hash = hash_password("secret")
     return cfg
 
 
 @pytest.mark.asyncio
-async def test_open_mode_still_enforces_auth_transition_guard(monkeypatch):
+async def test_open_mode_still_enforces_auth_transition_guard(monkeypatch, tmp_path):
+    await account_database(tmp_path, monkeypatch)  # no account holds a password
     monkeypatch.setattr(middleware, "get_settings", _open_settings)
     request = _request(
         "PUT",
@@ -158,13 +156,18 @@ def test_legacy_plaintext_replaces_existing_hash(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(config_module, "CONFIG_PATH", path)
     monkeypatch.setattr(config_module, "_settings", config_module.AppSettings())
+    monkeypatch.setitem(config_module._legacy_startup_inputs, "credential", None)
 
-    loaded = config_module.load_settings()
+    config_module.load_settings()
     persisted = json.loads(path.read_text(encoding="utf-8"))
+    username, pending_hash = config_module.legacy_credential_input()
 
-    assert verify_password(loaded.auth_password_hash, "new-secret") is True
-    assert verify_password(loaded.auth_password_hash, "old-secret") is False
-    assert loaded.auth_password_hash != old_hash
+    # The pending credential stays in the file as a verifier until the account
+    # owner installs it on the default Admin; the plaintext never survives.
+    assert username == "operator"
+    assert verify_password(pending_hash, "new-secret") is True
+    assert verify_password(pending_hash, "old-secret") is False
+    assert persisted["auth_password_hash"] == pending_hash != old_hash
     assert "auth_password" not in persisted
 
 
@@ -175,6 +178,7 @@ def test_legacy_password_migration_persistence_failure_aborts_startup(monkeypatc
         encoding="utf-8",
     )
     monkeypatch.setattr(config_module, "CONFIG_PATH", path)
+    monkeypatch.setitem(config_module._legacy_startup_inputs, "credential", None)
 
     def fail_save(_settings):
         raise OSError("read-only configuration volume")

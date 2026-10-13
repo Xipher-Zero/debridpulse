@@ -202,3 +202,28 @@ async def test_wipe_removes_the_transfer_file_selection_intent_child_first(db_pa
             assert (await db.fetchall(f"SELECT COUNT(*) AS n FROM {table}"))[0]["n"] == 0
         assert (await db.fetchall("PRAGMA foreign_key_check")) == []
     assert {"transfer_file_selection_intents", "transfer_file_selection_intent_entries"} <= set(result["wiped_tables"])
+
+
+@pytest.mark.asyncio
+async def test_wipe_keeps_every_account_credential_and_oidc_binding(db_path):
+    """Accounts are identity configuration, not transfer state: the explicit
+    whole-database wipe clears transfers and history and keeps who can sign in."""
+    from auth import accounts
+
+    await _seed_canonical_state()
+    local = await accounts.create_local_account("operator", "secret", role=accounts.Role.ADMIN)
+    linked = await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="readonly")
+
+    def facts():
+        with sqlite3.connect(db_path) as conn:
+            return {table: conn.execute(f"SELECT * FROM {table} ORDER BY 1").fetchall()
+                    for table in accounts.TABLES}
+
+    before = facts()
+    result = await db_maintenance.wipe_database(verified_quiesced=True)
+
+    assert result["ok"] is True
+    assert not set(accounts.TABLES) & set(result["wiped_tables"])
+    assert facts() == before
+    assert (await accounts.local_credential("operator"))[0].id == local.id
+    assert (await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="user")).id == linked.id

@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import secrets
+from typing import Literal
 from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Request
@@ -11,6 +12,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from pydantic import BaseModel, Field
 
 from api import auth_routes as interactive_routes
+from auth.accounts import AccountRefused, admin_password_holders, local_credential_status, set_own_local_credential
 from auth.api_tokens import api_token_store
 from auth.csrf import clear_login_csrf_cookie
 from auth.manager import peer_key
@@ -33,7 +35,7 @@ from auth.oidc_version import (
     authentication_configuration_baseline_version,
     oidc_configuration_version,
 )
-from auth.passwords import basic_verification_cache, is_usable_password_hash
+from auth.passwords import basic_verification_cache
 from auth.pending_oidc import commit_verified_pending_oidc, pending_oidc_store
 from auth.policy import (
     interactive_auth_enabled,
@@ -41,7 +43,6 @@ from auth.policy import (
     public_base_url_bootstrap_origin,
     oidc_auth_enabled,
     password_auth_enabled,
-    password_auth_ready,
     safe_return_path,
 )
 from auth.sessions import session_cookie_token, session_store, set_session_cookie
@@ -82,6 +83,7 @@ class AuthenticationConfigUpdate(BaseModel):
     auth_session_lifetime_hours: int | None = Field(default=None, ge=1, le=168)
 
     auth_oidc_enabled: bool | None = None
+    auth_oidc_default_role: Literal["user", "readonly"] | None = None
     oidc_provider_name: str | None = Field(default=None, max_length=256)
     oidc_issuer_url: str | None = Field(default=None, max_length=2048)
     oidc_client_id: str | None = Field(default=None, max_length=2048)
@@ -161,6 +163,9 @@ async def _authentication_payload(request: Request, *, cfg=None) -> dict:
     oidc_version = _oidc_configuration_version_for_status(cfg) if oidc_configured else ""
     oidc_verification = oidc_verification_store.status(oidc_version)
     principal = getattr(request.state, "principal", Principal.anonymous())
+    # Until the Users & Access surface (1.0.13 ACL Stage 3), the local
+    # credential this tab edits is the signed-in account's own.
+    username, password_configured = await local_credential_status(principal.account_id)
     configured_public_base = str(getattr(cfg, "public_base_url", "") or "").strip()
     env_public_base = str(os.getenv("PUBLIC_BASE_URL", "") or "").strip()
     effective_public_base = env_public_base or configured_public_base
@@ -168,11 +173,12 @@ async def _authentication_payload(request: Request, *, cfg=None) -> dict:
         "mode": _authentication_mode(cfg),
         "authentication_required": interactive_auth_enabled(cfg),
         "password_enabled": password_auth_enabled(cfg),
-        "password_ready": password_auth_ready(cfg),
-        "password_configured": bool(str(getattr(cfg, "auth_password_hash", "") or "").strip()),
-        "username": str(getattr(cfg, "auth_username", "") or ""),
+        "password_ready": bool(password_auth_enabled(cfg) and await admin_password_holders()),
+        "password_configured": password_configured,
+        "username": username,
         "session_lifetime_hours": int(getattr(cfg, "auth_session_lifetime_hours", 12) or 12),
         "oidc_enabled": oidc_auth_enabled(cfg),
+        "oidc_default_role": str(getattr(cfg, "auth_oidc_default_role", "user") or "user"),
         "oidc_configured": oidc_configured,
         "oidc_ready": oidc_auth_ready(cfg) if oidc_auth_enabled(cfg) else False,
         "oidc_available": None,
@@ -240,9 +246,9 @@ def _build_authentication_update(update: AuthenticationConfigUpdate):
     changes: dict[str, object] = {}
     ordinary_fields = (
         "auth_password_enabled",
-        "auth_username",
         "auth_session_lifetime_hours",
         "auth_oidc_enabled",
+        "auth_oidc_default_role",
         "oidc_provider_name",
         "oidc_issuer_url",
         "oidc_client_id",
@@ -259,14 +265,6 @@ def _build_authentication_update(update: AuthenticationConfigUpdate):
         if value is not None:
             changes[field] = value
 
-    password = str(update.auth_password or "")
-    if update.clear_password:
-        changes["auth_password"] = ""
-        changes["auth_password_hash_clear"] = True
-    elif password:
-        changes["auth_password"] = password
-        changes["auth_password_hash_clear"] = False
-
     secret = str(update.oidc_client_secret or "")
     if update.clear_oidc_client_secret:
         changes["oidc_client_secret"] = ""
@@ -278,20 +276,34 @@ def _build_authentication_update(update: AuthenticationConfigUpdate):
     return current.model_copy(update=changes, deep=True)
 
 
-def _prospective_password_ready(candidate, update: AuthenticationConfigUpdate) -> bool:
+def _requested_username(update: AuthenticationConfigUpdate, own_username: str) -> str | None:
+    """The username this update asks for, or ``None`` when it keeps the current one."""
+    if update.auth_username is None or update.auth_username.strip() == own_username:
+        return None
+    return update.auth_username.strip()
+
+
+def _credential_change(update: AuthenticationConfigUpdate, own_username: str) -> bool:
+    return bool(
+        update.clear_password
+        or str(update.auth_password or "")
+        or _requested_username(update, own_username) is not None
+    )
+
+
+async def _prospective_password_ready(candidate, update: AuthenticationConfigUpdate, principal, own_username: str) -> bool:
+    """Whether, after this update, an active Admin could sign in with a password."""
     if not bool(getattr(candidate, "auth_password_enabled", False)):
         return False
-    username = str(getattr(candidate, "auth_username", "") or "").strip()
-    if not username:
-        return False
-    if update.clear_password:
-        # Clear intent wins over simultaneous plaintext in _build_authentication_update
-        # and save_settings(), so it cannot be counted as a replacement credential.
-        return False
-    return bool(
-        str(update.auth_password or "")
-        or is_usable_password_hash(getattr(candidate, "auth_password_hash", ""))
-    )
+    holders = await admin_password_holders()
+    own = principal.account_id
+    if own and update.clear_password:
+        # Clear intent wins over simultaneous plaintext, exactly as applied.
+        holders.discard(own)
+    elif own and principal.role == "admin" and str(update.auth_password or ""):
+        if _requested_username(update, own_username) or own_username:
+            holders.add(own)
+    return bool(holders)
 
 
 def _set_pending_correlation_cookie(response: JSONResponse, correlation: str) -> None:
@@ -458,7 +470,17 @@ async def update_authentication_config(request: Request, update: AuthenticationC
             status_code=400,
         )
 
-    if bool(getattr(candidate, "auth_password_enabled", False)) and not _prospective_password_ready(candidate, update):
+    principal = getattr(request.state, "principal", Principal.anonymous())
+    own_username, _own_password = await local_credential_status(principal.account_id)
+    if _credential_change(update, own_username) and not principal.account_id:
+        return JSONResponse(
+            {"detail": "Sign-in credentials can only be changed by the account they belong to"},
+            status_code=409,
+        )
+
+    if bool(getattr(candidate, "auth_password_enabled", False)) and not await _prospective_password_ready(
+        candidate, update, principal, own_username,
+    ):
         return JSONResponse(
             {"detail": "Username & Password cannot be enabled until a username and stored or new password are configured"},
             status_code=400,
@@ -474,14 +496,9 @@ async def update_authentication_config(request: Request, update: AuthenticationC
             )
 
     clean = validate_and_sanitise(candidate)
-    password_changed = bool(
-        update.clear_password
-        or str(update.auth_password or "")
-        or (update.auth_username is not None and str(update.auth_username) != str(getattr(current, "auth_username", "")))
-        or (
-            update.auth_password_enabled is not None
-            and bool(update.auth_password_enabled) != password_auth_enabled(current)
-        )
+    password_toggled = bool(
+        update.auth_password_enabled is not None
+        and bool(update.auth_password_enabled) != password_auth_enabled(current)
     )
     payload = update.model_dump(exclude_none=True)
     critical_oidc_changed = oidc_critical_change(payload, current)
@@ -489,11 +506,50 @@ async def update_authentication_config(request: Request, update: AuthenticationC
         update.auth_oidc_enabled is False and oidc_auth_enabled(current)
     )
 
-    save_settings(clean)
+    # The account credential (SQLite) and the authentication settings
+    # (config.json) are one transition: the settings are written inside the
+    # still-open credential transaction, so either both take effect or neither
+    # does. The account owner revokes this account's sessions with the change.
+    attempted = []
+
+    def persist():
+        attempted.append(True)
+        save_settings(clean)
+
+    try:
+        if _credential_change(update, own_username):
+            await set_own_local_credential(
+                principal.account_id,
+                username=_requested_username(update, own_username),
+                password=str(update.auth_password or "") or None,
+                clear=update.clear_password,
+                settings=clean,
+                persist=persist,
+            )
+        else:
+            persist()
+    except AccountRefused as exc:
+        return JSONResponse({"detail": str(exc)}, status_code=409)
+    except Exception as exc:  # noqa: BLE001 - a persistence failure is reported, never half-applied
+        if attempted:
+            # The settings may have been written while the credential did not
+            # commit: put the previous authentication settings back so the
+            # pair stays consistent.
+            try:
+                save_settings(current)
+            except Exception as restore_exc:  # noqa: BLE001
+                logger.critical("Previous authentication settings could not be restored: %s",
+                                type(restore_exc).__name__)
+        logger.error("Authentication configuration was not changed: %s", type(exc).__name__)
+        return JSONResponse(
+            {"detail": "Authentication configuration could not be saved; nothing was changed"},
+            status_code=500,
+            headers={"Cache-Control": "no-store"},
+        )
     apply_settings(clean)
     await journal_configuration_change(current, clean)
 
-    if password_changed:
+    if password_toggled:
         basic_verification_cache.clear()
         session_store.revoke_mechanism(AuthMechanism.PASSWORD_SESSION)
     if critical_oidc_changed or oidc_disabled:
@@ -604,6 +660,7 @@ async def verify_pending_oidc_configuration(
         configuration_version=version,
         baseline_configuration_version=baseline_version,
         apply_password_enabled=proposed.auth_password_enabled is not None,
+        account_id=principal.account_id,
     )
     response = JSONResponse(
         {
@@ -665,13 +722,15 @@ async def pending_aware_oidc_callback(
     # revocation, and replacement-session creation as one auth configuration event.
     async with authentication_configuration_lock:
         try:
-            committed = commit_verified_pending_oidc(
+            account = await commit_verified_pending_oidc(
                 state,
                 expected_configuration_version=proof_version,
+                issuer=str(principal.claims.get("iss") or ""),
+                subject=str(principal.claims.get("sub") or ""),
             )
         except Exception:  # noqa: BLE001 - never expose persistence/config details at callback boundary
-            committed = False
-        if not committed:
+            account = None
+        if account is None:
             response = _oidc_verification_failure_page(status_code=409)
             _clear_pending_correlation_cookie(response)
             return response
@@ -691,7 +750,7 @@ async def pending_aware_oidc_callback(
             session_store.revoke(old_token)
         lifetime = interactive_routes._session_lifetime_seconds(cfg)
         token, _record = session_store.create(
-            principal,
+            principal.bound_to(account),
             lifetime_seconds=lifetime,
             credential_version=proof_version,
         )

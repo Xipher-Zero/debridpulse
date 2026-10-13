@@ -67,6 +67,17 @@ async def prepare_settings_and_migrate():
     from db.migrations.v112 import migrate
 
     await migrate(globally_paused=legacy_paused_input())
+    # A local credential still in the configuration file (a pre-account
+    # installation's, or the operator's offline recovery input) now belongs to
+    # the default Admin account; only then does it leave the file.
+    from auth.accounts import import_legacy_credential
+    from core.config import legacy_credential_input, retire_legacy_credential_input
+
+    credential = legacy_credential_input()
+    if credential is not None:
+        if await import_legacy_credential(*credential):
+            logger.warning("The configuration file's local credential was installed on the default Admin account")
+        retire_legacy_credential_input()
     return cfg
 
 

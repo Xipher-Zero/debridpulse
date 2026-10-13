@@ -3,12 +3,13 @@ from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request, Response
 
+from account_support import account, account_database, admin_with_password
 from auth.middleware import enforce_general_web_security, enforce_password_http_auth
 from auth.models import AuthMechanism, Principal
-from auth.passwords import hash_password
-from auth.policy import is_public_path, password_auth_configured
+from auth.policy import is_public_path
 from auth.throttle import password_failure_throttle
 
 
@@ -41,12 +42,15 @@ def _basic(username, password):
     return f"Basic {token}"
 
 
-def _password_settings(*, enabled=True, username="operator", password="secret"):
-    return SimpleNamespace(
-        auth_password_enabled=enabled,
-        auth_username=username,
-        auth_password_hash=hash_password(password) if password else "",
-    )
+def _password_settings(*, enabled=True):
+    return SimpleNamespace(auth_password_enabled=enabled)
+
+
+@pytest_asyncio.fixture
+async def operator(tmp_path, monkeypatch):
+    """The default Admin, signing in as operator/secret."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password()
 
 
 def test_principal_model_and_phase1_route_policy():
@@ -54,19 +58,16 @@ def test_principal_model_and_phase1_route_policy():
     assert anonymous.authenticated is False
     assert anonymous.mechanism is None
 
-    basic = Principal.http_basic("operator")
+    basic = Principal.http_basic(account("operator"))
     assert basic.authenticated is True
     assert basic.mechanism is AuthMechanism.HTTP_BASIC
     assert basic.subject == "operator"
+    assert basic.account_id and basic.role == "admin"
 
     assert is_public_path("/api/health") is True
     assert is_public_path("/api/version") is True
     assert is_public_path("/api/avatar") is True
     assert is_public_path("/api/stats") is False
-
-    assert password_auth_configured(_password_settings()) is True
-    assert password_auth_configured(_password_settings(enabled=False)) is False
-    assert password_auth_configured(_password_settings(password="")) is False
 
 
 @pytest.mark.asyncio
@@ -136,7 +137,7 @@ async def test_general_browser_security_requires_exact_configured_cors_origin():
 
 
 @pytest.mark.asyncio
-async def test_password_http_auth_sets_common_principal(monkeypatch):
+async def test_password_http_auth_sets_common_principal(operator, monkeypatch):
     import auth.middleware as middleware
 
     cfg = _password_settings()
@@ -153,10 +154,11 @@ async def test_password_http_auth_sets_common_principal(monkeypatch):
     assert request.state.principal.authenticated is True
     assert request.state.principal.mechanism is AuthMechanism.HTTP_BASIC
     assert request.state.principal.subject == "operator"
+    assert request.state.principal.account_id == operator.id
 
 
 @pytest.mark.asyncio
-async def test_password_http_auth_rejects_bad_and_malformed_credentials(monkeypatch):
+async def test_password_http_auth_rejects_bad_and_malformed_credentials(operator, monkeypatch):
     import auth.middleware as middleware
 
     monkeypatch.setattr(middleware, "get_settings", lambda: _password_settings())
@@ -173,17 +175,16 @@ async def test_password_http_auth_rejects_bad_and_malformed_credentials(monkeypa
 
 
 @pytest.mark.asyncio
-async def test_enabled_but_invalid_password_configuration_fails_closed(monkeypatch):
+async def test_enabled_password_without_any_credential_fails_closed(tmp_path, monkeypatch):
     import auth.middleware as middleware
 
-    monkeypatch.setattr(
-        middleware,
-        "get_settings",
-        lambda: _password_settings(enabled=True, password=""),
-    )
+    await account_database(tmp_path, monkeypatch)
+    monkeypatch.setattr(middleware, "get_settings", lambda: _password_settings(enabled=True))
     request = _request("GET", path="/api/stats")
     response = await enforce_password_http_auth(request, _ok)
-    assert response.status_code == 503
+    assert response.status_code == 401
+    basic = _request("GET", path="/api/stats", headers={"Authorization": _basic("operator", "")})
+    assert (await enforce_password_http_auth(basic, _ok)).status_code == 401
 
 
 @pytest.mark.asyncio
@@ -202,7 +203,10 @@ async def test_public_routes_and_open_mode_remain_admitted(monkeypatch):
     )
     open_request = _request("GET", path="/api/stats")
     assert (await enforce_password_http_auth(open_request, _ok)).status_code == 200
+    # Open mode is the standalone installation's one Admin, not an anonymous tenant.
     assert open_request.state.principal.authenticated is False
+    assert open_request.state.principal == Principal.standalone()
+    assert open_request.state.principal.role == "admin"
 
 
 def test_main_only_installs_auth_boundary():

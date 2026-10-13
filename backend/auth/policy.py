@@ -4,8 +4,6 @@ import ipaddress
 import os
 from urllib.parse import urlparse, urlsplit
 
-from auth.passwords import is_usable_password_hash
-
 
 MUTATING_HTTP_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 PUBLIC_PATHS = frozenset(
@@ -27,19 +25,6 @@ def is_public_path(path: str) -> bool:
 
 def password_auth_enabled(settings) -> bool:
     return bool(getattr(settings, "auth_password_enabled", False))
-
-
-def password_auth_ready(settings) -> bool:
-    if not password_auth_enabled(settings):
-        return False
-    username = str(getattr(settings, "auth_username", "") or "").strip()
-    password_hash = str(getattr(settings, "auth_password_hash", "") or "").strip()
-    return bool(username and is_usable_password_hash(password_hash))
-
-
-def password_auth_configured(settings) -> bool:
-    """Compatibility name for callers asking whether password auth is usable."""
-    return password_auth_ready(settings)
 
 
 def oidc_auth_enabled(settings) -> bool:

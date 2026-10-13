@@ -2,18 +2,18 @@ import json
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request
 
+from account_support import account_database, admin_with_password
+from auth.accounts import DEFAULT_ADMIN_ID
 from auth.models import Principal
-from auth.passwords import hash_password
 from auth.transitions import settings_transition_rejection
 
 
 def _settings(**updates):
     values = {
         "auth_password_enabled": False,
-        "auth_username": "",
-        "auth_password_hash": "",
         "auth_oidc_enabled": False,
         "oidc_provider_name": "OpenID Connect",
         "oidc_issuer_url": "",
@@ -63,11 +63,17 @@ def _request(payload, path="/api/settings"):
     )
 
 
+@pytest_asyncio.fixture(autouse=True)
+async def _accounts(tmp_path, monkeypatch):
+    """A fresh installation: the default accounts, and no password anywhere."""
+    await account_database(tmp_path, monkeypatch)
+
+
 @pytest.mark.asyncio
 async def test_legacy_settings_cannot_enable_incomplete_password_as_only_auth():
     response = await settings_transition_rejection(
         _request({"auth_password_enabled": True, "auth_username": "operator"}),
-        Principal.anonymous(),
+        Principal.standalone(),
         _settings(),
     )
     assert response is not None
@@ -77,14 +83,17 @@ async def test_legacy_settings_cannot_enable_incomplete_password_as_only_auth():
 
 @pytest.mark.asyncio
 async def test_malformed_stored_password_hash_cannot_become_sole_auth():
-    current = _settings(
-        auth_username="operator",
-        auth_password_hash="$argon2id$configured-but-not-valid",
-    )
+    from db.database import get_db
+
+    async with get_db() as db:
+        await db.execute(
+            "INSERT INTO account_local_credentials(account_id,username,password_hash,updated_at) "
+            "VALUES(?,?,?,?)", (DEFAULT_ADMIN_ID, "operator", "$argon2id$configured-but-not-valid", "now"))
+        await db.commit()
     response = await settings_transition_rejection(
         _request({"auth_password_enabled": True}),
-        Principal.anonymous(),
-        current,
+        Principal.standalone(),
+        _settings(),
     )
     assert response is not None
     assert response.status_code == 409
@@ -92,10 +101,9 @@ async def test_malformed_stored_password_hash_cannot_become_sole_auth():
 
 @pytest.mark.asyncio
 async def test_password_clear_intent_cannot_count_simultaneous_plaintext_as_fallback():
+    operator = await admin_with_password("operator", "old-secret")
     current = _settings(
         auth_password_enabled=True,
-        auth_username="operator",
-        auth_password_hash=hash_password("old-secret"),
         auth_oidc_enabled=True,
         oidc_issuer_url="https://id.example/application/o/debridpulse",
         oidc_client_id="client",
@@ -112,7 +120,7 @@ async def test_password_clear_intent_cannot_count_simultaneous_plaintext_as_fall
             },
             path="/api/auth/config",
         ),
-        Principal.password_session("operator"),
+        Principal.password_session(operator),
         current,
     )
     assert response is not None
@@ -133,7 +141,7 @@ async def test_dedicated_settings_cannot_enable_deny_everyone_oidc_as_only_auth(
     }
     response = await settings_transition_rejection(
         _request(payload, path="/api/auth/config"),
-        Principal.anonymous(),
+        Principal.standalone(),
         _settings(),
     )
     assert response is not None
@@ -152,7 +160,7 @@ async def test_open_mode_requires_password_fallback_before_first_oidc_only_mode(
     }
     response = await settings_transition_rejection(
         _request(payload),
-        Principal.anonymous(),
+        Principal.standalone(),
         _settings(),
     )
     assert response is not None
@@ -172,9 +180,11 @@ async def test_open_mode_can_enable_password_fallback_and_oidc_together():
         "public_base_url": "https://pulse.example",
         "oidc_allowed_groups": ["debridpulse-operators"],
     }
+    # In open mode the request acts as the standalone default Admin, whose own
+    # password this same request sets.
     response = await settings_transition_rejection(
         _request(payload, path="/api/auth/config"),
-        Principal.anonymous(),
+        Principal.standalone(),
         _settings(),
     )
     assert response is None
@@ -182,14 +192,11 @@ async def test_open_mode_can_enable_password_fallback_and_oidc_together():
 
 @pytest.mark.asyncio
 async def test_broken_supplemental_oidc_does_not_disable_working_password():
-    current = _settings(
-        auth_password_enabled=True,
-        auth_username="operator",
-        auth_password_hash=hash_password("secret"),
-    )
+    operator = await admin_with_password()
+    current = _settings(auth_password_enabled=True)
     response = await settings_transition_rejection(
         _request({"auth_oidc_enabled": True, "oidc_issuer_url": "not-https"}),
-        Principal.password_session("operator"),
+        Principal.password_session(operator),
         current,
     )
     assert response is None

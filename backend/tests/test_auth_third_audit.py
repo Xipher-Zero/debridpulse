@@ -7,12 +7,13 @@ import threading
 from types import SimpleNamespace
 
 import pytest
+import pytest_asyncio
 from fastapi import Request, Response
 
+from account_support import account, account_database, admin_with_password
 from api.auth_config_routes import AuthenticationConfigUpdate
 from auth import oidc, passwords, transitions
 from auth.models import Principal
-from auth.passwords import hash_password
 from auth.sessions import session_store
 from core import secure_files
 
@@ -37,10 +38,14 @@ def _request(body: bytes):
 
 
 def _password_only_settings():
-    return SimpleNamespace(
-        auth_password_enabled=True, auth_username="operator",
-        auth_password_hash=hash_password("secret"), auth_oidc_enabled=False,
-    )
+    return SimpleNamespace(auth_password_enabled=True, auth_oidc_enabled=False)
+
+
+@pytest_asyncio.fixture
+async def operator(tmp_path, monkeypatch):
+    """The default Admin, signing in as operator/old-secret."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password("operator", "old-secret")
 
 
 @pytest.mark.asyncio
@@ -50,20 +55,20 @@ async def test_transition_guard_matches_pydantic_false_string_coercion_for_open_
     assert parsed.auth_password_enabled is False
     assert parsed.auth_oidc_enabled is False
     rejection = await transitions.settings_transition_rejection(
-        _request(body), Principal.password_session("operator"), _password_only_settings()
+        _request(body), Principal.password_session(account("operator")), _password_only_settings()
     )
     assert rejection is not None and rejection.status_code == 409
 
 
 @pytest.mark.asyncio
-async def test_transition_guard_matches_pydantic_true_string_for_password_clear():
+async def test_transition_guard_matches_pydantic_true_string_for_password_clear(operator):
     body = json.dumps({
         "auth_password_enabled": True, "auth_oidc_enabled": False, "clear_password": "true"
     }).encode()
     parsed = AuthenticationConfigUpdate.model_validate_json(body)
     assert parsed.clear_password is True
     rejection = await transitions.settings_transition_rejection(
-        _request(body), Principal.password_session("operator"), _password_only_settings()
+        _request(body), Principal.password_session(operator), _password_only_settings()
     )
     assert rejection is not None and rejection.status_code == 409
 
@@ -174,7 +179,7 @@ async def test_transition_guard_matches_pydantic_true_string_for_open_mode_confi
     assert parsed.confirm_open_mode is True
     rejection = await transitions.settings_transition_rejection(
         _request(body),
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         _password_only_settings(),
     )
     assert rejection is None
@@ -224,13 +229,21 @@ def _basic_header(username: str, password: str) -> str:
     return f"Basic {token}"
 
 
-def _password_cfg(password: str, *, username: str = "operator", enabled: bool = True):
-    return SimpleNamespace(
-        auth_password_enabled=enabled,
-        auth_username=username,
-        auth_password_hash=hash_password(password),
-        auth_oidc_enabled=False,
-    )
+def _password_cfg(*, enabled: bool = True):
+    return SimpleNamespace(auth_password_enabled=enabled, auth_oidc_enabled=False, auth_session_lifetime_hours=12)
+
+
+def _verify_then_rotate(module, monkeypatch):
+    """The real verification, during which the password is replaced."""
+    real_verify = module.verify_local_credentials
+
+    async def verify_then_rotate(*args, **kwargs):
+        proven = await real_verify(*args, **kwargs)
+        assert proven is not None
+        await admin_with_password("operator", "new-secret")
+        return proven
+
+    monkeypatch.setattr(module, "verify_local_credentials", verify_then_rotate)
 
 
 def _generic_request(method: str, path: str, *, headers=None, body: bytes = b""):
@@ -256,19 +269,11 @@ def _generic_request(method: str, path: str, *, headers=None, body: bytes = b"")
 
 
 @pytest.mark.asyncio
-async def test_http_basic_rejects_password_proof_that_became_stale_during_verification(monkeypatch):
+async def test_http_basic_rejects_password_proof_that_became_stale_during_verification(operator, monkeypatch):
     import auth.middleware as middleware
 
-    old = _password_cfg("old-secret")
-    new = _password_cfg("new-secret")
-    authoritative = [old]
-    monkeypatch.setattr(middleware, "get_settings", lambda: authoritative[0])
-
-    async def fake_verify(*_args, **_kwargs):
-        authoritative[0] = new
-        return True
-
-    monkeypatch.setattr(middleware, "verify_local_credentials", fake_verify)
+    monkeypatch.setattr(middleware, "get_settings", _password_cfg)
+    _verify_then_rotate(middleware, monkeypatch)
     called = False
 
     async def admitted(_request):
@@ -288,23 +293,13 @@ async def test_http_basic_rejects_password_proof_that_became_stale_during_verifi
 
 
 @pytest.mark.asyncio
-async def test_password_login_does_not_issue_session_from_stale_verified_snapshot(monkeypatch):
+async def test_password_login_does_not_issue_session_from_stale_verified_snapshot(operator, monkeypatch):
     from urllib.parse import urlencode
     from api import auth_routes
 
-    old = _password_cfg("old-secret")
-    old.auth_session_lifetime_hours = 12
-    new = _password_cfg("new-secret")
-    new.auth_session_lifetime_hours = 12
-    authoritative = [old]
-    monkeypatch.setattr(auth_routes, "get_settings", lambda: authoritative[0])
+    monkeypatch.setattr(auth_routes, "get_settings", _password_cfg)
     monkeypatch.setattr(auth_routes.login_csrf_store, "consume", lambda *_args, **_kwargs: True)
-
-    async def fake_verify(*_args, **_kwargs):
-        authoritative[0] = new
-        return True
-
-    monkeypatch.setattr(auth_routes, "verify_local_credentials", fake_verify)
+    _verify_then_rotate(auth_routes, monkeypatch)
     session_store.clear()
     form = urlencode({
         "username": "operator",

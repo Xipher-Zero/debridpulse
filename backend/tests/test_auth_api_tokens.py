@@ -8,19 +8,17 @@ import pytest
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
+from account_support import account, account_database, admin_with_password
 from api import auth_config_routes
 from auth import middleware
 from auth.api_tokens import API_TOKEN_PREFIX, ApiTokenStore
 from auth.models import AuthMechanism, Principal
-from auth.passwords import hash_password, password_credential_version
 from auth.sessions import session_store
 
 
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
-        "auth_password_hash": hash_password("secret"),
         "auth_oidc_enabled": False,
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
         "oidc_client_id": "client",
@@ -178,9 +176,8 @@ async def test_application_session_precedes_unexpected_bearer_header(monkeypatch
     monkeypatch.setattr(middleware, "api_token_store", store)
     session_store.clear()
     token, _record = session_store.create(
-        Principal.password_session("operator"),
+        Principal.password_session(account("operator")),
         lifetime_seconds=3600,
-        credential_version=password_credential_version(cfg.auth_password_hash),
     )
     seen = []
 
@@ -208,11 +205,8 @@ async def test_http_basic_remains_available_with_api_token_configured(monkeypatc
     cfg = _settings()
     monkeypatch.setattr(middleware, "get_settings", lambda: cfg)
     monkeypatch.setattr(middleware, "api_token_store", store)
-
-    async def verified(_request, username, password, **_kwargs):
-        return username == "operator" and password == "secret"
-
-    monkeypatch.setattr(middleware, "verify_local_credentials", verified)
+    await account_database(tmp_path, monkeypatch)
+    await admin_with_password("operator", "secret")
     seen = []
 
     async def call_next(request):

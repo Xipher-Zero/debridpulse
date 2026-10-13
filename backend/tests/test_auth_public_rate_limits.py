@@ -1,9 +1,9 @@
 import pytest
 from fastapi import Request
 
+from account_support import account
 from api import auth_config_routes, auth_routes
 from auth.models import Principal
-from auth.passwords import hash_password
 from auth.throttle import DualWindowRateLimiter
 from core.config import AppSettings
 
@@ -30,8 +30,6 @@ def _request(path: str, *, peer: str = "127.0.0.1") -> Request:
 def _oidc_settings():
     return AppSettings(
         auth_password_enabled=True,
-        auth_username="operator",
-        auth_password_hash=hash_password("secret"),
         auth_oidc_enabled=True,
         oidc_provider_name="OpenID Connect",
         oidc_issuer_url="https://id.example/application/o/debridpulse",
@@ -126,11 +124,11 @@ async def test_oidc_verification_rate_limit_fails_before_provider_work(monkeypat
     proposed = auth_config_routes.OidcVerificationRequest()
 
     first_request = _request("/api/auth/oidc/verify-config")
-    first_request.state.principal = Principal.password_session("operator")
+    first_request.state.principal = Principal.password_session(account("operator"))
     first = await auth_config_routes.verify_pending_oidc_configuration(first_request, proposed)
 
     second_request = _request("/api/auth/oidc/verify-config")
-    second_request.state.principal = Principal.password_session("operator")
+    second_request.state.principal = Principal.password_session(account("operator"))
     second = await auth_config_routes.verify_pending_oidc_configuration(second_request, proposed)
 
     assert first.status_code == 200

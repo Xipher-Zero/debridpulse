@@ -18,12 +18,14 @@ from auth.csrf import (
     login_csrf_store,
     set_login_csrf_cookie,
 )
+from auth.accounts import admitted, resolve_oidc
 from auth.manager import (
     PasswordAuthenticationBusy,
-    password_authentication_snapshot_current,
+    password_proof_current,
     peer_key,
     verify_local_credentials,
 )
+from auth.middleware import session_record_valid
 from auth.models import AuthMechanism, Principal
 from auth.oidc import (
     OIDC_CORRELATION_COOKIE,
@@ -35,12 +37,10 @@ from auth.oidc import (
     oidc_transaction_store,
 )
 from auth.oidc_version import oidc_configuration_version
-from auth.passwords import password_credential_version
 from auth.policy import (
     interactive_auth_enabled,
     oidc_auth_enabled,
     password_auth_enabled,
-    password_auth_ready,
     safe_return_path,
 )
 from auth.sessions import (
@@ -289,29 +289,14 @@ _BRAND_PULSE_HTML = f"""<svg class="brand-pulse" viewBox="0 0 600 120" aria-hidd
 </svg>"""
 
 
+# The sign-in was genuine but its account may not operate DebridPulse: it is
+# disabled, or (until 1.0.13 ACL Stage 2 enforces roles) not an Admin.
+_NOT_OPERATIONAL = "This account cannot sign in to DebridPulse."
+
+
 def _session_lifetime_seconds(cfg) -> int:
     hours = int(getattr(cfg, "auth_session_lifetime_hours", 12) or 12)
     return max(3600, min(168 * 3600, hours * 3600))
-
-
-def _session_record_current(record, cfg) -> bool:
-    if record is None:
-        return False
-    mechanism = record.principal.mechanism
-    if mechanism is AuthMechanism.PASSWORD_SESSION:
-        if not password_auth_ready(cfg):
-            return False
-        current_username = str(getattr(cfg, "auth_username", "") or "").strip()
-        if not current_username or record.principal.subject != current_username:
-            return False
-        current_version = password_credential_version(getattr(cfg, "auth_password_hash", ""))
-        return bool(current_version and record.credential_version == current_version)
-    if mechanism is AuthMechanism.OIDC_SESSION:
-        if not oidc_auth_ready(cfg):
-            return False
-        current_version = oidc_configuration_version(cfg)
-        return bool(current_version and record.credential_version == current_version)
-    return False
 
 
 def _static_asset(name: str) -> Path:
@@ -408,7 +393,6 @@ def _login_page(
 ) -> HTMLResponse:
     cfg = get_settings()
     password_enabled = password_auth_enabled(cfg)
-    password_ready = password_auth_ready(cfg)
     oidc_enabled = oidc_auth_enabled(cfg)
     oidc_ready = oidc_auth_ready(cfg) if oidc_enabled else False
     provider_name = html.escape(
@@ -420,7 +404,7 @@ def _login_page(
     )
 
     password_control = ""
-    if password_enabled and password_ready:
+    if password_enabled:
         password_control = f"""
             <form method="post" action="/login" autocomplete="on">
               <input type="hidden" name="csrf_token" value="{html.escape(csrf_token, quote=True)}">
@@ -432,16 +416,11 @@ def _login_page(
               <button class="auth-action primary" type="submit"><span>Sign In</span><span class="action-arrow">{_LUCIDE_ARROW}</span></button>
             </form>
             """
-    elif password_enabled:
-        password_control = (
-            '<div class="error" role="alert">Username &amp; Password authentication is enabled '
-            "but is not fully configured. That mechanism is unavailable.</div>"
-        )
 
     oidc_control = ""
     if oidc_enabled and oidc_ready:
-        oidc_class = "secondary" if password_ready else "primary"
-        separator = '<span class="oidc-separator" aria-hidden="true"></span>' if password_ready else ""
+        oidc_class = "secondary" if password_enabled else "primary"
+        separator = '<span class="oidc-separator" aria-hidden="true"></span>' if password_enabled else ""
         oidc_control = (
             f'<a class="auth-action oidc {oidc_class}" href="/auth/oidc/start?next={quote(return_to, safe="")}">'
             f'{_AUTH_OIDC_MARK_HTML}{separator}<span>Sign in with {provider_name}</span><span class="action-arrow">{_LUCIDE_ARROW}</span></a>'
@@ -456,7 +435,7 @@ def _login_page(
     if oidc_control:
         controls.append(oidc_control)
     if password_control:
-        if oidc_ready and password_ready:
+        if oidc_ready and password_enabled:
             controls.append('<div class="divider"><span>or continue with user name and password</span></div>')
         controls.append(password_control)
     if not password_enabled and not oidc_enabled:
@@ -554,7 +533,7 @@ async def public_auth_status():
     return {
         "authentication_required": interactive_auth_enabled(cfg),
         "password_enabled": password_enabled,
-        "password_ready": password_auth_ready(cfg) if password_enabled else False,
+        "password_ready": password_enabled,
         "oidc_enabled": oidc_enabled,
         "oidc_ready": oidc_auth_ready(cfg) if oidc_enabled else False,
         "oidc_provider_name": (
@@ -585,7 +564,7 @@ async def login_page(request: Request, next: str = "/"):
 
     existing_token = session_cookie_token(request)
     existing = session_store.resolve(existing_token) if existing_token else None
-    if _session_record_current(existing, cfg):
+    if session_record_valid(existing, cfg):
         return RedirectResponse(url=return_to, status_code=303)
     if existing_token:
         session_store.revoke(existing_token)
@@ -606,14 +585,6 @@ async def password_login(request: Request):
             error="Username & Password authentication is disabled.",
             status_code=403,
         )
-    if not password_auth_ready(cfg):
-        return _issue_login_page(
-            request,
-            return_to="/",
-            error="Username & Password authentication is unavailable because its configuration is incomplete.",
-            status_code=503,
-        )
-
     form = await request.form()
     username = str(form.get("username") or "")
     password = str(form.get("password") or "")
@@ -638,7 +609,7 @@ async def password_login(request: Request):
         )
 
     try:
-        verified = await verify_local_credentials(
+        proven = await verify_local_credentials(
             request,
             username,
             password,
@@ -653,7 +624,7 @@ async def password_login(request: Request):
         )
         response.headers["Retry-After"] = "2"
         return response
-    if not verified:
+    if proven is None:
         return _issue_login_page(
             request,
             return_to=return_to,
@@ -663,25 +634,32 @@ async def password_login(request: Request):
 
     async with authentication_configuration_lock:
         current = get_settings()
-        if not password_authentication_snapshot_current(cfg, current):
+        account = await password_proof_current(proven, current)
+        if account is None:
             return _issue_login_page(
                 request,
                 return_to=return_to,
                 error="Authentication configuration changed while sign-in was in progress. Try again.",
                 status_code=409,
             )
+        if not admitted(account):
+            return _issue_login_page(
+                request,
+                return_to=return_to,
+                error=_NOT_OPERATIONAL,
+                status_code=403,
+            )
 
         old_token = session_cookie_token(request)
         if old_token:
             session_store.revoke(old_token)
 
-        configured_username = str(getattr(current, "auth_username", "") or "").strip()
         lifetime = _session_lifetime_seconds(current)
-        version = password_credential_version(getattr(current, "auth_password_hash", ""))
+        principal = Principal.password_session(account)
         token, _record = session_store.create(
-            Principal.password_session(configured_username, credential_version=version),
+            principal,
             lifetime_seconds=lifetime,
-            credential_version=version,
+            credential_version=principal.credential_version,
         )
     response = RedirectResponse(url=return_to, status_code=303)
     set_session_cookie(response, request, token, max_age=lifetime)
@@ -774,12 +752,28 @@ async def oidc_callback(
             _clear_oidc_correlation_cookie(response)
             return response
 
+        account = await resolve_oidc(
+            str(principal.claims.get("iss") or ""),
+            str(principal.claims.get("sub") or ""),
+            principal.claims,
+            default_role=getattr(cfg, "auth_oidc_default_role", "user"),
+        )
+        if not admitted(account):
+            response = _issue_login_page(
+                request,
+                return_to="/",
+                error=_NOT_OPERATIONAL,
+                status_code=403,
+            )
+            _clear_oidc_correlation_cookie(response)
+            return response
+
         old_token = session_cookie_token(request)
         if old_token:
             session_store.revoke(old_token)
         lifetime = _session_lifetime_seconds(cfg)
         token, _record = session_store.create(
-            principal,
+            principal.bound_to(account),
             lifetime_seconds=lifetime,
             credential_version=proof_version,
         )
@@ -810,6 +804,12 @@ async def auth_session_status(request: Request, response: Response = None):
         "mechanism": principal.mechanism.value if principal.mechanism else None,
         "subject": principal.subject,
         "display_name": principal.display_name,
+        # The account this browser acts as and the account generation it was
+        # resolved at: any account change revokes the session, so a changed
+        # generation here means a fresh sign-in, never a stale authority.
+        "account_id": principal.account_id or None,
+        "role": principal.role or None,
+        "account_generation": principal.account_generation or None,
         "csrf_token": session_store.csrf_token(session_token) if record is not None else "",
         "session_expires_in_seconds": (
             max(0, int(record.expires_at - time.monotonic())) if record is not None else None

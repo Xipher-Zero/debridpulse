@@ -6,8 +6,9 @@ import threading
 
 from fastapi import Request
 
-from auth.passwords import basic_verification_cache, password_credential_version, verify_password_candidate_async
-from auth.policy import password_auth_ready
+from auth.accounts import get_account, local_credential
+from auth.passwords import basic_verification_cache, verify_password_candidate_async
+from auth.policy import password_auth_enabled
 from auth.throttle import password_failure_throttle
 from core.config import get_settings
 
@@ -69,21 +70,21 @@ def peer_key(request: Request) -> str:
     return str(client.host if client else "unknown")
 
 
-def password_authentication_snapshot_current(proven, current) -> bool:
-    """Return whether a completed password proof still matches live auth state."""
-    if not password_auth_ready(current):
-        return False
-    proven_username = str(getattr(proven, "auth_username", "") or "").strip()
-    current_username = str(getattr(current, "auth_username", "") or "").strip()
-    if not proven_username or proven_username != current_username:
-        return False
-    proven_version = password_credential_version(getattr(proven, "auth_password_hash", ""))
-    current_version = password_credential_version(getattr(current, "auth_password_hash", ""))
-    return bool(
-        proven_version
-        and current_version
-        and secrets.compare_digest(proven_version, current_version)
-    )
+async def password_proof_current(proven, settings):
+    """The account a completed password proof still signs in as, or ``None``.
+
+    Argon2 verification runs outside the authentication configuration lock;
+    under it, the proof is re-checked against live state: Username & Password
+    is still enabled and the account still holds exactly the credential that
+    was verified. The caller holds the lock."""
+    if proven is None or not password_auth_enabled(settings):
+        return None
+    current = await get_account(proven.id)
+    if current is None or not current.active or current.username != proven.username:
+        return None
+    if not (current.credential_version and secrets.compare_digest(current.credential_version, proven.credential_version)):
+        return None
+    return current
 
 
 async def verify_local_credentials(
@@ -93,11 +94,15 @@ async def verify_local_credentials(
     *,
     allow_basic_success_cache: bool = False,
     settings=None,
-) -> bool:
-    """Verify the single local credential with shared throttling/timing behavior."""
+):
+    """Verify a local credential with shared throttling/timing behavior.
+
+    Returns the active account whose credential matched, or ``None``. An
+    unknown or disabled username costs the same Argon2 work as a wrong
+    password and is indistinguishable from it."""
     cfg = settings if settings is not None else get_settings()
-    if not password_auth_ready(cfg):
-        return False
+    if not password_auth_enabled(cfg):
+        return None
 
     peer = peer_key(request)
     if not password_attempt_admission.acquire(peer):
@@ -107,16 +112,15 @@ async def verify_local_credentials(
         if delay:
             await asyncio.sleep(delay)
 
-        username = str(getattr(cfg, "auth_username", "") or "").strip()
-        password_hash = str(getattr(cfg, "auth_password_hash", "") or "").strip()
         candidate_user = str(provided_user or "")
         candidate_password = str(provided_password or "")
-        user_ok = secrets.compare_digest(candidate_user.encode(), username.encode())
+        found = await local_credential(candidate_user) if candidate_user else None
+        account, password_hash = found if found is not None else (None, "")
 
         verified = False
-        if user_ok and allow_basic_success_cache:
+        if account is not None and allow_basic_success_cache:
             verified = basic_verification_cache.contains(
-                username,
+                account.username,
                 candidate_password,
                 password_hash,
             )
@@ -125,20 +129,20 @@ async def verify_local_credentials(
             verified = await verify_password_candidate_async(
                 password_hash,
                 candidate_password,
-                use_configured_hash=user_ok,
+                use_configured_hash=account is not None,
             )
             if verified and allow_basic_success_cache:
                 basic_verification_cache.remember(
-                    username,
+                    account.username,
                     candidate_password,
                     password_hash,
                 )
 
         if verified:
             password_failure_throttle.record_success(peer)
-            return True
+            return account
 
         password_failure_throttle.record_failure(peer)
-        return False
+        return None
     finally:
         password_attempt_admission.release(peer)

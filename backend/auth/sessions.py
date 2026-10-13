@@ -136,6 +136,22 @@ class SessionStore:
             self._entries.pop(key, None)
         return len(targets)
 
+    def revoke_account(self, account_id: str) -> int:
+        """Every session of one account, whatever mechanism issued it. The
+        account owner calls this as part of every change to the account, so no
+        session outlives the role, status or credential it was issued under."""
+        account_id = str(account_id or "")
+        if not account_id:
+            return 0
+        targets = [
+            key
+            for key, record in self._entries.items()
+            if record.principal.account_id == account_id
+        ]
+        for key in targets:
+            self._entries.pop(key, None)
+        return len(targets)
+
     def clear(self) -> None:
         self._entries.clear()
 

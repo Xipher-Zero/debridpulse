@@ -2,12 +2,13 @@ import json
 from pathlib import Path
 
 import pytest
+import pytest_asyncio
 from fastapi import Request
 
+from account_support import account, account_database, admin_with_password
 from api import auth_config_routes
 from auth.models import Principal
 from auth.oidc import OidcError
-from auth.passwords import hash_password
 from auth.transitions import settings_transition_rejection
 from core.config import AppSettings
 
@@ -22,7 +23,6 @@ AUTH_ROUTES = ROOT / "backend" / "api" / "auth_config_routes.py"
 def _settings(**updates):
     values = {
         "auth_password_enabled": False,
-        "auth_username": "",
         "auth_oidc_enabled": True,
         "oidc_provider_name": "Authentik",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -71,8 +71,15 @@ def _request(path="/api/auth/config", payload=None, *, method="PUT", principal=N
         },
         receive=receive,
     )
-    request.state.principal = principal or Principal.password_session("operator")
+    request.state.principal = principal or Principal.password_session(account("operator"))
     return request
+
+
+@pytest_asyncio.fixture(autouse=True)
+async def _operator(tmp_path, monkeypatch):
+    """The default Admin, signing in as operator/secret."""
+    await account_database(tmp_path, monkeypatch)
+    return await admin_with_password()
 
 
 def _payload(response):
@@ -297,12 +304,8 @@ async def test_oidc_only_can_transition_to_confirmed_open_mode_and_save_locally(
 
 
 @pytest.mark.asyncio
-async def test_oidc_can_be_removed_while_retaining_password_authentication(monkeypatch):
-    current = _settings(
-        auth_password_enabled=True,
-        auth_username="operator",
-        auth_password_hash=hash_password("test-password"),
-    )
+async def test_oidc_can_be_removed_while_retaining_password_authentication(monkeypatch, _operator):
+    current = _settings(auth_password_enabled=True)
     update = auth_config_routes.AuthenticationConfigUpdate(
         auth_password_enabled=True,
         auth_username="operator",
@@ -312,7 +315,7 @@ async def test_oidc_can_be_removed_while_retaining_password_authentication(monke
         clear_oidc_client_secret=True,
         public_base_url="",
     )
-    principal = Principal.password_session("operator")
+    principal = Principal.password_session(_operator)
     request = _request(payload=update.model_dump(), principal=principal)
     rejected = await settings_transition_rejection(request, principal, current)
     assert rejected is None

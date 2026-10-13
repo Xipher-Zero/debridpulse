@@ -156,7 +156,10 @@ def test_no_second_input_required_owner_is_introduced():
         if re.search(r"class \w*(?:Broker|ChallengeStore)\b", text):
             offenders.append(str(path.relative_to(BACKEND)))
     assert offenders == []
-    assert tables == ["transfer_input_challenges"]
+    # The one transfer input-required store, plus the account owner's sign-in
+    # credentials (``auth.accounts``) -- an account's own password verifier,
+    # never transfer input.
+    assert sorted(tables) == ["account_local_credentials", "transfer_input_challenges"]
 
 
 def test_cancellation_acknowledgement_is_never_stop_truth():

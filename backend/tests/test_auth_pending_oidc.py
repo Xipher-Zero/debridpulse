@@ -3,6 +3,7 @@ from http.cookies import SimpleCookie
 import pytest
 from fastapi import Request
 
+from account_support import account
 from api import auth_config_routes
 from auth.models import Principal
 from auth.oidc import OIDC_CORRELATION_COOKIE, OidcProtocolError
@@ -24,7 +25,6 @@ from core.config import AppSettings
 def _settings(**updates):
     values = {
         "auth_password_enabled": True,
-        "auth_username": "operator",
         "auth_oidc_enabled": True,
         "oidc_provider_name": "OpenID Connect",
         "oidc_issuer_url": "https://id.example/application/o/debridpulse",
@@ -61,7 +61,7 @@ def _request(path="/api/auth/oidc/verify-config", cookie=""):
             "server": ("pulse.example", 443),
         }
     )
-    request.state.principal = Principal.password_session("operator")
+    request.state.principal = Principal.password_session(account("operator"))
     return request
 
 
@@ -111,14 +111,10 @@ def test_verified_pending_oidc_merge_preserves_newer_live_non_oidc_and_password_
         oidc_client_id="replacement-client",
         db_wipe_enabled=False,
         auth_password_enabled=True,
-        auth_username="old-operator",
-        auth_password_hash="old-hash",
     )
     live = _settings(
         db_wipe_enabled=True,
         auth_password_enabled=False,
-        auth_username="new-operator",
-        auth_password_hash="new-hash",
     )
     item = PendingOidcConfiguration(
         settings=candidate,
@@ -133,13 +129,11 @@ def test_verified_pending_oidc_merge_preserves_newer_live_non_oidc_and_password_
     assert merged.oidc_client_id == "replacement-client"
     assert merged.db_wipe_enabled is True
     assert merged.auth_password_enabled is False
-    assert merged.auth_username == "new-operator"
-    assert merged.auth_password_hash == "new-hash"
 
 
 def test_verified_pending_oidc_merge_applies_password_enable_only_when_explicitly_requested():
     candidate = _settings(auth_password_enabled=False, oidc_client_id="replacement-client")
-    live = _settings(auth_password_enabled=True, auth_password_hash="live-hash")
+    live = _settings(auth_password_enabled=True, auth_session_lifetime_hours=24)
     item = PendingOidcConfiguration(
         settings=candidate,
         configuration_version=oidc_configuration_version(candidate),
@@ -151,11 +145,12 @@ def test_verified_pending_oidc_merge_applies_password_enable_only_when_explicitl
     merged = _merge_verified_oidc_settings(live, item)
 
     assert merged.auth_password_enabled is False
-    assert merged.auth_password_hash == "live-hash"
+    assert merged.auth_session_lifetime_hours == 24
     assert merged.oidc_client_id == "replacement-client"
 
 
-def test_verified_pending_oidc_commit_rejects_changed_auth_baseline(monkeypatch):
+@pytest.mark.asyncio
+async def test_verified_pending_oidc_commit_rejects_changed_auth_baseline(monkeypatch):
     baseline = _settings()
     candidate = _settings(oidc_client_id="replacement-client")
     candidate_version = oidc_configuration_version(candidate)
@@ -173,14 +168,17 @@ def test_verified_pending_oidc_commit_rejects_changed_auth_baseline(monkeypatch)
         raise AssertionError("stale pending configuration must not persist")
 
     monkeypatch.setattr(config_module, "save_settings", must_not_save)
-    assert commit_verified_pending_oidc(
+    assert await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version=candidate_version,
-    ) is False
+        issuer="https://id.example/application/o/debridpulse",
+        subject="user-1",
+    ) is None
     assert config_module.get_settings() is newer
 
 
-def test_pending_oidc_commit_rejects_mismatched_proof_before_persistence(monkeypatch):
+@pytest.mark.asyncio
+async def test_pending_oidc_commit_rejects_mismatched_proof_before_persistence(monkeypatch):
     current = _settings()
     candidate = _settings(oidc_client_id="replacement-client")
     candidate_version = oidc_configuration_version(candidate)
@@ -195,10 +193,12 @@ def test_pending_oidc_commit_rejects_mismatched_proof_before_persistence(monkeyp
     saves = []
     monkeypatch.setattr(config_module, "save_settings", lambda value: saves.append(value))
 
-    assert commit_verified_pending_oidc(
+    assert await commit_verified_pending_oidc(
         "pending-state",
         expected_configuration_version="proof-from-different-config",
-    ) is False
+        issuer="https://id.example/application/o/debridpulse",
+        subject="user-1",
+    ) is None
     assert saves == []
     assert config_module.get_settings() is current
 
@@ -256,11 +256,10 @@ async def test_failed_pending_callback_never_commits_proposed_config(monkeypatch
         raise OidcProtocolError("bad token")
 
     monkeypatch.setattr(auth_config_routes, "complete_oidc_login", failed_complete)
-    monkeypatch.setattr(
-        auth_config_routes,
-        "commit_verified_pending_oidc",
-        lambda _state, **_kwargs: calls.append("commit") or True,
-    )
+    async def must_not_commit(_state, **_kwargs):
+        calls.append("commit")
+
+    monkeypatch.setattr(auth_config_routes, "commit_verified_pending_oidc", must_not_commit)
 
     response = await auth_config_routes.pending_aware_oidc_callback(
         _request(
@@ -288,19 +287,22 @@ async def test_successful_pending_callback_commits_before_new_session(monkeypatc
     events = []
     principal = Principal.oidc_session(
         "https://id.example|user-1",
+        claims={"iss": "https://id.example", "sub": "user-1"},
         credential_version=version,
     )
+    verifier = account("user-1", account_id="admin-1")
 
     async def successful_complete(**_kwargs):
         events.append("verified")
         return principal, "/settings"
 
-    def fake_commit(state, *, expected_configuration_version):
+    async def fake_commit(state, *, expected_configuration_version, issuer, subject):
         assert state == "pending-state"
         assert expected_configuration_version == version
+        assert (issuer, subject) == ("https://id.example", "user-1")
         events.append("committed")
         pending_oidc_store.discard(state)
-        return True
+        return verifier
 
     class FakeSessionStore:
         def revoke(self, _token):
@@ -308,7 +310,7 @@ async def test_successful_pending_callback_commits_before_new_session(monkeypatc
             return True
 
         def create(self, created_principal, *, lifetime_seconds, credential_version=""):
-            assert created_principal is principal
+            assert created_principal == principal.bound_to(verifier)
             assert lifetime_seconds > 0
             assert credential_version == version
             events.append("new-session")

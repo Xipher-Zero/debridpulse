@@ -11,8 +11,7 @@ from pydantic import TypeAdapter, ValidationError
 
 from auth.models import AuthMechanism, Principal
 from auth.oidc import OidcConfigurationError, oidc_configuration
-from auth.passwords import is_usable_password_hash
-from auth.policy import interactive_auth_enabled, oidc_auth_enabled, password_auth_enabled
+from auth.policy import AUTH_CONFIG_PATH, interactive_auth_enabled, oidc_auth_enabled, password_auth_enabled
 
 
 CRITICAL_OIDC_FIELDS = frozenset(
@@ -108,19 +107,29 @@ def oidc_critical_change(payload: Mapping[str, Any], current) -> bool:
     return False
 
 
-def _prospective_password_ready(payload: Mapping[str, Any], current) -> bool:
-    username = str(payload.get("auth_username", getattr(current, "auth_username", "")) or "").strip()
-    plaintext = str(payload.get("auth_password", "") or "")
-    stored_hash = str(getattr(current, "auth_password_hash", "") or "").strip()
+async def _prospective_password_ready(request: Request, payload: Mapping[str, Any], principal: Principal) -> bool:
+    """Whether, after this request, an active Admin could sign in with a password.
+
+    Local credentials are account state (``auth.accounts``). Only the
+    dedicated Authentication endpoint edits one -- the signed-in account's own
+    -- so only its payload can add or remove a password here."""
+    from auth.accounts import Role, admin_password_holders, local_credential_status
+
+    holders = await admin_password_holders()
+    own = principal.account_id
+    if request.url.path != AUTH_CONFIG_PATH or not own:
+        return bool(holders)
     clears = {str(item) for item in payload.get("clear_secrets", []) if str(item)}
     if "auth_password" in clears or _coerced_bool(payload.get("clear_password", False)):
         # Clear intent is destructive and wins over any simultaneously supplied
         # plaintext. The route does not persist that plaintext, so it must not be
         # counted as a viable replacement credential here.
-        return False
-    # New plaintext will be converted to an Argon2id verifier by save_settings.
-    # Existing state counts only when it is already a parseable Argon2id hash.
-    return bool(username and (plaintext or is_usable_password_hash(stored_hash)))
+        holders.discard(own)
+    elif principal.role == Role.ADMIN.value and str(payload.get("auth_password", "") or ""):
+        username, _configured = await local_credential_status(own)
+        if str(payload.get("auth_username", username) or "").strip():
+            holders.add(own)
+    return bool(holders)
 
 
 def _prospective_oidc_ready(payload: Mapping[str, Any], current) -> bool:
@@ -222,7 +231,7 @@ async def settings_transition_rejection(
     # incomplete Password/OIDC settings could otherwise become authoritative
     # and immediately strand the operator. A broken supplemental mechanism is
     # still permitted when the other mechanism remains usable.
-    password_ready = proposed_password and _prospective_password_ready(payload, current)
+    password_ready = proposed_password and await _prospective_password_ready(request, payload, principal)
     oidc_ready = proposed_oidc and _prospective_oidc_ready(payload, current)
     if (proposed_password or proposed_oidc) and not (password_ready or oidc_ready):
         return JSONResponse(
@@ -274,7 +283,7 @@ async def settings_transition_rejection(
     # flow. Enabling a known-usable local password in the same update restores
     # a fallback and therefore removes this lockout constraint.
     if not current_password and current_oidc and proposed_oidc and critical_oidc_change:
-        fallback_ready = proposed_password and _prospective_password_ready(payload, current)
+        fallback_ready = proposed_password and await _prospective_password_ready(request, payload, principal)
         if not fallback_ready:
             return JSONResponse(
                 {"detail": "Critical OIDC changes require pending configuration verification while OIDC is the sole interactive mechanism"},

@@ -5,10 +5,11 @@ import pytest
 from fastapi import Request, Response
 from fastapi.exceptions import RequestValidationError
 
+from account_support import account_database, admin_with_password
 from auth import middleware
+from auth.accounts import set_own_local_credential
 from auth.manager import PasswordAttemptAdmission, PasswordAuthenticationBusy
 from auth.models import Principal
-from auth.passwords import hash_password, password_credential_version
 from auth.sessions import HTTP_SESSION_COOKIE, session_store
 
 
@@ -48,13 +49,8 @@ async def _ok(_request):
     return Response(status_code=204)
 
 
-def _password_settings(username="operator"):
-    return SimpleNamespace(
-        auth_password_enabled=True,
-        auth_username=username,
-        auth_password_hash=hash_password("secret"),
-        auth_oidc_enabled=False,
-    )
+def _password_settings():
+    return SimpleNamespace(auth_password_enabled=True, auth_oidc_enabled=False)
 
 
 def _basic(username="operator", password="secret"):
@@ -163,21 +159,13 @@ async def test_basic_auth_saturation_fails_fast_with_retry_after(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_password_session_is_invalid_after_username_change(monkeypatch):
-    old_cfg = _password_settings(username="old-operator")
-    new_cfg = SimpleNamespace(
-        auth_password_enabled=True,
-        auth_username="new-operator",
-        auth_password_hash=old_cfg.auth_password_hash,
-        auth_oidc_enabled=False,
-    )
-    monkeypatch.setattr(middleware, "get_settings", lambda: new_cfg)
+async def test_password_session_is_invalid_after_username_change(monkeypatch, tmp_path):
+    await account_database(tmp_path, monkeypatch)
+    operator = await admin_with_password("old-operator")
+    monkeypatch.setattr(middleware, "get_settings", _password_settings)
     session_store.clear()
-    token, _record = session_store.create(
-        Principal.password_session("old-operator"),
-        lifetime_seconds=3600,
-        credential_version=password_credential_version(old_cfg.auth_password_hash),
-    )
+    token, _record = session_store.create(Principal.password_session(operator), lifetime_seconds=3600)
+    await set_own_local_credential(operator.id, username="new-operator")
     request = _request(
         "GET",
         path="/",

@@ -1,6 +1,7 @@
 import pytest
 from fastapi import Request, Response
 
+from account_support import account
 from api import auth_routes
 from auth.models import Principal
 
@@ -21,7 +22,7 @@ def _request():
             "server": ("pulse.example", 443),
         }
     )
-    request.state.principal = Principal.password_session("operator")
+    request.state.principal = Principal.password_session(account("operator"))
     return request
 
 

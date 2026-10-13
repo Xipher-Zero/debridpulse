@@ -1324,6 +1324,9 @@ async def _init_db_sqlite(path: Path):
         from db import event_journal
 
         await event_journal.ensure_schema(db)
+        from auth import accounts
+
+        await accounts.ensure_schema(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

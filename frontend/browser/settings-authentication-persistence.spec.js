@@ -373,8 +373,9 @@ test('no whole-settings write carries an Authentication value read from the page
 
     expect(applied.length).toBeGreaterThan(0);
     for (const body of applied) {
+      // Local credentials belong to accounts: the settings document has no username at all.
       expect(body.auth_username, 'a whole-settings write carried an Authentication draft')
-        .toBe(before.username);
+        .toBeUndefined();
       expect(body.oidc_provider_name, 'a whole-settings write carried an Authentication draft')
         .toBe(before.oidc_provider_name);
       expect(body.clear_secrets || [], 'a whole-settings write carried an Authentication secret clear')

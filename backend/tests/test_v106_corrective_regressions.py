@@ -154,27 +154,26 @@ def test_settings_secret_merge_preserve_replace_clear():
     from api.routes import SettingsUpdate, _merge_secret_settings
     from core.config import AppSettings
 
-    previous = AppSettings(discord_webhook_url="https://old.example/hook", auth_username="old-user", auth_password="old-pass")
+    previous = AppSettings(discord_webhook_url="https://old.example/hook", extraction_password="old-pass")
 
     payload = previous.model_dump()
-    payload.update(discord_webhook_url="", auth_password="")
+    payload.update(discord_webhook_url="", extraction_password="")
     preserve = SettingsUpdate(**payload)
     merged = _merge_secret_settings(preserve, previous)
     assert merged["discord_webhook_url"] == "https://old.example/hook"
-    assert merged["auth_password"] == "old-pass"
+    assert merged["extraction_password"] == "old-pass"
 
     payload = previous.model_dump()
-    payload.update(auth_username="new-user", auth_password="new-pass")
+    payload.update(extraction_password="new-pass")
     replace = SettingsUpdate(**payload)
     merged = _merge_secret_settings(replace, previous)
-    assert merged["auth_username"] == "new-user"
-    assert merged["auth_password"] == "new-pass"
+    assert merged["extraction_password"] == "new-pass"
 
     payload = previous.model_dump()
-    payload.update(auth_password="", clear_secrets=["auth_password"])
+    payload.update(extraction_password="", clear_secrets=["extraction_password"])
     clear = SettingsUpdate(**payload)
     merged = _merge_secret_settings(clear, previous)
-    assert merged["auth_password"] == ""
+    assert merged["extraction_password"] == ""
 
     payload = previous.model_dump()
     payload.update(clear_secrets=["not_a_secret"])
