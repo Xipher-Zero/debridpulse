@@ -5,6 +5,13 @@
  * clickable controls keyboard-operable, keeps ARIA state synchronized with the
  * active-class contract, and projects native-select dropdown semantics for
  * dynamically rendered controls.
+ *
+ * A select whose list is too long to scan declares data-dp-dropdown-search
+ * (the search field's accessible name): its open menu adds that field above
+ * the list and filters the options as the operator types. An option may carry
+ * data-dp-detail (a quieter second label, shown and searched) and
+ * data-dp-search (further words it answers to). The native select stays the
+ * only value and event source; searching never changes it.
  */
 (function () {
   'use strict';
@@ -215,6 +222,30 @@
     return Array.from(dpDropdownLayer.querySelectorAll('.dp-dropdown__option:not(:disabled)'));
   }
 
+  function searchable(select) {
+    return !!(select && select.dataset.dpDropdownSearch);
+  }
+
+  function projectedSearch() {
+    return dpDropdownLayer ? dpDropdownLayer.querySelector('.dp-dropdown__search') : null;
+  }
+
+  /* Focus never scrolls the page, but the focused option must still be in
+     view inside the menu's own scrolling list. */
+  function revealProjectedOption(button) {
+    const list = button.parentElement;
+    if (!list) return;
+    const box = list.getBoundingClientRect();
+    const item = button.getBoundingClientRect();
+    if (item.top < box.top) list.scrollTop -= box.top - item.top;
+    else if (item.bottom > box.bottom) list.scrollTop += item.bottom - box.bottom;
+  }
+
+  function focusOption(button) {
+    button.focus({preventScroll: true});
+    revealProjectedOption(button);
+  }
+
   function focusProjectedOption(preference) {
     const buttons = projectedOptionButtons();
     if (!buttons.length) return;
@@ -229,7 +260,7 @@
         return button.getAttribute('aria-selected') === 'true';
       }) || buttons[0];
     }
-    target.focus({preventScroll: true});
+    focusOption(target);
   }
 
   function moveProjectedOption(delta) {
@@ -237,6 +268,12 @@
     if (!buttons.length) return;
     const current = document.activeElement;
     let index = buttons.indexOf(current);
+    // Up from the first option of a searchable menu returns to its search.
+    const search = projectedSearch();
+    if (search && index === 0 && delta < 0) {
+      search.focus({preventScroll: true});
+      return;
+    }
     if (index < 0) {
       index = buttons.findIndex(function (button) {
         return button.getAttribute('aria-selected') === 'true';
@@ -244,7 +281,7 @@
     }
     if (index < 0) index = 0;
     const next = (index + delta + buttons.length) % buttons.length;
-    buttons[next].focus({preventScroll: true});
+    focusOption(buttons[next]);
   }
 
   function ensureDropdownLayer() {
@@ -274,11 +311,67 @@
       } else if (event.key === 'Escape') {
         event.preventDefault();
         closeProjectedSelect(true);
+      } else {
+        // Typing on an option of a searchable menu types into its search.
+        const search = projectedSearch();
+        if (search && event.target !== search && event.key.length === 1 &&
+            !event.ctrlKey && !event.metaKey && !event.altKey) {
+          search.focus({preventScroll: true});
+        }
       }
     });
 
     dpDropdownLayer = layer;
     return layer;
+  }
+
+  function fold(text) {
+    return String(text || '').normalize('NFD').replace(/\p{M}/gu, '').toLocaleLowerCase('en').trim();
+  }
+
+  /* How well an option answers a search: 0 an exact label, detail or search
+     word; 1 a word of one starts with it; 2 one contains it; -1 no match. */
+  function searchRank(option, query) {
+    const texts = [option.label || option.textContent, option.dataset.dpDetail, option.dataset.dpSearch].map(fold);
+    const words = texts.join(' ').split(/[^\p{L}\p{N}-]+/u).filter(Boolean);
+    if (texts.includes(query) || words.includes(query)) return 0;
+    if (words.some(function (word) { return word.startsWith(query); }) ||
+        texts.some(function (text) { return text.startsWith(query); })) return 1;
+    return texts.some(function (text) { return text.includes(query); }) ? 2 : -1;
+  }
+
+  function projectedSearchField(select) {
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'input dp-dropdown__search';
+    search.autocomplete = 'off';
+    search.spellcheck = false;
+    search.placeholder = select.dataset.dpDropdownSearch;
+    search.setAttribute('aria-label', select.dataset.dpDropdownSearch);
+    search.setAttribute('aria-controls', 'dp-dropdown-list');
+    search.addEventListener('input', function () {
+      if (!dpActiveDropdown) return;
+      renderProjectedOptions(dpActiveDropdown.select);
+      const list = search.nextElementSibling;
+      if (list) list.scrollTop = 0;
+    });
+    search.addEventListener('keydown', function (event) {
+      if (!dpActiveDropdown) return;
+      const buttons = projectedOptionButtons();
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        // The list is entered from its search; the caret keys stay the field's.
+        event.preventDefault();
+        event.stopPropagation();
+        if (buttons.length) focusOption(event.key === 'ArrowDown' ? buttons[0] : buttons[buttons.length - 1]);
+      } else if (event.key === 'Home' || event.key === 'End') {
+        event.stopPropagation();
+      } else if (event.key === 'Enter') {
+        // Enter takes the best match, the first option shown.
+        event.preventDefault();
+        if (buttons.length) buttons[0].click();
+      }
+    });
+    return search;
   }
 
   function optionIsDisabled(option) {
@@ -307,7 +400,20 @@
     button.className = 'dp-dropdown__option';
     button.setAttribute('role', 'option');
     button.dataset.dpOptionIndex = String(optionIndex);
-    button.textContent = option.label || option.textContent || '';
+    const label = option.label || option.textContent || '';
+    const detail = option.dataset.dpDetail || '';
+    if (detail) {
+      const name = document.createElement('span');
+      name.className = 'dp-dropdown__option-label';
+      name.textContent = label;
+      const quiet = document.createElement('span');
+      quiet.className = 'dp-dropdown__option-detail';
+      quiet.textContent = detail;
+      button.append(name, quiet);
+      button.setAttribute('aria-label', label + ', ' + detail);
+    } else {
+      button.textContent = label;
+    }
     button.disabled = optionIsDisabled(option);
     button.setAttribute('aria-disabled', button.disabled ? 'true' : 'false');
     button.setAttribute('aria-selected', option.selected ? 'true' : 'false');
@@ -317,32 +423,69 @@
     layer.appendChild(button);
   }
 
+  /* A plain menu is itself the listbox. A searchable one is its search field
+     above a listbox of its own, which alone scrolls; the field (and what was
+     typed into it) is kept while the list is redrawn. */
   function renderProjectedOptions(select) {
     const layer = ensureDropdownLayer();
-    layer.replaceChildren();
+    let list = layer;
+    let query = '';
+    if (searchable(select)) {
+      let search = projectedSearch();
+      list = layer.querySelector('#dp-dropdown-list');
+      if (!search || !list) {
+        search = projectedSearchField(select);
+        list = document.createElement('div');
+        list.id = 'dp-dropdown-list';
+        list.className = 'dp-dropdown__list';
+        list.setAttribute('role', 'listbox');
+        list.setAttribute('aria-label', selectAccessibleName(select));
+        layer.replaceChildren(search, list);
+      }
+      layer.classList.add('dp-dropdown-menu--search');
+      layer.removeAttribute('role');
+      query = fold(search.value);
+    } else {
+      layer.classList.remove('dp-dropdown-menu--search');
+      layer.setAttribute('role', 'listbox');
+    }
+    list.replaceChildren();
     const allOptions = Array.from(select.options || []);
 
-    Array.from(select.children).forEach(function (child) {
-      if (child.tagName === 'OPTGROUP') {
-        const group = document.createElement('div');
-        group.className = 'dp-dropdown__group';
-        group.textContent = child.label || '';
-        layer.appendChild(group);
-        Array.from(child.children).forEach(function (option) {
-          const index = allOptions.indexOf(option);
-          if (index >= 0) appendProjectedOption(select, option, index, layer);
-        });
-      } else if (child.tagName === 'OPTION') {
-        const index = allOptions.indexOf(child);
-        if (index >= 0) appendProjectedOption(select, child, index, layer);
-      }
-    });
+    if (query) {
+      // Best matches first; equally good ones keep the select's own order.
+      allOptions.map(function (option, index) {
+        return {option: option, index: index, rank: searchRank(option, query)};
+      }).filter(function (entry) {
+        return entry.rank >= 0;
+      }).sort(function (a, b) {
+        return a.rank - b.rank || a.index - b.index;
+      }).forEach(function (entry) {
+        appendProjectedOption(select, entry.option, entry.index, list);
+      });
+    } else {
+      Array.from(select.children).forEach(function (child) {
+        if (child.tagName === 'OPTGROUP') {
+          const group = document.createElement('div');
+          group.className = 'dp-dropdown__group';
+          group.textContent = child.label || '';
+          list.appendChild(group);
+          Array.from(child.children).forEach(function (option) {
+            const index = allOptions.indexOf(option);
+            if (index >= 0) appendProjectedOption(select, option, index, list);
+          });
+        } else if (child.tagName === 'OPTION') {
+          const index = allOptions.indexOf(child);
+          if (index >= 0) appendProjectedOption(select, child, index, list);
+        }
+      });
+    }
 
-    if (!layer.querySelector('.dp-dropdown__option')) {
+    if (!list.querySelector('.dp-dropdown__option')) {
       const empty = document.createElement('div');
       empty.className = 'dp-dropdown__empty';
-      empty.textContent = 'No options available';
-      layer.appendChild(empty);
+      empty.textContent = query ? 'No matches' : 'No options available';
+      list.appendChild(empty);
     }
   }
 
@@ -418,7 +561,15 @@
     trigger.setAttribute('aria-expanded', 'true');
     ensureDropdownLayer().hidden = false;
     positionProjectedMenu();
-    focusProjectedOption(focusPreference || 'selected');
+    const search = projectedSearch();
+    if (search) {
+      // A searchable menu opens on its search, the current choice in view.
+      const current = dpDropdownLayer.querySelector('.dp-dropdown__option[aria-selected="true"]');
+      if (current) revealProjectedOption(current);
+      search.focus({preventScroll: true});
+    } else {
+      focusProjectedOption(focusPreference || 'selected');
+    }
   }
 
   function copySelectGeometry(select, shell) {
@@ -468,6 +619,7 @@
 
     const shell = document.createElement('span');
     shell.className = 'dp-dropdown-shell';
+    if (searchable(select)) shell.classList.add('dp-dropdown-shell--search');
     copySelectGeometry(select, shell);
 
     const trigger = document.createElement('button');
@@ -476,7 +628,7 @@
     trigger.setAttribute('role', 'combobox');
     trigger.setAttribute('aria-haspopup', 'listbox');
     trigger.setAttribute('aria-expanded', 'false');
-    trigger.setAttribute('aria-controls', 'dp-dropdown-layer');
+    trigger.setAttribute('aria-controls', searchable(select) ? 'dp-dropdown-list' : 'dp-dropdown-layer');
 
     const value = document.createElement('span');
     value.className = 'dp-dropdown__value';

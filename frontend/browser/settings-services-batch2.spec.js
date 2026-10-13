@@ -77,28 +77,42 @@ test('Maximum Active Torrents hints read Max, whole, on all three providers', as
   }
 });
 
-test('integer tunables centre their value; fractions, text and credentials do not', async ({ page }) => {
+test('compact tunables centre their value whatever its type; paths, addresses and credentials do not', async ({ page }) => {
   await openServices(page);
   const fields = await page.evaluate(() => [...document.querySelectorAll('#view-settings input.input')].map(input => ({
-    key: input.dataset.setting || input.dataset.usenetField || input.id, type: input.type, step: input.getAttribute('step') || '',
+    key: input.dataset.setting || input.dataset.usenetField || input.id, type: input.type,
+    tunable: input.type === 'number' || !!input.closest('.dp-settings-tuning-grid .dp-settings-field'),
     align: getComputedStyle(input).textAlign})));
-  const integers = fields.filter(field => field.type === 'number' && !field.step.includes('.'));
-  const others = fields.filter(field => !(field.type === 'number' && !field.step.includes('.')));
-  // Services, Downloads, Maintenance and Usenet servers alike.
+  const tunables = fields.filter(field => field.tunable);
+  const others = fields.filter(field => !field.tunable);
+  // Integers, fractions and sized strings alike, in Services, Downloads,
+  // Maintenance and Usenet servers.
   for (const key of ['torbox_rate_limit_per_minute', 'alldebrid_max_active_torrents', 'aria2_split',
-                     'aria2_max_active_downloads', 'backup_keep_days', 'webdav_max_files']) {
-    expect(integers.map(field => field.key), key).toContain(key);
+                     'aria2_max_active_downloads', 'backup_keep_days', 'webdav_max_files',
+                     'min_free_disk_gb', 'disk_guard_resume_hysteresis_gb', 'aria2_min_split_size', 'aria2_disk_cache']) {
+    expect(tunables.map(field => field.key), key).toContain(key);
   }
-  expect(integers.length).toBeGreaterThan(20);
-  integers.forEach(field => expect(field.align, field.key).toBe('center'));
-  expect(others.filter(field => field.type === 'number').map(field => field.key))
-    .toEqual(['min_free_disk_gb', 'disk_guard_resume_hysteresis_gb']);
+  expect(tunables.length).toBeGreaterThan(20);
+  tunables.forEach(field => expect(field.align, field.key).toBe('center'));
+  // Paths, addresses, names and credentials keep the ordinary alignment.
+  for (const key of ['download_folder', 'backup_folder', 'alldebrid_api_key', 'oidc_issuer_url', 'discord_username']) {
+    expect(others.map(field => field.key), key).toContain(key);
+  }
   others.forEach(field => expect(field.align, field.key).not.toBe('center'));
-  // Editing is unchanged: a typed value stays a number in a centred field.
+  // Every selector's chosen value is centred beside its chevron.
+  const values = await page.evaluate(() => [...document.querySelectorAll('#view-settings .dp-dropdown__value')]
+    .map(value => getComputedStyle(value).textAlign));
+  expect(values.length).toBeGreaterThan(5);
+  values.forEach(align => expect(align).toBe('center'));
+  // Editing is unchanged: a typed value stays a number in a centred field, and
+  // a fractional field still steps by its own step.
   const field = page.locator('[data-setting="torbox_rate_limit_per_minute"]');
   await expand(page, 'torbox');
   await field.fill('123');
   await expect(field).toHaveValue('123');
+  const buffer = page.locator('[data-setting="disk_guard_resume_hysteresis_gb"]');
+  expect(await buffer.evaluate(input => { const before = input.value; input.stepUp(); const after = input.value;
+    input.value = before; return [before, after]; })).toEqual(['0.5', '0.6']);
 });
 
 // 23:30 UTC on the last day of January is already February in Tokyo.

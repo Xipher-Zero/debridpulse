@@ -204,9 +204,8 @@
     download_folder: {scope: 'settings-document', option: 'download_folder'},
     min_free_disk_gb: {scope: 'settings-document', option: 'min_free_disk_gb'},
     disk_guard_resume_hysteresis_gb: {scope: 'settings-document', option: 'disk_guard_resume_hysteresis_gb'},
-    // A global Downloads preference that Media Downloads consumes; never a
-    // Media Downloads option. Shown in both places, it is still this one key:
-    // the persistence owner keeps every control of it on the accepted value.
+    // A global settings-document preference that Media Downloads consumes;
+    // never a Media Downloads option. Its one control is on the Media card.
     preferred_subtitle_language: {scope: 'settings-document', option: 'preferred_subtitle_language'},
 
     // Extraction -- ordinary settings-document values, on exactly the same two
@@ -515,8 +514,7 @@
   const apiLimitMessage = provider => `${provider} API limit must be {max} or fewer requests per minute.`;
 
   function input(key, label, value, options = {}) {
-    // ``id``: a second control of the same setting elsewhere on the page.
-    const id = options.id || fieldId(key);
+    const id = fieldId(key);
     const type = options.type || 'text';
     // The control declares its commit class; the canonical persistence owner
     // supplies the behaviour (COMMIT_FIELDS).
@@ -613,9 +611,16 @@
 
   function selectField(key, label, value, choices, hint = '', options = {}) {
     const id = fieldId(key);
+    // ``search``: a list too long to scan opens with a search field of this
+    // name. A choice's optional third entry is its quieter second label
+    // (``detail``) and further words it answers to (``terms``); the shared
+    // dropdown shows and searches both.
+    const search = options.search ? ` data-dp-dropdown-search="${html(options.search)}"` : '';
+    const extra = ({detail, terms} = {}) => (detail ? ` data-dp-detail="${html(detail)}"` : '')
+      + (terms ? ` data-dp-search="${html(terms)}"` : '');
     const control = `
-        <select class="input" id="${id}" data-setting="${html(key)}" ${commitAttributes(key)}>
-          ${choices.map(([v, labelText]) => `<option value="${html(v)}" ${selected(value, v)}>${html(labelText)}</option>`).join('')}
+        <select class="input" id="${id}" data-setting="${html(key)}"${search} ${commitAttributes(key)}>
+          ${choices.map(([v, labelText, more]) => `<option value="${html(v)}"${extra(more)} ${selected(value, v)}>${html(labelText)}</option>`).join('')}
         </select>`;
     // The SAME control, in whichever of the two Settings field grammars the
     // caller asked for -- exactly as input(), directoryField() and
@@ -2239,12 +2244,95 @@
     ['h264', 'H.264'],
   ]);
 
+  /* Preferred Subtitle Language: what is stored is one lowercase language
+   * code -- a primary language subtag with at most one region or script
+   * subtag (core/config.py) -- matched against the subtitle tracks a site
+   * lists. The picker offers every ISO 639-1 language, the widely used
+   * languages that have only a three-letter code, and the regional and script
+   * variants sites commonly label their tracks with, by English name; the code
+   * is its quieter second label. The names are written here because browsers
+   * name only some languages themselves (Chromium leaves 52 of these unnamed)
+   * and word the rest differently. The browser's own Intl.DisplayNames serves
+   * only what this list cannot: a saved code outside it, and a language's
+   * name for itself, which can be searched. Nothing is fetched. */
+  const SUBTITLE_LANGUAGES = Object.freeze([
+    ['aa', 'Afar'], ['ab', 'Abkhazian'], ['ae', 'Avestan'], ['af', 'Afrikaans'], ['ak', 'Akan'], ['am', 'Amharic'],
+    ['an', 'Aragonese'], ['ar', 'Arabic'], ['as', 'Assamese'], ['av', 'Avaric'], ['ay', 'Aymara'],
+    ['az', 'Azerbaijani'], ['ba', 'Bashkir'], ['be', 'Belarusian'], ['bg', 'Bulgarian'], ['bi', 'Bislama'],
+    ['bm', 'Bambara'], ['bn', 'Bengali'], ['bo', 'Tibetan'], ['br', 'Breton'], ['bs', 'Bosnian'],
+    ['ca', 'Catalan'], ['ce', 'Chechen'], ['ch', 'Chamorro'], ['co', 'Corsican'], ['cr', 'Cree'], ['cs', 'Czech'],
+    ['cu', 'Church Slavic'], ['cv', 'Chuvash'], ['cy', 'Welsh'], ['da', 'Danish'], ['de', 'German'],
+    ['dv', 'Divehi'], ['dz', 'Dzongkha'], ['ee', 'Ewe'], ['el', 'Greek'], ['en', 'English'], ['eo', 'Esperanto'],
+    ['es', 'Spanish'], ['et', 'Estonian'], ['eu', 'Basque'], ['fa', 'Persian'], ['ff', 'Fula'], ['fi', 'Finnish'],
+    ['fj', 'Fijian'], ['fo', 'Faroese'], ['fr', 'French'], ['fy', 'Western Frisian'], ['ga', 'Irish'],
+    ['gd', 'Scottish Gaelic'], ['gl', 'Galician'], ['gn', 'Guarani'], ['gu', 'Gujarati'], ['gv', 'Manx'],
+    ['ha', 'Hausa'], ['he', 'Hebrew'], ['hi', 'Hindi'], ['ho', 'Hiri Motu'], ['hr', 'Croatian'],
+    ['ht', 'Haitian Creole'], ['hu', 'Hungarian'], ['hy', 'Armenian'], ['hz', 'Herero'], ['ia', 'Interlingua'],
+    ['id', 'Indonesian'], ['ie', 'Interlingue'], ['ig', 'Igbo'], ['ii', 'Sichuan Yi'], ['ik', 'Inupiaq'],
+    ['io', 'Ido'], ['is', 'Icelandic'], ['it', 'Italian'], ['iu', 'Inuktitut'], ['ja', 'Japanese'],
+    ['jv', 'Javanese'], ['ka', 'Georgian'], ['kg', 'Kongo'], ['ki', 'Kikuyu'], ['kj', 'Kuanyama'],
+    ['kk', 'Kazakh'], ['kl', 'Kalaallisut'], ['km', 'Khmer'], ['kn', 'Kannada'], ['ko', 'Korean'],
+    ['kr', 'Kanuri'], ['ks', 'Kashmiri'], ['ku', 'Kurdish'], ['kv', 'Komi'], ['kw', 'Cornish'], ['ky', 'Kyrgyz'],
+    ['la', 'Latin'], ['lb', 'Luxembourgish'], ['lg', 'Ganda'], ['li', 'Limburgish'], ['ln', 'Lingala'],
+    ['lo', 'Lao'], ['lt', 'Lithuanian'], ['lu', 'Luba-Katanga'], ['lv', 'Latvian'], ['mg', 'Malagasy'],
+    ['mh', 'Marshallese'], ['mi', 'Māori'], ['mk', 'Macedonian'], ['ml', 'Malayalam'], ['mn', 'Mongolian'],
+    ['mr', 'Marathi'], ['ms', 'Malay'], ['mt', 'Maltese'], ['my', 'Burmese'], ['na', 'Nauru'],
+    ['nb', 'Norwegian Bokmål'], ['nd', 'North Ndebele'], ['ne', 'Nepali'], ['ng', 'Ndonga'], ['nl', 'Dutch'],
+    ['nn', 'Norwegian Nynorsk'], ['no', 'Norwegian'], ['nr', 'South Ndebele'], ['nv', 'Navajo'],
+    ['ny', 'Chichewa'], ['oc', 'Occitan'], ['oj', 'Ojibwa'], ['om', 'Oromo'], ['or', 'Odia'], ['os', 'Ossetic'],
+    ['pa', 'Punjabi'], ['pi', 'Pali'], ['pl', 'Polish'], ['ps', 'Pashto'], ['pt', 'Portuguese'], ['qu', 'Quechua'],
+    ['rm', 'Romansh'], ['rn', 'Rundi'], ['ro', 'Romanian'], ['ru', 'Russian'], ['rw', 'Kinyarwanda'],
+    ['sa', 'Sanskrit'], ['sc', 'Sardinian'], ['sd', 'Sindhi'], ['se', 'Northern Sami'], ['sg', 'Sango'],
+    ['si', 'Sinhala'], ['sk', 'Slovak'], ['sl', 'Slovenian'], ['sm', 'Samoan'], ['sn', 'Shona'], ['so', 'Somali'],
+    ['sq', 'Albanian'], ['sr', 'Serbian'], ['ss', 'Swati'], ['st', 'Southern Sotho'], ['su', 'Sundanese'],
+    ['sv', 'Swedish'], ['sw', 'Swahili'], ['ta', 'Tamil'], ['te', 'Telugu'], ['tg', 'Tajik'], ['th', 'Thai'],
+    ['ti', 'Tigrinya'], ['tk', 'Turkmen'], ['tl', 'Tagalog'], ['tn', 'Tswana'], ['to', 'Tongan'],
+    ['tr', 'Turkish'], ['ts', 'Tsonga'], ['tt', 'Tatar'], ['tw', 'Twi'], ['ty', 'Tahitian'], ['ug', 'Uyghur'],
+    ['uk', 'Ukrainian'], ['ur', 'Urdu'], ['uz', 'Uzbek'], ['ve', 'Venda'], ['vi', 'Vietnamese'], ['vo', 'Volapük'],
+    ['wa', 'Walloon'], ['wo', 'Wolof'], ['xh', 'Xhosa'], ['yi', 'Yiddish'], ['yo', 'Yoruba'], ['za', 'Zhuang'],
+    ['zh', 'Chinese'], ['zu', 'Zulu'],
+    ['ast', 'Asturian'], ['ceb', 'Cebuano'], ['chr', 'Cherokee'], ['ckb', 'Central Kurdish'], ['fil', 'Filipino'],
+    ['haw', 'Hawaiian'], ['hmn', 'Hmong'], ['kok', 'Konkani'], ['mai', 'Maithili'], ['mni', 'Manipuri'],
+    ['sat', 'Santali'], ['yue', 'Cantonese'],
+    ['en-US', 'English (United States)'], ['en-GB', 'English (United Kingdom)'], ['en-AU', 'English (Australia)'],
+    ['en-CA', 'English (Canada)'], ['en-IE', 'English (Ireland)'], ['en-IN', 'English (India)'],
+    ['en-NZ', 'English (New Zealand)'], ['en-ZA', 'English (South Africa)'], ['es-ES', 'Spanish (Spain)'],
+    ['es-419', 'Spanish (Latin America)'], ['es-MX', 'Spanish (Mexico)'], ['es-US', 'Spanish (United States)'],
+    ['fr-FR', 'French (France)'], ['fr-CA', 'French (Canada)'], ['fr-BE', 'French (Belgium)'],
+    ['fr-CH', 'French (Switzerland)'], ['pt-BR', 'Portuguese (Brazil)'], ['pt-PT', 'Portuguese (Portugal)'],
+    ['de-DE', 'German (Germany)'], ['de-AT', 'German (Austria)'], ['de-CH', 'German (Switzerland)'],
+    ['nl-NL', 'Dutch (Netherlands)'], ['nl-BE', 'Dutch (Belgium)'], ['zh-Hans', 'Chinese (Simplified)'],
+    ['zh-Hant', 'Chinese (Traditional)'], ['zh-CN', 'Chinese (China)'], ['zh-TW', 'Chinese (Taiwan)'],
+    ['zh-HK', 'Chinese (Hong Kong)'], ['zh-SG', 'Chinese (Singapore)'], ['sr-Latn', 'Serbian (Latin)'],
+    ['sr-Cyrl', 'Serbian (Cyrillic)'],
+  ]);
+
+  function displayedLanguage(code, locale) {
+    try {
+      return new Intl.DisplayNames([locale], {type: 'language', fallback: 'none'}).of(code) || '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  let subtitleLanguageCatalog = null;
+  function subtitleLanguageChoices(current) {
+    subtitleLanguageCatalog ||= SUBTITLE_LANGUAGES
+      .map(([code, name]) => [code.toLowerCase(), name, {detail: code, terms: displayedLanguage(code, code)}])
+      .sort((a, b) => a[1].localeCompare(b[1], 'en'));
+    // A saved code outside the list is offered as it is, never replaced.
+    const value = String(current || '').toLowerCase();
+    if (!value || subtitleLanguageCatalog.some(([code]) => code === value)) return subtitleLanguageCatalog;
+    const name = displayedLanguage(value, 'en') || `Language code: ${value}`;
+    return [[value, name, {detail: value}], ...subtitleLanguageCatalog];
+  }
+
   function mediaTuning(s) {
     // Acquisition preferences only. Everything else about a media download --
     // one final file with its subtitle and metadata, no transcoding -- is
     // DebridPulse policy, not a setting. The two video preferences are one
-    // related group; the subtitle language is the global Downloads preference
-    // itself, surfaced here: one setting, two places.
+    // related group; the subtitle language is the global settings-document
+    // preference, whose one control is here.
     const options = mediaOf(s);
     return tuningCells(
       selectField('media_target_resolution', 'Target Resolution', options.target_resolution || 'best',
@@ -2256,10 +2344,10 @@
         selectField('media_video_codec', 'Preferred Video Codec', options.video_codec || 'auto', VIDEO_CODECS,
           'Prefers this codec when the site offers it at that resolution; Auto keeps the site\u2019s usual choice. Both apply only where the source offers alternatives, and DebridPulse never re-encodes media.'),
       ),
-      input('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en', {
-        id: 'dp-settings-field-media-preferred-subtitle-language',
-        hint: 'Language code (for example en, de or pt-br). The same setting as in Download Behavior &amp; Limits; a subtitle written for the media is preferred, an automatically generated one used otherwise, embedded in the one file.',
-      }),
+      selectField('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en',
+        subtitleLanguageChoices(s.preferred_subtitle_language || 'en'),
+        'The language of the subtitle embedded in the downloaded file, when the site offers one. A subtitle written for the media is preferred; one the site generated automatically in the same language is used otherwise.',
+        {search: 'Search languages'}),
       input('media_concurrent_fragment_downloads', 'Concurrent Fragment Downloads',
         options.concurrent_fragment_downloads ?? 1, {
           type: 'number', min: 1, max: 8,
@@ -2390,7 +2478,7 @@
           })}
         </div>
       </div>
-      ${downloadBehaviorAdvanced(policy, s)}
+      ${downloadBehaviorAdvanced(policy)}
     `, {
       className: 'dp-settings-download-engine-card',
       titlePrefix: familyIcon('downloads', 'gauge'),
@@ -2452,7 +2540,7 @@
   /* Download Behavior & Limits -> Advanced Settings: DebridPulse-owned
    * continuation and local-network policy, four ordinary tuning cells in the
    * one tuning grammar. Collapsed by default; expansion is presentation only. */
-  function downloadBehaviorAdvanced(policy, s) {
+  function downloadBehaviorAdvanced(policy) {
     return disclosureSection('Advanced Settings', 'download-behavior-advanced', tuningCells(
       input('material_checkpoint_interval_seconds', 'Material Checkpoint Interval (seconds)',
         policy.material_checkpoint_interval_seconds ?? 5, {
@@ -2464,9 +2552,6 @@
           type: 'number', min: 1, max: 60,
           hint: 'How long DebridPulse allows an active download engine to finish and preserve current work before forcing it to stop.',
         }),
-      input('preferred_subtitle_language', 'Preferred Subtitle Language', s.preferred_subtitle_language || 'en', {
-        hint: 'Language code (for example en, de or pt-br) of the subtitle embedded in media downloads. A subtitle written for the media is preferred; an automatically generated one in the same language is used otherwise.',
-      }),
       // The two local-network cells are one relationship (the second depends
       // on the first): the shared tuning relation, drawn only while the set
       // holds all its lanes.

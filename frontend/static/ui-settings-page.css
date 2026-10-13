@@ -1010,13 +1010,16 @@
   min-width: 0;
   max-width: 100%;
   box-sizing: border-box;
-  text-align: left;
 }
 
-/* Every integer tunable in Settings shows its value centred, whatever grammar
-   holds it; a fractional quantity (a step with a decimal point), text and
-   credentials keep the ordinary alignment. */
-#view-settings input[type="number"].input:not([step*="."]) {
+/* A compact tunable shows its value centred, whatever its type: every control
+   of a tuning cell (integers, fractions such as 0.5, sized strings such as
+   10M), every number field in whichever grammar holds it, and every selector's
+   chosen value -- centred in the room beside its chevron. Paths, addresses,
+   names and credentials are never tunables: they keep the ordinary alignment. */
+#view-settings .dp-settings-tuning-grid .dp-settings-field > .input,
+#view-settings input[type="number"].input,
+#view-settings .dp-dropdown__value {
   text-align: center;
 }
 

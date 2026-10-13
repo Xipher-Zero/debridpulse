@@ -915,24 +915,27 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert "'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),\n" \
            "        'media')" in panel
 
-    # Exactly three acquisition preferences: Target Resolution and Video
-    # Quality in the integration's own namespace, and the ONE global Preferred
-    # Subtitle Language key surfaced here too; no raw yt-dlp control, and no
-    # subtitle acquisition or embedding switch.
+    # The acquisition preferences: Target Resolution and the video preferences
+    # in the integration's own namespace, and the ONE global Preferred
+    # Subtitle Language key, whose only control is here, a searchable language
+    # picker; no raw yt-dlp control, and no subtitle acquisition or embedding
+    # switch.
     tuning = _function(page, "mediaTuning")
     assert re.findall(r"(selectField|input)\('(\w+)'", tuning) == [
         ("selectField", "media_target_resolution"), ("selectField", "media_video_quality"),
-        ("selectField", "media_video_codec"), ("input", "preferred_subtitle_language"),
+        ("selectField", "media_video_codec"), ("selectField", "preferred_subtitle_language"),
         ("input", "media_concurrent_fragment_downloads")]
+    assert len(re.findall(r"(?:selectField|input)\('preferred_subtitle_language'", page)) == 1
+    assert "subtitleLanguageChoices(s.preferred_subtitle_language || 'en')" in tuning
+    assert "{search: 'Search languages'}" in tuning
     # The two video preferences are ONE related group (the shared tuningGroup outline).
     group = tuning[tuning.index("tuningGroup("):]
-    group = group[:group.index("      input('preferred_subtitle_language'")]
+    group = group[:group.index("      selectField('preferred_subtitle_language'")]
     assert "'media_video_quality'" in group and "'media_video_codec'" in group
     assert "never re-encodes media" in group
-    assert "id: 'dp-settings-field-media-preferred-subtitle-language'" in tuning
     assert "yt-dlp" not in tuning
-    for absent in ("embed", "Embed", "sidecar", "Off'", "Subtitle Acquisition"):
-        assert absent not in tuning.replace("embedded in the one file", "")
+    for absent in ("embed", "Embed", "sidecar", "Off'", "Subtitle Acquisition", "Download Behavior"):
+        assert absent not in tuning.replace("embedded in the downloaded file", "")
     qualities = re.findall(r"\['(\w+)', '([^']+)'\]", page.split("const VIDEO_QUALITIES = Object.freeze([", 1)[1]
                            .split("]);", 1)[0])
     from integrations.media.definition import VideoQuality
@@ -954,10 +957,10 @@ def test_the_settings_and_badge_surfaces_use_the_one_shared_grammar():
     assert choices[0] == ("best", "Best Available")
     assert "media_target_resolution: {scope: 'integration:media', option: 'target_resolution'}," in page
 
-    # The global Preferred Subtitle Language lives with the global Downloads
-    # behaviour, in the settings document -- never in the Media Downloads card.
-    advanced = _function(page, "downloadBehaviorAdvanced")
-    assert "input('preferred_subtitle_language', 'Preferred Subtitle Language'" in advanced
+    # The global Preferred Subtitle Language stays in the settings document --
+    # never a Media Downloads option -- and Download Behavior & Limits no
+    # longer shows it.
+    assert "subtitle" not in _function(page, "downloadBehaviorAdvanced").lower()
     assert ("preferred_subtitle_language: {scope: 'settings-document', option: 'preferred_subtitle_language'},"
             in page)
 

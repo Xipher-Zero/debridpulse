@@ -36,6 +36,23 @@ const premium = page => page.locator('[data-panel="sources"] > .dp-settings-debr
 const network = page => page.locator('[data-panel="sources"] > .dp-settings-general-sources > .dp-settings-group-body');
 const deck = page => page.locator('#view-settings .dp-settings-scroll');
 const mediaCard = page => page.locator('#view-settings [data-executor-tuning="media"]');
+const subtitle = page => page.locator('#dp-settings-field-preferred-subtitle-language');
+const picker = page => mediaCard(page).locator('.dp-settings-field', {has: subtitle(page)}).locator('.dp-dropdown__trigger');
+const menu = page => page.locator('#dp-dropdown-layer');
+const choices = page => page.locator('#dp-dropdown-list .dp-dropdown__option');
+
+async function openMedia(page) {
+  await openSettings(page, 'downloads');
+  const disclosure = mediaCard(page).locator('.dp-settings-disclosure').first();
+  if ((await disclosure.getAttribute('aria-expanded')) !== 'true') await disclosure.click();
+  await picker(page).scrollIntoViewIfNeeded();
+}
+
+async function saveSubtitle(page, code) {
+  const current = await (await page.request.get('/api/settings')).json();
+  const saved = await page.request.put('/api/settings', {data: {...current, preferred_subtitle_language: code}});
+  expect(saved.ok()).toBe(true);
+}
 
 async function geometry(page) {
   return page.evaluate(() => {
@@ -219,7 +236,7 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-quality')).toHaveValue('high');
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-codec')).toHaveValue('auto');
   await expect(mediaCard(page).locator('#dp-settings-field-media-target-resolution')).toHaveValue('best');
-  await expect(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language')).toHaveValue('en');
+  await expect(subtitle(page)).toHaveValue('en');
   const fragments = mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads');
   await expect(fragments).toHaveValue('1');
   await expect(fragments).toHaveAttribute('type', 'number');
@@ -227,16 +244,15 @@ test('Target Resolution, one bordered Video Preferences group, and the subtitle 
   await expect(fragments).toHaveAttribute('max', '8');
   // The same standard cell as the subtitle language beside it: same field
   // grammar and the same ungrouped placement.
-  const subtitle = mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language');
   expect(await fragments.evaluate(node => node.closest('.dp-settings-field').className))
-    .toBe(await subtitle.evaluate(node => node.closest('.dp-settings-field').className));
+    .toBe(await subtitle(page).evaluate(node => node.closest('.dp-settings-field').className));
   expect(await fragments.evaluate(node => !!node.closest('.dp-settings-tuning-group'))).toBe(false);
   await expect(group).toContainText('DebridPulse never re-encodes media');
   await expect(mediaCard(page)).not.toContainText(/Embed Subtitles|Subtitle Acquisition|separate files/i);
   await expect(mediaCard(page).locator('input[type="checkbox"]')).toHaveCount(0);
 });
 
-test('every control saves, survives a reload, and the one subtitle key agrees in both places', async ({page}) => {
+test('every control saves and survives a reload', async ({page}) => {
   await resetMedia(page);
   await openSettings(page, 'downloads');
   await mediaCard(page).locator('.dp-settings-disclosure').first().click();
@@ -251,11 +267,8 @@ test('every control saves, survives a reload, and the one subtitle key agrees in
   await commit(mediaCard(page).locator('#dp-settings-field-media-target-resolution'), '720');
   await commit(mediaCard(page).locator('#dp-settings-field-media-video-quality'), 'low');
   await commit(mediaCard(page).locator('#dp-settings-field-media-video-codec'), 'hevc');
-  await commit(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language'), 'de');
+  await commit(subtitle(page), 'de');
   await commit(mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads'), '8');
-  // The same key, shown under Download Behavior & Limits, follows at once.
-  const global = page.locator('#dp-settings-field-preferred-subtitle-language');
-  await expect(global).toHaveValue('de');
 
   const stored = await (await page.request.get('/api/settings')).json();
   expect(stored.preferred_subtitle_language).toBe('de');
@@ -268,13 +281,174 @@ test('every control saves, survives a reload, and the one subtitle key agrees in
   await expect(mediaCard(page).locator('#dp-settings-field-media-target-resolution')).toHaveValue('720');
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-quality')).toHaveValue('low');
   await expect(mediaCard(page).locator('#dp-settings-field-media-video-codec')).toHaveValue('hevc');
-  await expect(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language')).toHaveValue('de');
+  await expect(subtitle(page)).toHaveValue('de');
+  await expect(picker(page)).toHaveText('German');
   await expect(mediaCard(page).locator('#dp-settings-field-media-concurrent-fragment-downloads')).toHaveValue('8');
+  await resetMedia(page);
+});
 
-  // Changed from the other entry point, the Media card follows too.
-  await page.locator('.dp-settings-subsection', {hasText: 'Advanced Settings'}).locator('.dp-settings-disclosure').click();
-  await commit(global, 'pt-br');
-  await expect(mediaCard(page).locator('#dp-settings-field-media-preferred-subtitle-language')).toHaveValue('pt-br');
+// --- Preferred Subtitle Language: the one control, a searchable language picker -----
+
+test('the subtitle language has one control, on the Media card, and reads as a name', async ({page}) => {
+  await resetMedia(page);
+  await openMedia(page);
+  await expect(page.locator('[data-setting="preferred_subtitle_language"]')).toHaveCount(1);
+  await expect(page.locator('#view-settings .dp-settings-download-engine-card')).not.toContainText('Subtitle');
+  await expect(mediaCard(page).locator('.dp-settings-field', {has: subtitle(page)}).locator('.form-hint'))
+    .not.toContainText(/code|Download Behavior/);
+  // Closed: the name, never the bare code, centred beside the chevron.
+  await expect(picker(page)).toHaveText('English');
+  const closed = await picker(page).evaluate(trigger => {
+    const value = trigger.querySelector('.dp-dropdown__value').getBoundingClientRect();
+    return {align: getComputedStyle(trigger.querySelector('.dp-dropdown__value')).textAlign,
+            clear: value.right <= trigger.querySelector('.dp-dropdown__chevron').getBoundingClientRect().left};
+  });
+  expect(closed).toEqual({align: 'center', clear: true});
+});
+
+test('open, it lists every language by name with a quiet code, searches both, and scrolls', async ({page}) => {
+  await resetMedia(page);
+  await openMedia(page);
+  await picker(page).click();
+  const search = menu(page).locator('.dp-dropdown__search');
+  await expect(search).toBeFocused();
+  await expect(search).toHaveAttribute('aria-label', 'Search languages');
+  const all = await choices(page).count();
+  expect(all).toBeGreaterThan(200);
+  // Unique codes, ordered by name.
+  const listed = await choices(page).evaluateAll(nodes => nodes.map(node => ({
+    name: node.querySelector('.dp-dropdown__option-label').textContent,
+    code: node.querySelector('.dp-dropdown__option-detail').textContent})));
+  expect(new Set(listed.map(item => item.code.toLowerCase())).size).toBe(listed.length);
+  expect(listed.map(item => item.name)).toEqual([...listed.map(item => item.name)].sort((a, b) => a.localeCompare(b, 'en')));
+  // Every listed language is named, whatever the browser itself can name.
+  expect(new Set(listed.map(item => item.name)).size).toBe(listed.length);
+  expect(listed.filter(item => item.name.startsWith('Language code'))).toEqual([]);
+  for (const [name, code] of [['Portuguese (Brazil)', 'pt-BR'], ['Spanish (Latin America)', 'es-419'],
+                              ['Chinese (Simplified)', 'zh-Hans'], ['Tibetan', 'bo'], ['Navajo', 'nv']]) {
+    expect(listed, name).toContainEqual({name, code});
+  }
+  // The code is the quieter, smaller second label.
+  const look = await choices(page).first().evaluate(node => {
+    const [name, code] = [node.querySelector('.dp-dropdown__option-label'), node.querySelector('.dp-dropdown__option-detail')]
+      .map(part => getComputedStyle(part));
+    return {smaller: parseFloat(code.fontSize) < parseFloat(name.fontSize), quieter: code.color !== name.color};
+  });
+  expect(look).toEqual({smaller: true, quieter: true});
+  // A bounded menu: the list scrolls, the current choice is shown in it.
+  const list = page.locator('#dp-dropdown-list');
+  expect(await list.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+  expect((await menu(page).boundingBox()).height).toBeLessThanOrEqual(321);
+  const current = choices(page).filter({has: page.locator('.dp-dropdown__option-label', {hasText: /^English$/})});
+  await expect(current).toHaveAttribute('aria-selected', 'true');
+  expect(await current.evaluate(node => {
+    const box = node.parentElement.getBoundingClientRect(); const item = node.getBoundingClientRect();
+    return item.top >= box.top - 1 && item.bottom <= box.bottom + 1;
+  })).toBe(true);
+
+  const first = () => choices(page).first().locator('.dp-dropdown__option-label').textContent();
+  for (const [query, expected] of [['english', 'English'], ['EN', 'English'], ['portuguese', 'Portuguese'],
+                                   ['pt-BR', 'Portuguese (Brazil)'], ['pt-br', 'Portuguese (Brazil)'],
+                                   ['deutsch', 'German'], ['zh-hant', 'Chinese (Traditional)']]) {
+    await search.fill(query);
+    expect(await first(), query).toBe(expected);
+  }
+  await search.fill('portuguese');
+  await expect(choices(page)).toHaveCount(3);
+  await search.fill('zzzz');
+  await expect(choices(page)).toHaveCount(0);
+  await expect(menu(page).locator('.dp-dropdown__empty')).toHaveText('No matches');
+  await search.fill('');
+  await expect(choices(page)).toHaveCount(all);
+  // Escape closes without a change and gives focus back to the control.
+  await page.keyboard.press('Escape');
+  await expect(menu(page)).toBeHidden();
+  await expect(picker(page)).toBeFocused();
+  await expect(picker(page)).toHaveText('English');
+  expect((await (await page.request.get('/api/settings')).json()).preferred_subtitle_language).toBe('en');
+});
+
+test('a language chosen by keyboard saves its code and survives a reload; a refused one is undone', async ({page}) => {
+  await resetMedia(page);
+  await openMedia(page);
+  const choose = async query => {
+    await picker(page).focus();
+    await page.keyboard.press('Enter');
+    await expect(menu(page).locator('.dp-dropdown__search')).toBeFocused();
+    await page.keyboard.type(query);
+    await page.keyboard.press('ArrowDown');
+    await expect(choices(page).first()).toBeFocused();
+    const saved = page.waitForResponse(response => response.request().method() === 'PUT'
+      && new URL(response.url()).pathname === '/api/settings');
+    await page.keyboard.press('Enter');
+    return saved;
+  };
+  for (const [query, code, name] of [['french', 'fr', 'French'], ['pt-br', 'pt-br', 'Portuguese (Brazil)']]) {
+    expect((await choose(query)).ok()).toBe(true);
+    await expect(menu(page)).toBeHidden();
+    await expect(picker(page)).toBeFocused();
+    await expect(picker(page)).toHaveText(name);
+    expect((await (await page.request.get('/api/settings')).json()).preferred_subtitle_language).toBe(code);
+    await page.reload();
+    await openMedia(page);
+    await expect(subtitle(page)).toHaveValue(code);
+    await expect(picker(page)).toHaveText(name);
+  }
+  // A save the server refuses puts the accepted language back on show.
+  await page.route('**/api/settings', route => route.request().method() === 'PUT'
+    ? route.fulfill({status: 400, contentType: 'application/json',
+                     body: JSON.stringify({detail: {message: 'Value is not valid.'}})})
+    : route.fallback());
+  expect((await choose('german')).status()).toBe(400);
+  await expect(picker(page)).toHaveText('Portuguese (Brazil)');
+  await expect(subtitle(page)).toHaveValue('pt-br');
+  await page.unroute('**/api/settings');
   expect((await (await page.request.get('/api/settings')).json()).preferred_subtitle_language).toBe('pt-br');
   await resetMedia(page);
 });
+
+test('a saved code outside the list is shown as it is and kept', async ({page}) => {
+  for (const [code, name] of [['it-ch', 'Italian (Switzerland)'], ['xx-yy', 'Language code: xx-yy']]) {
+    await saveSubtitle(page, code);
+    await openMedia(page);
+    await expect(subtitle(page)).toHaveValue(code);
+    await expect(picker(page)).toHaveText(name);
+    await picker(page).click();
+    await expect(choices(page).first()).toHaveAttribute('aria-selected', 'true');
+    await expect(choices(page).first().locator('.dp-dropdown__option-detail')).toHaveText(code);
+    await page.keyboard.press('Escape');
+    await page.reload();
+    expect((await (await page.request.get('/api/settings')).json()).preferred_subtitle_language).toBe(code);
+  }
+  await resetMedia(page);
+});
+
+for (const viewport of [{name: 'desktop', width: 1440, height: 1000}, {name: 'phone', width: 390, height: 844}]) {
+  test(`a long language name is read whole and the menu stays on screen (${viewport.name})`, async ({page}) => {
+    await saveSubtitle(page, 'en-gb');
+    await openMedia(page);
+    await page.setViewportSize({width: viewport.width, height: viewport.height});
+    await picker(page).scrollIntoViewIfNeeded();
+    await expect(picker(page)).toHaveText('English (United Kingdom)');
+    const fit = await picker(page).evaluate(trigger => {
+      const value = trigger.querySelector('.dp-dropdown__value');
+      const cell = trigger.closest('.dp-settings-field').getBoundingClientRect();
+      const box = trigger.getBoundingClientRect();
+      return {whole: value.scrollWidth <= value.clientWidth + 1,
+              inside: box.left >= cell.left - 1 && box.right <= cell.right + 1,
+              page: document.documentElement.scrollWidth - document.documentElement.clientWidth};
+    });
+    expect(fit).toEqual({whole: true, inside: true, page: 0});
+    await picker(page).click();
+    const box = await menu(page).boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    // Every option's name is read whole inside the menu.
+    expect(await page.locator('#dp-dropdown-list').evaluate(list => [...list.querySelectorAll('.dp-dropdown__option')]
+      .every(option => option.scrollWidth <= option.clientWidth + 1))).toBe(true);
+    await page.keyboard.press('Escape');
+    await resetMedia(page);
+  });
+}

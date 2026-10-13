@@ -234,6 +234,57 @@ body.light .dp-dropdown-menu {
   font-size: 12px;
 }
 
+/* A searchable select (data-dp-dropdown-search). Its menu keeps one height
+   while the operator types, so it never jumps; the search field stays put and
+   only the list beneath it scrolls. */
+.dp-dropdown-menu--search {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  height: min(320px, calc(100vh - 16px));
+  overflow: hidden;
+}
+
+.dp-dropdown-menu--search[hidden] { display: none !important; }
+
+.dp-dropdown__search {
+  flex: 0 0 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: 34px;
+  box-sizing: border-box;
+}
+
+.dp-dropdown__list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* An option's second label: quieter and smaller, after the name. */
+.dp-dropdown__option-label {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.dp-dropdown__option-detail {
+  flex: 0 0 auto;
+  margin-left: 10px;
+  color: var(--dp-text-muted);
+  font-family: var(--dp-font-mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+/* Its closed value is read whole: a long one wraps instead of being cut. */
+.dp-dropdown-shell--search .dp-dropdown__value {
+  overflow: visible;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 /* The speed-cap control is a richer popover rather than a simple select. Its
    local wrapper must not become the positioning containing block; the existing
    positioned #runtime-speed-badge owns the popover anchor so right:0 means the

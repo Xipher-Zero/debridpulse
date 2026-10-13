@@ -785,10 +785,14 @@ def test_the_tuning_grid_is_the_one_fixed_set_grammar():
         "the card is not centred in its lane"
     assert "justify-items: center" in cell
     assert "text-align: center" in cell
+    # The value inside a cell's control is centred because it is a compact
+    # tunable -- the one role rule, whatever its type -- not by inheritance.
     control = rule(SETTINGS_CSS,
                    "#view-settings .dp-settings-tuning-grid .dp-settings-field > .input,")
-    assert "text-align: left" in control, \
-        "the cell's centring leaked into the value inside the control"
+    assert "text-align" not in control
+    centred = enclosing_rule(SETTINGS_CSS, "#view-settings .dp-dropdown__value {")
+    assert "#view-settings .dp-settings-tuning-grid .dp-settings-field > .input," in centred
+    assert "text-align: center" in centred and "step" not in centred
     assert "overflow-x" not in SETTINGS_CSS.split("dp-settings-tuning-grid")[1][:400]
     # The primitive names no provider.
     assert "alldebrid" not in grid.lower() and "alldebrid" not in cell.lower()
