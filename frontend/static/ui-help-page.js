@@ -639,7 +639,7 @@
       <section class="dp-help-document dp-help-license" aria-labelledby="dp-help-license-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-license-heading">Licensing and source</h2>
-          <p>DebridPulse is open-source software built on an MIT-licensed upstream project and distributed under GPL-2.0-or-later for the DebridPulse work.</p>
+          <p>DebridPulse is open-source software distributed under the GNU General Public License v2.0 or later.</p>
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
@@ -647,14 +647,6 @@
           <p>In practical terms, the GPL allows you to use, study, modify, and redistribute DebridPulse under its license conditions. If you distribute a modified version, the GPL's source-code and licensing requirements apply to that distribution. The complete license text is the authority for the exact terms.</p>
           <p>DebridPulse is provided without warranty as described by the license.</p>
         </div>
-
-        <article class="dp-help-inset dp-help-attribution">
-          <h3>Upstream attribution</h3>
-          <div class="dp-help-copy dp-help-prose">
-            <p>This application is derived from <a href="https://github.com/kroeberd/alldebrid-client/tree/c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c" target="_blank" rel="noopener">kroeberd/alldebrid-client v1.9.9</a>, commit <code>c0f7a5bfeba4f259fb2acc62ac6eed27e8ac4d5c</code>, Copyright &copy; 2026 kroeberd.</p>
-            <p>The upstream project was distributed under the MIT License. Its copyright and permission notice remain included with DebridPulse as required.</p>
-          </div>
-        </article>
 
         <article class="dp-help-inset">
           <h3>Why there are several legal documents</h3>

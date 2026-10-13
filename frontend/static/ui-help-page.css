@@ -367,10 +367,6 @@
   padding: 12px 16px 14px 40px;
 }
 
-#view-help .dp-help-attribution {
-  line-height: 1.7;
-}
-
 #view-help .dp-help-license-actions {
   display: flex;
   flex-wrap: wrap;

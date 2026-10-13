@@ -235,7 +235,6 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
     legal = read(HELP_LEGAL)
     for fragment in (
         "Copyright &copy; 2026 Chris Moore",
-        "kroeberd/alldebrid-client v1.9.9",
         "GPL-2.0-or-later",
         'data-legal-document="gpl"',
         'data-legal-document="notice"',
@@ -244,6 +243,9 @@ def test_help_legal_attribution_and_bundled_document_actions_are_preserved() -> 
         'data-legal-document="third-party"',
     ):
         assert fragment in help_source
+    # Upstream provenance lives in the bundled legal documents, not in Help copy.
+    for fragment in ("kroeberd", "alldebrid-client", "Upstream attribution", "dp-help-attribution"):
+        assert fragment not in help_source
     assert "/api/legal-documents/" in legal
     assert "credentials: 'same-origin'" in legal
     assert "trapDialogKeydown" in legal
