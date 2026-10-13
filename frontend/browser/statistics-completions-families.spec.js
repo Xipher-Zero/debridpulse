@@ -15,8 +15,9 @@ const CASES = [
 const STACKED = {'7d': CASES, '1y': [bucket('2026-09', 0, 1, 0), bucket('2026-10', 5, 4, 4)], '24h': [], '1h': []};
 const PLAIN = {'30d': [{date: '2026-10-11', count: 4}, {date: '2026-10-12', count: 9}], all: [{date: '2026-10-12', count: 14}]};
 
-async function boot(page, {width = 1440, height = 900, light = false} = {}) {
+async function boot(page, {width = 1440, height = 900, light = false, clock = false} = {}) {
   await page.setViewportSize({width, height});
+  if (clock) await page.clock.install();
   await page.route(url => url.pathname === '/api/stats/detail', route => {
     const period = new URL(route.request().url()).searchParams.get('period');
     const stacked = period in STACKED;
@@ -65,9 +66,12 @@ const drawn = page => page.evaluate(() => {
 // Purple (the bar's own gradient, deep in dark, pale lavender in light): blue above red above
 // green, red well below blue -- unlike the magentas, whose red nearly equals their blue, or the cyan.
 const purple = ([r, g, b, a]) => a > 30 && b > g + 20 && r > g && r < 0.9 * b;
+// The canvas keeps colour premultiplied by alpha, so reading it back at a low alpha rounds
+// each channel by up to 255/alpha: the tolerance follows the alpha.
+const channelTolerance = a => Math.max(3, Math.ceil(2 * 255 / Math.max(1, a)));
 // Exactly the family colour at a translucent alpha: nothing of the purple mixed in.
 const family = (rgb, [r, g, b, a]) => a >= 0.28 * 255 && a <= 0.67 * 255
-  && Math.abs(r - rgb[0]) <= 3 && Math.abs(g - rgb[1]) <= 3 && Math.abs(b - rgb[2]) <= 3;
+  && [r, g, b].every((value, c) => Math.abs(value - rgb[c]) <= channelTolerance(a));
 const rgbOf = (page, role) => page.evaluate(role => {
   if (role === 'premium') return document.body.classList.contains('light') ? [186, 36, 196] : [234, 88, 242];
   const hex = getComputedStyle(document.body).getPropertyValue('--dp-accent-cyan').trim().replace('#', '');
@@ -157,6 +161,110 @@ test('only the uppermost family is rounded, inside the bar, with no gap between 
   expect(Math.abs(samples.top + firstPremium - samples.premiumTop)).toBeLessThanOrEqual(1.5);
   // The stack never reaches the bar's own top edge.
   expect(firstColoured(samples.centre)).toBeGreaterThanOrEqual(2);
+});
+
+/* One frame of the chart as drawn now: per bucket, the bar's current (animated)
+ * geometry and its centre and side pixel columns. */
+const frame = page => page.evaluate(() => {
+  const chart = document.getElementById('daily-chart')._ci;
+  const ratio = chart.currentDevicePixelRatio;
+  const pixel = (x, y) => [...chart.ctx.getImageData(Math.round(x * ratio), Math.round(y * ratio), 1, 1).data];
+  return chart.getDatasetMeta(0).data.map((bar, index) => {
+    const {x, y, base, width} = bar.getProps(['x', 'y', 'base', 'width']);
+    const final = bar.getProps(['y'], true).y;
+    const column = px => Array.from({length: Math.max(0, Math.ceil(base - y) + 2)}, (_, i) => [y - 1 + i, pixel(px, y - 1 + i + 0.5)]);
+    return {item: chart.data.datasets[0].dpFamilies[index], x, y, base, width, final, centre: column(x), side: column(x - width / 2 + 1)};
+  });
+});
+
+for (const light of [false, true]) {
+  test(`${light ? 'light' : 'dark'}: each inset stack grows with its purple bar through the entrance animation, as one object`, async ({ page }) => {
+    await boot(page, {light, clock: true});
+    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+    await page.evaluate(() => window.DPStatisticsLifecycle.load('7d'));
+    await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
+    const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
+    let previous = null, sawGrowing = false;
+    for (let step = 0; step < 16; step++) {
+      await page.clock.runFor(80);
+      const bars = await frame(page);
+      for (const bar of bars.filter(bar => bar.item.count > 0)) {
+        const {item, base, y} = bar;
+        const height = base - y;
+        if (Math.abs(bar.final - y) > 2) sawGrowing = true;
+        // Never past its final height, never shrinking between frames.
+        expect(y).toBeGreaterThanOrEqual(bar.final - 0.5);
+        if (previous) expect(height).toBeGreaterThanOrEqual(previous[bars.indexOf(bar)] - 0.5);
+        const rowsOf = (column, rgb) => column.filter(([, px]) => family(rgb, px)).map(([row]) => row);
+        const premiumRows = rowsOf(bar.centre, premium), networkRows = rowsOf(bar.centre, network);
+        const familyRows = [...premiumRows, ...networkRows];
+        if (!item.premium && !item.network) { expect(familyRows).toEqual([]); continue; }
+        if (height * (item.premium + item.network) / item.count < 6) continue;      // too short to read rows yet
+        // Inside the bar: below its top, above its base, purple at the side beside it.
+        expect(Math.min(...familyRows)).toBeGreaterThan(y);
+        expect(Math.max(...familyRows)).toBeLessThan(base + 1);
+        // (Rows are the bar's own fractional pixel rows: centre and side share them by index.)
+        const firstIndex = bar.centre.findIndex(([row]) => row === Math.min(...familyRows));
+        const lastIndex = bar.centre.findIndex(([row]) => row === Math.max(...familyRows));
+        expect(purple(bar.side[Math.round((firstIndex + lastIndex) / 2)][1])).toBe(true);
+        // The families' shares of this frame's bar, on the same progress as the bar.
+        // (The uppermost family gives up the established top inset -- at most 5 px, at most a
+        // quarter of the stack -- where the purple above it would otherwise be thinner.)
+        if (item.premium) {
+          const share = height * item.premium / item.count;
+          const inset = item.network ? 0 : Math.min(5, height * (item.premium + item.network) / item.count / 4);
+          const drawn = base - Math.min(...premiumRows);
+          expect(drawn).toBeLessThanOrEqual(share + 2);
+          expect(drawn).toBeGreaterThanOrEqual(share - inset - 2);
+        }
+        const stackHeight = base - Math.min(...familyRows);
+        expect(stackHeight).toBeLessThanOrEqual(height * (item.premium + item.network) / item.count + 1.5);
+        expect(stackHeight).toBeGreaterThanOrEqual(height * (item.premium + item.network) / item.count - 6);
+        // Unattributed: purple between the bar's top and the stack.
+        if (item.unattributed) {
+          // Every row from the bar's top to the stack is purple but the two anti-aliased edge rows.
+          const gap = bar.centre.filter(([row]) => row >= y - 0.5 && row < Math.min(...familyRows));
+          // (Whole sampled rows against a fractional share.)
+          expect(gap.length).toBeGreaterThanOrEqual(Math.floor(height * item.unattributed / item.count) - 1);
+          expect(gap.filter(([, px]) => !purple(px)).length).toBeLessThanOrEqual(2);
+        }
+        // One connected stack: no purple or empty row between its families.
+        // One connected stack: every row a family colour or the blend between the two (never the
+        // container's purple, whose green is far below both, and never empty).
+        const between = px => [0, 1, 2].every(c => px[c] >= Math.min(network[c], premium[c]) - channelTolerance(px[3])
+          && px[c] <= Math.max(network[c], premium[c]) + channelTolerance(px[3]));
+        for (let index = firstIndex; index <= lastIndex; index++) {
+          const px = bar.centre[index][1];
+          expect(px[3]).toBeGreaterThan(60);
+          expect(family(premium, px) || family(network, px) || between(px)).toBe(true);
+        }
+      }
+      previous = bars.map(bar => bar.base - bar.y);
+    }
+    expect(sawGrowing).toBe(true);
+    // The last frame is the static design.
+    const settled = await frame(page);
+    settled.forEach(bar => expect(Math.abs(bar.final - bar.y)).toBeLessThanOrEqual(0.5));
+  });
+}
+
+test('changing period mid-animation starts the new chart from the baseline, with no stale stack', async ({ page }) => {
+  await boot(page, {clock: true});
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
+  await page.evaluate(() => window.DPStatisticsLifecycle.load('7d'));
+  await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
+  await page.clock.runFor(300);
+  await page.evaluate(() => window.DPStatisticsLifecycle.load('1y'));
+  await expect.poll(() => page.evaluate(() => document.getElementById('daily-chart')._ci.data.labels.join())).toBe('2026-09,2026-10');
+  await page.clock.runFor(32);
+  const early = await frame(page);
+  // The new bars begin near the baseline, and nothing of the old chart remains drawn above them.
+  early.forEach(bar => expect(bar.base - bar.y).toBeLessThan((bar.base - bar.final) * 0.5));
+  const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
+  for (const bar of early) {
+    const stray = bar.centre.filter(([row, px]) => row < bar.y - 1 && (family(premium, px) || family(network, px)));
+    expect(stray).toEqual([]);
+  }
 });
 
 test('1 Year keeps its monthly buckets and stacks; the tooltip gives the total and each share', async ({ page }) => {

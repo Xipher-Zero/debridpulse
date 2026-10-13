@@ -323,19 +323,24 @@
    * purple, so each family's translucent gradient lies over the card itself
    * and never mixes with the purple beneath; only the uppermost family is
    * rounded, at a smaller radius than the bar. The inset keeps purple at both
-   * sides and, even when every completion is attributed, a few pixels above. */
-  function drawCompletionFamilies(ctx, bar, bucket, scale) {
+   * sides and, even when every completion is attributed, a few pixels above.
+   * Its heights are shares of the bar as drawn in this very frame, so the stack
+   * grows with the bar through Chart.js's own animation and matches the scale
+   * once it ends. */
+  function drawCompletionFamilies(ctx, bar, bucket) {
     const premium = Math.max(0, bucket.premium || 0), network = Math.max(0, bucket.network || 0);
     if (!(bucket.count > 0) || premium + network <= 0) return;
-    const {x, y: top, base, width} = bar.getProps(['x', 'y', 'base', 'width'], true);
+    const {x, y: top, base, width} = bar.getProps(['x', 'y', 'base', 'width']);
+    const height = base - top;
+    if (!(height > 0)) return;
     const side = Math.max(COMPLETION_SIDE_MIN, Math.min(COMPLETION_SIDE_MAX, Math.round(width * COMPLETION_SIDE_SHARE)));
     const inner = width - 2 * side;
-    const attributedTop = scale.getPixelForValue(premium + network);
+    const attributedTop = base - height * (premium + network) / bucket.count;
     // Never closer to the bar's top than the inset, never more than a quarter of the stack.
     const stackTop = Math.max(attributedTop, top + Math.min(COMPLETION_TOP_INSET, (base - attributedTop) / 4));
     if (inner < 2 || base - stackTop < 1) return;
     const left = x - inner / 2;
-    const premiumTop = premium && network ? Math.max(scale.getPixelForValue(premium), stackTop) : stackTop;
+    const premiumTop = premium && network ? Math.max(base - height * premium / bucket.count, stackTop) : stackTop;
     const segments = [['premium', base, premium ? premiumTop : base], ['network', premium ? premiumTop : base, stackTop]]
       .filter(([role, bottom, segmentTop]) => (role === 'premium' ? premium : network) > 0 && bottom - segmentTop > 0);
     const radius = Math.min(COMPLETION_INNER_RADIUS, inner / 2, base - stackTop);
@@ -371,7 +376,7 @@
       chart.ctx.beginPath();
       chart.ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
       chart.ctx.clip();
-      meta.data.forEach(function (bar, index) { drawCompletionFamilies(chart.ctx, bar, dataset.dpFamilies[index], chart.scales.y); });
+      meta.data.forEach(function (bar, index) { drawCompletionFamilies(chart.ctx, bar, dataset.dpFamilies[index]); });
       chart.ctx.restore();
     },
   };
