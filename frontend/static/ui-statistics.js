@@ -293,16 +293,88 @@
   }
 
   /* Completions on the 1 Hour, 1 Day, 7 Days and 1 Year periods: each bar is
-   * the bucket's completion total, stacked from the completions the server
-   * attributed to each source family (by the provider that delivered them)
-   * and, in the chart's own purple, the remainder it could not attribute.
-   * The purple is the total's identity -- "Daily Completions" -- and never a
-   * third family. 30 Days and All Time carry no split and stay single bars. */
+   * the bucket's completion total in the chart's own purple, and inside it a
+   * narrower stack of the completions the server attributed to each source
+   * family (by the provider that delivered them) -- Premium, then Network, on
+   * the same scale. Unattributed completions are only the purple above that
+   * stack, never a segment of it. 30 Days and All Time carry no split and stay
+   * single bars. */
   const COMPLETION_ROLES = Object.freeze([
     ['premium', 'Premium Sources'],
     ['network', 'Network Sources'],
   ]);
   const COMPLETIONS_LABEL = 'Daily Completions';
+
+  // The inset stack's presentation: purple kept on each side (a share of the
+  // bar's width, within bounds) and at least this much above it.
+  const COMPLETION_SIDE_SHARE = 0.18, COMPLETION_SIDE_MIN = 2, COMPLETION_SIDE_MAX = 10;
+  const COMPLETION_TOP_INSET = 5;
+  const COMPLETION_INNER_RADIUS = 3;
+
+  function familyRgb(role) {
+    if (role === 'premium') return document.body.classList.contains('light') ? [186, 36, 196] : [234, 88, 242];
+    const hex = completionColor('network').replace('#', '');
+    const value = parseInt(hex.length === 3 ? hex.replace(/./g, '$&$&') : hex.slice(0, 6), 16);
+    return Number.isFinite(value) ? [value >> 16 & 255, value >> 8 & 255, value & 255] : [23, 216, 255];
+  }
+
+  /* One bucket's Premium/Network stack inside its purple bar (`bar`, the
+   * total's own drawn element): the stack's shape is first cleared from the
+   * purple, so each family's translucent gradient lies over the card itself
+   * and never mixes with the purple beneath; only the uppermost family is
+   * rounded, at a smaller radius than the bar. The inset keeps purple at both
+   * sides and, even when every completion is attributed, a few pixels above. */
+  function drawCompletionFamilies(ctx, bar, bucket, scale) {
+    const premium = Math.max(0, bucket.premium || 0), network = Math.max(0, bucket.network || 0);
+    if (!(bucket.count > 0) || premium + network <= 0) return;
+    const {x, y: top, base, width} = bar.getProps(['x', 'y', 'base', 'width'], true);
+    const side = Math.max(COMPLETION_SIDE_MIN, Math.min(COMPLETION_SIDE_MAX, Math.round(width * COMPLETION_SIDE_SHARE)));
+    const inner = width - 2 * side;
+    const attributedTop = scale.getPixelForValue(premium + network);
+    // Never closer to the bar's top than the inset, never more than a quarter of the stack.
+    const stackTop = Math.max(attributedTop, top + Math.min(COMPLETION_TOP_INSET, (base - attributedTop) / 4));
+    if (inner < 2 || base - stackTop < 1) return;
+    const left = x - inner / 2;
+    const premiumTop = premium && network ? Math.max(scale.getPixelForValue(premium), stackTop) : stackTop;
+    const segments = [['premium', base, premium ? premiumTop : base], ['network', premium ? premiumTop : base, stackTop]]
+      .filter(([role, bottom, segmentTop]) => (role === 'premium' ? premium : network) > 0 && bottom - segmentTop > 0);
+    const radius = Math.min(COMPLETION_INNER_RADIUS, inner / 2, base - stackTop);
+    ctx.save();
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.roundRect(left, stackTop, inner, base - stackTop, [radius, radius, 0, 0]);
+    ctx.fill();
+    ctx.globalCompositeOperation = 'source-over';
+    segments.forEach(([role, bottom, segmentTop], index) => {
+      const [r, g, b] = familyRgb(role);
+      const gradient = ctx.createLinearGradient(0, bottom, 0, segmentTop);
+      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, .3)`);
+      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, .65)`);
+      ctx.fillStyle = gradient;
+      ctx.beginPath();
+      const uppermost = index === segments.length - 1;
+      ctx.roundRect(left, segmentTop, inner, bottom - segmentTop, uppermost ? [radius, radius, 0, 0] : 0);
+      ctx.fill();
+    });
+    ctx.restore();
+  }
+
+  // Draws every stacked bucket's family stack over the purple bars, within the plot.
+  const completionFamiliesPlugin = {
+    id: 'dpCompletionFamilies',
+    afterDatasetsDraw: function (chart) {
+      const dataset = chart.data.datasets[0];
+      const meta = chart.getDatasetMeta(0);
+      if (!dataset || !dataset.dpFamilies || meta.hidden) return;
+      const area = chart.chartArea;
+      chart.ctx.save();
+      chart.ctx.beginPath();
+      chart.ctx.rect(area.left, area.top, area.right - area.left, area.bottom - area.top);
+      chart.ctx.clip();
+      meta.data.forEach(function (bar, index) { drawCompletionFamilies(chart.ctx, bar, dataset.dpFamilies[index], chart.scales.y); });
+      chart.ctx.restore();
+    },
+  };
 
   function completionColor(role) {
     const isLight = document.body.classList.contains('light');
@@ -369,20 +441,19 @@
     const tickColor = themeStyles.getPropertyValue('--text3').trim();
     // The server says which periods carry the source-family split.
     renderCompletionLegend(stacked);
-    const datasets = (stacked ? [
-      ...COMPLETION_ROLES.map(function ([role, text]) {
-        return {label: text, dpRole: role, data: daily.map(function (item) { return item[role]; }), stack: 'completions'};
-      }),
-      {label: 'Unattributed', dpRole: 'total', data: daily.map(function (item) { return item.unattributed; }), stack: 'completions'},
-    ] : [{
+    // One bar per bucket, the total, as it always was; on the stacked periods
+    // it also carries the buckets the family stack is drawn from.
+    const datasets = [paintCompletionDataset({
       label: 'Completions',
       dpRole: 'total',
       data: daily.map(function (item) { return item.count || 0; }),
       borderRadius: 4,
-    }]).map(paintCompletionDataset);
+      dpFamilies: stacked ? daily : null,
+    })];
     canvas._ci = new Chart(canvas, {
       type: 'bar',
       data: {labels: daily.map(function (item) { return item.date || ''; }), datasets: datasets},
+      plugins: stacked ? [completionFamiliesPlugin] : [],
       options: {
         responsive: true,
         maintainAspectRatio: false,
@@ -391,13 +462,12 @@
           tooltip: stacked ? {
             mode: 'index',
             displayColors: false,
-            filter: function (item) { return item.datasetIndex === 0; },
             callbacks: {label: function (context) { return completionTooltipLines(daily[context.dataIndex]); }},
           } : {},
         },
         scales: {
-          x: {stacked: stacked, grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
-          y: {stacked: stacked, grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}}, beginAtZero: true, precision: 0},
+          x: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
+          y: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}}, beginAtZero: true, precision: 0},
         },
       },
     });
