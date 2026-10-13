@@ -292,13 +292,11 @@
     return gradient;
   }
 
-  /* Completions on the 1 Hour, 1 Day, 7 Days and 1 Year periods: each bar is
-   * the bucket's completion total in the chart's own purple, and inside it a
-   * narrower stack of the completions the server attributed to each source
-   * family (by the provider that delivered them) -- Premium, then Network, on
-   * the same scale. Unattributed completions are only the purple above that
-   * stack, never a segment of it. 30 Days and All Time carry no split and stay
-   * single bars. */
+  /* Completions, on every period: each bar is the bucket's completion total in
+   * the chart's own purple, and inside it a narrower stack of the completions
+   * the server attributed to each source family (by the provider that
+   * delivered them) -- Premium, then Network, on the same scale. Unattributed
+   * completions are only the purple above that stack, never a segment of it. */
   const COMPLETION_ROLES = Object.freeze([
     ['premium', 'Premium Sources'],
     ['network', 'Network Sources'],
@@ -353,8 +351,8 @@
     segments.forEach(([role, bottom, segmentTop], index) => {
       const [r, g, b] = familyRgb(role);
       const gradient = ctx.createLinearGradient(0, bottom, 0, segmentTop);
-      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, .3)`);
-      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, .65)`);
+      gradient.addColorStop(0, `rgba(${r}, ${g}, ${b}, .2)`);
+      gradient.addColorStop(1, `rgba(${r}, ${g}, ${b}, .45)`);
       ctx.fillStyle = gradient;
       ctx.beginPath();
       const uppermost = index === segments.length - 1;
@@ -364,7 +362,7 @@
     ctx.restore();
   }
 
-  // Draws every stacked bucket's family stack over the purple bars, within the plot.
+  // Draws every bucket's family stack over the purple bars, within the plot.
   const completionFamiliesPlugin = {
     id: 'dpCompletionFamilies',
     afterDatasetsDraw: function (chart) {
@@ -388,10 +386,10 @@
     return isLight ? 'rgba(126, 75, 187, .72)' : 'rgba(166, 70, 244, .84)';
   }
 
-  function renderCompletionLegend(stacked) {
+  function renderCompletionLegend() {
     const legend = document.getElementById('completions-legend');
     if (!legend) return;
-    legend.replaceChildren(...[['total', COMPLETIONS_LABEL], ...(stacked ? COMPLETION_ROLES : [])].map(function ([role, text]) {
+    legend.replaceChildren(...[['total', COMPLETIONS_LABEL], ...COMPLETION_ROLES].map(function ([role, text]) {
       const item = document.createElement('span');
       item.className = 'dp-stats-chart-legend-item';
       item.setAttribute('role', 'listitem');
@@ -427,7 +425,7 @@
     if (typeof chart.update === 'function') chart.update('none');
   }
 
-  // A stacked bucket's tooltip: its total and each family's share, and the
+  // A bucket's tooltip: its total and each family's share, and the
   // unattributed remainder only when there is one -- never a claim that the
   // two families make up the total when they do not.
   function completionTooltipLines(bucket) {
@@ -437,38 +435,37 @@
     return lines;
   }
 
-  function renderCompletionChart(daily, stacked) {
+  function renderCompletionChart(daily) {
     const canvas = document.getElementById('daily-chart');
     if (!canvas || typeof Chart === 'undefined') return;
     if (canvas._ci) canvas._ci.destroy();
     const themeStyles = getComputedStyle(document.body);
     const gridColor = themeStyles.getPropertyValue('--border').trim();
     const tickColor = themeStyles.getPropertyValue('--text3').trim();
-    // The server says which periods carry the source-family split.
-    renderCompletionLegend(stacked);
-    // One bar per bucket, the total, as it always was; on the stacked periods
-    // it also carries the buckets the family stack is drawn from.
+    renderCompletionLegend();
+    // One bar per bucket, the total, as it always was, carrying the buckets the
+    // family stack is drawn from.
     const datasets = [paintCompletionDataset({
       label: 'Completions',
       dpRole: 'total',
       data: daily.map(function (item) { return item.count || 0; }),
       borderRadius: 4,
-      dpFamilies: stacked ? daily : null,
+      dpFamilies: daily,
     })];
     canvas._ci = new Chart(canvas, {
       type: 'bar',
       data: {labels: daily.map(function (item) { return item.date || ''; }), datasets: datasets},
-      plugins: stacked ? [completionFamiliesPlugin] : [],
+      plugins: [completionFamiliesPlugin],
       options: {
         responsive: true,
         maintainAspectRatio: false,
         plugins: {
           legend: {display: false},
-          tooltip: stacked ? {
+          tooltip: {
             mode: 'index',
             displayColors: false,
             callbacks: {label: function (context) { return completionTooltipLines(daily[context.dataIndex]); }},
-          } : {},
+          },
         },
         scales: {
           x: {grid: {color: gridColor}, ticks: {color: tickColor, font: {size: 10}, maxRotation: 45}},
@@ -490,7 +487,7 @@
       renderBreakdown(BREAKDOWNS[1], stats.file_status);
       renderBreakdown(BREAKDOWNS[2], stats.event_levels);
       renderBreakdown(BREAKDOWNS[3], stats.sources);
-      renderCompletionChart(stats.daily_completions || [], stats.completions_by_family === true);
+      renderCompletionChart(stats.daily_completions || []);
       document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: resolved}}));
       return stats;
     } catch (error) {

@@ -1,10 +1,9 @@
 const { test, expect } = require('@playwright/test');
 
-/* DP 1.0.13 -- Statistics -> Completions: on 1 Hour, 1 Day, 7 Days and 1 Year
- * each bucket is its purple completion bar, with a narrower Premium/Network
- * stack inset in it on the same scale; unattributed completions are only the
- * purple above that stack. 30 Days and All Time stay single bars. The legend
- * follows the period. Read from the drawn canvas itself. */
+/* DP 1.0.13 -- Statistics -> Completions: on every period each bucket is its
+ * purple completion bar, with a narrower Premium/Network stack inset in it on
+ * the same scale; unattributed completions are only the purple above that
+ * stack. Read from the drawn canvas itself. */
 
 const bucket = (date, premium, network, unattributed) => ({date, count: premium + network + unattributed, premium, network, unattributed});
 const CASES = [
@@ -12,18 +11,18 @@ const CASES = [
   bucket('all-attributed', 3, 3, 0), bucket('unattributed-only', 0, 0, 4), bucket('empty', 0, 0, 0),
   bucket('one', 1, 0, 0), bucket('two', 1, 1, 0),
 ];
-const STACKED = {'7d': CASES, '1y': [bucket('2026-09', 0, 1, 0), bucket('2026-10', 5, 4, 4)], '24h': [], '1h': []};
-const PLAIN = {'30d': [{date: '2026-10-11', count: 4}, {date: '2026-10-12', count: 9}], all: [{date: '2026-10-12', count: 14}]};
+const PERIODS = {'7d': CASES, '30d': CASES, all: CASES, '1y': [bucket('2026-09', 0, 1, 0), bucket('2026-10', 5, 4, 4)],
+                 '24h': [], '1h': []};
 
 async function boot(page, {width = 1440, height = 900, light = false, clock = false} = {}) {
   await page.setViewportSize({width, height});
   if (clock) await page.clock.install();
   await page.route(url => url.pathname === '/api/stats/detail', route => {
     const period = new URL(route.request().url()).searchParams.get('period');
-    const stacked = period in STACKED;
+
     return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({
       period, totals: {}, torrent_status: [], file_status: [], event_levels: [], sources: [],
-      daily_completions: stacked ? STACKED[period] : PLAIN[period], completions_by_family: stacked})});
+      daily_completions: PERIODS[period]})});
   });
   await page.goto('/');
   await page.waitForFunction(() => window.DPStatisticsLifecycle && typeof Chart !== 'undefined');
@@ -70,7 +69,7 @@ const purple = ([r, g, b, a]) => a > 30 && b > g + 20 && r > g && r < 0.9 * b;
 // each channel by up to 255/alpha: the tolerance follows the alpha.
 const channelTolerance = a => Math.max(3, Math.ceil(2 * 255 / Math.max(1, a)));
 // Exactly the family colour at a translucent alpha: nothing of the purple mixed in.
-const family = (rgb, [r, g, b, a]) => a >= 0.28 * 255 && a <= 0.67 * 255
+const family = (rgb, [r, g, b, a]) => a >= 0.18 * 255 && a <= 0.47 * 255
   && [r, g, b].every((value, c) => Math.abs(value - rgb[c]) <= channelTolerance(a));
 const rgbOf = (page, role) => page.evaluate(role => {
   if (role === 'premium') return document.body.classList.contains('light') ? [186, 36, 196] : [234, 88, 242];
@@ -79,10 +78,10 @@ const rgbOf = (page, role) => page.evaluate(role => {
   return [v >> 16 & 255, v >> 8 & 255, v & 255];
 }, role);
 
-for (const light of [false, true]) {
-  test(`${light ? 'light' : 'dark'}: each purple bar keeps its silhouette with a narrower Premium/Network stack inset on the same scale`, async ({ page }) => {
+for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
+  test(`${period} ${light ? 'light' : 'dark'}: each purple bar keeps its silhouette with a narrower Premium/Network stack inset on the same scale`, async ({ page }) => {
     await boot(page, {light});
-    await show(page, '7d');
+    await show(page, period);
     expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
     const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
     const bars = Object.fromEntries((await drawn(page)).map(bar => [bar.date, bar]));
@@ -134,7 +133,7 @@ test('only the uppermost family is rounded, inside the bar, with no gap between 
     const column = px => Array.from({length: Math.ceil(base - y)}, (_, i) => pixel(px, y + i + 0.5));
     return {top: y, base, premiumTop, edge: column(left + 0.5), centre: column(x)};
   });
-  const coloured = ([r, g, b, a]) => !purple([r, g, b, a]) && a > 60;
+  const coloured = ([r, g, b, a]) => !purple([r, g, b, a]) && a > 40;
   const firstColoured = column => column.findIndex(coloured);
   // The rounded corner: on the stack's first rows its top-left pixel is not yet the pure family
   // colour (the arc cuts it), while the centre already is; lower down the edge is.
@@ -156,7 +155,7 @@ test('only the uppermost family is rounded, inside the bar, with no gap between 
     && pixel[c] <= Math.max(network[c], premium[c]) + 3);
   for (let i = lastNetwork + 1; i < firstPremium; i++) {
     expect(between(samples.centre[i])).toBe(true);
-    expect(samples.centre[i][3]).toBeGreaterThan(60);
+    expect(samples.centre[i][3]).toBeGreaterThan(40);
   }
   expect(Math.abs(samples.top + firstPremium - samples.premiumTop)).toBeLessThanOrEqual(1.5);
   // The stack never reaches the bar's own top edge.
@@ -177,11 +176,11 @@ const frame = page => page.evaluate(() => {
   });
 });
 
-for (const light of [false, true]) {
-  test(`${light ? 'light' : 'dark'}: each inset stack grows with its purple bar through the entrance animation, as one object`, async ({ page }) => {
+for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
+  test(`${period} ${light ? 'light' : 'dark'}: each inset stack grows with its purple bar through the entrance animation, as one object`, async ({ page }) => {
     await boot(page, {light, clock: true});
     await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
-    await page.evaluate(() => window.DPStatisticsLifecycle.load('7d'));
+    await page.evaluate(value => window.DPStatisticsLifecycle.load(value), period);
     await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
     const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
     let previous = null, sawGrowing = false;
@@ -235,7 +234,7 @@ for (const light of [false, true]) {
           && px[c] <= Math.max(network[c], premium[c]) + channelTolerance(px[3]));
         for (let index = firstIndex; index <= lastIndex; index++) {
           const px = bar.centre[index][1];
-          expect(px[3]).toBeGreaterThan(60);
+          expect(px[3]).toBeGreaterThan(40);
           expect(family(premium, px) || family(network, px) || between(px)).toBe(true);
         }
       }
@@ -286,23 +285,25 @@ test('1 Year keeps its monthly buckets and stacks; the tooltip gives the total a
 });
 
 for (const period of ['30d', 'all']) {
-  test(`${period} keeps its single purple bars, default tooltip and total-only legend`, async ({ page }) => {
+  test(`${period} now carries the same legend, one total bar per bucket and the family tooltip`, async ({ page }) => {
     await boot(page);
     await show(page, '7d');
     await show(page, period);
-    expect(await legend(page)).toEqual(['Daily Completions']);
+    expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);
     const chart = await page.evaluate(() => {
       const instance = document.getElementById('daily-chart')._ci;
-      return {datasets: instance.data.datasets.map(set => ({label: set.label, role: set.dpRole, data: set.data, families: set.dpFamilies})),
-        plugins: instance.config.plugins.map(plugin => plugin.id), customTooltip: instance.options.plugins.tooltip.mode === 'index'};
+      return {datasets: instance.data.datasets.map(set => ({label: set.label, role: set.dpRole, data: set.data})),
+        plugins: instance.config.plugins.map(plugin => plugin.id),
+        lines: instance.data.labels.map((_, index) => instance.options.plugins.tooltip.callbacks.label({dataIndex: index}))};
     });
-    expect(chart.datasets).toEqual([{label: 'Completions', role: 'total', data: PLAIN[period].map(item => item.count), families: null}]);
-    expect(chart.plugins).not.toContain('dpCompletionFamilies');
-    expect(chart.customTooltip).toBe(false);
+    expect(chart.datasets).toEqual([{label: 'Completions', role: 'total', data: CASES.map(item => item.count)}]);
+    expect(chart.plugins).toEqual(['dpCompletionFamilies']);
+    expect(chart.lines[0]).toEqual(['Total completions: 10', 'Premium Sources: 4', 'Network Sources: 3', 'Unattributed: 3']);
+    expect(chart.lines[3]).toEqual(['Total completions: 6', 'Premium Sources: 3', 'Network Sources: 3']);
   });
 }
 
-test('an empty stacked period keeps its three-item legend; swatches follow the theme', async ({ page }) => {
+test('an empty period keeps its three-item legend; swatches follow the theme', async ({ page }) => {
   await boot(page);
   await show(page, '24h');
   expect(await legend(page)).toEqual(['Daily Completions', 'Premium Sources', 'Network Sources']);

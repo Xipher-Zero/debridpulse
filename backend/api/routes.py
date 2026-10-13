@@ -1364,9 +1364,6 @@ async def get_stats(application: ApplicationService = Depends(get_application)):
 # integrations whose static tier is the premium service tier, Network Sources
 # the members of the direct-sources group. No integration is named here.
 _COMPLETION_FAMILIES = (("premium", "status_tier", "premium_service"), ("network", "status_group", "direct_sources"))
-# The periods whose completion buckets are split by source family; 30 days and
-# all time keep their total-only bars.
-_STACKED_COMPLETION_PERIODS = frozenset({"1h", "24h", "7d", "1y"})
 
 
 def _completion_family_members(definitions) -> dict[str, list[str]]:
@@ -1375,10 +1372,9 @@ def _completion_family_members(definitions) -> dict[str, list[str]]:
             for family, field, value in _COMPLETION_FAMILIES}
 
 
-async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions=None) -> list[dict]:
+async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions) -> list[dict]:
     """Completed transfers per bucket since ``since_sql``: ``count`` as it has
-    always been counted and, given ``definitions``, how many of them each
-    source family delivered.
+    always been counted and how many of them each source family delivered.
 
     A completion belongs to a family only when every one of its current
     canonical artifacts was delivered -- by its latest delivered execution
@@ -1388,10 +1384,6 @@ async def _completion_buckets(db, bucket_sql: str, since_sql: str, definitions=N
     both families, or any part of which has no recorded delivering provider
     (history from before provenance, an adopted payload), is unattributed and
     stays in ``count``: ``count == premium + network + unattributed``."""
-    if definitions is None:
-        return await db.fetchall(
-            f"SELECT {bucket_sql} AS date, COUNT(*) AS count FROM torrents "
-            f"WHERE completed_at >= {since_sql} AND status='completed' GROUP BY {bucket_sql} ORDER BY date ASC")
     members = _completion_family_members(definitions)
     family_sql = " ".join(
         f"WHEN p.provider_id IN ({', '.join('?' for _ in ids) or 'NULL'}) THEN '{family}'"
@@ -1501,8 +1493,7 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
             _grp, _since = _sql_strftime("%Y-%m", "completed_at"), cutoff
         else:  # all -- last 90 days grouped by day
             _grp, _since = _sql_date("completed_at"), _cutoff_90d
-        by_family = period in _STACKED_COMPLETION_PERIODS
-        daily_completions = await _completion_buckets(db, _grp, _since, application.definitions if by_family else None)
+        daily_completions = await _completion_buckets(db, _grp, _since, application.definitions)
 
         return {
             "period":             period_label,
@@ -1511,8 +1502,6 @@ async def get_stats_detail(period: str = "all", application: ApplicationService 
             "file_status":        file_status,
             "event_levels":       event_levels,
             "daily_completions":  daily_completions,
-            # Whether daily_completions carries the source-family split.
-            "completions_by_family": by_family,
             "sources":            sources,
         }
 

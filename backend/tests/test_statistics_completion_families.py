@@ -125,15 +125,16 @@ def test_families_come_from_the_metadata_settings_groups_by():
     ("7d", 24 * 7, "DATE(completed_at, 'localtime')"),
     ("1y", 24 * 365, "strftime('%Y-%m', completed_at, 'localtime')"),
     ("24h", 24, "strftime('%H:00', completed_at, 'localtime')"),
+    ("30d", 24 * 30, "DATE(completed_at, 'localtime')"),
+    # All time draws its last 90 days, by day.
+    ("all", 24 * 90, "DATE(completed_at, 'localtime')"),
 ])
 async def test_stacked_buckets_split_by_delivering_family_and_conserve_the_total(stats_db, period, hours, expression):
     from api.routes import _sql_date, _sql_strftime
     # The expressions above are the route's own bucket expressions, unchanged.
     assert expression in (_sql_date("completed_at"), _sql_strftime("%Y-%m", "completed_at"),
                           _sql_strftime("%H:00", "completed_at"))
-    detail = await _detail(period)
-    assert detail["completions_by_family"] is True
-    rows = detail["daily_completions"]
+    rows = (await _detail(period))["daily_completions"]
     got = {row["date"]: {key: row[key] for key in ("count", "premium", "network", "unattributed")} for row in rows}
     assert got == _expected(hours, expression)
     for row in rows:
@@ -152,13 +153,11 @@ async def test_seven_day_totals_by_family(stats_db):
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("period, completions", [("30d", 13), ("all", 14)])
-async def test_thirty_days_and_all_time_keep_their_total_only_buckets(stats_db, period, completions):
-    detail = await _detail(period)
-    rows = detail["daily_completions"]
-    assert detail["completions_by_family"] is False
-    assert rows and all(set(row) == {"date", "count"} for row in rows)
+async def test_thirty_days_and_all_time_split_by_family_with_their_totals_unchanged(stats_db, period, completions):
+    rows = (await _detail(period))["daily_completions"]
     # Transfer 14 completed 40 days ago: outside 30 days, inside all time's 90-day chart.
     assert sum(row["count"] for row in rows) == completions
+    assert all(set(row) == {"date", "count", "premium", "network", "unattributed"} for row in rows)
 
 
 @pytest.mark.asyncio
