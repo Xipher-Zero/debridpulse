@@ -86,7 +86,7 @@ def test_the_role_matrix_over_every_registered_action():
         "api.auth_routes.auth_session_status", "api.auth_routes.logout",
         "api.routes.add_debrid_links", "api.routes.add_link_file", "api.routes.add_magnet",
         "api.routes.add_multimeta_file", "api.routes.add_torrent_file", "api.routes.add_usenet_file",
-        "api.routes.add_usenet_link", "api.routes.prometheus_metrics",
+        "api.routes.add_usenet_link", "api.routes.get_stats", "api.routes.prometheus_metrics",
     ])
     assert ROLE_CAPABILITIES[Role.ADMIN] >= ROLE_CAPABILITIES[Role.USER] >= ROLE_CAPABILITIES[Role.READONLY]
 
@@ -519,6 +519,36 @@ async def test_an_admin_moves_an_oidc_provisioned_user_through_every_human_role(
                                json={"role": "user"})).status_code == 409
     assert (await client.patch(f"/api/accounts/{DEFAULT_ADMIN_ID}", headers=holder_headers,
                                json={"role": "user"})).status_code == 409
+
+
+async def test_an_integration_token_reads_the_aggregate_stats_and_nothing_wider(served, monkeypatch):
+    """Homepage's customapi widget reads /api/stats with an Integration token.
+    That response is aggregate counters only; the token gets it and nothing
+    else statistics-, settings- or account-wide."""
+    import main
+
+    client, as_ = served
+    monkeypatch.setattr(main.app.state.application, "repository", TransferRepository(), raising=False)
+    for role in (Role.INTEGRATION, Role.USER, Role.READONLY, Role.ADMIN):
+        response = await client.get("/api/stats", headers=as_(role))
+        assert response.status_code == 200, role
+    stats = (await client.get("/api/stats", headers=as_(Role.INTEGRATION))).json()
+    for field in ("operator_active_downloads", "queued_downloads", "completed_count", "error_count"):
+        assert type(stats[field]) is int, field                         # the Homepage contract, unchanged
+    # Aggregates only: no per-transfer, request or account detail.
+    assert not ({"items", "requests", "accounts", "names", "paths"} & set(stats))
+    assert all(isinstance(count, int) for count in stats["by_status"].values())
+
+    integration = as_(Role.INTEGRATION)
+    for path in ("/api/stats/detail", "/api/settings", "/api/accounts", "/api/events", "/api/torrents"):
+        assert (await client.get(path, headers=integration)).status_code == 403, path
+    assert (await client.get("/api/metrics", headers=integration)).status_code == 200   # unchanged
+
+    for header in ({"Authorization": "Bearer dp_not-a-real-token"}, {"Authorization": "Bearer nonsense"}):
+        assert (await client.get("/api/stats", headers=header)).status_code == 401
+    [token] = [item for item in await accounts.list_tokens(DEFAULT_INTEGRATION_ID) if not item["revoked_at"]]
+    await accounts.revoke_token(DEFAULT_INTEGRATION_ID, token["id"])
+    assert (await client.get("/api/stats", headers=integration)).status_code == 401
 
 
 # ── what the interface may offer: caller-specific access ────────────────────

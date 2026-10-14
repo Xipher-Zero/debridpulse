@@ -3560,7 +3560,13 @@
     const id = html(account.id);
     const actions = [];
     if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="role" data-account-id="${id}">Change Role</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="password" data-account-id="${id}">${account.has_password ? 'Reset Password' : 'Set Password'}</button>`);
+    // The protected Administrator's local credential is configured in
+    // Authentication (Username & Password); this row only says so.
+    if (account.protected === 'default_admin') {
+      actions.push('<span class="dp-settings-users-hint">Password managed in Authentication</span>');
+    } else {
+      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="password" data-account-id="${id}">${account.has_password ? 'Reset Password' : 'Set Password'}</button>`);
+    }
     if (account.enabled && account.protected !== 'default_admin') {
       actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`);
     } else if (!account.enabled) {

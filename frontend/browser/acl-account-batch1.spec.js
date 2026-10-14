@@ -287,11 +287,72 @@ test('Remove is offered for every other eligible person, never the signed-in Adm
     await expect(removeIn(defaultAdmin.id)).toHaveCount(0);                // never the protected Administrator
     await expect(removeIn(local.id)).toHaveCount(1);                       // another local person
     await expect(removeIn(oidc.id)).toHaveCount(1);                        // an OIDC person
+    // The protected Administrator's password is Authentication's: its row
+    // says so instead of offering a second Reset Password.
+    const protectedRow = page.locator(`tr[data-account-row="${defaultAdmin.id}"]`);
+    await expect(protectedRow.locator('[data-user-action="password"]')).toHaveCount(0);
+    await expect(protectedRow.locator('.dp-settings-users-hint')).toHaveText('Password managed in Authentication');
+    await expect(protectedRow.locator('.dp-settings-users-hint')).not.toHaveAttribute('role', /.+/);
+    await expect(protectedRow.locator('button')).toHaveText([/.+/]);                // only its name opens details
+    await expect(page.locator(`tr[data-account-row="${local.id}"] [data-user-action="password"]`))
+      .toHaveText('Reset Password');                                     // other rows keep theirs
+    await page.locator('#view-settings [data-tab="authentication"]').click();
+    await expect(page.locator('.dp-settings-username-password-card [data-setting="auth_username"]')).toBeVisible();
+    await page.locator('#view-settings [data-tab="users"]').click();
     // The server's own self-removal refusal is unchanged.
     await page.unroute('**/api/accounts');
     expect((await api(page, 'DELETE', `/accounts/${operator.id}`)).status).toBe(409);
     expect(signed.errors).toEqual([]);
   } finally {
     for (const item of [local, operator]) await api(admin.page, 'DELETE', `/accounts/${item.id}`);
+  }
+});
+
+test('the sidebar names the account by its Display Name, never its Actual Name or sign-in name', async ({browser}) => {
+  const admin = await signIn(browser, ADMIN);
+  const user = await person(admin, 'Xipher');                             // Display Name differs from its username
+  try {
+    const context = await browser.newContext({baseURL: AUTH, viewport: {width: 1440, height: 914}});
+    const page = await context.newPage();
+    await page.route('https://fonts.googleapis.com/**', route =>
+      route.fulfill({status: 200, contentType: 'text/css', body: ''}));
+    // Hold the profile read: the row must not paint the session's name meanwhile.
+    let release;
+    const held = new Promise(resolve => { release = resolve; });
+    await page.route('**/api/account', async route => { await held; await route.fallback(); });
+    await page.goto('/login');
+    await page.locator('#username').fill(user.username);
+    await page.locator('#password').fill(user.password);
+    await page.locator('button[type="submit"]').click();
+    const name = page.locator('#sidebar-auth-row .dp-sidebar-account-name');
+    await expect(page.locator('#sidebar-auth-row .dp-sidebar-account-role')).toHaveText('User');
+    await expect(name).toHaveText('');                                    // never the sign-in name first
+    release();
+    await expect(name).toHaveText(user.name);
+    await page.unroute('**/api/account');
+
+    // An Actual Name never replaces the Display Name.
+    expect((await api(page, 'PUT', '/account/actual-name', {actual_name: 'Chris Moore'})).status).toBe(200);
+    await page.reload();
+    await expect(name).toHaveText(user.name);
+
+    // A Display Name saved in My Account is what the row shows next, signed in still.
+    await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
+    await page.locator('.dp-account-dialog [data-field="display_name"]').fill(`Renamed ${run}`);
+    const reloaded = page.waitForEvent('load');
+    await page.locator('.dp-account-dialog [data-modal-accept]').click();
+    await reloaded;
+    await expect(name).toHaveText(`Renamed ${run}`);
+    await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toHaveAttribute('title', `Renamed ${run} (User): My Account`);
+    await expect(page.locator('#sidebar-auth-row .dp-sidebar-account-role')).toHaveText('User');
+    await expect(page).not.toHaveURL(/\/login/);
+
+    // Only when the profile cannot be read does the session's own name stand in.
+    await page.route('**/api/account', route => route.fulfill({status: 500, body: '{}'}));
+    await page.reload();
+    await expect(name).toHaveText(user.username);
+    await context.close();
+  } finally {
+    await api(admin.page, 'DELETE', `/accounts/${user.id}`);
   }
 });

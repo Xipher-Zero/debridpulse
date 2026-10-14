@@ -148,16 +148,19 @@
 
     const profile = row.querySelector('.dp-sidebar-profile');
     const showAccount = name => {
-      const display = String(name || data.display_name || 'My Account');
+      const display = String(name || '');
       profile.querySelector('.dp-sidebar-account-name').textContent = display;
       profile.querySelector('.dp-sidebar-account-role').textContent = roleLabel(data.role);
-      profile.setAttribute('aria-label', `My account: ${display}, ${roleLabel(data.role)}`);
+      profile.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`
+        : `My account, ${roleLabel(data.role)}`);
       // A name too long for the row is shown in full here.
-      profile.title = `${display} (${roleLabel(data.role)}): My Account`;
+      profile.title = `${display ? `${display} ` : ''}(${roleLabel(data.role)}): My Account`;
     };
     showAccount('');
-    // The account's own Display Name (the session names its sign-in).
-    readProfile().then(own => { if (own) showAccount(own.display_name); });
+    // The account's own Display Name. The session's name is its sign-in (an
+    // OIDC ``name`` claim, a username) and is never shown first; it stands in
+    // only when the account's profile cannot be read.
+    readProfile().then(own => showAccount(own?.display_name || data.display_name || 'My Account'));
     profile.addEventListener('click', () => { void openAccountDialog(data); });
     mount.appendChild(row);
   }

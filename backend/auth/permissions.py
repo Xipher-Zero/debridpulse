@@ -35,6 +35,10 @@ class Capability(StrEnum):
     SESSION = "session"                    # the caller's own session / identity
     INTERFACE = "interface"                # the browser interface itself
     TRANSFERS_READ = "transfers.read"      # Dashboard, Downloads, Details, live stream
+    # The aggregate status counters (/api/stats): counts and totals only, no
+    # transfer, request or account detail -- what an external dashboard (for
+    # example Homepage's customapi widget) reads with an Integration token.
+    STATISTICS_SUMMARY = "statistics.summary"
     STATISTICS_READ = "statistics.read"
     TRANSFERS_SUBMIT = "transfers.submit"
     TRANSFERS_OPERATE = "transfers.operate"  # pause, resume, retry, queue, priority, input, selection
@@ -46,14 +50,14 @@ class Capability(StrEnum):
 
 
 _HUMAN = frozenset({Capability.SESSION, Capability.INTERFACE, Capability.TRANSFERS_READ,
-                    Capability.STATISTICS_READ})
+                    Capability.STATISTICS_SUMMARY, Capability.STATISTICS_READ})
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
     Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC},
     Role.USER: _HUMAN | {Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE,
                          Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN},
     Role.READONLY: _HUMAN,
     Role.INTEGRATION: frozenset({Capability.SESSION, Capability.TRANSFERS_SUBMIT, Capability.DEMAND_OWN,
-                                 Capability.METRICS_READ}),
+                                 Capability.METRICS_READ, Capability.STATISTICS_SUMMARY}),
 }
 
 
@@ -126,7 +130,7 @@ ACTIONS: dict[str, Capability] = {
     "api.file_selection_routes.list_file_selection_offers": _R,
     "api.file_selection_routes.get_file_selection": _R,
     # Statistics.
-    "api.routes.get_stats": _ST,
+    "api.routes.get_stats": Capability.STATISTICS_SUMMARY,
     "api.routes.get_stats_detail": _ST,
     "api.routes.get_comprehensive_stats": _ST,
     "api.routes.list_stats_snapshots": _ST,
