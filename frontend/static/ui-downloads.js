@@ -40,6 +40,8 @@ let torrentPage = 1;
 let torrentPageSize = 25;
 let torrentTotal = 0;
 let _selectedIds = new Set();
+// Each shown row's server-given access (``access.destroy``, ``access.own_requests``), by id.
+const _rowAccess = new Map();
 // Every authoritative state mutation that changes the requested list
 // projection (page, filter, order, page size -- including a capacity-derived
 // page-size transition -- and a committed search) supersedes the requests in
@@ -67,7 +69,7 @@ function loadPref() {
   } catch (_) { return {format: 'friendly', hour12: false}; }
 }
 function savePref() { try { localStorage.setItem(DATE_PREF_KEY, JSON.stringify(pref)); } catch (_) {} }
-function timeZone() { try { return String(settingsData?.timezone || '').trim() || 'UTC'; } catch (_) { return 'UTC'; } }
+function timeZone() { try { return dpDisplayTimezone(); } catch (_) { return 'UTC'; } }
 function parts(date) {
   return Object.fromEntries(
     new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'})
@@ -366,12 +368,32 @@ function syncDownloadSelectionUi() {
   const count = document.getElementById('bulk-count');
   const top = bar?.querySelector('.dp-downloads-bulk-action--top');
   if (top) top.hidden = !selectedQueueMembers().length;
+  syncBulkDelete(bar);
   if (_selectedIds.size > 0) {
     bar?.classList.add('visible');
     if (count) count.textContent = _selectedIds.size + ' Selected';
   } else {
     bar?.classList.remove('visible');
     if (count) count.textContent = '';
+  }
+}
+/* Bulk Delete exists only while this caller may destroy every selected
+ * transfer: always for an Admin, otherwise while each selected row's
+ * server-given ``access.destroy`` allows it. It is mounted from its template,
+ * or removed -- never disabled. The server re-checks every target when the
+ * delete commits. */
+function syncBulkDelete(bar) {
+  const actions = bar?.querySelector('.dp-downloads-bulk-actions');
+  const template = document.getElementById('dp-bulk-delete-template');
+  if (!actions || !template) return;
+  const allowed = dpCan('administer')
+    || (_selectedIds.size > 0 && [..._selectedIds].every(id => _rowAccess.get(id)?.destroy === true));
+  const mounted = actions.querySelector('.dp-downloads-bulk-action--delete');
+  if (allowed && !mounted) {
+    actions.appendChild(template.content.cloneNode(true));
+  } else if (!allowed && mounted) {
+    mounted.previousElementSibling?.classList.contains('dp-downloads-bulk-separator') && mounted.previousElementSibling.remove();
+    mounted.remove();
   }
 }
 function onCheckboxChange(checkbox) {
@@ -407,6 +429,12 @@ function queueEditable() {
   return currentOrder === 'queue' && !currentFilter && !searchControl().accepted();
 }
 function rowMarkup(t) {
+  // What this caller may do here: ordinary operation by role, destruction by
+  // the row's own server-given access (another account's demand withholds it).
+  const operable = dpCan('transfers.operate');
+  const destroyable = window.debridPulseAuth?.mayDestroy(t) === true;
+  const rowKey = stableDownloadId(t.id);
+  if (rowKey !== null) _rowAccess.set(rowKey, {...(t.access || {}), destroy: destroyable});
   const presentation = window.DPProcessingPresentation
     ? window.DPProcessingPresentation.presentationStatus(t, t.status)
     : (t.status || '');
@@ -416,10 +444,10 @@ function rowMarkup(t) {
   const fileSelectionMarkup = window.DPFileSelection?.chipMarkup?.(t) || '';
   const groupMarkup = window.DPGroupCandidates?.launcherMarkup?.(t, 'compact', 'downloads') || '';
   const name = esc(t.display_name || t.name) || '(unnamed)';
-  const movable = queueEditable() && t.queue_member === true;
+  const movable = operable && queueEditable() && t.queue_member === true;
   // Admission found this promoted transfer waiting only on restarts nobody
   // confirmed: the operator may reaffirm its place (reaffirmQueue).
-  const consent = t.queue_member === true && t.queue_restart_consent === true
+  const consent = operable && t.queue_member === true && t.queue_restart_consent === true
     ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" title="Lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">Start Now</button>`
     : '';
   const nameCell = movable
@@ -444,15 +472,15 @@ function rowMarkup(t) {
     <td data-role="transfer-progress">${progress(t.progress, presentation, t.active_execution_progress, t.active_execution_basis)}</td>
     <td class="sz">${fmtSize(t.size_bytes)}</td>
     <td class="sz">${dateMarkup(t.created_at)}</td>
-    <td onclick="event.stopPropagation()">
+    ${operable ? `<td onclick="event.stopPropagation()">
       <div class="actions">
         ${PAUSEABLE_PRESENTATION.has(presentation) ? `<button class="btn btn-blue btn-sm" data-default-label="Pause" onclick="event.stopPropagation();pauseT(${t.id},this)">Pause</button>` : ''}
         ${presentation === 'paused' ? `<button class="btn btn-blue btn-sm" data-default-label="Resume" onclick="event.stopPropagation();resumeT(${t.id},this)">Resume</button>` : ''}
         ${showRetry ? `<button class="btn btn-blue btn-sm" data-default-label="Retry" onclick="event.stopPropagation();retryT(${t.id},this)">Retry</button>` : ''}
-        <button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>
+        ${destroyable ? `<button class="btn btn-danger btn-sm dp-downloads-remove" data-default-label="Remove" onclick="event.stopPropagation();deleteT(${t.id},event,this)">Remove</button>` : ''}
       </div>
     </td>
-    <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="Select ${name}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>
+    <td class="dp-downloads-select-cell" onclick="event.stopPropagation()"><input type="checkbox" class="t-chk" data-id="${t.id}" aria-label="Select ${name}"${_selectedIds.has(stableDownloadId(t.id)) ? ' checked' : ''} onchange="onCheckboxChange(this)"/></td>` : ''}
   </tr>`;
 }
 
@@ -503,7 +531,7 @@ async function fetchAndRenderTorrents() {
     // A page shown while a reorder is held is a preview: selection is kept.
     if (!reorder) reconcileDownloadSelection(items);
     if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="8"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
+      tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 8 : 6}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
       syncDownloadSelectionUi();
     } else {
       tb.innerHTML = items.map(rowMarkup).join('');
@@ -992,7 +1020,7 @@ function moveSelectionToTop(button) {
 // its one menu (dpOpenContextMenu), which closes it back to its row.
 function contextMenu(event) {
   const row = event.target.closest?.('#t-tbody tr[data-torrent-id]');
-  if (!row || row.dataset.queueMember !== 'true' || reorder) return false;
+  if (!dpCan('transfers.operate') || !row || row.dataset.queueMember !== 'true' || reorder) return false;
   const id = rowId(row);
   const name = rowName(row);
   return dpOpenContextMenu(event, row, {

@@ -8,12 +8,14 @@ const { test, expect } = require('@playwright/test');
 const rgb = hex => `rgb(${[1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16)).join(', ')})`;
 const FAMILY = {
   sources: ['#D657FF', 'zap'], downloads: ['#2563EB', 'download-downloads'], extraction: ['#FF9D00', 'package-open'],
-  authentication: ['#1DDB69', 'shield-user'], notifications: ['#04D7FE', 'bell-ring'], maintenance: ['#6366F1', 'database'],
+  authentication: ['#1DDB69', 'shield-user'], users: ['#1DDB69', 'users'], notifications: ['#04D7FE', 'bell-ring'],
+  maintenance: ['#6366F1', 'database'],
 };
 const CARDS = {
   'Automatic Extraction': ['extraction', 'archive-restore'],
   'Authentication Status': ['authentication', 'shield-check'], 'Username & Password': ['authentication', 'user-lock'],
-  'OpenID Connect': ['authentication', 'id-card'], 'API Access': ['authentication', 'key-round'],
+  'OpenID Connect': ['authentication', 'id-card'],
+  'User Accounts': ['users', 'users'], 'Integration Accounts': ['users', 'key-round'],
   'Discord Notifications': ['notifications', 'message-square'], 'Statistics Reporting': ['notifications', 'chart-line'],
   'Backups & Retention': ['maintenance', 'archive'], 'Database Reset Controls': ['maintenance', 'database-x'],
 };
@@ -143,7 +145,8 @@ const HEADERS = [
   ['authentication', 'Authentication Status', '.dp-settings-auth-status-card', 'authentication', 'shield-check'],
   ['authentication', 'Username & Password', '.dp-settings-username-password-card', 'authentication', 'user-lock'],
   ['authentication', 'OpenID Connect', '.dp-settings-oidc-card', 'authentication', 'id-card'],
-  ['authentication', 'API Access', '.dp-settings-api-access-card', 'authentication', 'key-round'],
+  ['users', 'User Accounts', '.dp-settings-users-card:not(.dp-settings-users-integrations-card)', 'users', 'users'],
+  ['users', 'Integration Accounts', '.dp-settings-users-integrations-card', 'users', 'key-round'],
   ['notifications', 'Discord Notifications', '.dp-settings-discord-card', 'notifications', 'message-square'],
   ['notifications', 'Statistics Reporting', '.dp-settings-statistics-reporting-card', 'notifications', 'chart-line'],
   ['maintenance', 'Backups & Retention', '.dp-settings-backups-retention-card', 'maintenance', 'archive'],
@@ -178,7 +181,7 @@ async function pixelDelta(page, before, after, where) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`all fifteen Settings subsection headers wear the one header chip with inner and outer glow (${theme}, 1440px)`, async ({page}) => {
+  test(`all sixteen Settings subsection headers wear the one header chip with inner and outer glow (${theme}, 1440px)`, async ({page}) => {
     await openSettings(page, 'sources');
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
     const facts = [];

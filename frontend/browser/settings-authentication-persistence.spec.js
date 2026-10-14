@@ -91,7 +91,7 @@ test('the redundant Current Authentication Mechanism reading is gone, not hidden
       .not.toContainText('Current Authentication Mechanism');
     // The KPI it duplicated remains the one authority.
     await expect(page.locator('.dp-settings-auth-kpi[data-auth-kpi="mode"]')).toBeVisible();
-    await expect(page.locator('.dp-settings-auth-kpi')).toHaveCount(4);
+    await expect(page.locator('.dp-settings-auth-kpi')).toHaveCount(3);
   });
 
 test('session information and its control are one centred island with Log Out inside the field',
@@ -247,77 +247,59 @@ test('an untouched blank secret writes nothing, and a typed one is never echoed 
     }
   });
 
-test('Token Ready is durable stored-token state, and the disclosure is ephemeral',
+test('An Integration token is disclosed once, in its own dialog, and can never be shown again',
   async ({page}) => {
-    await page.goto('/');
-    const before = await auth(page);
-    // DP 1.0.13: the status is plain coloured text on the card's shared
-    // operational rail -- the same node every provider card's state uses.
-    const badge = page.locator('.dp-settings-api-access-card .dp-settings-provider-config-status');
-    const disclosure = page.locator('.dp-settings-api-token-disclosure');
+    // This case owns one Integration account, named for itself, and removes it.
+    const name = `Disclosure Spec ${Date.now()}`;
+    const created = await page.request.post('/api/accounts', {data: {kind: 'integration', display_name: name}});
+    expect(created.ok()).toBeTruthy();
+    const {id} = await created.json();
     try {
-      await openSettings(page, 'authentication');
+      await page.goto('/');
+      await openSettings(page, 'users');
+      const account = page.locator('.dp-settings-users-integration', {hasText: name});
+      await expect(account).toContainText('No API tokens.');
 
-      if (before.api_token_configured) {
-        await page.locator('[data-action="clear-token"]').click();
-        await page.locator('.dp-modal-overlay [data-modal-accept]').click();
-        await expect.poll(async () => (await auth(page)).api_token_configured).toBe(false);
-      }
-      await expect(badge).toBeHidden();
-      await expect(disclosure).toHaveCount(0);
+      await account.locator('[data-user-action="issue-token"]').click();
+      await page.locator('.dp-users-dialog [data-field="label"]').fill('disclosure-spec');
+      await page.locator('.dp-users-dialog [data-modal-accept]').click();
 
-      await page.locator('[data-action="generate-token"]').click();
-      await expect.poll(async () => (await auth(page)).api_token_configured).toBe(true);
-
-      // Both appear, but they are different things.
-      await expect(badge).toBeVisible();
+      const disclosure = page.locator('.dp-token-disclosure');
       await expect(disclosure).toBeVisible();
-      await expect(page.locator('.dp-settings-api-token-warning'))
+      await expect(page.locator('.dp-token-disclosure-warning'))
         .toHaveText('Copy this token now. DebridPulse will not display it again.');
-
       // The disclosed value is NOT configuration: the persistence owner, every
       // baseline and every payload this page builds are blind to it.
-      const shown = page.locator('#dp-settings-api-token-once');
+      const shown = disclosure.locator('input');
       await expect(shown).not.toHaveAttribute('data-setting', /.*/);
       await expect(shown).not.toHaveAttribute('data-commit', /.*/);
       await expect(shown).toHaveAttribute('readonly', '');
-      expect(await shown.inputValue()).not.toBe('');
-
+      const token = await shown.inputValue();
+      expect(token.startsWith('dp_')).toBe(true);
       // Copy is embedded in the field, inside its border.
       const copyInside = await disclosure.evaluate(el => {
         const rect = node => node.getBoundingClientRect();
         const compound = el.querySelector('.dp-action-field');
-        const copy = el.querySelector('[data-action="copy-token"]');
+        const copy = el.querySelector('[data-token-copy]');
         const input = el.querySelector('.input');
         return rect(copy).right <= rect(compound).right + 0.5
           && rect(copy).left >= rect(input).right - 0.5;
       });
       expect(copyInside, 'Copy is not embedded at the field\'s trailing edge').toBe(true);
 
-      // Leaving Settings and returning is not the act that produced the token.
-      await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
-      await openSettings(page, 'authentication');
+      // Once the dialog leaves, the value is gone from the page for good.
+      await page.locator('.dp-token-disclosure-dialog [data-modal-cancel]').click();
       await expect(disclosure).toHaveCount(0);
-      // Token Ready is unchanged, because a token IS still stored -- it was
-      // never derived from the disclosure block or from a value on screen.
-      await expect(badge).toBeVisible();
+      expect(await page.evaluate(value => document.documentElement.innerHTML.includes(value), token)).toBe(false);
+      await expect(account.locator('.dp-settings-users-tokens tbody tr')).toContainText(['disclosure-spec']);
 
-      // A reload cannot reconstruct it either.
-      await page.reload();
-      await openSettings(page, 'authentication');
-      await expect(disclosure).toHaveCount(0);
-      await expect(badge).toBeVisible();
-
-      // Revoking removes the durable state, and the badge with it.
-      await page.locator('[data-action="clear-token"]').click();
+      // Revoking is confirmed, and the row says so.
+      await account.locator('[data-user-action="revoke-token"]').click();
       await page.locator('.dp-modal-overlay [data-modal-accept]').click();
-      await expect.poll(async () => (await auth(page)).api_token_configured).toBe(false);
-      await expect(badge).toBeHidden();
+      await expect(page.locator('.dp-settings-users-integration', {hasText: name})
+        .locator('.dp-settings-users-tokens tbody tr')).toContainText(['Revoked']);
     } finally {
-      if (!before.api_token_configured && (await auth(page)).api_token_configured) {
-        await page.request.delete('/api/auth/api-token');
-      }
-      await page.request.put('/api/auth/api-token', {data: {enabled: before.api_token_enabled}});
+      await page.request.delete(`/api/accounts/${id}`);
     }
   });
 
@@ -431,7 +413,6 @@ const OIDC_ONLY = Object.freeze({
   oidc_group_claim: 'groups', public_base_url: 'https://dp.example.com',
   public_base_url_effective: 'https://dp.example.com', public_base_url_env_override: false,
   oidc_callback_url: 'https://dp.example.com/auth/oidc/callback',
-  api_token_enabled: false, api_token_configured: false,
   current_session_mechanism: 'oidc_session', session_count: 1,
 });
 const PASSWORD_ONLY = Object.freeze({

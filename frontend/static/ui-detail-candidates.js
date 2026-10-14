@@ -7,6 +7,9 @@
 
   const expandedRows = new Set();
   const switchingRows = new Set();
+  // Whether the shown transfer's work may be redirected by this caller (the
+  // server-given ``access.destroy`` of the Details being rendered).
+  let switchAllowed = false;
   let activeTransferId = null;
   let latestDetail = null;
   let providerNames = new Map();
@@ -120,7 +123,7 @@
     if (active) {
       return '<span class="dp-detail-candidate-active" aria-label="Active source">ACTIVE</span>';
     }
-    if (!candidate || !candidate.switch_eligible) return '';
+    if (!candidate || !candidate.switch_eligible || !switchAllowed) return '';
     // No real artifact-mutation identity, no switch control. A contributed or
     // UNVERIFIED row can therefore never render one, whatever else it carries.
     const artifactId = artifactMutationId(file);
@@ -339,6 +342,7 @@
   }
 
   function renderNow(detail) {
+    switchAllowed = Boolean(detail && window.debridPulseAuth?.mayDestroy(detail));
     if (!hasDisplayRows(detail)) return;
     const tbody = document.querySelector('#modal-body .dp-detail-files-card .t-table tbody');
     if (!tbody) return;
@@ -420,6 +424,7 @@
     switchingRows.clear();
     activeTransferId = null;
     latestDetail = null;
+    switchAllowed = false;
     deferredDetail = null;
     filesPointerActive = false;
     clearRefreshState();
@@ -439,6 +444,7 @@
     activeTransferId = transferId;
     deferredDetail = null;
     const transfer = event.detail.transfer;
+    switchAllowed = Boolean(transfer && window.debridPulseAuth?.mayDestroy(transfer));
     latestDetail = hasDisplayRows(transfer) ? transfer : null;
     // The rows were rendered by rowsMarkup() from this same payload; only bind them.
     if (latestDetail) bindDisclosures(displayRows(latestDetail));

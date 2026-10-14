@@ -16,10 +16,11 @@ async function open(page, {authenticated = false} = {}) {
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   if (authenticated) {
     // Only so the session owner (auth.js) mounts its real Log Out row.
-    await page.route('**/api/auth/session', route => route.fulfill({
+    await page.route('**/api/auth/session', async route => route.fulfill({
       status: 200, contentType: 'application/json',
-      body: JSON.stringify({authenticated: true, mechanism: 'password', subject: 'rail', display_name: 'rail',
-        csrf_token: 'rail-csrf', session_expires_in_seconds: 3600}),
+      // The real authority this page was composed for; only the session differs.
+      body: JSON.stringify({...await (await route.fetch()).json(), authenticated: true, mechanism: 'password',
+        subject: 'rail', display_name: 'rail', csrf_token: 'rail-csrf', session_expires_in_seconds: 3600}),
     }));
   }
   await page.goto('/');

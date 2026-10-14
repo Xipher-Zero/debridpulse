@@ -29,11 +29,31 @@
   width: 100%;
   flex: 0 0 auto;
 }
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row,
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-account-row {
   position: static !important;
   width: 100%;
   min-height: 46px;
   flex: 0 0 auto;
+}
+/* The signed-in account: its name over its role, one navigation item. */
+#sidebar #sidebar-account-row .nav-label {
+  min-width: 0;
+}
+#sidebar .dp-sidebar-account-copy {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  line-height: 1.25;
+}
+#sidebar .dp-sidebar-account-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#sidebar .dp-sidebar-account-role {
+  color: var(--dp-text-muted, var(--text3));
+  font-size: 10.5px;
 }
 @media (min-width: 901px) {
   #sidebar .sidebar-bottom-stack[data-session="authenticated"] {
@@ -44,7 +64,8 @@
    gives the stack's inset back, so its glyph sits on the sidebar icon rail
    (ui-shell-structural.css) with its label following at the item gap. */
 @media (min-width: 1180px), (max-width: 899px) {
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row,
+  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-account-row {
     padding-left: calc(var(--dp-sidebar-item-inset) - var(--dp-sidebar-stack-inset));
   }
 }

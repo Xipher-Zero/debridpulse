@@ -117,6 +117,9 @@ body.light #view-settings .dp-settings-tab-glyph {
 #view-settings .dp-settings-tabs .stab[data-tab='authentication'] {
   --dp-settings-tab-color: #1DDB69;
 }
+#view-settings .dp-settings-tabs .stab[data-tab='users'] {
+  --dp-settings-tab-color: #1DDB69;
+}
 #view-settings .dp-settings-tabs .stab[data-tab='maintenance'] {
   --dp-settings-tab-color: #6366F1;
 }

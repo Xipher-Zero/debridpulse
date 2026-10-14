@@ -128,7 +128,8 @@ async def test_concurrent_demotion_of_the_last_two_usable_admins_keeps_one(insta
     roles = {(await accounts.get_account(account_id)).role for account_id in (first.id, second.id)}
     assert roles == {Role.ADMIN, Role.USER}
     if outcomes[0] is None:
-        assert session_store.resolve(token) is None  # the demoted account's session ended with it
+        # The demoted account's session continues, re-bound to its new role.
+        assert session_store.resolve(token).principal.role == Role.USER.value
 
 
 @pytest.mark.asyncio

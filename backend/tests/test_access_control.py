@@ -423,3 +423,108 @@ async def test_a_bulk_delete_target_whose_demand_changed_meanwhile_is_denied_unt
 
     assert result["results"] == [{"id": transfer_id, "outcome": "denied"}]
     assert (await repository.get(transfer_id)).state is not TransferState.DELETED
+
+
+# ── a role change re-binds live sessions; disable still ends them ───────────
+
+async def test_a_role_change_takes_effect_at_once_and_resets_without_signing_out(served, monkeypatch):
+    from api import routes
+
+    client, _as = served
+    holder = await accounts.create_local_account("holder", "secret-1", role=Role.ADMIN)  # keeps an Admin usable
+    target = await accounts.create_local_account("target", "secret-2", role=Role.ADMIN)
+    token, _ = session_store.create(Principal.password_session(target), lifetime_seconds=3600)
+    headers = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}
+    queue: asyncio.Queue = asyncio.Queue()
+    routes._sse_subscribers[queue] = routes._SseSubscriber(Principal.password_session(target), token,
+                                                           session_store.fingerprint(token))
+    try:
+        assert (await client.get("/api/accounts", headers=headers)).status_code not in {401, 403}
+
+        await accounts.set_role(holder.id, target.id, Role.USER)       # demotion
+        assert (await client.get("/api/accounts", headers=headers)).status_code == 403
+        assert (await client.get("/api/torrents", headers=headers)).status_code not in {401, 403}
+        session = (await client.get("/api/auth/session", headers=headers)).json()
+        assert session["authenticated"] is True and session["role"] == "user"
+        assert queue.get_nowait() == routes._SSE_ACCOUNT_CHANGED
+
+        await accounts.set_role(holder.id, target.id, Role.ADMIN)      # promotion
+        assert (await client.get("/api/accounts", headers=headers)).status_code not in {401, 403}
+        assert (await client.get("/api/auth/session", headers=headers)).json()["role"] == "admin"
+        assert queue.get_nowait() == routes._SSE_ACCOUNT_CHANGED
+
+        await accounts.set_enabled(holder.id, target.id, False)         # disable still ends it
+        assert queue.get_nowait() is routes._SSE_SESSION_ENDED
+        assert session_store.resolve(token) is None
+        assert (await client.get("/api/torrents", headers=headers)).status_code == 401
+    finally:
+        routes._sse_subscribers.pop(queue, None)
+
+
+# ── what the interface may offer: caller-specific access ────────────────────
+
+async def test_access_names_destroy_and_own_withdrawable_demand_per_caller(core):
+    from auth.permissions import transfer_access
+
+    repository, _engine, _application = core
+    alice_p, bob_p = (Principal(account_id=name, role=Role.USER.value) for name in ("alice", "bob"))
+    exclusive, alice_only = await _submit(repository, "alice", payload=MAGNET.replace("b" * 40, "9" * 40))
+    shared, alice_shared = await _submit(repository, "alice")
+    _same, bob_repeat = await _submit(repository, "bob")            # a repeat: no request row of its own
+    contributor, bob_contrib = await _submit(repository, "bob", payload=MAGNET.replace("b" * 40, "c" * 40))
+    async with database.get_db() as db:
+        primary = await db.execute_returning_id(
+            "INSERT INTO download_files(torrent_id,filename,status) VALUES(?,'x','pending')", (exclusive,))
+        standby = await db.execute_returning_id(
+            "INSERT INTO download_files(torrent_id,filename,status) VALUES(?,'x','duplicate')", (contributor,))
+        request = (await db.fetchone("SELECT id FROM transfer_requests WHERE transfer_id=?", (contributor,)))["id"]
+        await db.execute("INSERT INTO artifact_consolidations(contributing_artifact_id,source_transfer_id,"
+                         "source_request_id,canonical_artifact_id) VALUES(?,?,?,?)",
+                         (standby, contributor, request, primary))
+        await db.commit()
+
+    alice = await transfer_access(alice_p, repository, [shared])
+    bob = await transfer_access(bob_p, repository, [shared, exclusive])
+    assert alice[shared] == {"destroy": False, "own_requests": [alice_shared]}   # bob still needs it
+    assert bob[shared] == {"destroy": False, "own_requests": [bob_repeat]}       # a repeat's own demand
+    # alice's transfer now also serves bob's consolidated demand.
+    assert bob[exclusive] == {"destroy": False, "own_requests": [bob_contrib]}
+    assert (await transfer_access(alice_p, repository, [exclusive]))[exclusive]["destroy"] is False
+
+    await _engine.withdraw_demand((bob_contrib,), by="account:bob")
+    assert (await transfer_access(alice_p, repository, [exclusive]))[exclusive] == {
+        "destroy": True, "own_requests": [alice_only]}
+    readonly = await transfer_access(Principal(account_id="alice", role=Role.READONLY.value), repository,
+                                     [exclusive, shared])
+    assert set(map(json.dumps, readonly.values())) == {json.dumps({"destroy": False, "own_requests": []})}
+
+
+async def test_stale_access_cannot_bypass_the_server(core):
+    from auth.permissions import require_destruction, transfer_access
+    from fastapi import HTTPException
+
+    repository, _engine, _application = core
+    transfer_id, _alice = await _submit(repository, "alice")
+    principal = Principal(account_id="alice", role=Role.USER.value)
+    assert (await transfer_access(principal, repository, [transfer_id]))[transfer_id]["destroy"] is True
+    await _submit(repository, "bob")            # the interface still shows Remove
+    with pytest.raises(HTTPException) as refused:
+        await require_destruction(SimpleNamespace(state=SimpleNamespace(principal=principal)), repository, transfer_id)
+    assert refused.value.status_code == 403
+
+
+async def test_humans_get_the_display_timezone_and_integration_sees_only_its_own_requests(served, monkeypatch):
+    client, as_ = served
+    monkeypatch.setenv("TZ", "Europe/Berlin")
+    for role in (Role.USER, Role.READONLY):
+        assert (await client.get("/api/auth/session", headers=as_(role))).json()["display_timezone"] == "Europe/Berlin"
+        assert (await client.get("/api/settings", headers=as_(role))).status_code == 403
+    import main
+
+    repository = TransferRepository()
+    monkeypatch.setattr(main.app.state.application, "repository", repository, raising=False)
+    await repository.admit((TransferRequest("magnet", MAGNET, name="x", fingerprint="b" * 40),), name="x",
+                           demand=SubmissionDemand("someone-else"))
+    listed = (await client.get("/api/requests", headers=as_(Role.INTEGRATION))).json()["requests"]
+    assert all(row["account_id"] == DEFAULT_INTEGRATION_ID for row in listed)
+    assert (await client.get("/api/torrents", headers=as_(Role.INTEGRATION))).status_code == 403

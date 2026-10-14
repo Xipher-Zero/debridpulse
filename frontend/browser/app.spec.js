@@ -191,8 +191,8 @@ test('Settings clean shell renders all tabs and survives representative tab tran
   await page.goto('/');
   await openView(page, 'settings', 'Settings');
 
-  await expect(page.locator('.dp-settings-tabs .stab')).toHaveCount(6);
-  for (const tab of ['downloads', 'authentication', 'maintenance', 'sources']) {
+  await expect(page.locator('.dp-settings-tabs .stab')).toHaveCount(7);
+  for (const tab of ['downloads', 'authentication', 'users', 'maintenance', 'sources']) {
     const button = page.locator(`.dp-settings-tabs .stab[data-tab="${tab}"]`);
     await button.click();
     await expect(button).toHaveAttribute('aria-selected', 'true');

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import dataclasses
 import hashlib
 import hmac
 import os
@@ -53,20 +54,39 @@ class SessionStore:
         self._last_cleanup = self._clock()
         self._cleanup_task: asyncio.Task | None = None
         self._stop_cleanup: asyncio.Event | None = None
-        self._revocation_listeners: list[Callable[[frozenset[bytes], str | None], None]] = []
+        self._revocation_listeners: list[Callable[[frozenset[bytes], str | None, bool], None]] = []
 
-    def on_revocation(self, listener: Callable[[frozenset[bytes], str | None], None]) -> None:
-        """Be told, synchronously, which sessions ended (by ``fingerprint``)
-        and, for an account change, which account -- so a long-lived
-        connection opened under a session ends with it."""
+    def on_revocation(self, listener: Callable[[frozenset[bytes], str | None, bool], None]) -> None:
+        """Be told, synchronously, which sessions changed (by ``fingerprint``)
+        and, for an account change, which account; ``ended`` says whether they
+        ended or were re-bound to the account's new role -- so a long-lived
+        connection opened under a session ends, or resets, with it."""
         self._revocation_listeners.append(listener)
 
-    def _announce(self, fingerprints, account_id: str | None = None) -> None:
-        ended = frozenset(fingerprints)
-        if not ended and not account_id:
+    def _announce(self, fingerprints, account_id: str | None = None, *, ended: bool = True) -> None:
+        changed = frozenset(fingerprints)
+        if not changed and not account_id:
             return
         for listener in tuple(self._revocation_listeners):
-            listener(ended, account_id)
+            listener(changed, account_id, ended)
+
+    def rebind_account(self, account) -> int:
+        """Re-bind every live session of ``account`` to its current role and
+        generation, in place: a role change takes effect on the very next
+        request without ending the session. Only sessions still in the store
+        and unexpired are touched, so nothing revoked or expired regains any
+        authority; expiry, credential version and CSRF binding are kept."""
+        now = self._clock()
+        targets = [
+            key
+            for key, record in self._entries.items()
+            if record.principal.account_id == account.id and record.expires_at > now
+        ]
+        for key in targets:
+            record = self._entries[key]
+            self._entries[key] = dataclasses.replace(record, principal=record.principal.bound_to(account))
+        self._announce(targets, account.id, ended=False)
+        return len(targets)
 
     def fingerprint(self, token: str) -> bytes:
         """The non-secret address of one session (its store key)."""

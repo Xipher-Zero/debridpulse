@@ -1,4 +1,5 @@
 import base64
+import json
 from http.cookies import SimpleCookie
 from pathlib import Path
 from types import SimpleNamespace
@@ -9,6 +10,7 @@ import pytest_asyncio
 from fastapi import Request, Response
 
 from account_support import account, account_database, admin_with_password
+from auth.accounts import Role
 from api import auth_routes
 from auth.csrf import LoginCsrfStore, login_csrf_store
 from auth.middleware import enforce_authentication
@@ -113,8 +115,14 @@ async def _ok(_request):
 
 @pytest.mark.asyncio
 async def test_auth_bootstrap_loads_before_application_javascript():
-    bundle_response = await auth_routes.application_javascript_bundle()
+    request = _request("GET", path="/app.js", headers={"Host": "debridpulse.local"})
+    request.state.principal = Principal.password_session(account("viewer", role=Role.READONLY))
+    bundle_response = await auth_routes.application_javascript_bundle(request)
     bundle = bundle_response.body.decode("utf-8")
+    # The caller's authority comes first -- without any CSRF token.
+    authority = json.loads(bundle.split("window.debridPulseAuthority=Object.freeze(", 1)[1].split(");", 1)[0])
+    assert authority["role"] == "readonly" and "transfers.operate" not in authority["capabilities"]
+    assert "csrf_token" not in authority
     auth_marker = "DebridPulse application-session bootstrap"
     app_marker = "DebridPulse — self-hosted multi-provider transfer manager."
     assert auth_marker in bundle
@@ -124,7 +132,7 @@ async def test_auth_bootstrap_loads_before_application_javascript():
     assert "localStorage" not in bootstrap
     assert "sessionStorage" not in bootstrap
     assert "X-CSRF-Token" in bootstrap
-    assert bundle_response.headers["cache-control"] == "no-cache"
+    assert bundle_response.headers["cache-control"] == "no-store"
 
 
 def test_login_request_body_limit_is_narrower_than_general_application_limit():

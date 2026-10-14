@@ -331,6 +331,9 @@
   // unchanged; this is the only place list-row candidate-action semantics
   // are interpreted (DP 1.0.12 Contextual Candidate Action Scope task, §9).
   function launcherMarkup(item, variant, surface) {
+    // A source switch is offered only where the server says this caller may
+    // destroy the work (``access.destroy``); otherwise the history alone.
+    if (!(item && window.debridPulseAuth?.mayDestroy(item))) return staticHistoryMarkup(item, variant);
     const scope = item && item.candidate_action_scope;
     if (scope === 'artifact') {
       return actionLauncherMarkup(item.id, variant, surface, 'artifact', item.candidate_action_artifact_id, item.candidate_action_count);

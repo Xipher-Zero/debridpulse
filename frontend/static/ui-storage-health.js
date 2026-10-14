@@ -277,6 +277,8 @@
     stop,
   });
 
+  // Storage health is administration: an account without it never polls.
+  if (!window.debridPulseAuth?.can('administer')) return;
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', start, {once: true});
   } else {

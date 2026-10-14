@@ -70,8 +70,8 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     open_mode = block(js, "async function confirmOpenMode(", "function authorizeAuthCommit(")
     wipe = block(js, "async function wipeDatabaseClean", "/* Erasing a stored credential")
     password = block(js, "async function clearPassword", "async function clearOidcSecret")
-    secret = block(js, "async function clearOidcSecret", "async function generateToken")
-    token = block(js, "async function clearToken", "async function copyToken")
+    secret = block(js, "async function clearOidcSecret", "function clearOidcResources(")
+    token = block(js, "async function revokeToken(", "async function showActivity(")
 
     # Opening DebridPulse is a property of the ACT, so it is asked in ONE place
     # for every act that can perform it.
@@ -98,10 +98,10 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     assert secret.index("if (!confirmed) return;") < secret.index("clear_oidc_client_secret: true")
 
     assert "await window.DPSettingsModal.confirm" in token
-    assert "Revoke API token?" in token
+    assert "Revoke this token?" in token
     assert "Revoke Token" in token
     assert "if (!confirmed) return;" in token
-    assert token.index("if (!confirmed) return;") < token.index("request('DELETE', '/auth/api-token'")
+    assert token.index("if (!confirmed) return;") < token.index("request('DELETE', `/accounts/")
 
     assert "await window.DPSettingsModal.confirm" in wipe
     assert "typedPhrase: 'WIPE'" in wipe
@@ -127,8 +127,6 @@ def test_settings_action_rerenders_use_viewport_preserving_refresh():
         ("async function clearAvatar", "async function clearWebhook"),
         ("async function clearWebhook", "async function runBackup"),
         ("async function wipeDatabaseClean", "/* Erasing a stored credential"),
-        ("async function generateToken", "async function clearToken"),
-        ("async function clearToken", "async function copyToken"),
         ("async function finishOidc", "function armOidc"),
     ]:
         section = block(js, start, end)

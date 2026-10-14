@@ -319,6 +319,38 @@ async def destruction_permitted(principal: Principal, repository, transfer_id: i
     return (await destruction_precondition(principal, repository, transfer_id))[0]
 
 
+async def transfer_access(principal: Principal | None, repository, transfer_ids) -> dict[int, dict]:
+    """What the interface may offer this caller on each transfer, from the
+    same policy and demand as ``destruction_precondition``:
+
+    * ``destroy`` -- whether every destructive whole-transfer act (delete,
+      cancel, block, candidate or route switch; one rule governs them all)
+      is permitted to the caller now;
+    * ``own_requests`` -- the caller's outstanding demand IDs the transfer's
+      work serves (its own and transfers consolidated into it), each
+      accepted by ``POST /api/requests/{id}/withdraw``.
+
+    A presentation hint read now: every act is re-authorized, and re-checked
+    against current demand, when it commits."""
+    from auth.accounts import owned_account_ids
+
+    ids = sorted({int(item) for item in transfer_ids})
+    may_destroy = permits(principal, Capability.TRANSFERS_DESTROY)
+    may_withdraw = permits(principal, Capability.DEMAND_OWN)
+    if not ids or not (may_destroy or may_withdraw) or not principal.account_id:
+        return {item: {"destroy": False, "own_requests": []} for item in ids}
+    owned = set(await owned_account_ids(principal.account_id))
+    admin = principal.role == Role.ADMIN.value
+    access = {}
+    for transfer_id, rows in (await repository.outstanding_demand_many(ids)).items():
+        access[transfer_id] = {
+            "destroy": may_destroy and (admin or all(row.get("account_id") in owned for row in rows)),
+            "own_requests": sorted(str(row["id"]) for row in rows
+                                   if may_withdraw and row.get("account_id") in owned),
+        }
+    return access
+
+
 async def require_destruction(request: Request, repository, transfer_id: int):
     """The demand a destructive route is authorized against, or ``403``."""
     principal = getattr(request.state, "principal", None)

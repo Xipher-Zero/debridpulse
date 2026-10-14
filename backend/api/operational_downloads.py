@@ -53,7 +53,7 @@ from transfers.presentation_repository import (
     recovery_presentation,
 )
 from transfers.repository import _SWITCHABLE_ARTIFACT_STATES
-from auth.permissions import require_destruction
+from auth.permissions import require_destruction, transfer_access
 
 logger = logging.getLogger("debridpulse.api.operational_downloads")
 router = APIRouter()
@@ -717,6 +717,18 @@ def _apply_activity_priority_order(items: list) -> list:
     )
 
 
+async def _with_access(request: Request | None, application, items: list) -> list:
+    """Each row's caller-specific ``access`` (``auth.permissions.transfer_access``),
+    for the whole page in one read."""
+    principal = getattr(getattr(request, "state", None), "principal", None)
+    if principal is None:
+        return items
+    access = await transfer_access(principal, application.repository, [item["id"] for item in items])
+    for item in items:
+        item["access"] = access.get(int(item["id"]), {"destroy": False, "own_requests": []})
+    return items
+
+
 @router.get("/torrents")
 async def list_operational_torrents(
     status: Optional[str] = None,
@@ -725,6 +737,7 @@ async def list_operational_torrents(
     offset: int = 0,
     order: Optional[str] = None,
     application: ApplicationService = Depends(get_application),
+    request: Request = None,
 ):
     clauses = []
     params = []
@@ -797,7 +810,8 @@ async def list_operational_torrents(
             for item in presentations
             if item is not None
         ]
-        return {"items": items, "total": total, "search": search_contract.describe(plan)}
+        return {"items": await _with_access(request, application, items), "total": total,
+                "search": search_contract.describe(plan)}
 
     # Durable, page-global provider-enablement facts (see _disabled_provider_ids
     # docstring) — computed once per request from the already-injected
@@ -1827,4 +1841,5 @@ async def list_operational_torrents(
         items.append(item)
     if activity_mode:
         items = _apply_activity_priority_order(items)
-    return {"items": items, "total": total, "search": search_contract.describe(plan)}
+    return {"items": await _with_access(request, application, items), "total": total,
+                "search": search_contract.describe(plan)}

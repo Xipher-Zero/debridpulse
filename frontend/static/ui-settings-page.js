@@ -13,6 +13,7 @@
     ['downloads', 'Downloads', 'download-downloads'],
     ['extraction', 'Extraction', 'package-open'],
     ['authentication', 'Authentication', 'shield-user'],
+    ['users', 'Users & Access', 'users'],
     ['notifications', 'Notifications', 'bell-ring'],
     ['maintenance', 'Data & Maintenance', 'database'],
   ]);
@@ -21,7 +22,10 @@
     settings: null,
     auth: null,
     activeTab: 'sources',
-    oneTimeToken: '',
+    // The account directory (GET /accounts) and each Integration account's
+    // tokens, read when Settings loads and after every account action. null
+    // while unread; an unreadable directory is an error, never an empty list.
+    users: {accounts: null, tokens: {}, error: ''},
     // The journal's retained event count: undefined while it is being read,
     // null when it could not be, otherwise the number.
     recordedEvents: undefined,
@@ -266,13 +270,10 @@
     oidc_scopes: {scope: 'auth-config', option: 'oidc_scopes'},
     oidc_group_claim: {scope: 'auth-config', option: 'oidc_group_claim'},
     oidc_allow_all: {scope: 'auth-config', option: 'oidc_allow_all', commit: 'immediate'},
+    auth_oidc_default_role: {scope: 'auth-config', option: 'auth_oidc_default_role'},
     oidc_allowed_subjects: {scope: 'auth-config', option: 'oidc_allowed_subjects'},
     oidc_allowed_emails: {scope: 'auth-config', option: 'oidc_allowed_emails'},
     oidc_allowed_groups: {scope: 'auth-config', option: 'oidc_allowed_groups'},
-
-    // API Access participation, written by its own canonical endpoint. Same
-    // boundary, same owner, same rollback -- only the scope differs.
-    api_token_enabled: {scope: 'api-token', option: 'enabled', commit: 'immediate'},
 
     // Data & Maintenance -- ordinary settings-document values on exactly the
     // same two boundaries every other Settings control uses. Backup
@@ -2969,12 +2970,11 @@
       oidc_allowed_emails: Array.isArray(settings?.oidc_allowed_emails) ? settings.oidc_allowed_emails.slice() : [],
       oidc_allowed_groups: Array.isArray(settings?.oidc_allowed_groups) ? settings.oidc_allowed_groups.slice() : [],
       oidc_group_claim: text(settings?.oidc_group_claim || 'groups'),
+      oidc_default_role: settings?.auth_oidc_default_role === 'readonly' ? 'readonly' : 'user',
       public_base_url: publicBase,
       public_base_url_effective: publicBase,
       public_base_url_env_override: false,
       oidc_callback_url: '',
-      api_token_enabled: false,
-      api_token_configured: false,
       current_session_mechanism: null,
       session_count: 0,
     };
@@ -3111,6 +3111,7 @@
     oidc_scopes: a => (Array.isArray(a?.oidc_scopes) ? a.oidc_scopes.join(' ') : ''),
     oidc_group_claim: a => text(a?.oidc_group_claim || 'groups'),
     oidc_allow_all: a => (a?.oidc_allow_all ? '1' : '0'),
+    auth_oidc_default_role: a => (a?.oidc_default_role === 'readonly' ? 'readonly' : 'user'),
     oidc_allowed_subjects: a => authLinesValue(a?.oidc_allowed_subjects),
     oidc_allowed_emails: a => authLinesValue(a?.oidc_allowed_emails),
     oidc_allowed_groups: a => authLinesValue(a?.oidc_allowed_groups),
@@ -3245,16 +3246,10 @@
     const clearSecretButton = view.querySelector('[data-action="clear-oidc-secret"]');
     if (clearSecretButton) clearSecretButton.disabled = !a.oidc_client_secret_configured;
 
-    // Both header statuses are projections of canonical state, repainted in
-    // the one canonical status node each card's rail already owns. Token Ready
-    // is never derived from a token on screen or from the disclosure block,
-    // and the OIDC word is never derived from a toast or from the DOM.
+    // The header status is a projection of canonical state, repainted in the
+    // one canonical status node the card's rail already owns; the OIDC word is
+    // never derived from a toast or from the DOM.
     paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));
-    paintCardStatus(view, '.dp-settings-api-access-card', tokenReadyStatus(a));
-    const generate = view.querySelector('[data-action="generate-token"]');
-    if (generate) generate.textContent = a.api_token_configured ? 'Rotate Token' : 'Generate Token';
-    const revoke = view.querySelector('[data-action="clear-token"]');
-    if (revoke) revoke.disabled = !a.api_token_configured;
 
     const passwordField = fieldFor('auth_password');
     if (passwordField) passwordField.placeholder = passwordPlaceholder(a);
@@ -3305,15 +3300,11 @@
       !!a.password_configured, !!a.password_enabled, !!a.password_ready);
 
     const oidcState = oidcStatePresentation(a);
-    // A token is usable exactly when one is stored, so configured IS ready.
-    const token = mechanismState(
-      !!a.api_token_configured, !!a.api_token_enabled, !!a.api_token_configured);
 
     return [
       {id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone, secondary: ''},
       {id: 'password', label: 'Username & Password', value: password.value, tone: password.tone, secondary: ''},
       {id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary},
-      {id: 'token', label: 'API Token', value: token.value, tone: token.tone, secondary: ''},
     ];
   }
 
@@ -3464,6 +3455,15 @@
       className: 'dp-settings-oidc-group-claim-field',
     });
 
+    /* The role an OIDC identity receives the first time it signs in. An
+     * identity is provisioned as its own account; it is never linked to an
+     * existing one by a matching email (Users & Access links explicitly). */
+    const defaultRoleField = selectField('auth_oidc_default_role', 'Default Role for New OIDC Users',
+      a.oidc_default_role === 'readonly' ? 'readonly' : 'user',
+      [['user', 'User'], ['readonly', 'ReadOnly User']],
+      'Role given to an OIDC identity the first time it signs in. Change any account later in Users & Access.',
+      {inline: true, className: 'dp-settings-oidc-default-role-field'});
+
     const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
       rows: 3,
       hint: 'Authorize matching OIDC subject identifiers, one per line.',
@@ -3494,6 +3494,7 @@
           <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
           ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
+        <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {
@@ -3509,41 +3510,564 @@
       action: headerEnableToggle('auth_oidc_enabled', a.oidc_enabled, 'dp-settings-oidc-header-enable'),
     });
 
-    const configured = !!a.api_token_configured;
-    /* The one-time disclosure.
-     *
-     * It exists only while a freshly minted token is actually being shown, and
-     * the value lives only in page memory. The control carries NO data-setting
-     * and NO commit class, so it is invisible to the persistence owner, to
-     * every baseline, and to every payload this page builds -- it is a
-     * disclosure, never configuration. */
-    const disclosure = state.oneTimeToken ? `
-      <div class="dp-settings-api-token-disclosure" role="group" aria-label="One-time API token disclosure">
-        <b class="dp-settings-api-token-warning">Copy this token now. DebridPulse will not display it again.</b>
-        ${embeddedActionField(
-          `<input class="input" id="dp-settings-api-token-once" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly generated API token" value="${html(state.oneTimeToken)}">`,
-          '<button class="btn btn-ghost btn-sm" type="button" data-action="copy-token" aria-label="Copy the newly generated API token">Copy</button>',
-          'dp-settings-api-token-field')}
-      </div>` : '';
+    return authStatusCard(a) + credentials + oidc;
+  }
 
-    const apiAccess = card('API Access', `
-      <div class="dp-settings-api-token-layout${state.oneTimeToken ? ' is-disclosing' : ''}">
-        ${disclosure}
-        <div class="dp-settings-actions dp-settings-api-token-actions">
-          <button class="btn btn-blue btn-sm dp-settings-api-token-generate" type="button" data-action="generate-token">${configured ? 'Rotate Token' : 'Generate Token'}</button>
-          <button class="btn btn-danger btn-sm dp-settings-api-token-revoke" type="button" data-action="clear-token" ${configured ? '' : 'disabled'}>Revoke Token</button>
-        </div>
-      </div>
-    `, {
-      className: 'dp-settings-api-access-card',
-      titlePrefix: familyIcon('authentication', 'key-round'),
-      headerCenter: 'Use a dedicated bearer token for automation, monitoring, and API integrations.',
-      headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--api',
-      headerStatus: tokenReadyStatus(a),
-      action: headerEnableToggle('api_token_enabled', a.api_token_enabled),
+  /* ── Users & Access ───────────────────────────────────────────────────────
+   *
+   * The account directory and the Integration accounts' API tokens, in the
+   * same card grammar as every other Settings page. Nothing here is a setting:
+   * no control carries data-setting, so the persistence owner never sees one.
+   * Every act is one request to the account API (Stage 2), whose answer is the
+   * only truth this page shows; the page then re-reads the directory. The
+   * server enforces every invariant (self, last Admin, default accounts), so
+   * a refusal is reported as the server words it. */
+  const ROLE_LABELS = Object.freeze({admin: 'Admin', user: 'User', readonly: 'ReadOnly User', integration: 'Integration'});
+  const HUMAN_ROLES = Object.freeze([['admin', 'Admin'], ['user', 'User'], ['readonly', 'ReadOnly User']]);
+
+  const liveAccount = account => !account.deleted_at && !account.merged_into;
+  const isIntegration = account => account.role === 'integration';
+  const selfId = () => text(window.debridPulseAuth?.authority?.account_id);
+  const accountName = account => text(account?.display_name || account?.username || 'Unnamed account');
+
+  function signInMethods(account) {
+    const methods = [];
+    if (account.has_password) methods.push(`Password${account.username ? ` (${account.username})` : ''}`);
+    if (account.oidc_identities) methods.push(account.oidc_identities > 1 ? `OIDC ×${account.oidc_identities}` : 'OIDC');
+    return methods.length ? methods.join(' · ') : 'No sign-in method';
+  }
+
+  function accountStatus(account) {
+    return account.enabled
+      ? '<span class="dp-settings-users-status" data-tone="success">Enabled</span>'
+      : '<span class="dp-settings-users-status" data-tone="neutral">Disabled</span>';
+  }
+
+  /* A verified email shared by two live human accounts is only a HINT that
+   * they are one person: it is surfaced, never acted on. Linking is the
+   * Admin's explicit merge. */
+  function suggestedDuplicates(humans) {
+    const byEmail = new Map();
+    humans.filter(account => account.email && account.email_verified).forEach(account => {
+      const key = account.email.trim().toLowerCase();
+      byEmail.set(key, [...(byEmail.get(key) || []), account]);
     });
+    return [...byEmail.entries()].filter(([, group]) => group.length > 1);
+  }
 
-    return authStatusCard(a) + credentials + oidc + apiAccess;
+  function userActions(account) {
+    if (account.id === selfId()) return '<span class="dp-settings-users-self">You</span>';
+    const id = html(account.id);
+    const actions = [];
+    if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="role" data-account-id="${id}">Change Role</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="password" data-account-id="${id}">${account.has_password ? 'Reset Password' : 'Set Password'}</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="link" data-account-id="${id}">Link OIDC</button>`);
+    if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-account-id="${id}">Merge…</button>`);
+    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="activity" data-account-id="${id}">Activity</button>`);
+    if (account.enabled && account.protected !== 'default_admin') {
+      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`);
+    } else if (!account.enabled) {
+      actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}">Enable</button>`);
+    }
+    if (!account.protected && account.origin === 'local') {
+      actions.push(`<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}">Delete</button>`);
+    }
+    return actions.join('');
+  }
+
+  function humanRows(humans) {
+    if (!humans.length) return '<div class="dp-settings-users-empty">No accounts.</div>';
+    return `
+      <div class="dp-settings-users-table-wrap">
+        <table class="t-table dp-settings-users-table">
+          <thead><tr><th>Account</th><th>Role</th><th>Sign-In</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+          <tbody>${humans.map(account => `
+            <tr data-account-row="${html(account.id)}">
+              <td><div class="dp-settings-users-name">${html(accountName(account))}</div>${
+                account.email ? `<div class="dp-settings-users-detail">${html(account.email)}${account.email_verified ? '' : ' (unverified)'}</div>` : ''}</td>
+              <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
+              <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
+              <td>${accountStatus(account)}</td>
+              <td><div class="dp-settings-users-actions">${userActions(account)}</div></td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  function duplicateNotice(humans) {
+    const groups = suggestedDuplicates(humans);
+    if (!groups.length) return '';
+    return `
+      <div class="dp-settings-users-duplicates" role="note">
+        <b>Possible duplicate accounts</b>
+        ${groups.map(([email, group]) => {
+          const mergeable = group.find(item => !item.protected && item.id !== selfId());
+          return `
+          <div class="dp-settings-users-duplicate">
+            <span>${html(group.map(accountName).join(', '))} share the verified email ${html(email)}.</span>
+            ${mergeable ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-account-id="${html(mergeable.id)}">Review &amp; Merge…</button>` : ''}
+          </div>`;
+        }).join('')}
+        <span class="dp-settings-users-detail">A shared email is only a suggestion. Accounts are never linked automatically.</span>
+      </div>`;
+  }
+
+  function tokenRows(account) {
+    const tokens = state.users.tokens[account.id];
+    if (!Array.isArray(tokens)) return '<div class="dp-settings-users-detail">Tokens could not be read.</div>';
+    if (!tokens.length) return '<div class="dp-settings-users-detail">No API tokens. Issue one to connect automation.</div>';
+    return `
+      <table class="t-table dp-settings-users-tokens">
+        <thead><tr><th>Token</th><th>Issued</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+        <tbody>${tokens.map(token => `
+          <tr>
+            <td>${html(token.label)}</td>
+            <td class="dp-settings-users-detail">${window.downloadsDateMarkup ? window.downloadsDateMarkup(token.created_at) : html(token.created_at)}</td>
+            <td>${token.revoked_at
+              ? '<span class="dp-settings-users-status" data-tone="neutral">Revoked</span>'
+              : '<span class="dp-settings-users-status" data-tone="success">Active</span>'}</td>
+            <td><div class="dp-settings-users-actions">${token.revoked_at ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}">Revoke</button>`}</div></td>
+          </tr>`).join('')}
+        </tbody>
+      </table>`;
+  }
+
+  function integrationBlocks(integrations) {
+    if (!integrations.length) return '<div class="dp-settings-users-empty">No Integration accounts.</div>';
+    return integrations.map(account => {
+      const id = html(account.id);
+      const lifecycle = account.enabled
+        ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`
+        : `<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}">Enable</button>`;
+      return `
+        <section class="dp-settings-users-integration" data-account-row="${id}">
+          <div class="dp-settings-users-integration-head">
+            <span class="dp-settings-users-name">${html(accountName(account))}</span>
+            ${accountStatus(account)}
+            <div class="dp-settings-users-actions">
+              ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}">Issue Token</button>` : ''}
+              <button class="btn btn-ghost btn-sm" type="button" data-user-action="activity" data-account-id="${id}">Activity</button>
+              ${lifecycle}
+              ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}">Delete</button>`}
+            </div>
+          </div>
+          ${tokenRows(account)}
+        </section>`;
+    }).join('');
+  }
+
+  function usersBody() {
+    const users = state.users;
+    if (users.error) return `<div class="dp-settings-load-error"><b>Accounts could not be loaded.</b><span>${html(users.error)}</span></div>`;
+    if (!Array.isArray(users.accounts)) return '<div class="dp-settings-loading">Loading accounts…</div>';
+    const live = users.accounts.filter(liveAccount);
+    const humans = live.filter(account => !isIntegration(account));
+    const integrations = live.filter(isIntegration);
+    const people = card('User Accounts', duplicateNotice(humans) + humanRows(humans), {
+      className: 'dp-settings-users-card',
+      titlePrefix: familyIcon('users', 'users'),
+      headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
+      headerCenterClass: 'dp-settings-auth-header-copy',
+      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local">Add Local Account</button>',
+    });
+    const automation = card('Integration Accounts', integrationBlocks(integrations), {
+      className: 'dp-settings-users-card dp-settings-users-integrations-card',
+      titlePrefix: familyIcon('users', 'key-round'),
+      headerCenter: 'Automation that submits downloads through the API. A token is shown once, when it is issued.',
+      headerCenterClass: 'dp-settings-auth-header-copy',
+      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">Add Integration Account</button>',
+    });
+    return people + automation;
+  }
+
+  function usersPanel() {
+    return `<div class="dp-settings-users" data-users-mount>${usersBody()}</div>`;
+  }
+
+  function paintUsers() {
+    const mount = root()?.querySelector('[data-users-mount]');
+    if (mount) mount.innerHTML = usersBody();
+  }
+
+  async function loadUsers() {
+    try {
+      const result = await request('GET', '/accounts', undefined, 10000);
+      const accounts = Array.isArray(result?.accounts) ? result.accounts : [];
+      const tokens = {};
+      await Promise.all(accounts.filter(account => liveAccount(account) && isIntegration(account)).map(async account => {
+        try {
+          const listed = await request('GET', `/accounts/${encodeURIComponent(account.id)}/tokens`, undefined, 10000);
+          tokens[account.id] = Array.isArray(listed?.tokens) ? listed.tokens : [];
+        } catch (_) {
+          tokens[account.id] = null;
+        }
+      }));
+      state.users = {accounts, tokens, error: ''};
+    } catch (error) {
+      state.users = {accounts: null, tokens: {}, error: text(error.message)};
+    }
+    paintUsers();
+  }
+
+  const accountById = id => (state.users.accounts || []).find(account => account.id === id) || null;
+
+  // One modal body of labelled fields; returns the inputs by name.
+  function mountFields(body, intro, fields) {
+    body.innerHTML = `${intro ? '<p class="dp-modal-message"></p>' : ''}${fields.map(field => `
+      <label class="dp-modal-field"><span class="form-label">${html(field.label)}</span>${
+        field.choices
+          ? `<select class="input" data-field="${html(field.name)}">${field.choices.map(([value, label]) =>
+              `<option value="${html(value)}" ${selected(field.value, value)}>${html(label)}</option>`).join('')}</select>`
+          : `<input class="input" data-field="${html(field.name)}" type="${html(field.type || 'text')}" maxlength="${html(field.maxlength || 256)}" autocomplete="${html(field.autocomplete || 'off')}" value="${html(field.value || '')}">`}
+      </label>`).join('')}`;
+    if (intro) body.querySelector('.dp-modal-message').textContent = intro;
+    const inputs = {};
+    body.querySelectorAll('[data-field]').forEach(control => { inputs[control.dataset.field] = control; });
+    return inputs;
+  }
+
+  async function fieldsDialog({title, intro = '', acceptLabel, tone = '', fields}) {
+    let inputs = {};
+    const dialog = window.DPSettingsModal.open({
+      title, acceptLabel, tone, className: 'dp-users-dialog',
+      mount(body) {
+        inputs = mountFields(body, intro, fields);
+        return body.querySelector('[data-field]');
+      },
+    });
+    const result = await dialog.closed;
+    if (!result.accepted) return null;
+    return Object.fromEntries(Object.entries(inputs).map(([name, control]) => [name, control.value]));
+  }
+
+  async function accountAct(work, success) {
+    try {
+      const result = await work();
+      if (success) notify(typeof success === 'function' ? success(result) : success, 'success');
+      return result;
+    } catch (error) {
+      notify(error.message, 'error');
+      return null;
+    } finally {
+      await loadUsers();
+    }
+  }
+
+  async function createLocalAccount() {
+    const values = await fieldsDialog({
+      title: 'Add Local Account', acceptLabel: 'Create Account',
+      fields: [
+        {name: 'display_name', label: 'Display Name'},
+        {name: 'username', label: 'Username', autocomplete: 'off'},
+        {name: 'password', label: 'Password', type: 'password', maxlength: 4096, autocomplete: 'new-password'},
+        {name: 'role', label: 'Role', choices: HUMAN_ROLES, value: 'user'},
+      ],
+    });
+    if (!values) return;
+    await accountAct(() => request('POST', '/accounts', {kind: 'local', ...values}, 10000), 'Account created');
+  }
+
+  async function createIntegrationAccount() {
+    const values = await fieldsDialog({
+      title: 'Add Integration Account', acceptLabel: 'Create Account',
+      intro: 'An Integration account submits downloads through the API with its own tokens. It cannot sign in to this interface.',
+      fields: [{name: 'display_name', label: 'Name', value: ''}],
+    });
+    if (!values) return;
+    await accountAct(() => request('POST', '/accounts', {kind: 'integration', display_name: values.display_name}, 10000),
+      'Integration account created');
+  }
+
+  async function changeRole(account) {
+    const values = await fieldsDialog({
+      title: `Change Role: ${accountName(account)}`, acceptLabel: 'Change Role',
+      intro: 'The new role applies to the account’s next request. Its open browsers reload with the new role; it is not signed out.',
+      fields: [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role}],
+    });
+    if (!values || values.role === account.role) return;
+    await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {role: values.role}, 10000),
+      'Role changed');
+  }
+
+  async function resetPassword(account) {
+    const values = await fieldsDialog({
+      title: `${account.has_password ? 'Reset' : 'Set'} Password: ${accountName(account)}`,
+      acceptLabel: account.has_password ? 'Reset Password' : 'Set Password',
+      intro: 'The account is signed out everywhere and signs in again with this password.',
+      fields: [
+        ...(account.has_password ? [] : [{name: 'username', label: 'Username'}]),
+        {name: 'password', label: 'New Password', type: 'password', maxlength: 4096, autocomplete: 'new-password'},
+      ],
+    });
+    if (!values) return;
+    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/password`,
+      {password: values.password, ...(values.username ? {username: values.username} : {})}, 10000), 'Password saved');
+  }
+
+  async function linkIdentity(account) {
+    const values = await fieldsDialog({
+      title: `Link OIDC Identity: ${accountName(account)}`, acceptLabel: 'Link Identity',
+      intro: 'Signing in with this identity will sign in as this account. The account’s current sessions end.',
+      fields: [
+        {name: 'issuer', label: 'Issuer', value: state.auth?.oidc_issuer_url || '', maxlength: 2048},
+        {name: 'subject', label: 'Subject', maxlength: 1024},
+      ],
+    });
+    if (!values) return;
+    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/oidc-identities`, values, 10000),
+      'OIDC identity linked');
+  }
+
+  async function mergeAccount(account) {
+    const others = (state.users.accounts || []).filter(item => liveAccount(item) && !isIntegration(item)
+      && item.id !== account.id && item.id !== selfId());
+    if (!others.length) { notify('There is no other account to merge into.', 'info'); return; }
+    const values = await fieldsDialog({
+      title: `Merge ${accountName(account)}`, acceptLabel: 'Merge Accounts', tone: 'danger',
+      intro: `${accountName(account)} will be folded into the account you choose. Its sign-in methods move to that account, `
+        + 'which keeps its own role. Its history stays attributed to it. This cannot be undone.',
+      fields: [{name: 'target_id', label: 'Keep This Account', choices: others.map(item => [item.id, `${accountName(item)} (${ROLE_LABELS[item.role] || item.role})`]), value: others[0].id}],
+    });
+    if (!values) return;
+    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/merge`, {target_id: values.target_id}, 10000),
+      'Accounts merged');
+  }
+
+  /* The account-impact confirmation for Disable and Delete. Its figures are
+   * read from the server when the dialog opens (GET /accounts/{id}/impact) and
+   * are never assumed; the mutation re-reads everything itself, and its own
+   * answer is what the page reports afterwards. */
+  function impactFigures(impact) {
+    const rows = [
+      ['Outstanding download requests withdrawn', impact.outstanding_requests],
+      ['Transfers kept for another account’s request', impact.shared_transfers_protected],
+      ['Completed downloads (not affected)', impact.completed_unaffected],
+    ];
+    return `<dl class="dp-account-impact-figures">${rows.map(([label, value]) =>
+      `<div><dt>${html(label)}</dt><dd>${html(Number(value || 0).toLocaleString('en-US'))}${impact.bounded && label.startsWith('Outstanding') ? '+' : ''}</dd></div>`).join('')}</dl>`;
+  }
+
+  async function confirmImpact(account, deleting) {
+    let impact;
+    try {
+      impact = await request('GET', `/accounts/${encodeURIComponent(account.id)}/impact`, undefined, 10000);
+    } catch (error) {
+      notify(error.message, 'error');
+      return false;
+    }
+    const dialog = window.DPSettingsModal.open({
+      role: 'alertdialog',
+      title: `${deleting ? 'Delete' : 'Disable'} ${accountName(account)}?`,
+      acceptLabel: deleting ? 'Delete account' : 'Disable account',
+      cancelLabel: 'Cancel',
+      tone: deleting ? 'danger' : '',
+      acceptTone: deleting ? '' : 'warning',
+      className: 'dp-account-impact',
+      mount(body) {
+        body.innerHTML = `
+          <p class="dp-modal-message dp-account-impact-lead"></p>
+          ${impactFigures(impact)}
+          ${deleting ? '<p class="dp-account-impact-note">The account’s history and the provenance of its past requests are retained.</p>' : ''}
+          <p class="dp-account-impact-qualifier">These figures reflect the current account and transfer state. They may change before confirmation.</p>`;
+        const lead = body.querySelector('.dp-account-impact-lead');
+        lead.textContent = deleting
+          ? 'Deleting this account will revoke its access and withdraw its outstanding download requests.'
+          : 'Disabling this account will revoke its access and withdraw its outstanding download requests.';
+        return lead;
+      },
+    });
+    return (await dialog.closed).accepted;
+  }
+
+  // What the server says the act withdrew and stopped -- never more.
+  function withdrawalReport(verb, result) {
+    const withdrawn = Array.isArray(result?.withdrawn_transfers) ? result.withdrawn_transfers.length : 0;
+    const stopped = Array.isArray(result?.cancelled_transfers) ? result.cancelled_transfers.length : 0;
+    if (!withdrawn) return `Account ${verb}. It had no outstanding requests.`;
+    const plural = withdrawn === 1 ? '' : 's';
+    if (stopped >= withdrawn) return `Account ${verb}. Requests withdrawn on ${withdrawn} transfer${plural}; all stopped.`;
+    return `Account ${verb}. Requests withdrawn on ${withdrawn} transfer${plural}; ${stopped} stopped so far. `
+      + 'The rest stop as the withdrawal settles, unless another account still needs them.';
+  }
+
+  async function disableAccount(account) {
+    if (!await confirmImpact(account, false)) return;
+    await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {enabled: false}, 15000),
+      result => withdrawalReport('disabled', result));
+  }
+
+  async function deleteAccount(account) {
+    if (!await confirmImpact(account, true)) return;
+    await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}`, undefined, 15000),
+      result => withdrawalReport('deleted', result));
+  }
+
+  async function enableAccount(account) {
+    await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {enabled: true}, 10000),
+      'Account enabled');
+  }
+
+  /* The one-time token disclosure. The raw value exists only in this modal's
+   * own input; it is never stored in page state, and once the modal closes it
+   * cannot be shown again. */
+  async function issueToken(account) {
+    const values = await fieldsDialog({
+      title: `Issue Token: ${accountName(account)}`, acceptLabel: 'Issue Token',
+      intro: 'Name the automation that will use this token, so it can be told apart and revoked later.',
+      fields: [{name: 'label', label: 'Token Label', maxlength: 128}],
+    });
+    if (!values) return;
+    const issued = await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/tokens`,
+      {label: values.label}, 10000));
+    if (!issued?.token) return;
+    const dialog = window.DPSettingsModal.open({
+      title: 'Copy Your New Token',
+      dismiss: true,
+      cancelLabel: 'Done',
+      className: 'dp-token-disclosure-dialog',
+      mount(body) {
+        body.innerHTML = `
+          <div class="dp-token-disclosure" role="group" aria-label="One-time API token disclosure">
+            <b class="dp-token-disclosure-warning">Copy this token now. DebridPulse will not display it again.</b>
+            ${embeddedActionField(
+              '<input class="input" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly issued API token">',
+              '<button class="btn btn-ghost btn-sm" type="button" data-token-copy>Copy</button>')}
+          </div>`;
+        const field = body.querySelector('input');
+        field.value = issued.token;
+        body.querySelector('[data-token-copy]').addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(field.value);
+            notify('Token copied', 'success');
+          } catch (_) {
+            field.select();
+            notify('Select and copy the token manually', 'info');
+          }
+        });
+        return field;
+      },
+    });
+    await dialog.closed;
+  }
+
+  async function revokeToken(account, tokenId) {
+    const confirmed = await window.DPSettingsModal.confirm({
+      title: 'Revoke this token?',
+      message: 'Automation using this token loses access at once. Downloads it already submitted are not affected.',
+      confirmLabel: 'Revoke Token',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}/tokens/${encodeURIComponent(tokenId)}`,
+      undefined, 10000), 'Token revoked');
+  }
+
+  /* An account's own requests, newest first: what was asked for, its
+   * transfer's status, and whether the request was withdrawn. An outstanding
+   * request can be withdrawn here, one demand at a time, through the one
+   * withdrawal API; the transfer core decides what that means for the
+   * transfer (it stops only when no other request still needs it). */
+  const readActivity = account => request('GET',
+    `/requests?account_id=${encodeURIComponent(account.id)}&limit=50`, undefined, 10000)
+    .then(result => (Array.isArray(result?.requests) ? result.requests : []));
+
+  function activityMarkup(rows) {
+    const date = value => (window.downloadsDateMarkup ? window.downloadsDateMarkup(value) : html(value));
+    return rows.length ? `
+      <div class="dp-users-activity-wrap">
+        <table class="t-table dp-users-activity">
+          <thead><tr><th>Download</th><th>Status</th><th>Requested</th><th>Request</th></tr></thead>
+          <tbody>${rows.map(row => `
+            <tr>
+              <td>${html(row.name || `Transfer ${row.transfer_id}`)}</td>
+              <td>${html(row.status)}</td>
+              <td>${date(row.created_at)}</td>
+              <td>${row.withdrawn_at ? `Withdrawn ${date(row.withdrawn_at)}`
+                : `<span class="dp-users-activity-outstanding">Outstanding<button class="btn btn-ghost btn-sm" type="button" data-withdraw-demand="${html(row.id)}">Withdraw</button></span>`}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+      </div>
+      <p class="dp-modal-message">The 50 most recent requests.</p>`
+      : '<p class="dp-modal-message">This account has not requested any downloads.</p>';
+  }
+
+  // One request's withdrawal, reported as the server answered it: withdrawn,
+  // already withdrawn, refused with its reason, or unconfirmed without an answer.
+  async function withdrawAccountRequest(account, demandId, button) {
+    const confirmed = await window.DPSettingsModal.confirm({
+      title: 'Withdraw this request?',
+      message: `${accountName(account)}'s request is withdrawn. The transfer stops only if no other `
+        + 'outstanding request still needs it. Completed downloads and history are kept.',
+      confirmLabel: 'Withdraw Request',
+    });
+    if (!confirmed) return;
+    setBusy(button, true, 'Withdrawing…');
+    try {
+      const result = await request('POST', `/requests/${encodeURIComponent(demandId)}/withdraw`, undefined, 15000);
+      notify(result?.already_withdrawn ? 'This request was already withdrawn.' : 'Request withdrawn.', 'success');
+    } catch (error) {
+      notify(error?.status ? `Request not withdrawn: ${error.message}`
+        : 'Withdrawal not confirmed: no response from the server. Check the request again.', 'error');
+    }
+  }
+
+  async function showActivity(account) {
+    let rows;
+    try {
+      rows = await readActivity(account);
+    } catch (error) {
+      notify(error.message, 'error');
+      return;
+    }
+    let body = null;
+    const repaint = async () => {
+      try {
+        rows = await readActivity(account);
+      } catch (error) {
+        notify(error.message, 'error');
+      }
+      if (body?.isConnected) body.innerHTML = activityMarkup(rows);
+    };
+    const dialog = window.DPSettingsModal.open({
+      title: `Activity: ${accountName(account)}`,
+      dismiss: true,
+      className: 'dp-users-activity-dialog',
+      mount(mounted) {
+        body = mounted;
+        body.innerHTML = activityMarkup(rows);
+        body.addEventListener('click', event => {
+          const button = event.target.closest('button[data-withdraw-demand]');
+          if (!button) return;
+          void withdrawAccountRequest(account, button.dataset.withdrawDemand, button).then(repaint);
+        });
+        return body.querySelector('table, p');
+      },
+    });
+    await dialog.closed;
+  }
+
+  // Returns true when the click was a Users & Access action.
+  function usersAction(event) {
+    const button = event.target.closest('button[data-user-action]');
+    if (!button || !root()?.contains(button)) return false;
+    const action = button.dataset.userAction;
+    const account = accountById(button.dataset.accountId || '');
+    if (action === 'create-local') void createLocalAccount();
+    else if (action === 'create-integration') void createIntegrationAccount();
+    else if (!account) return true;
+    else if (action === 'role') void changeRole(account);
+    else if (action === 'password') void resetPassword(account);
+    else if (action === 'link') void linkIdentity(account);
+    else if (action === 'merge') void mergeAccount(account);
+    else if (action === 'activity') void showActivity(account);
+    else if (action === 'disable') void disableAccount(account);
+    else if (action === 'enable') void enableAccount(account);
+    else if (action === 'delete') void deleteAccount(account);
+    else if (action === 'issue-token') void issueToken(account);
+    else if (action === 'revoke-token') void revokeToken(account, button.dataset.tokenId || '');
+    return true;
   }
 
   /* The OIDC card's header status, in the canonical three-state provider
@@ -3559,15 +4083,6 @@
     if (!a?.oidc_enabled) return {text: '', tone: 'none'};
     if (!a?.oidc_configured) return {text: 'Unconfigured', tone: 'error'};
     return a?.oidc_verified ? {text: 'Verified', tone: 'success'} : {text: 'Configured', tone: 'warning'};
-  }
-
-  /* Persistent stored-token status, derived from canonical durable state
-   * alone -- never from a token value on screen and never from the one-time
-   * disclosure block, which is gone the moment the page re-renders without a
-   * freshly minted token. Status is coloured TEXT in this application; a
-   * button is an action and a toggle is participation, so it wears neither. */
-  function tokenReadyStatus(a) {
-    return a?.api_token_configured ? {text: 'Token Ready', tone: 'success'} : {text: '', tone: 'none'};
   }
 
   /* ── Data & Maintenance ───────────────────────────────────────────────────
@@ -3748,6 +4263,7 @@
               ${panel('extraction', extractionPanel(state.settings))}
               ${panel('notifications', notificationsPanel(state.settings))}
               ${panel('authentication', authenticationPanel(state.auth))}
+              ${panel('users', usersPanel())}
               ${panel('maintenance', maintenancePanel(state.settings))}
             </div>
           </div>
@@ -3984,6 +4500,7 @@
         return;
       }
 
+      if (usersAction(event)) return;
       const button = event.target.closest('button[data-action]');
       if (!button) return;
       const action = button.dataset.action;
@@ -4009,9 +4526,6 @@
       else if (action === 'clear-password') clearPassword(button);
       else if (action === 'clear-oidc-secret') clearOidcSecret(button);
       else if (action === 'verify-oidc') verifyOidc(button);
-      else if (action === 'generate-token') generateToken(button);
-      else if (action === 'clear-token') clearToken(button);
-      else if (action === 'copy-token') copyToken();
       else if (action === 'copy-oidc-callback') copyOidcCallback();
       else if (action === 'logout-session') logoutSession(button);
     });
@@ -4176,38 +4690,6 @@
           {[declared.option]: value, ...(authorization.proof || {})}, 15000);
         adoptAuthentication(result);
         return declared.redacted ? '' : authControlValue(key, result);
-      },
-    });
-
-    /* API Access participation has its own canonical endpoint, and nothing
-     * else about it differs: same boundary, same baseline, same rollback. */
-    persistence.defineScope('api-token', {
-      commit: async ({key, draft}) => {
-        const enabled = draft === true || draft === '1';
-        /* Enabling API Access with nothing stored is a request for API access,
-         * not a request to be told a token is missing. The obvious intent is
-         * completed here by the ONE canonical minting act -- which also
-         * discloses the raw value once -- and the participation write then
-         * proceeds normally. Disabling never touches the stored token, so a
-         * later enable reuses it; only an explicit Revoke removes one. */
-        const minted = enabled && !state.auth?.api_token_configured
-          ? await mintApiToken()
-          : null;
-        // A disclosure belongs to the act that minted it. Changing
-        // participation is a different act, so any token still on screen stops
-        // being shown rather than riding along with an unrelated write.
-        const stale = !minted && !!state.oneTimeToken;
-        if (stale) state.oneTimeToken = '';
-        const result = await request('PUT', '/auth/api-token',
-          {[COMMIT_FIELDS[key].option]: enabled}, 10000);
-        adoptAuthentication({...state.auth,
-          api_token_enabled: !!result?.enabled,
-          api_token_configured: !!result?.configured});
-        // The disclosure is markup, so showing or removing it rebuilds the
-        // page. Nothing is dirty at this point: the toggle that started this IS
-        // the committed value, and the render re-adopts every baseline.
-        if (minted || stale) renderPreservingViewport();
-        return result?.enabled ? '1' : '0';
       },
     });
 
@@ -4767,7 +5249,7 @@
       // place, disabled. The password field is where the operator goes next.
       setBusy(button, false);
       paintAuthDerived();
-      focusSurvivor(`#${fieldId('auth_password')}`, '[data-action="generate-token"]');
+      focusSurvivor(`#${fieldId('auth_password')}`);
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -4799,72 +5281,6 @@
     }
     setBusy(button, false);
     if (button?.isConnected) button.focus();
-  }
-
-  /* The ONE act that mints an API token.
-   *
-   * Rotate/Generate performs it, and so does enabling API Access for the first
-   * time -- one canonical request, one canonical adoption, one disclosure of
-   * the raw value. Neither caller has a token lifecycle of its own. The raw
-   * value goes to page memory only, never to canonical state. */
-  async function mintApiToken() {
-    const result = await request('POST', '/auth/api-token', undefined, 10000);
-    state.auth.api_token_enabled = true;
-    state.auth.api_token_configured = true;
-    state.oneTimeToken = text(result.token);
-    return result;
-  }
-
-  async function generateToken(button) {
-    await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, state.auth?.api_token_configured ? 'Rotating…' : 'Generating…');
-    try {
-      const result = await mintApiToken();
-      renderPreservingViewport();
-      notify(result.rotated ? 'API token rotated' : 'API token generated', 'success');
-    } catch (error) {
-      notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
-    }
-  }
-
-  async function clearToken(button) {
-    const confirmed = await window.DPSettingsModal.confirm({
-      title: 'Revoke API token?',
-      message: 'Existing automation using this token will immediately lose access.',
-      confirmLabel: 'Revoke Token',
-      tone: 'danger',
-    });
-    if (!confirmed) return;
-    await window.DPSettingsPersistence.settle(root());
-    setBusy(button, true, 'Clearing…');
-    try {
-      await request('DELETE', '/auth/api-token', undefined, 10000);
-      state.auth.api_token_enabled = false;
-      state.auth.api_token_configured = false;
-      state.oneTimeToken = '';
-      renderPreservingViewport();
-      focusSurvivor('[data-action="generate-token"]');
-      notify('API token revoked', 'success');
-    } catch (error) {
-      notify(error.message, 'error');
-    } finally {
-      setBusy(button, false);
-      if (button?.isConnected) button.focus();
-    }
-  }
-
-  async function copyToken() {
-    if (!state.oneTimeToken) return;
-    try {
-      await navigator.clipboard.writeText(state.oneTimeToken);
-      notify('API token copied', 'success');
-    } catch (_) {
-      const inputEl = byId('dp-settings-api-token-once');
-      inputEl?.select();
-      notify('Select and copy the token manually', 'info');
-    }
   }
 
   function clearOidcResources({closePopup = true} = {}) {
@@ -5029,10 +5445,6 @@
   async function load() {
     state.activeTab = 'sources';
     document.getElementById('content')?.classList.remove('settings-active');
-    // A one-time disclosure belongs to the act that produced it. Re-entering
-    // Settings is not that act, so the freshly minted token is dropped here
-    // and the disclosure block cannot come back with the page.
-    state.oneTimeToken = '';
 
     if (state.loading) return state.loading;
     const generation = ++loadGeneration;
@@ -5062,7 +5474,9 @@
       syncGlobalSettings(settings);
       state.auth = fallbackAuthFromSettings(settings);
       syncAuthIntoSettings(state.auth);
+      state.users = {accounts: null, tokens: {}, error: ''};
       render();
+      void loadUsers();
 
       void recordedPromise.then(recorded => {
         if (generation === loadGeneration) showRecordedEvents(recorded);

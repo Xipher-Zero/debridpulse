@@ -111,8 +111,8 @@ def test_settings_authentication_renders_final_cards_directly() -> None:
     for fragment in (
         "Authentication Status",
         "Username & Password",
-        "API Access",
         "OpenID Connect",
+        "Default Role for New OIDC Users",
         "Browser Session Lifetime",
         "Public DebridPulse Base URL",
         "OIDC Callback URL",
@@ -174,12 +174,9 @@ def test_password_session_and_api_token_secret_semantics_survive_canonicalizatio
         "clear_password",
         "auth_session_lifetime_hours",
         "logoutSession(",
-        "function generateToken(",
-        "function clearToken(",
-        "request('PUT', '/auth/api-token'",
-        "request('POST', '/auth/api-token'",
-        "request('DELETE', '/auth/api-token'",
-        "oneTimeToken",
+        # 1.0.13 ACL: tokens are Integration accounts' (Users & Access).
+        "async function issueToken(",
+        "async function revokeToken(",
         "Copy this token now",
     ):
         assert fragment in source

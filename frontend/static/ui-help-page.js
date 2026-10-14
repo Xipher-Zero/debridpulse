@@ -477,7 +477,7 @@
       <section class="dp-help-document" aria-labelledby="dp-help-settings-heading">
         <div class="dp-help-section-heading">
           <h2 id="dp-help-settings-heading">Settings reference</h2>
-          <p>The six Settings tabs, their cards, and the options most people need.</p>
+          <p>The seven Settings tabs, their cards, and the options most people need.</p>
         </div>
 
         ${inset('How saving works', `
@@ -512,13 +512,23 @@
 
           ${accordion('Authentication', `
             <ul>
-              <li><b>Authentication Status:</b> the current mode, the state of each sign-in method, the API token, <b>Active Browser Sessions</b> with <b>Log Out Current Session</b>, and <b>Browser Session Lifetime</b> (12 hours by default).</li>
+              <li><b>Authentication Status:</b> the current mode, the state of each sign-in method, <b>Active Browser Sessions</b> with <b>Log Out Current Session</b>, and <b>Browser Session Lifetime</b> (12 hours by default).</li>
               <li><b>Username &amp; Password:</b> a local account for browser sign-in. The same username and password also work for scripts that use HTTP Basic sign-in.</li>
-              <li><b>OpenID Connect</b> (OIDC): sign in through an identity service you already run, such as Authentik or Keycloak. Set <b>Public DebridPulse Base URL</b> to the HTTPS address people use to reach DebridPulse; DebridPulse then shows the exact <b>OIDC Callback URL</b> to register with your identity service. Fill in <b>Issuer URL</b>, <b>Client ID</b> and, if needed, <b>Client Secret</b>, then press <b>Test</b>, which runs a real sign-in in a pop-up window. <b>Access Control</b> limits which identities may sign in. If the base URL is set by the <code>PUBLIC_BASE_URL</code> environment variable, the field is read-only here; change it in your installation instead.</li>
-              <li><b>API Access:</b> a token for scripts and monitoring tools. <b>Generate Token</b> shows it once, so copy it then; <b>Rotate Token</b> replaces it and <b>Revoke Token</b> removes it. Tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. API Access does not protect the web pages; use Username &amp; Password or OIDC for that.</li>
+              <li><b>OpenID Connect</b> (OIDC): sign in through an identity service you already run, such as Authentik or Keycloak. Set <b>Public DebridPulse Base URL</b> to the HTTPS address people use to reach DebridPulse; DebridPulse then shows the exact <b>OIDC Callback URL</b> to register with your identity service. Fill in <b>Issuer URL</b>, <b>Client ID</b> and, if needed, <b>Client Secret</b>, then press <b>Test</b>, which runs a real sign-in in a pop-up window. <b>Access Control</b> limits which identities may sign in, and <b>Default Role for New OIDC Users</b> (User or ReadOnly User) is the role an identity receives the first time it signs in. A new OIDC identity always gets its own account; it is never joined to an existing account just because the email matches. If the base URL is set by the <code>PUBLIC_BASE_URL</code> environment variable, the field is read-only here; change it in your installation instead.</li>
             </ul>
             <p>Turning off the last sign-in method asks for confirmation, because it leaves DebridPulse open to anyone who can reach it. Failed sign-ins are slowed down rather than locked out.</p>
-            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool the API token.</p>`)}
+            <p>When sign-in is on, the Prometheus metrics address <code>/api/metrics</code> also needs a credential; give your monitoring tool an Integration token from <b>Users &amp; Access</b>.</p>`)}
+
+          ${accordion('Users &amp; Access', `
+            <p>Every person who signs in has an account with one role:</p>
+            <ul>
+              <li><b>Admin:</b> everything, including Settings, the Activity Log and every transfer.</li>
+              <li><b>User:</b> adds and runs downloads, sees every transfer, and can withdraw the requests they made. Settings are not available.</li>
+              <li><b>ReadOnly User:</b> sees the Dashboard, Downloads, Details and Statistics, and changes nothing.</li>
+            </ul>
+            <p><b>User Accounts</b> lists each person with their role, how they sign in and whether the account is enabled. <b>Add Local Account</b> creates a username-and-password account. <b>Change Role</b> applies at once: that person's open pages reload with the new role, without signing them out. <b>Disable</b> and <b>Delete</b> first show how many outstanding download requests the account has; those requests are withdrawn, a transfer someone else also asked for keeps going, and finished downloads are never touched. Deleting keeps the account's history. Two accounts that share a verified email are pointed out, but only <b>Merge</b> joins them, and only when you choose which account to keep.</p>
+            <p><b>Integration Accounts</b> are for automation and cannot sign in to these pages. <b>Issue Token</b> shows a new token once, so copy it then; tools send it as <code>Authorization: Bearer &lt;token&gt;</code>. <b>Revoke</b> stops a token at once without touching anything it already submitted.</p>
+            <p>Anyone signed in can change their own display name and password from their name at the bottom of the sidebar.</p>`)}
 
           ${accordion('Notifications', `
             <ul>
@@ -615,7 +625,7 @@
             <p>Check that <b>Settings → Extraction → Automatic Extraction</b> is enabled; extraction only starts after the download is complete. Read the download's <b>Extraction</b> and <b>Extraction Error</b> fields. A protected archive needs its password in <b>Archive Passwords</b>, and the destination needs enough space. When extraction fails, the archive is kept so you can try again.</p>`)}
 
           ${accordion('Discord or Prometheus is not working', `
-            <p>For Discord, press <b>Test</b> on the card, check the webhook still exists in Discord, and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper the API token from <b>Authentication → API Access</b>.</p>`)}
+            <p>For Discord, press <b>Test</b> on the card, check the webhook still exists in Discord, and that the event you expect is switched on. For Prometheus, scrape <code>/api/metrics</code>; when sign-in is enabled, give the scraper an Integration token from <b>Users &amp; Access</b>.</p>`)}
 
           ${accordion('The page stops updating live', `
             <p>DebridPulse sends live updates over a long-lived connection (Server-Sent Events) and falls back to checking every 15 seconds if that fails. If updates are often late, a reverse proxy in front of DebridPulse is probably buffering or cutting the connection: it must allow long-running streamed responses. Reloading the page reconnects.</p>`)}

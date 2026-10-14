@@ -19,6 +19,19 @@ async function refreshProviderStatus() {
   return window.DPProviderStatus.refresh();
 }
 
+// The caller's authority, from its one owner (auth.js). Every control that a
+// role may lack is built only when this says so; the server decides anyway.
+function dpCan(capability) {
+  return !!(window.debridPulseAuth && window.debridPulseAuth.can(capability));
+}
+
+// The installation's display timezone, for every role (Admin's settings carry
+// the same value).
+function dpDisplayTimezone() {
+  return String((settingsData && settingsData.timezone)
+    || (window.debridPulseAuth && window.debridPulseAuth.authority.display_timezone) || '').trim() || 'UTC';
+}
+
 function renderTopbarActions() {
   const el = document.getElementById('topbar-actions');
   if (!el) return;
@@ -815,6 +828,7 @@ function patchProgressOnlyTransferEvent(data) {
 // ── Status Bar ─────────────────────────────────────────────────────────────
 
 async function checkConnections() {
+  if (!dpCan('administer')) return;  // engine and provider health are Admin's
   const cfg = settingsData || {};
   await refreshProviderStatus();
 
@@ -2264,6 +2278,7 @@ async function showDetail(id) {
     `;
     dpRenderOriginalResource(modalBody, t);
     dpRenderErrorDisclosure(modalBody, t);
+    dpRenderWithdrawal(t);
 
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: t}}));
@@ -2277,6 +2292,63 @@ async function showDetail(id) {
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: null, error: true}}));
   }
+}
+
+// The caller's own outstanding requests that this transfer serves (the
+// server's access projection, directly or through consolidation) can be
+// withdrawn here. An Admin already controls every transfer directly, so this
+// is the non-administering account's control. The server decides what
+// withdrawal stops; this only asks.
+function dpRenderWithdrawal(t) {
+  const footer = DPModal.footer();
+  const own = Array.isArray(t.access?.own_requests) ? t.access.own_requests : [];
+  if (!footer || !own.length || dpCan('administer')) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn-ghost btn-sm dp-detail-withdraw';
+  button.textContent = own.length > 1 ? 'Withdraw My Requests' : 'Withdraw My Request';
+  button.addEventListener('click', () => dpWithdrawOwnRequests(t, own, button));
+  footer.replaceChildren(button);
+  footer.hidden = false;
+}
+
+async function dpWithdrawOwnRequests(t, own, button) {
+  const confirmed = await window.DPSettingsModal.confirm({
+    title: own.length > 1 ? 'Withdraw your requests?' : 'Withdraw your request?',
+    message: 'This transfer stops only if no other outstanding request still needs it. '
+      + 'Completed downloads and history are kept.',
+    confirmLabel: 'Withdraw',
+  });
+  if (!confirmed) return;
+  setButtonPending(button, true, 'Withdrawing…');
+  // Each request's outcome is what the server answered for it: withdrawn now,
+  // already withdrawn, refused (with the server's own reason), or unknown when
+  // no answer arrived. Nothing is inferred beyond that.
+  const outcome = {withdrawn: 0, already: 0, refused: [], unknown: 0};
+  for (const demand of own) {
+    try {
+      const result = await api('POST', `/requests/${encodeURIComponent(demand)}/withdraw`);
+      if (result && result.already_withdrawn) outcome.already += 1; else outcome.withdrawn += 1;
+    } catch (error) {
+      if (error && error.status) outcome.refused.push(sanitizeErrorMsg(error.message));
+      else outcome.unknown += 1;
+    }
+  }
+  const parts = [];
+  if (outcome.withdrawn) parts.push(`${outcome.withdrawn} withdrawn`);
+  if (outcome.already) parts.push(`${outcome.already} already withdrawn`);
+  if (outcome.refused.length) parts.push(`${outcome.refused.length} refused (${[...new Set(outcome.refused)].join('; ')})`);
+  if (outcome.unknown) parts.push(`${outcome.unknown} not confirmed — no response; check this transfer again`);
+  const failed = outcome.refused.length + outcome.unknown;
+  const message = own.length > 1 ? `Requests: ${parts.join(', ')}.`
+    : outcome.withdrawn ? 'Request withdrawn.'
+    : outcome.already ? 'This request was already withdrawn.'
+    : outcome.refused.length ? `Request not withdrawn: ${outcome.refused[0]}`
+    : 'Withdrawal not confirmed: no response from the server. Check this transfer again.';
+  toast(message, !failed ? 'success' : (outcome.withdrawn || outcome.already ? 'warning' : 'error'));
+  // Whatever happened, Details shows the server's state now.
+  if (DPModal.mode === 'details') showDetail(t.id);
+  else setButtonPending(button, false);
 }
 
 // Transfer Trace Log: the backend builds and sanitizes the trace
@@ -2392,10 +2464,12 @@ document.addEventListener('DOMContentLoaded', () => {
   setDot('aria2', 'check', 'aria2: checking…');
   setDot('db',    'check', 'DB: checking…');
 
-  // Load settings
-  try {
-    settingsData = await api('GET', '/settings');
-  } catch(e) {
+  // Load settings (Admin's: the configuration surface is Admin's alone)
+  if (dpCan('administer')) {
+    try {
+      settingsData = await api('GET', '/settings');
+    } catch(e) {
+    }
   }
 
   renderTopbarActions();
@@ -2595,7 +2669,22 @@ document.addEventListener('DOMContentLoaded', () => {
           function() {}
         );
 
+        // The account's role changed: its session continues under the new
+        // authority, so start over from what the server now allows.
+        es.addEventListener('account_changed', function() {
+          window.location.reload();
+        });
+
+        // The session ended (disabled, deleted, credentials changed): the
+        // session owner confirms and signs the browser out.
+        es.addEventListener('session_ended', function() {
+          es.close();
+          window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
+        });
+
         es.onerror = function() {
+          // A refused reconnect is often an ended session or a changed role.
+          window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
           if (!sseOk) {
             startPolling();
           }
@@ -2738,7 +2827,7 @@ async function loadRuntimeSpeed() {
 }
 
 async function loadRuntimeStatus() {
-  if (_runtimeStatusBusy) return;
+  if (_runtimeStatusBusy || !dpCan('administer')) return;
   _runtimeStatusBusy = true;
   try {
     const data = await api('GET', '/execution/runtime-status', null, 3000);
@@ -2771,7 +2860,9 @@ function updateRuntimeStatusBadge(patch) {
 
   if (elLimit) elLimit.textContent = fmtSpeedCap(s.limitBps);
 
-  topBadge.title = 'Active / max — live speed — download speed cap';
+  // Occupancy and capacity are administrative runtime facts: a caller who
+  // cannot read them sees only the live speed, never a stand-in zero.
+  topBadge.title = dpCan('administer') ? 'Active / max — live speed — download speed cap' : 'Live download speed';
 
   renderOperatorTitle();
 

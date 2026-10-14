@@ -263,6 +263,12 @@ def _capture_legacy_credential(data: dict) -> None:
     _legacy_startup_inputs["credential"] = (username, password_hash) if password_hash else None
 
 
+def display_timezone() -> str:
+    """The installation's display timezone (the container's ``TZ``): how every
+    human role's interface renders timestamps."""
+    return (os.getenv("TZ", "UTC") or "UTC").strip() or "UTC"
+
+
 def get_settings() -> AppSettings:
     return _settings
 

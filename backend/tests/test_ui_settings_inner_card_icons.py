@@ -7,14 +7,16 @@ STATIC = ROOT / 'frontend' / 'static'
 # family's Lucide glyph inside the one Settings header chip (familyIcon), the
 # glyph's stroke the family colour.
 FAMILY_COLOURS = {'sources': '#D657FF', 'downloads': '#2563EB', 'extraction': '#FF9D00',
-                  'authentication': '#1DDB69', 'notifications': '#04D7FE', 'maintenance': '#6366F1'}
+                  'authentication': '#1DDB69', 'users': '#1DDB69', 'notifications': '#04D7FE',
+                  'maintenance': '#6366F1'}
 EXPECTED = {
     'Premium Services': ('sources', 'crown'),
     'Automatic Extraction': ('extraction', 'archive-restore'),
     'Authentication Status': ('authentication', 'shield-check'),
     'Username & Password': ('authentication', 'user-lock'),
     'OpenID Connect': ('authentication', 'id-card'),
-    'API Access': ('authentication', 'key-round'),
+    'User Accounts': ('users', 'users'),
+    'Integration Accounts': ('users', 'key-round'),
     'Discord Notifications': ('notifications', 'message-square'),
     'Statistics Reporting': ('notifications', 'chart-line'),
     'Backups & Retention': ('maintenance', 'archive'),

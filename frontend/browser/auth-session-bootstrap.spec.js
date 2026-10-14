@@ -41,7 +41,7 @@ test('unrelated application 401 does not redirect an open-mode browser to login'
 test('application 401 still redirects when canonical session confirmation reports expiration', async ({ page }) => {
   let sessionExpired = false;
 
-  await page.route('**/api/auth/session', route => {
+  await page.route('**/api/auth/session', async route => {
     if (sessionExpired) {
       return route.fulfill({
         status: 401,
@@ -49,10 +49,14 @@ test('application 401 still redirects when canonical session confirmation report
         body: JSON.stringify({detail: 'Unauthorized'}),
       });
     }
+    // The real authority (account, role, generation) this page was composed
+    // for, so only the session facts under test differ.
+    const authority = await (await route.fetch()).json();
     return route.fulfill({
       status: 200,
       contentType: 'application/json',
       body: JSON.stringify({
+        ...authority,
         authenticated: true,
         mechanism: 'password_session',
         subject: 'operator',

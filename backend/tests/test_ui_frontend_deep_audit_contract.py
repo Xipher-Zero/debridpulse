@@ -123,7 +123,7 @@ def test_accepted_authentication_structure_and_copy_exist_independent_of_layerin
         "auth_username",
         "clear-password",
         "OpenID Connect",
-        "API Access",
+        "Default Role for New OIDC Users",
     )
     missing = [fragment for fragment in required if fragment not in js]
     assert not missing, f"Accepted Authentication contract is missing: {missing}"

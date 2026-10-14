@@ -1,6 +1,6 @@
-/* DebridPulse v1.0.11 Authentication cards. */
+/* DebridPulse Authentication and Users & Access cards. */
 #view-settings .dp-settings-username-password-card > .card-header,
-#view-settings .dp-settings-api-access-card > .card-header {
+#view-settings .dp-settings-users-card > .card-header {
   display: grid;
   grid-template-columns: minmax(240px, 1fr) minmax(420px, 1.4fr) minmax(240px, 1fr);
   align-items: center;
@@ -8,7 +8,7 @@
 }
 
 #view-settings .dp-settings-username-password-card > .card-header > .card-title,
-#view-settings .dp-settings-api-access-card > .card-header > .card-title {
+#view-settings .dp-settings-users-card > .card-header > .card-title {
   justify-self: start;
 }
 
@@ -55,7 +55,7 @@
 /* Authentication Status --------------------------------------------------- */
 #view-settings .dp-settings-auth-kpi-grid {
   min-width: 0;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -293,105 +293,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 /* API Access --------------------------------------------------------------- */
-/* Two states, one layout owner.
-   Ordinarily the card body holds nothing but the lifecycle pair, so the pair
-   IS the content and sits centred. While a one-time token is being disclosed
-   the disclosure is the content, and the pair becomes the actions BESIDE it --
-   stacked, so it occupies the disclosure's own vertical span instead of being
-   pushed underneath it. */
-#view-settings .dp-settings-api-token-layout {
-  min-width: 0;
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 18px;
-}
-
-#view-settings .dp-settings-api-token-actions {
-  min-width: 0;
-  min-height: var(--dp-input-height);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  margin: 0;
-}
-
-#view-settings .dp-settings-api-token-layout.is-disclosing {
-  align-items: stretch;
-  justify-content: flex-start;
-}
-
-#view-settings .dp-settings-api-token-layout.is-disclosing > .dp-settings-api-token-disclosure {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-/* Rotate above Revoke, the stack centred against the disclosure it belongs to
-   and sized by it rather than by a height declared here. */
-#view-settings .dp-settings-api-token-layout.is-disclosing > .dp-settings-api-token-actions {
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: stretch;
-  justify-content: center;
-  gap: 10px;
-}
-
-/* The token lifecycle PAIR, sized once.
-   They are two halves of one control group, so they share a footprint rather
-   than each measuring its own longest label -- which is what made them
-   different widths and, stacked in the disclosure state, visibly ragged. The
-   width holds every label either button takes, including its busy text. */
-#view-settings .dp-settings-api-token-generate,
-#view-settings .dp-settings-api-token-revoke {
-  inline-size: 136px;
-  min-inline-size: 136px;
-  justify-content: center;
-  white-space: nowrap;
-}
-
-/* The one-time disclosure.
-   Warning and value are ONE unit inside a gold container, in the Settings
-   caution language -- important, not destructive. The container exists only
-   while a freshly minted token is being shown, so the card itself is never
-   permanently urgent. */
-#view-settings .dp-settings-api-token-disclosure {
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 55%, var(--dp-border-default));
-  border-radius: var(--dp-radius-sm);
-  background: var(--dp-state-caution-bg);
-  padding: 13px 15px 15px;
-}
-
-#view-settings .dp-settings-api-token-warning {
-  min-width: 0;
-  margin: 0;
-  color: var(--dp-state-caution);
-  font-size: 11.5px;
-  font-weight: 750;
-  line-height: 1.4;
-}
-
-/* The value spans the disclosure; Copy is embedded through the one shared
-   compound-field primitive, exactly as the OIDC Callback URL Copy is. */
-#view-settings .dp-settings-api-token-field {
-  min-width: 0;
-  width: 100%;
-}
-
-#view-settings .dp-settings-api-token-field > .input {
-  font-family: var(--dp-font-mono);
-  font-size: 12px;
-}
-
-#view-settings .dp-settings-api-token-field > .btn {
-  white-space: nowrap;
-}
-
 /* The Authentication cards use the SAME operational header rail as a provider
    card -- state, then the action that proves it, then participation -- so
    status is the canonical coloured text, never a badge of its own. The rail
@@ -399,19 +300,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    Settings card owner (ui-settings-page.css); this file restated both, and a
    third copy would have appeared with the Notifications cards. Only what is
    genuinely local to these cards stays here. */
-#view-settings .dp-settings-oidc-grouped-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable,
-#view-settings .dp-settings-api-access-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable {
+#view-settings .dp-settings-oidc-grouped-card .dp-settings-card-header-controls > .dp-settings-auth-header-enable {
   justify-self: auto;
 }
 
 @media (max-width: 1280px) {
   #view-settings .dp-settings-username-password-card > .card-header,
-  #view-settings .dp-settings-api-access-card > .card-header {
+  #view-settings .dp-settings-users-card > .card-header {
     grid-template-columns: minmax(220px, 1fr) minmax(340px, 1.25fr) minmax(220px, 1fr);
-  }
-
-  #view-settings .dp-settings-auth-kpi-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
@@ -422,7 +318,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 @media (max-width: 900px) {
   #view-settings .dp-settings-username-password-card > .card-header,
-  #view-settings .dp-settings-api-access-card > .card-header {
+  #view-settings .dp-settings-users-card > .card-header {
     grid-template-columns: minmax(0, 1fr);
     gap: 7px;
     padding-block: 10px;
@@ -828,4 +724,247 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   #view-settings .dp-settings-oidc-section-heading {
     gap: 8px;
   }
+}
+
+/* OIDC provisioning: the default role sits under the admission heading it
+   belongs to, before the allowlists. */
+#view-settings .dp-settings-oidc-default-role {
+  margin: 4px 0 14px;
+}
+
+/* Users & Access ---------------------------------------------------------- */
+#view-settings .dp-settings-users {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+#view-settings .dp-settings-users-table-wrap {
+  min-width: 0;
+  overflow-x: auto;
+}
+
+#view-settings .dp-settings-users-table,
+#view-settings .dp-settings-users-tokens {
+  width: 100%;
+}
+
+#view-settings .dp-settings-users-table td,
+#view-settings .dp-settings-users-tokens td {
+  vertical-align: middle;
+}
+
+/* An account table is not a transfer table: the transfer tables' narrow-width
+   column reduction (ui-transfer-contract.css) never removes its Status or
+   Actions. It scrolls inside its own wrapper instead. */
+#view-settings :is(.dp-settings-users-table, .dp-settings-users-tokens) :is(th, td) {
+  display: table-cell;
+}
+
+#view-settings .dp-settings-users-name {
+  font-weight: 650;
+  color: var(--dp-text-primary, var(--text));
+}
+
+#view-settings .dp-settings-users-detail {
+  color: var(--dp-text-muted);
+  font-size: 11.5px;
+}
+
+#view-settings .dp-settings-users-actions-head {
+  text-align: right;
+}
+
+#view-settings .dp-settings-users-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+}
+
+#view-settings .dp-settings-users-self {
+  color: var(--dp-text-muted);
+  font-size: 11.5px;
+  font-style: italic;
+}
+
+/* Status is coloured text, as everywhere in Settings. */
+#view-settings .dp-settings-users-status {
+  font-size: 12px;
+  font-weight: 650;
+}
+#view-settings .dp-settings-users-status[data-tone='success'] {
+  color: var(--dp-state-success, var(--green));
+}
+#view-settings .dp-settings-users-status[data-tone='neutral'] {
+  color: var(--dp-text-muted);
+}
+
+#view-settings .dp-settings-users-empty {
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  text-align: center;
+  padding: 10px 0;
+}
+
+/* A suggestion, in the caution language: it asks for a look, nothing more. */
+#view-settings .dp-settings-users-duplicates {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 12px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 55%, var(--dp-border-default));
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-state-caution-bg);
+  padding: 11px 14px;
+  font-size: 12px;
+}
+#view-settings .dp-settings-users-duplicates > b {
+  color: var(--dp-state-caution);
+}
+#view-settings .dp-settings-users-duplicate {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+#view-settings .dp-settings-users-integration {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  overflow-x: auto;
+}
+#view-settings .dp-settings-users-integration + .dp-settings-users-integration {
+  border-top: 1px solid var(--dp-border-default);
+  padding-top: 12px;
+  margin-top: 12px;
+}
+#view-settings .dp-settings-users-integration-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+#view-settings .dp-settings-users-integration-head > .dp-settings-users-actions {
+  margin-left: auto;
+}
+
+/* Account dialogs (DPSettingsModal): fields stack, one per line. */
+.dp-modal-dialog.dp-users-dialog .dp-modal-body,
+.dp-modal-dialog.dp-account-dialog .dp-modal-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dp-modal-dialog.dp-users-dialog .dp-modal-field,
+.dp-modal-dialog.dp-account-dialog .dp-modal-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-password {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  border: 0;
+  padding: 0;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-password > legend {
+  margin: 10px 0 12px;
+  padding: 0;
+  color: var(--dp-text-primary, var(--text));
+  font-size: 13px;
+  font-weight: 700;
+}
+
+/* The account-impact confirmation: the consequence, centred; the server's
+   figures; the qualifier beside the footer. */
+.dp-modal-dialog.dp-account-impact .dp-modal-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  text-align: center;
+}
+.dp-modal-dialog.dp-account-impact .dp-account-impact-lead {
+  max-width: 44ch;
+  margin: 0;
+}
+.dp-account-impact-figures {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  width: 100%;
+  margin: 0;
+}
+.dp-account-impact-figures > div {
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 4px;
+  border: 1px solid var(--dp-border-default);
+  border-radius: var(--dp-radius-sm);
+  padding: 10px 8px;
+}
+.dp-account-impact-figures dt {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+.dp-account-impact-figures dd {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.dp-account-impact-note,
+.dp-account-impact-qualifier {
+  margin: 0;
+  max-width: 48ch;
+  color: var(--dp-text-muted);
+  font-size: 11.5px;
+  line-height: 1.45;
+}
+@media (max-width: 560px) {
+  .dp-account-impact-figures {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The one-time token disclosure: warning and value as one unit, in the
+   caution language -- important, not destructive. */
+.dp-token-disclosure {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  border: 1px solid color-mix(in srgb, var(--dp-state-caution) 55%, var(--dp-border-default));
+  border-radius: var(--dp-radius-sm);
+  background: var(--dp-state-caution-bg);
+  padding: 13px 15px 15px;
+}
+.dp-token-disclosure-warning {
+  color: var(--dp-state-caution);
+  font-size: 11.5px;
+  font-weight: 750;
+}
+.dp-token-disclosure .input {
+  font-family: var(--dp-font-mono);
+  font-size: 12px;
+}
+
+.dp-users-activity-wrap {
+  max-height: 50vh;
+  overflow: auto;
+}
+.dp-users-activity {
+  width: 100%;
+}
+.dp-users-activity-outstanding {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }

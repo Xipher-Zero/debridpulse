@@ -535,47 +535,52 @@ test('WS2-P1 Escape and Tab stay owned by the dialog even after focus leaves it,
 
 test('WS2-P1 Settings destructive confirmation: Cancel restores the initiator, a failed operation keeps it focused, an accepted one lands on a surviving control', async ({ page }) => {
   await isolateExternalFonts(page);
-  let failRevoke = false;
-  const revokes = [];
+  let failClear = false;
+  const clears = [];
+  let stored = true;
+  let current = {};
   await page.route('**/api/auth/config', async route => {
-    if (route.request().method() !== 'GET') return route.fallback();
-    const response = await route.fetch();
-    const body = await response.json();
-    await route.fulfill({response, json: {...body, api_token_enabled: true, api_token_configured: true}});
-  });
-  await page.route('**/api/auth/api-token', async route => {
-    if (route.request().method() !== 'DELETE') return route.fallback();
-    revokes.push(failRevoke ? 'failed' : 'revoked');
-    if (failRevoke) {
-      return route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'fixture revoke failure'})});
+    if (route.request().method() === 'GET') {
+      const response = await route.fetch();
+      current = {...await response.json(), oidc_client_secret_configured: stored};
+      return route.fulfill({response, json: current});
     }
-    return route.fulfill({status: 200, contentType: 'application/json', body: '{}'});
+    if (route.request().method() !== 'PUT' || !route.request().postDataJSON()?.clear_oidc_client_secret) {
+      return route.fallback();
+    }
+    clears.push(failClear ? 'failed' : 'cleared');
+    if (failClear) {
+      return route.fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'fixture clear failure'})});
+    }
+    stored = false;
+    return route.fulfill({status: 200, contentType: 'application/json',
+      body: JSON.stringify({...current, oidc_client_secret_configured: false})});
   });
   await page.goto('/');
   await page.locator('#sidebar .nav-item[data-view="settings"]').click();
   await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
   await page.locator('.dp-settings-tabs .stab[data-tab="authentication"]').click();
-  const revoke = page.locator('button[data-action="clear-token"]');
-  await expect(revoke).toBeEnabled();
+  const clear = page.locator('button[data-action="clear-oidc-secret"]');
+  await expect(clear).toBeEnabled();
 
-  await revoke.click();
+  await clear.click();
   await expect(page.locator('.dp-modal-overlay')).toBeVisible();
   await expect(page.locator('.dp-modal-dialog')).toHaveAttribute('role', 'alertdialog');
   await cancel(page).click();
-  await expect(revoke).toBeFocused();
-  expect(revokes).toEqual([]);
+  await expect(clear).toBeFocused();
+  expect(clears).toEqual([]);
 
-  failRevoke = true;
-  await revoke.click();
+  failClear = true;
+  await clear.click();
   await accept(page).click();
-  await expect.poll(() => revokes).toEqual(['failed']);
-  await expect(revoke).toBeEnabled();
-  await expect(revoke).toBeFocused();
+  await expect.poll(() => clears).toEqual(['failed']);
+  await expect(clear).toBeEnabled();
+  await expect(clear).toBeFocused();
 
-  failRevoke = false;
-  await revoke.click();
+  failClear = false;
+  await clear.click();
   await accept(page).click();
-  await expect.poll(() => revokes).toEqual(['failed', 'revoked']);
-  await expect(revoke).toBeDisabled();
-  await expect(page.locator('button[data-action="generate-token"]')).toBeFocused();
+  await expect.poll(() => clears).toEqual(['failed', 'cleared']);
+  await expect(clear).toBeDisabled();
+  await expect(page.locator('#dp-settings-field-oidc-client-secret')).toBeFocused();
 });

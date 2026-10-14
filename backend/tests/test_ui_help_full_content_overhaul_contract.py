@@ -177,10 +177,11 @@ def test_engines_are_presented_as_four_managed_engines_not_one():
         assert phrase in panel, phrase
 
 
-def test_settings_reference_matches_the_six_current_settings_tabs_and_save_semantics():
+def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_semantics():
     panel = _panel("settingsPanel", "troubleshootingPanel")
 
-    for section in ("Services", "Downloads", "Extraction", "Authentication", "Notifications", "Data &amp; Maintenance"):
+    for section in ("Services", "Downloads", "Extraction", "Authentication", "Users &amp; Access",
+                    "Notifications", "Data &amp; Maintenance"):
         assert f"accordion('{section}'" in panel, section
 
     for phrase in (
@@ -191,8 +192,9 @@ def test_settings_reference_matches_the_six_current_settings_tabs_and_save_seman
         "Delete Archives After Extraction", "Archive Passwords", "Clear Passwords",
         "Authentication Status", "Username &amp; Password", "OpenID Connect",
         "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
-        "Generate Token", "Rotate Token", "Revoke Token", "Authorization: Bearer &lt;token&gt;",
-        "API Access does not protect the web pages",
+        "Default Role for New OIDC Users", "Add Local Account", "Change Role",
+        "Integration Accounts", "Issue Token", "Authorization: Bearer &lt;token&gt;",
+        "finished downloads are never touched", "Deleting keeps the account's history",
         "Discord Notifications", "Download Added Webhook", "Statistics Reporting",
         "Automatic Report Interval", "/api/metrics",
         "Event Logging", "Backups &amp; Retention", "Run Backup",

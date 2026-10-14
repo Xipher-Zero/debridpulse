@@ -77,7 +77,9 @@
     const label = providerLabel(item && item.route_provider_name, item && item.route_provider_id);
     const known = Boolean(item && item.route_provider_id);
     const identity = identityOf(known ? item.route_provider_id : '');
-    if (!known || !(item && item.route_switch_available)) {
+    // Switching a route redirects everyone's work: offered only where the
+    // server says this caller may (``access.destroy``).
+    if (!known || !(item && item.route_switch_available && window.debridPulseAuth?.mayDestroy(item))) {
       return '<span class="dp-provider-chip dp-root-provider-badge" data-provider-state="' +
         (known ? 'known' : 'pending') + '"' + identity.attributes + '>' + identity.glyph + esc(label) + '</span>' +
         switchingMarkup(item && item.id);
@@ -148,7 +150,7 @@
     try {
       const status = await readStatus(transfer.id);
       const live = document.querySelector('#modal-body ' + MOUNT_SELECTOR);
-      if (live && Number(transfer.id) === detailTransferId && status.switchable &&
+      if (live && Number(transfer.id) === detailTransferId && status.switchable && window.debridPulseAuth?.mayDestroy(transfer) &&
           status.current_provider_id === transfer.route_provider_id) {
         live.innerHTML = launcherMarkup(transfer.id, transfer.route_provider_id, label, 'details');
       }

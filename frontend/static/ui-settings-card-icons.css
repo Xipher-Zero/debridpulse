@@ -65,6 +65,9 @@ body.light #view-settings .dp-settings-protocol-chip {
 #view-settings .dp-settings-protocol-chip[data-section='authentication'] {
   --dp-protocol-color: #1DDB69;
 }
+#view-settings .dp-settings-protocol-chip[data-section='users'] {
+  --dp-protocol-color: #1DDB69;
+}
 #view-settings .dp-settings-protocol-chip[data-section='notifications'] {
   --dp-protocol-color: #04D7FE;
 }

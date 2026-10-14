@@ -2232,6 +2232,26 @@ class TransferRepository:
         rows = await db.fetchall(self._AFFECTED_DEMAND_SQL, {"t": int(transfer_id)})
         return {str(row["id"]) for row in rows} <= {str(item) for item in expected}
 
+    async def outstanding_demand_many(self, transfer_ids) -> dict[int, list[dict]]:
+        """``outstanding_demand`` for a page of transfers in one read."""
+        ids = sorted({int(item) for item in transfer_ids})
+        if not ids:
+            return {}
+        marks = ",".join("?" * len(ids))
+        async with get_db() as db:
+            rows = await db.fetchall(
+                f"""SELECT d.*, d.transfer_id AS served_transfer_id FROM transfer_demands d
+                    WHERE d.transfer_id IN ({marks}) AND d.withdrawn_at IS NULL
+                    UNION
+                    SELECT d.*, f.torrent_id AS served_transfer_id FROM artifact_consolidations ac
+                        JOIN download_files f ON f.id=ac.canonical_artifact_id
+                        JOIN transfer_demands d ON d.transfer_id=ac.source_transfer_id AND d.withdrawn_at IS NULL
+                    WHERE f.torrent_id IN ({marks})""", (*ids, *ids))
+        served: dict[int, list[dict]] = {item: [] for item in ids}
+        for row in rows:
+            served[int(row.pop("served_transfer_id"))].append(row)
+        return served
+
     async def outstanding_demand(self, transfer_id: int) -> list[dict]:
         """Every outstanding demand that the transfer's work serves."""
         async with get_db() as db:

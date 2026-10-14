@@ -246,7 +246,7 @@
                data-dp-auth-error role="status" aria-live="polite" hidden></div>
         </div>
         <footer class="dp-modal-footer dp-auth-required-footer">
-          <button class="btn btn-ghost" type="button" data-dp-auth-cancel>Cancel</button>
+          ${window.debridPulseAuth?.mayDestroy(active) === true ? '<button class="btn btn-ghost" type="button" data-dp-auth-cancel>Cancel</button>' : ''}
           ${showKey ? `
             <button class="btn btn-ghost dp-auth-required-key${active.keySelected ? ' is-selected' : ''}"
                     type="button" data-dp-auth-key
@@ -615,6 +615,7 @@
     return {
       transferId: Number(item.id),
       challenge,
+      access: item.access || {},
       username: '',
       password: '',
       passphrase: '',
@@ -671,6 +672,8 @@
   }
 
   function bootstrap() {
+    // Answering a challenge is an operation; a caller without it is never asked.
+    if (!window.debridPulseAuth?.can('transfers.operate')) return;
     if (typeof window.api !== 'function') {
       window.setTimeout(bootstrap, 50);
       return;

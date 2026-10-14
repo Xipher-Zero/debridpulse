@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import hashlib
 import html
+import json
 import os
 import secrets
 import time
@@ -52,7 +53,7 @@ from auth.sessions import (
 )
 from auth.throttle import login_challenge_rate_limiter, oidc_start_rate_limiter
 from auth.transitions import authentication_configuration_lock
-from core.config import get_settings
+from core.config import display_timezone, get_settings
 from core.version import read_version
 
 
@@ -545,15 +546,22 @@ async def public_auth_status():
 
 
 @router.get("/app.js", include_in_schema=False)
-async def application_javascript_bundle():
-    """Serve the protected browser bootstrap before the existing app script."""
+async def application_javascript_bundle(request: Request):
+    """Serve the protected browser bootstrap before the existing app script.
+
+    The bootstrap starts with the caller's authority (``_authority``, the
+    same projection ``/api/auth/session`` serves, without its CSRF token), so
+    the interface is composed for that authority before any other script
+    runs. It is per-request and never stored."""
     auth_js = _static_asset("auth.js").read_text(encoding="utf-8")
     app_js = _static_asset("app.js").read_text(encoding="utf-8")
+    principal = getattr(request.state, "principal", Principal.anonymous())
+    authority = json.dumps(_authority(principal), separators=(",", ":"))
     response = Response(
-        content=f"{auth_js}\n;\n{app_js}",
+        content=f"window.debridPulseAuthority=Object.freeze({authority});\n{auth_js}\n;\n{app_js}",
         media_type="application/javascript",
     )
-    response.headers["Cache-Control"] = "no-cache"
+    response.headers["Cache-Control"] = "no-store"
     return response
 
 @router.get("/login", response_class=HTMLResponse)
@@ -793,6 +801,25 @@ async def oidc_callback(
     return response
 
 
+def _authority(principal: Principal) -> dict:
+    """The caller's authority as the interface reads it. A role change
+    re-binds the session (a new ``account_generation``, the same session);
+    any other account change ends it."""
+    return {
+        "authenticated": bool(principal.authenticated),
+        "mechanism": principal.mechanism.value if principal.mechanism else None,
+        "display_name": principal.display_name,
+        "account_id": principal.account_id or None,
+        "role": principal.role or None,
+        "account_generation": principal.account_generation or None,
+        # The caller's capabilities, from the one policy (``auth.permissions``):
+        # what the interface may offer; the backend enforces it regardless.
+        "capabilities": sorted(capabilities(principal)),
+        # How every human role's interface renders timestamps.
+        "display_timezone": display_timezone(),
+    }
+
+
 @router.get("/api/auth/session")
 async def auth_session_status(request: Request, response: Response = None):
     principal = getattr(request.state, "principal", Principal.anonymous())
@@ -801,19 +828,8 @@ async def auth_session_status(request: Request, response: Response = None):
     if response is not None:
         response.headers["Cache-Control"] = "no-store"
     return {
-        "authenticated": bool(principal.authenticated),
-        "mechanism": principal.mechanism.value if principal.mechanism else None,
+        **_authority(principal),
         "subject": principal.subject,
-        "display_name": principal.display_name,
-        # The account this browser acts as and the account generation it was
-        # resolved at: any account change revokes the session, so a changed
-        # generation here means a fresh sign-in, never a stale authority.
-        "account_id": principal.account_id or None,
-        "role": principal.role or None,
-        "account_generation": principal.account_generation or None,
-        # The caller's capabilities, from the one policy (``auth.permissions``):
-        # what the interface may offer; the backend enforces it regardless.
-        "capabilities": sorted(capabilities(principal)),
         "csrf_token": session_store.csrf_token(session_token) if record is not None else "",
         "session_expires_in_seconds": (
             max(0, int(record.expires_at - time.monotonic())) if record is not None else None

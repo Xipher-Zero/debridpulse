@@ -27,6 +27,7 @@ from core.config import (
     AppSettings,
     apply_settings,
     config_write_lock,
+    display_timezone,
     get_settings,
     journal_configuration_change,
     load_settings,
@@ -52,7 +53,7 @@ from core.version import is_version_newer, normalize_version_tag, read_version
 from auth.middleware import session_record_valid
 from auth.models import AuthMechanism, Principal
 from auth.policy import interactive_auth_enabled
-from auth.permissions import Capability, destruction_precondition, permits, require_destruction
+from auth.permissions import Capability, destruction_precondition, permits, require_destruction, transfer_access
 from auth.oidc_version import oidc_configuration_version
 from auth.passwords import basic_verification_cache
 from auth.sessions import session_store
@@ -278,7 +279,7 @@ def _public_settings(settings: AppSettings, definitions=()) -> dict:
     from services.notification_service import notification_state
     data.update(notification_state(settings))
     data["database_backend"] = "sqlite"
-    data["timezone"] = (os.getenv("TZ", "UTC") or "UTC").strip() or "UTC"
+    data["timezone"] = display_timezone()
     return data
 
 
@@ -1184,7 +1185,8 @@ async def block_file(torrent_id: int, file_id: int, request: Request, blocked: b
 
 
 @router.get("/torrents/{torrent_id}")
-async def get_torrent(torrent_id: int, application: ApplicationService = Depends(get_application)):
+async def get_torrent(torrent_id: int, application: ApplicationService = Depends(get_application),
+                      request: Request = None):
     engine = getattr(application, "engine", None)
     item = await application.repository.presentation(
         torrent_id, details=True,
@@ -1200,6 +1202,11 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     disclosure = _error_disclosure(transfer.error if transfer else None, item.get("error"), application.definitions)
     if disclosure:
         result["error_disclosure"] = disclosure
+    principal = getattr(getattr(request, "state", None), "principal", None)
+    if principal is not None:
+        # What the interface may offer this caller here (a hint; every act is
+        # re-authorized when it commits).
+        result["access"] = (await transfer_access(principal, application.repository, [torrent_id]))[torrent_id]
     return result
 
 
@@ -2440,14 +2447,19 @@ async def _sse_broadcast(event_type: str, data: dict) -> None:
             _sse_subscribers.pop(q, None)
 
 
-def _sse_sessions_ended(fingerprints: frozenset[bytes], account_id: str | None) -> None:
-    """End every live connection opened under an ended session or, for an
-    account change, by that account through any credential."""
+_SSE_ACCOUNT_CHANGED = "event: account_changed\ndata: {}\n\n"
+
+
+def _sse_sessions_ended(fingerprints: frozenset[bytes], account_id: str | None, ended: bool = True) -> None:
+    """For every live connection opened under a changed session or, for an
+    account change, by that account through any credential: end it when the
+    session ended, or tell the browser to reset (``account_changed``) when
+    the session was re-bound to the account's new role."""
     for queue, subscriber in list(_sse_subscribers.items()):
         if (subscriber.session and subscriber.session in fingerprints) or (
                 account_id and subscriber.principal.account_id == account_id):
             try:
-                queue.put_nowait(_SSE_SESSION_ENDED)
+                queue.put_nowait(_SSE_SESSION_ENDED if ended else _SSE_ACCOUNT_CHANGED)
             except asyncio.QueueFull:
                 _sse_subscribers.pop(queue, None)
 

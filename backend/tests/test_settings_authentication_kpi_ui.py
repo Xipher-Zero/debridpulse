@@ -13,10 +13,10 @@ def source(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def test_authentication_status_uses_four_dashboard_derived_state_kpis():
+def test_authentication_status_uses_three_dashboard_derived_state_kpis():
     js = source(SETTINGS)
     css = source(STYLE)
-    # The four readings are derived ONCE, as data, so the markup that first
+    # The three readings are derived ONCE, as data, so the markup that first
     # renders them and the painter that repaints them in place cannot disagree.
     items = js[js.index("function authKpiItems"):js.index("function authStatusCard")]
     block = js[js.index("function authStatusCard"):js.index("function authenticationPanel")]
@@ -24,14 +24,15 @@ def test_authentication_status_uses_four_dashboard_derived_state_kpis():
     assert "id: 'mode', label: 'Authentication Mode', value: modeValue, tone: modeTone" in items
     assert "id: 'password', label: 'Username & Password', value: password.value, tone: password.tone" in items
     assert "id: 'oidc', label: 'OIDC State', value: oidcState.primary, tone: oidcState.tone, secondary: oidcState.secondary" in items
-    assert "id: 'token', label: 'API Token', value: token.value, tone: token.tone" in items
+    # The global API token is retired (1.0.13 ACL); tokens live in Users & Access.
+    assert "API Token" not in items
     assert "authKpiItems(a).map(item =>" in block
     assert 'class="dash-hero-stat dp-settings-auth-kpi" data-auth-kpi="${html(item.id)}"' in block
     assert "for (const item of authKpiItems(a))" in js
     assert "dhs-body" in block and "dhs-label" in block and "dhs-val" in block
     assert "dhs-icon" not in block
     assert "dp-card-spark" not in block
-    assert "grid-template-columns: repeat(4, minmax(0, 1fr));" in css
+    assert "grid-template-columns: repeat(3, minmax(0, 1fr));" in css
     assert ".dp-settings-auth-kpi.dash-hero-stat::before" in css
 
 
@@ -49,8 +50,8 @@ def test_authentication_kpi_state_ladders_are_semantic_and_truthful():
     assert "if (enabled && !ready) return {value: 'Configuration Error', tone: 'red'};" in state
     assert "if (!configured) return {value: 'Unconfigured', tone: 'neutral'};" in state
     assert "enabled ? {value: 'Enabled', tone: 'green'} : {value: 'Configured', tone: 'yellow'}" in state
-    # Both mechanisms that share the vocabulary derive it from that one place.
-    assert js.count("mechanismState(") == 2
+    # The one mechanism with a configured/enabled pair derives it from that one place.
+    assert js.count("mechanismState(") == 1
     assert "const oidcState = oidcStatePresentation(a);" in js
     assert "Configuration Error" in js
     assert 'data-c="${html(item.tone)}"' in js

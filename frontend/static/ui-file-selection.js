@@ -535,8 +535,24 @@
     if (detailTransferId != null) renderDetailEntry(detailTransferId);
   }
 
+  // Choosing files is offered only to a caller who may destroy the transfer's
+  // work: closing the selector cancels the whole transfer. An Admin may; a
+  // User only where the server's ``access.destroy`` says no one else needs it.
+  function mayChoose(transferId) {
+    const auth = window.debridPulseAuth;
+    if (!auth || !auth.can('transfers.operate')) return Promise.resolve(false);
+    if (auth.can('administer')) return Promise.resolve(true);
+    return api('GET', '/torrents/' + Number(transferId))
+      .then(function (detail) { return Boolean(detail && auth.mayDestroy(detail)); })
+      .catch(function () { return false; });
+  }
+
   // ── Automatic presentation ──────────────────────────────────────────────
   function handleOffer(transferId) {
+    mayChoose(transferId).then(function (allowed) { if (allowed) presentOffer(transferId); });
+  }
+
+  function presentOffer(transferId) {
     const id = Number(transferId);
     if (!Number.isFinite(id)) return;
     if (selectorTransferId != null) return;         // a selector is already open
@@ -616,7 +632,7 @@
   // ── Compact glyph-only list chip (Dashboard Recent / Downloads, §6.3) ────
   function chipMarkup(item) {
     const affordance = item && item.file_selection_affordance;
-    if (!affordance || affordance === 'none') return '';
+    if (!affordance || affordance === 'none' || !window.debridPulseAuth?.mayDestroy(item)) return '';
     const label = affordanceLabel(affordance);
     const icon = window.DPIcons && typeof window.DPIcons.svg === 'function'
       ? window.DPIcons.svg('folder') : '';
@@ -630,7 +646,9 @@
     const host = document.querySelector(
       '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
     if (!host) return;
-    fetchSelection(transferId).then(function (view) {
+    mayChoose(transferId).then(function (allowed) {
+      return allowed ? fetchSelection(transferId) : null;
+    }).then(function (view) {
       const currentHost = document.querySelector(
         '[data-dp-file-selection-mount][data-dp-transfer-id="' + transferId + '"]');
       if (currentHost !== host) return;
@@ -661,6 +679,8 @@
 
   // ── Wiring ──────────────────────────────────────────────────────────────
   function init() {
+    // Choosing files is an operating control: a read-only caller has none.
+    if (!(window.debridPulseAuth && window.debridPulseAuth.can('transfers.operate'))) return;
     document.addEventListener('debridpulse:file-selection-available', function (event) {
       const payload = event && event.detail || {};
       handleOffer(payload.transfer_id);

@@ -30,21 +30,26 @@
       <span class="nav-badge" id="nb-active" style="display:none">0</span>
     </div>
     <div class="nav-group">Monitor</div>
+    <template data-requires="administer">
     <div class="nav-item" data-view="events" onclick="nav(this)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="logs" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 5h1"/><path d="M3 12h1"/><path d="M3 19h1"/><path d="M8 5h1"/><path d="M8 12h1"/><path d="M8 19h1"/><path d="M13 5h8"/><path d="M13 12h8"/><path d="M13 19h8"/></svg></span><span class="nav-label">Activity Log</span>
     </div>
+    </template>
     <div class="nav-item" data-view="stats" onclick="nav(this)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="statistics" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 21v-6"/><path d="M12 21V9"/><path d="M19 21V3"/></svg></span><span class="nav-label">Statistics</span>
     </div>
     <div class="nav-group">System</div>
+    <template data-requires="administer">
     <div class="nav-item" data-view="settings" onclick="nav(this)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="settings" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg></span><span class="nav-label">Settings</span>
     </div>
+    </template>
     <div class="nav-item" data-view="help" onclick="nav(this)">
       <span class="icon"><svg class="lucide dp-utility-icon" data-dp-lucide="help" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span><span class="nav-label">Help &amp; License</span>
     </div>
   </nav>
   <div id="sidebar-bottom-stack" class="sidebar-bottom-stack">
+    <template data-requires="administer">
     <div class="sidebar-footer">
       <div class="dp-provider-status-heading">Provider Status</div>
       <div class="conn-row" id="premium-row" style="display:none">
@@ -64,6 +69,7 @@
         <span id="lbl-db">DB: —</span>
       </div>
     </div>
+    </template>
     <div id="sidebar-auth-mount" hidden></div>
   </div>
 </aside>
@@ -79,11 +85,11 @@
        target="_blank" rel="noopener" aria-label="Open the DebridPulse changelog"
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
        title="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
-    <div id="topbar-actions"></div>
+    <template data-requires="administer"><div id="topbar-actions"></div></template>
     <div id="runtime-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
-      <span style="color:var(--green)">&#9660;</span><span id="runtime-badge-active">0</span><span style="color:var(--text3)">/</span><span id="runtime-badge-max">0</span>
-      <span style="color:var(--border);margin:0 2px">|</span><span id="runtime-badge-speed" style="color:var(--green)">0 KB/s</span>
-      <span style="color:var(--border);margin:0 2px">|</span>
+      <span style="color:var(--green)">&#9660;</span><template data-requires="administer"><span id="runtime-badge-active">0</span><span style="color:var(--text3)">/</span><span id="runtime-badge-max">0</span>
+      <span style="color:var(--border);margin:0 2px">|</span></template><span id="runtime-badge-speed" style="color:var(--green)">0 KB/s</span>
+      <template data-requires="administer"><span style="color:var(--border);margin:0 2px">|</span>
       <div class="runtime-cap-control">
         <button id="runtime-cap-toggle" class="runtime-cap-toggle" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleSpeedCapMenu(event)" title="Set download speed cap">
           <span class="dp-speedcap-arrow" aria-hidden="true"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span><span id="runtime-badge-limit">Unlimited</span>
@@ -108,7 +114,7 @@
             </div>
           </div>
         </div>
-      </div>
+      </div></template>
     </div>
     <div class="sidebar-theme-control topbar-theme-control">
       <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
@@ -263,6 +269,7 @@
       </div>
 
       <!-- ── Unified transfer submission ───────────────────────────────────── -->
+      <template data-requires="transfers.submit">
       <div class="card dp-dashboard-quick-add" style="margin-bottom:14px">
         <div class="card-header">
           <div class="card-title" data-dp-structural-title="1">
@@ -271,7 +278,7 @@
           </div>
           <div class="dp-global-pause-center"><div class="dp-global-pause-title"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg><span>PROCESSING PAUSED</span></div><div class="dp-global-pause-copy">New downloads can still be added. They will remain queued until processing is resumed.</div></div>
           <div class="dp-card-header-actions">
-            <span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span>
+            <template data-requires="administer"><span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span></template>
           </div>
         </div>
         <div style="padding:12px 16px">
@@ -281,6 +288,7 @@
           </div>
         </div>
       </div>
+      </template>
 
       <!-- ── Recent Activity ───────────────────────────────────────────────── -->
       <div class="card dp-dashboard-activity" id="dash-activity-card">
@@ -299,7 +307,7 @@
               <th>Progress</th>
               <th class="sz">Size</th>
               <th class="sz">Date Added</th>
-              <th class="dp-dashboard-action-column">Action</th>
+              <template data-requires="transfers.operate"><th class="dp-dashboard-action-column">Action</th></template>
             </tr>
           </thead>
           <tbody id="dash-tbody"><tr><td colspan="6" class="empty">Loading…</td></tr></tbody>
@@ -337,6 +345,7 @@
           <p id="dp-queue-help" class="dp-queue-assistive">Drag a name to move the transfer in the queue, or press Space or Enter on it, move it with the arrow keys, and press Space or Enter to drop it or Escape to cancel.</p>
           <div id="dp-queue-status" class="dp-queue-assistive" role="status" aria-live="polite"></div>
         </div>
+        <template data-requires="transfers.operate">
         <div class="dp-card dp-downloads-bulk-card dp-downloads-bulk-integrated" id="bulk-bar">
           <div class="dp-card__header dp-downloads-bulk-toolbar">
             <div class="dp-downloads-bulk-actions">
@@ -344,18 +353,19 @@
               <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--resume" data-default-label="Resume" onclick="bulkAction('resume',this)"><svg class="lucide dp-utility-icon" data-dp-lucide="play" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 5a2 2 0 0 1 3.008-1.728l11.997 6.998a2 2 0 0 1 .003 3.458l-12 7A2 2 0 0 1 5 19z"/></svg><span>Resume</span></button>
               <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--reset" data-default-label="Reset" onclick="bulkAction('reset',this)"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Reset</span></button>
               <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--top" data-default-label="Move to Top" hidden onclick="moveSelectionToTop(this)"><svg class="lucide dp-utility-icon" data-dp-lucide="arrow-up-to-line" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M5 3h14"/><path d="m18 13-6-6-6 6"/><path d="M12 7v14"/></svg><span>Move to Top</span></button>
-              <span class="dp-downloads-bulk-separator" aria-hidden="true"></span>
-              <button class="btn btn-danger dp-downloads-bulk-action dp-downloads-bulk-action--delete" data-default-label="Delete" onclick="bulkAction('delete',this)"><svg class="lucide dp-utility-icon" data-dp-lucide="trash2" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg><span>Delete</span></button>
             </div>
+            <template id="dp-bulk-delete-template"><span class="dp-downloads-bulk-separator" aria-hidden="true"></span>
+              <button class="btn btn-danger dp-downloads-bulk-action dp-downloads-bulk-action--delete" data-default-label="Delete" onclick="bulkAction('delete',this)"><svg class="lucide dp-utility-icon" data-dp-lucide="trash2" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg><span>Delete</span></button></template>
             <div class="dp-downloads-bulk-status">
               <span id="bulk-count" class="dp-downloads-bulk-count"></span>
               <button class="btn dp-downloads-bulk-action dp-downloads-bulk-action--clear" data-default-label="Clear Selections" onclick="clearSelection()"><svg class="lucide dp-utility-icon" data-dp-lucide="x" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg><span>Clear Selections</span></button>
             </div>
           </div>
         </div>
+        </template>
         <div class="dp-downloads-table-wrap" style="overflow-x:auto;-webkit-overflow-scrolling:touch">
         <table class="t-table" style="min-width:500px">
-          <thead><tr><th>Name</th><th>Provider / Source</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><th>Actions</th><th class="dp-downloads-select-cell"><input type="checkbox" id="chk-all" aria-label="Select every download on this page" onchange="toggleAllCheckboxes(this)"/></th></tr></thead>
+          <thead><tr><th>Name</th><th>Provider / Source</th><th>Status</th><th>Progress</th><th class="sz">Size</th><th class="sz">Added</th><template data-requires="transfers.operate"><th>Actions</th><th class="dp-downloads-select-cell"><input type="checkbox" id="chk-all" aria-label="Select every download on this page" onchange="toggleAllCheckboxes(this)"/></th></template></tr></thead>
           <tbody id="t-tbody"><tr><td colspan="8" class="empty">Loading…</td></tr></tbody>
         </table>
         </div>
@@ -367,6 +377,7 @@
     </div>
 
     <!-- Events -->
+    <template data-requires="administer">
     <div class="view" id="view-events">
       <div class="card dp-activity-card">
         <div class="card-header">
@@ -428,7 +439,8 @@
       </div>
     </div>
 
-    <!-- Statistics -->
+    
+    </template><!-- Statistics -->
     <div class="view card dp-statistics-master" id="view-stats">
       <div class="card-header dp-stats-master-header">
         <div class="dp-stats-master-title">
@@ -482,8 +494,10 @@
       </div>
 
     <!-- Settings -->
+    <template data-requires="administer">
     <div class="view" id="view-settings">
       </div>
+    </template>
 
   </div>
 </div>
@@ -493,7 +507,7 @@
   <div id="modal" class="dp-card dp-detail-modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
     <div class="modal-hdr dp-card__header">
       <span class="modal-title dp-card__title" id="modal-title">Details</span>
-      <button type="button" class="btn btn-ghost btn-sm dp-detail-trace" onclick="downloadTransferTrace(this)">Transfer Trace Log</button>
+      <template data-requires="administer"><button type="button" class="btn btn-ghost btn-sm dp-detail-trace" onclick="downloadTransferTrace(this)">Transfer Trace Log</button></template>
       <button type="button" class="btn modal-close dp-detail-close" onclick="closeModal()" aria-label="Close details" title="Close details">
         <svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
@@ -505,7 +519,7 @@
 
 <div id="toasts"></div>
 
-<input id="torrent-file-input" type="file" hidden onchange="uploadTransferFile(this)">
+<template data-requires="transfers.submit"><input id="torrent-file-input" type="file" hidden onchange="uploadTransferFile(this)"></template>
 
 <script src="/vendor/chart.umd.min.js?v=4.5.1"></script>
 <script src="/ui-error-semantics.js?v=2" defer></script>

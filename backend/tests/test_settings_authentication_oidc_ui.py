@@ -101,23 +101,14 @@ def test_oidc_header_status_is_projected_from_canonical_configuration_and_eviden
     assert "paintCardStatus(view, '.dp-settings-oidc-card', oidcHeaderStatus(a));" in js
 
 
-def test_first_enable_mints_through_the_one_canonical_token_owner():
-    """Enabling API Access with nothing stored completes the obvious intent.
-
-    It does so through the SAME minting act Rotate/Generate performs -- one
-    request, one adoption, one disclosure -- so there is no second token
-    lifecycle. Disabling never revokes; only an explicit Revoke does.
-    """
+def test_oidc_default_role_is_provisioning_policy_inside_the_oidc_card():
+    """1.0.13 ACL: the role a new OIDC identity receives is configured with
+    the OIDC admission settings in Authentication, never in Users & Access,
+    and offers only the two provisioning roles."""
     js = read(SETTINGS_JS)
-
-    assert js.count("request('POST', '/auth/api-token'") == 1
-    assert "async function mintApiToken()" in js
-    scope = js[js.index("persistence.defineScope('api-token'"):]
-    scope = scope[:scope.index("\n    });")]
-    assert "await mintApiToken()" in scope
-    assert "!state.auth?.api_token_configured" in scope
-    # Participation never removes a stored token.
-    assert "DELETE" not in scope
-    # The raw value is never configuration.
-    assert "data-setting" not in js[js.index("const disclosure = state.oneTimeToken"):
-                                    js.index("const apiAccess = card('API Access'")]
+    panel = js[js.index("function authenticationPanel(a)"):js.index("return authStatusCard(a) + credentials + oidc;")]
+    assert "selectField('auth_oidc_default_role', 'Default Role for New OIDC Users'" in panel
+    assert "[['user', 'User'], ['readonly', 'ReadOnly User']]" in panel
+    oidc = panel[panel.index("const oidc = card('OpenID Connect'"):]
+    assert "${defaultRoleField}" in oidc
+    assert "auth_oidc_default_role: {scope: 'auth-config', option: 'auth_oidc_default_role'}" in js

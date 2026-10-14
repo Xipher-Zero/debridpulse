@@ -359,6 +359,19 @@ async def _touch(db, account_ids: Iterable[str]) -> None:
         )
 
 
+async def _rebind(account_ids: Iterable[str]) -> None:
+    """A change of authority only (a role): the accounts' live sessions are
+    re-bound to their current state instead of ended."""
+    from auth.sessions import session_store
+
+    for account_id in account_ids:
+        account = await get_account(account_id)
+        if account is None or not account.active:
+            _revoke([account_id])
+        else:
+            session_store.rebind_account(account)
+
+
 def _revoke(account_ids: Iterable[str]) -> None:
     from auth.sessions import session_store
 
@@ -368,7 +381,7 @@ def _revoke(account_ids: Iterable[str]) -> None:
 
 
 @asynccontextmanager
-async def _mutation(touched: list[str], settings=None, persist=None):
+async def _mutation(touched: list[str], settings=None, persist=None, *, rebind: bool = False):
     """One account change: a transaction that must not be the change that
     leaves no usable Admin under ``settings`` (the live authentication
     settings unless the same critical section is about to commit others).
@@ -392,15 +405,18 @@ async def _mutation(touched: list[str], settings=None, persist=None):
         await _touch(db, touched)
         if persist is not None:
             persist()
-    _revoke(touched)
+    if rebind:
+        await _rebind(touched)
+    else:
+        _revoke(touched)
 
 
 @asynccontextmanager
-async def _locked_mutation(touched: list[str]):
+async def _locked_mutation(touched: list[str], *, rebind: bool = False):
     from auth.transitions import authentication_configuration_lock
 
     async with authentication_configuration_lock:
-        async with _mutation(touched) as db:
+        async with _mutation(touched, rebind=rebind) as db:
             yield db
 
 
@@ -614,9 +630,12 @@ async def create_integration_account(display_name: str) -> Account:
 
 
 async def set_role(actor_id: str, account_id: str, role) -> None:
+    """A role change takes effect on the account's next request: its live
+    sessions are re-bound to the new role (never ended), and each connected
+    browser is told to reset (``account_changed``)."""
     role = Role(role)
     _not_self(actor_id, account_id)
-    async with _locked_mutation([str(account_id)]) as db:
+    async with _locked_mutation([str(account_id)], rebind=True) as db:
         account = await _require(db, account_id)
         if account.protected:
             raise AccountRefused("A default account's role cannot change")

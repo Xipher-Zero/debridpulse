@@ -313,6 +313,8 @@
     return owned === generation ? snapshot.slice() : null;
   }
 
+  // Provider status is administration: an account without it never observes.
+  if (!window.debridPulseAuth?.can('administer')) return;
   window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
   render([], 'loading');
   const reobserve = () => refresh().catch(() => render([], 'unknown'));
