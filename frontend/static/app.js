@@ -2214,7 +2214,8 @@ async function showDetail(id) {
         <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
         <div><div class="dk">Added</div><div class="dv">${window.downloadsDateMarkup(t.created_at)}</div></div>
         <div><div class="dk">Completed</div><div class="dv">${window.downloadsDateMarkup(t.completed_at)}</div></div>
-        <div class="dp-detail-original-resource" style="grid-column:1/-1"><div class="dk">Original Resource</div><div class="dv"></div></div>
+        <div class="dp-detail-original-resource" style="grid-column:${t.requested_by ? '1' : '1/-1'}"><div class="dk">Original Resource</div><div class="dv"></div></div>
+        ${dpRequestedByMarkup(t.requested_by)}
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
         <div style="grid-column:1/-1"><div class="dk">Hash</div><div class="dv" style="font-size:11px">${esc(t.hash||'—')}</div></div>
         ${t.local_path?`<div style="grid-column:1/-1"><div class="dk">Local Path</div><div class="dv" style="font-size:11px">${esc(t.local_path)}</div></div>`:''}
@@ -2222,7 +2223,6 @@ async function showDetail(id) {
         ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
-      ${dpRequestedByMarkup(t.requested_by)}
       <div class="card dp-detail-section-card dp-detail-route-history">
         <div class="card-header"><span class="card-title">Route History</span></div>
         <div class="dp-detail-route-body">${renderRouteHistory(t)}</div>
@@ -2298,60 +2298,60 @@ async function showDetail(id) {
   }
 }
 
-// Requested By: the accounts whose requests this transfer's work serves,
-// exactly as the server's demand ledger projects them (requested_by). It
-// says who ASKED; it is not who owns or runs the transfer. Withdrawn
-// requests stay readable, apart, behind their own disclosure.
+// Requested By: the requests this transfer's work serves, exactly as the
+// server's demand ledger projects them (requested_by) -- one entry per
+// request, oldest first, withdrawn ones in place -- as one field of Details'
+// metadata grid beside Original Resource. It says who ASKED; it is not who
+// owns or runs the transfer. The earliest request is always shown; every
+// later one waits behind Details' disclosure chevron, which counts them.
 function dpRequestedByMarkup(requested) {
   if (!requested) return '';
   const standing = {disabled: 'Disabled', deleted: 'Deleted', merged: 'Merged'};
-  const entry = (item, withdrawn) => {
+  const entry = item => {
     const facts = [];
     if (item.kind === 'integration') facts.push(item.token_label ? `Integration · token “${esc(item.token_label)}”` : 'Integration');
     if (standing[item.standing]) facts.push(`${standing[item.standing]} account`);
     if (item.via_transfer_id != null) facts.push(`via consolidated transfer #${esc(item.via_transfer_id)}`);
-    if (item.requests > 1) facts.push(`${esc(item.requests)} requests`);
-    facts.push(`requested ${window.downloadsDateMarkup(item.first_requested_at)}`);
-    if (withdrawn) facts.push(`withdrawn ${window.downloadsDateMarkup(item.withdrawn_at)}`);
-    return `<li class="dp-detail-requester${withdrawn ? ' is-withdrawn' : ''}">
+    facts.push(`requested ${window.downloadsDateMarkup(item.requested_at)}`);
+    if (item.withdrawn_at) facts.push(`withdrawn ${window.downloadsDateMarkup(item.withdrawn_at)}`);
+    return `<li class="dp-detail-requester${item.withdrawn_at ? ' is-withdrawn' : ''}">
         <span class="dp-detail-requester-name">${esc(item.name)}${item.reference ? ` <span class="dp-detail-requester-ref">#${esc(item.reference)}</span>` : ''}</span>
         <span class="dp-detail-requester-facts">${facts.join(' · ')}</span>
       </li>`;
   };
-  const outstanding = Array.isArray(requested.outstanding) ? requested.outstanding : [];
-  const history = Array.isArray(requested.history) ? requested.history : [];
+  const requests = Array.isArray(requested.requests) ? requested.requests : [];
+  const [first, ...later] = requests;
+  const withdrawn = later.filter(item => item.withdrawn_at).length;
+  const summary = `${later.length} more request${later.length === 1 ? '' : 's'}${withdrawn ? ` (${withdrawn} withdrawn)` : ''}`;
   return `
-      <div class="card dp-detail-section-card dp-detail-requested-by">
-        <div class="card-header"><span class="card-title">Requested By</span></div>
-        <div class="dp-detail-requested-body">
-          ${outstanding.length
-            ? `<ul class="dp-detail-requesters">${outstanding.map(item => entry(item, false)).join('')}</ul>`
-            : '<div class="dp-detail-requesters-empty">No outstanding requests.</div>'}
-          ${history.length ? `
-          <details class="dp-detail-advanced dp-detail-requesters-history">
-            <summary>Withdrawn requests (${history.reduce((sum, item) => sum + (Number(item.requests) || 0), 0)})</summary>
-            <ul class="dp-detail-requesters">${history.map(item => entry(item, true)).join('')}</ul>
+        <div class="dp-detail-requested-by"><div class="dk">Requested By</div><div class="dv">
+          ${first
+            ? `<ul class="dp-detail-requesters">${entry(first)}</ul>`
+            : '<div class="dp-detail-requesters-empty">No requests recorded.</div>'}
+          ${later.length ? `
+          <details class="dp-detail-requesters-more">
+            <summary>${summary}</summary>
+            <ul class="dp-detail-requesters">${later.map(entry).join('')}</ul>
           </details>` : ''}
-        </div>
-      </div>`;
+        </div></div>`;
 }
 
 // The caller's own outstanding requests that this transfer serves (the
 // server's access projection, directly or through consolidation) can be
-// withdrawn here, on the Requested By card that names them. An Admin already
+// withdrawn here, in the Requested By field that names them. An Admin already
 // withdraws any account's request from Users & Access, so this is the
 // non-administering account's control. The server decides what withdrawal
 // stops; this only asks.
 function dpRenderWithdrawal(t) {
-  const header = document.querySelector('#modal-body .dp-detail-requested-by > .card-header');
+  const field = document.querySelector('#modal-body .dp-detail-requested-by > .dv');
   const own = Array.isArray(t.access?.own_requests) ? t.access.own_requests : [];
-  if (!header || !own.length || dpCan('administer')) return;
+  if (!field || !own.length || dpCan('administer')) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-ghost btn-sm dp-detail-withdraw';
   button.textContent = own.length > 1 ? 'Withdraw My Requests' : 'Withdraw My Request';
   button.addEventListener('click', () => dpWithdrawOwnRequests(t, own, button));
-  header.appendChild(button);
+  field.appendChild(button);
 }
 
 async function dpWithdrawOwnRequests(t, own, button) {

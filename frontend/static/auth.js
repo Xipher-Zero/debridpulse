@@ -131,18 +131,19 @@
         </span>
       </button>`;
 
+    // Log Out is quiet: its label and icon never change, so the row keeps its
+    // measure beside the account. A pending logout refuses a second press;
+    // a refused or failed one says so and may be pressed again.
     const logout = row.querySelector('.dp-sidebar-logout');
     logout.addEventListener('click', async () => {
       if (logout.getAttribute('aria-disabled') === 'true') return;
       logout.setAttribute('aria-disabled', 'true');
-      const label = logout.querySelector('.nav-label');
-      if (label) label.textContent = 'Logging out…';
       try {
         const ok = await logoutSession();
         if (!ok) throw new Error('Logout failed');
       } catch (_) {
         logout.setAttribute('aria-disabled', 'false');
-        if (label) label.textContent = 'Log Out';
+        try { window.toast('Log Out failed. Try again.', 'error'); } catch (_) {}
       }
     });
 
@@ -185,18 +186,23 @@
   }
 
   // The account's own profile, read from the account API when the dialog
-  // opens. An email the account has -- from its identity provider, or entered
-  // here before -- is shown read-only with its verification; an account with
-  // none may enter one, once, and it is recorded unverified.
-  const VERIFICATION = {verified: 'Verified', unverified: 'Not verified', unknown: 'Verification not stated'};
-
-  function emailMarkup(profile) {
-    if (!profile.email) {
+  // opens. Its email is shown as the bare address: one its identity provider
+  // supplied is read-only here; one the account entered itself carries the
+  // Usenet server name's Pencil (the same control) to correct it. An account
+  // with none may enter one. An entered address is recorded unverified; the
+  // server decides every save.
+  function emailMarkup(profile, editing) {
+    if (!profile.email || editing) {
       return '<label class="form-label" for="dp-account-email-input">Email</label>'
         + '<input class="input" id="dp-account-email-input" data-field="email" type="email" maxlength="254" '
         + 'autocomplete="email" spellcheck="false" placeholder="you@example.com">';
     }
-    return '<span class="form-label">Email</span><span class="dp-account-email-value"></span>';
+    const pencil = profile.email_self_entered
+      ? '<button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit dp-account-email-edit" '
+        + 'title="Edit email" aria-label="Edit email"><img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true"></button>'
+      : '';
+    return '<span class="form-label">Email</span>'
+      + `<span class="dp-account-email-value"><span class="dp-account-email-address"></span>${pencil}</span>`;
   }
 
   /* My Account: ONE dialog of one fixed size with two views. The profile view
@@ -216,15 +222,21 @@
     let view = 'profile';
     const notice = text => window.toast(text, 'error');
     let emailSlot = null;
+    // The Pencil turns the shown address into the field, holding it; Save
+    // sends the change, Cancel discards it.
+    let editingEmail = false;
     const paintEmail = () => {
       if (!emailSlot) return;
-      emailSlot.innerHTML = emailMarkup(profile);
+      emailSlot.innerHTML = emailMarkup(profile, editingEmail);
       fields.email = emailSlot.querySelector('[data-field="email"]');
-      const value = emailSlot.querySelector('.dp-account-email-value');
-      if (value) {
-        const state = VERIFICATION[profile.email_verification];
-        value.textContent = `${profile.email}${state ? ` (${state})` : ''}`;
-      }
+      if (fields.email && editingEmail) fields.email.value = String(profile.email || '');
+      const address = emailSlot.querySelector('.dp-account-email-address');
+      if (address) address.textContent = String(profile.email || '');
+      emailSlot.querySelector('.dp-account-email-edit')?.addEventListener('click', () => {
+        editingEmail = true;
+        paintEmail();
+        fields.email.focus();
+      });
     };
 
     const show = (next, handle) => {
@@ -307,16 +319,21 @@
           if (failure) { notice(failure.message); return false; }
           profile.actual_name = actual;
         }
-        // Blank stays blank; an entered address is saved once. If the account
-        // gained one meanwhile, the server refuses and the dialog shows it.
+        // A blank first email stays blank; an entered or corrected address is
+        // sent with the address this form showed, so the server refuses (409)
+        // a stale form, a concurrent save or an address it does not let this
+        // account change -- and the dialog then shows the stored one. An
+        // emptied correction is sent too: the server says why it is invalid.
         const email = fields.email ? fields.email.value.trim() : '';
-        if (email) {
-          const failure = await sendJson('PUT', '/api/account/email', {email});
+        const shown = String(profile.email || '');
+        if (fields.email && (shown ? email !== shown : email)) {
+          const failure = await sendJson('PUT', '/api/account/email', {email, expected: shown});
           if (failure) {
             notice(failure.message);
             if (failure.status === 409) {
               const current = await readProfile();
               if (current) Object.assign(profile, current);
+              editingEmail = false;
               paintEmail();
             }
             return false;

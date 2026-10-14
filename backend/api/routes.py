@@ -1220,52 +1220,37 @@ def _ledger_time(value) -> str | None:
 async def _requested_by(repository, transfer_id: int) -> dict:
     """Details' Requested By: who asked for this transfer's work, read from
     the demand ledger alone -- never from the transfer's creator, provenance
-    or route. Requests by one requester (account, carrying token, and the
-    consolidated transfer they arrived through) are counted together;
-    outstanding and withdrawn requests are never mixed. A request with no
-    recorded owner is credited to nobody."""
+    or route. One entry per request record, in the ledger's own order (oldest
+    first, outstanding and withdrawn together): its requester, its token and
+    the consolidated transfer it arrived through, when it was made and, if
+    withdrawn, when. A request with no recorded owner is credited to nobody."""
     rows = await repository.demand_history(transfer_id)
     people, labels = await accounts.requester_identities(
         [row["account_id"] for row in rows], [row["credential_id"] for row in rows])
-    groups: dict[tuple, dict] = {}
+    requests: list[tuple[str, dict]] = []
     for row in rows:
-        outstanding = row["withdrawn_at"] is None
         owner = str(row["account_id"] or "")
-        key = (outstanding, owner or str(row["origin"]), str(row["credential_id"] or ""), row["via_transfer_id"])
-        entry = groups.get(key)
-        if entry is None:
-            if owner:
-                identity = people.get(owner, {})
-                entry = {"name": identity.get("name") or "Unknown account", "kind": identity.get("kind", "unknown"),
-                         "standing": identity.get("standing")}
-            else:
-                legacy = row["origin"] == "legacy"
-                entry = {"name": "Legacy / Unknown" if legacy else "Unknown",
-                         "kind": "legacy" if legacy else "unknown", "standing": None}
-            entry.update({"token_label": labels.get(str(row["credential_id"] or "")) or None,
-                          "via_transfer_id": row["via_transfer_id"], "requests": 0,
-                          "first_requested_at": _ledger_time(row["created_at"]),
-                          "withdrawn_at": None, "owner": owner, "outstanding": outstanding})
-            groups[key] = entry
-        entry["requests"] += 1
-        if not outstanding:
-            entry["withdrawn_at"] = max(filter(None, (entry["withdrawn_at"], _ledger_time(row["withdrawn_at"]))))
+        if owner:
+            identity = people.get(owner, {})
+            entry = {"name": identity.get("name") or "Unknown account", "kind": identity.get("kind", "unknown"),
+                     "standing": identity.get("standing")}
+        else:
+            legacy = row["origin"] == "legacy"
+            entry = {"name": "Legacy / Unknown" if legacy else "Unknown",
+                     "kind": "legacy" if legacy else "unknown", "standing": None}
+        entry.update({"token_label": labels.get(str(row["credential_id"] or "")) or None,
+                      "via_transfer_id": row["via_transfer_id"], "requested_at": _ledger_time(row["created_at"]),
+                      "withdrawn_at": _ledger_time(row["withdrawn_at"])})
+        requests.append((owner, entry))
     # Distinct accounts that share a display name are told apart by a short,
     # stable reference to the account (never a credential).
     sharing: dict[str, set[str]] = {}
-    for entry in groups.values():
-        if entry["owner"]:
-            sharing.setdefault(entry["name"].casefold(), set()).add(entry["owner"])
-    projected = {"outstanding": [], "history": []}
-    for entry in groups.values():
-        owner = entry.pop("owner")
+    for owner, entry in requests:
+        if owner:
+            sharing.setdefault(entry["name"].casefold(), set()).add(owner)
+    for owner, entry in requests:
         entry["reference"] = owner[-8:] if owner and len(sharing[entry["name"].casefold()]) > 1 else None
-        if entry.pop("outstanding"):
-            entry.pop("withdrawn_at")
-            projected["outstanding"].append(entry)
-        else:
-            projected["history"].append(entry)
-    return projected
+    return {"requests": [entry for _owner, entry in requests]}
 
 
 @router.get("/torrents/{torrent_id}/trace")

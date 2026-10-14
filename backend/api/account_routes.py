@@ -192,10 +192,10 @@ def _verification(account) -> str | None:
 @router.get("/account")
 async def own_account(request: Request):
     """The signed-in account's own profile: names it may edit, and its email
-    (supplied by its identity provider or entered once by the account itself;
-    read-only once present) with the verification the provider stated -- a
-    self-entered email is unverified -- never a credential, binding or claim
-    set."""
+    -- supplied by its identity provider (read-only here) or entered by the
+    account itself (``email_self_entered``; the account may correct it) --
+    with the verification the provider stated (a self-entered email is
+    unverified), never a credential, binding or claim set."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -203,8 +203,8 @@ async def own_account(request: Request):
     if account is None:
         raise HTTPException(status_code=404, detail="Account not found")
     return {"display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
-            "email_verification": _verification(account), "origin": account.origin, "role": account.role.value,
-            "has_password": account.has_password}
+            "email_verification": _verification(account), "email_self_entered": account.email_self_entered,
+            "origin": account.origin, "role": account.role.value, "has_password": account.has_password}
 
 
 @router.put("/account/actual-name")
@@ -220,15 +220,20 @@ async def change_own_actual_name(actual_name: Annotated[str, Body(embed=True, ma
 
 
 @router.put("/account/email")
-async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320)], request: Request):
-    """An account without an email records one, once. It is stored unverified
-    and never identifies, links or admits anything; an account that already
-    has an email is refused (409) rather than overwritten."""
+async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320)], request: Request,
+                           expected: Annotated[str, Body(embed=True, max_length=320)] = ""):
+    """An account without an email records one; an account corrects an email
+    it entered itself. ``expected`` is the email the form showed ('' for
+    none): a stale or concurrent save, and any change to an email the identity
+    provider supplied, is refused (409) rather than overwritten. The account
+    is always the session's own; the address is stored unverified and never
+    identifies, links or admits anything. An empty address is invalid (422):
+    there is no clearing."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
-        await accounts.set_own_email(principal.account_id, email)
+        await accounts.set_own_email(principal.account_id, email, expected)
     except accounts.InvalidEmail as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
     except AccountRefused as exc:

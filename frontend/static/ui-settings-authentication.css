@@ -559,14 +559,20 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   width: 100%;
 }
 
-/* Access control is one coherent section: ONE header row (the heading, the
-   provisioning role, the policy decision), then the allowlists it can defer
-   to, introduced by their own centred hint. */
+/* Access control is one coherent section: ONE header row (the heading at its
+   start, the policy decision at its end), the provisioning role beneath that
+   decision, then the allowlists it can defer to, introduced by their own
+   hint. The section's own width decides whether the role and the hint can
+   share one band -- not the viewport, which knows nothing about the card. */
 #view-settings .dp-settings-oidc-access {
+  --dp-oidc-role-island: 412px;
+  --dp-oidc-band-gap: 16px;
   min-width: 0;
   display: grid;
   gap: 16px;
   padding-top: 20px;
+  container-type: inline-size;
+  container-name: dp-oidc-access;
 }
 
 /* A muted, centred rule -- a change of subject, not a subsection boundary.
@@ -581,13 +587,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   background: var(--dp-divider);
 }
 
-/* Three balanced zones: the two outer tracks are always equal, so the middle
-   one -- the default-role island -- sits on the true centre of the section,
-   which spans the card body, whatever the heading and the toggle measure. */
 #view-settings .dp-settings-oidc-section-heading {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: 18px;
 }
@@ -599,11 +602,38 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   line-height: 1.25;
 }
 
+/* The provisioning role beneath the policy decision, at the section's end,
+   and the allowlists' hint: an ordinary stack, the hint directly over the
+   allowlists it introduces. */
+#view-settings .dp-settings-oidc-policy-band {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: center;
+  gap: var(--dp-oidc-band-gap);
+}
+
+/* Where the section has room, the role sits beside the hint in ONE band. Both
+   occupy the band's one cell: the hint keeps the centre of the full width --
+   the allowlists' centre -- and is bounded short of the island's widest
+   extent on either side, so the two can never meet whatever the island holds. */
+@container dp-oidc-access (min-width: 1056px) {
+  #view-settings .dp-settings-oidc-policy-band > * {
+    grid-area: 1 / 1;
+  }
+
+  #view-settings .dp-settings-oidc-policy-band > .dp-settings-oidc-section-copy {
+    max-width: min(620px, calc(100% - 2 * (var(--dp-oidc-role-island) + var(--dp-oidc-band-gap))));
+  }
+}
+
 /* The provisioning role: one bounded island in the canonical Settings island
    material (the Download Engine, Statistics cadence and session islands). */
 #view-settings .dp-settings-oidc-default-role {
+  justify-self: end;
   min-width: 0;
-  max-width: 100%;
+  max-width: min(100%, var(--dp-oidc-role-island));
+  box-sizing: border-box;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
   padding: 16px 22px 17px;
@@ -613,6 +643,14 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
    control, as the Download Engine island's is. */
 #view-settings .dp-settings-oidc-default-role .dp-settings-inline-field-info {
   max-width: 200px;
+}
+
+/* The role selector is sized for its longest role, ReadOnly User, on one line
+   with the trigger's own padding and chevron; the shared menu matches the
+   trigger, so the open list holds it on one line too. */
+#view-settings .dp-settings-oidc-default-role .dp-settings-inline-field-control > :is(select.input, .dp-dropdown-shell) {
+  width: calc(13ch + 50px) !important;
+  max-width: 100%;
 }
 
 /* The allowlists' own introduction, centred over all three of them. */
@@ -625,9 +663,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   text-align: center;
 }
 
-/* The policy control keeps its original right-side place and its neutral
-   treatment; the only addition is a restrained border that says the label and
-   its toggle are one control. */
+/* The policy control keeps its right-side place and its neutral treatment;
+   the only addition is a restrained border that says the label and its toggle
+   are one control. */
 #view-settings .dp-settings-oidc-section-heading > .dp-settings-oidc-allow-all {
   width: auto;
   min-width: 0;
@@ -649,8 +687,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-width: 0;
 }
 
-/* One line wherever the row has room; beside the centred island at ordinary
-   desktop widths the label may take a second line rather than collide. */
+/* One line wherever the row has room; a narrow section may give the label a
+   second line rather than collide. */
 #view-settings .dp-settings-oidc-allow-all .toggle-info .tl {
   display: block;
 }
@@ -724,10 +762,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   }
 }
 
-/* Where the heading, the island and the toggle can no longer share one row
-   with the island on the true centre, each leads its own row rather than
-   colliding or hugging a right edge that no longer exists. */
-@media (max-width: 1099px) {
+/* Where the heading and the policy decision can no longer share one row,
+   each leads its own row, and the role follows them, rather than colliding or
+   hugging a right edge that no longer exists. */
+@container dp-oidc-access (max-width: 559px) {
   #view-settings .dp-settings-oidc-section-heading {
     grid-template-columns: minmax(0, 1fr);
     gap: 8px;
@@ -905,8 +943,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   min-height: var(--dp-input-height, 38px);
   display: flex;
   align-items: center;
+  gap: 8px;
   overflow-wrap: anywhere;
   font-size: 13px;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-email-address {
+  min-width: 0;
+}
+.dp-modal-dialog.dp-account-dialog .dp-account-email-edit {
+  flex: 0 0 auto;
 }
 
 /* My Account is ONE dialog of ONE size for both of its views (profile and

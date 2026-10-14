@@ -168,14 +168,20 @@ async def test_my_account_reads_and_edits_the_sanitized_profile(served, monkeypa
 
     profile = (await client.get("/api/account", headers=own)).json()
     assert profile == {"display_name": "me", "actual_name": "Me Myself", "email": "me@example.com",
-                       "email_verification": "unknown", "origin": "oidc", "role": "user", "has_password": False}
+                       "email_verification": "unknown", "email_self_entered": False, "origin": "oidc", "role": "user",
+                       "has_password": False}
 
     assert (await client.put("/api/account/actual-name", headers=own, json={"actual_name": "Me Edited"})).status_code == 200
     assert (await client.put("/api/account/display-name", headers=own, json={"display_name": "Edited"})).status_code == 200
     edited = (await client.get("/api/account", headers=own)).json()
     assert (edited["display_name"], edited["actual_name"], edited["email"]) == ("Edited", "Me Edited", "me@example.com")
-    # A populated email is never replaced here, and an Integration has no profile.
+    # A provider-supplied email is never replaced here -- not by a stale form,
+    # and not by a crafted request that names it as the expected address --
+    # and an Integration has no profile.
     assert (await client.put("/api/account/email", headers=own, json={"email": "x@example.com"})).status_code == 409
+    crafted = await client.put("/api/account/email", headers=own,
+                               json={"email": "x@example.com", "expected": "me@example.com"})
+    assert crafted.status_code == 409 and "identity provider" in crafted.json()["detail"]
     assert (await client.get("/api/account", headers=own)).json()["email"] == "me@example.com"
     assert (await client.get("/api/account", headers=as_(Role.INTEGRATION))).status_code == 403
 
@@ -267,3 +273,99 @@ async def test_my_account_records_its_own_email_once_and_only_its_own(served):
     assert session_store.resolve(token) is not None
     assert (await client.put("/api/account/email", headers=as_(Role.INTEGRATION),
                              json={"email": "bot@example.com"})).status_code == 403
+
+
+# ── correcting a self-entered email (ACL UI follow-up, Contract D) ──────────
+
+async def test_a_self_entered_email_is_corrected_only_from_the_address_the_form_showed(accounts_db):
+    person = await accounts.create_local_account("typo", "secret", role=Role.USER)
+    await accounts.set_own_email(person.id, "typo@exmaple.com")
+    assert await accounts.set_own_email(person.id, " Typo@Example.COM ", expected="typo@exmaple.com") == "Typo@example.com"
+    stored = await accounts.get_account(person.id)
+    assert (stored.email, stored.email_verified, stored.email_verified_known, stored.email_self_entered) == (
+        "Typo@example.com", False, True, True)
+
+    # A form that showed an older address, or none, is stale: refused, nothing replaced.
+    with pytest.raises(accounts.AccountRefused, match="changed since this form was opened"):
+        await accounts.set_own_email(person.id, "late@example.com", expected="typo@exmaple.com")
+    with pytest.raises(accounts.AccountRefused, match="already has an email"):
+        await accounts.set_own_email(person.id, "late@example.com")
+    # There is no clearing: an empty or invalid address is invalid, whatever the form showed.
+    for invalid in ("", "   ", "not-an-address"):
+        with pytest.raises(accounts.InvalidEmail):
+            await accounts.set_own_email(person.id, invalid, expected="Typo@example.com")
+    assert (await accounts.get_account(person.id)).email == "Typo@example.com"
+
+
+async def test_concurrent_corrections_from_one_form_record_exactly_one(accounts_db, monkeypatch):
+    import auth.transitions as transitions
+
+    # The process-wide lock binds to the loop it is first contended in; give
+    # this test's loop its own.
+    monkeypatch.setattr(transitions, "authentication_configuration_lock", asyncio.Lock())
+    person = await accounts.create_local_account("twice", "secret", role=Role.USER)
+    await accounts.set_own_email(person.id, "start@example.com")
+    results = await asyncio.gather(
+        accounts.set_own_email(person.id, "first@example.com", expected="start@example.com"),
+        accounts.set_own_email(person.id, "second@example.com", expected="start@example.com"), return_exceptions=True)
+    won = [item for item in results if isinstance(item, str)]
+    refused = [item for item in results if isinstance(item, accounts.AccountRefused)]
+    assert len(won) == 1 and len(refused) == 1 and "changed since" in str(refused[0])
+    assert (await accounts.get_account(person.id)).email == won[0]
+
+
+async def test_a_provider_supplied_email_is_never_corrected_even_when_unverified(accounts_db):
+    supplied = await _login("given", email="given@example.com", email_verified=False)
+    assert (supplied.email, supplied.email_self_entered, supplied.email_verified) == ("given@example.com", False, False)
+    for expected in ("given@example.com", ""):
+        with pytest.raises(accounts.AccountRefused, match="identity provider"):
+            await accounts.set_own_email(supplied.id, "mine@example.com", expected=expected)
+    assert (await accounts.get_account(supplied.id)).email == "given@example.com"
+
+
+async def test_a_corrected_self_entered_email_identifies_links_and_admits_nothing(accounts_db):
+    first = await _login("quiet2", preferred_username="quiet2")
+    await accounts.set_own_email(first.id, "old@example.com")
+    await accounts.set_own_email(first.id, "target@example.com", expected="old@example.com")
+    # The provider stating the corrected address verified neither verifies nor replaces it.
+    again = await _login("quiet2", email="target@example.com", email_verified=True)
+    assert (again.id, again.email, again.email_verified, again.email_self_entered) == (
+        first.id, "target@example.com", False, True)
+    # Another identity presenting that address is its own account.
+    stranger = await _login("stranger2", email="target@example.com", email_verified=True)
+    assert stranger.id != first.id
+    async with database.get_db() as db:
+        bindings = await db.fetchall("SELECT subject, account_id FROM account_oidc_bindings ORDER BY subject")
+    assert [(row["subject"], row["account_id"]) for row in bindings] == [("quiet2", first.id), ("stranger2", stranger.id)]
+    assert (await accounts.get_account(first.id)).role is Role.USER
+
+
+async def test_my_account_corrects_only_its_own_self_entered_email(served):
+    client, as_ = served
+    carol = await accounts.create_local_account("carol", "secret", role=Role.USER)
+    dave = await accounts.create_local_account("dave", "secret", role=Role.USER)
+    await accounts.set_own_email(dave.id, "dave@example.com")
+    token, _ = session_store.create(Principal.password_session(carol), lifetime_seconds=3600)
+    own = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}
+
+    assert (await client.put("/api/account/email", headers=own, json={"email": "carol@exmaple.com"})).status_code == 200
+    profile = (await client.get("/api/account", headers=own)).json()
+    assert (profile["email"], profile["email_verification"], profile["email_self_entered"]) == (
+        "carol@exmaple.com", "unverified", True)
+    # The account is the session's: naming another account or its address changes only the caller's.
+    fixed = await client.put("/api/account/email", headers=own, json={
+        "email": "carol@example.com", "expected": "carol@exmaple.com", "account_id": dave.id, "email_verified": True})
+    assert fixed.status_code == 200, fixed.text
+    profile = (await client.get("/api/account", headers=own)).json()
+    assert (profile["email"], profile["email_verification"], profile["email_self_entered"]) == (
+        "carol@example.com", "unverified", True)
+    assert (await accounts.get_account(dave.id)).email == "dave@example.com"
+    # A stale form is refused (409) with an actionable reason; an empty address is invalid (422).
+    stale = await client.put("/api/account/email", headers=own,
+                             json={"email": "carol3@example.com", "expected": "carol@exmaple.com"})
+    assert stale.status_code == 409 and "changed since this form was opened" in stale.json()["detail"]
+    cleared = await client.put("/api/account/email", headers=own, json={"email": "", "expected": "carol@example.com"})
+    assert cleared.status_code == 422
+    assert (await accounts.get_account(carol.id)).email == "carol@example.com"
+    # Correcting an email changes no authority: the session survives.
+    assert session_store.resolve(token) is not None

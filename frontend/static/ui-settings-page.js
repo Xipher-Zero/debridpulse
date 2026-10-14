@@ -3517,10 +3517,12 @@
       <section class="dp-settings-oidc-access">
         <div class="dp-settings-oidc-section-heading">
           <span class="dp-settings-oidc-section-title">Access Control</span>
-          <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
           ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
-        <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+        <div class="dp-settings-oidc-policy-band">
+          <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
+          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+        </div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {

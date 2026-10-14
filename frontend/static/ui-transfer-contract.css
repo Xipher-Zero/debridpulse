@@ -307,15 +307,19 @@ body:has(.dp-row-menu) .dp-detail-resource + .dp-detail-resource-full { opacity:
 @media (prefers-reduced-motion: reduce) { .dp-detail-resource-full { transition:none; } }
 .dp-detail-route-body { padding:10px 14px 12px; }
 /* Requested By (dpRequestedByMarkup, app.js): who asked for the work, one row
-   per requester, in the Advanced section's label/value material. */
-.dp-detail-requested-by > .card-header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-.dp-detail-requested-body { padding:8px 14px 10px; }
-.dp-detail-requesters { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+   per requester, as a field of the metadata grid; the rest of its entries open
+   beneath the first from Details' disclosure chevron (the Error field's). */
+/* Names and dates are prose, not a hash: they wrap at spaces, and break inside
+   a word only when one word alone is wider than the column. */
+.dp-detail-requested-by > .dv { min-width:0; display:grid; justify-items:start; gap:6px; word-break:normal; }
+.dp-detail-requesters { list-style:none; margin:0; padding:0; display:grid; gap:6px; min-width:0; }
 .dp-detail-requester { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; min-width:0; }
 .dp-detail-requester-name { color:var(--dp-text-secondary, var(--text2)); font-size:12px; font-weight:650; overflow-wrap:anywhere; }
 .dp-detail-requester-ref, .dp-detail-requester-facts, .dp-detail-requesters-empty { color:var(--dp-text-muted, var(--text3)); font-size:10.5px; font-weight:500; }
 .dp-detail-requester-facts { min-width:0; overflow-wrap:anywhere; }
-.dp-detail-requesters-history .dp-detail-requesters { padding:2px 2px 6px; }
+.dp-detail-requesters-more { min-width:0; }
+.dp-detail-requesters-more > summary { color:var(--dp-text-muted, var(--text3)); font-size:10.5px; font-weight:600; }
+.dp-detail-requesters-more > .dp-detail-requesters { margin-top:6px; }
 .dp-detail-requester.is-withdrawn .dp-detail-requester-name { color:var(--dp-text-muted, var(--text3)); font-weight:600; }
 /* The five route columns are declared ONCE, on the list, and every row spans
    them as a subgrid. A row that sized its own trailing `auto` tracks gave each
@@ -367,15 +371,15 @@ body:has(.dp-row-menu) .dp-detail-resource + .dp-detail-resource-full { opacity:
    message keeps its colour and size, a small chevron after it; the facts open
    inline beneath it in the Advanced section's label/value material, wrapping
    however long a code or reason is. */
-.dp-detail-error-disclosure > summary { display:inline-flex; align-items:center; gap:6px; cursor:pointer; list-style:none; border-radius:4px; }
-.dp-detail-error-disclosure > summary::-webkit-details-marker { display:none; }
-.dp-detail-error-disclosure > summary::after { content:""; width:6px; height:6px; margin-top:-3px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(45deg); opacity:.75; transition:transform .15s ease; }
-.dp-detail-error-disclosure[open] > summary::after { margin-top:3px; transform:rotate(-135deg); }
-.dp-detail-error-disclosure > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+.dp-detail-error-disclosure > summary, .dp-detail-requesters-more > summary { display:inline-flex; align-items:center; gap:6px; cursor:pointer; list-style:none; border-radius:4px; }
+.dp-detail-error-disclosure > summary::-webkit-details-marker, .dp-detail-requesters-more > summary::-webkit-details-marker { display:none; }
+.dp-detail-error-disclosure > summary::after, .dp-detail-requesters-more > summary::after { content:""; width:6px; height:6px; margin-top:-3px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:rotate(45deg); opacity:.75; transition:transform .15s ease; }
+.dp-detail-error-disclosure[open] > summary::after, .dp-detail-requesters-more[open] > summary::after { margin-top:3px; transform:rotate(-135deg); }
+.dp-detail-error-disclosure > summary:focus-visible, .dp-detail-requesters-more > summary:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
 .dp-detail-error-disclosure > dl { display:grid; grid-template-columns:minmax(110px,max-content) minmax(0,1fr); gap:4px 12px; margin:8px 0 2px; font-size:10px; }
 .dp-detail-error-disclosure dt { color:var(--dp-text-muted, var(--text3)); }
 .dp-detail-error-disclosure dd { margin:0; min-width:0; overflow-wrap:anywhere; unicode-bidi:isolate; color:var(--dp-text-secondary, var(--text2)); font-weight:600; }
-@media (prefers-reduced-motion: reduce) { .dp-detail-error-disclosure > summary::after { transition:none; } }
+@media (prefers-reduced-motion: reduce) { .dp-detail-error-disclosure > summary::after, .dp-detail-requesters-more > summary::after { transition:none; } }
 .dp-detail-advanced { margin-top:10px; border-top:1px solid var(--dp-divider, var(--border)); }
 .dp-detail-advanced > summary { padding:10px 2px 6px; color:var(--dp-text-muted, var(--text3)); font-size:11px; font-weight:650; cursor:pointer; }
 .dp-detail-advanced-grid { display:grid; gap:6px; padding:4px 2px 10px; }

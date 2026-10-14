@@ -94,6 +94,40 @@ test('the session row holds Log Out and the account as two separate controls, at
   await expect(admin.page.locator('.dp-modal-dialog.dp-account-dialog')).toBeVisible();
   await expect(admin.page).not.toHaveURL(/\/login/);
   await admin.page.locator('.dp-account-dialog [data-modal-cancel]').click();
+  // Log Out is quiet. While the server has not answered, its label and the
+  // row's measure are unchanged, a second press sends nothing, and the account
+  // beside it still opens My Account; a refused logout says so and may be
+  // pressed again.
+  const logout = admin.page.locator('.dp-sidebar-logout');
+  const row = () => admin.page.evaluate(() => {
+    const node = document.querySelector('#sidebar-auth-row');
+    const box = element => { const r = element.getBoundingClientRect(); return [r.left, r.top, r.width, r.height].map(Math.round); };
+    const name = node.querySelector('.dp-sidebar-account-name');
+    return {row: box(node), logout: box(node.querySelector('.dp-sidebar-logout')),
+      profile: box(node.querySelector('.dp-sidebar-profile')), label: node.querySelector('.dp-sidebar-logout').textContent.trim(),
+      nameClipped: name.scrollWidth > name.clientWidth + 1};
+  });
+  const settled = await row();
+  expect(settled.label).toBe('Log Out');
+  const answers = [];
+  await admin.page.route('**/api/auth/logout', route => { answers.push(route); });
+  await logout.click();
+  await expect.poll(() => answers.length).toBe(1);
+  await expect(logout).toHaveAttribute('aria-disabled', 'true');
+  expect(await row()).toEqual(settled);
+  // A second press reaches the control (a pointer would see it as disabled)
+  // and sends nothing.
+  await logout.dispatchEvent('click');
+  await admin.page.locator('.dp-sidebar-profile').click();
+  await expect(admin.page.locator('.dp-modal-dialog.dp-account-dialog')).toBeVisible();
+  await admin.page.locator('.dp-account-dialog [data-modal-cancel]').click();
+  expect(answers.length).toBe(1);
+  await answers[0].fulfill({status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'fixture refusal'})});
+  await expect(logout).toHaveAttribute('aria-disabled', 'false');
+  await expect(admin.page.locator('.toast').last()).toHaveText('Log Out failed. Try again.');
+  await expect(admin.page).not.toHaveURL(/\/login/);
+  expect(await row()).toEqual(settled);
+  await admin.page.unroute('**/api/auth/logout');
   // The Log Out side, by its label, logs out.
   await admin.page.locator('.dp-sidebar-logout .nav-label').click();
   await expect(admin.page).toHaveURL(/\/login/);

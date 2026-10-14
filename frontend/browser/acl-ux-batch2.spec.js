@@ -2,8 +2,9 @@ const { test, expect } = require('@playwright/test');
 
 /* 1.0.13 ACL live qualification, Batch 2: five focused UX refinements. Real
  * sessions on the password-auth runtime; every account is a synthetic fixture
- * this file creates under a run-unique name and removes. No case here touches
- * a setting: the OIDC layout is measured, never saved. */
+ * this file creates under a run-unique name and removes. The one setting a
+ * case changes -- the OIDC Default Role, chosen by keyboard and by pointer to
+ * prove selection persists -- is restored to what it held. */
 
 const AUTH = process.env.DP_AUTH_BASE_URL;
 const EVIDENCE = process.env.DP_EVIDENCE_DIR || '';
@@ -199,7 +200,7 @@ test('a User\'s Notifications page is headed The Grapevine in the canonical mast
   }
 });
 
-test('My Account takes an email once when it has none; it is recorded unverified and the Admin sees that', async ({browser}) => {
+test('My Account shows the bare email; a self-entered one is corrected with the Pencil, unverified; the Admin sees its provenance', async ({browser}) => {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   const admin = await signIn(browser, ADMIN);
   const user = await person(admin, 'Mail');
@@ -252,20 +253,95 @@ test('My Account takes an email once when it has none; it is recorded unverified
     await expect(dialog.locator('[data-field="display_name"]')).toHaveValue(`Mail Edited ${run}`);
     expect((await api(page, 'GET', '/account')).body.email).toBe('');
 
-    // The first valid address is saved and is read-only from then on.
+    // The first valid address is saved, unverified and self-entered, and is
+    // shown bare with the Usenet server name's Pencil.
     await dialog.locator('[data-field="email"]').fill(email);
     reloaded = page.waitForEvent('load');
     await dialog.locator('[data-modal-accept]').click();
     await reloaded;
     expect((await api(page, 'GET', '/account')).body).toMatchObject(
-      {display_name: `Mail Edited ${run}`, email, email_verification: 'unverified'});
+      {display_name: `Mail Edited ${run}`, email, email_verification: 'unverified', email_self_entered: true});
     dialog = await open();
+    const pencil = dialog.locator('.dp-account-email-edit');
     await expect(dialog.locator('[data-field="email"]')).toHaveCount(0);
-    await expect(dialog.locator('.dp-account-email-value')).toHaveText(`${email} (Not verified)`);
-    expect(await geometry(dialog)).toEqual(editable);           // the same fixed dialog, no scrollbars
-    await shot(page, 'my-account-email-read-only');
-    await dialog.locator('[data-modal-cancel]').click();
+    await expect(dialog.locator('.dp-account-email-value')).toHaveText(email);
+    await expect(dialog).not.toContainText(/verified/i);
+    await expect(pencil).toHaveAttribute('aria-label', 'Edit email');
+    await expect(pencil).toHaveAttribute('title', 'Edit email');
+    expect(await pencil.evaluate(node => [...node.classList].sort())).toEqual(
+      ['btn', 'btn-ghost', 'btn-sm', 'dp-account-email-edit', 'dp-usenet-name-edit']);
+    await expect(pencil.locator('img')).toHaveAttribute('src', '/icons/lucide/pencil.svg');
+    const shownGeometry = await geometry(dialog);
+    expect(shownGeometry).toEqual(editable);                     // the same fixed dialog, no scrollbars
+    await shot(page, 'my-account-email-self-entered');
+    // A form without the address it is replacing is refused, as before.
     expect((await api(page, 'PUT', '/account/email', {email: `other-${run}@example.com`})).status).toBe(409);
+
+    // The Pencil, by keyboard, turns the address into the field holding it;
+    // Cancel discards the edit and stores nothing.
+    await pencil.focus();
+    await page.keyboard.press('Enter');
+    const field = dialog.locator('[data-field="email"]');
+    await expect(field).toBeFocused();
+    await expect(field).toHaveValue(email);
+    await expect(field).toHaveClass(/\binput\b/);
+    expect(await geometry(dialog)).toEqual(editable);
+    await shot(page, 'my-account-email-editing');
+    await field.fill(`discarded-${run}@example.com`);
+    await dialog.locator('[data-modal-cancel]').click();
+    expect((await api(page, 'GET', '/account')).body.email).toBe(email);
+    dialog = await open();
+    await expect(dialog.locator('.dp-account-email-value')).toHaveText(email);
+
+    // An invalid or emptied correction is refused by the server; the dialog,
+    // the edit and the stored address stay.
+    for (const refused of ['not-an-address@nowhere', '']) {
+      await dialog.locator('.dp-account-email-edit').click();
+      await dialog.locator('[data-field="email"]').fill(refused);
+      await dialog.locator('[data-modal-accept]').click();
+      await expect(page.locator('.toast').last()).toContainText('Enter a valid email address');
+      await expect(dialog.locator('[data-field="email"]')).toHaveValue(refused);
+      expect((await api(page, 'GET', '/account')).body.email).toBe(email);
+      await dialog.locator('[data-modal-cancel]').click();
+      dialog = await open();
+    }
+
+    // Save corrects it: still unverified, still self-entered.
+    const corrected = `mail-fixed-${run}@example.com`;
+    await dialog.locator('.dp-account-email-edit').click();
+    await dialog.locator('[data-field="email"]').fill(corrected);
+    reloaded = page.waitForEvent('load');
+    await dialog.locator('[data-modal-accept]').click();
+    await reloaded;
+    expect((await api(page, 'GET', '/account')).body).toMatchObject(
+      {email: corrected, email_verification: 'unverified', email_self_entered: true});
+
+    // A correction opened before another save is refused and shows the stored address.
+    dialog = await open();
+    await dialog.locator('.dp-account-email-edit').click();
+    await dialog.locator('[data-field="email"]').fill(`late-fix-${run}@example.com`);
+    const newer = `mail-newer-${run}@example.com`;
+    expect((await api(page, 'PUT', '/account/email', {email: newer, expected: corrected})).status).toBe(200);
+    await dialog.locator('[data-modal-accept]').click();
+    await expect(page.locator('.toast').last()).toContainText('changed since this form was opened');
+    await expect(dialog.locator('[data-field="email"]')).toHaveCount(0);
+    await expect(dialog.locator('.dp-account-email-value')).toHaveText(newer);
+    await dialog.locator('[data-modal-cancel]').click();
+
+    // An email the identity provider supplied is bare and read-only: no
+    // Pencil, even when the provider left it unverified.
+    await page.route('**/api/account', async route => {
+      const response = await route.fetch();
+      const body = await response.json();
+      await route.fulfill({response, json: {...body, email: `given-${run}@example.com`, email_self_entered: false,
+        email_verification: 'unverified', origin: 'oidc'}});
+    });
+    dialog = await open();
+    await expect(dialog.locator('.dp-account-email-value')).toHaveText(`given-${run}@example.com`);
+    await expect(dialog.locator('.dp-account-email-edit, [data-field="email"]')).toHaveCount(0);
+    await shot(page, 'my-account-email-provider');
+    await dialog.locator('[data-modal-cancel]').click();
+    await page.unroute('**/api/account');
 
     // A stale form (opened before another save) is refused and shows the stored address.
     await signed.context.close();
@@ -278,7 +354,7 @@ test('My Account takes an email once when it has none; it is recorded unverified
     expect((await api(staleSigned.page, 'PUT', '/account/email', {email: `first-${run}@example.com`})).status).toBe(200);
     await staleDialog.locator('[data-modal-accept]').click();
     await expect(staleSigned.page.locator('.toast').last()).toContainText('already has an email');
-    await expect(staleDialog.locator('.dp-account-email-value')).toHaveText(`first-${run}@example.com (Not verified)`);
+    await expect(staleDialog.locator('.dp-account-email-value')).toHaveText(`first-${run}@example.com`);
     await staleDialog.locator('[data-modal-cancel]').click();
 
     // The Admin: the list shows the email alone; Account Details says it is
@@ -306,86 +382,146 @@ test('My Account takes an email once when it has none; it is recorded unverified
   }
 });
 
-test('OIDC Access Control: heading, centred Default Role island and Allow Any on one row; the hint centred over the allowlists', async ({browser}) => {
+test('OIDC Access Control: heading left, Allow Any right, the Default Role island beneath it at the right; the hint centred on the allowlists', async ({browser}) => {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   const admin = await signIn(browser, ADMIN);
   const page = admin.page;
   await settingsTab(page, 'authentication');
   const access = page.locator('#view-settings .dp-settings-oidc-access');
   await access.scrollIntoViewIfNeeded();
-  const before = await access.evaluate(node => [...node.querySelectorAll('select, input, textarea')]
+  const values = () => access.evaluate(node => [...node.querySelectorAll('select, input, textarea')]
     .map(control => [control.dataset.setting || control.id, control.type === 'checkbox' ? control.checked : control.value]));
+  const before = await values();
   await expect(access.locator('.dp-settings-oidc-section-copy')).toHaveText(
     'Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.');
 
   const measure = () => access.evaluate(node => {
     const box = element => element.getBoundingClientRect();
-    const mid = r => ({x: r.left + r.width / 2, y: r.top + r.height / 2});
+    const mid = r => r.left + r.width / 2;
     const heading = node.querySelector('.dp-settings-oidc-section-heading');
     const title = node.querySelector('.dp-settings-oidc-section-title');
     const island = node.querySelector('.dp-settings-oidc-default-role');
     const toggle = heading.querySelector('.dp-settings-oidc-allow-all');
     const hint = node.querySelector('.dp-settings-oidc-section-copy');
     const lists = node.querySelector('.dp-settings-oidc-allowlists');
-    const card = node.closest('.card');
+    const trigger = island.querySelector('.dp-dropdown__trigger');
+    const value = trigger.querySelector('.dp-dropdown__value');
     const style = getComputedStyle(island);
     const overlap = (a, b) => a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom;
     const [t, i, g, h, l, s] = [title, island, toggle, hint, lists, node].map(box);
+    // Room for the longest role, ReadOnly User, in the trigger's own font, beside its chevron.
+    const probe = document.createElement('span');
+    probe.style.cssText = `position:absolute;visibility:hidden;white-space:nowrap;font:${getComputedStyle(value).font}`;
+    probe.textContent = 'ReadOnly User';
+    document.body.appendChild(probe);
+    const needed = probe.getBoundingClientRect().width;
+    probe.remove();
     return {
-      parents: [title, island, toggle].every(element => element.parentElement === heading),
-      rowCentres: [mid(t).y, mid(i).y, mid(g).y],
-      order: t.right <= i.left && i.right <= g.left,
-      islandOffset: Math.abs(mid(i).x - mid(s).x),
-      cardOffset: Math.abs(mid(i).x - mid(box(card)).x),
-      toggleRight: Math.abs(g.right - s.right),
+      headingRow: Math.abs((t.top + t.height / 2) - (g.top + g.height / 2)) <= 1 && t.right <= g.left,
+      titleStart: Math.abs(t.left - s.left) <= 1,
+      toggleEnd: Math.abs(g.right - s.right) <= 1,
+      islandEnd: Math.abs(i.right - s.right) <= 1,
+      islandBeneathToggle: i.top >= g.bottom - 0.5,
+      islandOffCentre: Math.abs(mid(i) - mid(s)) > 40,
+      sharedBand: i.top < h.bottom && h.top < i.bottom,
       bordered: style.borderTopStyle === 'solid' && parseFloat(style.borderTopWidth) >= 1 && style.borderRadius === '12px',
-      hintBelowRow: h.top >= Math.max(t.bottom, i.bottom, g.bottom) - 0.5,
       hintAboveLists: h.bottom <= l.top + 0.5,
-      hintOffset: Math.abs(mid(h).x - mid(l).x),
+      hintOffset: Math.abs(mid(h) - mid(l)),
       hintAlign: getComputedStyle(hint).textAlign,
-      collisions: overlap(t, i) || overlap(i, g) || overlap(t, g),
+      hintMeetsIsland: overlap(h, i),
+      // Nothing between the band and the allowlists but the section's one gap.
+      bandToLists: l.top - Math.max(h.bottom, i.bottom),
+      collisions: overlap(t, g) || overlap(i, g) || overlap(i, l) || overlap(h, l),
       overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1
         || node.scrollWidth > node.clientWidth + 1,
-      reachable: [...node.querySelectorAll('select, .toggle, textarea')].every(element => {
+      reachable: [...node.querySelectorAll('.dp-dropdown__trigger, .toggle, textarea')].every(element => {
         const r = box(element); return r.width > 0 && r.right <= document.documentElement.clientWidth + 0.5;
       }),
+      roleFits: needed <= value.clientWidth + 0.5 && trigger.getBoundingClientRect().right <= i.right,
     };
   });
 
-  for (const width of [1920, 1440, 1280, 1180]) {
+  // Wide sections: the island shares the hint's band at the section's end.
+  for (const width of [1920, 1440]) {
     await page.setViewportSize({width, height: 1000});
     await access.scrollIntoViewIfNeeded();
     const facts = await measure();
-    expect(facts.parents).toBe(true);
-    const [title, island, toggle] = facts.rowCentres;
-    expect(Math.abs(title - island)).toBeLessThanOrEqual(1);
-    expect(Math.abs(toggle - island)).toBeLessThanOrEqual(1);
-    expect(facts.order).toBe(true);
-    expect(facts.islandOffset).toBeLessThanOrEqual(1);        // true centre of the section
-    expect(facts.cardOffset).toBeLessThanOrEqual(1);          // ...and of the whole card
-    expect(facts.toggleRight).toBeLessThanOrEqual(1);
-    expect(facts.bordered).toBe(true);
-    expect(facts.hintBelowRow && facts.hintAboveLists).toBe(true);
+    expect(facts).toMatchObject({headingRow: true, titleStart: true, toggleEnd: true, islandEnd: true,
+      islandBeneathToggle: true, islandOffCentre: true, sharedBand: true, bordered: true, hintAboveLists: true,
+      hintAlign: 'center', hintMeetsIsland: false, collisions: false, overflow: false, roleFits: true});
     expect(facts.hintOffset).toBeLessThanOrEqual(1);
-    expect(facts.hintAlign).toBe('center');
-    expect(facts.collisions || facts.overflow).toBe(false);
+    expect(facts.bandToLists).toBeLessThanOrEqual(17);
     await shot(page, `oidc-access-control-${width}`);
   }
-  for (const width of [1024, 800, 390]) {
+  // Narrower sections: an ordinary stack -- the island under the toggle, the
+  // hint still centred directly over the allowlists it introduces.
+  for (const width of [1280, 1024, 800, 390]) {
     await page.setViewportSize({width, height: 1000});
     await page.evaluate(() => window.closeSidebar?.());
     await access.scrollIntoViewIfNeeded();
     const facts = await measure();
-    expect(facts.collisions).toBe(false);
-    expect(facts.overflow).toBe(false);
-    expect(facts.reachable).toBe(true);
+    expect(facts).toMatchObject({islandBeneathToggle: true, bordered: true, hintAboveLists: true, hintAlign: 'center',
+      hintMeetsIsland: false, collisions: false, overflow: false, reachable: true, roleFits: true});
     expect(facts.hintOffset).toBeLessThanOrEqual(1);
-    expect(facts.hintAlign).toBe('center');
+    expect(facts.bandToLists).toBeLessThanOrEqual(17);
     await shot(page, `oidc-access-control-${width}`);
   }
-  // Nothing was written: every control holds exactly what it held.
-  expect(await access.evaluate(node => [...node.querySelectorAll('select, input, textarea')]
-    .map(control => [control.dataset.setting || control.id, control.type === 'checkbox' ? control.checked : control.value])))
-    .toEqual(before);
+
+  // The open list holds every role on one line, beneath its trigger, in light and dark.
+  await page.setViewportSize({width: 1440, height: 1000});
+  await access.scrollIntoViewIfNeeded();
+  const trigger = access.locator('.dp-settings-oidc-default-role .dp-dropdown__trigger');
+  const options = page.locator('.dp-dropdown-menu:not([hidden]) .dp-dropdown__option');
+  for (const light of [false, true]) {
+    await page.evaluate(on => document.body.classList.toggle('light', on), light);
+    await trigger.click();
+    await expect(options).toHaveText(['User', 'ReadOnly User']);
+    const lines = await options.evaluateAll(nodes => nodes.map(node => {
+      const style = getComputedStyle(node);
+      const text = document.createRange(); text.selectNodeContents(node);
+      return {lines: text.getClientRects().length, fits: node.scrollWidth <= node.clientWidth + 0.5,
+        height: Math.round(node.getBoundingClientRect().height), pad: style.paddingTop};
+    }));
+    expect(lines.map(line => line.lines)).toEqual([1, 1]);
+    expect(lines.every(line => line.fits)).toBe(true);
+    expect(lines[1].height).toBe(lines[0].height);
+    expect(await page.evaluate(() => {
+      const menu = document.querySelector('.dp-dropdown-menu:not([hidden])').getBoundingClientRect();
+      return menu.right <= document.documentElement.clientWidth && menu.left >= 0;
+    })).toBe(true);
+    await shot(page, `oidc-role-open-${light ? 'light' : 'dark'}`);
+    await page.keyboard.press('Escape');
+    await expect(trigger).toHaveAttribute('aria-expanded', 'false');
+  }
+  await page.evaluate(() => document.body.classList.remove('light'));
+
+  // Selection works by keyboard and by pointer, and persists through the one
+  // canonical commit; the starting role is restored.
+  const original = before.find(([key]) => key === 'auth_oidc_default_role')[1];
+  const choose = async (label, role, how) => {
+    if (how === 'keyboard') {
+      await trigger.focus();
+      await page.keyboard.press('Enter');
+      const target = page.locator('.dp-dropdown-menu:not([hidden]) .dp-dropdown__option', {hasText: new RegExp(`^${label}$`)});
+      for (let step = 0; step < 2 && !(await target.evaluate(node => node === document.activeElement)); step += 1) {
+        await page.keyboard.press(role === 'readonly' ? 'ArrowDown' : 'ArrowUp');
+      }
+      await page.keyboard.press('Enter');
+    } else {
+      await trigger.click();
+      await options.filter({hasText: new RegExp(`^${label}$`)}).click();
+    }
+    await expect(trigger.locator('.dp-dropdown__value')).toHaveText(label);
+    await expect.poll(async () => (await api(page, 'GET', '/auth/config')).body.oidc_default_role).toBe(role);
+  };
+  await choose('ReadOnly User', 'readonly', 'keyboard');
+  expect((await measure()).roleFits).toBe(true);
+  expect(await trigger.locator('.dp-dropdown__value').evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await shot(page, 'oidc-role-closed-readonly');
+  await choose('User', 'user', 'pointer');
+  if (original !== 'user') await choose('ReadOnly User', original, 'pointer');
+
+  // Every control holds exactly what it held.
+  expect(await values()).toEqual(before);
   expect(admin.errors).toEqual([]);
 });

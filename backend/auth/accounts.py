@@ -928,22 +928,32 @@ def entered_email(value: str) -> str:
     return f"{local}@{domain}"
 
 
-async def set_own_email(account_id: str, email: str) -> str:
-    """An account records its own email, ONCE, while it has none. The write
-    is conditional on the stored email still being empty, so a stale form or
-    a concurrent save can never replace an address. The address is recorded
-    unverified (``email_verified_known`` with ``email_verified`` false) and
-    as self-entered: it never links, binds, admits or authorizes anything."""
+async def set_own_email(account_id: str, email: str, expected: str = "") -> str:
+    """An account records its own email while it has none, and corrects an
+    email it entered itself. ``expected`` is the email the caller's form
+    showed ('' for none): the write is conditional on the stored email still
+    being exactly that, so a stale form or a concurrent save can never replace
+    a newer address. An email the account's identity provider supplied is
+    never replaced here. The address is recorded unverified
+    (``email_verified_known`` with ``email_verified`` false) and as
+    self-entered: it never links, binds, admits or authorizes anything. There
+    is no clearing: an empty address is not a valid one."""
     address = entered_email(email)
+    expected = str(expected or "")
     async with _locked_mutation([]) as db:
         account = await _require(db, account_id)
         if account.role is Role.INTEGRATION:
             raise AccountRefused("Integration accounts have no email")
         cursor = await db.execute(
             "UPDATE accounts SET email=?, email_verified=0, email_verified_known=1, email_self_entered=1, updated_at=? "
-            "WHERE id=? AND email=''", (address, _now(), account.id))
+            "WHERE id=? AND email=? AND (email='' OR email_self_entered=1)", (address, _now(), account.id, expected))
         if cursor.rowcount != 1:
-            raise AccountRefused("This account already has an email address")
+            current = await _require(db, account_id)
+            if current.email and not current.email_self_entered:
+                raise AccountRefused("This email comes from your identity provider and cannot be changed here")
+            if not expected:
+                raise AccountRefused("This account already has an email address")
+            raise AccountRefused("This email was changed since this form was opened")
     return address
 
 
