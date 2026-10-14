@@ -216,3 +216,31 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
     await api(admin.page, 'DELETE', `/accounts/${created.body.id}`);
   }
 });
+
+test('Change Role offers every human role inside its dialog, and each choice is applied', async ({browser}) => {
+  expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
+  const admin = await signIn(browser, ADMIN);
+  const person = {username: `acl-role-${run}`, password: `acl-role-${run}-pass`};
+  const created = await api(admin.page, 'POST', '/accounts', {kind: 'local', role: 'user', display_name: person.username, ...person});
+  expect(created.status).toBe(200);
+  try {
+    await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
+    await admin.page.locator('#view-settings [data-tab="users"]').click();
+    const roleOf = async () => (await api(admin.page, 'GET', '/accounts')).body.accounts
+      .find(account => account.id === created.body.id).role;
+    for (const [label, role] of [['ReadOnly User', 'readonly'], ['Admin', 'admin'], ['User', 'user']]) {
+      await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="role"]`).click();
+      await admin.page.locator('.dp-users-dialog .dp-dropdown__trigger').click();
+      // The projected menu sits above the dialog: every human role, and only those, can be chosen.
+      const options = admin.page.locator('.dp-dropdown-menu .dp-dropdown__option');
+      await expect(options).toHaveText(['Admin', 'User', 'ReadOnly User']);
+      await options.filter({hasText: new RegExp(`^${label}$`)}).click();
+      await expect(admin.page.locator('.dp-users-dialog .dp-dropdown__value')).toHaveText(label);
+      await admin.page.locator('.dp-users-dialog [data-modal-accept]').click();
+      await expect.poll(roleOf).toBe(role);
+      await expect(admin.page.locator(`tr[data-account-row="${created.body.id}"]`)).toContainText(label);
+    }
+  } finally {
+    await api(admin.page, 'DELETE', `/accounts/${created.body.id}`);
+  }
+});

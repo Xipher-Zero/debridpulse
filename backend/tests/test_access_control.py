@@ -461,6 +461,65 @@ async def test_a_role_change_takes_effect_at_once_and_resets_without_signing_out
         routes._sse_subscribers.pop(queue, None)
 
 
+async def test_an_admin_moves_an_oidc_provisioned_user_through_every_human_role(served, monkeypatch):
+    """An OIDC identity provisioned with the default role is an ordinary human
+    account afterwards: an Admin may give it any human role, each change is
+    enforced on its next request, and its session continues throughout. The
+    account-type and protected-account boundaries still refuse."""
+    from auth.oidc_version import oidc_configuration_version
+
+    client, as_ = served
+    oidc_ready = config.AppSettings(
+        auth_password_enabled=True, auth_oidc_enabled=True, oidc_provider_name="OIDC",
+        oidc_issuer_url="https://idp.example", oidc_client_id="client", oidc_client_secret="secret",
+        oidc_scopes=["openid"], oidc_allow_all=True, public_base_url="https://pulse.example")
+    monkeypatch.setattr(config, "_settings", oidc_ready)
+    person = await accounts.resolve_oidc("https://idp.example", "person-subject", {"name": "Person"},
+                                         default_role="user")
+    assert person.role is Role.USER
+    token, _ = session_store.create(
+        Principal.oidc_session("person-subject", display_name="Person").bound_to(person), lifetime_seconds=3600,
+        credential_version=oidc_configuration_version(oidc_ready))
+    own = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}
+    admin = as_(Role.ADMIN)
+    submit = {"magnet": "magnet:?xt=urn:btih:" + "f" * 40}
+
+    async def change(role):
+        return (await client.patch(f"/api/accounts/{person.id}", headers=admin, json={"role": role})).status_code
+
+    async def enforced(role, may_administer, may_submit):
+        assert (await accounts.get_account(person.id)).role.value == role
+        session = (await client.get("/api/auth/session", headers=own)).json()
+        assert session["authenticated"] is True and session["role"] == role       # never signed out
+        assert ((await client.get("/api/accounts", headers=own)).status_code != 403) is may_administer
+        assert ((await client.post("/api/torrents/add-magnet", headers=own, json=submit)).status_code != 403) \
+            is may_submit
+
+    assert await change("readonly") == 200
+    await enforced("readonly", False, False)
+    assert await change("admin") == 200
+    await enforced("admin", True, True)
+    # It is now the only Admin that can sign in: the last-usable-Admin
+    # protection refuses to demote it, and nothing changes.
+    refused = await client.patch(f"/api/accounts/{person.id}", headers=admin, json={"role": "user"})
+    assert (refused.status_code, refused.json()["detail"]) == (409, "At least one usable Admin account must remain")
+    await enforced("admin", True, True)
+    holder = await accounts.create_local_account("holder", "holder-secret", role=Role.ADMIN)
+    assert await change("user") == 200
+    await enforced("user", False, True)
+
+    # Boundaries: a human never becomes an Integration, an Admin never changes
+    # its own role, and the protected default Admin's role never changes.
+    assert await change("integration") == 409
+    holder_token, _ = session_store.create(Principal.password_session(holder), lifetime_seconds=3600)
+    holder_headers = {"Cookie": f"{HTTP_SESSION_COOKIE}={holder_token}",
+                      "X-CSRF-Token": session_store.csrf_token(holder_token)}
+    assert (await client.patch(f"/api/accounts/{holder.id}", headers=holder_headers,
+                               json={"role": "user"})).status_code == 409
+    assert (await client.patch(f"/api/accounts/{DEFAULT_ADMIN_ID}", headers=holder_headers,
+                               json={"role": "user"})).status_code == 409
+
+
 # ── what the interface may offer: caller-specific access ────────────────────
 
 async def test_access_names_destroy_and_own_withdrawable_demand_per_caller(core):

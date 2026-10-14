@@ -119,10 +119,13 @@ select.dp-native-select--enhanced {
 }
 
 /* One body-level listbox is reused by every projected select. Position and
-   exact trigger-matched width are supplied by the shared runtime. */
+   exact trigger-matched width are supplied by the shared runtime. It opens
+   from a control on the topmost surface, so it stacks above the application
+   dialog layer (.dp-modal-overlay, ui-modal-contract.css) -- a select inside
+   a dialog must be able to show its choices. */
 .dp-dropdown-menu {
   position: fixed;
-  z-index: 4200;
+  z-index: 5100;
   display: block;
   min-width: 0;
   max-height: min(320px, calc(100vh - 16px));
