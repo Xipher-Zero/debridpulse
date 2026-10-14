@@ -80,7 +80,8 @@ def test_the_role_matrix_over_every_registered_action():
     allowed = sorted(name for name, capability in ACTIONS.items()
                      if capability is not Capability.PUBLIC and permits(integration, capability))
     assert allowed == sorted([
-        "api.account_routes.change_own_display_name", "api.account_routes.change_own_password",
+        "api.account_routes.change_own_actual_name", "api.account_routes.change_own_display_name",
+        "api.account_routes.change_own_password", "api.account_routes.own_account",
         "api.account_routes.list_requests", "api.account_routes.withdraw_request",
         "api.auth_routes.auth_session_status", "api.auth_routes.logout",
         "api.routes.add_debrid_links", "api.routes.add_link_file", "api.routes.add_magnet",

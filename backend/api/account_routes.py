@@ -186,6 +186,42 @@ async def revoke_account_token(account_id: str, token_id: str):
 
 # ── the caller's own account ────────────────────────────────────────────────
 
+def _verification(account) -> str | None:
+    if not account.email:
+        return None
+    if not account.email_verified_known:
+        return "unknown"
+    return "verified" if account.email_verified else "unverified"
+
+
+@router.get("/account")
+async def own_account(request: Request):
+    """The signed-in account's own profile: names it may edit, and the email
+    its identity provider supplied (read-only) with the verification the
+    provider stated -- never a credential, binding or claim set."""
+    principal = request.state.principal
+    if not principal.account_id or principal.role == Role.INTEGRATION.value:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    account = await accounts.get_account(principal.account_id)
+    if account is None:
+        raise HTTPException(status_code=404, detail="Account not found")
+    return {"display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
+            "email_verification": _verification(account), "origin": account.origin, "role": account.role.value,
+            "has_password": account.has_password}
+
+
+@router.put("/account/actual-name")
+async def change_own_actual_name(actual_name: Annotated[str, Body(embed=True, max_length=256)], request: Request):
+    principal = request.state.principal
+    if not principal.account_id or principal.role == Role.INTEGRATION.value:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        await accounts.set_actual_name(principal.account_id, actual_name)
+    except AccountRefused as exc:
+        raise _refused(exc) from None
+    return {"ok": True}
+
+
 @router.put("/account/password")
 async def change_own_password(body: OwnPassword, request: Request):
     principal = request.state.principal

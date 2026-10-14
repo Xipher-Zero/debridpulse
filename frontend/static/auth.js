@@ -179,10 +179,20 @@
     return String(payload.detail || 'The change was not saved.');
   }
 
-  function openAccountDialog(data) {
+  // The account's own profile, read from the account API when the dialog
+  // opens: the email (and the verification its identity provider stated) is
+  // shown, never edited here.
+  const VERIFICATION = {verified: 'Verified', unverified: 'Not verified', unknown: 'Verification not stated'};
+
+  async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
     if (!modal) return;
     const fields = {};
+    let profile = {display_name: data.display_name || '', actual_name: '', email: '', email_verification: null};
+    try {
+      const response = await debridPulseFetch('/api/account', {headers: {'Accept': 'application/json'}});
+      if (response.ok) profile = await response.json();
+    } catch (_) { /* the session's own name still opens the dialog */ }
     const dialog = modal.open({
       title: 'My Account',
       acceptLabel: 'Save',
@@ -192,6 +202,10 @@
           <p class="dp-modal-message dp-account-identity"></p>
           <label class="dp-modal-field"><span class="form-label">Display Name</span>
             <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
+          <label class="dp-modal-field"><span class="form-label">Actual Name</span>
+            <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
+          <div class="dp-modal-field dp-account-email"><span class="form-label">Email</span>
+            <span class="dp-account-email-value"></span></div>
           <fieldset class="dp-account-password">
             <legend class="form-label">Change Password</legend>
             <label class="dp-modal-field"><span class="form-label">Current Password</span>
@@ -205,7 +219,12 @@
         identity.textContent = `Signed in as ${data.display_name || 'this account'} (${roleLabel(data.role)}). `
           + 'Changing your password signs you out everywhere.';
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
-        fields.display_name.value = String(data.display_name || '');
+        fields.display_name.value = String(profile.display_name || data.display_name || '');
+        fields.actual_name.value = String(profile.actual_name || '');
+        const email = body.querySelector('.dp-account-email-value');
+        email.textContent = profile.email
+          ? `${profile.email}${VERIFICATION[profile.email_verification] ? ` (${VERIFICATION[profile.email_verification]})` : ''}`
+          : 'None provided';
         return identity;
       },
     });
@@ -213,8 +232,13 @@
       if (!result.accepted) return;
       const notice = text => window.toast(text, 'error');
       const name = fields.display_name.value.trim();
-      if (name && name !== String(data.display_name || '')) {
+      if (name && name !== String(profile.display_name || data.display_name || '')) {
         const failure = await sendJson('PUT', '/api/account/display-name', {display_name: name});
+        if (failure) return notice(failure);
+      }
+      const actual = fields.actual_name.value.trim();
+      if (actual !== String(profile.actual_name || '')) {
+        const failure = await sendJson('PUT', '/api/account/actual-name', {actual_name: actual});
         if (failure) return notice(failure);
       }
       if (fields.next.value || fields.current.value) {

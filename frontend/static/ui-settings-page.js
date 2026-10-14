@@ -3584,7 +3584,8 @@
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
               <td><div class="dp-settings-users-name">${html(accountName(account))}</div>${
-                account.email ? `<div class="dp-settings-users-detail">${html(account.email)}${account.email_verified ? '' : ' (unverified)'}</div>` : ''}</td>
+                account.email ? `<div class="dp-settings-users-detail">${html(account.email)}${account.email_verified ? ''
+                : account.email_verified_known ? ' (unverified)' : ' (verification not stated)'}</div>` : ''}</td>
               <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
               <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
               <td>${accountStatus(account)}</td>

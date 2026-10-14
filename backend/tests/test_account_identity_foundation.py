@@ -85,9 +85,12 @@ async def test_identity_is_issuer_and_subject_never_email(installation):
     other_subject = await accounts.resolve_oidc(ISSUER, "user-2", {**shared}, default_role="user")
 
     assert len({first.id, other_issuer.id, other_subject.id}) == 3
-    # An unverified email is never recorded as the account's email.
-    unverified = await accounts.resolve_oidc(ISSUER, "user-3", {"email": "x@example.com"}, default_role="user")
-    assert unverified.email == "" and unverified.email_verified is False
+    # An email without a verification statement is profile information only:
+    # recorded as such, never as verified, and it identifies nothing.
+    unverified = await accounts.resolve_oidc(ISSUER, "user-3", {"email": "same@example.com"}, default_role="user")
+    assert (unverified.email, unverified.email_verified, unverified.email_verified_known) == (
+        "same@example.com", False, False)
+    assert unverified.id not in {first.id, other_issuer.id, other_subject.id}
 
 
 @pytest.mark.asyncio

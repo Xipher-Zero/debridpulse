@@ -69,8 +69,10 @@ SCHEMA = (
         role TEXT NOT NULL CHECK (role IN ('admin','user','readonly','integration')),
         origin TEXT NOT NULL CHECK (origin IN ('local','oidc','integration')),
         display_name TEXT NOT NULL DEFAULT '',
+        actual_name TEXT,
         email TEXT NOT NULL DEFAULT '',
         email_verified INTEGER NOT NULL DEFAULT 0,
+        email_verified_known INTEGER NOT NULL DEFAULT 0,
         enabled INTEGER NOT NULL DEFAULT 1,
         protected TEXT UNIQUE CHECK (protected IN ('default_admin','default_integration')),
         generation INTEGER NOT NULL DEFAULT 1,
@@ -130,6 +132,11 @@ class Account:
     deleted_at: str
     username: str = ""
     credential_version: str = ""
+    # The person's name, and whether the identity provider STATED the email's
+    # verification (``email_verified`` holds what it stated). Profile only:
+    # neither identifies, links or authorizes anything.
+    actual_name: str = ""
+    email_verified_known: bool = False
 
     @property
     def active(self) -> bool:
@@ -152,8 +159,17 @@ def _now() -> str:
 
 async def ensure_schema(db) -> None:
     """Schema and the two protected default identities (``db.database.init_db``)."""
+    from db.database import _ensure_column
+
     for statement in SCHEMA:
         await db.execute(statement)
+    # NULL: never populated (an identity's claims may complete it); a string,
+    # even an empty one, is the account's own choice and is never overwritten.
+    await _ensure_column(db, "accounts", "actual_name", "TEXT")
+    await _ensure_column(db, "accounts", "email_verified_known", "INTEGER NOT NULL DEFAULT 0")
+    # An email recorded as verified was recorded only from an explicit
+    # ``email_verified: true`` claim, so its verification is known.
+    await db.execute("UPDATE accounts SET email_verified_known=1 WHERE email_verified=1 AND email_verified_known=0")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "
@@ -194,6 +210,8 @@ def _account(row: Mapping[str, Any] | None) -> Account | None:
         credential_version=(
             password_credential_version(password_hash) if is_usable_password_hash(password_hash) else ""
         ),
+        actual_name=str(row.get("actual_name") or ""),
+        email_verified_known=bool(row.get("email_verified_known")),
     )
 
 
@@ -454,6 +472,28 @@ async def _set_password_row(db, account_id: str, username: str | None, password:
 
 # ── sign-in resolution ──────────────────────────────────────────────────────
 
+def _claim_text(claims: Mapping[str, Any], key: str, limit: int) -> str:
+    value = claims.get(key)
+    return value.strip()[:limit] if isinstance(value, str) else ""
+
+
+def oidc_profile(claims: Mapping[str, Any]) -> dict:
+    """The profile an OIDC identity's claims offer, by standard precedence.
+    Absent claims stay absent: nothing is fabricated, and an email's
+    verification is ``None`` unless the provider stated a boolean."""
+    actual = _claim_text(claims, "name", 256) or " ".join(
+        part for part in (_claim_text(claims, "given_name", 128), _claim_text(claims, "family_name", 128)) if part)
+    verified = claims.get("email_verified")
+    email = _claim_text(claims, "email", 320)
+    return {
+        "display_name": (_claim_text(claims, "preferred_username", 256) or _claim_text(claims, "nickname", 256)
+                         or _claim_text(claims, "name", 256)),
+        "actual_name": actual[:256],
+        "email": email,
+        "email_verified": verified if isinstance(verified, bool) and email else None,
+    }
+
+
 async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, default_role) -> Account | None:
     """The account an admitted OIDC identity signs in as.
 
@@ -468,9 +508,9 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
     if not issuer or not subject:
         return None
     role = Role(default_role) if default_role in {r.value for r in OIDC_PROVISION_ROLES} else Role.USER
-    email = str(claims.get("email") or "").strip()[:320]
-    verified = claims.get("email_verified") is True and bool(email)
-    display = str(claims.get("name") or claims.get("preferred_username") or email or subject).strip()[:256]
+    profile = oidc_profile(claims)
+    email, verified = profile["email"], profile["email_verified"]
+    display = (profile["display_name"] or email or subject)[:256]
     async with _transaction() as db:
         row = await db.fetchone(
             "SELECT account_id FROM account_oidc_bindings WHERE issuer=? AND subject=?", (issuer, subject),
@@ -479,9 +519,10 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
             account_id = str(uuid.uuid4())
             now = _now()
             await db.execute(
-                "INSERT INTO accounts(id,role,origin,display_name,email,email_verified,created_at,updated_at) "
-                "VALUES(?,?,?,?,?,?,?,?)",
-                (account_id, role.value, "oidc", display, email if verified else "", int(verified), now, now),
+                "INSERT INTO accounts(id,role,origin,display_name,actual_name,email,email_verified,"
+                "email_verified_known,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                (account_id, role.value, "oidc", display, profile["actual_name"] or None, email, int(verified is True),
+                 int(verified is not None), now, now),
             )
             await db.execute(
                 "INSERT INTO account_oidc_bindings(issuer,subject,account_id,created_at) VALUES(?,?,?,?)",
@@ -489,8 +530,36 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
             )
         else:
             account_id = str(row["account_id"])
+            await _complete_oidc_profile(db, account_id, profile)
         account = await _fetch(db, account_id)
     return account if account is not None and account.active else None
+
+
+async def _complete_oidc_profile(db, account_id: str, profile: Mapping[str, Any]) -> None:
+    """A returning identity's claims only complete what the account lacks.
+    Display and actual names the account already has are its own choices and
+    are never overwritten -- an actual name the account set or cleared is a
+    string, and only a never-populated one (NULL) is completed; an empty
+    email is filled; the provider may restate the verification of the SAME
+    address only. Nothing here identifies, links, enables or changes the role
+    of anything."""
+    account = await _fetch(db, account_id)
+    if account is None or not account.active:
+        return
+    changes: dict[str, Any] = {}
+    never_named = (await db.fetchone("SELECT actual_name IS NULL AS unset FROM accounts WHERE id=?",
+                                     (account.id,)))["unset"]
+    if never_named and profile["actual_name"]:
+        changes["actual_name"] = profile["actual_name"]
+    email, verified = profile["email"], profile["email_verified"]
+    if email and not account.email:
+        changes.update(email=email, email_verified=int(verified is True), email_verified_known=int(verified is not None))
+    elif email and verified is not None and email.casefold() == account.email.casefold():
+        changes.update(email_verified=int(verified), email_verified_known=1)
+    if changes:
+        assignments = ",".join(f"{column}=?" for column in changes)
+        await db.execute(f"UPDATE accounts SET {assignments}, updated_at=? WHERE id=?",
+                         (*changes.values(), _now(), account.id))
 
 
 async def bind_verified_oidc(issuer: str, subject: str, account_id: str) -> Account | None:
@@ -770,6 +839,15 @@ async def set_display_name(account_id: str, display_name: str) -> None:
         await db.execute("UPDATE accounts SET display_name=?, updated_at=? WHERE id=?", (name, _now(), account.id))
 
 
+async def set_actual_name(account_id: str, actual_name: str) -> None:
+    """An account's own record of the person's name. Blank clears it, and a
+    cleared name stays cleared: it is a choice, not a missing value."""
+    name = str(actual_name or "").strip()[:256]
+    async with _locked_mutation([]) as db:
+        account = await _require(db, account_id)
+        await db.execute("UPDATE accounts SET actual_name=?, updated_at=? WHERE id=?", (name, _now(), account.id))
+
+
 async def list_accounts() -> list[dict]:
     """The account directory with each account's sign-in facts; never a
     secret or verifier."""
@@ -788,8 +866,9 @@ async def list_accounts() -> list[dict]:
         account = _account(row)
         result.append({
             "id": account.id, "role": account.role.value, "origin": account.origin,
-            "display_name": account.display_name, "email": account.email,
-            "email_verified": account.email_verified, "enabled": account.enabled,
+            "display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
+            "email_verified": account.email_verified, "email_verified_known": account.email_verified_known,
+            "enabled": account.enabled,
             "protected": account.protected or None, "generation": account.generation,
             "merged_into": account.merged_into or None, "deleted_at": account.deleted_at or None,
             "username": account.username, "has_password": account.has_password,

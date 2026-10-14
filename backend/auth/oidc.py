@@ -523,7 +523,7 @@ def _merge_userinfo_claims(
             if key not in merged and key in userinfo:
                 merged[key] = userinfo[key]
 
-    for key in ("name", "preferred_username", config.group_claim):
+    for key in ("name", "preferred_username", "nickname", "given_name", "family_name", config.group_claim):
         if key not in merged and key in userinfo:
             merged[key] = userinfo[key]
     return merged
@@ -672,6 +672,9 @@ def authorize_oidc_claims(
             "email_verified",
             "name",
             "preferred_username",
+            "nickname",
+            "given_name",
+            "family_name",
             config.group_claim,
         )
         if key in claims

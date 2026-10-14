@@ -867,6 +867,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex-direction: column;
   gap: 5px;
 }
+.dp-modal-dialog.dp-account-dialog .dp-account-email-value {
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
 .dp-modal-dialog.dp-account-dialog .dp-account-password {
   display: flex;
   flex-direction: column;

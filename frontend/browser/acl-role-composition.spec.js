@@ -244,3 +244,35 @@ test('Change Role offers every human role inside its dialog, and each choice is 
     await api(admin.page, 'DELETE', `/accounts/${created.body.id}`);
   }
 });
+
+test('My Account shows the account profile and saves both names', async ({browser}) => {
+  expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
+  const admin = await signIn(browser, ADMIN);
+  const person = {username: `acl-profile-${run}`, password: `acl-profile-${run}-pass`};
+  const created = await api(admin.page, 'POST', '/accounts', {kind: 'local', role: 'user', display_name: person.username, ...person});
+  expect(created.status).toBe(200);
+  try {
+    const signed = await signIn(browser, person);
+    const open = async () => {
+      await signed.page.locator('#sidebar-account-row').click();
+      await expect(signed.page.locator('.dp-account-dialog [data-field="display_name"]')).toHaveValue(/.+/);
+      return signed.page.locator('.dp-account-dialog');
+    };
+    let dialog = await open();
+    await expect(dialog.locator('[data-field="display_name"]')).toHaveValue(person.username);
+    await expect(dialog.locator('[data-field="actual_name"]')).toHaveValue('');
+    await expect(dialog.locator('.dp-account-email-value')).toHaveText('None provided');   // never fabricated
+    await dialog.locator('[data-field="display_name"]').fill('Profile Person');
+    await dialog.locator('[data-field="actual_name"]').fill('Pat Profile');
+    const reloaded = signed.page.waitForEvent('load');
+    await dialog.locator('[data-modal-accept]').click();
+    await reloaded;
+    expect((await api(signed.page, 'GET', '/account')).body).toMatchObject(
+      {display_name: 'Profile Person', actual_name: 'Pat Profile', email: '', email_verification: null});
+    dialog = await open();
+    await expect(dialog.locator('[data-field="display_name"]')).toHaveValue('Profile Person');
+    await expect(dialog.locator('[data-field="actual_name"]')).toHaveValue('Pat Profile');
+  } finally {
+    await api(admin.page, 'DELETE', `/accounts/${created.body.id}`);
+  }
+});

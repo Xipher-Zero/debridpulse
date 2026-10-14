@@ -89,6 +89,8 @@ ACTIONS: dict[str, Capability] = {
     "api.auth_routes.logout": _S,
     "api.account_routes.change_own_password": _S,
     "api.account_routes.change_own_display_name": _S,
+    "api.account_routes.own_account": _S,
+    "api.account_routes.change_own_actual_name": _S,
     # Authentication configuration and accounts.
     "api.auth_config_routes.get_authentication_config": _A,
     "api.auth_config_routes.update_authentication_config": _A,
