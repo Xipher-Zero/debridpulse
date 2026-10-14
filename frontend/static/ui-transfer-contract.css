@@ -306,6 +306,17 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 body:has(.dp-row-menu) .dp-detail-resource + .dp-detail-resource-full { opacity:0; visibility:hidden; }
 @media (prefers-reduced-motion: reduce) { .dp-detail-resource-full { transition:none; } }
 .dp-detail-route-body { padding:10px 14px 12px; }
+/* Requested By (dpRequestedByMarkup, app.js): who asked for the work, one row
+   per requester, in the Advanced section's label/value material. */
+.dp-detail-requested-by > .card-header { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+.dp-detail-requested-body { padding:8px 14px 10px; }
+.dp-detail-requesters { list-style:none; margin:0; padding:0; display:grid; gap:6px; }
+.dp-detail-requester { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; min-width:0; }
+.dp-detail-requester-name { color:var(--dp-text-secondary, var(--text2)); font-size:12px; font-weight:650; overflow-wrap:anywhere; }
+.dp-detail-requester-ref, .dp-detail-requester-facts, .dp-detail-requesters-empty { color:var(--dp-text-muted, var(--text3)); font-size:10.5px; font-weight:500; }
+.dp-detail-requester-facts { min-width:0; overflow-wrap:anywhere; }
+.dp-detail-requesters-history .dp-detail-requesters { padding:2px 2px 6px; }
+.dp-detail-requester.is-withdrawn .dp-detail-requester-name { color:var(--dp-text-muted, var(--text3)); font-weight:600; }
 /* The five route columns are declared ONCE, on the list, and every row spans
    them as a subgrid. A row that sized its own trailing `auto` tracks gave each
    row a different provenance right edge -- the gap between provenance and

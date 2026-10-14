@@ -2219,6 +2219,7 @@ async function showDetail(id) {
         ${t.extraction_status?`<div><div class="dk">Extraction</div><div class="dv">${esc(t.extraction_status)}</div></div>`:''}
         ${t.extraction_error?`<div style="grid-column:1/-1"><div class="dk">Extraction Error</div><div class="dv" style="color:var(--red)">${esc(t.extraction_error)}</div></div>`:''}
       </div>
+      ${dpRequestedByMarkup(t.requested_by)}
       <div class="card dp-detail-section-card dp-detail-route-history">
         <div class="card-header"><span class="card-title">Route History</span></div>
         <div class="dp-detail-route-body">${renderRouteHistory(t)}</div>
@@ -2294,22 +2295,60 @@ async function showDetail(id) {
   }
 }
 
+// Requested By: the accounts whose requests this transfer's work serves,
+// exactly as the server's demand ledger projects them (requested_by). It
+// says who ASKED; it is not who owns or runs the transfer. Withdrawn
+// requests stay readable, apart, behind their own disclosure.
+function dpRequestedByMarkup(requested) {
+  if (!requested) return '';
+  const standing = {disabled: 'Disabled', deleted: 'Deleted', merged: 'Merged'};
+  const entry = (item, withdrawn) => {
+    const facts = [];
+    if (item.kind === 'integration') facts.push(item.token_label ? `Integration · token “${esc(item.token_label)}”` : 'Integration');
+    if (standing[item.standing]) facts.push(`${standing[item.standing]} account`);
+    if (item.via_transfer_id != null) facts.push(`via consolidated transfer #${esc(item.via_transfer_id)}`);
+    if (item.requests > 1) facts.push(`${esc(item.requests)} requests`);
+    facts.push(`requested ${window.downloadsDateMarkup(item.first_requested_at)}`);
+    if (withdrawn) facts.push(`withdrawn ${window.downloadsDateMarkup(item.withdrawn_at)}`);
+    return `<li class="dp-detail-requester${withdrawn ? ' is-withdrawn' : ''}">
+        <span class="dp-detail-requester-name">${esc(item.name)}${item.reference ? ` <span class="dp-detail-requester-ref">#${esc(item.reference)}</span>` : ''}</span>
+        <span class="dp-detail-requester-facts">${facts.join(' · ')}</span>
+      </li>`;
+  };
+  const outstanding = Array.isArray(requested.outstanding) ? requested.outstanding : [];
+  const history = Array.isArray(requested.history) ? requested.history : [];
+  return `
+      <div class="card dp-detail-section-card dp-detail-requested-by">
+        <div class="card-header"><span class="card-title">Requested By</span></div>
+        <div class="dp-detail-requested-body">
+          ${outstanding.length
+            ? `<ul class="dp-detail-requesters">${outstanding.map(item => entry(item, false)).join('')}</ul>`
+            : '<div class="dp-detail-requesters-empty">No outstanding requests.</div>'}
+          ${history.length ? `
+          <details class="dp-detail-advanced dp-detail-requesters-history">
+            <summary>Withdrawn requests (${history.reduce((sum, item) => sum + (Number(item.requests) || 0), 0)})</summary>
+            <ul class="dp-detail-requesters">${history.map(item => entry(item, true)).join('')}</ul>
+          </details>` : ''}
+        </div>
+      </div>`;
+}
+
 // The caller's own outstanding requests that this transfer serves (the
 // server's access projection, directly or through consolidation) can be
-// withdrawn here. An Admin already controls every transfer directly, so this
-// is the non-administering account's control. The server decides what
-// withdrawal stops; this only asks.
+// withdrawn here, on the Requested By card that names them. An Admin already
+// withdraws any account's request from Users & Access, so this is the
+// non-administering account's control. The server decides what withdrawal
+// stops; this only asks.
 function dpRenderWithdrawal(t) {
-  const footer = DPModal.footer();
+  const header = document.querySelector('#modal-body .dp-detail-requested-by > .card-header');
   const own = Array.isArray(t.access?.own_requests) ? t.access.own_requests : [];
-  if (!footer || !own.length || dpCan('administer')) return;
+  if (!header || !own.length || dpCan('administer')) return;
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'btn btn-ghost btn-sm dp-detail-withdraw';
   button.textContent = own.length > 1 ? 'Withdraw My Requests' : 'Withdraw My Request';
   button.addEventListener('click', () => dpWithdrawOwnRequests(t, own, button));
-  footer.replaceChildren(button);
-  footer.hidden = false;
+  header.appendChild(button);
 }
 
 async function dpWithdrawOwnRequests(t, own, button) {

@@ -2252,6 +2252,26 @@ class TransferRepository:
             served[int(row.pop("served_transfer_id"))].append(row)
         return served
 
+    async def demand_history(self, transfer_id: int) -> list[dict]:
+        """Every demand the transfer's work serves or served, outstanding or
+        withdrawn: its own, and that of every transfer consolidated into one
+        of its artifacts (``via_transfer_id``), oldest first. The ledger is
+        the attribution: each row keeps the account and credential that
+        submitted it, whatever became of them since."""
+        async with get_db() as db:
+            return await db.fetchall(
+                """SELECT d.id, d.account_id, d.credential_id, d.origin, d.created_at, d.withdrawn_at,
+                          NULL AS via_transfer_id
+                     FROM transfer_demands d WHERE d.transfer_id=:t
+                   UNION
+                   SELECT d.id, d.account_id, d.credential_id, d.origin, d.created_at, d.withdrawn_at,
+                          ac.source_transfer_id AS via_transfer_id
+                     FROM artifact_consolidations ac
+                     JOIN download_files f ON f.id=ac.canonical_artifact_id
+                     JOIN transfer_demands d ON d.transfer_id=ac.source_transfer_id
+                    WHERE f.torrent_id=:t AND ac.source_transfer_id<>:t
+                   ORDER BY created_at, id""", {"t": int(transfer_id)})
+
     async def outstanding_demand(self, transfer_id: int) -> list[dict]:
         """Every outstanding demand that the transfer's work serves."""
         async with get_db() as db:

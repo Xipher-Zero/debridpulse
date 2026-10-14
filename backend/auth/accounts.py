@@ -798,6 +798,37 @@ async def list_accounts() -> list[dict]:
     return result
 
 
+async def requester_identities(account_ids, token_ids) -> tuple[dict[str, dict], dict[str, str]]:
+    """What attributing a request may show about who made it: each account's
+    display name, kind and standing, read from that account's own row (a
+    deleted or merged account keeps it, so attribution never moves to a
+    survivor), and each token's label (a revoked token keeps it). Never a
+    credential, verifier, username, email or identity-provider claim."""
+    from db.database import get_db
+
+    accounts_ = sorted({str(item) for item in account_ids if item})
+    tokens = sorted({str(item) for item in token_ids if item})
+    people: dict[str, dict] = {}
+    labels: dict[str, str] = {}
+    async with get_db() as db:
+        if accounts_:
+            for row in await db.fetchall(
+                    f"SELECT id, role, display_name, enabled, merged_into, deleted_at FROM accounts "
+                    f"WHERE id IN ({','.join('?' * len(accounts_))})", accounts_):
+                standing = ("merged" if row["merged_into"] else "deleted" if row["deleted_at"]
+                            else "active" if row["enabled"] else "disabled")
+                people[str(row["id"])] = {
+                    "name": str(row["display_name"] or ""),
+                    "kind": "integration" if row["role"] == Role.INTEGRATION.value else "person",
+                    "standing": standing,
+                }
+        if tokens:
+            for row in await db.fetchall(
+                    f"SELECT id, label FROM account_tokens WHERE id IN ({','.join('?' * len(tokens))})", tokens):
+                labels[str(row["id"])] = str(row["label"] or "")
+    return people, labels
+
+
 async def change_own_password(account_id: str, current_password: str, new_password: str) -> None:
     """A signed-in account replaces its own password, proving the current one."""
     from auth.passwords import verify_password

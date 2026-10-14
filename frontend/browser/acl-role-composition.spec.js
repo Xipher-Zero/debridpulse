@@ -165,6 +165,15 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
       await signed.page.locator('.dp-modal-overlay [data-modal-accept]').click();
     };
 
+    // Requested By names who asked, from the demand ledger.
+    await signed.page.evaluate(id => window.showDetail(id), transferId);
+    const requested = signed.page.locator('.dp-detail-requested-by');
+    await expect(requested.locator('.card-title')).toHaveText('Requested By');
+    await expect(requested.locator('.dp-detail-requesters > .dp-detail-requester .dp-detail-requester-name'))
+      .toHaveText([user.username]);
+    await expect(requested.locator('.dp-detail-requesters-history')).toHaveCount(0);
+    await signed.page.evaluate(() => window.closeModal());
+
     // Refused: the server's own reason, never "no longer outstanding".
     await signed.page.route('**/api/requests/*/withdraw', route => route.fulfill({
       status: 500, contentType: 'application/json', body: JSON.stringify({detail: 'fixture refusal'})}));
@@ -198,6 +207,11 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
     await signed.page.evaluate(id => window.showDetail(id), transferId);
     await expect(signed.page.locator('#modal-body .detail-grid')).toBeVisible();
     await expect(signed.page.locator('.dp-detail-withdraw')).toHaveCount(0);
+    // ...and Requested By keeps the request, as withdrawn history.
+    await expect(requested.locator('.dp-detail-requesters-empty')).toHaveText('No outstanding requests.');
+    await expect(requested.locator('.dp-detail-requesters-history > summary')).toHaveText('Withdrawn requests (1)');
+    await expect(requested.locator('.dp-detail-requester.is-withdrawn .dp-detail-requester-name'))
+      .toHaveText([user.username]);
   } finally {
     await api(admin.page, 'DELETE', `/accounts/${created.body.id}`);
   }
