@@ -311,10 +311,10 @@ def test_no_whole_settings_serializer_exists_to_write_a_canonical_namespace():
     # write.
     assert "clearSecrets" not in runtime
     # Explicit destructive actions only, each naming exactly what it erases:
-    # the whole-settings writer's parameter, and the scoped integration
-    # API-key clear (AllDebrid's own, and the API-key account owner's).
-    # None is collected from the page.
-    assert runtime.count("clear_secrets") == 3
+    # the whole-settings writer's parameter, a User's own notification write's
+    # parameter, and the scoped integration API-key clear (AllDebrid's own,
+    # and the API-key account owner's). None is collected from the page.
+    assert runtime.count("clear_secrets") == 4
     assert "clear_secrets: clears" in runtime
     assert runtime.count("clear_secrets: ['api_key']") == 2
 

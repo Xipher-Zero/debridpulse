@@ -38,7 +38,7 @@ PANELS = (
     ("function sourcesPanel(s)", "function downloadsPanel(s)"),
     ("function downloadsPanel(s)", "/* The two extraction behaviour controls"),
     ("function extractionPanel(s)", "/* ── Notifications"),
-    ("function notificationsPanel(s)", "/* Converge the Notifications surface"),
+    ("function notificationsPanel(s, own = false)", "/* Converge the Notifications surface"),
     ("function authenticationPanel(a)", "/* ── Data & Maintenance"),
     ("function maintenancePanel(s)", "function panel(name, body)"),
 )

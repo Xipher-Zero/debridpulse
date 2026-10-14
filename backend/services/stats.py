@@ -71,11 +71,19 @@ async def take_stats_snapshot() -> None:
 async def collect_all_metrics(
     hours: Optional[int] = None,
     since: Optional[datetime] = None,
+    owner_ids: Optional[list[str]] = None,
 ) -> Dict[str, Any]:
     """
     Collect comprehensive metrics for a given time window.
     hours=None → all-time.
     Each table uses its correct timestamp column.
+
+    ``owner_ids`` scopes every figure to ONE owner's attributable activity:
+    the distinct transfers that owner's own requests (the demand ledger,
+    withdrawn or not) were admitted to within the window, and those
+    transfers' files. A transfer two of that owner's requests share counts
+    once; nobody else's requests count at all. The instance event journal is
+    not owner-attributable and is left out of a scoped report.
     """
     from db.database import get_db
 
@@ -98,6 +106,24 @@ async def collect_all_metrics(
         # no params needed — datetime() is in the SQL string, converted by _adapt()
 
     trend_days = min(hours // 24, 14) if hours else 14
+    tf_d = ""   # the daily trend's scope (never windowed)
+    p_d: tuple = ()
+
+    if owner_ids is not None:
+        owners = tuple(sorted({str(item) for item in owner_ids if item})) or ("",)
+        if since:
+            cutoff = since.timestamp()
+        elif hours:
+            cutoff = time.time() - int(hours) * 3600
+        else:
+            cutoff = 0.0
+        marks = ",".join("?" * len(owners))
+        owned = f"SELECT transfer_id FROM transfer_demands WHERE account_id IN ({marks})"
+        tf_t = f"AND id IN ({owned} AND created_at >= ?)"
+        tf_f = f"AND torrent_id IN ({owned} AND created_at >= ?)"
+        p = (*owners, cutoff)
+        tf_d = f"AND id IN ({owned})"
+        p_d = owners
 
     async with get_db() as db:
 
@@ -161,7 +187,7 @@ async def collect_all_metrics(
 
         # ── Event counts (the event journal, by severity) ─────────────────────
         from db.event_journal import severity_counts
-        event_counts = await severity_counts(db, event_since)
+        event_counts = {} if owner_ids is not None else await severity_counts(db, event_since)
 
         # ── Source + label distribution (torrents.created_at) ────────────────
         source_rows = await db.fetchall(
@@ -180,9 +206,10 @@ async def collect_all_metrics(
                 COALESCE(SUM(size_bytes), 0) AS bytes
                FROM torrents
                WHERE completed_at IS NOT NULL
-                 AND completed_at >= datetime('now', '-{trend_days} days')
+                 AND completed_at >= datetime('now', '-{trend_days} days') {tf_d}
                GROUP BY DATE(completed_at, 'localtime')
                ORDER BY date ASC""",
+            p_d,
         )
 
         # ── Assemble ─────────────────────────────────────────────────────────
@@ -225,9 +252,10 @@ async def collect_all_metrics(
         }
 
 
-async def generate_report(hours: int = 24) -> Dict[str, Any]:
-    """Generate a structured report for the given time window."""
-    metrics = await collect_all_metrics(hours=hours)
+async def generate_report(hours: int = 24, owner_ids: Optional[list[str]] = None) -> Dict[str, Any]:
+    """Generate a structured report for the given time window (``owner_ids``:
+    one owner's own activity, ``collect_all_metrics``)."""
+    metrics = await collect_all_metrics(hours=hours, owner_ids=owner_ids)
     t = metrics["torrents"]
     d = metrics["downloads"]
     f = metrics["files"]
@@ -290,6 +318,9 @@ async def send_stats_report(
     hours: int = 24,
     webhook_url: Optional[str] = None,
     triggered_by: str = "manual",
+    *,
+    owner_ids: Optional[list[str]] = None,
+    sender=None,
 ) -> Dict[str, Any]:
     """Generate a report and hand it to the ONE webhook transport.
 
@@ -302,22 +333,28 @@ async def send_stats_report(
     from services.notification_service import reporting_destination
     from services.notifications import COLOR_INFO, NotificationService
 
-    cfg = _cfg()
-    # The dedicated-webhook -> primary-Discord fallback has ONE owner
-    # (services.notification_service.reporting_destination), resolved here so
-    # the transport receives an already-effective destination and never
-    # duplicates the fallback.
-    url = (webhook_url or "").strip() or reporting_destination(cfg)
-    if not url:
-        raise ValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url")
+    if sender is None:
+        cfg = _cfg()
+        # The dedicated-webhook -> primary-Discord fallback has ONE owner
+        # (services.notification_service.reporting_destination), resolved here
+        # so the transport receives an already-effective destination and never
+        # duplicates the fallback.
+        url = (webhook_url or "").strip() or reporting_destination(cfg)
+        if not url:
+            raise ValueError("No reporting webhook configured — set stats_report_webhook_url or discord_webhook_url")
+        sender = NotificationService(url)
+    elif not sender.webhook_url:
+        # An account's report goes to that account's own destination or nowhere.
+        raise ValueError("No reporting or primary Discord webhook configured")
 
-    report = await generate_report(hours=hours)
+    report = await generate_report(hours=hours, owner_ids=owner_ids)
     summary = report["report"]["summary"]
+    personal = owner_ids is not None
     # Each report is a distinct generated artifact, so suppressing one as a
     # near-duplicate would silently lose it.
-    sent = await NotificationService(url).send(
-        f"📊 Statistics Report — Last {hours}h",
-        f"Automated activity summary from {APP_SHORT_NAME}.",
+    sent = await sender.send(
+        f"📊 {'Your ' if personal else ''}Statistics Report — Last {hours}h",
+        f"{'Your own download activity' if personal else 'Automated activity summary'} from {APP_SHORT_NAME}.",
         color=COLOR_INFO,
         fields=_report_fields(summary, triggered_by),
         bypass_dedup=True,

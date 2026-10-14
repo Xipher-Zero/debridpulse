@@ -56,7 +56,7 @@ def declarations(path: Path) -> str:
 
 
 def panel() -> str:
-    return block(source(RUNTIME), "function notificationsPanel(s) {",
+    return block(source(RUNTIME), "function notificationsPanel(s, own = false) {",
                  "/* Converge the Notifications surface")
 
 
@@ -123,8 +123,9 @@ def test_upload_avatar_is_inside_the_avatar_field_and_clear_avatar_is_beside_it(
     runtime = source(RUNTIME)
     card = discord_card()
     # Inside the field, through the ONE embedded-action primitive.
-    assert "embedAction: AVATAR_UPLOAD" in card
-    assert "action: AVATAR_CLEAR(" in card
+    # The global card keeps both; a User's own card (`own`) has no instance upload.
+    assert "embedAction: own ? '' : AVATAR_UPLOAD" in card
+    assert "action: own ? '' : AVATAR_CLEAR(" in card
     # One markup owner each; the only other mentions are the action router and
     # the convergence read, neither of which renders a control.
     assert runtime.count(">Upload Avatar<") == 1
@@ -322,7 +323,7 @@ def test_every_control_uses_the_shared_horizontal_field_grammar():
     the right -- and none of them renders the stacked title/control/hint stack
     or any page-local rearrangement of it."""
     runtime = source(RUNTIME)
-    panel = block(runtime, "function notificationsPanel(s) {", "/* Converge the Notifications surface")
+    panel = block(runtime, "function notificationsPanel(s, own = false) {", "/* Converge the Notifications surface")
     composer = block(runtime, "function webhookField(key, configured)", "/* Upload Avatar belongs")
 
     inline_declared = [
@@ -408,8 +409,8 @@ def test_the_avatar_preview_is_the_fields_own_second_line():
     assert "after:" not in call
     assert runtime.count("secondLine: avatarPreview(") == 1
     # Upload stays INSIDE the field and Clear stays beside it, unchanged.
-    assert "embedAction: AVATAR_UPLOAD" in call
-    assert "action: AVATAR_CLEAR(" in call
+    assert "embedAction: own ? '' : AVATAR_UPLOAD" in call
+    assert "action: own ? '' : AVATAR_CLEAR(" in call
 
     # The one field primitive renders it as its own region, AFTER the control
     # and the action -- never inside the control box that holds the input.

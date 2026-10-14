@@ -431,7 +431,8 @@ class StatsOwnsNoTransportTests(unittest.TestCase):
         # Report CONTENT generation stays here; only delivery moved.
         self.assertIn("async def generate_report(", source)
         self.assertIn('"raw": metrics,', source)
-        self.assertIn("NotificationService(url).send(", source)
+        self.assertIn("sender = NotificationService(url)", source)
+        self.assertIn("await sender.send(", source)
 
     def test_exactly_one_webhook_transport_owner_posts(self):
         """Only the transport opens a session for a webhook."""

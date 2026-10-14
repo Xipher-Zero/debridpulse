@@ -88,7 +88,12 @@ def test_the_role_matrix_over_every_registered_action():
         "api.routes.add_multimeta_file", "api.routes.add_torrent_file", "api.routes.add_usenet_file",
         "api.routes.add_usenet_link", "api.routes.get_stats", "api.routes.prometheus_metrics",
     ])
-    assert ROLE_CAPABILITIES[Role.ADMIN] >= ROLE_CAPABILITIES[Role.USER] >= ROLE_CAPABILITIES[Role.READONLY]
+    # Admin holds everything a User does except a User's OWN notification
+    # configuration: the global Notifications already cover every Admin
+    # request, so there is no second, personal Admin configuration.
+    assert ROLE_CAPABILITIES[Role.ADMIN] >= ROLE_CAPABILITIES[Role.USER] - {Capability.NOTIFICATIONS_SELF}
+    assert Capability.NOTIFICATIONS_SELF not in ROLE_CAPABILITIES[Role.ADMIN]
+    assert ROLE_CAPABILITIES[Role.USER] >= ROLE_CAPABILITIES[Role.READONLY]
 
 
 # ── live probes through the real boundary ───────────────────────────────────

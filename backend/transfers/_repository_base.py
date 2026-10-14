@@ -2201,6 +2201,13 @@ class TransferRepository:
                      demand.account_id if demand is not None else None,
                      demand.credential_id if demand is not None else None,
                      "submission" if demand is not None else "unattributed", time.time()))
+            if demand is not None and demand.account_id:
+                # The REQUEST-level acceptance, committed with the demand it
+                # names: an account's own "Download Added" whether or not this
+                # request created the transfer. The transfer-level 'accepted'
+                # below is unchanged and remains the global one.
+                await db.execute("INSERT INTO application_events(transfer_id,kind,detail) VALUES(?,'demand_accepted',?)",
+                                 (transfer_id, str(demand.id)))
             if created:
                 await journal(db, je.accepted(transfer_id))
                 await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))

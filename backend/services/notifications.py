@@ -15,9 +15,11 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import logging
+import re
 import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit
 
 import aiohttp
 from core.branding import APP_SHORT_NAME, REPOSITORY_URL
@@ -58,6 +60,40 @@ def _is_discord_url(url: str) -> bool:
         return "discord" in host or "discordapp" in host
     except Exception:
         return False
+
+
+# The Discord-owned hosts that serve the webhook API (stable, canary and PTB
+# clients use the same endpoint shape on each).
+DISCORD_WEBHOOK_HOSTS = frozenset({
+    "discord.com", "canary.discord.com", "ptb.discord.com",
+    "discordapp.com", "canary.discordapp.com", "ptb.discordapp.com",
+})
+_DISCORD_WEBHOOK_PATH = re.compile(r"/api(?:/v\d{1,2})?/webhooks/\d{1,25}/[A-Za-z0-9_-]{1,200}")
+
+
+def is_discord_webhook_url(url: str) -> bool:
+    """Whether ``url`` is exactly a Discord webhook endpoint.
+
+    The narrow destination rule for account-owned (User) notifications:
+    HTTPS on a Discord-owned host, the canonical ``/api/webhooks/{id}/{token}``
+    path, and nothing else -- no userinfo, no explicit port, no query and no
+    fragment. ``_is_discord_url`` above stays the global dialect heuristic; it
+    is not an admission rule.
+    """
+    raw = str(url or "")
+    if not raw or raw != raw.strip() or len(raw) > 512 or not raw.isascii():
+        return False
+    if any(ord(ch) < 0x21 or ch in "\\<>\"{}|^`" for ch in raw):
+        return False
+    try:
+        parts = urlsplit(raw)
+        port = parts.port
+    except ValueError:
+        return False
+    return (parts.scheme == "https" and port is None and not parts.username and parts.password is None
+            and "@" not in parts.netloc and parts.netloc.lower() == (parts.hostname or "")
+            and parts.hostname in DISCORD_WEBHOOK_HOSTS and not parts.query and not parts.fragment
+            and _DISCORD_WEBHOOK_PATH.fullmatch(parts.path) is not None)
 
 
 # ── Colors ────────────────────────────────────────────────────────────────────
@@ -109,10 +145,21 @@ class NotificationService:
     _sent_hashes:  Dict[str, float] = {}
     _throttle_lock: Optional[asyncio.Lock] = None  # lazy — created per event loop
 
-    def __init__(self, webhook_url: str = "", added_webhook_url: str = ""):
+    def __init__(self, webhook_url: str = "", added_webhook_url: str = "", *,
+                 identity: Optional[tuple[str, str]] = None, discord_only: bool = False,
+                 dedup: bool = True):
         self.webhook_url       = (webhook_url or "").strip()
         # Separate channel for added events; falls back to main webhook if not set
         self.added_webhook_url = (added_webhook_url or "").strip() or self.webhook_url
+        # An account-owned client carries its OWN sender identity and admits
+        # only exact Discord webhook endpoints, posted to without following
+        # redirects. The defaults are the global client, unchanged.
+        self.identity = identity
+        self.discord_only = bool(discord_only)
+        # Content dedup guards the global path against near-identical repeats;
+        # an account-owned client's sends are already once per claimed event,
+        # and two Users choosing the same webhook still get one message each.
+        self.dedup = bool(dedup)
 
     # ── Lock (lazy, safe for test isolation) ─────────────────────────────────
 
@@ -371,6 +418,15 @@ class NotificationService:
 
     # ── Internal implementation ───────────────────────────────────────────────
 
+    def _identity(self) -> tuple[str, str]:
+        """The sender identity: the account's own, or the global one."""
+        if self.identity is None:
+            return _get_discord_identity()
+        name, avatar = (str(item or "").strip() for item in self.identity)
+        if not avatar.startswith("https://") or avatar.lower().endswith(".svg"):
+            avatar = ""
+        return name or APP_NAME, avatar
+
     async def _send(
         self,
         url: str,
@@ -392,6 +448,13 @@ class NotificationService:
         """
         if not url:
             return
+        if self.discord_only and not is_discord_webhook_url(url):
+            # Fail closed: an account-owned destination is a Discord webhook or
+            # nothing. Admission refuses anything else; this is the last word.
+            logger.error("Discord notification refused (%s): not a Discord webhook endpoint", title[:60])
+            if strict:
+                raise RuntimeError("The destination is not a Discord webhook URL")
+            return False
 
         # Deduplication: same content within 30s → skip
         # Key includes description to avoid suppressing different transfers with same event type
@@ -404,7 +467,7 @@ class NotificationService:
             now = time.monotonic()
 
             last_hash = self._sent_hashes.get(dedup_key, 0.0)
-            if not bypass_dedup and now - last_hash < _DEDUP_WINDOW_SECONDS:
+            if self.dedup and not bypass_dedup and now - last_hash < _DEDUP_WINDOW_SECONDS:
                 logger.debug("Discord: duplicate suppressed (%s)", title)
                 return False
 
@@ -420,7 +483,7 @@ class NotificationService:
             cutoff = time.monotonic() - 300
             self._sent_hashes = {k: v for k, v in self._sent_hashes.items() if v > cutoff}
 
-        _bot_name, _bot_avatar = _get_discord_identity()
+        _bot_name, _bot_avatar = self._identity()
         embed: Dict[str, Any] = {
             "title":       title[:256],
             "description": description[:4096],
@@ -480,13 +543,18 @@ class NotificationService:
             async with aiohttp.ClientSession(
                 timeout=aiohttp.ClientTimeout(total=15)
             ) as session:
-                async with session.post(url, json=payload) as resp:
+                # An account-owned destination is posted to exactly; a redirect
+                # is a refusal (any non-2xx status fails below), never followed.
+                post = {"allow_redirects": False} if self.discord_only else {}
+                async with session.post(url, json=payload, **post) as resp:
                     if resp.status == 429:
                         data = await resp.json(content_type=None)
                         retry_after = float(data.get("retry_after", 5))
+                        if self.discord_only:
+                            retry_after = max(0.0, min(retry_after, 10.0))
                         logger.warning("Discord rate limit — waiting %.1fs", retry_after)
                         await asyncio.sleep(retry_after)
-                        async with session.post(url, json=payload) as resp2:
+                        async with session.post(url, json=payload, **post) as resp2:
                             if resp2.status not in (200, 204):
                                 body2 = await resp2.text()
                                 raise Exception(f"Discord webhook {resp2.status} after retry: {body2[:200]}")

@@ -111,10 +111,13 @@ function nav(el) {
     settings:'Configure providers, downloads, notifications, and system behavior.',
     help:'Usage guidance, project information, and licensing.',
   };
-  document.getElementById('page-title').textContent = titles[v] || v;
+  // A sidebar entry may name the page it opens (a User's Settings slot opens
+  // their own Notifications).
+  const title = el.dataset.title || titles[v] || v;
+  document.getElementById('page-title').textContent = title;
   const subtitle = document.getElementById('page-subtitle');
-  if (subtitle) subtitle.textContent = subtitles[v] || '';
-  document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title:titles[v]||v}}));
+  if (subtitle) subtitle.textContent = el.dataset.subtitle || subtitles[v] || '';
+  document.dispatchEvent(new CustomEvent('debridpulse:navigation', {detail:{view:v,title}}));
   syncDashboardSparkPulses();
   if (v === 'dashboard') { loadStats(); loadRecent(); }
   // Every sidebar selection is a new entry: Downloads opens on page 1 (its

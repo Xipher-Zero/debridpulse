@@ -364,6 +364,7 @@ async def start_scheduler(service=None):
     _tasks.append(asyncio.create_task(backup_loop()))
     _tasks.append(asyncio.create_task(stats_snapshot_loop()))
     _tasks.append(asyncio.create_task(stats_report_loop()))
+    _tasks.append(asyncio.create_task(personal_stats_report_loop()))
     _tasks.append(asyncio.create_task(update_check_loop()))
     _tasks.append(asyncio.create_task(event_index_loop()))
     _tasks.append(asyncio.create_task(staged_input_reclaim_loop()))
@@ -427,3 +428,38 @@ async def stats_report_loop():
             await send_stats_report(hours=window_h, triggered_by="schedule")
         except Exception as e:
             logger.error("Stats report error: %s", sanitize_exception(e))
+
+
+async def personal_stats_report_loop():
+    """Every User's own scheduled report, from ONE loop.
+
+    Each account keeps its own cadence, window and destination
+    (``services.account_notifications.due_reports``): this pass only finds the
+    reports that are due -- a bounded number per pass, oldest first -- and
+    sends each, owner-scoped, through the one report generator and transport.
+    No task or timer exists per account, and the global schedule above is
+    untouched."""
+    await asyncio.sleep(180)
+    while True:
+        await asyncio.sleep(300)
+        if not _application_storage_ready():
+            continue
+        try:
+            from auth.accounts import owned_account_ids
+            from services import account_notifications
+            from services.notification_service import report_window_hours, reporting_destination
+            from services.stats import send_stats_report
+
+            for account_id, settings in await account_notifications.due_reports():
+                # The cadence restarts whatever the outcome: a dead webhook is
+                # retried at the next interval, never in a tight loop.
+                await account_notifications.mark_reported(account_id)
+                try:
+                    await send_stats_report(
+                        hours=report_window_hours(settings), triggered_by="schedule",
+                        owner_ids=await owned_account_ids(account_id),
+                        sender=account_notifications.sender(settings, reporting_destination(settings)))
+                except Exception as e:
+                    logger.error("Personal stats report error: %s", sanitize_exception(e))
+        except Exception as e:
+            logger.error("Personal stats report pass error: %s", sanitize_exception(e))

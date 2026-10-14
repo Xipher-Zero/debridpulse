@@ -447,4 +447,6 @@ def test_retired_unreachable_views_and_owners_are_not_packaged() -> None:
     ):
         assert fragment not in app
     supported = re.findall(r'class="nav-item(?: active)?" data-view="([^"]+)"', html)
-    assert supported == ["dashboard", "torrents", "events", "stats", "settings", "help"]
+    # The Settings slot holds the Admin's Settings or, composed only for a
+    # standard User, that User's own Notifications -- never both.
+    assert supported == ["dashboard", "torrents", "events", "stats", "settings", "settings", "help"]

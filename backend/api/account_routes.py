@@ -19,6 +19,10 @@ from application.service import ApplicationService
 from auth import accounts
 from auth.accounts import AccountRefused, Role
 from auth.permissions import Capability, demand_owner, permits
+from auth.throttle import personal_notification_test_rate_limiter
+from core.logging_utils import sanitize_exception
+from services import account_notifications
+from services import notification_service
 
 router = APIRouter()
 
@@ -211,6 +215,90 @@ async def change_own_actual_name(actual_name: Annotated[str, Body(embed=True, ma
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
+
+
+# ── the signed-in User's own notifications ──────────────────────────────────
+# Classified ``notifications.self`` (User only). The account is ALWAYS the
+# authenticated principal's: no route here takes an account ID, and the body
+# model refuses any key that is not a personal notification field.
+
+async def _notifying_account(request: Request) -> str:
+    principal = request.state.principal
+    account_id = str(principal.account_id or "")
+    if not account_id or not await account_notifications.eligible(account_id):
+        raise HTTPException(status_code=403, detail="Forbidden")
+    return account_id
+
+
+def _own_test_admitted(account_id: str) -> None:
+    if not personal_notification_test_rate_limiter.allow(account_id):
+        raise HTTPException(status_code=429, detail="Too many tests; wait a minute and try again")
+
+
+@router.get("/account/notifications")
+async def own_notifications(request: Request):
+    account_id = await _notifying_account(request)
+    return account_notifications.public(await account_notifications.load(account_id))
+
+
+@router.put("/account/notifications")
+async def update_own_notifications(body: account_notifications.AccountNotificationUpdate, request: Request):
+    account_id = await _notifying_account(request)
+    try:
+        saved = await account_notifications.update(account_id, body)
+    except account_notifications.NotificationRefused as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+    return account_notifications.public(saved)
+
+
+@router.post("/account/notifications/test-discord")
+async def test_own_discord(request: Request):
+    """Prove the User's OWN saved Discord configuration: one test message to
+    their own primary webhook, as their own identity. It names no transfer."""
+    account_id = await _notifying_account(request)
+    settings = await account_notifications.load(account_id)
+    destination = notification_service.discord_destination(settings)
+    if not destination:
+        raise HTTPException(status_code=400, detail="No Discord webhook configured")
+    _own_test_admitted(account_id)
+    fingerprint = notification_service.verification_fingerprints(settings)[notification_service.DISCORD_SUBJECT]
+    try:
+        if not await account_notifications.sender(settings, destination).test(strict=True):
+            raise RuntimeError("Discord test did not send a notification")
+    except Exception as exc:
+        await account_notifications.record_verification(
+            account_id, notification_service.DISCORD_SUBJECT, fingerprint, False)
+        raise HTTPException(status_code=502, detail=sanitize_exception(exc, max_length=200)) from None
+    saved = await account_notifications.record_verification(
+        account_id, notification_service.DISCORD_SUBJECT, fingerprint, True)
+    return {"ok": True, "notifications": notification_service.notification_state(saved)}
+
+
+@router.post("/account/notifications/send-report")
+async def send_own_report(request: Request):
+    """Send the User's OWN statistics report now: their own activity only, to
+    their own effective reporting destination, over their own window."""
+    account_id = await _notifying_account(request)
+    settings = await account_notifications.load(account_id)
+    destination = notification_service.reporting_destination(settings)
+    if not destination:
+        raise HTTPException(status_code=400, detail="No reporting or primary Discord webhook configured")
+    _own_test_admitted(account_id)
+    fingerprint = notification_service.verification_fingerprints(settings)[notification_service.REPORTING_SUBJECT]
+    hours = notification_service.report_window_hours(settings)
+    try:
+        from services.stats import send_stats_report
+
+        result = await send_stats_report(
+            hours=hours, triggered_by="manual", owner_ids=await accounts.owned_account_ids(account_id),
+            sender=account_notifications.sender(settings, destination))
+    except Exception as exc:
+        await account_notifications.record_verification(
+            account_id, notification_service.REPORTING_SUBJECT, fingerprint, False)
+        raise HTTPException(status_code=502, detail=sanitize_exception(exc, max_length=200)) from None
+    saved = await account_notifications.record_verification(
+        account_id, notification_service.REPORTING_SUBJECT, fingerprint, True)
+    return {**result, "notifications": notification_service.notification_state(saved)}
 
 
 @router.put("/account/password")

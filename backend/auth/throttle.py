@@ -176,3 +176,10 @@ oidc_verify_rate_limiter = DualWindowRateLimiter(
     per_peer_limit=3,
     global_limit=3,
 )
+# A User's own notification Test and test report reach an outbound Discord
+# webhook. Keyed by the durable account ID: a few per account per minute,
+# with a process-wide ceiling so many accounts together cannot flood either.
+personal_notification_test_rate_limiter = DualWindowRateLimiter(
+    per_peer_limit=3,
+    global_limit=30,
+)

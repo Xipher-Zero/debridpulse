@@ -44,6 +44,14 @@
   let authGeneration = 0;
 
   const root = () => document.getElementById('view-settings');
+
+  /* Whose configuration this page edits, as the server composed it: the
+   * global Settings for an Admin, or -- in the same slot, from the same cards
+   * -- a standard User's OWN Notifications (``data-settings-context="self"``,
+   * composed only for ``notifications.self``). The server authorizes every
+   * read and write either way; this only chooses which endpoints to call. */
+  const selfContext = () => root()?.dataset.settingsContext === 'self';
+  const OWN_NOTIFICATIONS = '/account/notifications';
   const byId = id => document.getElementById(id);
   const text = value => String(value ?? '');
   const html = value => text(value).replace(/[&<>"']/g, ch => ({
@@ -2738,22 +2746,28 @@
             <div id="dp-settings-avatar-preview" class="dp-settings-avatar-preview dp-settings-avatar-preview--compact"${
               url ? '' : ' hidden'}>${url ? `<img src="${html(url)}" alt="Discord avatar preview"><span>${html(url)}</span>` : ''}</div>`;
 
-  function notificationsPanel(s) {
+  /* ``own``: a standard User's own configuration. The same two cards and
+   * controls, less what is not theirs to set: instance update notices and
+   * their check interval, and the instance-hosted avatar upload (a User's
+   * avatar is a URL Discord fetches itself). */
+  function notificationsPanel(s, own = false) {
     const discord = card('Discord Notifications', `
       <div class="dp-settings-notifications-identity-row">
-        ${input('discord_username', 'Display Name', s.discord_username || 'DebridPulse', {
+        ${input('discord_username', 'Display Name', own ? s.discord_username || '' : s.discord_username || 'DebridPulse', {
+          placeholder: own ? 'DebridPulse' : '',
           hint: 'Name shown as the sender of Discord notifications.',
           inline: true,
         })}
         ${input('discord_avatar_url', 'Avatar URL', s.discord_avatar_url || '', {
           placeholder: 'https://example.com/avatar.png',
-          hint: 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
-          embedAction: AVATAR_UPLOAD,
-          controlClass: 'dp-settings-avatar-field-control',
+          hint: own ? 'Image shown with your Discord notifications. Paste a direct HTTPS image URL.'
+            : 'Image shown with Discord notifications. Paste a direct image URL or upload one.',
+          embedAction: own ? '' : AVATAR_UPLOAD,
+          controlClass: own ? '' : 'dp-settings-avatar-field-control',
           secondLine: avatarPreview(s.discord_avatar_url || ''),
           inline: true,
           className: 'dp-settings-avatar-row',
-          action: AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
+          action: own ? '' : AVATAR_CLEAR(!!(s.discord_avatar_url || '').trim()),
         })}
       </div>
       <div class="dp-settings-notifications-delivery-row">
@@ -2769,19 +2783,22 @@
           'Send a notification when a download fails.', s.discord_notify_error),
         tuningToggle('discord_notify_extract', 'Extraction Result',
           'Send a notification when archive extraction completes or fails.', s.discord_notify_extract),
-        tuningToggle('discord_notify_update', 'Update Available',
-          'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update),
-        input('update_check_interval_hours', 'Update Check Interval', s.update_check_interval_hours ?? 12, {
-          type: 'number', min: 0, max: 168, step: 1,
-          hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.',
-          embedAction: fieldUnit('hours'),
-          controlClass: 'dp-settings-unit-field',
-        }),
+        own ? [] : [
+          tuningToggle('discord_notify_update', 'Update Available',
+            'Send a notification when a newer DebridPulse release is detected.', s.discord_notify_update),
+          input('update_check_interval_hours', 'Update Check Interval', s.update_check_interval_hours ?? 12, {
+            type: 'number', min: 0, max: 168, step: 1,
+            hint: 'Set how often DebridPulse checks for a newer release. Enter 0 to disable update checks.',
+            embedAction: fieldUnit('hours'),
+            controlClass: 'dp-settings-unit-field',
+          }),
+        ],
       ))}
     `, {
       className: 'dp-settings-discord-card',
       titlePrefix: familyIcon('notifications', 'message-square'),
-      headerCenter: 'Configure notification identity, delivery destinations, and event alerts.',
+      headerCenter: own ? 'Configure your identity, Discord destinations, and alerts for your own downloads.'
+        : 'Configure notification identity, delivery destinations, and event alerts.',
       headerCenterClass: 'dp-settings-notifications-header-copy',
       headerStatus: notificationStatus(s.discord_notifications_configured, s.discord_notifications_verified),
       headerAction: providerTestAction('test-discord'),
@@ -2811,7 +2828,8 @@
     `, {
       className: 'dp-settings-statistics-reporting-card',
       titlePrefix: familyIcon('notifications', 'chart-line'),
-      headerCenter: 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
+      headerCenter: own ? 'Configure where reports of your own activity are sent, how often, and how much they summarize.'
+        : 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
       headerCenterClass: 'dp-settings-statistics-reporting-header-copy',
       headerStatus: notificationStatus(s.stats_reporting_configured, s.stats_reporting_verified),
       headerAction: providerTestAction('send-report'),
@@ -2871,8 +2889,16 @@
    * the same cached-document seam every other accepted canonical change uses. */
   function adoptNotifications(projection) {
     if (!projection || !state.settings) return;
-    syncGlobalSettings({...state.settings, ...projection});
+    syncNotificationDocument({...state.settings, ...projection});
     paintNotifications();
+  }
+
+  /* The notification document this page holds: the global Settings document
+   * (shared through the one synchronisation owner), or a User's own, which is
+   * nobody else's and is never published as the application's settings. */
+  function syncNotificationDocument(data) {
+    if (selfContext()) state.settings = data;
+    else syncGlobalSettings(data);
   }
 
   /* A Test that FAILED may have retired durable evidence, so the card must stop
@@ -2880,7 +2906,7 @@
    * Canonical truth is re-read rather than guessed at. */
   async function refreshNotificationState() {
     try {
-      syncGlobalSettings(await request('GET', '/settings', null, 15000));
+      syncNotificationDocument(await request('GET', selfContext() ? OWN_NOTIFICATIONS : '/settings', null, 15000));
       paintNotifications();
     } catch (_) { /* the failure the operator is being told about is the story */ }
   }
@@ -4821,7 +4847,9 @@
       commit: async ({key, draft}) => {
         const declared = COMMIT_FIELDS[key];
         const option = declared.option;
-        const result = await writeSettingsDocument({[option]: committedValue(key, draft)});
+        const result = selfContext()
+          ? await writeOwnNotifications({[option]: committedValue(key, draft)})
+          : await writeSettingsDocument({[option]: committedValue(key, draft)});
         // What this document holds decides what several Notifications controls
         // SHOW -- each card's status, and whether each destructive action has
         // anything to act on -- so the surface converges on whatever the server
@@ -4853,6 +4881,16 @@
     const result = await request('PUT', '/settings',
       {...settingsDocument(canonical), clear_secrets: clears, ...overrides}, 15000);
     syncGlobalSettings(result);
+    return result;
+  }
+
+  /* In the self context the same settings-document fields are a User's own
+   * notification document, which HAS a partial write: one request naming the
+   * changed fields (and any explicit clear), answered with the accepted
+   * secret-free projection. */
+  async function writeOwnNotifications(overrides, clears = []) {
+    const result = await request('PUT', OWN_NOTIFICATIONS, {...overrides, clear_secrets: clears}, 15000);
+    syncNotificationDocument(result);
     return result;
   }
 
@@ -5090,7 +5128,9 @@
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Testing…');
     try {
-      const result = await request('POST', '/settings/validate-discord', undefined, 20000);
+      const result = selfContext()
+        ? await request('POST', `${OWN_NOTIFICATIONS}/test-discord`, undefined, 20000)
+        : await request('POST', '/settings/validate-discord', undefined, 20000);
       adoptNotifications(result.notifications);
       notify('Discord notification sent', 'success');
     } catch (error) {
@@ -5108,7 +5148,9 @@
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Sending…');
     try {
-      const result = await request('POST', '/settings/send-stats-report', undefined, 20000);
+      const result = selfContext()
+        ? await request('POST', `${OWN_NOTIFICATIONS}/send-report`, undefined, 20000)
+        : await request('POST', '/settings/send-stats-report', undefined, 20000);
       adoptNotifications(result.notifications);
       notify(`Test report sent (${result.hours}h)`, 'success');
     } catch (error) {
@@ -5246,7 +5288,8 @@
     await window.DPSettingsPersistence.settle(root());
     setBusy(button, true, 'Clearing\u2026');
     try {
-      await writeSettingsDocument({}, [key]);
+      if (selfContext()) await writeOwnNotifications({}, [key]);
+      else await writeSettingsDocument({}, [key]);
       setBusy(button, false);
       paintNotifications();
       notify(`${spec.label} cleared`, 'success');
@@ -5567,6 +5610,7 @@
 
   // The one Settings entry (app.js navigation): every entry opens on Services.
   async function load() {
+    if (selfContext()) return loadOwnNotifications();
     state.activeTab = 'sources';
     document.getElementById('content')?.classList.remove('settings-active');
 
@@ -5620,6 +5664,56 @@
       state.loading = null;
     });
     return state.loading;
+  }
+
+  /* A standard User's own Notifications: the same entry, the same owner and
+   * the same two cards, read from and written to the User's own document. */
+  async function loadOwnNotifications() {
+    state.activeTab = 'notifications';
+    document.getElementById('content')?.classList.remove('settings-active');
+    if (state.loading) return state.loading;
+    const generation = ++loadGeneration;
+    state.loading = (async () => {
+      const view = root();
+      if (!view) return;
+      view.classList.add('dp-settings-clean-view');
+      view.innerHTML = '<div class="dp-settings-loading">Loading Notifications…</div>';
+      let own;
+      try {
+        own = await request('GET', OWN_NOTIFICATIONS, undefined, 10000);
+      } catch (error) {
+        if (generation !== loadGeneration || !settingsActive()) return;
+        view.innerHTML = `<div class="dp-settings-load-error"><b>Notifications could not be loaded.</b><span>${html(error.message)}</span></div>`;
+        notify(error.message, 'error');
+        return;
+      }
+      if (generation !== loadGeneration || !settingsActive()) return;
+      syncNotificationDocument(own);
+      renderOwnNotifications();
+    })().finally(() => {
+      state.loading = null;
+    });
+    return state.loading;
+  }
+
+  /* One standard master card holding the two Notifications cards: the page
+   * header names the page, so there is no Tuning Deck and no tab strip. */
+  function renderOwnNotifications() {
+    const view = root();
+    if (!view || !state.settings) return;
+    view.classList.add('dp-settings-clean-view');
+    view.innerHTML = `
+      <section class="card dp-settings-master-card dp-settings-master-card--own" aria-label="Notifications">
+        <div class="dp-settings-master-body">
+          <div class="dp-settings-scroll">
+            <div class="dp-settings-panels">
+              ${panel('notifications', notificationsPanel(state.settings, true))}
+            </div>
+          </div>
+        </div>
+      </section>`;
+    bindEvents(view);
+    window.DPSettingsPersistence.adopt(view);
   }
 
   // app.js owns generic navigation and calls this canonical Settings entry point.

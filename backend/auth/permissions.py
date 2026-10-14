@@ -47,14 +47,19 @@ class Capability(StrEnum):
     DEMAND_ANY = "demand.any"              # list and withdraw anyone's demand
     METRICS_READ = "metrics.read"          # Prometheus scrape
     ADMINISTER = "administer"              # configuration, accounts, maintenance, diagnostics, global controls
+    # A standard User's OWN notification configuration and its Tests. Admin
+    # deliberately does not hold it: the global Notifications already cover
+    # every Admin request, and a second personal Admin configuration would
+    # only duplicate them.
+    NOTIFICATIONS_SELF = "notifications.self"
 
 
 _HUMAN = frozenset({Capability.SESSION, Capability.INTERFACE, Capability.TRANSFERS_READ,
                     Capability.STATISTICS_SUMMARY, Capability.STATISTICS_READ})
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
-    Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC},
+    Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC, Capability.NOTIFICATIONS_SELF},
     Role.USER: _HUMAN | {Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE,
-                         Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN},
+                         Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN, Capability.NOTIFICATIONS_SELF},
     Role.READONLY: _HUMAN,
     Role.INTEGRATION: frozenset({Capability.SESSION, Capability.TRANSFERS_SUBMIT, Capability.DEMAND_OWN,
                                  Capability.METRICS_READ, Capability.STATISTICS_SUMMARY}),
@@ -77,6 +82,7 @@ _P, _S, _I = Capability.PUBLIC, Capability.SESSION, Capability.INTERFACE
 _R, _ST = Capability.TRANSFERS_READ, Capability.STATISTICS_READ
 _SUB, _OP, _DES = Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE, Capability.TRANSFERS_DESTROY
 _DEM, _MET, _A = Capability.DEMAND_OWN, Capability.METRICS_READ, Capability.ADMINISTER
+_NS = Capability.NOTIFICATIONS_SELF
 
 # Every routed action, by the endpoint that serves it (``module.function``).
 # A route test compares this table with the live route table both ways.
@@ -95,6 +101,11 @@ ACTIONS: dict[str, Capability] = {
     "api.account_routes.change_own_display_name": _S,
     "api.account_routes.own_account": _S,
     "api.account_routes.change_own_actual_name": _S,
+    # A User's own notification configuration (never the global one).
+    "api.account_routes.own_notifications": _NS,
+    "api.account_routes.update_own_notifications": _NS,
+    "api.account_routes.test_own_discord": _NS,
+    "api.account_routes.send_own_report": _NS,
     # Authentication configuration and accounts.
     "api.auth_config_routes.get_authentication_config": _A,
     "api.auth_config_routes.update_authentication_config": _A,
