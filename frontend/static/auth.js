@@ -181,18 +181,28 @@
     if (response.ok) return null;
     const payload = await response.json().catch(() => ({}));
     const detail = Array.isArray(payload.detail) ? payload.detail[0]?.msg : payload.detail;
-    return String(detail || 'The change was not saved.');
+    return {status: response.status, message: String(detail || 'The change was not saved.')};
   }
 
   // The account's own profile, read from the account API when the dialog
-  // opens: the email (and the verification its identity provider stated) is
-  // shown, never edited here.
+  // opens. An email the account has -- from its identity provider, or entered
+  // here before -- is shown read-only with its verification; an account with
+  // none may enter one, once, and it is recorded unverified.
   const VERIFICATION = {verified: 'Verified', unverified: 'Not verified', unknown: 'Verification not stated'};
 
+  function emailMarkup(profile) {
+    if (!profile.email) {
+      return '<label class="form-label" for="dp-account-email-input">Email</label>'
+        + '<input class="input" id="dp-account-email-input" data-field="email" type="email" maxlength="254" '
+        + 'autocomplete="email" spellcheck="false" placeholder="you@example.com">';
+    }
+    return '<span class="form-label">Email</span><span class="dp-account-email-value"></span>';
+  }
+
   /* My Account: ONE dialog of one fixed size with two views. The profile view
-   * (Display Name, Actual Name, Email) saves the two names; Change Password,
-   * offered only to an account that holds a local password, swaps the same
-   * dialog to the password view, whose Cancel returns to the profile -- with
+   * (Display Name, Actual Name, Email) saves the two names and, while the
+   * account has none, an email; Change Password, offered only to an account
+   * that holds a local password, swaps the same dialog to the password view, whose Cancel returns to the profile -- with
    * its unsaved edits intact -- and whose Save changes only the password. A
    * failed save keeps the dialog and says why. */
   async function openAccountDialog(data) {
@@ -205,6 +215,17 @@
     const views = {};
     let view = 'profile';
     const notice = text => window.toast(text, 'error');
+    let emailSlot = null;
+    const paintEmail = () => {
+      if (!emailSlot) return;
+      emailSlot.innerHTML = emailMarkup(profile);
+      fields.email = emailSlot.querySelector('[data-field="email"]');
+      const value = emailSlot.querySelector('.dp-account-email-value');
+      if (value) {
+        const state = VERIFICATION[profile.email_verification];
+        value.textContent = `${profile.email}${state ? ` (${state})` : ''}`;
+      }
+    };
 
     const show = (next, handle) => {
       view = next;
@@ -237,8 +258,7 @@
               <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
             <label class="dp-modal-field"><span class="form-label">Actual Name</span>
               <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
-            <div class="dp-modal-field dp-account-email"><span class="form-label">Email</span>
-              <span class="dp-account-email-value"></span></div>
+            <div class="dp-modal-field dp-account-email" data-account-email></div>
           </div>
           <div class="dp-account-view" data-account-view="password" hidden>
             <label class="dp-modal-field"><span class="form-label">Current Password</span>
@@ -252,10 +272,8 @@
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
         fields.display_name.value = String(profile.display_name || data.display_name || '');
         fields.actual_name.value = String(profile.actual_name || '');
-        const email = body.querySelector('.dp-account-email-value');
-        email.textContent = profile.email
-          ? `${profile.email}${VERIFICATION[profile.email_verification] ? ` (${VERIFICATION[profile.email_verification]})` : ''}`
-          : 'None provided';
+        emailSlot = body.querySelector('[data-account-email]');
+        paintEmail();
         return null;
       },
       onCancel(handle) {
@@ -269,21 +287,40 @@
           if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
           const failure = await sendJson('PUT', '/api/account/password',
             {current_password: fields.current.value, new_password: fields.next.value});
-          if (failure) { notice(failure); return false; }
+          if (failure) { notice(failure.message); return false; }
           // The server ended every session of this account: sign in again.
           redirectToLogin();
           return true;
         }
         const name = fields.display_name.value.trim();
         if (!name) { notice('A display name is required.'); return false; }
+        // Each saved part is the profile's at once, so a retry after a later
+        // part's failure sends only what is still unsaved.
         if (name !== String(profile.display_name || '')) {
           const failure = await sendJson('PUT', '/api/account/display-name', {display_name: name});
-          if (failure) { notice(failure); return false; }
+          if (failure) { notice(failure.message); return false; }
+          profile.display_name = name;
         }
         const actual = fields.actual_name.value.trim();
         if (actual !== String(profile.actual_name || '')) {
           const failure = await sendJson('PUT', '/api/account/actual-name', {actual_name: actual});
-          if (failure) { notice(failure); return false; }
+          if (failure) { notice(failure.message); return false; }
+          profile.actual_name = actual;
+        }
+        // Blank stays blank; an entered address is saved once. If the account
+        // gained one meanwhile, the server refuses and the dialog shows it.
+        const email = fields.email ? fields.email.value.trim() : '';
+        if (email) {
+          const failure = await sendJson('PUT', '/api/account/email', {email});
+          if (failure) {
+            notice(failure.message);
+            if (failure.status === 409) {
+              const current = await readProfile();
+              if (current) Object.assign(profile, current);
+              paintEmail();
+            }
+            return false;
+          }
         }
         window.location.reload();
         return true;

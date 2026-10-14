@@ -107,8 +107,8 @@ body.light #view-settings .dp-settings-protocol-chip {
    visible rather than filling it. The glow is the same colour-derived pair
    the inner-card icons use, from the same datum. */
 #view-settings .dp-settings-protocol-chip img {
-  width: 22px;
-  height: 22px;
+  width: var(--dp-protocol-glyph-size, 22px);
+  height: var(--dp-protocol-glyph-size, 22px);
   display: block;
   object-fit: contain;
   filter:
@@ -136,6 +136,17 @@ body.light #view-settings .dp-settings-protocol-chip img {
   filter:
     drop-shadow(0 0 4px color-mix(in srgb, var(--dp-protocol-color) 78%, transparent))
     drop-shadow(0 0 9px color-mix(in srgb, var(--dp-protocol-color) 34%, transparent));
+}
+
+/* A page master header's chip (a User's own Notifications, "The Grapevine")
+   is the same chip at the shared page feature-icon footprint
+   (ui-feature-icon-contract.css), its glyph and corner scaled with it. */
+#view-settings .dp-settings-header-copy > .dp-settings-protocol-chip {
+  --dp-protocol-glyph-size: 30px;
+  width: var(--dp-feature-icon-size, 51px);
+  height: var(--dp-feature-icon-size, 51px);
+  flex: 0 0 var(--dp-feature-icon-size, 51px);
+  border-radius: 12px;
 }
 
 body.light #view-settings .dp-settings-header-chip {

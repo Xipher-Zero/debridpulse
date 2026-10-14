@@ -101,6 +101,7 @@ ACTIONS: dict[str, Capability] = {
     "api.account_routes.change_own_display_name": _S,
     "api.account_routes.own_account": _S,
     "api.account_routes.change_own_actual_name": _S,
+    "api.account_routes.record_own_email": _S,
     # A User's own notification configuration (never the global one).
     "api.account_routes.own_notifications": _NS,
     "api.account_routes.update_own_notifications": _NS,

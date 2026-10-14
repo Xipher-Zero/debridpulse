@@ -30,6 +30,7 @@ restored state would leave no usable Admin (``restored_state_has_usable_admin``)
 from __future__ import annotations
 
 import hashlib
+import re
 import secrets
 import sqlite3
 import uuid
@@ -73,6 +74,7 @@ SCHEMA = (
         email TEXT NOT NULL DEFAULT '',
         email_verified INTEGER NOT NULL DEFAULT 0,
         email_verified_known INTEGER NOT NULL DEFAULT 0,
+        email_self_entered INTEGER NOT NULL DEFAULT 0,
         enabled INTEGER NOT NULL DEFAULT 1,
         protected TEXT UNIQUE CHECK (protected IN ('default_admin','default_integration')),
         generation INTEGER NOT NULL DEFAULT 1,
@@ -128,6 +130,10 @@ class AccountRefused(Exception):
     """A requested account change would break an account invariant."""
 
 
+class InvalidEmail(AccountRefused):
+    """A self-entered email address that is not a usable address."""
+
+
 @dataclass(frozen=True, slots=True)
 class Account:
     id: str
@@ -148,6 +154,9 @@ class Account:
     # neither identifies, links or authorizes anything.
     actual_name: str = ""
     email_verified_known: bool = False
+    # The account entered the email itself (``set_own_email``): it is recorded
+    # unverified and no identity provider's claim ever verifies it.
+    email_self_entered: bool = False
 
     @property
     def active(self) -> bool:
@@ -181,6 +190,9 @@ async def ensure_schema(db) -> None:
     # An email recorded as verified was recorded only from an explicit
     # ``email_verified: true`` claim, so its verification is known.
     await db.execute("UPDATE accounts SET email_verified_known=1 WHERE email_verified=1 AND email_verified_known=0")
+    # Before an account could enter its own email, every email came from an
+    # identity provider's claim.
+    await _ensure_column(db, "accounts", "email_self_entered", "INTEGER NOT NULL DEFAULT 0")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "
@@ -223,6 +235,7 @@ def _account(row: Mapping[str, Any] | None) -> Account | None:
         ),
         actual_name=str(row.get("actual_name") or ""),
         email_verified_known=bool(row.get("email_verified_known")),
+        email_self_entered=bool(row.get("email_self_entered")),
     )
 
 
@@ -569,8 +582,8 @@ async def _complete_oidc_profile(db, account_id: str, profile: Mapping[str, Any]
     are never overwritten -- an actual name the account set or cleared is a
     string, and only a never-populated one (NULL) is completed; an empty
     email is filled; the provider may restate the verification of the SAME
-    address only. Nothing here identifies, links, enables or changes the role
-    of anything."""
+    address only, and never of one the account entered itself. Nothing here
+    identifies, links, enables or changes the role of anything."""
     account = await _fetch(db, account_id)
     if account is None or not account.active:
         return
@@ -581,8 +594,10 @@ async def _complete_oidc_profile(db, account_id: str, profile: Mapping[str, Any]
         changes["actual_name"] = profile["actual_name"]
     email, verified = profile["email"], profile["email_verified"]
     if email and not account.email:
-        changes.update(email=email, email_verified=int(verified is True), email_verified_known=int(verified is not None))
-    elif email and verified is not None and email.casefold() == account.email.casefold():
+        changes.update(email=email, email_verified=int(verified is True), email_verified_known=int(verified is not None),
+                       email_self_entered=0)
+    elif (email and verified is not None and not account.email_self_entered
+          and email.casefold() == account.email.casefold()):
         changes.update(email_verified=int(verified), email_verified_known=1)
     if changes:
         assignments = ",".join(f"{column}=?" for column in changes)
@@ -892,6 +907,46 @@ async def set_actual_name(account_id: str, actual_name: str) -> None:
         await db.execute("UPDATE accounts SET actual_name=?, updated_at=? WHERE id=?", (name, _now(), account.id))
 
 
+# A self-entered address: one ``local@domain`` of printable characters within
+# the SMTP path limits, with a dotted host name. Syntax only -- it proves
+# nothing about who receives mail there.
+_EMAIL_LIMIT = 254
+_EMAIL_LOCAL = re.compile(r'[^\s@<>()\[\]\\,;:"\x00-\x1f\x7f]{1,64}')
+_EMAIL_LABEL = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?")
+
+
+def entered_email(value: str) -> str:
+    """The normalized form of an address an account enters itself, or
+    ``InvalidEmail``: surrounding space removed and the domain lower-cased."""
+    email = str(value or "").strip()
+    local, _, domain = email.rpartition("@")
+    domain = domain.lower()
+    labels = domain.split(".")
+    if (len(email) > _EMAIL_LIMIT or not _EMAIL_LOCAL.fullmatch(local) or len(labels) < 2
+            or not all(_EMAIL_LABEL.fullmatch(label) for label in labels)):
+        raise InvalidEmail("Enter a valid email address")
+    return f"{local}@{domain}"
+
+
+async def set_own_email(account_id: str, email: str) -> str:
+    """An account records its own email, ONCE, while it has none. The write
+    is conditional on the stored email still being empty, so a stale form or
+    a concurrent save can never replace an address. The address is recorded
+    unverified (``email_verified_known`` with ``email_verified`` false) and
+    as self-entered: it never links, binds, admits or authorizes anything."""
+    address = entered_email(email)
+    async with _locked_mutation([]) as db:
+        account = await _require(db, account_id)
+        if account.role is Role.INTEGRATION:
+            raise AccountRefused("Integration accounts have no email")
+        cursor = await db.execute(
+            "UPDATE accounts SET email=?, email_verified=0, email_verified_known=1, email_self_entered=1, updated_at=? "
+            "WHERE id=? AND email=''", (address, _now(), account.id))
+        if cursor.rowcount != 1:
+            raise AccountRefused("This account already has an email address")
+    return address
+
+
 async def list_accounts() -> list[dict]:
     """The account directory with each account's sign-in facts; never a
     secret or verifier."""
@@ -912,7 +967,7 @@ async def list_accounts() -> list[dict]:
             "id": account.id, "role": account.role.value, "origin": account.origin,
             "display_name": account.display_name, "actual_name": account.actual_name, "email": account.email,
             "email_verified": account.email_verified, "email_verified_known": account.email_verified_known,
-            "enabled": account.enabled,
+            "email_self_entered": account.email_self_entered, "enabled": account.enabled,
             "protected": account.protected or None, "generation": account.generation,
             "merged_into": account.merged_into or None, "deleted_at": account.deleted_at or None,
             "username": account.username, "has_password": account.has_password,
@@ -992,12 +1047,15 @@ async def create_token(account_id: str, label: str) -> tuple[dict, str]:
 
 
 async def list_tokens(account_id: str) -> list[dict]:
+    """An Integration account's ACTIVE tokens: the ones that can still be
+    revoked. A revoked token keeps its row for attribution
+    (``requester_identities``) but is no longer the account's to manage."""
     from db.database import get_db
 
     async with get_db() as db:
         return await db.fetchall(
             "SELECT id, account_id, label, created_at, revoked_at FROM account_tokens "
-            "WHERE account_id=? ORDER BY created_at, id", (str(account_id),))
+            "WHERE account_id=? AND revoked_at IS NULL ORDER BY created_at, id", (str(account_id),))
 
 
 async def revoke_token(account_id: str, token_id: str) -> bool:

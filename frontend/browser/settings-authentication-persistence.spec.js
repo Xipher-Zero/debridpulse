@@ -293,11 +293,13 @@ test('An Integration token is disclosed once, in its own dialog, and can never b
       expect(await page.evaluate(value => document.documentElement.innerHTML.includes(value), token)).toBe(false);
       await expect(account.locator('.dp-settings-users-tokens tbody tr')).toContainText(['disclosure-spec']);
 
-      // Revoking is confirmed, and the row says so.
+      // Revoking is confirmed; once the server confirms it, the token leaves
+      // the active list (its row is kept server-side, for attribution).
       await account.locator('[data-user-action="revoke-token"]').click();
       await page.locator('.dp-modal-overlay [data-modal-accept]').click();
-      await expect(page.locator('.dp-settings-users-integration', {hasText: name})
-        .locator('.dp-settings-users-tokens tbody tr')).toContainText(['Revoked']);
+      const after = page.locator('.dp-settings-users-integration', {hasText: name});
+      await expect(after.locator('.dp-settings-users-tokens tbody tr')).toHaveCount(0);
+      await expect(after).toContainText('No API tokens.');
     } finally {
       await page.request.delete(`/api/accounts/${id}`);
     }

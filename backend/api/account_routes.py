@@ -191,9 +191,11 @@ def _verification(account) -> str | None:
 
 @router.get("/account")
 async def own_account(request: Request):
-    """The signed-in account's own profile: names it may edit, and the email
-    its identity provider supplied (read-only) with the verification the
-    provider stated -- never a credential, binding or claim set."""
+    """The signed-in account's own profile: names it may edit, and its email
+    (supplied by its identity provider or entered once by the account itself;
+    read-only once present) with the verification the provider stated -- a
+    self-entered email is unverified -- never a credential, binding or claim
+    set."""
     principal = request.state.principal
     if not principal.account_id or principal.role == Role.INTEGRATION.value:
         raise HTTPException(status_code=403, detail="Forbidden")
@@ -212,6 +214,23 @@ async def change_own_actual_name(actual_name: Annotated[str, Body(embed=True, ma
         raise HTTPException(status_code=403, detail="Forbidden")
     try:
         await accounts.set_actual_name(principal.account_id, actual_name)
+    except AccountRefused as exc:
+        raise _refused(exc) from None
+    return {"ok": True}
+
+
+@router.put("/account/email")
+async def record_own_email(email: Annotated[str, Body(embed=True, max_length=320)], request: Request):
+    """An account without an email records one, once. It is stored unverified
+    and never identifies, links or admits anything; an account that already
+    has an email is refused (409) rather than overwritten."""
+    principal = request.state.principal
+    if not principal.account_id or principal.role == Role.INTEGRATION.value:
+        raise HTTPException(status_code=403, detail="Forbidden")
+    try:
+        await accounts.set_own_email(principal.account_id, email)
+    except accounts.InvalidEmail as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}

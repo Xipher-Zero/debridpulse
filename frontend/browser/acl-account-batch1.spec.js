@@ -89,11 +89,12 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
     await page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
     const dialog = page.locator('.dp-modal-dialog.dp-account-dialog');
     await expect(dialog).toBeVisible();
-    // Display Name, Actual Name, Email -- in that order; Email is read, not edited.
+    // Display Name, Actual Name, Email -- in that order; an account with no
+    // email may enter one (Batch 2), so all three are inputs here.
     expect(await dialog.locator('[data-account-view="profile"] .form-label').allTextContents())
       .toEqual(['Display Name', 'Actual Name', 'Email']);
-    await expect(dialog.locator('.dp-account-email-value')).toHaveText('None provided');
-    await expect(dialog.locator('[data-account-view="profile"] input')).toHaveCount(2);
+    await expect(dialog.locator('[data-account-view="profile"] input')).toHaveCount(3);
+    await expect(dialog.locator('[data-field="email"]')).toHaveValue('');
     // Change Password at the bottom left; Cancel then Save at the bottom right.
     const footer = await dialog.evaluate(node => [...node.querySelectorAll('.dp-modal-footer .btn')]
       .filter(button => !button.hidden).map(button => ({text: button.textContent.trim(), left: button.getBoundingClientRect().left})));

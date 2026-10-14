@@ -112,6 +112,23 @@ async def test_revocation_and_account_disable_end_a_token_at_once(installation):
 
 
 @pytest.mark.asyncio
+async def test_a_revoked_token_leaves_the_active_list_and_keeps_its_row_and_attribution(installation):
+    kept, _ = await accounts.create_token(DEFAULT_INTEGRATION_ID, "kept")
+    retired, raw = await accounts.create_token(DEFAULT_INTEGRATION_ID, "retired")
+    assert [item["id"] for item in await accounts.list_tokens(DEFAULT_INTEGRATION_ID)] == [kept["id"], retired["id"]]
+
+    assert await accounts.revoke_token(DEFAULT_INTEGRATION_ID, retired["id"]) is True
+
+    assert [item["id"] for item in await accounts.list_tokens(DEFAULT_INTEGRATION_ID)] == [kept["id"]]
+    assert (await _admit({"Authorization": f"Bearer {raw}"}))[0].status_code == 401
+    assert await accounts.revoke_token(DEFAULT_INTEGRATION_ID, retired["id"]) is False   # final, once
+    with sqlite3.connect(installation) as conn:
+        assert conn.execute("SELECT label, revoked_at IS NOT NULL FROM account_tokens WHERE id=?",
+                            (retired["id"],)).fetchone() == ("retired", 1)
+    assert (await accounts.requester_identities([], [retired["id"]]))[1] == {retired["id"]: "retired"}
+
+
+@pytest.mark.asyncio
 async def test_only_integration_accounts_hold_tokens(installation):
     operator = await admin_with_password()
     with pytest.raises(AccountRefused):

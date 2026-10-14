@@ -90,7 +90,8 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   await expect(page.locator('#page-subtitle')).toHaveText('Configure notifications for your downloads.');
   const view = page.locator('#view-settings');
   await expect(view.locator('.dp-settings-master-card')).toHaveCount(1);
-  await expect(view.locator('.dp-settings-tabs, [data-tab], .dp-settings-header-title')).toHaveCount(0);
+  await expect(view.locator('.dp-settings-tabs, [data-tab]')).toHaveCount(0);
+  await expect(view.locator('.dp-settings-header-title')).toHaveText('The Grapevine');
   await expect(view).not.toContainText('Tuning Deck');
   await expect(view.locator('[data-panel]')).toHaveCount(1);
   await expect(view.locator('.dp-settings-discord-card .card-title')).toContainText('Discord Notifications');

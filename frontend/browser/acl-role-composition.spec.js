@@ -262,7 +262,7 @@ test('My Account shows the account profile and saves both names', async ({browse
     let dialog = await open();
     await expect(dialog.locator('[data-field="display_name"]')).toHaveValue(person.username);
     await expect(dialog.locator('[data-field="actual_name"]')).toHaveValue('');
-    await expect(dialog.locator('.dp-account-email-value')).toHaveText('None provided');   // never fabricated
+    await expect(dialog.locator('[data-field="email"]')).toHaveValue('');          // never fabricated
     await dialog.locator('[data-field="display_name"]').fill('Profile Person');
     await dialog.locator('[data-field="actual_name"]').fill('Pat Profile');
     const reloaded = signed.page.waitForEvent('load');

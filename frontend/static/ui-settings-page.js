@@ -3517,10 +3517,10 @@
       <section class="dp-settings-oidc-access">
         <div class="dp-settings-oidc-section-heading">
           <span class="dp-settings-oidc-section-title">Access Control</span>
-          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+          <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
           ${oidcPolicyToggle(a.oidc_allow_all)}
         </div>
-        <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
+        <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {
@@ -3616,8 +3616,7 @@
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
               <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" title="Account details">${html(accountName(account))}</button>${
-                account.email ? `<div class="dp-settings-users-detail">${html(account.email)}${account.email_verified ? ''
-                : account.email_verified_known ? ' (unverified)' : ' (verification not stated)'}</div>` : ''}</td>
+                account.email ? `<div class="dp-settings-users-detail">${html(account.email)}</div>` : ''}</td>
               <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
               <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
               <td>${accountStatus(account)}</td>
@@ -3645,6 +3644,11 @@
       </div>`;
   }
 
+  /* An Integration account's ACTIVE tokens, as the server lists them: a
+   * revoked token is final, so once the server confirms a Revoke the re-read
+   * directory no longer holds it (its row is kept server-side, for
+   * attribution). A refused or unanswered Revoke re-reads the same way, so the
+   * row stays exactly while the token is still active. */
   function tokenRows(account) {
     const tokens = state.users.tokens[account.id];
     if (!Array.isArray(tokens)) return '<div class="dp-settings-users-detail">Tokens could not be read.</div>';
@@ -3656,10 +3660,8 @@
           <tr>
             <td>${html(token.label)}</td>
             <td class="dp-settings-users-detail">${window.downloadsDateMarkup ? window.downloadsDateMarkup(token.created_at) : html(token.created_at)}</td>
-            <td>${token.revoked_at
-              ? '<span class="dp-settings-users-status" data-tone="neutral">Revoked</span>'
-              : '<span class="dp-settings-users-status" data-tone="success">Active</span>'}</td>
-            <td><div class="dp-settings-users-actions">${token.revoked_at ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}">Revoke</button>`}</div></td>
+            <td><span class="dp-settings-users-status" data-tone="success">Active</span></td>
+            <td><div class="dp-settings-users-actions"><button class="btn btn-danger btn-sm" type="button" data-user-action="revoke-token" data-account-id="${html(account.id)}" data-token-id="${html(token.id)}">Revoke</button></div></td>
           </tr>`).join('')}
         </tbody>
       </table>`;
@@ -4141,11 +4143,13 @@
   }
 
   /* Account Details (Admin): the account's profile -- Display Name, Actual
-   * Name, Email with the verification its provider stated -- and its Activity:
+   * Name, Email with its verification: what its provider stated, or that the
+   * account entered it itself (never verified) -- and its Activity:
    * its requests, each outstanding one withdrawable on its own. Read-only
    * otherwise; it is not the signed-in account's My Account. */
   const EMAIL_STATE = account => (!account.email ? ''
-    : account.email_verified ? 'Verified' : account.email_verified_known ? 'Not verified' : 'Verification not stated');
+    : account.email_self_entered ? 'Not verified, entered by the account'
+      : account.email_verified ? 'Verified' : account.email_verified_known ? 'Not verified' : 'Verification not stated');
 
   function accountProfileMarkup(account) {
     const row = (label, value, missing) => `<div><dt>${html(label)}</dt><dd${value ? '' : ' class="is-missing"'}>${
@@ -5696,14 +5700,25 @@
     return state.loading;
   }
 
-  /* One standard master card holding the two Notifications cards: the page
-   * header names the page, so there is no Tuning Deck and no tab strip. */
+  /* One standard master card holding the two Notifications cards, under the
+   * Settings master header's own structure: the Notifications family chip and
+   * one title/hint block, and nothing on the right -- no Tuning Deck and no tab
+   * strip. */
   function renderOwnNotifications() {
     const view = root();
     if (!view || !state.settings) return;
     view.classList.add('dp-settings-clean-view');
     view.innerHTML = `
       <section class="card dp-settings-master-card dp-settings-master-card--own" aria-label="Notifications">
+        <div class="card-header dp-settings-master-header">
+          <div class="dp-settings-header-copy">
+            ${familyIcon('notifications', 'bell-ring')}
+            <div>
+              <div class="dp-settings-header-title">The Grapevine</div>
+              <div class="dp-settings-header-subtitle">Good news travels fast. Download news travels faster.</div>
+            </div>
+          </div>
+        </div>
         <div class="dp-settings-master-body">
           <div class="dp-settings-scroll">
             <div class="dp-settings-panels">

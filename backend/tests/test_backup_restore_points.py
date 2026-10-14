@@ -1082,6 +1082,97 @@ async def test_the_pinned_pre_demand_backup_restores_with_ownerless_legacy_deman
     assert operator.id == accounts.DEFAULT_ADMIN_ID and verify_password(password_hash, "stage1-secret")
 
 
+# Written by the pinned build's own backup service (262a2595), immediately
+# before an account could enter its own email: a password Admin (operator /
+# pre-self-email-secret), a User with their own notification configuration,
+# three OIDC identities (email verified, stated unverified, none), one active
+# and one revoked Integration token, and one transfer whose demand is the
+# verified OIDC account's.
+PRE_SELF_EMAIL_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-262a2595.zip"
+
+
+async def test_the_pinned_pre_self_email_backup_restores_every_account_fact_with_no_self_entered_email(served):
+    """Upgraded on the private staged copy only through the canonical
+    bootstrap: accounts, OIDC bindings, demand ownership, tokens (the revoked
+    one still revoked and attributable) and notification configuration come
+    back as recorded, and no restored email is marked self-entered."""
+    from auth import accounts
+    from auth.passwords import verify_password
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_SELF_EMAIL_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "email_self_entered" not in {row[1] for row in conn.execute("PRAGMA table_info(accounts)")}
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        people = {row[0]: row[1:] for row in conn.execute(
+            "SELECT display_name, role, origin, email, email_verified, email_verified_known, email_self_entered "
+            "FROM accounts WHERE protected IS NULL")}
+        assert people == {
+            "Operator": ("admin", "local", "", 0, 0, 0),
+            "Reader": ("user", "local", "", 0, 0, 0),
+            "vera": ("user", "oidc", "vera@example.com", 1, 1, 0),
+            "una": ("user", "oidc", "una@example.com", 0, 1, 0),
+            "quiet": ("readonly", "oidc", "", 0, 0, 0),
+        }
+        ids = {row[0]: row[1] for row in conn.execute("SELECT display_name, id FROM accounts")}
+        assert sorted(conn.execute("SELECT subject, account_id FROM account_oidc_bindings").fetchall()) == sorted([
+            ("quiet-subject", ids["quiet"]), ("unverified-subject", ids["una"]), ("verified-subject", ids["vera"])])
+        assert conn.execute("SELECT transfer_id, account_id, origin, withdrawn_at FROM transfer_demands").fetchall() \
+            == [(1, ids["vera"], "submission", None)]
+        assert conn.execute("SELECT label, revoked_at IS NOT NULL FROM account_tokens ORDER BY label").fetchall() == [
+            ("kept-token", 0), ("retired-token", 1)]
+        assert conn.execute("SELECT account_id FROM account_notifications").fetchall() == [(ids["Reader"],)]
+    finally:
+        conn.close()
+    assert [token["label"] for token in await accounts.list_tokens(accounts.DEFAULT_INTEGRATION_ID)] == ["kept-token"]
+    from services import account_notifications
+    reader = await account_notifications.load(ids["Reader"])
+    assert (reader.discord_username, reader.stats_report_interval_hours) == ("Reader Bot", 12)
+    operator, password_hash = await accounts.local_credential("operator")
+    assert operator.role is accounts.Role.ADMIN and verify_password(password_hash, "pre-self-email-secret")
+    # A restored account without an email may now enter one; one with an email may not.
+    await accounts.set_own_email(ids["quiet"], "quiet@example.com")
+    with pytest.raises(accounts.AccountRefused):
+        await accounts.set_own_email(ids["vera"], "other@example.com")
+
+
+async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):
+    """Only the exact pinned predecessor is upgradable: the same backup with a
+    schema one column away is an unsupported version, refused before
+    admission, and the active installation is untouched."""
+    app, client, _composed, _calls = served
+    kept = await _submit(app, client, "kept")
+    live, live_digest = backup.schema_version(database.DB_PATH), _digest(database.DB_PATH)
+    drifted, recorded = _schema_drifted_database(PRE_SELF_EMAIL_BACKUP, "debridpulse.db")
+    assert recorded not in backup._UPGRADABLE_SCHEMAS and recorded != live
+    manifest = json.loads(zipfile.ZipFile(PRE_SELF_EMAIL_BACKUP).read(".debridpulse-backup.json"))
+    package = _repack(PRE_SELF_EMAIL_BACKUP, tmp_path / "neighbour.zip", replace_members={
+        "debridpulse.db": drifted, ".debridpulse-backup.json": json.dumps({**manifest, "schema_version": recorded})})
+
+    refused = await client.post("/api/admin/backups", content=package.read_bytes(),
+                                headers={"Content-Type": "application/zip"})
+
+    assert refused.status_code == 400 and "unsupported version" in refused.json()["detail"]
+    assert backup.list_restore_points() == []
+    assert backup.schema_version(database.DB_PATH) == live and _digest(database.DB_PATH) == live_digest
+    assert await _ids(app) == [kept]
+
+
 async def test_a_failed_upgrade_of_the_staged_copy_leaves_the_live_state_and_the_backup_untouched(
         served, monkeypatch):
     app, client, _composed, _calls = served

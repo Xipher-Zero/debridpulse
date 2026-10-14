@@ -9,6 +9,7 @@ the authority of anything. My Account reads the sanitized profile from
 """
 from __future__ import annotations
 
+import asyncio
 import sqlite3
 
 import pytest
@@ -173,6 +174,96 @@ async def test_my_account_reads_and_edits_the_sanitized_profile(served, monkeypa
     assert (await client.put("/api/account/display-name", headers=own, json={"display_name": "Edited"})).status_code == 200
     edited = (await client.get("/api/account", headers=own)).json()
     assert (edited["display_name"], edited["actual_name"], edited["email"]) == ("Edited", "Me Edited", "me@example.com")
-    # There is no way to edit the email here, and an Integration has no profile.
-    assert (await client.put("/api/account/email", headers=own, json={"email": "x@example.com"})).status_code in {403, 404, 405}
+    # A populated email is never replaced here, and an Integration has no profile.
+    assert (await client.put("/api/account/email", headers=own, json={"email": "x@example.com"})).status_code == 409
+    assert (await client.get("/api/account", headers=own)).json()["email"] == "me@example.com"
     assert (await client.get("/api/account", headers=as_(Role.INTEGRATION))).status_code == 403
+
+
+# ── an account's own, self-entered email (ACL live UX Batch 2) ──────────────
+
+async def test_an_account_without_an_email_records_one_once_unverified_and_self_entered(accounts_db):
+    person = await accounts.create_local_account("selfie", "secret", role=Role.USER)
+    assert await accounts.set_own_email(person.id, "  Me@Example.COM ") == "Me@example.com"
+    stored = await accounts.get_account(person.id)
+    assert (stored.email, stored.email_verified, stored.email_verified_known, stored.email_self_entered) == (
+        "Me@example.com", False, True, True)
+    [listed] = [item for item in await accounts.list_accounts() if item["id"] == person.id]
+    assert (listed["email_verified"], listed["email_verified_known"], listed["email_self_entered"]) == (
+        False, True, True)
+
+    # Once present it is never replaced -- not even by the same account.
+    with pytest.raises(accounts.AccountRefused, match="already has an email"):
+        await accounts.set_own_email(person.id, "other@example.com")
+    assert (await accounts.get_account(person.id)).email == "Me@example.com"
+
+    blank = await accounts.create_local_account("blank", "secret", role=Role.USER)
+    for invalid in ("", "   ", "no-at-sign", "a@b", "two@@example.com", "sp ace@example.com", "x@-bad-.com",
+                    "<x>@example.com", "x@example.com\nBcc: y@example.com", "a" * 65 + "@example.com",
+                    "x@" + "a" * 250 + ".com"):
+        with pytest.raises(accounts.InvalidEmail):
+            await accounts.set_own_email(blank.id, invalid)
+    assert (await accounts.get_account(blank.id)).email == ""            # nothing invented
+
+    with pytest.raises(accounts.AccountRefused):
+        await accounts.set_own_email(accounts.DEFAULT_INTEGRATION_ID, "bot@example.com")
+
+
+async def test_concurrent_first_emails_record_exactly_one_and_refuse_the_other(accounts_db):
+    person = await accounts.create_local_account("racer", "secret", role=Role.USER)
+    results = await asyncio.gather(accounts.set_own_email(person.id, "first@example.com"),
+                                   accounts.set_own_email(person.id, "second@example.com"), return_exceptions=True)
+    won = [item for item in results if isinstance(item, str)]
+    refused = [item for item in results if isinstance(item, accounts.AccountRefused)]
+    assert len(won) == 1 and len(refused) == 1
+    assert (await accounts.get_account(person.id)).email == won[0]
+
+
+async def test_a_self_entered_email_is_never_verified_replaced_or_used_as_identity(accounts_db):
+    # An OIDC identity whose provider supplied no email enters one itself.
+    first = await _login("quiet", preferred_username="quiet")
+    await accounts.set_own_email(first.id, "quiet@example.com")
+
+    # Its provider later states that same address verified: still unverified,
+    # still self-entered. A different address does not replace it either.
+    again = await _login("quiet", email="QUIET@example.com", email_verified=True)
+    assert again.id == first.id
+    assert (again.email, again.email_verified, again.email_verified_known, again.email_self_entered) == (
+        "quiet@example.com", False, True, True)
+    other = await _login("quiet", email="new@example.com", email_verified=True)
+    assert (other.email, other.email_verified) == ("quiet@example.com", False)
+
+    # Another identity presenting that address, verified, is its own account:
+    # the stored address links, binds and merges nothing.
+    stranger = await _login("stranger", email="quiet@example.com", email_verified=True)
+    assert stranger.id != first.id and stranger.role is Role.USER
+    async with database.get_db() as db:
+        bindings = await db.fetchall("SELECT subject, account_id FROM account_oidc_bindings ORDER BY subject")
+    assert [(row["subject"], row["account_id"]) for row in bindings] == [("quiet", first.id), ("stranger", stranger.id)]
+    assert (await accounts.get_account(first.id)).role is Role.USER
+
+
+async def test_my_account_records_its_own_email_once_and_only_its_own(served):
+    client, as_ = served
+    alice = await accounts.create_local_account("alice", "secret", role=Role.USER)
+    bob = await accounts.create_local_account("bob", "secret", role=Role.USER)
+    token, _ = session_store.create(Principal.password_session(alice), lifetime_seconds=3600)
+    own = {"Cookie": f"{HTTP_SESSION_COOKIE}={token}", "X-CSRF-Token": session_store.csrf_token(token)}
+
+    assert (await client.get("/api/account", headers=own)).json()["email"] == ""
+    assert (await client.put("/api/account/email", headers=own, json={"email": "not an email"})).status_code == 422
+    # The account is the session's: a body naming another account changes only the caller's.
+    saved = await client.put("/api/account/email", headers=own,
+                             json={"email": "alice@example.com", "account_id": bob.id, "email_verified": True})
+    assert saved.status_code == 200, saved.text
+    profile = (await client.get("/api/account", headers=own)).json()
+    assert (profile["email"], profile["email_verification"]) == ("alice@example.com", "unverified")
+    assert (await accounts.get_account(bob.id)).email == ""
+    # A stale second save is refused, never a silent replacement.
+    stale = await client.put("/api/account/email", headers=own, json={"email": "alice2@example.com"})
+    assert stale.status_code == 409 and "already has an email" in stale.json()["detail"]
+    assert (await accounts.get_account(alice.id)).email == "alice@example.com"
+    # The session survives: recording an email changes no authority.
+    assert session_store.resolve(token) is not None
+    assert (await client.put("/api/account/email", headers=as_(Role.INTEGRATION),
+                             json={"email": "bot@example.com"})).status_code == 403
