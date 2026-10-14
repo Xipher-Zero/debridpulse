@@ -108,8 +108,10 @@ def test_the_shared_dialog_owner_composes_the_dismiss_only_footer_itself():
     modal = source(MODAL)
     assert "const dismissOnly = spec.dismiss === true;" in modal
     assert "${dismissOnly ? '' : `<button class=\"btn ${acceptClass}\" type=\"button\" data-modal-accept></button>`}" in modal
-    # Every other consumer is untouched: accept still exists and still settles.
-    assert "if (accept) accept.addEventListener('click', () => settle(true));" in modal
+    # Every other consumer is untouched: accept still exists and still settles;
+    # only a dialog that declares an ``onAccept`` guard may keep itself open.
+    assert "if (accept) accept.addEventListener('click', () => { void requestAccept(); });" in modal
+    assert "if (typeof spec.onAccept !== 'function') { settle(true); return; }" in modal
     assert "entry.accept && !entry.accept.disabled" in modal
 
 

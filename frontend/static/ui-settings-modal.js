@@ -23,7 +23,14 @@
  * still composed here: `actions` ([{id, label, tone}]) are client buttons placed
  * ahead of the cancel slot, reported through `onAction(id)` and enabled
  * through `handle.setActionEnabled(id, enabled)`; they never settle the
- * dialog. `closeControl: true` adds the upper-right close control, which is
+ * dialog; an action with `placement: 'leading'` takes the footer's far start
+ * instead, and `handle.setActionHidden(id, hidden)` shows or withdraws it.
+ * A dialog with more than one view changes its slot labels through
+ * `handle.setAcceptLabel` / `setCancelLabel`, and may guard settlement:
+ * `onAccept()` and `onCancel()` (also reached by Enter and Escape) keep the
+ * dialog open by returning (or resolving to) `false` -- a Back, a refused
+ * save -- and while an `onAccept` is pending the accept slot is busy.
+ * `closeControl: true` adds the upper-right close control, which is
  * the cancel slot's settlement under a second, conventional placement.
  * `cancelTone: 'danger'` makes the cancel slot a destructive abandonment: it
  * takes the red treatment and leads the footer, with the actions at the far
@@ -173,14 +180,14 @@
     if (overlays[overlays.length - 1] !== entry.overlay) return;
     if (event.key === 'Escape') {
       event.preventDefault();
-      if (!entry.blocking) entry.settle(false);
+      if (!entry.blocking) void entry.requestCancel();
     } else if (event.key === 'Tab') {
       trapTab(event, entry);
     } else if (event.key === 'Enter' && event.target instanceof HTMLInputElement
       && entry.body.contains(event.target) && entry.accept && !entry.accept.disabled) {
       // Enter in a body text field submits the dialog once its accept action is enabled.
       event.preventDefault();
-      entry.settle(true);
+      void entry.requestAccept();
     }
   }
 
@@ -189,7 +196,9 @@
     const tone = spec.tone === 'danger' || spec.tone === 'warning' || spec.tone === 'success' ? spec.tone : '';
     const progress = spec.progress === true;
     const dismissOnly = spec.dismiss === true;
-    const actions = Array.isArray(spec.actions) ? spec.actions : [];
+    const declared = Array.isArray(spec.actions) ? spec.actions : [];
+    const actions = [...declared.filter(action => action.placement === 'leading'),
+      ...declared.filter(action => action.placement !== 'leading')];
     const blocking = progress || spec.blocking === true;
     const cancelSlot = spec.cancelTone === 'danger'
       ? '<button class="btn btn-danger dp-modal-cancel-leading" type="button" data-modal-cancel></button>'
@@ -235,6 +244,7 @@
       const id = String(action.id || index);
       button.dataset.modalAction = id;
       button.classList.add(action.tone === 'success' ? 'btn-success' : action.tone === 'danger' ? 'btn-danger' : 'btn-ghost');
+      if (action.placement === 'leading') button.classList.add('dp-modal-action-leading');
       button.textContent = String(action.label || '');
       button.disabled = action.disabled === true;
       actionButtons.set(id, button);
@@ -258,7 +268,7 @@
     let settled = false;
     let resolveClosed;
     const closed = new Promise(resolve => { resolveClosed = resolve; });
-    const entry = {overlay, dialog, body, accept, blocking, settle};
+    const entry = {overlay, dialog, body, accept, blocking, settle, requestAccept, requestCancel};
 
     function settle(accepted) {
       if (settled) return;
@@ -272,6 +282,32 @@
       resolveClosed(Object.freeze({accepted: accepted === true}));
     }
 
+    let accepting = false;
+    // Settlement through the client's guards: a guard answering ``false``
+    // keeps the dialog open (a Back, a refused save).
+    async function requestAccept() {
+      if (settled || accepting || (accept && accept.disabled)) return;
+      if (typeof spec.onAccept !== 'function') { settle(true); return; }
+      // Busy, not disabled: whether the accept slot is enabled stays the
+      // client's to say (setAcceptEnabled), during and after the guard.
+      accepting = true;
+      dialog.setAttribute('aria-busy', 'true');
+      let result;
+      try {
+        result = await spec.onAccept(handle);
+      } finally {
+        accepting = false;
+        dialog.setAttribute('aria-busy', 'false');
+      }
+      if (result !== false) settle(true);
+    }
+
+    async function requestCancel() {
+      if (settled || accepting) return;
+      if (typeof spec.onCancel === 'function' && (await spec.onCancel(handle)) === false) return;
+      settle(false);
+    }
+
     const handle = Object.freeze({
       closed,
       get isOpen() { return !settled; },
@@ -281,6 +317,12 @@
         const button = actionButtons.get(String(id));
         if (button) button.disabled = !enabled;
       },
+      setActionHidden(id, hidden) {
+        const button = actionButtons.get(String(id));
+        if (button) button.hidden = !!hidden;
+      },
+      setAcceptLabel(label) { if (accept) accept.textContent = String(label || ''); },
+      setCancelLabel(label) { if (cancel) cancel.textContent = String(label || ''); },
       setBusy(busy) { dialog.setAttribute('aria-busy', busy ? 'true' : 'false'); },
     });
 
@@ -290,9 +332,9 @@
       dialog.setAttribute('aria-describedby', described.id);
     }
 
-    if (cancel) cancel.addEventListener('click', () => settle(false));
+    if (cancel) cancel.addEventListener('click', () => { void requestCancel(); });
     if (close) close.addEventListener('click', () => settle(false));
-    if (accept) accept.addEventListener('click', () => settle(true));
+    if (accept) accept.addEventListener('click', () => { void requestAccept(); });
     actionButtons.forEach((button, id) => button.addEventListener('click', () => {
       if (!settled && !button.disabled && typeof spec.onAction === 'function') spec.onAction(id);
     }));

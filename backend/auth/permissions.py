@@ -102,7 +102,6 @@ ACTIONS: dict[str, Capability] = {
     "api.account_routes.delete_account": _A,
     "api.account_routes.merge_account": _A,
     "api.account_routes.reset_account_password": _A,
-    "api.account_routes.link_account_identity": _A,
     "api.account_routes.account_impact": _A,
     "api.account_routes.list_account_tokens": _A,
     "api.account_routes.create_account_token": _A,

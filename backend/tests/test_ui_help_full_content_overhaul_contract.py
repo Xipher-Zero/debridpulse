@@ -194,7 +194,7 @@ def test_settings_reference_matches_the_seven_current_settings_tabs_and_save_sem
         "Public DebridPulse Base URL", "OIDC Callback URL", "PUBLIC_BASE_URL",
         "Default Role for New OIDC Users", "Add Local Account", "Change Role",
         "Integration Accounts", "Issue Token", "Authorization: Bearer &lt;token&gt;",
-        "finished downloads are never touched", "Deleting keeps the account's history",
+        "finished downloads are never touched", "Removing keeps the account's history",
         "Discord Notifications", "Download Added Webhook", "Statistics Reporting",
         "Automatic Report Interval", "/api/metrics",
         "Event Logging", "Backups &amp; Retention", "Run Backup",

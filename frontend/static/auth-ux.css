@@ -29,24 +29,71 @@
   width: 100%;
   flex: 0 0 auto;
 }
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row,
-#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-account-row {
+#sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
   position: static !important;
   width: 100%;
   min-height: 46px;
   flex: 0 0 auto;
+  cursor: default;
 }
-/* The signed-in account: its name over its role, one navigation item. */
-#sidebar #sidebar-account-row .nav-label {
+/* The session row is one row holding two controls -- Log Out at its start, the
+   signed-in account at its end -- so the row itself is not a target: it takes
+   no hover of its own, each control does. The space between belongs to
+   neither. */
+#sidebar #sidebar-auth-row.dp-sidebar-session-row:hover {
+  background: transparent;
+}
+#sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sidebar-profile) {
+  display: flex;
+  align-items: center;
+  gap: inherit;
+  min-width: 0;
+  min-height: 34px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--dp-radius-sm, 6px);
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+#sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sidebar-profile):hover {
+  color: var(--dp-text-primary, #f3f4ff);
+}
+body.light #sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sidebar-profile):hover {
+  color: #1c2037;
+}
+#sidebar .dp-sidebar-session-row > :is(.dp-sidebar-logout, .dp-sidebar-profile):focus-visible {
+  outline: 2px solid var(--accent, #a855f7);
+  outline-offset: 2px;
+}
+#sidebar .dp-sidebar-session-row > .dp-sidebar-logout {
+  flex: 0 0 auto;
+}
+#sidebar .dp-sidebar-session-space {
+  flex: 1 1 auto;
+  align-self: stretch;
+  min-width: 4px;
+}
+#sidebar .dp-sidebar-session-row > .dp-sidebar-profile {
+  flex: 0 1 auto;
+  gap: 9px;
+  text-align: right;
+}
+#sidebar .dp-sidebar-profile .nav-label {
   min-width: 0;
 }
+/* The signed-in account: its name over its role. */
 #sidebar .dp-sidebar-account-copy {
   display: flex;
   flex-direction: column;
+  align-items: flex-end;
   min-width: 0;
   line-height: 1.25;
 }
 #sidebar .dp-sidebar-account-name {
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -54,6 +101,7 @@
 #sidebar .dp-sidebar-account-role {
   color: var(--dp-text-muted, var(--text3));
   font-size: 10.5px;
+  white-space: nowrap;
 }
 @media (min-width: 901px) {
   #sidebar .sidebar-bottom-stack[data-session="authenticated"] {
@@ -64,8 +112,20 @@
    gives the stack's inset back, so its glyph sits on the sidebar icon rail
    (ui-shell-structural.css) with its label following at the item gap. */
 @media (min-width: 1180px), (max-width: 899px) {
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row,
-  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-account-row {
+  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
     padding-left: calc(var(--dp-sidebar-item-inset) - var(--dp-sidebar-stack-inset));
+    padding-right: 10px;
+  }
+}
+
+/* The compact rail shows glyphs only: Log Out and the account sit side by side
+   in the same row. */
+@media (min-width: 900px) and (max-width: 1179px) {
+  #sidebar .sidebar-bottom-stack[data-session="authenticated"] #sidebar-auth-row {
+    justify-content: space-between;
+    padding-inline: 4px;
+  }
+  #sidebar .dp-sidebar-session-space {
+    display: none;
   }
 }

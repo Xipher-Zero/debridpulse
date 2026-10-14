@@ -3561,16 +3561,16 @@
     const actions = [];
     if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="role" data-account-id="${id}">Change Role</button>`);
     actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="password" data-account-id="${id}">${account.has_password ? 'Reset Password' : 'Set Password'}</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="link" data-account-id="${id}">Link OIDC</button>`);
-    if (!account.protected) actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-account-id="${id}">Merge…</button>`);
-    actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="activity" data-account-id="${id}">Activity</button>`);
     if (account.enabled && account.protected !== 'default_admin') {
       actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="disable" data-account-id="${id}">Disable</button>`);
     } else if (!account.enabled) {
       actions.push(`<button class="btn btn-ghost btn-sm" type="button" data-user-action="enable" data-account-id="${id}">Enable</button>`);
     }
-    if (!account.protected && account.origin === 'local') {
-      actions.push(`<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}">Delete</button>`);
+    // Remove: the Downloads row Remove, quiet until it is meant. Never for a
+    // protected account and never for the signed-in account itself (the
+    // server refuses both regardless).
+    if (!account.protected && account.id !== selfId()) {
+      actions.push(`<button class="btn btn-danger btn-sm dp-downloads-remove" type="button" data-user-action="remove" data-account-id="${id}">Remove</button>`);
     }
     return actions.join('');
   }
@@ -3583,7 +3583,7 @@
           <thead><tr><th>Account</th><th>Role</th><th>Sign-In</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
-              <td><div class="dp-settings-users-name">${html(accountName(account))}</div>${
+              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" title="Account details">${html(accountName(account))}</button>${
                 account.email ? `<div class="dp-settings-users-detail">${html(account.email)}${account.email_verified ? ''
                 : account.email_verified_known ? ' (unverified)' : ' (verification not stated)'}</div>` : ''}</td>
               <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
@@ -3603,11 +3603,10 @@
       <div class="dp-settings-users-duplicates" role="note">
         <b>Possible duplicate accounts</b>
         ${groups.map(([email, group]) => {
-          const mergeable = group.find(item => !item.protected && item.id !== selfId());
           return `
           <div class="dp-settings-users-duplicate">
             <span>${html(group.map(accountName).join(', '))} share the verified email ${html(email)}.</span>
-            ${mergeable ? `<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-account-id="${html(mergeable.id)}">Review &amp; Merge…</button>` : ''}
+            <button class="btn btn-ghost btn-sm" type="button" data-user-action="merge" data-merge-ids="${html(group.map(item => item.id).join(','))}">Review &amp; Merge…</button>
           </div>`;
         }).join('')}
         <span class="dp-settings-users-detail">A shared email is only a suggestion. Accounts are never linked automatically.</span>
@@ -3644,11 +3643,10 @@
       return `
         <section class="dp-settings-users-integration" data-account-row="${id}">
           <div class="dp-settings-users-integration-head">
-            <span class="dp-settings-users-name">${html(accountName(account))}</span>
+            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" title="Account details">${html(accountName(account))}</button>
             ${accountStatus(account)}
             <div class="dp-settings-users-actions">
               ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}">Issue Token</button>` : ''}
-              <button class="btn btn-ghost btn-sm" type="button" data-user-action="activity" data-account-id="${id}">Activity</button>
               ${lifecycle}
               ${account.protected ? '' : `<button class="btn btn-danger btn-sm" type="button" data-user-action="delete" data-account-id="${id}">Delete</button>`}
             </div>
@@ -3670,7 +3668,8 @@
       titlePrefix: familyIcon('users', 'users'),
       headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
       headerCenterClass: 'dp-settings-auth-header-copy',
-      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local">Add Local Account</button>',
+      headerAction: '<button class="btn btn-ghost btn-sm" type="button" data-user-action="merge">Merge</button>'
+        + '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-local">Add Local Account</button>',
     });
     const automation = card('Integration Accounts', integrationBlocks(integrations), {
       className: 'dp-settings-users-card dp-settings-users-integrations-card',
@@ -3806,36 +3805,123 @@
       {password: values.password, ...(values.username ? {username: values.username} : {})}, 10000), 'Password saved');
   }
 
-  async function linkIdentity(account) {
-    const values = await fieldsDialog({
-      title: `Link OIDC Identity: ${accountName(account)}`, acceptLabel: 'Link Identity',
-      intro: 'Signing in with this identity will sign in as this account. The account’s current sessions end.',
-      fields: [
-        {name: 'issuer', label: 'Issuer', value: state.auth?.oidc_issuer_url || '', maxlength: 2048},
-        {name: 'subject', label: 'Subject', maxlength: 1024},
-      ],
+  /* Merge Accounts: ONE dialog, two steps. Choose two or more accounts, then
+   * -- in the same dialog -- choose the one that survives and confirm. Only the
+   * final Confirm Merge sends anything: one request, which the server applies
+   * to all of them in one transaction or refuses whole, saying why. What may
+   * be merged is the server's to decide; nothing is filtered or predicted here. */
+  async function mergeAccounts(preselected = []) {
+    const candidates = (state.users.accounts || []).filter(item => liveAccount(item) && !isIntegration(item));
+    const chosen = new Set(preselected.filter(id => candidates.some(item => item.id === id)));
+    let step = 'select';
+    let survivor = '';
+    let refusal = '';
+    let body = null;
+    const reference = item => `#${item.id.slice(-8)}`;
+    const describe = item => [ROLE_LABELS[item.role] || item.role, signInMethods(item), item.email || '', reference(item)]
+      .filter(Boolean).map(html).join(' · ');
+    const selected = () => candidates.filter(item => chosen.has(item.id));
+
+    const paint = handle => {
+      if (!body) return;
+      if (step === 'select') {
+        body.innerHTML = `
+          <p class="dp-modal-message">Choose the accounts to merge into one. You choose which one remains in the next step.</p>
+          <div class="dp-merge-list" role="group" aria-label="Accounts">${candidates.map(item => `
+            <label class="dp-merge-option">
+              <input type="checkbox" data-merge-account="${html(item.id)}" ${chosen.has(item.id) ? 'checked' : ''}>
+              <span class="dp-merge-identity"><b>${html(accountName(item))}</b><span>${describe(item)}</span></span>
+            </label>`).join('')}
+          </div>`;
+        handle.setAcceptLabel('Merge');
+        handle.setCancelLabel('Cancel');
+        handle.setAcceptEnabled(chosen.size >= 2);
+        return;
+      }
+      const absorbed = selected().filter(item => item.id !== survivor);
+      body.innerHTML = `
+        <p class="dp-modal-message">Choose the account that remains. The others are merged into it.</p>
+        <div class="dp-merge-list" role="radiogroup" aria-label="Account that remains">${selected().map(item => `
+          <label class="dp-merge-option">
+            <input type="radio" name="dp-merge-survivor" data-merge-survivor="${html(item.id)}" ${item.id === survivor ? 'checked' : ''}>
+            <span class="dp-merge-identity"><b>${html(accountName(item))}</b><span>${describe(item)}</span></span>
+          </label>`).join('')}
+        </div>
+        ${survivor ? `<p class="dp-merge-absorbed"><b>Merged into it:</b> ${absorbed.map(item => html(`${accountName(item)} ${reference(item)}`)).join(', ')}</p>` : ''}
+        <ul class="dp-merge-consequences">
+          <li>The account that remains keeps its own role and status. The merged accounts are retired and redirect to it.</li>
+          <li>Their OIDC sign-in identities move to it, and so does a local password when exactly one of these accounts has one.</li>
+          <li>Every selected account is signed out.</li>
+          <li>Each account’s past requests stay attributed to it; its outstanding requests stay outstanding, now owned through the account that remains. Completed downloads are unchanged.</li>
+          <li>The server checks every rule when you confirm. If any of these accounts cannot be merged, nothing changes.</li>
+        </ul>
+        ${refusal ? `<p class="dp-merge-refusal" role="alert"></p>` : ''}`;
+      if (refusal) body.querySelector('.dp-merge-refusal').textContent = `Not merged: ${refusal}`;
+      handle.setAcceptLabel('Confirm Merge');
+      handle.setCancelLabel('Back');
+      handle.setAcceptEnabled(Boolean(survivor));
+    };
+
+    const dialog = window.DPSettingsModal.open({
+      title: 'Merge Accounts',
+      tone: 'danger',
+      acceptLabel: 'Merge',
+      cancelLabel: 'Cancel',
+      className: 'dp-users-dialog dp-merge-dialog',
+      mount(mounted, handle) {
+        body = mounted;
+        paint(handle);
+        body.addEventListener('change', event => {
+          const box = event.target.closest('[data-merge-account]');
+          if (box) {
+            if (box.checked) chosen.add(box.dataset.mergeAccount); else chosen.delete(box.dataset.mergeAccount);
+            handle.setAcceptEnabled(chosen.size >= 2);
+            return;
+          }
+          const radio = event.target.closest('[data-merge-survivor]');
+          if (radio) {
+            survivor = radio.dataset.mergeSurvivor;
+            refusal = '';
+            paint(handle);
+            body.querySelector(`[data-merge-survivor="${CSS.escape(survivor)}"]`)?.focus();
+          }
+        });
+        return body.querySelector('.dp-modal-message');
+      },
+      onCancel(handle) {
+        if (step !== 'confirm') return true;
+        step = 'select';
+        survivor = '';
+        refusal = '';
+        paint(handle);
+        return false;
+      },
+      async onAccept(handle) {
+        if (step === 'select') {
+          step = 'confirm';
+          paint(handle);
+          return false;
+        }
+        try {
+          await request('POST', '/accounts/merge', {
+            target_id: survivor, source_ids: selected().filter(item => item.id !== survivor).map(item => item.id),
+          }, 15000);
+        } catch (error) {
+          refusal = error?.status ? text(error.message)
+            : 'no response from the server; reload Users & Access to see what happened';
+          paint(handle);
+          return false;
+        }
+        notify('Accounts merged', 'success');
+        return true;
+      },
     });
-    if (!values) return;
-    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/oidc-identities`, values, 10000),
-      'OIDC identity linked');
+    await dialog.closed;
+    await loadUsers();
   }
 
-  async function mergeAccount(account) {
-    const others = (state.users.accounts || []).filter(item => liveAccount(item) && !isIntegration(item)
-      && item.id !== account.id && item.id !== selfId());
-    if (!others.length) { notify('There is no other account to merge into.', 'info'); return; }
-    const values = await fieldsDialog({
-      title: `Merge ${accountName(account)}`, acceptLabel: 'Merge Accounts', tone: 'danger',
-      intro: `${accountName(account)} will be folded into the account you choose. Its sign-in methods move to that account, `
-        + 'which keeps its own role. Its history stays attributed to it. This cannot be undone.',
-      fields: [{name: 'target_id', label: 'Keep This Account', choices: others.map(item => [item.id, `${accountName(item)} (${ROLE_LABELS[item.role] || item.role})`]), value: others[0].id}],
-    });
-    if (!values) return;
-    await accountAct(() => request('POST', `/accounts/${encodeURIComponent(account.id)}/merge`, {target_id: values.target_id}, 10000),
-      'Accounts merged');
-  }
-
-  /* The account-impact confirmation for Disable and Delete. Its figures are
+  /* The account-impact confirmation for Disable, Remove and (Integration)
+   * Delete. Its figures are
    * read from the server when the dialog opens (GET /accounts/{id}/impact) and
    * are never assumed; the mutation re-reads everything itself, and its own
    * answer is what the page reports afterwards. */
@@ -3849,7 +3935,15 @@
       `<div><dt>${html(label)}</dt><dd>${html(Number(value || 0).toLocaleString('en-US'))}${impact.bounded && label.startsWith('Outstanding') ? '+' : ''}</dd></div>`).join('')}</dl>`;
   }
 
-  async function confirmImpact(account, deleting) {
+  const IMPACT = Object.freeze({
+    disable: {title: 'Disable', accept: 'Disable account', lead: 'Disabling'},
+    remove: {title: 'Remove', accept: 'Remove account', lead: 'Removing'},
+    delete: {title: 'Delete', accept: 'Delete account', lead: 'Deleting'},
+  });
+
+  async function confirmImpact(account, act) {
+    const words = IMPACT[act];
+    const destructive = act !== 'disable';
     let impact;
     try {
       impact = await request('GET', `/accounts/${encodeURIComponent(account.id)}/impact`, undefined, 10000);
@@ -3859,22 +3953,20 @@
     }
     const dialog = window.DPSettingsModal.open({
       role: 'alertdialog',
-      title: `${deleting ? 'Delete' : 'Disable'} ${accountName(account)}?`,
-      acceptLabel: deleting ? 'Delete account' : 'Disable account',
+      title: `${words.title} ${accountName(account)}?`,
+      acceptLabel: words.accept,
       cancelLabel: 'Cancel',
-      tone: deleting ? 'danger' : '',
-      acceptTone: deleting ? '' : 'warning',
+      tone: destructive ? 'danger' : '',
+      acceptTone: destructive ? '' : 'warning',
       className: 'dp-account-impact',
       mount(body) {
         body.innerHTML = `
           <p class="dp-modal-message dp-account-impact-lead"></p>
           ${impactFigures(impact)}
-          ${deleting ? '<p class="dp-account-impact-note">The account’s history and the provenance of its past requests are retained.</p>' : ''}
+          ${destructive ? '<p class="dp-account-impact-note">Transfers other accounts still need continue, and completed downloads are not undone. The account’s history and the provenance of its past requests are retained.</p>' : ''}
           <p class="dp-account-impact-qualifier">These figures reflect the current account and transfer state. They may change before confirmation.</p>`;
         const lead = body.querySelector('.dp-account-impact-lead');
-        lead.textContent = deleting
-          ? 'Deleting this account will revoke its access and withdraw its outstanding download requests.'
-          : 'Disabling this account will revoke its access and withdraw its outstanding download requests.';
+        lead.textContent = `${words.lead} this account will revoke its access and withdraw its outstanding download requests.`;
         return lead;
       },
     });
@@ -3893,15 +3985,17 @@
   }
 
   async function disableAccount(account) {
-    if (!await confirmImpact(account, false)) return;
+    if (!await confirmImpact(account, 'disable')) return;
     await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {enabled: false}, 15000),
       result => withdrawalReport('disabled', result));
   }
 
-  async function deleteAccount(account) {
-    if (!await confirmImpact(account, true)) return;
+  // Remove (a person) and Delete (an Integration account) are the one
+  // account deletion; only the words differ.
+  async function deleteAccount(account, act = 'delete') {
+    if (!await confirmImpact(account, act)) return;
     await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}`, undefined, 15000),
-      result => withdrawalReport('deleted', result));
+      result => withdrawalReport(act === 'remove' ? 'removed' : 'deleted', result));
   }
 
   async function enableAccount(account) {
@@ -4014,7 +4108,24 @@
     }
   }
 
-  async function showActivity(account) {
+  /* Account Details (Admin): the account's profile -- Display Name, Actual
+   * Name, Email with the verification its provider stated -- and its Activity:
+   * its requests, each outstanding one withdrawable on its own. Read-only
+   * otherwise; it is not the signed-in account's My Account. */
+  const EMAIL_STATE = account => (!account.email ? ''
+    : account.email_verified ? 'Verified' : account.email_verified_known ? 'Not verified' : 'Verification not stated');
+
+  function accountProfileMarkup(account) {
+    const row = (label, value, missing) => `<div><dt>${html(label)}</dt><dd${value ? '' : ' class="is-missing"'}>${
+      value ? html(value) : html(missing)}</dd></div>`;
+    return `<dl class="dp-account-details-profile">
+      ${row('Display Name', account.display_name, 'Not set')}
+      ${row('Actual Name', account.actual_name, 'Not set')}
+      ${row('Email', account.email ? `${account.email} (${EMAIL_STATE(account)})` : '', 'None provided')}
+    </dl>`;
+  }
+
+  async function showAccountDetails(account) {
     let rows;
     try {
       rows = await readActivity(account);
@@ -4022,28 +4133,34 @@
       notify(error.message, 'error');
       return;
     }
-    let body = null;
+    let activity = null;
     const repaint = async () => {
       try {
         rows = await readActivity(account);
       } catch (error) {
         notify(error.message, 'error');
       }
-      if (body?.isConnected) body.innerHTML = activityMarkup(rows);
+      if (activity?.isConnected) activity.innerHTML = activityMarkup(rows);
     };
     const dialog = window.DPSettingsModal.open({
-      title: `Activity: ${accountName(account)}`,
+      title: `Account Details: ${accountName(account)}`,
       dismiss: true,
-      className: 'dp-users-activity-dialog',
-      mount(mounted) {
-        body = mounted;
-        body.innerHTML = activityMarkup(rows);
+      className: 'dp-users-activity-dialog dp-account-details-dialog',
+      mount(body) {
+        body.innerHTML = `
+          ${accountProfileMarkup(account)}
+          <section class="dp-account-details-activity" aria-label="Activity">
+            <h3 class="dp-account-details-heading">Activity</h3>
+            <div data-account-activity></div>
+          </section>`;
+        activity = body.querySelector('[data-account-activity]');
+        activity.innerHTML = activityMarkup(rows);
         body.addEventListener('click', event => {
           const button = event.target.closest('button[data-withdraw-demand]');
           if (!button) return;
           void withdrawAccountRequest(account, button.dataset.withdrawDemand, button).then(repaint);
         });
-        return body.querySelector('table, p');
+        return body.querySelector('dl');
       },
     });
     await dialog.closed;
@@ -4057,15 +4174,15 @@
     const account = accountById(button.dataset.accountId || '');
     if (action === 'create-local') void createLocalAccount();
     else if (action === 'create-integration') void createIntegrationAccount();
+    else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));
     else if (!account) return true;
     else if (action === 'role') void changeRole(account);
     else if (action === 'password') void resetPassword(account);
-    else if (action === 'link') void linkIdentity(account);
-    else if (action === 'merge') void mergeAccount(account);
-    else if (action === 'activity') void showActivity(account);
+    else if (action === 'details') void showAccountDetails(account);
     else if (action === 'disable') void disableAccount(account);
     else if (action === 'enable') void enableAccount(account);
-    else if (action === 'delete') void deleteAccount(account);
+    else if (action === 'remove') void deleteAccount(account, 'remove');
+    else if (action === 'delete') void deleteAccount(account, 'delete');
     else if (action === 'issue-token') void issueToken(account);
     else if (action === 'revoke-token') void revokeToken(account, button.dataset.tokenId || '');
     return true;

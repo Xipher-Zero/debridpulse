@@ -435,9 +435,15 @@ body.light .dp-modal-dialog {
   min-width: 104px;
 }
 
+/* A footer control the dialog has withdrawn (handle.setActionHidden). */
+.dp-modal-footer .btn[hidden] {
+  display: none;
+}
+
 /* A destructive cancel slot (cancelTone: 'danger') leads the footer; the
-   actions keep the far end. */
-.dp-modal-footer .dp-modal-cancel-leading {
+   actions keep the far end. A leading action (placement: 'leading') takes the
+   far start the same way. */
+.dp-modal-footer :is(.dp-modal-cancel-leading, .dp-modal-action-leading) {
   margin-right: auto;
 }
 

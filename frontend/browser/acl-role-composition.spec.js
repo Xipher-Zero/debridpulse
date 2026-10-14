@@ -21,7 +21,7 @@ async function signIn(browser, {username, password}) {
   await page.locator('#password').fill(password);
   await page.locator('button[type="submit"]').click();
   await expect(page).not.toHaveURL(/\/login/);
-  await expect(page.locator('#sidebar-account-row')).toBeVisible();
+  await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeVisible();
   return {context, page, errors};
 }
 
@@ -106,7 +106,7 @@ test('each role is composed from its server authority, and a role change resets 
     let reloaded = signedUser.page.waitForEvent('load');
     expect((await api(admin.page, 'PATCH', `/accounts/${user.id}`, {role: 'readonly'})).status).toBe(200);
     await reloaded;
-    await expect(signedUser.page.locator('#sidebar-account-row')).toContainText('ReadOnly User');
+    await expect(signedUser.page.locator('#sidebar-auth-row .dp-sidebar-profile')).toContainText('ReadOnly User');
     expect(await composition(signedUser.page)).toMatchObject({role: 'readonly', quickAdd: 0, bulkBar: 0});
     reloaded = signedUser.page.waitForEvent('load');
     expect((await api(admin.page, 'PATCH', `/accounts/${user.id}`, {role: 'user'})).status).toBe(200);
@@ -132,11 +132,12 @@ test('each role is composed from its server authority, and a role change resets 
     await impact.locator('[data-modal-accept]').click();
     await signedOut;
 
-    await admin.page.locator(`tr[data-account-row="${viewer.id}"] [data-user-action="delete"]`).click();
+    await admin.page.locator(`tr[data-account-row="${viewer.id}"] [data-user-action="remove"]`).click();
     const removal = admin.page.locator('.dp-modal-dialog.dp-account-impact');
     await expect(removal.locator('.dp-modal-footer [data-modal-accept]')).toHaveClass(/\bbtn-danger\b/);
     await expect(removal.locator('.dp-account-impact-note'))
-      .toHaveText('The account’s history and the provenance of its past requests are retained.');
+      .toHaveText('Transfers other accounts still need continue, and completed downloads are not undone. '
+        + 'The account’s history and the provenance of its past requests are retained.');
     await removal.locator('[data-modal-cancel]').click();
 
     expect([...admin.errors, ...signedUser.errors, ...signedViewer.errors]).toEqual([]);
@@ -194,7 +195,7 @@ test('a withdrawal is reported as the server answered it, and an Admin withdraws
     // The Admin withdraws exactly this account's request from its Activity.
     await admin.page.locator('#sidebar .nav-item[data-view="settings"]').click();
     await admin.page.locator('#view-settings [data-tab="users"]').click();
-    await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="activity"]`).click();
+    await admin.page.locator(`tr[data-account-row="${created.body.id}"] [data-user-action="details"]`).click();
     const activity = admin.page.locator('.dp-users-activity-dialog');
     await expect(activity.locator('tbody tr')).toHaveCount(1);
     await activity.locator('[data-withdraw-demand]').click();
@@ -254,7 +255,7 @@ test('My Account shows the account profile and saves both names', async ({browse
   try {
     const signed = await signIn(browser, person);
     const open = async () => {
-      await signed.page.locator('#sidebar-account-row').click();
+      await signed.page.locator('#sidebar-auth-row .dp-sidebar-profile').click();
       await expect(signed.page.locator('.dp-account-dialog [data-field="display_name"]')).toHaveValue(/.+/);
       return signed.page.locator('.dp-account-dialog');
     };

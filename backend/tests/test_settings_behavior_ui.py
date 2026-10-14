@@ -71,7 +71,7 @@ def test_destructive_settings_actions_share_confirmation_primitive():
     wipe = block(js, "async function wipeDatabaseClean", "/* Erasing a stored credential")
     password = block(js, "async function clearPassword", "async function clearOidcSecret")
     secret = block(js, "async function clearOidcSecret", "function clearOidcResources(")
-    token = block(js, "async function revokeToken(", "async function showActivity(")
+    token = block(js, "async function revokeToken(", "const readActivity = account =>")
 
     # Opening DebridPulse is a property of the ACT, so it is asked in ONE place
     # for every act that can perform it.

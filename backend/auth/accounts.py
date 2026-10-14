@@ -501,9 +501,15 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
     exactly once -- the binding's primary key makes a concurrent first sign-in
     of the same identity find the account the first one created -- with the
     configured default role. Only ``(issuer, subject)`` identifies: a matching
-    email never links an existing account. Returns ``None`` for an identity
-    whose account is disabled or deleted (it is never re-created or
-    re-enabled) and for one that cannot be provisioned."""
+    email never links an existing account.
+
+    An identity whose account was REMOVED (its binding still names that
+    tombstone, the durable marker) returns as a new account under a fresh ID,
+    created DISABLED whatever the default role: the binding moves to it, the
+    tombstone keeps its history, and no session results until an Admin
+    enables the new account. A DISABLED account is never provisioned around:
+    its identity keeps resolving to it. Returns ``None`` for any account that
+    is not active and for an identity that cannot be provisioned."""
     issuer, subject = str(issuer or ""), str(subject or "")
     if not issuer or not subject:
         return None
@@ -515,22 +521,33 @@ async def resolve_oidc(issuer: str, subject: str, claims: Mapping[str, Any], *, 
         row = await db.fetchone(
             "SELECT account_id FROM account_oidc_bindings WHERE issuer=? AND subject=?", (issuer, subject),
         )
-        if row is None:
+        async def provision(enabled: bool) -> str:
             account_id = str(uuid.uuid4())
             now = _now()
             await db.execute(
                 "INSERT INTO accounts(id,role,origin,display_name,actual_name,email,email_verified,"
-                "email_verified_known,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                "email_verified_known,enabled,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
                 (account_id, role.value, "oidc", display, profile["actual_name"] or None, email, int(verified is True),
-                 int(verified is not None), now, now),
+                 int(verified is not None), int(enabled), now, now),
             )
+            return account_id
+
+        if row is None:
+            account_id = await provision(True)
             await db.execute(
                 "INSERT INTO account_oidc_bindings(issuer,subject,account_id,created_at) VALUES(?,?,?,?)",
-                (issuer, subject, account_id, now),
+                (issuer, subject, account_id, _now()),
             )
         else:
             account_id = str(row["account_id"])
-            await _complete_oidc_profile(db, account_id, profile)
+            bound = await _fetch(db, account_id)
+            if bound is not None and bound.deleted_at and not bound.merged_into:
+                removed, account_id = account_id, await provision(False)
+                await db.execute(
+                    "UPDATE account_oidc_bindings SET account_id=? WHERE issuer=? AND subject=? AND account_id=?",
+                    (account_id, issuer, subject, removed))
+            else:
+                await _complete_oidc_profile(db, account_id, profile)
         account = await _fetch(db, account_id)
     return account if account is not None and account.active else None
 
@@ -771,8 +788,9 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
     """Remove an account from the active directory, keeping its tombstone.
 
     The ID stays interpretable for every historical record. The local
-    credential is released; OIDC bindings stay on the tombstone so the same
-    identity can never be provisioned again by signing in."""
+    credential is released; OIDC bindings stay on the tombstone as the
+    removed-identity marker, so that identity signing in again gets a NEW,
+    disabled account (``resolve_oidc``), never this one back."""
     _not_self(actor_id, account_id)
     async with _locked_mutation([str(account_id)]) as db:
         account = await _require(db, account_id)
@@ -785,36 +803,47 @@ async def delete_account(actor_id: str, account_id: str) -> list[int]:
         return await _withdraw_owned_demand(db, account.id, "account_deleted")
 
 
-async def merge_accounts(actor_id: str, source_id: str, target_id: str) -> None:
-    """Fold a duplicate account into another, explicitly.
+async def merge_accounts(actor_id: str, source_ids, target_id: str) -> None:
+    """Fold one or more duplicate accounts into one surviving account,
+    explicitly and atomically: every source is folded in the same transaction,
+    or nothing changes.
 
-    The source's OIDC identities and (when the target has none) its local
-    credential move to the target; the source becomes a tombstone redirecting
-    to the target (``canonical_account_id``). No historical row is rewritten.
-    The target keeps its own role."""
-    _not_self(actor_id, source_id)
+    Each source's OIDC identities, and its local credential when it holds the
+    only one among them all, move to the target; each source becomes a
+    tombstone redirecting to the target (``canonical_account_id``). No
+    historical row is rewritten. The target keeps its own role."""
+    sources = [str(source_ids)] if isinstance(source_ids, str) else [str(item) for item in source_ids]
+    sources = list(dict.fromkeys(sources))
+    if not sources:
+        raise AccountRefused("Choose at least one account to merge")
     _not_self(actor_id, target_id)
-    if str(source_id) == str(target_id):
+    for source_id in sources:
+        _not_self(actor_id, source_id)
+    if str(target_id) in sources:
         raise AccountRefused("An account cannot be merged into itself")
-    async with _locked_mutation([str(source_id), str(target_id)]) as db:
-        source = await _require(db, source_id)
+    async with _locked_mutation([*sources, str(target_id)]) as db:
         target = await _require(db, target_id)
-        if source.protected:
-            raise AccountRefused("A default account cannot be merged away")
-        if (source.role is Role.INTEGRATION) != (target.role is Role.INTEGRATION):
-            raise AccountRefused("Integration and human accounts cannot be merged")
-        source_credential = await db.fetchone(
-            "SELECT 1 FROM account_local_credentials WHERE account_id=?", (source.id,))
-        target_credential = await db.fetchone(
-            "SELECT 1 FROM account_local_credentials WHERE account_id=?", (target.id,))
-        if source_credential and target_credential:
-            raise AccountRefused("Both accounts hold a local credential; remove one first")
-        if source_credential:
+        holders = []
+        for source_id in sources:
+            source = await _require(db, source_id)
+            if source.protected:
+                raise AccountRefused("A default account cannot be merged away")
+            if (source.role is Role.INTEGRATION) != (target.role is Role.INTEGRATION):
+                raise AccountRefused("Integration and human accounts cannot be merged")
+            if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (source.id,)):
+                holders.append(source.id)
+        if await db.fetchone("SELECT 1 FROM account_local_credentials WHERE account_id=?", (target.id,)):
+            holders.append(target.id)
+        if len(holders) > 1:
+            raise AccountRefused("More than one of these accounts holds a local credential; remove all but one first")
+        now = _now()
+        for source_id in sources:
+            if source_id in holders:
+                await db.execute(
+                    "UPDATE account_local_credentials SET account_id=? WHERE account_id=?", (target.id, source_id))
+            await db.execute("UPDATE account_oidc_bindings SET account_id=? WHERE account_id=?", (target.id, source_id))
             await db.execute(
-                "UPDATE account_local_credentials SET account_id=? WHERE account_id=?", (target.id, source.id))
-        await db.execute("UPDATE account_oidc_bindings SET account_id=? WHERE account_id=?", (target.id, source.id))
-        await db.execute(
-            "UPDATE accounts SET enabled=0, merged_into=?, deleted_at=? WHERE id=?", (target.id, _now(), source.id))
+                "UPDATE accounts SET enabled=0, merged_into=?, deleted_at=? WHERE id=?", (target.id, now, source_id))
 
 
 async def reset_password(actor_id: str, account_id: str, password: str, *, username: str | None = None) -> None:
@@ -921,24 +950,6 @@ async def change_own_password(account_id: str, current_password: str, new_passwo
         if row is None or not verify_password(row["password_hash"], current_password):
             raise AccountRefused("The current password is not correct")
         await _set_password_row(db, account.id, None, new_password)
-
-
-async def link_oidc_identity(actor_id: str, account_id: str, issuer: str, subject: str) -> None:
-    """An Admin explicitly links a validated ``(issuer, subject)`` to a human
-    account. An identity already bound elsewhere is refused (merge instead)."""
-    _not_self(actor_id, account_id)
-    async with _locked_mutation([str(account_id)]) as db:
-        account = await _require(db, account_id)
-        if account.role is Role.INTEGRATION or not str(issuer or "") or not str(subject or ""):
-            raise AccountRefused("Only a human account can be linked to an OIDC identity")
-        bound = await db.fetchone(
-            "SELECT account_id FROM account_oidc_bindings WHERE issuer=? AND subject=?", (issuer, subject))
-        if bound is not None:
-            raise AccountRefused("That OIDC identity is already linked to an account")
-        await db.execute(
-            "INSERT INTO account_oidc_bindings(issuer,subject,account_id,created_at) VALUES(?,?,?,?)",
-            (str(issuer), str(subject), account.id, _now()),
-        )
 
 
 # ── Integration API tokens ──────────────────────────────────────────────────

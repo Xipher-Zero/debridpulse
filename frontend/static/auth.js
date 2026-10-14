@@ -85,6 +85,11 @@
   // The shell provides #sidebar-bottom-stack (which wraps the sidebar footer) and
   // an empty #sidebar-auth-mount. This owner populates its own mount and marks the
   // stack's session state; it does not move or restyle any other owner's markup.
+  //
+  // The session's ONE sidebar row: Log Out at its start, and at its end the
+  // signed-in account (Display Name over Role) that opens My Account. Two
+  // separate controls in one row, with the elastic space between them
+  // belonging to neither.
   function syncSidebarSessionUi(data) {
     const stack = document.getElementById('sidebar-bottom-stack');
     const mount = document.getElementById('sidebar-auth-mount');
@@ -100,74 +105,70 @@
     stack.dataset.session = 'authenticated';
     mount.hidden = false;
     if (mount.querySelector('#sidebar-auth-row')) return;
-    mount.appendChild(accountRow(data));
 
     const row = document.createElement('div');
     row.id = 'sidebar-auth-row';
-    row.className = 'nav-item';
-    row.setAttribute('role', 'button');
-    row.setAttribute('tabindex', '0');
-    row.setAttribute('aria-label', 'Log out of DebridPulse');
+    row.className = 'nav-item dp-sidebar-session-row';
     row.style.flexShrink = '0';
     row.innerHTML = `
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
-          <path d="M14 8l4 4-4 4"></path>
-          <path d="M18 12H9"></path>
-        </svg>
-      </span>
-      <span class="nav-label">Log Out</span>`;
+      <button type="button" class="dp-sidebar-logout" aria-label="Log out of DebridPulse" title="Log Out">
+        <span class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
+            <path d="M14 8l4 4-4 4"></path>
+            <path d="M18 12H9"></path>
+          </svg>
+        </span>
+        <span class="nav-label">Log Out</span>
+      </button>
+      <span class="dp-sidebar-session-space" aria-hidden="true"></span>
+      <button type="button" class="dp-sidebar-profile" title="My Account">
+        <span class="nav-label"><span class="dp-sidebar-account-copy"><span class="dp-sidebar-account-name"></span><span class="dp-sidebar-account-role"></span></span></span>
+        <span class="icon" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
+          </svg>
+        </span>
+      </button>`;
 
-    const activate = async () => {
-      if (row.getAttribute('aria-disabled') === 'true') return;
-      row.setAttribute('aria-disabled', 'true');
-      const label = row.querySelector('.nav-label');
+    const logout = row.querySelector('.dp-sidebar-logout');
+    logout.addEventListener('click', async () => {
+      if (logout.getAttribute('aria-disabled') === 'true') return;
+      logout.setAttribute('aria-disabled', 'true');
+      const label = logout.querySelector('.nav-label');
       if (label) label.textContent = 'Logging out…';
       try {
         const ok = await logoutSession();
         if (!ok) throw new Error('Logout failed');
       } catch (_) {
-        row.setAttribute('aria-disabled', 'false');
+        logout.setAttribute('aria-disabled', 'false');
         if (label) label.textContent = 'Log Out';
       }
-    };
-
-    row.addEventListener('click', activate);
-    row.addEventListener('keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      activate();
     });
+
+    const profile = row.querySelector('.dp-sidebar-profile');
+    const showAccount = name => {
+      const display = String(name || data.display_name || 'My Account');
+      profile.querySelector('.dp-sidebar-account-name').textContent = display;
+      profile.querySelector('.dp-sidebar-account-role').textContent = roleLabel(data.role);
+      profile.setAttribute('aria-label', `My account: ${display}, ${roleLabel(data.role)}`);
+      // A name too long for the row is shown in full here.
+      profile.title = `${display} (${roleLabel(data.role)}): My Account`;
+    };
+    showAccount('');
+    // The account's own Display Name (the session names its sign-in).
+    readProfile().then(own => { if (own) showAccount(own.display_name); });
+    profile.addEventListener('click', () => { void openAccountDialog(data); });
     mount.appendChild(row);
   }
 
-  // The signed-in account and role, and the one way to the account's own
-  // display name and password. It is the account's own surface, not Settings.
-  function accountRow(data) {
-    const row = document.createElement('div');
-    row.id = 'sidebar-account-row';
-    row.className = 'nav-item dp-sidebar-account';
-    row.setAttribute('role', 'button');
-    row.setAttribute('tabindex', '0');
-    row.innerHTML = `
-      <span class="icon" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="12" cy="8" r="4"></circle><path d="M4 21a8 8 0 0 1 16 0"></path>
-        </svg>
-      </span>
-      <span class="nav-label"><span class="dp-sidebar-account-copy"><span class="dp-sidebar-account-name"></span><span class="dp-sidebar-account-role"></span></span></span>`;
-    row.querySelector('.dp-sidebar-account-name').textContent = String(data.display_name || 'My Account');
-    row.querySelector('.dp-sidebar-account-role').textContent = roleLabel(data.role);
-    row.setAttribute('aria-label', `My account: ${data.display_name || ''}, ${roleLabel(data.role)}`);
-    const open = () => openAccountDialog(data);
-    row.addEventListener('click', open);
-    row.addEventListener('keydown', event => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
-      event.preventDefault();
-      open();
-    });
-    return row;
+  async function readProfile() {
+    try {
+      const response = await debridPulseFetch('/api/account', {headers: {'Accept': 'application/json'}});
+      return response.ok ? await response.json() : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   async function sendJson(method, url, body) {
@@ -176,7 +177,8 @@
     });
     if (response.ok) return null;
     const payload = await response.json().catch(() => ({}));
-    return String(payload.detail || 'The change was not saved.');
+    const detail = Array.isArray(payload.detail) ? payload.detail[0]?.msg : payload.detail;
+    return String(detail || 'The change was not saved.');
   }
 
   // The account's own profile, read from the account API when the dialog
@@ -184,40 +186,66 @@
   // shown, never edited here.
   const VERIFICATION = {verified: 'Verified', unverified: 'Not verified', unknown: 'Verification not stated'};
 
+  /* My Account: ONE dialog of one fixed size with two views. The profile view
+   * (Display Name, Actual Name, Email) saves the two names; Change Password,
+   * offered only to an account that holds a local password, swaps the same
+   * dialog to the password view, whose Cancel returns to the profile -- with
+   * its unsaved edits intact -- and whose Save changes only the password. A
+   * failed save keeps the dialog and says why. */
   async function openAccountDialog(data) {
     const modal = window.DPSettingsModal;
     if (!modal) return;
+    const own = await readProfile();
+    const profile = own || {display_name: data.display_name || '', actual_name: '', email: '',
+      email_verification: null, has_password: false};
     const fields = {};
-    let profile = {display_name: data.display_name || '', actual_name: '', email: '', email_verification: null};
-    try {
-      const response = await debridPulseFetch('/api/account', {headers: {'Accept': 'application/json'}});
-      if (response.ok) profile = await response.json();
-    } catch (_) { /* the session's own name still opens the dialog */ }
-    const dialog = modal.open({
+    const views = {};
+    let view = 'profile';
+    const notice = text => window.toast(text, 'error');
+
+    const show = (next, handle) => {
+      view = next;
+      views.profile.hidden = next !== 'profile';
+      views.password.hidden = next !== 'password';
+      handle.setActionHidden('password', next !== 'profile');
+      if (next === 'profile') {
+        // Secrets never outlive their view.
+        ['current', 'next', 'confirm'].forEach(name => { fields[name].value = ''; });
+        fields.display_name.focus();
+      } else {
+        fields.current.focus();
+      }
+    };
+
+    modal.open({
       title: 'My Account',
       acceptLabel: 'Save',
+      cancelLabel: 'Cancel',
       className: 'dp-account-dialog',
-      mount(body) {
+      actions: profile.has_password ? [{id: 'password', label: 'Change Password', placement: 'leading'}] : [],
+      onAction(id) {
+        if (id === 'password') show('password', this.handle);
+      },
+      mount(body, handle) {
+        this.handle = handle;
         body.innerHTML = `
-          <p class="dp-modal-message dp-account-identity"></p>
-          <label class="dp-modal-field"><span class="form-label">Display Name</span>
-            <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
-          <label class="dp-modal-field"><span class="form-label">Actual Name</span>
-            <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
-          <div class="dp-modal-field dp-account-email"><span class="form-label">Email</span>
-            <span class="dp-account-email-value"></span></div>
-          <fieldset class="dp-account-password">
-            <legend class="form-label">Change Password</legend>
+          <div class="dp-account-view" data-account-view="profile">
+            <label class="dp-modal-field"><span class="form-label">Display Name</span>
+              <input class="input" data-field="display_name" type="text" maxlength="256" autocomplete="nickname"></label>
+            <label class="dp-modal-field"><span class="form-label">Actual Name</span>
+              <input class="input" data-field="actual_name" type="text" maxlength="256" autocomplete="name"></label>
+            <div class="dp-modal-field dp-account-email"><span class="form-label">Email</span>
+              <span class="dp-account-email-value"></span></div>
+          </div>
+          <div class="dp-account-view" data-account-view="password" hidden>
             <label class="dp-modal-field"><span class="form-label">Current Password</span>
               <input class="input" data-field="current" type="password" maxlength="4096" autocomplete="current-password"></label>
             <label class="dp-modal-field"><span class="form-label">New Password</span>
               <input class="input" data-field="next" type="password" maxlength="4096" autocomplete="new-password"></label>
             <label class="dp-modal-field"><span class="form-label">Confirm New Password</span>
               <input class="input" data-field="confirm" type="password" maxlength="4096" autocomplete="new-password"></label>
-          </fieldset>`;
-        const identity = body.querySelector('.dp-account-identity');
-        identity.textContent = `Signed in as ${data.display_name || 'this account'} (${roleLabel(data.role)}). `
-          + 'Changing your password signs you out everywhere.';
+          </div>`;
+        body.querySelectorAll('[data-account-view]').forEach(node => { views[node.dataset.accountView] = node; });
         body.querySelectorAll('[data-field]').forEach(input => { fields[input.dataset.field] = input; });
         fields.display_name.value = String(profile.display_name || data.display_name || '');
         fields.actual_name.value = String(profile.actual_name || '');
@@ -225,31 +253,38 @@
         email.textContent = profile.email
           ? `${profile.email}${VERIFICATION[profile.email_verification] ? ` (${VERIFICATION[profile.email_verification]})` : ''}`
           : 'None provided';
-        return identity;
+        return null;
       },
-    });
-    dialog.closed.then(async result => {
-      if (!result.accepted) return;
-      const notice = text => window.toast(text, 'error');
-      const name = fields.display_name.value.trim();
-      if (name && name !== String(profile.display_name || data.display_name || '')) {
-        const failure = await sendJson('PUT', '/api/account/display-name', {display_name: name});
-        if (failure) return notice(failure);
-      }
-      const actual = fields.actual_name.value.trim();
-      if (actual !== String(profile.actual_name || '')) {
-        const failure = await sendJson('PUT', '/api/account/actual-name', {actual_name: actual});
-        if (failure) return notice(failure);
-      }
-      if (fields.next.value || fields.current.value) {
-        if (fields.next.value !== fields.confirm.value) return notice('The new passwords do not match.');
-        const failure = await sendJson('PUT', '/api/account/password',
-          {current_password: fields.current.value, new_password: fields.next.value});
-        if (failure) return notice(failure);
-        redirectToLogin();
-        return;
-      }
-      window.location.reload();
+      onCancel(handle) {
+        if (view !== 'password') return true;
+        show('profile', handle);
+        return false;
+      },
+      async onAccept() {
+        if (view === 'password') {
+          if (!fields.current.value || !fields.next.value) { notice('Enter your current and new password.'); return false; }
+          if (fields.next.value !== fields.confirm.value) { notice('The new passwords do not match.'); return false; }
+          const failure = await sendJson('PUT', '/api/account/password',
+            {current_password: fields.current.value, new_password: fields.next.value});
+          if (failure) { notice(failure); return false; }
+          // The server ended every session of this account: sign in again.
+          redirectToLogin();
+          return true;
+        }
+        const name = fields.display_name.value.trim();
+        if (!name) { notice('A display name is required.'); return false; }
+        if (name !== String(profile.display_name || '')) {
+          const failure = await sendJson('PUT', '/api/account/display-name', {display_name: name});
+          if (failure) { notice(failure); return false; }
+        }
+        const actual = fields.actual_name.value.trim();
+        if (actual !== String(profile.actual_name || '')) {
+          const failure = await sendJson('PUT', '/api/account/actual-name', {actual_name: actual});
+          if (failure) { notice(failure); return false; }
+        }
+        window.location.reload();
+        return true;
+      },
     });
   }
 

@@ -56,9 +56,9 @@ class OwnPassword(BaseModel):
     new_password: str = Field(min_length=1, max_length=4096)
 
 
-class IdentityLink(BaseModel):
-    issuer: str = Field(min_length=1, max_length=2048)
-    subject: str = Field(min_length=1, max_length=1024)
+class AccountMerge(BaseModel):
+    target_id: str = Field(min_length=1, max_length=64)
+    source_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(min_length=1, max_length=100)
 
 
 # ── the account directory (Admin) ───────────────────────────────────────────
@@ -113,13 +113,13 @@ async def delete_account(account_id: str, request: Request,
     return {"ok": True, "withdrawn_transfers": withdrawn, "cancelled_transfers": settled}
 
 
-@router.post("/accounts/{account_id}/merge")
-async def merge_account(account_id: str, request: Request,
-                        target_id: Annotated[str, Body(embed=True, min_length=1, max_length=64)]):
-    """Fold ``account_id`` into ``target_id``. Demand recorded for the source
-    stays recorded for it and is owned through the merge redirect."""
+@router.post("/accounts/merge")
+async def merge_account(body: AccountMerge, request: Request):
+    """Fold the source accounts into the surviving ``target_id`` in one
+    transaction: all of them, or none. Demand recorded for a source stays
+    recorded for it and is owned through the merge redirect."""
     try:
-        await accounts.merge_accounts(_actor(request), account_id, target_id)
+        await accounts.merge_accounts(_actor(request), body.source_ids, body.target_id)
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
@@ -129,15 +129,6 @@ async def merge_account(account_id: str, request: Request,
 async def reset_account_password(account_id: str, body: PasswordReset, request: Request):
     try:
         await accounts.reset_password(_actor(request), account_id, body.password, username=body.username)
-    except AccountRefused as exc:
-        raise _refused(exc) from None
-    return {"ok": True}
-
-
-@router.post("/accounts/{account_id}/oidc-identities")
-async def link_account_identity(account_id: str, body: IdentityLink, request: Request):
-    try:
-        await accounts.link_oidc_identity(_actor(request), account_id, body.issuer, body.subject)
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True}
