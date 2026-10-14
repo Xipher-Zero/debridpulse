@@ -13,21 +13,41 @@ const ADMIN = {username: 'browser', password: 'browser-secret'};
 const run = Date.now().toString(36);
 const HOOK = `https://discord.com/api/webhooks/9000${Date.now() % 100000}/fixture-${run}`;
 
+// The Admin signs in once per worker (acl-admin-session.js: the login
+// challenge limit is shared by every auth-runtime file).
+const adminSession = require('./acl-admin-session');
 async function signIn(browser, {username, password}, viewport = {width: 1440, height: 914}) {
-  const context = await browser.newContext({baseURL: AUTH, viewport});
+  const shared = username === ADMIN.username;
+  const reuse = shared && adminSession.get() !== null;
+  const context = await browser.newContext({baseURL: AUTH, viewport, ...(reuse ? {storageState: adminSession.get()} : {})});
+  // The application's own live pulse: a role change reaches an open page as
+  // its account_changed event, so a test that awaits that reset first waits
+  // for the page's pulse to be connected (pulseConnected below).
+  await context.addInitScript(() => document.addEventListener('debridpulse:pulse-connected', () => {
+    window.__dpPulseConnected = true;
+  }));
   const page = await context.newPage();
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   const errors = [];
   page.on('pageerror', error => errors.push(String(error.message)));
-  await page.goto('/login');
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('button[type="submit"]').click();
+  if (reuse) {
+    await page.goto('/');
+  } else {
+    await page.goto('/login');
+    await page.locator('#username').fill(username);
+    await page.locator('#password').fill(password);
+    await page.locator('button[type="submit"]').click();
+  }
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeVisible();
+  if (shared && !reuse) adminSession.remember(await context.storageState());
   return {context, page, errors};
 }
+
+// The page's live pulse is connected (its 'connected' event was delivered), so
+// an authority change made from now on reaches it.
+const pulseConnected = page => expect.poll(() => page.evaluate(() => window.__dpPulseConnected === true)).toBe(true);
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
   const response = await window.debridPulseAuth.fetch(`/api${path}`, {
@@ -151,12 +171,18 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   await page.evaluate(() => window.toggleTheme());
   expect(signed.errors).toEqual([]);
 
-  // A stale page after a role change: the server refuses, and the recomposed page has no entry.
+  // A role change: the server refuses at once, and the open page recomposes
+  // itself. The application reloads it under the new authority (its
+  // account_changed pulse re-reads the session); the test waits for that one
+  // reload rather than racing it with a second.
+  await pulseConnected(page);
+  const recomposed = page.waitForEvent('load');
   const demoted = await api(admin.page, 'PATCH', `/accounts/${user.id}`, {role: 'readonly'});
   expect(demoted.status).toBe(200);
-  // (Probed outside the page: the page's own 403 handling reloads it under the new authority.)
+  // (Probed outside the page, which is reloading.)
   expect((await page.request.get('/api/account/notifications')).status()).toBe(403);
-  await page.reload();
+  await recomposed;
+  await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toContainText('ReadOnly User');
   expect(await navLabels(page)).not.toContain('Notifications');
   await expect(page.locator('#view-settings')).toHaveCount(0);
 

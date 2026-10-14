@@ -1,10 +1,12 @@
 """THE NZB source-fact owner: validation, normalization and naming facts.
 
-Neutral: any route an NZB can take (native Usenet, a provider that acquires it
-remotely) reads submitted NZB bytes through this one reader, and no route
-owns it. Knows nothing about any executor, SAB, NNTP transport, provider or
-the download root: it turns an NZB manifest into neutral facts (a name, a
-declared byte total, the file and segment counts) or rejects it. Parsing is
+The Usenet integration's request facts, shared at the integration level (as
+``integrations.media.outcomes`` is for media), never by the universal core:
+every route an NZB can take (native Usenet, a provider that acquires it
+remotely) reads submitted NZB bytes through this one reader, and no single
+provider owns it. It imports no executor, transport, provider or the download
+root: it turns an NZB manifest into neutral facts (a name, a declared byte
+total, the file and segment counts) or rejects it. Parsing is
 defensive -- an NZB is untrusted operator input -- and never resolves
 external entities.
 

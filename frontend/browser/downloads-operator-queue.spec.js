@@ -443,8 +443,13 @@ test('U4 selection sits after Actions at every width; an unhovered Remove is qui
                                    [1000, [0, 1, 2, 6, 7]], [600, [0, 1, 2, 5, 6, 7]]]) {
     await page.setViewportSize({width, height: 900});
     await expect.poll(visibleColumns).toEqual(expected);
-    const actions = await row(page, 1).locator('td').nth(6).boundingBox();
-    const select = await row(page, 1).locator('td').nth(7).boundingBox();
+    // Both cells measured in ONE read of the row as it stands: a live list
+    // refresh between two separate reads could replace the row in between.
+    const {actions, select} = await row(page, 1).evaluate(node => {
+      const box = cell => { const r = cell.getBoundingClientRect(); return {x: r.x, width: r.width}; };
+      const cells = node.querySelectorAll(':scope > td');
+      return {actions: box(cells[6]), select: box(cells[7])};
+    });
     expect(select.x).toBeGreaterThanOrEqual(actions.x + actions.width - 1);
     expect(select.width).toBeGreaterThanOrEqual(24);
   }

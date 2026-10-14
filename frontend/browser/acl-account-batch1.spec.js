@@ -8,20 +8,39 @@ const AUTH = process.env.DP_AUTH_BASE_URL;
 const ADMIN = {username: 'browser', password: 'browser-secret'};
 const run = Date.now().toString(36);
 
-async function signIn(browser, {username, password}, viewport = {width: 1440, height: 914}) {
-  const context = await browser.newContext({baseURL: AUTH, viewport});
+// The Admin signs in once per worker (acl-admin-session.js: the login
+// challenge limit is shared by every auth-runtime file).
+const adminSession = require('./acl-admin-session');
+async function signIn(browser, {username, password}, viewport = {width: 1440, height: 914}, {fresh = false} = {}) {
+  const shared = username === ADMIN.username && !fresh;
+  const reuse = shared && adminSession.get() !== null;
+  const context = await browser.newContext({baseURL: AUTH, viewport, ...(reuse ? {storageState: adminSession.get()} : {})});
+  if (!shared) signedIn.push(context);
   const page = await context.newPage();
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   const errors = [];
   page.on('pageerror', error => errors.push(String(error.message)));
-  await page.goto('/login');
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('button[type="submit"]').click();
+  if (reuse) {
+    await page.goto('/');
+  } else {
+    await page.goto('/login');
+    await page.locator('#username').fill(username);
+    await page.locator('#password').fill(password);
+    await page.locator('button[type="submit"]').click();
+  }
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeVisible();
+  if (shared && !reuse) adminSession.remember(await context.storageState());
   return {context, page, errors};
+}
+
+// Every account page a test signs in (never the shared Admin): closed before
+// those accounts are removed, so no stale page is sent to the login page --
+// each one would be one more sign-in challenge against the shared limit.
+const signedIn = [];
+async function closeSignedIn() {
+  await Promise.all(signedIn.splice(0).map(context => context.close()));
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
@@ -46,7 +65,7 @@ async function usersTab(page) {
 test('the session row holds Log Out and the account as two separate controls, at every width', async ({browser}) => {
   expect(AUTH, 'DP_AUTH_BASE_URL must be provided by browser CI').toBeTruthy();
   // One session, three widths: sign-in pages are rate limited per client.
-  const admin = await signIn(browser, ADMIN);
+  const admin = await signIn(browser, ADMIN, undefined, {fresh: true});  // it logs out
   for (const width of [1440, 1024, 800]) {
     await admin.page.setViewportSize({width, height: 900});
     if (width === 800) await admin.page.evaluate(() => window.toggleSidebar());
@@ -156,6 +175,7 @@ test('My Account: one fixed dialog with a profile view and a password view, no s
     expect(await plain.locator('.dp-modal-footer .btn').allTextContents()).toEqual(['Cancel', 'Save']);
     await plain.locator('[data-modal-cancel]').click();
   } finally {
+    await closeSignedIn();
     await api(admin.page, 'DELETE', `/accounts/${user.id}`);
   }
 });
@@ -256,6 +276,7 @@ test('User Accounts: name opens Account Details, Remove is the quiet Downloads R
     await expect(page.locator(`tr[data-account-row="${cid.id}"]`)).toHaveCount(1);
     expect(admin.errors).toEqual([]);
   } finally {
+    await closeSignedIn();
     for (const item of [ann, bob, cid]) await api(admin.page, 'DELETE', `/accounts/${item.id}`);
   }
 });
@@ -305,6 +326,7 @@ test('Remove is offered for every other eligible person, never the signed-in Adm
     expect((await api(page, 'DELETE', `/accounts/${operator.id}`)).status).toBe(409);
     expect(signed.errors).toEqual([]);
   } finally {
+    await closeSignedIn();
     for (const item of [local, operator]) await api(admin.page, 'DELETE', `/accounts/${item.id}`);
   }
 });
@@ -354,6 +376,7 @@ test('the sidebar names the account by its Display Name, never its Actual Name o
     await expect(name).toHaveText(user.username);
     await context.close();
   } finally {
+    await closeSignedIn();
     await api(admin.page, 'DELETE', `/accounts/${user.id}`);
   }
 });

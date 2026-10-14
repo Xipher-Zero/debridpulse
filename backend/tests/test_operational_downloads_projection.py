@@ -182,8 +182,18 @@ def test_assembled_app_exposes_only_operational_downloads_collection_route():
 
 
 class _RecordingRepository:
+    """The repository surface the Details route reads (``get_torrent``): the
+    detailed presentation, the transfer's own error record (for its error
+    disclosure) and its root's admitted-verbatim fact."""
+
     def __init__(self):
         self.calls = []
+
+    async def get(self, transfer_id):
+        return None
+
+    async def first_root_admitted_verbatim(self, transfer_id):
+        return False
 
     async def presentation(self, transfer_id, **kwargs):
         self.calls.append((transfer_id, kwargs))

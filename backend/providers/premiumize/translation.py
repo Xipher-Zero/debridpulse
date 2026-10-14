@@ -24,7 +24,7 @@ from transfers.errors import (
 )
 from transfers.file_selection import collection_member_paths
 from transfers.filesystem import relative_destination
-from transfers.nzb import deobfuscated_name, dominant_member
+from integrations.usenet.nzb import deobfuscated_name, dominant_member
 from transfers.models import (
     CachePresence, FileManifest, FileManifestEntry, Ownership, ProviderObservation, ProviderResource,
     ResourceState, TransferRequest,
@@ -171,7 +171,7 @@ def cloud_resource(transfer_id: str, *, ownership: Ownership = Ownership.CREATED
                    nzb_name: str = "") -> ProviderResource:
     """A cloud transfer's durable identity: its transfer id. A transfer
     acquired from an NZB also keeps that posting's useful work name
-    (``nzb_name``, ``transfers.nzb.useful_name``) -- a bounded, non-secret
+    (``nzb_name``, ``integrations.usenet.nzb.useful_name``) -- a bounded, non-secret
     naming fact, never the NZB itself -- so its files are named the same way
     after any restart (``named_cloud_members``)."""
     if native_id(transfer_id) != transfer_id:
@@ -269,9 +269,9 @@ def cloud_members(files, *, root_name: str = "") -> tuple[NativeMember, ...]:
 def named_cloud_members(members: tuple[NativeMember, ...], nzb_name) -> tuple[NativeMember, ...]:
     """The logical names of an NZB-acquired transfer's files. Premiumize's
     cloud filename is naming evidence, not identity: when exactly one payload
-    is dominant (``transfers.nzb.dominant_member``) and its name is
+    is dominant (``integrations.usenet.nzb.dominant_member``) and its name is
     obfuscated, it takes the posting's useful name with its own extension
-    (``transfers.nzb.deobfuscated_name``) at its own location. Every other
+    (``integrations.usenet.nzb.deobfuscated_name``) at its own location. Every other
     file, every non-NZB transfer, no dominant payload, a meaningful name, or
     a name whose destination (``filesystem.relative_destination``, compared
     case-insensitively as fan-out compares it) would be another member's

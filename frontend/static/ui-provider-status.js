@@ -313,9 +313,18 @@
     return owned === generation ? snapshot.slice() : null;
   }
 
+  /* A credential the settings owner replaced or erased: the last answer was
+   * about the previous credential, whose replacement changes none of the
+   * candidate facts above, so that answer no longer describes the provider --
+   * it is checked again, never re-presented, until its own endpoint answers
+   * for the current credential. */
+  function forget(id) {
+    lastKnownGood.delete(String(id));
+  }
+
   // Provider status is administration: an account without it never observes.
   if (!window.debridPulseAuth?.can('administer')) return;
-  window.DPProviderStatus = Object.freeze({refresh, invalidate, candidates, aggregateState});
+  window.DPProviderStatus = Object.freeze({refresh, invalidate, forget, candidates, aggregateState});
   render([], 'loading');
   const reobserve = () => refresh().catch(() => render([], 'unknown'));
   document.addEventListener('DOMContentLoaded', reobserve, {once:true});

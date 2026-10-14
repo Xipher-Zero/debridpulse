@@ -182,6 +182,11 @@ test('statistics refreshes during a switch never reload the Downloads list or th
   await page.route(url => url.pathname === '/api/stats', route => route.fulfill({
     status: 200, contentType: 'application/json',
     body: JSON.stringify({ paused: state.paused, by_status: { downloading: 1 }, version: '1.0.13' }) }));
+  // This case counts exactly the reads it causes, so its page owns a quiet live
+  // pulse: connected (no polling fallback) and silent, so no other spec file's
+  // change on the shared backend arrives as a refresh in the counted window.
+  await page.route('**/api/events/stream', route => route.fulfill({
+    status: 200, contentType: 'text/event-stream', body: 'event: connected\ndata: {}\n\n' }));
   await ready(page);
   await page.evaluate(() => showDetail(30));                                // Details of the 222-member transfer
   await expect(page.locator('#modal-body .dp-detail-provider .dv')).toHaveText('AllDebrid');

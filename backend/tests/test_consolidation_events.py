@@ -197,7 +197,9 @@ async def test_observability_delivers_safe_event_once(monkeypatch):
             return [] if self.claimed else [event]
 
         async def presentation(self, _transfer_id, details=False):
-            return {"id": 10, "status": "consolidated"}
+            # As the real presentation owner returns it: every transfer has its
+            # durable submission name (the delivery names it in notifications).
+            return {"id": 10, "name": "consolidated.bin", "status": "consolidated"}
 
         async def claim_event(self, _event_id):
             if self.claimed:

@@ -1,5 +1,10 @@
 const { test, expect } = require('@playwright/test');
 
+// These cases prove what the 401 path alone does. A (re)connected live pulse
+// re-reads the session too (auth.js), so their pages' pulse never connects:
+// the request is held, unanswered, and nothing else re-reads the session.
+const holdPulse = page => page.route('**/api/events/stream', () => {});
+
 async function waitForSessionBootstrap(page) {
   await expect.poll(() => page.evaluate(() => window.debridPulseAuth?.session() !== null)).toBeTruthy();
 }
@@ -20,6 +25,7 @@ test('unrelated application 401 does not redirect an open-mode browser to login'
     body: JSON.stringify({detail: 'Endpoint-specific authorization failure'}),
   }));
 
+  await holdPulse(page);
   await page.goto('/');
   await waitForSessionBootstrap(page);
   expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(false);
@@ -79,6 +85,7 @@ test('application 401 still redirects when canonical session confirmation report
     body: '<!doctype html><title>Login test target</title>',
   }));
 
+  await holdPulse(page);
   await page.goto('/');
   await waitForSessionBootstrap(page);
   expect(await page.evaluate(() => window.debridPulseAuth.session().authenticated)).toBe(true);

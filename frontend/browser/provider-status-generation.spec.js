@@ -180,21 +180,22 @@ test('UISTATE-002-D an observation begun before a settings save never seeds the 
 
 // Accepted participation is published at once; a slow probe defers only its
 // own provider's health. Settings, its PATCH and every status endpoint are
-// held under the page's control (nothing is written to the shared backend).
+// held under the page's control: the document is built once from what the
+// page booted with, then served -- and every enable answered -- from the
+// page's own state, so nothing reaches the shared backend's settings (an
+// injected-document spec, test_browser_settings_key_ownership.py).
 const DAY = 86400;
 const premium = () => ({state:'healthy', checked:true, account:{service_class:'premium', entitlement:'ready',
   functional:'ready', plan:'Premium', expires_at:Math.floor(Date.now() / 1000) + 30 * DAY}});
 
 async function acceptedSettings(page, overrides) {
-  const ctl = {doc:null, hold:new Set(), pending:[]};
-  await page.route('**/api/settings', async route => {
-    if (route.request().method() !== 'GET') return route.continue();
-    if (!ctl.doc) {
-      ctl.doc = await (await route.fetch()).json();
-      for (const [id, over] of Object.entries(overrides)) Object.assign(ctl.doc.integrations[id], over);
-    }
-    return route.fulfill({status:200, contentType:'application/json', body:JSON.stringify(ctl.doc)});
-  });
+  await bootstrap(page);
+  await expect.poll(() => page.evaluate(() => !!settingsData?.integrations?.realdebrid)).toBeTruthy();
+  const doc = await page.evaluate(() => JSON.parse(JSON.stringify(settingsData)));
+  for (const [id, over] of Object.entries(overrides)) Object.assign(doc.integrations[id], over);
+  const ctl = {doc, hold:new Set(), pending:[]};
+  await page.route('**/api/settings', route => route.fulfill({
+    status:200, contentType:'application/json', body:JSON.stringify(ctl.doc)}));
   await page.route(/\/api\/integrations\/[^/]+\/configuration$/, route => {
     const id = route.request().url().split('/integrations/')[1].split('/')[0];
     ctl.doc.integrations[id].enabled = route.request().postDataJSON().enabled;
@@ -224,30 +225,30 @@ async function openSources(page) {
 const provider = (page, id) => page.locator(`#provider-status-list [data-provider-id="${id}"]`);
 const directSources = page => page.locator('#provider-status-list [data-provider-group="direct_sources"] [data-provider-state]');
 const premiumLine = page => page.locator('#lbl-premium');
-const accept = (page, id) => page.locator(`label[for="dp-settings-integration-${id}-enabled"]`).click();
+const accept = (page, integration) => page.locator(`label[for="dp-settings-integration-${integration}-enabled"]`).click();
 const configured = {configured:true, verified:true};
 const ENABLED = {alldebrid:{enabled:true, ...configured}, realdebrid:{enabled:true, ...configured}};
 
 test('UISTATE-003-A an accepted disable is immediate while an unrelated probe is held', async ({ page }) => {
   const ctl = await acceptedSettings(page, ENABLED);
   await bootstrap(page);
-  await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
-  await expect(premiumLine(page)).toContainText('AllDebrid');
-  await openSources(page);
-  ctl.hold.add('realdebrid');
-  await accept(page, 'alldebrid');
-  await expect.poll(() => ctl.pending.length).toBe(1);
-  // AllDebrid's accepted participation and its premium line are gone, the
-  // group untouched, while Real-Debrid's probe is still outstanding.
-  await expect(provider(page, 'alldebrid')).toHaveCount(0);
-  await expect(premiumLine(page)).not.toContainText('AllDebrid');
   await expect(provider(page, 'realdebrid')).toHaveAttribute('data-provider-state', 'healthy');
+  await expect(premiumLine(page)).toContainText('Real-Debrid');
+  await openSources(page);
+  ctl.hold.add('alldebrid');
+  await accept(page, 'realdebrid');
+  await expect.poll(() => ctl.pending.length).toBe(1);
+  // Real-Debrid's accepted participation and its premium line are gone, the
+  // group untouched, while AllDebrid's probe is still outstanding.
+  await expect(provider(page, 'realdebrid')).toHaveCount(0);
+  await expect(premiumLine(page)).not.toContainText('Real-Debrid');
+  await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
   await expect(directSources(page)).toHaveAttribute('data-provider-state', 'healthy');
   // A member's accepted disable changes the aggregate in the same immediate snapshot.
   await accept(page, 'media');
   await expect.poll(() => ctl.pending.length).toBe(2);
   await expect(directSources(page)).toHaveAttribute('data-provider-state', 'mixed');
-  expect(ctl.pending.map(item => item.id)).toEqual(['realdebrid', 'realdebrid']);
+  expect(ctl.pending.map(item => item.id)).toEqual(['alldebrid', 'alldebrid']);
 });
 
 test('UISTATE-003-B an accepted enable is Checking until its own answer, whatever else is held', async ({ page }) => {
@@ -271,18 +272,18 @@ test('UISTATE-003-B an accepted enable is Checking until its own answer, whateve
 test('UISTATE-003-C status announcements cannot hide committed participation', async ({ page }) => {
   const ctl = await acceptedSettings(page, ENABLED);
   await bootstrap(page);
-  await expect(provider(page, 'realdebrid')).toHaveAttribute('data-provider-state', 'healthy');
+  await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
   await openSources(page);
-  ctl.hold.add('realdebrid');
-  await accept(page, 'alldebrid');
+  ctl.hold.add('alldebrid');
+  await accept(page, 'realdebrid');
   await expect.poll(() => ctl.pending.length).toBe(1);
   for (let n = 2; n <= 3; n += 1) {
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:integration-status-changed')));
     await expect.poll(() => ctl.pending.length).toBe(n);
-    await expect(provider(page, 'alldebrid')).toHaveCount(0);
-    await expect(provider(page, 'realdebrid')).toHaveAttribute('data-provider-state', 'healthy');
+    await expect(provider(page, 'realdebrid')).toHaveCount(0);
+    await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
   }
-  await ctl.release('realdebrid');
-  await expect(provider(page, 'alldebrid')).toHaveCount(0);
-  await expect(provider(page, 'realdebrid')).toHaveAttribute('data-provider-state', 'healthy');
+  await ctl.release('alldebrid');
+  await expect(provider(page, 'realdebrid')).toHaveCount(0);
+  await expect(provider(page, 'alldebrid')).toHaveAttribute('data-provider-state', 'healthy');
 });

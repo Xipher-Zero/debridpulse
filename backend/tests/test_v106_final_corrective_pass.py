@@ -1,4 +1,5 @@
 import asyncio
+import re
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -57,13 +58,13 @@ def test_lifespan_shutdown_is_finally_guarded():
 
 def test_event_and_snapshot_routes_use_public_timestamp_serialization():
     source = (Path(__file__).parents[1] / "api" / "routes.py").read_text()
-    detail = source.split("async def get_torrent(torrent_id: int,", 1)[1].split(
-        '@router.delete("/torrents/{torrent_id}")', 1
-    )[0]
+    detail = re.split(r"\n(?:async )?def ", source.split("async def get_torrent(torrent_id: int,", 1)[1], maxsplit=1)[0]
     snapshots = source.split("async def list_stats_snapshots", 1)[1].split("@router", 1)[0]
     presentation = source.split("def _public_transfer_presentation", 1)[1].split("def _password_auth_binding", 1)[0]
     assert "result = public_payload(value)" in presentation
-    assert "return _public_transfer_presentation(item, application.definitions)" in detail
+    # Details returns exactly the public presentation (plus what it adds to it).
+    assert "result = _public_transfer_presentation(\n        item, application.definitions," in detail
+    assert detail.count("return ") == 1 and "\n    return result\n" in detail
     assert 'return {"snapshots": public_payload(rows)}' in snapshots
 
     # GET /api/events (api.operational_downloads.list_activity_events) reads

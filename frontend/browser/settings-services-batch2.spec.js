@@ -79,10 +79,15 @@ test('Maximum Active Torrents hints read Max, whole, on all three providers', as
 
 test('compact tunables centre their value whatever its type; paths, addresses and credentials do not', async ({ page }) => {
   await openServices(page);
-  const fields = await page.evaluate(() => [...document.querySelectorAll('#view-settings input.input')].map(input => ({
+  // A compact READING -- a count shown read-only in the selector footprint
+  // beside the selector it accompanies (Event Logging's Recorded Events) -- is
+  // a compact value like a tunable, never a path, address or credential.
+  const readings = ['event_journal_recorded'];
+  const fields = await page.evaluate(readings => [...document.querySelectorAll('#view-settings input.input')].map(input => ({
     key: input.dataset.setting || input.dataset.usenetField || input.id, type: input.type,
-    tunable: input.type === 'number' || !!input.closest('.dp-settings-tuning-grid .dp-settings-field'),
-    align: getComputedStyle(input).textAlign})));
+    tunable: input.type === 'number' || !!input.closest('.dp-settings-tuning-grid .dp-settings-field')
+      || (input.readOnly && readings.includes(input.dataset.setting)),
+    align: getComputedStyle(input).textAlign})), readings);
   const tunables = fields.filter(field => field.tunable);
   const others = fields.filter(field => !field.tunable);
   // Integers, fractions and sized strings alike, in Services, Downloads,
@@ -92,6 +97,7 @@ test('compact tunables centre their value whatever its type; paths, addresses an
                      'min_free_disk_gb', 'disk_guard_resume_hysteresis_gb', 'aria2_min_split_size', 'aria2_disk_cache']) {
     expect(tunables.map(field => field.key), key).toContain(key);
   }
+  readings.forEach(key => expect(tunables.map(field => field.key), key).toContain(key));
   expect(tunables.length).toBeGreaterThan(20);
   tunables.forEach(field => expect(field.align, field.key).toBe('center'));
   // Paths, addresses, names and credentials keep the ordinary alignment.
@@ -110,9 +116,12 @@ test('compact tunables centre their value whatever its type; paths, addresses an
   await expand(page, 'torbox');
   await field.fill('123');
   await expect(field).toHaveValue('123');
+  // Its stored value is the suite's neutral probe (other files write it), so
+  // the step is proven from a value this case sets in the control itself and
+  // puts back -- nothing is committed.
   const buffer = page.locator('[data-setting="disk_guard_resume_hysteresis_gb"]');
-  expect(await buffer.evaluate(input => { const before = input.value; input.stepUp(); const after = input.value;
-    input.value = before; return [before, after]; })).toEqual(['0.5', '0.6']);
+  expect(await buffer.evaluate(input => { const stored = input.value; input.value = '0.5'; const before = input.value;
+    input.stepUp(); const after = input.value; input.value = stored; return [before, after]; })).toEqual(['0.5', '0.6']);
 });
 
 // 23:30 UTC on the last day of January is already February in Tokyo.

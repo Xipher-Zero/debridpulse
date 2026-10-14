@@ -10,6 +10,7 @@ from __future__ import annotations
 import ast
 import inspect
 import textwrap
+import re
 from pathlib import Path
 
 import pytest
@@ -70,11 +71,21 @@ def test_the_route_does_not_bypass_provider_routing():
         assert forbidden not in handler, forbidden
 
 
+# Help documents every engine by its product name (aria2, rsync, Usenet
+# (SABnzbd), yt-dlp). It is prose: the Help owner makes no request of any kind.
+HELP_DOCUMENTATION = "ui-help-page.js"
+NETWORK_CALLS = re.compile(r"\bfetch\(|XMLHttpRequest|EventSource|debridPulseAuth\.fetch|\brequest\(")
+
+
 def test_no_frontend_code_calls_the_acquisition_service_directly():
     for path in (REPO / "frontend/static").glob("*.js"):
         text = path.read_text(encoding="utf-8").lower()
-        for forbidden in ("sabnzbd", "/api?mode=", "nzo_id"):
+        for forbidden in ("/api?mode=", "nzo_id", "8090"):
             assert forbidden not in text, f"{path.name}: {forbidden}"
+        if path.name != HELP_DOCUMENTATION:
+            assert "sabnzbd" not in text, f"{path.name}: sabnzbd"
+    help_page = (REPO / "frontend/static" / HELP_DOCUMENTATION).read_text(encoding="utf-8")
+    assert not NETWORK_CALLS.search(help_page), "Help documentation makes a request"
 
 
 # --- end to end through the real engine ----------------------------------

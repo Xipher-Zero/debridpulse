@@ -13,8 +13,8 @@
  * whose capability the caller holds; every other one is discarded, never
  * constructed. Other owners ask debridPulseAuth.can(capability). Whenever the
  * session's role or generation stops matching it (an account_changed event, a
- * 403, the periodic check) the page reloads under the server's current
- * authority. The server enforces every action regardless. */
+ * (re)connected live pulse, a 403, the periodic check) the page reloads under
+ * the server's current authority. The server enforces every action regardless. */
 (() => {
   'use strict';
 
@@ -418,4 +418,12 @@
 
   refreshSession().catch(() => {});
   window.setInterval(() => refreshSession({force: true}).catch(() => {}), 60000);
+  // The live pulse (re)connected. An account_changed is announced only to the
+  // streams subscribed at that moment, so one made while this page was loading
+  // (before its stream subscribed) or while a dropped stream was reconnecting
+  // reached nobody: re-read the session now, which resets the page only if its
+  // authority moved.
+  document.addEventListener('debridpulse:pulse-connected', () => {
+    refreshSession({force: true}).catch(() => {});
+  });
 })();

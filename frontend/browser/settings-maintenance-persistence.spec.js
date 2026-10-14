@@ -174,8 +174,11 @@ test('Backup Folder is a centred island at roughly 70% with Browse inside the fi
 
 test('Event Logging is the first card: family chip, file-text glyph, centred hint, empty rail, one island',
   async ({page}) => {
-    const recorded = (await (await page.request.get('/api/events/count')).json()).recorded;
+    // The count the page itself read when Settings loaded: the shared journal
+    // grows while other spec files run, so a separate earlier read can differ.
+    const counted = page.waitForResponse(response => new URL(response.url()).pathname === '/api/events/count');
     await openMaintenance(page);
+    const recorded = (await (await counted).json()).recorded;
     for (const width of [1440, 1024, 820, 390]) {
       await page.setViewportSize({width, height: 900});
       await page.waitForTimeout(150);

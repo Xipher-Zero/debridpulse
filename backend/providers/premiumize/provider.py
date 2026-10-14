@@ -38,7 +38,7 @@ from transfers.applicability import ApplicabilityReadiness, ProviderApplicabilit
 from transfers.errors import (
     Category, Domain, NormalizedError, Origin, Retryability, Stage, TransferError,
 )
-from transfers import nzb
+from integrations.usenet import nzb
 from transfers.file_selection import ManifestInvalid, SelectionUnprovable, coordinate_correspondence
 from transfers.models import (
     BITTORRENT_REQUEST_KINDS, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind,
@@ -308,7 +308,7 @@ class PremiumizeProvider:
 
     async def _nzb_name(self, request: TransferRequest) -> str:
         """The posting's useful work name, read once from the canonical staged
-        NZB through the one NZB reader (``transfers.nzb``) before anything is
+        NZB through the one NZB reader (``integrations.usenet.nzb``) before anything is
         created: the naming evidence its cloud files are named by. ``""`` when
         it names none -- the cloud's own names then stand."""
         payload = request.payload

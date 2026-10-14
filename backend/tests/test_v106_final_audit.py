@@ -169,12 +169,21 @@ def test_api_timestamps_are_explicit_utc_and_sql_buckets_are_local():
 
 
 def test_frontend_uses_configured_timezone_for_legacy_and_explicit_utc():
-    source = (Path(__file__).parents[2] / "frontend" / "static" / "app.js").read_text()
+    static = Path(__file__).parents[2] / "frontend" / "static"
+    source = (static / "app.js").read_text()
+    # The one API date parser reads a legacy naive SQLite timestamp as UTC.
     assert "function parseApiDate" in source
     assert "value.trim().replace(' ', 'T') + 'Z'" in source
+    # The configured display timezone has one owner ...
+    assert "function dpDisplayTimezone()" in source
     assert "settingsData.timezone" in source
-    assert "dateOptions.timeZone = timeZone" in source
-    assert "timeOptions.timeZone = timeZone" in source
+    # ... and the one date presentation owner (Downloads, Dashboard and
+    # Details all render through it) parses every API instant with that parser
+    # and formats it -- calendar parts and exact title alike -- in that zone.
+    dates = (static / "ui-downloads.js").read_text()
+    assert "function timeZone() { try { return dpDisplayTimezone(); }" in dates
+    assert dates.count("timeZone: timeZone()") == 2
+    assert dates.count("parseApiDate(value)") == 2
 
 
 def test_backup_ids_are_unique_and_backward_compatible():

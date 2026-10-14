@@ -295,8 +295,12 @@ test('WS2-P2 integrated UI boundary keeps all six remediation contracts coherent
   await expect.poll(() => fixture.snapshot().requests.bulk.length).toBe(1);
   expect(fixture.snapshot().requests.bulk[0]).toEqual({ids: [1], action: 'delete'});
   await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="1"]')).toHaveCount(0);
-  await expect(beta).toBeChecked();
-  expect(await selectedIds(page)).toEqual([2]);
+  // Only the confirmed target was removed, and the completed removal ends the
+  // selection session (ui-fix-ws2-p1.spec.js, the same scenario): Beta
+  // survives, unselected, and no stale target remains selected.
+  await expect(page.locator('.dp-downloads-detail-row[data-torrent-id="2"]')).toHaveCount(1);
+  await expect(beta).not.toBeChecked();
+  expect(await selectedIds(page)).toEqual([]);
   expect(dialogs).toEqual([]);
 });
 

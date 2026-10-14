@@ -1751,6 +1751,15 @@ class TransferEngine:
             if result.input_required:
                 await self._provider_input_required(record, attempt, provider, result.input_required, challenge)
                 return
+        if not (result.error or result.candidates or result.observation):
+            # An answer naming no candidate, no resource and no failure is
+            # this attempt's own FAILED outcome. It is accepted as one, so the
+            # request carries it below -- never raised after the attempt was
+            # already accepted as succeeded, where the failure path's
+            # open-attempt write would read the closed attempt as a route an
+            # operator switch released and drop the failure.
+            result = replace(result, error=self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION,
+                                                       domain=Domain.RESOLUTION))
         live = await self.repository.resolution(attempt, result)
         if challenge:
             await self.challenges.clear(challenge)
@@ -1772,8 +1781,6 @@ class TransferEngine:
             if result.observation.state == ResourceState.AVAILABLE or (
                     result.observation.state == ResourceState.PREPARING and isinstance(provider, UpstreamSelection)):
                 return await self._observe_resource(replace(record, resource=result.observation.resource, state="waiting", attempts=record.attempts + 1))
-        else:
-            raise TransferError(self._error(Category.NO_TRANSFER_CANDIDATE, Stage.RESOLUTION, domain=Domain.RESOLUTION))
 
     async def _provider_declined(self, record: RequestRecord, attempt: ResolutionAttempt, provider,
                                  result: ResolutionResult, challenge: InputChallenge | None) -> None:

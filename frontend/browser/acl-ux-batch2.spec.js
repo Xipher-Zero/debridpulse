@@ -10,20 +10,39 @@ const EVIDENCE = process.env.DP_EVIDENCE_DIR || '';
 const ADMIN = {username: 'browser', password: 'browser-secret'};
 const run = Date.now().toString(36);
 
-async function signIn(browser, {username, password}, viewport = {width: 1440, height: 914}) {
-  const context = await browser.newContext({baseURL: AUTH, viewport});
+// The Admin signs in once per worker (acl-admin-session.js: the login
+// challenge limit is shared by every auth-runtime file).
+const adminSession = require('./acl-admin-session');
+async function signIn(browser, {username, password}, viewport = {width: 1440, height: 914}, {fresh = false} = {}) {
+  const shared = username === ADMIN.username && !fresh;
+  const reuse = shared && adminSession.get() !== null;
+  const context = await browser.newContext({baseURL: AUTH, viewport, ...(reuse ? {storageState: adminSession.get()} : {})});
+  if (!shared) signedIn.push(context);
   const page = await context.newPage();
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   const errors = [];
   page.on('pageerror', error => errors.push(String(error.message)));
-  await page.goto('/login');
-  await page.locator('#username').fill(username);
-  await page.locator('#password').fill(password);
-  await page.locator('button[type="submit"]').click();
+  if (reuse) {
+    await page.goto('/');
+  } else {
+    await page.goto('/login');
+    await page.locator('#username').fill(username);
+    await page.locator('#password').fill(password);
+    await page.locator('button[type="submit"]').click();
+  }
   await expect(page).not.toHaveURL(/\/login/);
   await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toBeVisible();
+  if (shared && !reuse) adminSession.remember(await context.storageState());
   return {context, page, errors};
+}
+
+// Every account page a test signs in (never the shared Admin): closed before
+// those accounts are removed, so no stale page is sent to the login page --
+// each one would be one more sign-in challenge against the shared limit.
+const signedIn = [];
+async function closeSignedIn() {
+  await Promise.all(signedIn.splice(0).map(context => context.close()));
 }
 
 const api = (page, method, path, body) => page.evaluate(async ([method, path, body]) => {
@@ -99,6 +118,7 @@ test('a revoked token leaves the active list once the server confirms it, and a 
       .locator('.dp-settings-users-tokens tbody tr')).toHaveCount(1);
     expect(admin.errors).toEqual([]);
   } finally {
+    await closeSignedIn();
     await api(page, 'DELETE', `/accounts/${id}`);
   }
 });
@@ -174,6 +194,7 @@ test('a User\'s Notifications page is headed The Grapevine in the canonical mast
     }
     expect(signed.errors).toEqual([]);
   } finally {
+    await closeSignedIn();
     await api(admin.page, 'DELETE', `/accounts/${user.id}`);
   }
 });
@@ -247,6 +268,7 @@ test('My Account takes an email once when it has none; it is recorded unverified
     expect((await api(page, 'PUT', '/account/email', {email: `other-${run}@example.com`})).status).toBe(409);
 
     // A stale form (opened before another save) is refused and shows the stored address.
+    await signed.context.close();
     await api(admin.page, 'DELETE', `/accounts/${user.id}`);
     const stale = await person(admin, 'Stale');
     const staleSigned = await signIn(browser, stale);
@@ -274,10 +296,12 @@ test('My Account takes an email once when it has none; it is recorded unverified
     await expect(shown).not.toContainText(/\(Verified\)/);
     await shot(admin.page, 'account-details-self-entered-email');
     await details.locator('[data-modal-cancel]').click();
+    await staleSigned.context.close();
     await api(admin.page, 'DELETE', `/accounts/${stale.id}`);
     await api(admin.page, 'DELETE', `/accounts/${plain.id}`);
     expect(signed.errors).toEqual([]);
   } finally {
+    await closeSignedIn();
     await api(admin.page, 'DELETE', `/accounts/${user.id}`);
   }
 });

@@ -241,9 +241,19 @@ def test_integration_enablement_has_exactly_one_persisting_owner():
     writers = re.findall(r'@router\.(?:patch|post|put)\("([^"]+)"\)', routes)
     enable_routes = [path for path in writers if "enable" in path.lower()]
     assert enable_routes == [], enable_routes
-    # The one generic namespace mutation is the only place ``enabled`` is set.
-    assignments = re.findall(r"enabled=\(?existing\.enabled", routes)
-    assert len(assignments) == 1
+    # The one generic namespace mutation is the only place ``enabled`` is set
+    # from a request: ``integrations.configuration_mutation`` (which the
+    # routes and the application service call) since it left api/routes.py.
+    owner = (BACKEND / "integrations" / "configuration_mutation.py").read_text()
+    assert len(re.findall(r"enabled=\(existing\.enabled if .* else bool\(enabled\)\)", owner)) == 1
+    # Every other IntegrationSettings a route builds only carries the stored
+    # enablement forward, never decides it.
+    sites = [(BACKEND / package).rglob("*.py") for package in ("api", "application", "integrations")]
+    writers = [path.name for paths in sites for path in paths
+               if "__pycache__" not in path.parts and re.search(r"\benabled=\(", path.read_text())]
+    assert sorted(writers) == ["configuration_mutation.py", "routes.py"], writers
+    assert re.findall(r"\benabled=\([^\n]*", routes) == [
+        "enabled=(entry.enabled if isinstance(entry, IntegrationSettings) else False),"]
 
 
 def test_no_settings_surface_keeps_a_shadow_boolean_for_committed_enablement():
@@ -441,11 +451,17 @@ def test_no_excluded_native_setting_is_projected():
 def test_the_acquisition_service_remains_debridpulse_private():
     runtime = (BACKEND / "executors" / "sabnzbd" / "runtime.py").read_text()
     assert 'SERVICE_HOST = "127.0.0.1"' in runtime
-    # Nothing in the browser ever addresses the native service directly.
+    # Nothing in the browser ever addresses the native service directly. Help
+    # documents the engine by name (as it does aria2, rsync and yt-dlp), and
+    # the Help owner makes no request of any kind.
     for path in MAINTAINED_JS:
         body = path.read_text(encoding="utf-8")
         assert "8090" not in body, path.name
-        assert "sabnzbd" not in body.lower(), path.name
+        assert "/api?mode=" not in body.lower() and "nzo_id" not in body.lower(), path.name
+        if path.name != "ui-help-page.js":
+            assert "sabnzbd" not in body.lower(), path.name
+    help_page = _js("ui-help-page.js")
+    assert not re.search(r"\bfetch\(|XMLHttpRequest|EventSource|debridPulseAuth\.fetch|\brequest\(", help_page)
 
 
 def test_the_canonical_server_id_still_owns_server_mutation():

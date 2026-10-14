@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { pauseClockBeforeBoot } = require('./page-clock');
 
 /* DP 1.0.13 -- Statistics -> Completions: on every period each bucket is its
  * purple completion bar, with a narrower Premium/Network stack inset in it on
@@ -16,7 +17,8 @@ const PERIODS = {'7d': CASES, '30d': CASES, all: CASES, '1y': [bucket('2026-09',
 
 async function boot(page, {width = 1440, height = 900, light = false, clock = false} = {}) {
   await page.setViewportSize({width, height});
-  if (clock) await page.clock.install();
+  // Only the test moves time, from before the application exists (page-clock.js).
+  if (clock) await pauseClockBeforeBoot(page);
   await page.route(url => url.pathname === '/api/stats/detail', route => {
     const period = new URL(route.request().url()).searchParams.get('period');
 
@@ -196,7 +198,6 @@ const frame = page => page.evaluate(() => {
 for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
   test(`${period} ${light ? 'light' : 'dark'}: each inset stack grows with its purple bar through the entrance animation, as one object`, async ({ page }) => {
     await boot(page, {light, clock: true});
-    await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
     await page.evaluate(value => window.DPStatisticsLifecycle.load(value), period);
     await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
     const premium = await rgbOf(page, 'premium'), network = await rgbOf(page, 'network');
@@ -266,7 +267,6 @@ for (const period of ['7d', '30d', 'all']) for (const light of [false, true]) {
 
 test('changing period mid-animation starts the new chart from the baseline, with no stale stack', async ({ page }) => {
   await boot(page, {clock: true});
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 100));
   await page.evaluate(() => window.DPStatisticsLifecycle.load('7d'));
   await expect.poll(() => page.evaluate(() => !!document.getElementById('daily-chart')._ci)).toBe(true);
   await page.clock.runFor(300);

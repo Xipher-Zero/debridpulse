@@ -46,7 +46,7 @@ OWNERS = {
 # reads of ``integrations.<id>.enabled`` read their own fixture, never the shared
 # backend. Enforced by ``test_an_injected_document_spec_never_reaches_the_shared_settings``;
 # their writes (if any) still count.
-INJECTED_DOCUMENT_SPECS = {"ui-fix-ws1-p2.spec.js"}
+INJECTED_DOCUMENT_SPECS = {"ui-fix-ws1-p2.spec.js", "provider-status-generation.spec.js"}
 # Spec files that run against their OWN candidate server (named by the
 # environment variable) and never address the shared backend, so nothing they
 # do to a settings key can race another file. Enforced by

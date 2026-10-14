@@ -502,12 +502,16 @@ test('Downloads: clicking the group launcher opens only the chooser, never Detai
   await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
 
   const row = page.locator('#t-tbody tr[data-torrent-id="94"]');
+  // The row and its chooser must survive from the click to the Escape key
+  // (parkOwnerRead, below): no list refresh may replace them in between.
+  const release = await parkOwnerRead(page, isDownloadsListRead, () => { loadTorrents().catch(() => {}); });
   await row.locator('.dp-group-candidate-launcher').click();
   await expect(page.locator('.dp-group-candidate-menu')).toBeVisible();
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
 
   await page.keyboard.press('Escape');
   await expect(page.locator('.dp-group-candidate-menu')).toBeHidden();
+  await release();
 
   await row.locator('.t-name').click();
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);

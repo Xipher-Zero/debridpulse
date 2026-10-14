@@ -1,4 +1,5 @@
 const { test, expect } = require('@playwright/test');
+const { pauseClockBeforeBoot } = require('./page-clock');
 
 /* DP 1.0.13 decorative Dashboard ECG strip. The six KPI cards' lines form one
  * virtual strip: rows top to bottom, each row right to left, gaps and row
@@ -58,13 +59,12 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
   await page.route('**/api/execution/throughput', route => route.fulfill({status: 200, contentType: 'application/json',
     body: JSON.stringify({ok: true, download_bytes_per_second: throughput.bps, sustained_peak_bytes_per_second: throughput.peak,
       max_download_bytes_per_second: 0})}));
-  await page.clock.install();
+  // Only the test moves time, from before the application exists (page-clock.js).
+  await pauseClockBeforeBoot(page);
   const facts = page.waitForResponse('**/api/execution/throughput');
   await page.goto('/');
   await expect(page.locator('#s-total')).not.toHaveText('—');
   await facts;
-  // From here only the test moves time.
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 50));
   // The strip starts afresh now, its cadence from those facts.
   await page.emulateMedia({reducedMotion});
   await expect.poll(() => page.evaluate(() => _dashboardHeartbeat.running)).toBe(reducedMotion !== 'reduce');

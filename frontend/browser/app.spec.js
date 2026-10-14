@@ -166,7 +166,11 @@ test('Downloads exposes canonical filter, search, selection, and bulk controls',
   await page.locator('#torrent-search').fill('browser-smoke-query');
   expect(await page.locator('#torrent-search').inputValue()).toBe('browser-smoke-query');
   await expect(page.locator('#bulk-bar')).toBeHidden();
-  await expect(page.locator('#bulk-bar .dp-downloads-bulk-action')).toHaveCount(5);
+  // The canonical bulk commands, in order (Move to Top shows only once it applies).
+  await expect(page.locator('#bulk-bar .dp-downloads-bulk-action')).toHaveCount(6);
+  expect(await page.locator('#bulk-bar .dp-downloads-bulk-action').evaluateAll(buttons =>
+    buttons.map(button => button.dataset.defaultLabel))).toEqual(
+    ['Pause', 'Resume', 'Reset', 'Move to Top', 'Delete', 'Clear Selections']);
   await expect(page.locator('#chk-all')).toBeVisible();
   expect(runtime.errors).toEqual([]);
 });

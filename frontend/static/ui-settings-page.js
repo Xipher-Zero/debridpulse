@@ -982,7 +982,7 @@
       forgetApiKeyAccount(id);
       renderApiKeyCredential(id, '');
       notify(`${name} API key cleared`, 'success');
-      try { window.DPProviderStatus?.refresh(); } catch (_) {}
+      try { window.DPProviderStatus?.forget(id); window.DPProviderStatus?.refresh(); } catch (_) {}
       return;
     } catch (error) {
       notify(error.message, 'error');
@@ -4786,9 +4786,10 @@
         // stored evidence simply stops describing the saved configuration.
         if (typeof secret.converge === 'function') secret.converge(draft);
         // A replaced key may belong to another account: withdraw the line the
-        // previous key's account produced and ask for the current one.
+        // previous key's account produced, drop the provider's answer about the
+        // previous key, and ask for the current one.
         forgetApiKeyAccount(identity);
-        try { window.DPProviderStatus?.refresh(); } catch (_) {}
+        try { window.DPProviderStatus?.forget(identity); window.DPProviderStatus?.refresh(); } catch (_) {}
         return '';
       },
     });
@@ -5014,7 +5015,7 @@
       forgetApiKeyAccount('alldebrid');
       renderAllDebridCredential('');
       notify('AllDebrid API key cleared', 'success');
-      try { window.DPProviderStatus?.refresh(); } catch (_) {}
+      try { window.DPProviderStatus?.forget('alldebrid'); window.DPProviderStatus?.refresh(); } catch (_) {}
       return;
     } catch (error) {
       notify(error.message, 'error');
