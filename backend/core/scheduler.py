@@ -219,6 +219,27 @@ async def application_events_loop():
         await asyncio.sleep(2)
 
 
+# How often external-client state is maintained (``external.service``):
+# accepted reservations completed from the demand ledger, standing client
+# pauses re-adjudicated against current demand, unsettled jobs refreshed.
+EXTERNAL_MAINTENANCE_SECONDS = 15
+
+
+async def external_maintenance_loop():
+    from external.service import ExternalClients
+
+    await application.integrations_started()
+    while True:
+        if _application_storage_ready():
+            try:
+                await ExternalClients(application).maintain()
+            except asyncio.CancelledError:
+                return
+            except Exception as exc:
+                logger.warning("External client maintenance failed: %s", sanitize_exception(exc))
+        await asyncio.sleep(EXTERNAL_MAINTENANCE_SECONDS)
+
+
 async def update_check_loop() -> None:
     """Check GitHub for new releases every N hours and send a Discord webhook if enabled."""
     await asyncio.sleep(300)  # 5 min initial delay
@@ -361,6 +382,7 @@ async def start_scheduler(service=None):
     _tasks.append(asyncio.create_task(postprocessing_loop()))
     _tasks.append(asyncio.create_task(integration_maintenance_loop()))
     _tasks.append(asyncio.create_task(application_events_loop()))
+    _tasks.append(asyncio.create_task(external_maintenance_loop()))
     _tasks.append(asyncio.create_task(backup_loop()))
     _tasks.append(asyncio.create_task(stats_snapshot_loop()))
     _tasks.append(asyncio.create_task(stats_report_loop()))

@@ -4012,13 +4012,20 @@ class TransferEngine:
         NOW, by the same re-verification delivery used. Anything that cannot
         be verified -- no executor for its handle, no selection, a refused
         plan, an unreadable path -- is not present."""
+        return await self.delivered_material(artifact) is not None
+
+    async def delivered_material(self, artifact: Artifact) -> tuple[str, ...] | None:
+        """A completed artifact's delivered paths as verified NOW, by the same
+        re-verification delivery used, or ``None`` when they cannot be
+        verified. Read-only: the external delivery owner (``external``)
+        commits nothing it did not see here."""
         try:
             executor, work, footprint = self._artifact_work(artifact)
             if executor is None or work is None:
-                return False
-            return await self._delivered_paths(artifact, work, footprint) is not None
+                return None
+            return await self._delivered_paths(artifact, work, footprint)
         except (TransferError, OSError, ValueError):
-            return False
+            return None
 
     async def _delivered(self, transfer_id):
         if await self.repository.state(transfer_id, TransferState.COMPLETED, progress=100, verified=True):

@@ -252,8 +252,19 @@ class TransferRepository(_QualifiedRepository):
     # Pause/resume fencing
     # ------------------------------------------------------------------
 
-    async def set_pause_and_fence(self, transfer_id: int, paused: bool, *, claimed_only: bool = False) -> None:
+    async def set_pause_and_fence(self, transfer_id: int, paused: bool, *, claimed_only: bool = False,
+                                  holder: str | None = None, release: tuple[str, int] | None = None) -> bool:
         """Atomically publish Pause/Resume intent and fence every older recovery owner.
+
+        Every write advances the intent's ``generation`` and records its
+        ``holder``: ``None`` for an operator's or DebridPulse's own control,
+        or the advisory hold an external client was granted (``external``).
+        ``release`` is the one fenced release of such a hold: the intent is
+        lifted only while it is still exactly that hold -- paused, the same
+        holder, the same generation -- and processing is not globally paused,
+        checked in this transaction. Any later write (an operator's pause in
+        the same second included) changed the generation, so the release is
+        refused: returns False and writes nothing. Otherwise True.
 
         ``claimed_only`` fences exactly the artifacts that hold a recovery
         claim (a token, expired or not) -- the only artifacts an older
@@ -271,11 +282,20 @@ class TransferRepository(_QualifiedRepository):
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            if release is not None:
+                hold = await db.fetchone(
+                    "SELECT paused, holder, generation FROM transfer_pause_intents WHERE torrent_id=?", (transfer_id,))
+                globally = await db.fetchone("SELECT value FROM transfer_controls WHERE key='paused'")
+                if (hold is None or not hold["paused"] or hold["holder"] != release[0]
+                        or int(hold["generation"]) != int(release[1]) or (globally and globally["value"] == "1")):
+                    await db.rollback()
+                    return False
             await db.execute(
-                """INSERT INTO transfer_pause_intents(torrent_id,paused) VALUES(?,?)
+                """INSERT INTO transfer_pause_intents(torrent_id,paused,holder,generation) VALUES(?,?,?,1)
                    ON CONFLICT(torrent_id) DO UPDATE
-                   SET paused=excluded.paused,updated_at=CURRENT_TIMESTAMP""",
-                (transfer_id, int(paused)),
+                   SET paused=excluded.paused,holder=excluded.holder,
+                       generation=transfer_pause_intents.generation+1,updated_at=CURRENT_TIMESTAMP""",
+                (transfer_id, int(paused), holder if paused else None),
             )
             await db.execute(
                 "UPDATE download_files SET continuation_reservation_expires_at=NULL WHERE torrent_id=?",
@@ -308,6 +328,15 @@ class TransferRepository(_QualifiedRepository):
                     durable_target=str(row.get("local_path") or ""),
                 )
             await db.commit()
+        return True
+
+    async def pause_hold(self, transfer_id: int) -> dict | None:
+        """The transfer's standing pause intent -- ``paused``, ``holder``,
+        ``generation`` -- or ``None`` when it has none."""
+        async with get_db() as db:
+            return await db.fetchone(
+                "SELECT paused, holder, generation FROM transfer_pause_intents WHERE torrent_id=?",
+                (int(transfer_id),))
 
     # ------------------------------------------------------------------
     # Quiescence

@@ -38,6 +38,11 @@ TABLES = [
     "transfer_controls",
     "transfer_requests",
     "transfer_demands",
+    # External clients' jobs, delivery generations and advisory controls
+    # (``external.store``): transfer history, like the demand they name.
+    "external_controls",
+    "external_deliveries",
+    "external_jobs",
     "provider_resources",
     "standby_resources",
     "transfer_file_manifests",
@@ -114,6 +119,10 @@ async def wipe_database(*, verified_quiesced: bool = False) -> dict:
             # A standby preparation references its root request and its
             # provider_resources binding: it goes first.
             "standby_resources", "provider_resources",
+            # External jobs name their demand (and a job's delivery
+            # generations and controls name the job): child-first, before
+            # the demand ledger they reference.
+            "external_controls", "external_deliveries", "external_jobs",
             # Submitter demand references its transfer and root request.
             "transfer_demands",
         ):

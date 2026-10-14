@@ -10,6 +10,7 @@ from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
 from integrations.configuration import clamp_persisted_namespaces, migrate_legacy_settings, normalize_settings
+from external.profiles import ExternalDeliverySettings
 from integrations.definition import IntegrationGroupSettings, IntegrationSettings
 from transfers.runtime_limits import ExecutionRuntimeLimits
 from transfers.settings import TransferSettings
@@ -49,6 +50,9 @@ class AppSettings(BaseModel):
     integration_groups: dict[str, IntegrationGroupSettings] = Field(default_factory=dict, repr=False)
     transfer_policy: TransferSettings = Field(default_factory=TransferSettings)
     execution_runtime_limits: ExecutionRuntimeLimits = Field(default_factory=ExecutionRuntimeLimits)
+    # The external-client delivery profile catalog (``external.profiles``),
+    # written only through ``PUT /api/external/profiles``.
+    external_delivery: ExternalDeliverySettings = Field(default_factory=ExternalDeliverySettings)
 
     # Logging
     log_level: str = "INFO"

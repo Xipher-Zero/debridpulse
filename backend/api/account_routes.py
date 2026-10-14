@@ -162,10 +162,15 @@ async def list_account_tokens(account_id: str):
 
 
 @router.post("/accounts/{account_id}/tokens")
-async def create_account_token(account_id: str, label: Annotated[str, Body(embed=True, min_length=1, max_length=128)]):
-    """The raw token is in this response only; it is never shown again."""
+async def create_account_token(account_id: str, label: Annotated[str, Body(embed=True, min_length=1, max_length=128)],
+                               succeeds: Annotated[str | None, Body(embed=True, max_length=64)] = None):
+    """The raw token is in this response only; it is never shown again.
+    ``succeeds`` rotates an earlier token of this account: the new token
+    continues that token's external client (its jobs, deliveries and
+    controls) and the earlier token is revoked at once. Without it the token
+    is a new external client that can see no other token's jobs."""
     try:
-        record, raw = await accounts.create_token(account_id, label)
+        record, raw = await accounts.create_token(account_id, label, succeeds=succeeds)
     except AccountRefused as exc:
         raise _refused(exc) from None
     return {"ok": True, "token": raw, **record}

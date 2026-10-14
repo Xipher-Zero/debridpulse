@@ -1151,6 +1151,75 @@ async def test_the_pinned_pre_self_email_backup_restores_every_account_fact_with
         await accounts.set_own_email(ids["vera"], "other@example.com")
 
 
+# Written by the unchanged build immediately before external clients
+# (39affb81) with its own backup service: a password Admin (operator /
+# pre-external-secret), a "Sonarr" Integration account with one active and one
+# revoked token, and one transfer whose demand that active token submitted.
+PRE_EXTERNAL_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-39affb81.zip"
+
+
+async def test_the_pinned_pre_external_backup_restores_with_each_token_its_own_client(served):
+    """The previous build's real restore point, upgraded on its private staged
+    copy only through the canonical bootstrap: the external-client tables
+    arrive empty, every restored token is its own external client, its demand
+    survives as recorded, and the restored installation admits an external
+    job against that demand ledger normally."""
+    from auth import accounts
+    from auth.models import Principal
+    from auth.passwords import verify_password
+    from external.profiles import DeliveryProfile, ExternalDeliverySettings
+    from external.service import ExternalClients
+
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_EXTERNAL_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "client_id" not in {row[1] for row in conn.execute("PRAGMA table_info(account_tokens)")}
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name LIKE 'external_%'").fetchall() == []
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        tokens = conn.execute("SELECT id, client_id, label, revoked_at IS NOT NULL FROM account_tokens "
+                              "ORDER BY label").fetchall()
+        assert [(label, revoked, token == client_id) for token, client_id, label, revoked in tokens] == [
+            ("sonarr-main", 0, True), ("sonarr-old", 1, True)]
+        sonarr = conn.execute("SELECT id FROM accounts WHERE display_name='Sonarr'").fetchone()[0]
+        assert conn.execute("SELECT id, account_id, credential_id, origin, withdrawn_at FROM transfer_demands"
+                            ).fetchall() == [("demand-pre-external", sonarr, tokens[0][0], "submission", None)]
+        for table in ("external_jobs", "external_deliveries", "external_controls"):
+            assert conn.execute(f"SELECT COUNT(*) FROM {table}").fetchone() == (0,)
+    finally:
+        conn.close()
+    operator, password_hash = await accounts.local_credential("operator")
+    assert verify_password(password_hash, "pre-external-secret")
+    # The restored client works: its token's binding admits an external job.
+    account = await accounts.get_account(sonarr)
+    principal = Principal.integration_token(account, tokens[0][0], tokens[0][1])
+    from core import config as live_config
+    settings = live_config.get_settings()
+    live_config.apply_settings(settings.model_copy(update={"external_delivery": ExternalDeliverySettings(profiles=[
+        DeliveryProfile(id="tv", categories=["tv"], clients=[tokens[0][1]], local_root=settings.download_folder)])}))
+    try:
+        job, created = await ExternalClients(app.state.application).submit(principal, {
+            "idempotency_key": "after-restore", "category": "tv",
+            "source": {"kind": "magnet", "magnet": "magnet:?xt=urn:btih:" + "d" * 40 + "&dn=after.bin"}})
+    finally:
+        live_config.apply_settings(settings)
+    assert created and job["phase"] in {"accepted", "queued", "processing"}
+
+
 async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):
     """Only the exact pinned predecessor is upgradable: the same backup with a
     schema one column away is an unsupported version, refused before

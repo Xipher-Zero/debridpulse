@@ -584,6 +584,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
             merged["integration_groups"] = previous.integration_groups
             merged["transfer_policy"] = previous.transfer_policy
             merged["execution_runtime_limits"] = previous.execution_runtime_limits
+            merged["external_delivery"] = previous.external_delivery
             # Notification verification evidence is metadata ABOUT canonical
             # configuration and is never accepted from a request, so it is
             # carried forward here exactly like the canonical namespaces above.

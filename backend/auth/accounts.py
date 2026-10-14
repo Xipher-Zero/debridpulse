@@ -99,14 +99,18 @@ SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_account_oidc_bindings_account ON account_oidc_bindings (account_id)",
     # Integration accounts' API tokens. Only a SHA-256 verifier of a 256-bit
     # random secret is stored; a revoked token keeps its row (and label) so
-    # every request it carried stays attributable.
+    # every request it carried stays attributable. ``client_id`` is the
+    # external client the token authenticates as (``external``): a new token
+    # is a new client; only an Admin's explicit rotation (``create_token``
+    # with ``succeeds``) gives a token its predecessor's client.
     """CREATE TABLE IF NOT EXISTS account_tokens (
         id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL REFERENCES accounts(id),
         label TEXT NOT NULL,
         verifier TEXT NOT NULL UNIQUE,
         created_at TEXT NOT NULL,
-        revoked_at TEXT
+        revoked_at TEXT,
+        client_id TEXT
     )""",
     "CREATE INDEX IF NOT EXISTS idx_account_tokens_account ON account_tokens (account_id)",
     # A User's own notification configuration (``services.account_notifications``):
@@ -193,6 +197,9 @@ async def ensure_schema(db) -> None:
     # Before an account could enter its own email, every email came from an
     # identity provider's claim.
     await _ensure_column(db, "accounts", "email_self_entered", "INTEGER NOT NULL DEFAULT 0")
+    # Every token issued before external clients existed was its own client.
+    await _ensure_column(db, "account_tokens", "client_id", "TEXT")
+    await db.execute("UPDATE account_tokens SET client_id=id WHERE client_id IS NULL")
     now = _now()
     await db.execute(
         "INSERT OR IGNORE INTO accounts(id,role,origin,display_name,protected,created_at,updated_at) "
@@ -1038,22 +1045,46 @@ def _token_verifier(raw: str) -> str:
     return hashlib.sha256(str(raw or "").encode("utf-8", errors="surrogatepass")).hexdigest()
 
 
-async def create_token(account_id: str, label: str) -> tuple[dict, str]:
+async def create_token(account_id: str, label: str, *, succeeds: str | None = None) -> tuple[dict, str]:
     """Issue a labeled token for an Integration account. The raw secret is
-    returned once, here, and never again."""
+    returned once, here, and never again.
+
+    A token is a new external client (``client_id``) unless it ``succeeds``
+    an earlier token: an Admin's explicit rotation, which gives the new token
+    that token's client -- and so its external jobs -- and revokes the
+    predecessor in the same transaction. The predecessor may already be
+    revoked (recovering a client whose token was lost), but it must belong to
+    this account or to an account merged into it. Rotation withdraws nothing."""
     label = str(label or "").strip()[:128]
     if not label:
         raise AccountRefused("A token needs a label")
     raw = TOKEN_PREFIX + secrets.token_urlsafe(_TOKEN_RANDOM_BYTES)
     token_id = str(uuid.uuid4())
+    client_id = token_id
     async with _transaction() as db:
         account = await _require(db, account_id)
         if account.role is not Role.INTEGRATION:
             raise AccountRefused("Only Integration accounts hold API tokens")
+        if succeeds is not None:
+            predecessor = await db.fetchone("SELECT id, account_id, client_id FROM account_tokens WHERE id=?",
+                                            (str(succeeds),))
+            if predecessor is None or str(predecessor["account_id"]) not in await _owned_account_ids(db, account.id):
+                raise AccountRefused("The token to succeed does not exist")
+            client_id = str(predecessor["client_id"] or predecessor["id"])
+            await db.execute("UPDATE account_tokens SET revoked_at=? WHERE id=? AND revoked_at IS NULL",
+                             (_now(), predecessor["id"]))
         await db.execute(
-            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at) VALUES(?,?,?,?,?)",
-            (token_id, account.id, label, _token_verifier(raw), _now()))
-    return {"id": token_id, "account_id": str(account_id), "label": label, "revoked_at": None}, raw
+            "INSERT INTO account_tokens(id,account_id,label,verifier,created_at,client_id) VALUES(?,?,?,?,?,?)",
+            (token_id, account.id, label, _token_verifier(raw), _now(), client_id))
+        if succeeds is not None:
+            from db.event_journal import JournalEvent, record
+
+            await record(db, JournalEvent(
+                "administration", "administration.integration_token_rotated", "info",
+                "An Integration token was rotated: its external client continues under the new token",
+                "account", account.id, detail=f"client {client_id}; predecessor token {predecessor['id']}"))
+    return {"id": token_id, "account_id": str(account_id), "label": label, "revoked_at": None,
+            "client_id": client_id}, raw
 
 
 async def list_tokens(account_id: str) -> list[dict]:
@@ -1064,7 +1095,7 @@ async def list_tokens(account_id: str) -> list[dict]:
 
     async with get_db() as db:
         return await db.fetchall(
-            "SELECT id, account_id, label, created_at, revoked_at FROM account_tokens "
+            "SELECT id, account_id, label, created_at, revoked_at, client_id FROM account_tokens "
             "WHERE account_id=? AND revoked_at IS NULL ORDER BY created_at, id", (str(account_id),))
 
 
@@ -1078,8 +1109,9 @@ async def revoke_token(account_id: str, token_id: str) -> bool:
         return cursor.rowcount == 1
 
 
-async def resolve_token(raw: str) -> tuple[Account, str] | None:
-    """The active Integration account and token ID a bearer secret names.
+async def resolve_token(raw: str) -> tuple[Account, str, str] | None:
+    """The active Integration account, token ID and external client ID a
+    bearer secret names.
 
     Lookup is by verifier, so tokens cannot be enumerated or probed by
     prefix; the matched verifier is still compared in constant time."""
@@ -1091,14 +1123,14 @@ async def resolve_token(raw: str) -> tuple[Account, str] | None:
     verifier = _token_verifier(raw)
     async with get_db() as db:
         row = await db.fetchone(
-            "SELECT id, account_id, verifier FROM account_tokens WHERE verifier=? AND revoked_at IS NULL",
+            "SELECT id, account_id, verifier, client_id FROM account_tokens WHERE verifier=? AND revoked_at IS NULL",
             (verifier,))
         account = await _fetch(db, row["account_id"]) if row is not None else None
     if row is None or not secrets.compare_digest(str(row["verifier"]), verifier):
         return None
     if account is None or not account.active or account.role is not Role.INTEGRATION:
         return None
-    return account, str(row["id"])
+    return account, str(row["id"]), str(row["client_id"] or row["id"])
 
 
 async def retire_legacy_api_token(path) -> bool:

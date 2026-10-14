@@ -908,6 +908,11 @@ TRANSFER_REPOSITORY_SCHEMA = (
 )
 
 TRANSFER_REPOSITORY_COLUMNS = {
+    # Pause intent ownership (``TransferRepository.set_pause_and_fence``):
+    # every write advances ``generation``; ``holder`` is NULL for an
+    # operator's or DebridPulse's own control, or the one advisory hold an
+    # external client was granted. Existing intents are the operator's.
+    'transfer_pause_intents': {'generation': 'INTEGER NOT NULL DEFAULT 0', 'holder': 'TEXT'},
     # Additive for databases created before backup promotion existed.
     'standby_resources': {'promoted_at': 'REAL'},
     'torrents': {
@@ -1362,6 +1367,9 @@ async def _init_db_sqlite(path: Path):
         from auth import accounts
 
         await accounts.ensure_schema(db)
+        from external import store as external_store
+
+        await external_store.ensure_schema(db)
         await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_artifact_request ON download_files(request_id) WHERE request_id IS NOT NULL")
         await db.commit()
 

@@ -2544,8 +2544,9 @@ class TransferRepository:
 
     async def pause_intent(self, transfer_id: int, paused: bool) -> None:
         async with get_db() as db:
-            await db.execute("""INSERT INTO transfer_pause_intents(torrent_id,paused) VALUES(?,?)
-                ON CONFLICT(torrent_id) DO UPDATE SET paused=excluded.paused,updated_at=CURRENT_TIMESTAMP""", (transfer_id, int(paused)))
+            await db.execute("""INSERT INTO transfer_pause_intents(torrent_id,paused,holder,generation) VALUES(?,?,NULL,1)
+                ON CONFLICT(torrent_id) DO UPDATE SET paused=excluded.paused,holder=NULL,
+                generation=transfer_pause_intents.generation+1,updated_at=CURRENT_TIMESTAMP""", (transfer_id, int(paused)))
             await db.commit()
 
     async def requests(self, transfer_id: int) -> tuple[RequestRecord, ...]:

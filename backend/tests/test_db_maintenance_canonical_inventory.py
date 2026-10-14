@@ -236,3 +236,63 @@ async def test_wipe_keeps_every_account_credential_and_oidc_binding(db_path):
         assert (await db.fetchone("SELECT COUNT(*) AS n FROM transfer_demands"))["n"] == 0
     assert (await accounts.local_credential("operator"))[0].id == local.id
     assert (await accounts.resolve_oidc("https://id.example/", "user-1", {}, default_role="user")).id == linked.id
+
+
+@pytest.mark.asyncio
+async def test_wipe_removes_every_external_client_object_child_first(db_path):
+    """DP 1.0.13 external clients: a job names its demand, and its delivery
+    generations and advisory controls name the job. The wipe removes them
+    child-first with foreign keys enforced, keeps the client binding (it is
+    the token's, and tokens are account configuration), and the cleared
+    installation admits a new external job normally."""
+    from auth import accounts
+    from transfers.models import SubmissionDemand, TransferRequest
+    from transfers.recovery_repository import TransferRepository
+
+    token, _raw = await accounts.create_token(accounts.DEFAULT_INTEGRATION_ID, "sonarr")
+    await TransferRepository().admit(
+        (TransferRequest("magnet", "magnet:?xt=urn:btih:" + "a" * 40, name="job.bin", fingerprint="a" * 40),),
+        name="job.bin", demand=SubmissionDemand(accounts.DEFAULT_INTEGRATION_ID, token["id"], id="demand-ext"))
+
+    async def seed_job(job_id: str, demand_id: str) -> None:
+        async with database.get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            await db.execute(
+                """INSERT INTO external_jobs(id,client_id,account_id,credential_id,idempotency_key,intent_digest,
+                       source_kind,source_summary,category,profile_id,profile_snapshot,reserved_demand_id,demand_id,
+                       delivery_id,created_at,accepted_at,updated_at)
+                   VALUES(?,?,?,?,'k','d','magnet','{}','tv','tv','{}',?,?,?,1,1,1)""",
+                (job_id, token["client_id"], accounts.DEFAULT_INTEGRATION_ID, token["id"], demand_id, demand_id,
+                 "dlv_" + job_id))
+            await db.execute("INSERT INTO external_deliveries(job_id,generation,material_key,files,import_root,"
+                             "committed_at,expires_at) VALUES(?,1,'m','[]','/imports',1,2)", (job_id,))
+            await db.execute("INSERT INTO external_controls(id,job_id,request_key,kind,credential_id,disposition,"
+                             "reason,created_at) VALUES(?,?,'p','pause',?,'declined','shared_interest',1)",
+                             ("ctl_" + job_id, job_id, token["id"]))
+            await db.commit()
+
+    await seed_job("job_one", "demand-ext")
+    # The foreign keys are real: the ledger row a job names cannot go first.
+    with sqlite3.connect(db_path) as conn:
+        conn.execute("PRAGMA foreign_keys=ON")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM transfer_demands")
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("DELETE FROM external_jobs")
+
+    result = await db_maintenance.wipe_database(verified_quiesced=True)
+
+    assert result["ok"] is True
+    assert {"external_jobs", "external_deliveries", "external_controls"} <= set(result["wiped_tables"])
+    async with database.get_db() as db:
+        for table in ("external_controls", "external_deliveries", "external_jobs", "transfer_demands"):
+            assert (await db.fetchone(f"SELECT COUNT(*) AS n FROM {table}"))["n"] == 0, table
+        assert (await db.fetchall("PRAGMA foreign_key_check")) == []
+        kept = await db.fetchone("SELECT client_id FROM account_tokens WHERE id=?", (token["id"],))
+    assert kept["client_id"] == token["client_id"]
+    # Normal reinitialization and use after the reset.
+    await database.init_db()
+    await TransferRepository().admit(
+        (TransferRequest("magnet", "magnet:?xt=urn:btih:" + "b" * 40, name="again.bin", fingerprint="b" * 40),),
+        name="again.bin", demand=SubmissionDemand(accounts.DEFAULT_INTEGRATION_ID, token["id"], id="demand-again"))
+    await seed_job("job_two", "demand-again")

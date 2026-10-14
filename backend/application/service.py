@@ -836,6 +836,35 @@ class ApplicationService:
             await self._publish(transfer_id)
             return self._control_result(errors)
 
+    async def adjudicated_control(self, transfer_id, decide):
+        """An external client's advisory pause/resume (``external.service``).
+        ``decide()`` reads current demand and control state and returns its
+        decision; when that decision carries ``apply`` -- ``("pause",
+        holder)`` or ``("release", (holder, generation))`` -- the one core
+        transition is applied here (``engine.pause`` with that holder, or the
+        fenced ``engine.resume(held_by=...)``). Both happen on the same
+        serialized operator-control boundary as Pause and Resume, so no
+        operator control interleaves between what was read and what was
+        done. The result carries ``applied`` (the engine's answer; ``None``
+        for a refused release) and ``hold`` (the pause owner's intent
+        afterwards). Never an operator route under an external identity."""
+        async with self.operator_controls, self.application_operation():
+            decision = await decide()
+            action = decision.pop("apply", None)
+            if action is not None:
+                kind, value = action
+                if kind == "pause":
+                    decision["applied"] = await self.engine.pause(int(transfer_id), holder=value)
+                elif kind == "release":
+                    decision["applied"] = await self.engine.resume(int(transfer_id), held_by=value)
+                else:
+                    raise ValueError(f"unknown advisory control {kind!r}")
+                decision["hold"] = await self.repository.pause_hold(int(transfer_id))
+            self.resolution_wakeup.set()
+            self.execution_wakeup.set()
+            await self._publish(int(transfer_id))
+            return decision
+
     async def move_in_queue(self, transfer_id=None, *, before_id=None, after_id=None, top=(), reaffirm=False,
                             confirm_restart=()):
         """One operator queue move, Move to Top (``top``: the transfers it
@@ -1148,6 +1177,12 @@ class ApplicationService:
         """
         if self._integration_startup is None or self._integration_startup.done():
             self._integration_startup = asyncio.create_task(self.start_integrations())
+
+    def integrations_starting(self) -> bool:
+        """Whether integration startup is still in flight: nothing an
+        executor must verify can be judged absent yet."""
+        startup = self._integration_startup
+        return startup is not None and not startup.done()
 
     async def integrations_started(self) -> None:
         """Return once no integration startup is in flight. Its outcome is

@@ -1217,6 +1217,17 @@ class TransferOutcome:
 
 
 @dataclass(frozen=True)
+class PostProcessOutcome(TransferOutcome):
+    """A post-processor's outcome with the transfer's FINAL file set it left
+    behind: every absolute path, beneath the download root, that is a regular
+    file once it finished -- the delivered inputs it kept and the files it
+    created (never found by walking a shared directory). Persisted with the
+    outcome (``postprocess_attempts.outcome``) so delivery can name what a
+    finalized transfer consists of; an outcome without it records none."""
+    outputs: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class CleanupDirective:
     resource: ProviderResource
     authority: CleanupAuthority = CleanupAuthority.OWNED

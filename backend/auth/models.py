@@ -37,6 +37,9 @@ class Principal:
     # The credential that carried the request when it has its own identity
     # (an Integration token), for attribution only.
     credential_id: str = ""
+    # The external client that credential authenticates as (``external``):
+    # the fence around every external job. Empty for every other principal.
+    client_id: str = ""
 
     @classmethod
     def anonymous(cls) -> "Principal":
@@ -89,13 +92,14 @@ class Principal:
         ).bound_to(account)
 
     @classmethod
-    def integration_token(cls, account, token_id: str) -> "Principal":
+    def integration_token(cls, account, token_id: str, client_id: str = "") -> "Principal":
         return cls(
             authenticated=True,
             mechanism=AuthMechanism.API_TOKEN,
             subject=account.display_name,
             display_name=account.display_name,
             credential_id=str(token_id),
+            client_id=str(client_id or token_id),
         ).bound_to(account)
 
     def bound_to(self, account) -> "Principal":

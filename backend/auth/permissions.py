@@ -52,17 +52,26 @@ class Capability(StrEnum):
     # every Admin request, and a second personal Admin configuration would
     # only duplicate them.
     NOTIFICATIONS_SELF = "notifications.self"
+    # The native external-client API (``api.external_routes``): an
+    # Integration token's OWN external jobs -- submit, inspect, withdraw,
+    # acknowledge a delivery, request advisory pause/resume -- each further
+    # fenced to the token's client binding. It never reads or operates a
+    # transfer. Admin deliberately does not hold it: an Admin session is no
+    # external client, and administers clients through tokens and profiles.
+    EXTERNAL_CLIENT = "external.client"
 
 
 _HUMAN = frozenset({Capability.SESSION, Capability.INTERFACE, Capability.TRANSFERS_READ,
                     Capability.STATISTICS_SUMMARY, Capability.STATISTICS_READ})
 ROLE_CAPABILITIES: dict[Role, frozenset[Capability]] = {
-    Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC, Capability.NOTIFICATIONS_SELF},
+    Role.ADMIN: frozenset(Capability) - {Capability.PUBLIC, Capability.NOTIFICATIONS_SELF,
+                                         Capability.EXTERNAL_CLIENT},
     Role.USER: _HUMAN | {Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE,
                          Capability.TRANSFERS_DESTROY, Capability.DEMAND_OWN, Capability.NOTIFICATIONS_SELF},
     Role.READONLY: _HUMAN,
     Role.INTEGRATION: frozenset({Capability.SESSION, Capability.TRANSFERS_SUBMIT, Capability.DEMAND_OWN,
-                                 Capability.METRICS_READ, Capability.STATISTICS_SUMMARY}),
+                                 Capability.METRICS_READ, Capability.STATISTICS_SUMMARY,
+                                 Capability.EXTERNAL_CLIENT}),
 }
 
 
@@ -83,6 +92,7 @@ _R, _ST = Capability.TRANSFERS_READ, Capability.STATISTICS_READ
 _SUB, _OP, _DES = Capability.TRANSFERS_SUBMIT, Capability.TRANSFERS_OPERATE, Capability.TRANSFERS_DESTROY
 _DEM, _MET, _A = Capability.DEMAND_OWN, Capability.METRICS_READ, Capability.ADMINISTER
 _NS = Capability.NOTIFICATIONS_SELF
+_EXT = Capability.EXTERNAL_CLIENT
 
 # Every routed action, by the endpoint that serves it (``module.function``).
 # A route test compares this table with the live route table both ways.
@@ -125,6 +135,18 @@ ACTIONS: dict[str, Capability] = {
     # Submitter demand.
     "api.account_routes.list_requests": _DEM,
     "api.account_routes.withdraw_request": _DEM,
+    # The native external-client API: the client's own jobs only.
+    "api.external_routes.external_capabilities": _EXT,
+    "api.external_routes.submit_external_job": _EXT,
+    "api.external_routes.list_external_jobs": _EXT,
+    "api.external_routes.get_external_job": _EXT,
+    "api.external_routes.withdraw_external_job": _EXT,
+    "api.external_routes.request_external_control": _EXT,
+    "api.external_routes.get_external_delivery": _EXT,
+    "api.external_routes.acknowledge_external_delivery": _EXT,
+    # External delivery profiles: configuration.
+    "api.external_routes.get_external_profiles": _A,
+    "api.external_routes.put_external_profiles": _A,
     # Public liveness and installation facts.
     "api.routes.health_check": _P,
     "api.routes.get_version_ep": _P,

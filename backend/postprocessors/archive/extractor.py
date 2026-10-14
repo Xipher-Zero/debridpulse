@@ -495,6 +495,7 @@ class Extractor:
         dest: Path,
         *,
         delete_after: bool = True,
+        created: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
         """
         Extract *archive* into *dest* (async, respects concurrency semaphore).
@@ -517,6 +518,9 @@ class Extractor:
                     created_files = await loop.run_in_executor(
                         self._executor, _extract_sync, archive, dest
                     )
+                    if created is not None:
+                        # Provenance: exactly what this operation wrote.
+                        created.extend(Path(item) for item in created_files)
                     # Nested extraction is provenance-bound: inspect only archive
                     # files committed by this extraction operation. Never walk the
                     # surrounding download tree where unrelated transfers live.
@@ -536,9 +540,11 @@ class Extractor:
                                         len(nested_archives), archive.name)
                             for nested in nested_archives[:10]:
                                 try:
-                                    await loop.run_in_executor(
+                                    nested_files = await loop.run_in_executor(
                                         self._executor, _extract_sync, nested, nested.parent
                                     )
+                                    if created is not None:
+                                        created.extend(Path(item) for item in nested_files)
                                     if delete_after:
                                         nested.unlink(missing_ok=True)
                                         logger.debug("Removed nested archive %s", nested)
@@ -600,8 +606,10 @@ class Extractor:
         archives: Iterable[Path],
         *,
         delete_after: bool = True,
+        created: Optional[List[Path]] = None,
     ) -> List[Tuple[Path, bool, str]]:
-        """Extract a known archive list without walking the filesystem."""
+        """Extract a known archive list without walking the filesystem.
+        ``created``, when given, collects every file each extraction wrote."""
         unique_archives = archive_paths_from_downloads(archives)
         if not unique_archives:
             return []
@@ -621,7 +629,7 @@ class Extractor:
 
         tasks = [
             asyncio.create_task(
-                self.extract_archive(archive, archive.parent, delete_after=delete_after)
+                self.extract_archive(archive, archive.parent, delete_after=delete_after, created=created)
             )
             for archive in scheduled
         ]

@@ -88,6 +88,12 @@ def test_the_role_matrix_over_every_registered_action():
         "api.routes.add_debrid_links", "api.routes.add_link_file", "api.routes.add_magnet",
         "api.routes.add_multimeta_file", "api.routes.add_torrent_file", "api.routes.add_usenet_file",
         "api.routes.add_usenet_link", "api.routes.get_stats", "api.routes.prometheus_metrics",
+        # The native external-client API (``external.client``): the token's
+        # own client jobs only -- never a transfer read, operation or deletion.
+        "api.external_routes.acknowledge_external_delivery", "api.external_routes.external_capabilities",
+        "api.external_routes.get_external_delivery", "api.external_routes.get_external_job",
+        "api.external_routes.list_external_jobs", "api.external_routes.request_external_control",
+        "api.external_routes.submit_external_job", "api.external_routes.withdraw_external_job",
     ])
     # Admin holds everything a User does except a User's OWN notification
     # configuration: the global Notifications already cover every Admin

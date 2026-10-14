@@ -2479,20 +2479,22 @@ class TransferEngine(_QualifiedTransferEngine):
                     artifact=artifact, retirement_reason=retirement_reason,
                 )
 
-    async def pause(self, transfer_id: int):
+    async def pause(self, transfer_id: int, *, holder: str | None = None):
         """DebridPulse Pause: durable pause intent, then every writer of the
         transfer through the one writer retirement (quiesce, forced
         checkpoint, fence). Afterwards no writer may make acquisition
         progress and the artifacts' material is exactly what was committed.
         A native executor pause is only an optional quiesce inside that
-        retirement; lacking one never prevents a Pause."""
+        retirement; lacking one never prevents a Pause. ``holder`` names an
+        external client's advisory hold (``set_pause_and_fence``); an
+        operator's pause has none."""
         transfer = await self.repository.get(transfer_id)
         if transfer is None:
             raise KeyError(transfer_id)
         # Pause intent is written under the execution-admission lock, so it is
         # ordered against any admission that hands transient input to a start.
         async with self._dispatch_lock:
-            await self.repository.set_pause_and_fence(transfer_id, True)
+            await self.repository.set_pause_and_fence(transfer_id, True, holder=holder)
         errors = []
         for artifact in await self.repository.artifacts(transfer_id):
             if artifact.execution is None or artifact.state == "completed":
@@ -2507,17 +2509,27 @@ class TransferEngine(_QualifiedTransferEngine):
         await self._aggregate(transfer_id)
         return tuple(errors)
 
-    async def resume(self, transfer_id: int):
+    async def resume(self, transfer_id: int, *, held_by: tuple[str, int] | None = None):
+        """Resume one transfer. ``held_by`` releases exactly one external
+        advisory hold ``(holder, generation)`` and nothing else: when that
+        hold is no longer the transfer's standing intent, or processing is
+        globally paused, nothing is written and ``None`` is returned (the
+        fenced release, ``set_pause_and_fence``). Without it this is the
+        operator's Resume, which also lifts a global pause."""
         transfer = await self.repository.get(transfer_id)
         if transfer is None:
             raise KeyError(transfer_id)
-        if await self.repository.globally_paused():
-            for other in await self.repository.active():
-                if other.id != transfer_id:
-                    async with self._dispatch_lock:
-                        await self.repository.set_pause_and_fence(other.id, True)
-            await self.repository.global_pause(False)
-        await self.repository.set_pause_and_fence(transfer_id, False)
+        if held_by is not None:
+            if not await self.repository.set_pause_and_fence(transfer_id, False, release=held_by):
+                return None
+        else:
+            if await self.repository.globally_paused():
+                for other in await self.repository.active():
+                    if other.id != transfer_id:
+                        async with self._dispatch_lock:
+                            await self.repository.set_pause_and_fence(other.id, True)
+                await self.repository.global_pause(False)
+            await self.repository.set_pause_and_fence(transfer_id, False)
         transfer = await self.repository.get(transfer_id)
         if transfer and transfer.state == TransferState.PAUSED:
             await self.repository.state(transfer_id, TransferState.QUEUED)

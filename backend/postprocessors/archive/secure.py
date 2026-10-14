@@ -17,7 +17,7 @@ import subprocess
 import tarfile
 import tempfile
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import List, Optional, Tuple
 
 from services.extraction_safety import (
     copy_limited,
@@ -117,6 +117,7 @@ class SecureExtractor(Extractor):
         dest: Path,
         *,
         delete_after: bool = True,
+        created: Optional[List[Path]] = None,
     ) -> Tuple[bool, str]:
         async with self._sem:
             loop = asyncio.get_running_loop()
@@ -137,6 +138,9 @@ class SecureExtractor(Extractor):
                         archive,
                         dest,
                     )
+                    if created is not None:
+                        # Provenance: exactly what this operation wrote.
+                        created.extend(Path(item) for item in created_files)
 
                     try:
                         dest_root = dest.resolve()
@@ -157,12 +161,14 @@ class SecureExtractor(Extractor):
                             )
                             for nested in nested_archives[:10]:
                                 try:
-                                    await loop.run_in_executor(
+                                    nested_files = await loop.run_in_executor(
                                         self._executor,
                                         _extract_secure_sync,
                                         nested,
                                         nested.parent,
                                     )
+                                    if created is not None:
+                                        created.extend(Path(item) for item in nested_files)
                                 except Exception as nested_error:
                                     logger.warning(
                                         "Nested extraction failed for %s: %s",
