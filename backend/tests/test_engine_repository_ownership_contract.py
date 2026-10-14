@@ -43,6 +43,8 @@ SPECIALIZATIONS = {
 HOOK_IMPLEMENTATIONS = {
     ("engine", "_resolve"),
     ("engine", "_observe_resource"),
+    # The routing owner's non-mutating provider-group reading for fair admission.
+    ("engine", "_resolution_provider_group"),
 }
 
 

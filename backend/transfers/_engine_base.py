@@ -187,6 +187,11 @@ class _CleanupOwnershipLost(Exception):
 # Request states the resolution scheduler may admit; every other state is
 # owned by a later lifecycle stage (or is terminal) and is never resolution work.
 _SCHEDULABLE_REQUEST_STATES = frozenset({"pending", "waiting", "materializing", "resolving"})
+# The schedulable states whose work performs provider-resolution I/O (it takes
+# a ``_resolution_slots`` slot). ``materializing`` (qualification: evidence,
+# equivalence, the canonical decision) and ``resolving`` (reconciling an
+# interrupted attempt) never ask a provider to resolve anything.
+_PROVIDER_IO_REQUEST_STATES = frozenset({"pending", "waiting"})
 # The finest a persisted readiness deadline is waited for: a deadline that is
 # (by clock arithmetic) already due re-enters its transfer at the next
 # boundary instead of spinning.
@@ -249,9 +254,32 @@ class _ResolutionCycle:
         self.round: set[int] | None = None
         self.changed: set[int] = set()
         self.failure: BaseException | None = None
+        # Admitted QUALIFICATION units: a resolved request's evidence,
+        # equivalence and canonical decision (``state='materializing'``) or an
+        # interrupted attempt's reconciliation. They take no provider slot and
+        # no fairness turn; their own per-transfer bound is their backpressure.
+        self.qualifying: set[asyncio.Task] = set()
+        # Request id -> the candidates its resolution unit handed to
+        # qualification (``_hand_off_materialization``): the provider's own
+        # in-memory answer, which may hold transient execution material the
+        # durable result keeps only the fact of. Derivative only -- the
+        # durable ``materializing`` state is the work; an entry is used solely
+        # while it still names exactly the durable result's candidates, and
+        # a cycle that ends drops it (the durable restart path remains).
+        self.carried: dict[str, tuple] = {}
+        # Provider fairness among a transfer's provider-I/O requests: the
+        # provider group each slot-bound unit was admitted for, the admission
+        # sequence at which each group last received a slot, and each
+        # request's non-mutating group prediction for its current incarnation.
+        self.provider_of: dict[asyncio.Task, str] = {}
+        self.provider_turns: dict[str, int] = {}
+        self.provider_hint: dict[str, tuple[tuple, str]] = {}
 
     def in_flight(self, transfer_id: int) -> int:
         return sum(owner == transfer_id for owner in self.units.values())
+
+    def qualifying_of(self, transfer_id: int) -> int:
+        return sum(self.units.get(task) == transfer_id for task in self.qualifying)
 
 
 class _EvidenceAuth:
@@ -346,6 +374,12 @@ class TransferEngine:
         self._postprocess_lock = asyncio.Lock()
         self._resolution_slots = asyncio.Semaphore(max(1, self.policy.resolution_concurrency))
         self._resolution_cycle: _ResolutionCycle | None = None
+        # Told the id of a transfer whose canonical candidate set a
+        # materialization decision just committed, at once -- never at the
+        # end of the resolution pass. The application's one targeted semantic
+        # publisher sets it (``ApplicationService``); the engine publishes
+        # nothing itself.
+        self.candidate_publication = None
         # Weak-value lock maps: a caller holding/awaiting a lock keeps the strong
         # local reference that keeps its entry alive; once every holder/waiter
         # for a key is gone the entry is collected instead of retaining one
@@ -697,7 +731,9 @@ class TransferEngine:
         post-resolution work must not keep that capacity from other work."""
         cycle = self._resolution_cycle
         if cycle is not None:
-            cycle.slot_bound.discard(asyncio.current_task())
+            task = asyncio.current_task()
+            cycle.slot_bound.discard(task)
+            cycle.provider_of.pop(task, None)
             cycle.opportunity.set()
 
     @asynccontextmanager
@@ -766,6 +802,12 @@ class TransferEngine:
                 cycle.held_behind.discard(record.id)
                 cycle.admitted.pop(record.id, None)
                 cycle.reconsider.add(transfer_id)
+            elif record.id == served and record.id in cycle.carried and record.state == "materializing":
+                # Its resolution unit handed the durable result to
+                # qualification: the decision is this cycle's work now, under
+                # the qualification bound, never "already served".
+                cycle.admitted.pop(record.id, None)
+                remaining.append(record)
             elif record.id == served and record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at > self.clock():
                 # Served, and its next turn is a persisted future deadline
                 # (a backoff, a proof retry, a reconsideration): it is this
@@ -779,8 +821,19 @@ class TransferEngine:
                 remaining.append(record)
         cycle.remaining[transfer_id] = remaining
 
-    async def _resolution_work(self, cycle: _ResolutionCycle, transfer, capacity: int):
-        """This transfer's next admissible unit right now.
+    async def _resolution_work(self, cycle: _ResolutionCycle, transfer, capacity: int, *, provider_open: bool = True):
+        """This transfer's next admissible unit right now, and its lane.
+
+        Two budgets, never one: PROVIDER work (a request that asks a provider
+        to resolve, ``_PROVIDER_IO_REQUEST_STATES``) is admitted only while a
+        provider slot is free (``provider_open``) and, among the transfer's
+        ready provider work, fairly by provider group
+        (``_fair_provider_request``); QUALIFICATION work (a resolved request's
+        decision, an interrupted attempt) takes no provider slot and is
+        admitted while the transfer has fewer than ``capacity`` qualification
+        units -- so evidence or a cohort decision that waits never holds the
+        budget that admits provider I/O, and provider I/O never waits for it.
+        Returns ``(work, qualification)`` or ``None``.
 
         Liveness and the input challenge are read when the transfer enters
         the cycle, and again only when ``_resolution_opportunity`` names it;
@@ -795,10 +848,14 @@ class TransferEngine:
         if transfer.id in cycle.retired:
             return None
         in_flight = cycle.in_flight(transfer.id)
-        # One concurrency width may resolve while one more waits behind the
-        # transfer's own serialized post-resolution stage; a large multilink
-        # never parks one coroutine per request anywhere.
-        if in_flight >= 2 * capacity:
+        qualifying = cycle.qualifying_of(transfer.id)
+        # Each lane is bounded on its own: at most one concurrency width of
+        # qualification units, and provider units that never park one
+        # coroutine per request -- a large multilink's resolved backlog waits
+        # as durable ``materializing`` rows, not as tasks.
+        provider_open = provider_open and in_flight - qualifying < 2 * capacity
+        qualification_open = qualifying < capacity
+        if not provider_open and not qualification_open:
             return None
         if not in_flight and self._transfer_locks.setdefault(transfer.id, asyncio.Lock()).locked():
             return None
@@ -820,27 +877,83 @@ class TransferEngine:
                 # cohort lock. An unanswered question admits nothing.
                 if (challenge.origin in {InputOrigin.PROVIDER, InputOrigin.EVIDENCE}
                         and challenge.id not in cycle.admitted and await self.inputs.has(challenge)):
-                    return challenge
+                    # An answered question continues through a provider slot:
+                    # while none is free it waits, never retired for it.
+                    return (challenge, False) if provider_open else None
                 if not in_flight:
                     cycle.retired.add(transfer.id)
                 return None
             await self._resolution_census(cycle, transfer.id)
         now = self.clock()
         pending = []
+        ready = []
         for record in cycle.remaining[transfer.id]:
             if self._resolution_ready(record):
-                cycle.deadlines.pop(transfer.id, None)
-                return record
-            if record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at > now:
+                ready.append(record)
+            elif record.state in _SCHEDULABLE_REQUEST_STATES and record.retry_at > now:
                 pending.append(record.retry_at)
         # Work that is not due yet is still this cycle's: its deadline wakes it.
-        if pending:
+        if ready:
+            cycle.deadlines.pop(transfer.id, None)
+        elif pending:
             cycle.deadlines[transfer.id] = min(pending)
         else:
             cycle.deadlines.pop(transfer.id, None)
-        if not in_flight:
+        if qualification_open:
+            for record in ready:
+                if record.state not in _PROVIDER_IO_REQUEST_STATES:
+                    return record, True
+        if provider_open:
+            requests = [record for record in ready if record.state in _PROVIDER_IO_REQUEST_STATES]
+            if requests:
+                return await self._fair_provider_request(cycle, requests), False
+        if not ready and not in_flight:
             cycle.retired.add(transfer.id)
         return None
+
+    async def _resolution_provider_group(self, record: RequestRecord) -> str:
+        """The provider group a provider-I/O request will resolve through, as
+        far as current durable truth tells WITHOUT deciding anything: no route
+        is recorded, no provider is asked. Answered by the composition that
+        owns routing (``transfers.engine``); a composition without it, like
+        any failure to tell, is the one shared group ``""``
+        (``_cached_provider_group``)."""
+        raise NotImplementedError("_resolution_provider_group is implemented by transfers.engine.TransferEngine")
+
+    async def _fair_provider_request(self, cycle: _ResolutionCycle, requests: list[RequestRecord]) -> RequestRecord:
+        """Among one transfer's ready provider-I/O requests, the one whose
+        provider group holds the fewest provider slots now, then the group
+        least recently given one, then census order.
+
+        This is a choice at an admission boundary only: it never preempts a
+        call in progress or frees a slot a slow provider occupies, and it
+        never leaves a slot idle -- some ready request is always chosen. The
+        transfer's own selection (priority, bootstrap rounds, turns) was made
+        before; this only decides WHICH of its requests takes the slot."""
+        if len(requests) == 1:
+            return requests[0]
+        active = collections.Counter(cycle.provider_of[task] for task in cycle.slot_bound if task in cycle.provider_of)
+        best = None
+        for index, record in enumerate(requests):
+            group = await self._cached_provider_group(cycle, record)
+            key = (active[group], cycle.provider_turns.get(group, 0), index)
+            if best is None or key < best[0]:
+                best = (key, record)
+        return best[1]
+
+    async def _cached_provider_group(self, cycle: _ResolutionCycle, record: RequestRecord) -> str:
+        """``_resolution_provider_group`` once per request incarnation per cycle."""
+        incarnation = self._resolution_incarnation(record)
+        cached = cycle.provider_hint.get(record.id)
+        if cached is not None and cached[0] == incarnation:
+            return cached[1]
+        try:
+            group = str(await self._resolution_provider_group(record) or "")
+        except Exception as exc:
+            logger.debug("resolution provider group unknown: %s", type(exc).__name__)
+            group = ""
+        cycle.provider_hint[record.id] = (incarnation, group)
+        return group
 
     async def _fair_resolution_choice(self, cycle: _ResolutionCycle, runnable):
         """Explicit priority, then bootstrap-critical before enrichment, then
@@ -880,34 +993,51 @@ class TransferEngine:
         return choice
 
     async def _admit_resolution_unit(self, cycle: _ResolutionCycle) -> bool:
-        """Admit at most one unit; False when nothing can be admitted now."""
+        """Admit at most one unit; False when nothing can be admitted now.
+
+        Qualification work is admitted as soon as its own bound allows -- it
+        takes no provider slot and no fairness turn, so it neither waits for
+        provider capacity nor consumes it. Provider work is admitted only
+        while a provider slot is free, through the fair transfer choice."""
         capacity = max(1, self.policy.resolution_concurrency)
-        if cycle.failure is not None or len(cycle.slot_bound) >= capacity:
+        if cycle.failure is not None:
             return False
+        provider_open = len(cycle.slot_bound) < capacity
         runnable = []
         for transfer in await self._resolution_population():
-            work = await self._resolution_work(cycle, transfer, capacity)
-            if work is not None:
-                runnable.append((transfer, work))
+            found = await self._resolution_work(cycle, transfer, capacity, provider_open=provider_open)
+            if found is None:
+                continue
+            work, qualification = found
+            if qualification:
+                return await self._admit_work(cycle, transfer, work, qualification=True)
+            runnable.append((transfer, work))
         if not runnable:
             return False
         transfer, work = await self._fair_resolution_choice(cycle, runnable)
+        return await self._admit_work(cycle, transfer, work, qualification=False)
+
+    async def _admit_work(self, cycle: _ResolutionCycle, transfer, work, *, qualification: bool) -> bool:
         if transfer.id not in cycle.locks:
             lock = self._transfer_locks.setdefault(transfer.id, asyncio.Lock())
             if lock.locked():
                 return True
             await lock.acquire()
             cycle.locks[transfer.id] = lock
+        group = None
         if isinstance(work, RequestRecord):
             # The census chose the transfer; the admitted unit itself always
             # runs on the request's current durable state.
             await self._resolution_census(cycle, transfer.id)
             work = next((record for record in cycle.remaining[transfer.id] if record.id == work.id), None)
-            if work is None or not self._resolution_ready(work):
+            if (work is None or not self._resolution_ready(work)
+                    or (work.state not in _PROVIDER_IO_REQUEST_STATES) != qualification):
                 self._release_resolution_transfer(cycle, transfer.id)
                 return True
             cycle.remaining[transfer.id].remove(work)
             cycle.admitted[work.id] = None
+            if not qualification:
+                group = await self._cached_provider_group(cycle, work)
             unit = self._serve_resolution_request(cycle, work)
         else:
             cycle.retired.add(transfer.id)
@@ -916,10 +1046,16 @@ class TransferEngine:
                 # The continuation serves the challenged request itself.
                 cycle.admitted[work.request_id] = None
             unit = self._serve_input_continuation(cycle, work)
-        cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
         task = asyncio.create_task(unit)
         cycle.units[task] = transfer.id
-        cycle.slot_bound.add(task)
+        if qualification:
+            cycle.qualifying.add(task)
+        else:
+            cycle.served[transfer.id] = max(cycle.served.values(), default=0) + 1
+            cycle.slot_bound.add(task)
+            if group is not None:
+                cycle.provider_of[task] = group
+                cycle.provider_turns[group] = max(cycle.provider_turns.values(), default=0) + 1
         task.add_done_callback(lambda done: self._resolution_unit_done(cycle, done))
         return True
 
@@ -934,6 +1070,10 @@ class TransferEngine:
             cycle.retired.add(record.transfer_id)
             return None
         changed = await self._process_request(record)
+        if record.state not in _PROVIDER_IO_REQUEST_STATES:
+            # A qualification unit consumes its hand-off whatever it decided,
+            # so its census records it as served, never as handed off again.
+            cycle.carried.pop(record.id, None)
         await self._resolution_census(cycle, record.transfer_id, served=record.id)
         return changed
 
@@ -975,6 +1115,8 @@ class TransferEngine:
         if transfer_id is None:
             return
         cycle.slot_bound.discard(task)
+        cycle.qualifying.discard(task)
+        cycle.provider_of.pop(task, None)
         TransferEngine._release_resolution_transfer(cycle, transfer_id)
         if not task.cancelled():
             if task.exception() is not None:
@@ -1007,7 +1149,8 @@ class TransferEngine:
             # Neither remaining state performs provider-resolution I/O.
             self._resolution_slot_released()
             if record.state == "materializing":
-                candidates = await self.repository.resolved_candidates(record.id)
+                candidates = self._carried_candidates(
+                    record.id, await self.repository.resolved_candidates(record.id))
                 if candidates:
                     await self._materialize(record, candidates)
                 else:
@@ -1027,6 +1170,45 @@ class TransferEngine:
         except Exception as exc:
             error = exc.error if isinstance(exc, TransferError) else unknown_failure(exc, integration_id="", domain=Domain.INTERNAL, stage=Stage.RECONCILIATION)
             await self._request_failure(record, error)
+
+    async def _candidate_signature(self, transfer_id: int) -> tuple:
+        """The transfer's committed canonical candidate set, comparable."""
+        return tuple((artifact.id, artifact.state, artifact.selected,
+                      tuple(sorted(str(candidate.id) for candidate in artifact.candidates)))
+                     for artifact in await self.repository.artifacts(transfer_id))
+
+    def _candidates_committed(self, transfer_id: int) -> None:
+        listener = self.candidate_publication
+        if listener is not None:
+            listener(transfer_id)
+
+    def _hand_off_materialization(self, record: RequestRecord, candidates) -> bool:
+        """A provider unit of the running cycle whose resolution result is
+        durable (``state='materializing'``) ends there: its decision --
+        evidence, equivalence, the canonical commit -- is admitted as the
+        cycle's own QUALIFICATION work (``_resolution_work``), so it never
+        holds the admission that provider I/O needs. The provider's in-memory
+        candidates go with it (``_ResolutionCycle.carried``). Outside an
+        admitted provider unit nothing is handed off: the caller decides at
+        once, as before. Returns whether it was handed off."""
+        cycle = self._resolution_cycle
+        task = asyncio.current_task()
+        if cycle is None or task not in cycle.units or task in cycle.qualifying:
+            return False
+        cycle.carried[record.id] = tuple(candidates)
+        return True
+
+    def _carried_candidates(self, request_id: str, durable) -> tuple:
+        """The candidates a qualification unit decides: the provider's own
+        in-memory answer its resolution unit handed off when it names exactly
+        the durable result's candidates (so transient execution material is
+        not issued a second time), else the durable result -- the restart
+        path. The hand-off is consumed either way."""
+        cycle = self._resolution_cycle
+        carried = cycle.carried.pop(request_id, None) if cycle is not None else None
+        if carried and sorted(str(item.id) for item in carried) == sorted(str(item.id) for item in durable):
+            return carried
+        return tuple(durable)
 
     def capacity_only_blocked_ids(self) -> frozenset[int]:
         """Artifact ids the REAL dispatch path most recently confirmed are
@@ -1772,7 +1954,8 @@ class TransferEngine:
         if result.error:
             await self._request_failure(record, result.error, attempts=record.attempts + 1)
         elif result.candidates:
-            await self._materialize(record, result.candidates)
+            if not self._hand_off_materialization(record, result.candidates):
+                await self._materialize(record, result.candidates)
         elif result.observation:
             await self._converge_root_observation_name(record, result.observation)
             # An executable resource -- or one whose provider executes only what

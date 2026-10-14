@@ -1589,3 +1589,33 @@ test('GROUP scope: the shared multi-file switching progress is unaffected by the
   await expect(page.locator('.toast', { hasText: 'switched' })).toBeVisible();
   await expect(menu).not.toHaveAttribute('aria-busy', 'true');
 });
+
+test('Common Sources in an open Details follows a candidate committed meanwhile, from the live pulse', async ({ page }) => {
+  // One file can already move, the other has only its current source: the
+  // Details offers that one artifact's move. A candidate committed for the
+  // second file makes the source common to both, and the same open Details
+  // offers the group move -- with no click, from the server's own publication.
+  const holder = {
+    70: detail(70, [file(701, [sc('rapidgator.net', 'a1', { selected: true }), sc('megaup.net', 'b1', { eligible: true })]),
+                     file(702, [sc('rapidgator.net', 'a2', { selected: true })])]),
+  };
+  await routeDetail(page, holder);
+  let send;
+  const body = new Promise(resolve => { send = resolve; });
+  await page.route('**/api/events/stream', async route => route.fulfill({ status: 200, contentType: 'text/event-stream', body: await body }));
+  await ready(page);
+  await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
+  await page.evaluate(() => showDetail(70));
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  const launcher = page.locator('.dp-detail-files-group-slot .dp-group-candidate-launcher');
+  await expect(launcher).toHaveAttribute('data-dp-mode', 'artifact');
+
+  holder[70] = detail(70, [file(701, [sc('rapidgator.net', 'a1', { selected: true }), sc('megaup.net', 'b1', { eligible: true })]),
+                            file(702, [sc('rapidgator.net', 'a2', { selected: true }), sc('megaup.net', 'b2', { eligible: true })])]);
+  send('event: connected\ndata: {}\n\nevent: torrent_updated\ndata: {"id":70,"status":"downloading"}\n\n');
+
+  await expect(launcher).toHaveAttribute('data-dp-mode', 'group');
+  await expect(launcher.locator('.dp-candidate-chip-count')).toHaveText('2');
+  await launcher.focus();
+  await expect(launcher).toBeFocused();
+});

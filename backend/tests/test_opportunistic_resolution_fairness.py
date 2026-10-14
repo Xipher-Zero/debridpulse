@@ -42,8 +42,11 @@ GUARD_SECONDS = 10.0
 class GatedProvider(ParcelProvider):
     """Parcel provider whose individual resolve() calls the test can hold open."""
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, identity: str = "parcel-lab", *, wire: dict | None = None):
+        super().__init__(identity)
+        # Shared by every provider of one runtime: provider-resolution I/O in
+        # progress across all of them, and its peak.
+        self.wire = wire if wire is not None else {"active": 0, "peak": 0}
         self.entered: list[str] = []
         self.finished: list[str] = []
         self.cancelled: list[str] = []
@@ -105,6 +108,8 @@ class GatedProvider(ParcelProvider):
         self.entered.append(key)
         self.active += 1
         self.max_active = max(self.max_active, self.active)
+        self.wire["active"] += 1
+        self.wire["peak"] = max(self.wire["peak"], self.wire["active"])
         async with self._entry:
             self._entry.notify_all()
         try:
@@ -116,6 +121,7 @@ class GatedProvider(ParcelProvider):
             raise
         finally:
             self.active -= 1
+            self.wire["active"] -= 1
         self.finished.append(key)
         if payload in self.terminal:
             return ResolutionResult(ResourceState.UNKNOWN, error=NormalizedError(
@@ -164,9 +170,10 @@ def _member(payload: str, index: int) -> str:
 
 
 class Runtime:
-    def __init__(self, repository, provider, executor, engine, now):
+    def __init__(self, repository, provider, executor, engine, now, providers=()):
         self.repository = repository
         self.provider = provider
+        self.providers = {item.descriptor.id: item for item in providers or (provider,)}
         self.executor = executor
         self.engine = engine
         self.now = now
@@ -176,6 +183,15 @@ class Runtime:
             tuple(TransferRequest("parcel", f"{prefix}-{index}", name=f"{prefix}-{index}.bin")
                   for index in range(count)),
             name=prefix, priority=priority,
+        )
+
+    async def submit_routed(self, name: str, routed, *, priority=0):
+        """One submission whose requests prefer the named provider each:
+        ``routed`` is ``[(payload, provider_id), ...]``."""
+        return await self.engine.submit(
+            tuple(TransferRequest("parcel", payload, name=f"{payload}.bin", preferred_provider=provider_id)
+                  for payload, provider_id in routed),
+            name=name, priority=priority, deduplicate=False,
         )
 
     async def request_states(self, transfer_id: int) -> dict[str, str]:
@@ -208,14 +224,17 @@ async def _until(predicate) -> None:
     await asyncio.wait_for(poll(), GUARD_SECONDS)
 
 
-async def _build(tmp_path, monkeypatch, *, concurrency: int) -> Runtime:
+async def _build(tmp_path, monkeypatch, *, concurrency: int, providers=("parcel-lab",)) -> Runtime:
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "fairness.db")
     await database.init_db()
     repository = TransferRepository()
     registry = IntegrationRegistry()
-    provider = GatedProvider()
+    wire = {"active": 0, "peak": 0}
+    gated = tuple(GatedProvider(identity, wire=wire) for identity in providers)
+    provider = gated[0]
     executor = GatedExecutor(repository.authorize_execution)
-    registry.register_provider(provider)
+    for item in gated:
+        registry.register_provider(item)
     registry.register_executor(executor)
     now = [9000.0]
     engine = TransferEngine(
@@ -227,7 +246,7 @@ async def _build(tmp_path, monkeypatch, *, concurrency: int) -> Runtime:
         clock=lambda: now[0],
     )
     await engine.initialize()
-    return Runtime(repository, provider, executor, engine, now)
+    return Runtime(repository, provider, executor, engine, now, gated)
 
 
 @pytest_asyncio.fixture
@@ -235,15 +254,16 @@ async def build(tmp_path, monkeypatch):
     cycles: list[asyncio.Task] = []
     runtimes: list[Runtime] = []
 
-    async def factory(*, concurrency: int) -> Runtime:
-        runtime = await _build(tmp_path, monkeypatch, concurrency=concurrency)
+    async def factory(*, concurrency: int, providers=("parcel-lab",)) -> Runtime:
+        runtime = await _build(tmp_path, monkeypatch, concurrency=concurrency, providers=providers)
         runtimes.append(runtime)
         return runtime
 
     factory.cycles = cycles
     yield factory
     for runtime in runtimes:
-        runtime.provider.open()
+        for provider in runtime.providers.values():
+            provider.open()
     for task in cycles:
         if not task.done():
             task.cancel()
@@ -1198,3 +1218,428 @@ async def test_provider_input_children_join_bounded_admission(build):
     assert provider.max_active == 3 and provider.cancelled == []
     assert sorted(provider.entered) == sorted(["input:a-0", *children])
     assert await runtime.artifact_payloads(a.id) == set(children)
+
+
+# ---------------------------------------------------------------------------
+# Bounded resolution fairness and incremental candidate readiness (1.0.13).
+#
+# Provider fairness is a choice AT an admission boundary among one transfer's
+# ready provider-I/O requests: it never preempts a call in progress and never
+# frees a slot a slow provider holds. Waits below are therefore measured in
+# legal slot releases, never in wall-clock time.
+# ---------------------------------------------------------------------------
+
+SLOW, FAST = "prov-slow", "prov-fast"
+
+
+async def _backoff_then_runnable(runtime: Runtime, transfer_id: int, payloads) -> None:
+    """``payloads`` failed retryably earlier; their persisted backoff passes
+    now and the running cycle is told so (the one scheduler wake)."""
+    async def parked():
+        states = {item.request.payload: item for item in await runtime.repository.requests(transfer_id)}
+        return all(states[payload].state == "pending" and states[payload].retry_at > runtime.now[0]
+                   for payload in payloads)
+    await _until(parked)
+    runtime.now[0] += 1000
+    runtime.engine._resolution_opportunity(transfer_id)
+
+
+@pytest.mark.asyncio
+async def test_a_slow_provider_never_takes_the_next_released_slot_from_a_runnable_fast_one(build):
+    """Scenario 1. Six requests of one transfer resolve through the slow
+    provider and hold every slot; two requests whose links name the SAME
+    host (rapidgator) resolve through another provider and become runnable
+    only after every slot is taken. Grouping is by the resolving provider,
+    never the host. Fairness cannot free an occupied slot: the fast group
+    waits for one legal release -- and then receives it, ahead of the slow
+    group's next request, which the census lists first. Observed worst case:
+    1 legal slot release, 0 further slow admissions before it."""
+    runtime = await build(concurrency=3, providers=(SLOW, FAST))
+    slow, fast = runtime.providers[SLOW], runtime.providers[FAST]
+    slow_payloads = [f"rapidgator-{index}" for index in range(6)]
+    fast_payloads = ["rapidgator-b0", "rapidgator-b1"]
+    slow.hold(*slow_payloads)
+    fast.failing.update(fast_payloads)                                  # runnable only after a backoff
+    transfer = await runtime.submit_routed("mixed", [*((p, SLOW) for p in slow_payloads),
+                                                     *((p, FAST) for p in fast_payloads)])
+    cycle = _cycle(build, runtime)
+
+    await slow.wait_active(3)
+    assert sorted(slow.entered) == slow_payloads[:3]
+    fast.failing.clear()
+    await _backoff_then_runnable(runtime, transfer.id, fast_payloads)
+    assert slow.active == 3 and fast.entered.count("rapidgator-b0") == 1, "no slot was freed for it"
+
+    slow.open("rapidgator-0")                                           # ONE legal release
+    await fast.wait_entries(len(fast_payloads) + 1)
+    assert fast.entered[-1] == "rapidgator-b0"
+    assert "rapidgator-3" not in slow.entered, "the slow group's next request did not take the released slot"
+    await fast.wait_entries(len(fast_payloads) * 2)
+    await slow.wait_entered("rapidgator-3")                             # then capacity returns to the slow group
+
+    slow.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert runtime.provider.wire["peak"] == 3                           # one global ceiling, across providers
+    assert await runtime.artifact_payloads(transfer.id) == {*slow_payloads, *fast_payloads}
+
+
+@pytest.mark.asyncio
+async def test_fairness_is_work_conserving_when_only_one_provider_has_runnable_work(build):
+    """Scenario 2. The other provider's requests are parked in backoff: the
+    slow provider uses every permitted slot and receives every released one
+    at once -- no slot is idled or reserved for a group that cannot run."""
+    runtime = await build(concurrency=3, providers=(SLOW, FAST))
+    slow, fast = runtime.providers[SLOW], runtime.providers[FAST]
+    slow_payloads = [f"one-{index}" for index in range(5)]
+    slow.hold(*slow_payloads)
+    fast.failing.add("two-0")
+    transfer = await runtime.submit_routed("conserving", [*((p, SLOW) for p in slow_payloads), ("two-0", FAST)])
+    cycle = _cycle(build, runtime)
+
+    await slow.wait_active(3)
+    async def parked():
+        return (await runtime.request_states(transfer.id))["two-0"] == "pending"
+    await _until(parked)
+    slow.open("one-0")
+    await slow.wait_entered("one-3")
+    assert slow.active == 3
+
+    fast.failing.clear()
+    slow.open()
+    runtime.now[0] += 1000
+    runtime.engine._resolution_opportunity(transfer.id)
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert runtime.provider.wire["peak"] == 3
+    assert await runtime.artifact_payloads(transfer.id) == {*slow_payloads, "two-0"}
+
+
+@pytest.mark.asyncio
+async def test_provider_fairness_never_inverts_transfer_priority(build):
+    """Scenario 3. Provider fairness only chooses among the requests of the
+    transfer the scheduler already selected. A higher-priority transfer whose
+    provider is the busy one still receives the released slot before a lower
+    priority transfer of an idle provider."""
+    runtime = await build(concurrency=2, providers=(SLOW, FAST))
+    slow, fast = runtime.providers[SLOW], runtime.providers[FAST]
+    slow.hold("hi-0", "hi-1", "hi-2")
+    fast.hold("lo-0")
+    high = await runtime.submit_routed("high", [("hi-0", SLOW), ("hi-1", SLOW), ("hi-2", SLOW)], priority=5)
+    await runtime.submit_routed("low", [("lo-0", FAST)])
+    cycle = _cycle(build, runtime)
+
+    await slow.wait_active(2)
+    assert fast.entered == []
+    slow.open("hi-0")
+    await slow.wait_entered("hi-2")
+    assert fast.entered == [], "the lower-priority transfer waits whatever its provider"
+
+    slow.open()
+    fast.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert await runtime.artifact_payloads(high.id) == {"hi-0", "hi-1", "hi-2"}
+
+
+@pytest.mark.asyncio
+async def test_a_held_cohort_decision_never_stops_provider_resolution_and_parks_bounded_work(build):
+    """Scenario 4 (Contract B). Every equivalence/canonical decision of the
+    transfer waits on its cohort lock, held here. Provider resolution of the
+    transfer's other links still proceeds through the free slots: each
+    resolution unit ends at its durable result (``materializing``), and the
+    decisions wait as qualification work bounded by one concurrency width --
+    not one parked coroutine per resolved link. On BASE every resolved unit
+    kept waiting for the lock inside its admission, and provider work stopped
+    after 2 x concurrency links. Observed wait for provider admission behind
+    qualification: 0 boundaries."""
+    runtime = await build(concurrency=3)
+    provider = runtime.provider
+    transfer = await runtime.submit("held", 12)
+    lock = runtime.engine._cohort_locks.setdefault(transfer.id, asyncio.Lock())
+    await lock.acquire()
+    baseline = len(asyncio.all_tasks())
+    cycle = _cycle(build, runtime)
+    try:
+        await provider.wait_entries(12)
+        async def all_durable():
+            return set((await runtime.request_states(transfer.id)).values()) == {"materializing"}
+        await _until(all_durable)
+        cycle_ = runtime.engine._resolution_cycle
+        assert len(cycle_.qualifying) <= 3
+        assert len(asyncio.all_tasks()) - baseline <= 1 + 3
+        assert not await runtime.repository.artifacts(transfer.id)
+        assert provider.max_active <= 3
+    finally:
+        lock.release()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert await runtime.artifact_payloads(transfer.id) == {f"held-{index}" for index in range(12)}
+    assert sorted(provider.entered) == sorted(f"held-{index}" for index in range(12))   # each resolved once
+
+
+@pytest.mark.asyncio
+async def test_a_cycle_ended_between_result_and_decision_decides_from_durable_truth_once(build):
+    """Scenario 7. The pass ends (cancelled) after the provider results are
+    durable but before any decision ran. The next pass decides each one from
+    the durable result exactly once -- no provider call is repeated, nothing
+    is lost, and the in-memory hand-off died with its cycle."""
+    runtime = await build(concurrency=3)
+    provider = runtime.provider
+    transfer = await runtime.submit("crash", 4)
+    lock = runtime.engine._cohort_locks.setdefault(transfer.id, asyncio.Lock())
+    await lock.acquire()
+    cycle = _cycle(build, runtime)
+    async def all_durable():
+        return set((await runtime.request_states(transfer.id)).values()) == {"materializing"}
+    await _until(all_durable)
+    cycle.cancel()
+    await asyncio.gather(cycle, return_exceptions=True)
+    lock.release()
+    assert runtime.engine._resolution_cycle is None
+
+    await runtime.engine.resolve_pending()
+    assert sorted(provider.entered) == [f"crash-{index}" for index in range(4)]
+    assert await runtime.artifact_payloads(transfer.id) == {f"crash-{index}" for index in range(4)}
+    assert set((await runtime.request_states(transfer.id)).values()) == {"resolved"}
+
+
+@pytest.mark.asyncio
+async def test_a_transfer_deleted_while_its_decisions_wait_is_never_materialized(build):
+    """Scenario 8. Deletion lands while the resolved links' decisions wait on
+    the cohort lock: once it is released nothing is attached, allocated or
+    started for the deleted transfer."""
+    runtime = await build(concurrency=2)
+    transfer = await runtime.submit("gone", 3)
+    lock = runtime.engine._cohort_locks.setdefault(transfer.id, asyncio.Lock())
+    await lock.acquire()
+    cycle = _cycle(build, runtime)
+    async def all_durable():
+        return set((await runtime.request_states(transfer.id)).values()) == {"materializing"}
+    await _until(all_durable)
+    await runtime.engine.delete(transfer.id)
+    lock.release()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert not await runtime.repository.artifacts(transfer.id)
+    assert (await runtime.repository.get(transfer.id)).state.value == "deleted"
+    assert [call for call in runtime.executor.calls if call[0] == "start"] == []
+
+
+@pytest.mark.asyncio
+async def test_a_committed_candidate_is_published_while_unrelated_resolution_is_still_in_flight(build, monkeypatch):
+    """Scenario 9 (Contract D). One link's candidate commits while another
+    provider's link of the same pass is still held: the transfer's
+    authoritative presentation is published through the one targeted
+    semantic publisher at once -- not when the pass returns. A burst on the
+    same transfer while one publication is in progress coalesces into ONE
+    follow-up."""
+    import application.service as service_module
+    from application.service import ApplicationService
+
+    runtime = await build(concurrency=3, providers=(SLOW, FAST))
+    slow, fast = runtime.providers[SLOW], runtime.providers[FAST]
+    events: list[tuple[str, dict]] = []
+    first_publication = asyncio.Event()
+    publication_gate = asyncio.Event()
+
+    async def publish(name, payload):
+        events.append((name, payload))
+        if name == "torrent_updated" and not first_publication.is_set():
+            first_publication.set()
+            await publication_gate.wait()
+    monkeypatch.setattr(service_module, "publish", publish)
+    application = ApplicationService(runtime.engine)
+
+    slow.hold("stuck-0")
+    fast_payloads = [f"quick-{index}" for index in range(4)]
+    transfer = await runtime.submit_routed("ready", [("stuck-0", SLOW), *((p, FAST) for p in fast_payloads)])
+    pass_ = asyncio.create_task(application.resolve_pending())
+    build.cycles.append(pass_)
+
+    await asyncio.wait_for(first_publication.wait(), GUARD_SECONDS)
+    assert not pass_.done() and "stuck-0" not in slow.finished
+    published = [payload for name, payload in events if name == "torrent_updated"]
+    assert published[0]["id"] == transfer.id
+    # While that publication is in progress the other quick links commit:
+    async def all_quick():
+        return {*fast_payloads} <= await runtime.artifact_payloads(transfer.id)
+    await _until(all_quick)
+    publication_gate.set()
+    async def follow_up():
+        return sum(name == "torrent_updated" for name, _ in events) >= 2
+    await _until(follow_up)
+    assert sum(name == "torrent_updated" for name, _ in events) == 2, "the burst coalesced into one follow-up"
+    assert not pass_.done()
+
+    slow.open()
+    await asyncio.wait_for(pass_, GUARD_SECONDS)
+    assert application._candidate_drain is None or application._candidate_drain.done()
+    latest = [payload for name, payload in events if name == "torrent_updated"][-1]
+    assert latest["id"] == transfer.id
+
+
+# ---------------------------------------------------------------------------
+# Transfer 630 shape (field traces 2026-10-14T16:26:09Z / 16:29:27Z): one
+# direct-link submission of 20 links -- five host groups x four archive parts
+# -- resolved through two debrid providers, one of them slow (TorBox's ~30 s
+# connection timeouts), with DDownload part 4 unverifiable. Modelled, never
+# replayed: no network, no payloads, deterministic gates.
+# ---------------------------------------------------------------------------
+
+_630_HOSTS = ("1fichier.com", "rapidgator.net", "megaup.net", "ddownload.com", "pixeldrain.com")
+
+
+class _Debrid:
+    """A host-claiming debrid fixture whose calls the test may hold; every
+    part a sound host serves carries the same strong digest."""
+
+    def __init__(self, identity: str, hosts, wire: dict):
+        from test_direct_link_collection_affinity import UrlFixtureProvider
+        from transfers.applicability import HostClaim, HostClaimScope, ProviderApplicability
+
+        base = UrlFixtureProvider(identity, host=hosts[0])
+        self.descriptor = base.descriptor
+        self.applicability = ProviderApplicability(
+            specialized_hosts=tuple(HostClaim(host, HostClaimScope.DOMAIN, frozenset({"http", "https"}))
+                                    for host in hosts), specialized=True)
+        self.wire = wire
+        self.gate: asyncio.Event | None = None
+        self.entered: list[str] = []
+        self.finished: list[str] = []
+
+    async def resolve(self, request):
+        from transfers.models import Endpoint, IntegrityMetadata, SourceIdentity, TransferCandidate
+
+        payload = str(request.payload)
+        self.entered.append(payload)
+        self.wire["active"] += 1
+        self.wire["peak"] = max(self.wire["peak"], self.wire["active"])
+        try:
+            if self.gate is not None:
+                await self.gate.wait()
+        finally:
+            self.wire["active"] -= 1
+        self.finished.append(payload)
+        unverifiable = payload.endswith("ddownload.com/part4.rar")
+        digest = () if unverifiable else (IntegrityMetadata("sha256", (request.name.encode().hex() * 8)[:64]),)
+        return ResolutionResult(ResourceState.AVAILABLE, (TransferCandidate(
+            request.name, (Endpoint("memory", f"memory:{payload}"),), expected_bytes=4,
+            provider_id=self.descriptor.id, integrity=digest,
+            source_identity=SourceIdentity("host", payload.split("//")[1].split("/")[0])),))
+
+
+@pytest.mark.asyncio
+async def test_transfer_630_shape_publishes_qualified_parts_while_a_slow_provider_is_stuck(tmp_path, monkeypatch):
+    """Field correspondence. The fast provider's three host groups resolve,
+    are proven by their strong attestation and are committed -- and each
+    commit is published -- while every call of the slow provider is still in
+    flight; its stuck calls never hold more than the slots they occupy. Once
+    it answers, MegaUp completes every part; DDownload part 4, which carries
+    no attestation and whose sample times out, is never bound, never written
+    and keeps DDownload out of Common Sources. Provider I/O never exceeds
+    the one global ceiling of three."""
+    from fake_integrations import MemoryExecutor
+    from test_direct_link_collection_affinity import request, submit_collection
+    from test_group_common_sources import _detail_group
+    from transfers.engine import TransferEngine as DirectEngine
+    from transfers.models import ArtifactFingerprint, FingerprintKind
+    from transfers.repository import TransferRepository as DirectRepository
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "t630.db")
+    await database.init_db()
+    repository = DirectRepository()
+    registry = IntegrationRegistry()
+    wire = {"active": 0, "peak": 0}
+    alldebrid = _Debrid("alldebrid-like", ("1fichier.com", "rapidgator.net", "pixeldrain.com"), wire)
+    torbox = _Debrid("torbox-like", ("megaup.net", "ddownload.com"), wire)
+    torbox.gate = asyncio.Event()                                       # its calls hang, like the observed timeouts
+    executor = MemoryExecutor(repository.authorize_execution)
+    for item in (alldebrid, torbox, executor):
+        (registry.register_executor if item is executor else registry.register_provider)(item)
+    now = [1000.0]
+    engine = DirectEngine(repository, registry, download_root=str(tmp_path / "payloads"),
+                          policy=TransferPolicy(retry_delay=1, adoption_stability_seconds=0,
+                                                max_active_executions=32, resolution_concurrency=3),
+                          clock=lambda: now[0])
+    await engine.initialize()
+
+    async def fingerprint(subject):
+        address = subject.candidate.endpoints[0].address
+        if address.endswith("ddownload.com/part4.rar"):
+            return ArtifactFingerprint(0, "", FingerprintKind.UNAVAILABLE, "timeout", "")
+        signature = f"prefix:{subject.candidate.name}"
+        return ArtifactFingerprint(4, signature, FingerprintKind.PREFIX_CONTENT_SAMPLE, "range_ignored", signature)
+    monkeypatch.setattr(executor, "fingerprint", fingerprint)
+    published: list[tuple[int, int]] = []                               # (transfer, slow calls finished so far)
+    engine.candidate_publication = lambda transfer_id: published.append((transfer_id, len(torbox.finished)))
+
+    transfer = await submit_collection(engine, *(request(host, f"part{index}.rar")
+                                                for host in _630_HOSTS for index in range(1, 5)))
+    pass_ = asyncio.create_task(engine.resolve_pending())
+    try:
+        async def fast_groups_committed():
+            hosts = {candidate.endpoints[0].address.split("//")[1].split("/")[0]
+                     for artifact in await repository.artifacts(transfer.id) for candidate in artifact.candidates}
+            return {"1fichier.com", "rapidgator.net", "pixeldrain.com"} <= hosts
+        await _until(fast_groups_committed)
+        assert torbox.entered and torbox.finished == [], "the slow provider is still stuck"
+        assert published and all(slow_done == 0 for _id, slow_done in published)
+        assert {transfer_id for transfer_id, _ in published} == {transfer.id}
+        assert not pass_.done()
+    finally:
+        torbox.gate.set()
+    await asyncio.wait_for(pass_, GUARD_SECONDS)
+    for _ in range(3):                                                  # bounded proof retries become due
+        now[0] += 5
+        await engine.resolve_pending()
+
+    artifacts = sorted(await repository.artifacts(transfer.id), key=lambda item: item.candidates[0].name)
+    hosts = [sorted(candidate.endpoints[0].address.split("//")[1].split("/")[0] for candidate in artifact.candidates)
+             for artifact in artifacts]
+    assert [artifact.candidates[0].name for artifact in artifacts] == ["part1.rar", "part2.rar", "part3.rar", "part4.rar"]
+    assert hosts[:3] == [sorted(_630_HOSTS)] * 3
+    assert hosts[3] == sorted(set(_630_HOSTS) - {"ddownload.com"})      # part 4 never binds DDownload
+    held = {item.request.payload: item.state for item in await repository.requests(transfer.id)}
+    assert held["https://ddownload.com/part4.rar"] == "materializing"   # held, not independent, not failed
+    assert len([call for call in executor.calls if call[0] == "start"]) <= 4   # no writer for the unverified part
+    group = await _detail_group(transfer.id)
+    # Common Sources: every remaining part has a qualified candidate of the
+    # host -- DDownload lacks part 4, so it is never offered.
+    assert group["common_hosts"] == sorted(set(_630_HOSTS) - {"ddownload.com"})
+    assert wire["peak"] <= 3
+
+
+@pytest.mark.asyncio
+async def test_an_answer_arriving_while_every_slot_is_busy_continues_at_the_next_release(build):
+    """Two lanes, one scan: while the only provider slot is busy the scheduler
+    still looks at every transfer (qualification work needs no slot). An
+    answered question found then must WAIT for a slot -- never be retired from
+    the cycle for the lack of one -- and continue at the next legal release,
+    while ``x-1`` keeps the same cycle alive."""
+    runtime = await build(concurrency=1)
+    provider = runtime.provider
+    root = "a-0"
+    provider.auth.add(root)
+    provider.parcels[root] = _members(root, 1)
+    a = await runtime.submit("a", 1)
+    await runtime.engine.resolve_pending()
+    challenge = await runtime.engine.challenges.current(a.id)
+    assert challenge is not None
+    provider.entered.clear()
+
+    provider.hold("x-0", "x-1")
+    await runtime.submit("x", 2)
+    cycle = _cycle(build, runtime)
+    await provider.wait_entered("x-0")
+    await runtime.engine.submit_input(a.id, challenge.id, "username_password",
+                                      {"username": "operator", "password": "accepted"})
+    # The answer's boundary passes while the slot is still taken.
+    await _until(lambda: _async_true(runtime.engine._resolution_cycle is not None
+                                     and not runtime.engine._resolution_cycle.opportunity.is_set()))
+    provider.open("x-0")                                                 # ONE legal release
+    await provider.wait_entered("input:a-0")
+    assert not cycle.done() and "x-1" not in provider.finished
+
+    provider.open()
+    await asyncio.wait_for(cycle, GUARD_SECONDS)
+    assert await runtime.engine.challenges.current(a.id) is None
+
+
+async def _async_true(value):
+    return value

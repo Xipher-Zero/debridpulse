@@ -158,3 +158,49 @@ test('in-flight suppression prevents duplicate candidate POSTs', async ({page}) 
   await expect(page.locator('tr[data-dp-candidate-owner="502"] .dp-detail-candidate-item').nth(1).locator('.dp-detail-candidate-active')).toHaveText('ACTIVE');
   expect(posts).toBe(1);
 });
+
+// A held live pulse: the stream is answered only when the test sends the
+// events, so they arrive at a moment the test chose, through the app's real
+// transport (app.js turns a semantic torrent_updated into
+// debridpulse:transfer-updated).
+async function heldPulse(page) {
+  let send;
+  const body = new Promise(resolve => { send = resolve; });
+  await page.route('**/api/events/stream', async route => route.fulfill({status: 200, contentType: 'text/event-stream', body: await body}));
+  return events => send(['event: connected\ndata: {}\n', ...events.map(([name, data]) => `event: ${name}\ndata: ${JSON.stringify(data)}\n`)].join('\n') + '\n');
+}
+
+test('a candidate committed while Details is open appears in place, its disclosure kept open', async ({page}) => {
+  // Opened away from Downloads and the Dashboard, so no list re-render can
+  // stand in for the open transfer's own semantic refresh.
+  const holder = {detail: detail('a')};
+  let reads = 0;
+  const pulse = await heldPulse(page);
+  await page.route('https://fonts.googleapis.com/**', route => route.fulfill({status:200,contentType:'text/css',body:''}));
+  await page.route(url => url.pathname === '/api/torrents/990', route => {
+    reads += 1;
+    return route.fulfill({status:200,contentType:'application/json',body:JSON.stringify(holder.detail)});
+  });
+  await page.goto('/');
+  await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
+  await page.evaluate(() => showDetail(990));
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  const disclosure = page.locator('tr[data-dp-artifact-id="502"] .dp-detail-candidate-disclosure');
+  await disclosure.click();
+  const items = page.locator('tr[data-dp-candidate-owner="502"] .dp-detail-candidate-item');
+  await expect(items).toHaveCount(2);
+
+  const next = detail('a');
+  next.files[0].candidate_count = 3;
+  next.files[0].acquisition_candidates.push(candidate('c', 'pixeldrain.com', false));
+  holder.detail = next;
+  const before = reads;
+  pulse([['torrent_updated', {id: 990, status: 'downloading'}]]);
+
+  await expect(items).toHaveCount(3);
+  await expect(items.nth(2)).toContainText('pixeldrain.com');
+  await expect(page.locator('tr[data-dp-candidate-owner="502"]')).toBeVisible();     // still expanded
+  await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
+  expect(reads - before).toBeGreaterThanOrEqual(1);
+  expect(reads - before).toBeLessThanOrEqual(2);       // this owner's read, and Common Sources' own
+});

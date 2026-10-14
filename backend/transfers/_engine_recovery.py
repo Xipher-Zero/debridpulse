@@ -120,6 +120,7 @@ class TransferEngine(_QualifiedTransferEngine):
                 if not any(item.id == record.id and item.state == "materializing"
                            for item in await self.repository.requests(record.transfer_id)):
                     return
+                before = await self._candidate_signature(record.transfer_id)
                 if not await coordinate_collection(self, record, candidates, evidence):
                     await super()._materialize(record, candidates, evidence=evidence)
                     artifact = next((item for item in await self.repository.artifacts(record.transfer_id)
@@ -132,6 +133,10 @@ class TransferEngine(_QualifiedTransferEngine):
             # Whatever this decision attached or allocated may have completed
             # the evidence that this transfer and another are one collection.
             await converge_collection_ownership(self, record.transfer_id)
+            # The decision is committed: a changed candidate set is published
+            # now, never held until unrelated resolutions of the pass finish.
+            if await self._candidate_signature(record.transfer_id) != before:
+                self._candidates_committed(record.transfer_id)
 
     async def _next_alternate_index(self, artifact: Artifact) -> int | None:
         """First eligible, not-yet-attempted candidate in index order (DP 1.0.12

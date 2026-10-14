@@ -136,6 +136,13 @@ class ApplicationService:
         self.integration_wakeup = asyncio.Event()
         self.execution_wakeup = asyncio.Event()
         self.execution_poll_interval = 1
+        # Incremental candidate readiness (``TransferEngine.candidate_publication``):
+        # transfers whose committed candidate set changed and are due one
+        # publication, drained by at most one task -- a burst on one transfer
+        # is one publication, and the first one is never held for the rest.
+        self._candidate_publications: set[int] = set()
+        self._candidate_drain: asyncio.Task | None = None
+        engine.candidate_publication = self._queue_candidate_publication
         self.definitions = ()
         # The one in-flight integration startup (``begin_integrations``).
         self._integration_startup: asyncio.Task | None = None
@@ -987,13 +994,39 @@ class ApplicationService:
                 files.extend({"filename": entry.relative_path or entry.name, "size_bytes": entry.expected_bytes} for entry in entries)
         return {"source": "provider", "files": files}
 
+    def _queue_candidate_publication(self, transfer_id: int) -> None:
+        """A materialization decision committed a changed candidate set for
+        ``transfer_id``: publish it through the one targeted semantic
+        publisher as soon as possible, coalesced per transfer."""
+        self._candidate_publications.add(int(transfer_id))
+        if self._candidate_drain is None or self._candidate_drain.done():
+            self._candidate_drain = asyncio.create_task(self._drain_candidate_publications())
+
+    async def _drain_candidate_publications(self) -> None:
+        while self._candidate_publications:
+            transfer_id = min(self._candidate_publications)
+            self._candidate_publications.discard(transfer_id)
+            try:
+                await self._publish(transfer_id)
+            except Exception as exc:
+                logger.warning("Candidate publication failed: %s", sanitize_exception(exc))
+
+    async def _settle_candidate_publications(self) -> None:
+        """Every due candidate publication is sent before the operation that
+        caused it returns: none outlives its admitted operation."""
+        while self._candidate_drain is not None and not self._candidate_drain.done():
+            await asyncio.shield(self._candidate_drain)
+
     async def resolve_pending(self):
         async with self.application_operation():
             # Route resolution/readiness is independent of Download Storage.
             # The universal execution gate owns storage-consuming dispatch, so
             # readiness may bind truthful provider provenance while dispatch is
             # contained and the same durable request can execute after recovery.
-            affected_ids = await self.engine.resolve_pending()
+            try:
+                affected_ids = await self.engine.resolve_pending()
+            finally:
+                await self._settle_candidate_publications()
             self.execution_wakeup.set()
             # A selected-manifest commitment (e.g. the file-selection Choose
             # File affordance becoming permanently unavailable) is a semantic

@@ -468,6 +468,28 @@ class TransferEngine(_RecoveryTransferEngine):
         if await self.repository.resolution(attempt, ResolutionResult(ResourceState.UNKNOWN, error=error)) is not None:
             await self._request_failure(record, error, attempts=record.attempts)
 
+    async def _resolution_provider_group(self, record) -> str:
+        """The provider a request's resolution would go to, read without
+        deciding anything (``_route``'s order, minus every effect): its bound
+        route, a bound resource's provider, a member's root provider, else
+        the first of the one canonical competition with no availability
+        answer -- never asked for, never recorded, so an availability-ordered
+        root may in the end be routed elsewhere. Unknown is ``""``."""
+        bound = await self.repository.bound_route_provider(record.id)
+        if bound:
+            return bound
+        if record.resource is not None:
+            return record.resource.provider_id
+        competition = await self._competition(record)
+        if record.parent_id is not None:
+            root = await self.repository.bound_route_provider(record.parent_id)
+            if root and any(provider.descriptor.id == root for provider in self.registry.eligible_providers(
+                    record.resolvable, declined=competition["declined"], exhausted=competition["exhausted"],
+                    acquisition=False, generic_closed=competition["generic_closed"])):
+                return root
+        route = self.registry.provider_route(record.resolvable, **competition)
+        return route.provider.descriptor.id if route.provider is not None else ""
+
     async def _route_provider(self, record):
         """The provider this request's resolution belongs to: its bound route,
         else the first of the one canonical competition."""

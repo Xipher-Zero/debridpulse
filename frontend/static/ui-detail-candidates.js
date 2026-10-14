@@ -477,6 +477,13 @@
 
     document.addEventListener('debridpulse:downloads-rendered', queueRefresh);
     document.addEventListener('debridpulse:dashboard-recent-rendered', queueRefresh);
+    // A semantic change the server published for the open transfer (e.g. a
+    // newly committed candidate) re-reads it through the same coalesced,
+    // generation-guarded refresh -- whichever page Details was opened from.
+    document.addEventListener('debridpulse:transfer-updated', function (event) {
+      const transferId = Number(event && event.detail && event.detail.transferId);
+      if (Number.isFinite(transferId) && transferId === activeTransferId) queueRefresh();
+    });
   }
 
   window.DPDetailCandidates = Object.freeze({rowsMarkup: rows, displayRows: displayRows});
