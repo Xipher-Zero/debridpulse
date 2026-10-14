@@ -499,13 +499,14 @@ async function fetchAndRenderTorrents() {
     if (currentFilter) params.set('status', currentFilter);
     if (ticket.query) params.set('search', ticket.query);
     if (currentOrder === 'queue') params.set('order', 'queue');
-    const {items, total, search: searched} = await api('GET', '/torrents?' + params.toString());
+    const {items, total, search: searched} = await api('GET', '/torrents?' + params.toString(), null, 0, {signal: ticket.signal});
     // A newer authoritative intent superseded this request while it was in
     // flight: this response is stale and must not become truth. Do not
     // render it, do not mutate torrentPage, do not replace rows, do not
     // reconcile selection, do not overwrite pagination. The coalesced
     // trailing run already queued behind this one will fetch and render the
-    // current state.
+    // current state. (A superseded request is cancelled by its ticket, so it
+    // normally ends in the catch below instead.)
     if (!searchControl().settle(ticket, searched)) return;
     const _total = total ?? items.length;
     // The requested page can fall out of range while this request was in

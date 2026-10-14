@@ -3,6 +3,7 @@
 // operator is told, that the search box keeps its value, focus and caret, and
 // that searching never moves the page or repeats itself.
 const { test, expect } = require('@playwright/test');
+const { pauseClockBeforeBoot } = require('./page-clock');
 
 const meta = (query, extra = {}) => ({
   query: query || null, mode: query ? 'text' : 'none', transfer_id: null, status: 'complete', pending: 0,
@@ -47,21 +48,26 @@ async function openDownloads(page) {
 const rowNames = page => page.locator('#t-tbody .t-name').allTextContents();
 
 test('Downloads shows only the newest answer, under the text that asked for it', async ({ page }) => {
+  // The page's clock moves only when this test moves it, so no request
+  // timeout can end the held answer: the newer search must not wait for it.
+  await pauseClockBeforeBoot(page);
   await ready(page);
   const held = [];
   await routeDownloads(page, (route, search) => {
-    if (search === 'alpha') return new Promise(resolve => held.push(() => resolve(route.fulfill(listAnswer(search)))));
+    if (search === 'alpha') return new Promise(resolve => held.push(() => resolve(route.fulfill(listAnswer(search)).catch(() => {}))));
     return route.fulfill(listAnswer(search));
   });
   await openDownloads(page);
   const box = page.locator('#torrent-search');
   await box.click();
   await box.pressSequentially('alpha', {delay: 20});
+  await page.clock.runFor(250);
   await expect.poll(() => held.length).toBe(1);
   await box.fill('');
   await box.pressSequentially('bravo', {delay: 20});
+  await page.clock.runFor(250);
   await expect.poll(() => rowNames(page)).toEqual(['bravo one']);
-  // The slow, older answer arrives last and is discarded.
+  // The slow, older answer, if it still arrives, is discarded.
   held.forEach(release => release());
   await page.waitForTimeout(300);
   expect(await rowNames(page)).toEqual(['bravo one']);

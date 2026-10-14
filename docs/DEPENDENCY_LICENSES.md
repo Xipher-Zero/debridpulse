@@ -53,7 +53,7 @@ the lock file and `licenses/python-runtime.json`.
 | joserfc | 1.7.4 | BSD-3-Clause |
 | markdown | 3.10.3 | BSD-3-Clause |
 | more-itertools | 11.1.0 | MIT |
-| multidict | 6.7.1 | Apache-2.0 |
+| multidict | 6.9.1 | Apache-2.0 |
 | oauthlib | 4.0.0 | BSD-3-Clause |
 | orjson | 3.11.9 | MPL-2.0 AND (Apache-2.0 OR MIT) |
 | portend | 3.2.1 | MIT |

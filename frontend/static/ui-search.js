@@ -12,7 +12,8 @@
  * Every request a list makes, search-driven or not (a page, a filter, a
  * refresh), takes a ticket here; only the newest ticket's answer may be
  * shown, so a slow or out-of-order response never lands under newer text,
- * filters or pages. A query the server rejects as invalid is not kept:
+ * filters or pages. A superseded request is also cancelled (its ticket's
+ * signal aborts), so a slow answer never holds back the newer one. A query the server rejects as invalid is not kept:
  * the controller returns to the last query the server accepted and asks the
  * list to show it again, so the results always say what they are for. The
  * list keeps its own filters, order, pages, cursors, selection and rendering.
@@ -37,6 +38,8 @@
     let committed = input.value;
     let accepted = '';
     let latest = 0;
+    // The newest request's cancellation; aborted once it is superseded.
+    let inflight = null;
     let timer = null;
     // The state of the shown results, restored when an edit is undone.
     let settled = 'idle';
@@ -51,6 +54,12 @@
       input.setAttribute('aria-invalid', state === 'invalid' ? 'true' : 'false');
     }
     const editing = () => input.dataset.dpSearchState === 'editing';
+    // Every request in flight is superseded: none may be shown, so none is
+    // left to finish.
+    function supersede() {
+      latest++;
+      if (inflight) { inflight.abort(); inflight = null; }
+    }
     function commit() {
       if (timer) { clearTimeout(timer); timer = null; }
       if (input.value === committed) {
@@ -58,7 +67,7 @@
         return;
       }
       committed = input.value;
-      latest++;
+      supersede();
       show(committed.trim() ? 'searching' : 'idle');
       onCommit();
     }
@@ -81,15 +90,18 @@
       // when it is 'complete'.
       completeness: () => completeness,
       // A new request identity, carrying the query it sends -- the committed
-      // text, never the typing; every older request is superseded.
+      // text, never the typing -- and the signal that cancels it once it is
+      // superseded; every older request is superseded.
       request() {
-        const ticket = {id: ++latest, query: committed.trim()};
+        supersede();
+        inflight = new AbortController();
+        const ticket = {id: latest, query: committed.trim(), signal: inflight.signal};
         if (ticket.query && !editing() && !rejected) show('searching');
         return ticket;
       },
       current: ticket => Boolean(ticket) && ticket.id === latest,
       // Supersede every request in flight without starting one.
-      invalidate() { latest++; },
+      invalidate() { supersede(); },
       // The newest answer arrived: true when the list should show it.
       settle(ticket, search) {
         if (ticket.id !== latest) return false;
@@ -118,7 +130,7 @@
           tell(`${message} ${accepted ? `Results are still for “${accepted}”.` : `Showing all ${noun}.`}`, 'warn');
           rejected = true;
           committed = accepted;
-          latest++;
+          supersede();
           if (!editing()) show('invalid');
           onCommit();
           return 'retried';
@@ -132,7 +144,7 @@
         input.value = '';
         committed = '';
         rejected = false;
-        latest++;
+        supersede();
         show('idle');
       },
     });
