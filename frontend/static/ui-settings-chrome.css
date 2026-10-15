@@ -131,6 +131,23 @@ body.light #view-settings .dp-settings-tab-glyph {
   gap: 10px;
 }
 
+/* A card title that carries its purpose as a second line (card()
+   ``titleHint``): title over hint, the pair centred against the glyph. */
+#view-settings .dp-settings-card-title-stack {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+#view-settings .dp-settings-card-title-hint {
+  color: var(--dp-text-muted);
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 1.4;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 /* Keep provider/engine disclosures visually subordinate to their primary rows:
    labels are inset from the card datum, chevrons remain immediately after the
    label, and revealed controls step in one level farther. */

@@ -527,8 +527,8 @@ class Extractor:
                     try:
                         dest_root = dest.resolve()
                         nested_archives = []
-                        for created in created_files:
-                            candidate = Path(created)
+                        for written in created_files:
+                            candidate = Path(written)
                             try:
                                 relative = candidate.resolve().relative_to(dest_root)
                             except (OSError, ValueError):

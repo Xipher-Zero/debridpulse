@@ -372,6 +372,17 @@ class ExternalClients:
                 await db.rollback()
                 raise ExternalRefused("client_job_limit", "This client has too many unsettled jobs", status=429,
                                       retryable=True)
+            # The catalog as it is NOW, inside this write transaction: the
+            # profile write owner (``api.external_routes``) counts a profile's
+            # dependent jobs and replaces the catalog inside its own one, so a
+            # reservation either exists before a catalog change (and is
+            # counted) or is selected against the changed catalog -- never
+            # admitted under a profile that has just been removed or narrowed.
+            current = _settings().external_delivery.select(client_id, category)
+            if current is None or current.id != profile.id or source.kind not in current.source_kinds:
+                await db.rollback()
+                raise ExternalRefused("unknown_category", "This category selects no delivery profile for this client")
+            profile = current
             await db.execute(
                 """INSERT INTO external_jobs(id,client_id,account_id,credential_id,idempotency_key,intent_digest,
                        source_kind,source_summary,category,profile_id,profile_snapshot,display_name,client_reference,
@@ -383,6 +394,25 @@ class ExternalClients:
                  str(uuid.uuid4()), "dlv_" + uuid.uuid4().hex, now, now))
             await db.commit()
             return await db.fetchone("SELECT * FROM external_jobs WHERE id=?", (job_id,))
+
+    @staticmethod
+    async def profile_dependents(db, profile_id: str, clients=None) -> int:
+        """How many of a delivery profile's jobs still depend on it, in the
+        caller's transaction: every reservation not yet accepted (its
+        admission may be in flight) and every accepted job not yet settled --
+        not withdrawn, its delivery neither acknowledged nor expired, its work
+        not cancelled or deleted. ``clients``, when given, counts only those
+        clients' jobs. The authoritative impact of changing what the profile
+        delivers (``api.external_routes.put_external_profiles``)."""
+        clients = None if clients is None else sorted(set(clients))
+        if clients == []:
+            return 0
+        where = f" AND client_id IN ({','.join('?' * len(clients))})" if clients else ""
+        row = await db.fetchone(
+            f"""SELECT COUNT(*) AS n FROM external_jobs WHERE profile_id=?
+                AND (demand_id IS NULL OR COALESCE(json_extract(projection,'$.settled'),0)=0){where}""",
+            (str(profile_id), *(clients or ())))
+        return int(row["n"])
 
     async def _admit(self, principal, job: dict, source) -> None:
         """Admit through the existing submission seam with the job's reserved

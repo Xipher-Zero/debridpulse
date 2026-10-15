@@ -792,7 +792,8 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 
 #view-settings .dp-settings-users-table,
-#view-settings .dp-settings-users-tokens {
+#view-settings .dp-settings-users-tokens,
+#view-settings .dp-settings-profiles-table {
   width: 100%;
 }
 
@@ -804,7 +805,7 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 /* An account table is not a transfer table: the transfer tables' narrow-width
    column reduction (ui-transfer-contract.css) never removes its Status or
    Actions. It scrolls inside its own wrapper instead. */
-#view-settings :is(.dp-settings-users-table, .dp-settings-users-tokens) :is(th, td) {
+#view-settings :is(.dp-settings-users-table, .dp-settings-users-tokens, .dp-settings-profiles-table) :is(th, td) {
   display: table-cell;
 }
 
@@ -938,6 +939,93 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 }
 .dp-modal-dialog.dp-account-dialog .dp-account-view[hidden] {
   display: none;
+}
+
+/* Integration Delivery Profiles: the catalog table's category chips, and
+   the profile dialog. The dialog keeps its header and footer and scrolls its
+   own body on a short viewport; its three views (form, token, disclosure)
+   swap in place. */
+#view-settings .dp-settings-profiles-table td {
+  vertical-align: top;
+}
+.dp-settings-profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 0 4px 4px 0;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-family: var(--dp-font-mono);
+  font-size: 11.5px;
+}
+.dp-modal-dialog.dp-profile-dialog {
+  width: min(600px, 100%);
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+.dp-modal-dialog.dp-profile-dialog > .dp-modal-header,
+.dp-modal-dialog.dp-profile-dialog > .dp-modal-footer {
+  flex: 0 0 auto;
+}
+.dp-modal-dialog.dp-profile-dialog > .dp-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.dp-modal-dialog.dp-profile-dialog .dp-profile-view {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.dp-modal-dialog.dp-profile-dialog .dp-profile-view[hidden],
+.dp-modal-dialog.dp-profile-dialog .dp-modal-field[hidden] {
+  display: none;
+}
+.dp-profile-chips,
+.dp-profile-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.dp-profile-chip-remove {
+  border: 0;
+  background: none;
+  color: var(--dp-text-muted);
+  cursor: pointer;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+}
+.dp-profile-checks {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.dp-profile-kinds {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+}
+.dp-profile-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+.dp-profile-create-token {
+  align-self: flex-start;
+}
+.dp-profile-error {
+  margin: 0;
+  color: var(--dp-state-error);
+  font-size: 12px;
+  line-height: 1.45;
+}
+@media (max-width: 620px) {
+  .dp-modal-dialog.dp-profile-dialog {
+    max-height: calc(100dvh - 24px);
+  }
 }
 .dp-modal-dialog.dp-account-dialog .dp-account-email-value {
   min-height: var(--dp-input-height, 38px);

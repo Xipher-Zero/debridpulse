@@ -125,10 +125,28 @@ another client's input.
 
 ## 4. Categories and delivery profiles
 
-An Admin owns the catalog through `GET`/`PUT /api/external/profiles`. The PUT
-takes `{profiles, expected_revision}` and returns `409 stale_revision` on a lost
-update. It is configuration only; there is no Settings UI. The whole-settings
-`PUT /api/settings` carries the catalog forward unchanged.
+An Admin owns the catalog through `GET`/`PUT /api/external/profiles`, and edits
+it in Settings → Users & Access → **Integration Delivery Profiles**.
+
+- **Lost updates.** The PUT takes `{profiles, expected_revision}` and returns
+  `409 stale_revision` on a lost update.
+- **Settings document.** The whole-settings `PUT /api/settings` carries the
+  catalog forward unchanged.
+- **Profile in use.** A PUT that would take a profile away from jobs that still
+  depend on it is refused with `409 profile_in_use`, giving per profile `id`,
+  `change` and `affected_jobs`, plus the total. Nothing is changed. A dependent
+  job is a reservation still being admitted, or an accepted job that is not
+  settled: not withdrawn, delivery neither acknowledged nor expired, work not
+  cancelled or deleted. The refused changes are:
+  - deleting the profile;
+  - moving its `local_root` or effective `import_root`;
+  - removing a client that such a job belongs to.
+- **Always editable.** Categories, source kinds, retention and added clients
+  govern only what is admitted or committed next.
+- **No admission race.** The count and the catalog replacement happen inside one
+  database write transaction. An external reservation re-selects its profile
+  inside its own, so a submission is either counted or refused, never admitted
+  under a profile that has just been removed or narrowed.
 
 | Field | Meaning |
 |---|---|

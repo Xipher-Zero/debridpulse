@@ -17,6 +17,7 @@ from application.dependencies import get_application
 from application.service import ApplicationService
 from core.config import config_write_lock, get_settings, journal_configuration_change, load_settings, \
     save_settings, apply_settings
+from db.database import get_db
 from external.profiles import DeliveryProfile, ExternalDeliverySettings, confined_to
 from external.service import ExternalClients, ExternalRefused
 
@@ -113,11 +114,33 @@ async def get_external_profiles():
     return get_settings().external_delivery.model_dump()
 
 
+def _narrowing(before: DeliveryProfile, after: DeliveryProfile | None) -> tuple[str, set[str] | None] | None:
+    """What a catalog write takes away from a profile's existing jobs: the
+    whole profile (deleted, or its roots moved -- every job's delivery is
+    re-verified against them) or some of its clients (only those clients'
+    jobs lose their grant). Categories, source kinds, retention and added
+    clients govern only what is admitted or committed next."""
+    if after is None:
+        return "deleted", None
+    if after.local_root != before.local_root or after.effective_import_root != before.effective_import_root:
+        return "roots_changed", None
+    removed = set(before.clients) - set(after.clients)
+    return ("clients_removed", removed) if removed else None
+
+
 @router.put("/external/profiles")
 async def put_external_profiles(body: ProfilesUpdate, application: ApplicationService = Depends(get_application)):
     """Replace the delivery profile catalog. A write based on a stale
     revision is refused (409). A profile's ``local_root`` must be the
-    download folder or beneath it."""
+    download folder or beneath it.
+
+    A write that would take a profile away from jobs that still depend on it
+    -- deleting it, moving its roots, or removing a client -- is refused
+    (``409 profile_in_use``) with the affected job count, while any such job
+    is unsettled (``ExternalClients.profile_dependents``). The count and the
+    catalog replacement happen inside one database write transaction, the
+    same one an external reservation takes, so no admission can slip between
+    them."""
     async with application.application_operation():
         async with config_write_lock():
             previous = get_settings()
@@ -135,8 +158,27 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
             except ValidationError as exc:
                 raise HTTPException(422, {"code": "invalid_profile",
                                           "message": "; ".join(str(item.get("msg")) for item in exc.errors())})
-            current.external_delivery = catalog
-            save_settings(current)
-            apply_settings(current)
+            replaced = {profile.id: profile for profile in catalog.profiles}
+            async with get_db() as db:
+                await db.execute("BEGIN IMMEDIATE")
+                in_use = []
+                for before in current.external_delivery.profiles:
+                    narrowing = _narrowing(before, replaced.get(before.id))
+                    if narrowing is None:
+                        continue
+                    count = await ExternalClients.profile_dependents(db, before.id, narrowing[1])
+                    if count:
+                        in_use.append({"id": before.id, "change": narrowing[0], "affected_jobs": count})
+                if in_use:
+                    await db.rollback()
+                    total = sum(item["affected_jobs"] for item in in_use)
+                    raise HTTPException(409, {
+                        "code": "profile_in_use", "profiles": in_use, "affected_jobs": total,
+                        "message": f"{total} unsettled external job{'s' if total != 1 else ''} still depend"
+                                   f"{'s' if total == 1 else ''} on this profile; nothing was changed"})
+                current.external_delivery = catalog
+                save_settings(current)
+                apply_settings(current)
+                await db.commit()
             await journal_configuration_change(previous, current)
     return catalog.model_dump()

@@ -16,6 +16,7 @@ const CARDS = {
   'Authentication Status': ['authentication', 'shield-check'], 'Username & Password': ['authentication', 'user-lock'],
   'OpenID Connect': ['authentication', 'id-card'],
   'User Accounts': ['users', 'users'], 'Integration Accounts': ['users', 'key-round'],
+  'Integration Delivery Profiles': ['users', 'workflow-users'],
   'Discord Notifications': ['notifications', 'message-square'], 'Statistics Reporting': ['notifications', 'chart-line'],
   'Backups & Retention': ['maintenance', 'archive'], 'Database Reset Controls': ['maintenance', 'database-x'],
 };
@@ -147,6 +148,7 @@ const HEADERS = [
   ['authentication', 'OpenID Connect', '.dp-settings-oidc-card', 'authentication', 'id-card'],
   ['users', 'User Accounts', '.dp-settings-users-card:not(.dp-settings-users-integrations-card)', 'users', 'users'],
   ['users', 'Integration Accounts', '.dp-settings-users-integrations-card', 'users', 'key-round'],
+  ['users', 'Integration Delivery Profiles', '.dp-settings-delivery-profiles-card', 'users', 'workflow-users'],
   ['notifications', 'Discord Notifications', '.dp-settings-discord-card', 'notifications', 'message-square'],
   ['notifications', 'Statistics Reporting', '.dp-settings-statistics-reporting-card', 'notifications', 'chart-line'],
   ['maintenance', 'Backups & Retention', '.dp-settings-backups-retention-card', 'maintenance', 'archive'],
@@ -181,7 +183,7 @@ async function pixelDelta(page, before, after, where) {
 }
 
 for (const theme of ['dark', 'light']) {
-  test(`all sixteen Settings subsection headers wear the one header chip with inner and outer glow (${theme}, 1440px)`, async ({page}) => {
+  test(`all seventeen Settings subsection headers wear the one header chip with inner and outer glow (${theme}, 1440px)`, async ({page}) => {
     await openSettings(page, 'sources');
     if (theme === 'light') await page.evaluate(() => document.body.classList.add('light'));
     const facts = [];
@@ -202,7 +204,8 @@ for (const theme of ['dark', 'light']) {
         const box = chipNode.getBoundingClientRect();
         const image = chipNode.querySelector('img');
         const glyphBox = image.getBoundingClientRect();
-        const text = node.querySelector('.dp-settings-card-title-text').getBoundingClientRect();
+        // A title that carries a hint centres the title/hint stack on the chip.
+        const text = (node.querySelector('.dp-settings-card-title-stack') || node.querySelector('.dp-settings-card-title-text')).getBoundingClientRect();
         const neutral = value => value.replace(/color\([^)]*\)|rgba?\([^)]*\)/g, 'C');
         return {
           colour: style.getPropertyValue('--dp-protocol-color').trim(),

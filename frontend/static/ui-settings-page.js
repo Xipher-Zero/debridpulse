@@ -26,6 +26,9 @@
     // tokens, read when Settings loads and after every account action. null
     // while unread; an unreadable directory is an error, never an empty list.
     users: {accounts: null, tokens: {}, error: ''},
+    // The Admin-owned delivery-profile catalog (GET /external/profiles):
+    // its profiles and the revision a write must name. null while unread.
+    profiles: {catalog: null, error: ''},
     // The journal's retained event count: undefined while it is being read,
     // null when it could not be, otherwise the number.
     recordedEvents: undefined,
@@ -709,7 +712,12 @@
     let titleMarkup = html(title);
     if (options.titlePrefix) {
       titleClass = 'card-title dp-settings-card-title--with-icon';
-      titleMarkup = `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
+      // ``titleHint``: the card's one-line purpose, stacked beneath its title
+      // beside the glyph, in place of a centred header copy.
+      titleMarkup = options.titleHint
+        ? `${options.titlePrefix}<span class="dp-settings-card-title-stack"><span class="dp-settings-card-title-text">${
+          html(title)}</span><span class="dp-settings-card-title-hint">${html(options.titleHint)}</span></span>`
+        : `${options.titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>`;
     }
     const centerClass = ['dp-settings-card-header-center', options.headerCenterClass].filter(Boolean).join(' ');
     /* The SAME operational header rail a provider card renders: what the
@@ -3714,7 +3722,13 @@
       headerCenterClass: 'dp-settings-auth-header-copy',
       headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-integration">Add Integration Account</button>',
     });
-    return people + automation;
+    const delivery = card('Integration Delivery Profiles', profileRows(), {
+      className: 'dp-settings-delivery-profiles-card',
+      titlePrefix: familyIcon('users', 'workflow-users'),
+      titleHint: 'Configure how external applications access completed downloads.',
+      headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">Create Delivery Profile</button>',
+    });
+    return people + automation + delivery;
   }
 
   function usersPanel() {
@@ -3743,7 +3757,18 @@
     } catch (error) {
       state.users = {accounts: null, tokens: {}, error: text(error.message)};
     }
+    await loadProfiles();
     paintUsers();
+  }
+
+  async function loadProfiles() {
+    try {
+      const catalog = await request('GET', '/external/profiles', undefined, 10000);
+      state.profiles = {catalog: {profiles: Array.isArray(catalog?.profiles) ? catalog.profiles : [],
+        revision: Number(catalog?.revision || 0)}, error: ''};
+    } catch (error) {
+      state.profiles = {catalog: null, error: text(error.message)};
+    }
   }
 
   const accountById = id => (state.users.accounts || []).find(account => account.id === id) || null;
@@ -4058,28 +4083,35 @@
       cancelLabel: 'Done',
       className: 'dp-token-disclosure-dialog',
       mount(body) {
-        body.innerHTML = `
-          <div class="dp-token-disclosure" role="group" aria-label="One-time API token disclosure">
-            <b class="dp-token-disclosure-warning">Copy this token now. DebridPulse will not display it again.</b>
-            ${embeddedActionField(
-              '<input class="input" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly issued API token">',
-              '<button class="btn btn-ghost btn-sm" type="button" data-token-copy>Copy</button>')}
-          </div>`;
-        const field = body.querySelector('input');
-        field.value = issued.token;
-        body.querySelector('[data-token-copy]').addEventListener('click', async () => {
-          try {
-            await navigator.clipboard.writeText(field.value);
-            notify('Token copied', 'success');
-          } catch (_) {
-            field.select();
-            notify('Select and copy the token manually', 'info');
-          }
-        });
-        return field;
+        return tokenDisclosure(body, issued);
       },
     });
     await dialog.closed;
+  }
+
+  /* The one-time disclosure itself, into ``container``: the raw value lives
+   * only in its own input, and leaves the DOM with that container's content.
+   * Issue Token and a delivery profile's Create API Token both show it. */
+  function tokenDisclosure(container, issued) {
+    container.innerHTML = `
+      <div class="dp-token-disclosure" role="group" aria-label="One-time API token disclosure">
+        <b class="dp-token-disclosure-warning">Copy this token now. DebridPulse will not display it again.</b>
+        ${embeddedActionField(
+          '<input class="input" type="text" readonly autocomplete="off" spellcheck="false" aria-label="Newly issued API token">',
+          '<button class="btn btn-ghost btn-sm" type="button" data-token-copy>Copy</button>')}
+      </div>`;
+    const field = container.querySelector('input');
+    field.value = issued.token;
+    container.querySelector('[data-token-copy]').addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(field.value);
+        notify('Token copied', 'success');
+      } catch (_) {
+        field.select();
+        notify('Select and copy the token manually', 'info');
+      }
+    });
+    return field;
   }
 
   async function revokeToken(account, tokenId) {
@@ -4092,6 +4124,443 @@
     if (!confirmed) return;
     await accountAct(() => request('DELETE', `/accounts/${encodeURIComponent(account.id)}/tokens/${encodeURIComponent(tokenId)}`,
       undefined, 10000), 'Token revoked');
+  }
+
+  /* ── Integration Delivery Profiles ─────────────────────────────────────
+   *
+   * The Admin-owned external delivery-profile catalog (GET/PUT
+   * /external/profiles), edited whole: every write names the revision it was
+   * read at and carries every other profile unchanged, so a concurrent edit is
+   * refused (stale_revision), never overwritten. The server decides
+   * everything else -- confinement, uniqueness, and whether a profile may be
+   * taken away from jobs that still depend on it (profile_in_use, with its
+   * own count) -- and its refusal is what this card shows. A profile stores
+   * stable client IDs; tokens are shown by their labels, read from the
+   * account directory this page already holds. */
+  const PROFILE_SOURCE_KINDS = Object.freeze([
+    ['links', 'Direct Links'], ['magnet', 'Magnet Links'], ['torrent', 'Torrent Files'],
+    ['nzb_link', 'NZB Links'], ['nzb', 'NZB Files']]);
+  // The category strings *arr download clients send by default: suggestions
+  // to pick, never a policy. Any other category may be typed.
+  const PROFILE_CATEGORY_SUGGESTIONS = Object.freeze([
+    ['tv-sonarr', 'Sonarr · qBittorrent'], ['radarr', 'Radarr · qBittorrent'],
+    ['tv', 'Sonarr · SABnzbd'], ['movies', 'Radarr · SABnzbd']]);
+  const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
+  const DEFAULT_RETENTION_HOURS = 168;
+
+  const profileById = id => (state.profiles.catalog?.profiles || []).find(profile => profile.id === id) || null;
+
+  // client ID -> the live tokens that authenticate as that client.
+  function tokenClients() {
+    const clients = new Map();
+    (state.users.accounts || []).filter(account => liveAccount(account) && isIntegration(account)).forEach(account => {
+      (state.users.tokens[account.id] || []).forEach(token => {
+        const entry = clients.get(token.client_id) || {clientId: token.client_id, tokens: []};
+        entry.tokens.push({label: text(token.label), account: accountName(account), enabled: !!account.enabled});
+        clients.set(token.client_id, entry);
+      });
+    });
+    return clients;
+  }
+
+  function clientLabel(clients, clientId) {
+    const entry = clients.get(clientId);
+    if (!entry) return 'Client with no active token';
+    return entry.tokens.map(token => `${token.label} · ${token.account}`).join(', ');
+  }
+
+  function profileRows() {
+    const profiles = state.profiles;
+    if (profiles.error) return `<div class="dp-settings-load-error"><b>Delivery profiles could not be loaded.</b><span>${html(profiles.error)}</span></div>`;
+    if (!profiles.catalog) return '<div class="dp-settings-loading">Loading delivery profiles…</div>';
+    if (!profiles.catalog.profiles.length) {
+      return '<div class="dp-settings-users-empty">No delivery profiles. Create one so an external application can import what DebridPulse downloads.</div>';
+    }
+    const clients = tokenClients();
+    const kinds = Object.fromEntries(PROFILE_SOURCE_KINDS);
+    return `
+      <div class="dp-settings-users-table-wrap">
+        <table class="t-table dp-settings-profiles-table">
+          <thead><tr><th>Profile</th><th>Categories</th><th>API Tokens</th><th>Sources</th><th>Paths</th><th>Retention</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
+          <tbody>${profiles.catalog.profiles.map(profile => {
+            const id = html(profile.id);
+            const importRoot = profile.import_root || profile.local_root;
+            const tokens = profile.clients.length
+              ? profile.clients.map(clientId => `<div${clients.has(clientId) ? '' : ' class="dp-settings-users-detail"'}>${html(clientLabel(clients, clientId))}</div>`).join('')
+              : '<span class="dp-settings-users-detail">None</span>';
+            const sources = profile.source_kinds.length === PROFILE_SOURCE_KINDS.length
+              ? 'All' : profile.source_kinds.map(kind => kinds[kind] || kind).join(', ');
+            return `
+            <tr data-profile-row="${id}">
+              <td><b>${id}</b></td>
+              <td>${profile.categories.length ? profile.categories.map(category => `<span class="dp-settings-profile-chip">${html(category)}</span>`).join('') : '<span class="dp-settings-users-detail">None</span>'}</td>
+              <td>${tokens}</td>
+              <td class="dp-settings-users-detail">${html(sources)}</td>
+              <td class="dp-settings-users-detail"><div>${html(profile.local_root)}</div>${importRoot !== profile.local_root ? `<div>→ ${html(importRoot)}</div>` : ''}</td>
+              <td class="dp-settings-users-detail">${html(profile.retention_hours)} h</td>
+              <td><div class="dp-settings-users-actions">
+                <button class="btn btn-ghost btn-sm" type="button" data-user-action="edit-profile" data-profile-id="${id}">Edit</button>
+                <button class="btn btn-danger btn-sm" type="button" data-user-action="delete-profile" data-profile-id="${id}">Delete</button>
+              </div></td>
+            </tr>`;
+          }).join('')}
+          </tbody>
+        </table>
+      </div>`;
+  }
+
+  // The catalog write's refusal, in the server's own words and figures.
+  function profileRefusal(error) {
+    const detail = error?.detail && typeof error.detail === 'object' && !Array.isArray(error.detail) ? error.detail : {};
+    if (error?.status === 409 && detail.code === 'stale_revision') {
+      return {code: 'stale_revision', message: 'The profile catalog was changed elsewhere. Reload it, review your changes, and save again. Your draft is kept.'};
+    }
+    if (error?.status === 409 && detail.code === 'profile_in_use') {
+      return {code: 'profile_in_use', message: text(detail.message || error.message),
+        affected: Number(detail.affected_jobs || 0)};
+    }
+    return {code: text(detail.code || 'error'), message: text(error?.message || 'The profile could not be saved')};
+  }
+
+  async function writeCatalog(profiles, revision) {
+    const saved = await request('PUT', '/external/profiles', {expected_revision: revision, profiles}, 15000);
+    state.profiles = {catalog: {profiles: Array.isArray(saved?.profiles) ? saved.profiles : [],
+      revision: Number(saved?.revision || 0)}, error: ''};
+    paintUsers();
+    return saved;
+  }
+
+  async function deleteProfile(profile) {
+    if (!profile || !state.profiles.catalog) return;
+    const confirmed = await window.DPSettingsModal.confirm({
+      title: `Delete the ${profile.id} profile?`,
+      message: 'This removes only the delivery profile. API tokens, jobs, downloads and files are not deleted. '
+        + 'DebridPulse refuses while external jobs still depend on the profile.',
+      confirmLabel: 'Delete Profile',
+      tone: 'danger',
+    });
+    if (!confirmed) return;
+    const {profiles, revision} = state.profiles.catalog;
+    try {
+      await writeCatalog(profiles.filter(item => item.id !== profile.id), revision);
+      notify('Delivery profile deleted', 'success');
+    } catch (error) {
+      notify(profileRefusal(error).message, 'error');
+      await loadProfiles();
+      paintUsers();
+    }
+  }
+
+  function profileFormMarkup(profile, creating) {
+    const field = (name, label, control, hint = '') => `
+      <div class="dp-modal-field dp-profile-field" data-profile-section="${html(name)}">
+        <span class="form-label">${html(label)}</span>${control}${hint ? `<span class="form-hint">${hint}</span>` : ''}
+      </div>`;
+    return `
+      <div class="dp-profile-view" data-profile-view="form">
+        ${field('id', 'Profile ID', `<input class="input" data-profile-input="id" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-label="Profile ID"${creating ? '' : ' readonly'}>`,
+          creating ? 'Lowercase letters, digits, ".", "_" or "-". It identifies the profile and cannot be changed later.' : 'A profile’s ID cannot be changed.')}
+        ${field('categories', 'Categories', `
+          <div class="dp-profile-chips" data-profile-categories role="list" aria-label="Selected categories"></div>
+          <div class="dp-profile-suggestions" data-profile-suggestions></div>
+          ${embeddedActionField('<input class="input" data-profile-input="category" type="text" maxlength="64" autocomplete="off" spellcheck="false" aria-label="Custom category">',
+            '<button class="btn btn-ghost btn-sm" type="button" data-profile-add-category>Add</button>')}`,
+          'The category the external application sends with each download. Suggestions are the defaults Sonarr and Radarr use.')}
+        ${field('clients', 'Authorized API Tokens', `
+          <div class="dp-profile-checks" data-profile-clients role="group" aria-label="Authorized API Tokens"></div>
+          <button class="btn btn-ghost btn-sm dp-profile-create-token" type="button" data-profile-create-token>Create API Token</button>`,
+          'The external applications allowed to use this profile.')}
+        ${field('source_kinds', 'Source Types', `
+          <div class="dp-profile-checks dp-profile-kinds" role="group" aria-label="Source Types">${PROFILE_SOURCE_KINDS.map(([kind, label]) => `
+            <label class="dp-profile-check"><input type="checkbox" data-profile-kind="${html(kind)}"> <span>${html(label)}</span></label>`).join('')}
+          </div>`)}
+        ${field('local_root', 'DP Download Path', '<input class="input" data-profile-input="local_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false" aria-label="DP Download Path">',
+          'Where DebridPulse’s completed downloads for this profile lie: the download folder or a folder beneath it.')}
+        ${field('import_root', 'External Import Path', '<input class="input" data-profile-input="import_root" type="text" maxlength="1024" autocomplete="off" spellcheck="false" aria-label="External Import Path">',
+          'The same folder as the external application sees it, when it mounts it at another path.')}
+        ${field('retention_hours', 'Retention', embeddedActionField('<input class="input" data-profile-input="retention_hours" type="number" min="1" max="8760" step="1" aria-label="Retention in hours">', fieldUnit('hours')),
+          'How long a completed download is offered to the application. Nothing is deleted when it ends.')}
+        <p class="dp-profile-error" data-profile-error role="alert" hidden></p>
+      </div>
+      <div class="dp-profile-view" data-profile-view="token" hidden>
+        <p class="dp-modal-message">Create an API token for an Integration account. Your profile draft is kept.</p>
+        <label class="dp-modal-field"><span class="form-label">Integration Account</span><select class="input" data-token-input="account"></select></label>
+        <label class="dp-modal-field" data-token-new-account hidden><span class="form-label">New Integration Account Name</span><input class="input" data-token-input="account_name" type="text" maxlength="256" autocomplete="off"></label>
+        <label class="dp-modal-field"><span class="form-label">Token Label</span><input class="input" data-token-input="label" type="text" maxlength="128" autocomplete="off"></label>
+        <p class="dp-profile-error" data-token-error role="alert" hidden></p>
+      </div>
+      <div class="dp-profile-view" data-profile-view="disclosure" hidden></div>`;
+  }
+
+  /* Create and Edit: one form in the canonical dialog. Create API Token is a
+   * view of the SAME dialog -- the profile draft stays in this dialog's own
+   * controls while the token form and then the one-time disclosure are shown,
+   * and the new token's client is selected on return. Nothing is written
+   * until Save; a refused Save keeps the dialog and its draft open. */
+  async function profileDialog(existing) {
+    if (!state.profiles.catalog) return;
+    const creating = !existing;
+    let base = state.profiles.catalog;
+    const draft = {
+      id: existing?.id || '',
+      categories: [...(existing?.categories || [])],
+      clients: new Set(existing?.clients || []),
+      // Clients the profile already grants stay listed (and granted) until
+      // the Admin removes them, even when no active token names them now.
+      retained: [...(existing?.clients || [])],
+      kinds: new Set(existing?.source_kinds || PROFILE_SOURCE_KINDS.map(([kind]) => kind)),
+    };
+    let view = 'form';
+    let importEdited = false;
+    let controls = {};
+    let dialogBody = null;
+
+    const show = (handle, next) => {
+      view = next;
+      dialogBody.querySelectorAll('[data-profile-view]').forEach(pane => { pane.hidden = pane.dataset.profileView !== next; });
+      if (next === 'form') {
+        handle.setAcceptLabel(creating ? 'Create Profile' : 'Save Profile');
+        handle.setCancelLabel('Cancel');
+        handle.setActionHidden('reload', !dialogBody.dataset.stale);
+      } else if (next === 'token') {
+        handle.setAcceptLabel('Create Token');
+        handle.setCancelLabel('Back');
+        handle.setActionHidden('reload', true);
+      } else {
+        handle.setAcceptLabel('Done');
+        handle.setCancelLabel('Back to Profile');
+        handle.setActionHidden('reload', true);
+      }
+    };
+    const showError = (node, message) => { node.textContent = message || ''; node.hidden = !message; };
+
+    function paintCategories() {
+      const list = dialogBody.querySelector('[data-profile-categories]');
+      list.innerHTML = draft.categories.map(category => `
+        <span class="dp-settings-profile-chip" role="listitem">${html(category)}<button class="dp-profile-chip-remove" type="button" data-profile-remove-category="${html(category)}" aria-label="Remove category ${html(category)}">×</button></span>`).join('')
+        || '<span class="dp-settings-users-detail">No categories yet.</span>';
+      dialogBody.querySelector('[data-profile-suggestions]').innerHTML = PROFILE_CATEGORY_SUGGESTIONS
+        .filter(([category]) => !draft.categories.includes(category))
+        .map(([category, label]) => `<button class="btn btn-ghost btn-sm" type="button" data-profile-suggest="${html(category)}" title="${html(label)}">+ ${html(category)}</button>`).join('');
+    }
+
+    function paintClients() {
+      const clients = tokenClients();
+      const ids = [...new Set([...clients.keys(), ...draft.retained])];
+      const list = dialogBody.querySelector('[data-profile-clients]');
+      list.innerHTML = ids.length ? ids.map(clientId => `
+        <label class="dp-profile-check"><input type="checkbox" data-profile-client="${html(clientId)}"${draft.clients.has(clientId) ? ' checked' : ''}> <span>${html(clientLabel(clients, clientId))}</span></label>`).join('')
+        : '<span class="dp-settings-users-detail">No API tokens yet. Create one here.</span>';
+    }
+
+    function addCategory(value) {
+      const category = String(value || '').trim();
+      if (!category) return;
+      if (!draft.categories.some(item => item.toLowerCase() === category.toLowerCase())) draft.categories.push(category);
+      paintCategories();
+    }
+
+    function collect() {
+      const local = controls.local_root.value.trim();
+      const imported = controls.import_root.value.trim();
+      return {
+        id: controls.id.value.trim(),
+        categories: [...draft.categories],
+        clients: [...draft.clients],
+        source_kinds: PROFILE_SOURCE_KINDS.map(([kind]) => kind).filter(kind => draft.kinds.has(kind)),
+        representation: 'shared_path',
+        local_root: local,
+        import_root: imported === local ? '' : imported,
+        retention_hours: Number(controls.retention_hours.value),
+      };
+    }
+
+    // What the form can say before asking: the server still decides.
+    function invalid(profile) {
+      if (!PROFILE_ID_PATTERN.test(profile.id)) return 'Enter a Profile ID of lowercase letters, digits, ".", "_" or "-".';
+      if (creating && base.profiles.some(item => item.id === profile.id)) return `A profile named ${profile.id} already exists.`;
+      if (!profile.categories.length) return 'Add at least one category.';
+      const taken = new Set(base.profiles.filter(item => item.id !== profile.id)
+        .flatMap(item => item.categories.map(category => category.toLowerCase())));
+      const clash = profile.categories.find(category => taken.has(category.toLowerCase()));
+      if (clash) return `The category ${clash} already selects another profile.`;
+      if (!profile.clients.length) return 'Authorize at least one API token.';
+      if (!profile.source_kinds.length) return 'Choose at least one source type.';
+      const folder = text(state.settings?.download_folder || '/download').replace(/\/+$/, '') || '/';
+      const local = profile.local_root.replace(/\/+$/, '') || '/';
+      if (!local.startsWith('/') || (local !== folder && !local.startsWith(`${folder === '/' ? '' : folder}/`))) {
+        return `The DP Download Path must be ${folder} or a folder beneath it.`;
+      }
+      if (profile.import_root && !profile.import_root.startsWith('/')) return 'The External Import Path must be an absolute path.';
+      if (!Number.isInteger(profile.retention_hours) || profile.retention_hours < 1 || profile.retention_hours > 8760) {
+        return 'Retention is a whole number of hours from 1 to 8760.';
+      }
+      return '';
+    }
+
+    async function save(handle) {
+      const errorNode = dialogBody.querySelector('[data-profile-error]');
+      const profile = collect();
+      const problem = invalid(profile);
+      if (problem) { showError(errorNode, problem); return false; }
+      showError(errorNode, '');
+      const others = base.profiles.filter(item => item.id !== (existing?.id || profile.id));
+      const next = creating ? [...others, profile] : base.profiles.map(item => item.id === existing.id ? profile : item);
+      try {
+        await writeCatalog(next, base.revision);
+      } catch (error) {
+        const refusal = profileRefusal(error);
+        if (refusal.code === 'stale_revision') {
+          dialogBody.dataset.stale = '1';
+          handle.setActionHidden('reload', false);
+        }
+        showError(errorNode, refusal.message);
+        return false;
+      }
+      notify(creating ? 'Delivery profile created' : 'Delivery profile saved', 'success');
+      return true;
+    }
+
+    // An intentional reconciliation: the catalog is re-read and the draft is
+    // re-based on it; nothing is written until the Admin saves again.
+    async function reload(handle) {
+      const errorNode = dialogBody.querySelector('[data-profile-error]');
+      await loadProfiles();
+      paintUsers();
+      if (!state.profiles.catalog) { showError(errorNode, state.profiles.error || 'The catalog could not be read.'); return; }
+      base = state.profiles.catalog;
+      delete dialogBody.dataset.stale;
+      handle.setActionHidden('reload', true);
+      if (!creating && !base.profiles.some(item => item.id === existing.id)) {
+        handle.setAcceptEnabled(false);
+        showError(errorNode, 'This profile was deleted elsewhere. Close this dialog to continue.');
+        return;
+      }
+      showError(errorNode, 'The catalog was reloaded. Review your changes and save again.');
+    }
+
+    async function createToken(handle) {
+      const errorNode = dialogBody.querySelector('[data-token-error]');
+      const accountId = controls.account.value;
+      const label = controls.label.value.trim();
+      if (!label) { showError(errorNode, 'Enter a token label.'); return; }
+      if (accountId === '__new__' && !controls.account_name.value.trim()) { showError(errorNode, 'Name the new Integration account.'); return; }
+      showError(errorNode, '');
+      let issued;
+      try {
+        let id = accountId;
+        if (id === '__new__') {
+          id = (await request('POST', '/accounts', {kind: 'integration', display_name: controls.account_name.value.trim()}, 10000))?.id;
+        }
+        issued = await request('POST', `/accounts/${encodeURIComponent(id)}/tokens`, {label}, 10000);
+      } catch (error) {
+        showError(errorNode, text(error.message || 'The token could not be created'));
+        await loadUsers();
+        return;
+      }
+      if (!issued?.token || !issued.client_id) { showError(errorNode, 'The token could not be created'); return; }
+      draft.clients.add(issued.client_id);
+      if (!draft.retained.includes(issued.client_id)) draft.retained.push(issued.client_id);
+      const pane = dialogBody.querySelector('[data-profile-view="disclosure"]');
+      tokenDisclosure(pane, issued);
+      issued = null;
+      show(handle, 'disclosure');
+      pane.querySelector('[data-token-copy]')?.focus();
+      await loadUsers();
+    }
+
+    function backToForm(handle) {
+      // The one-time value leaves the DOM with the disclosure.
+      dialogBody.querySelector('[data-profile-view="disclosure"]').innerHTML = '';
+      paintClients();
+      show(handle, 'form');
+      dialogBody.querySelector('[data-profile-create-token]')?.focus();
+    }
+
+    function openTokenView(handle) {
+      const integrations = (state.users.accounts || []).filter(account => liveAccount(account) && isIntegration(account) && account.enabled);
+      controls.account.innerHTML = integrations.map(account => `<option value="${html(account.id)}">${html(accountName(account))}</option>`).join('')
+        + '<option value="__new__">New Integration Account…</option>';
+      controls.account_name.value = '';
+      controls.label.value = '';
+      dialogBody.querySelector('[data-token-new-account]').hidden = controls.account.value !== '__new__';
+      showError(dialogBody.querySelector('[data-token-error]'), '');
+      show(handle, 'token');
+      controls.label.focus();
+    }
+
+    const dialog = window.DPSettingsModal.open({
+      title: creating ? 'Create Delivery Profile' : `Edit Delivery Profile: ${existing.id}`,
+      acceptLabel: creating ? 'Create Profile' : 'Save Profile',
+      className: 'dp-users-dialog dp-profile-dialog',
+      actions: [{id: 'reload', label: 'Reload Catalog', placement: 'leading'}],
+      mount(body, handle) {
+        dialogBody = body;
+        body.innerHTML = profileFormMarkup(existing, creating);
+        body.querySelectorAll('[data-profile-input], [data-token-input]').forEach(control => {
+          controls[control.dataset.profileInput || control.dataset.tokenInput] = control;
+        });
+        controls.id.value = draft.id;
+        controls.local_root.value = existing?.local_root || text(state.settings?.download_folder || '/download');
+        controls.import_root.value = existing ? (existing.import_root || existing.local_root) : controls.local_root.value;
+        importEdited = Boolean(existing?.import_root && existing.import_root !== existing.local_root);
+        controls.retention_hours.value = String(existing?.retention_hours || DEFAULT_RETENTION_HOURS);
+        body.querySelectorAll('[data-profile-kind]').forEach(box => { box.checked = draft.kinds.has(box.dataset.profileKind); });
+        paintCategories();
+        paintClients();
+        handle.setActionHidden('reload', true);
+
+        controls.local_root.addEventListener('input', () => { if (!importEdited) controls.import_root.value = controls.local_root.value; });
+        controls.import_root.addEventListener('input', () => { importEdited = true; });
+        controls.category.addEventListener('keydown', event => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          addCategory(controls.category.value);
+          controls.category.value = '';
+        });
+        controls.account.addEventListener('change', () => {
+          body.querySelector('[data-token-new-account]').hidden = controls.account.value !== '__new__';
+        });
+        body.addEventListener('change', event => {
+          const kind = event.target.closest?.('[data-profile-kind]');
+          if (kind) kind.checked ? draft.kinds.add(kind.dataset.profileKind) : draft.kinds.delete(kind.dataset.profileKind);
+          const client = event.target.closest?.('[data-profile-client]');
+          if (client) client.checked ? draft.clients.add(client.dataset.profileClient) : draft.clients.delete(client.dataset.profileClient);
+        });
+        body.addEventListener('click', event => {
+          const suggestion = event.target.closest('[data-profile-suggest]');
+          if (suggestion) { addCategory(suggestion.dataset.profileSuggest); return; }
+          const remove = event.target.closest('[data-profile-remove-category]');
+          if (remove) {
+            draft.categories = draft.categories.filter(item => item !== remove.dataset.profileRemoveCategory);
+            paintCategories();
+            return;
+          }
+          if (event.target.closest('[data-profile-add-category]')) {
+            addCategory(controls.category.value);
+            controls.category.value = '';
+            controls.category.focus();
+            return;
+          }
+          if (event.target.closest('[data-profile-create-token]')) openTokenView(handle);
+        });
+        return creating ? controls.id : controls.local_root;
+      },
+      async onAccept(handle) {
+        if (view === 'token') { await createToken(handle); return false; }
+        if (view === 'disclosure') { backToForm(handle); return false; }
+        return save(handle);
+      },
+      onCancel(handle) {
+        if (view === 'token') { show(handle, 'form'); dialogBody.querySelector('[data-profile-create-token]')?.focus(); return false; }
+        if (view === 'disclosure') { backToForm(handle); return false; }
+        return true;
+      },
+      onAction(id) {
+        if (id === 'reload') void reload(dialog);
+      },
+    });
+    await dialog.closed;
   }
 
   /* An account's own requests, newest first: what was asked for, its
@@ -4210,7 +4679,10 @@
     if (!button || !root()?.contains(button)) return false;
     const action = button.dataset.userAction;
     const account = accountById(button.dataset.accountId || '');
-    if (action === 'create-local') void createLocalAccount();
+    if (action === 'create-profile') void profileDialog(null);
+    else if (action === 'edit-profile') void profileDialog(profileById(button.dataset.profileId || ''));
+    else if (action === 'delete-profile') void deleteProfile(profileById(button.dataset.profileId || ''));
+    else if (action === 'create-local') void createLocalAccount();
     else if (action === 'create-integration') void createIntegrationAccount();
     else if (action === 'merge') void mergeAccounts(String(button.dataset.mergeIds || '').split(',').filter(Boolean));
     else if (!account) return true;
@@ -5650,6 +6122,7 @@
       state.auth = fallbackAuthFromSettings(settings);
       syncAuthIntoSettings(state.auth);
       state.users = {accounts: null, tokens: {}, error: ''};
+      state.profiles = {catalog: null, error: ''};
       render();
       void loadUsers();
 
