@@ -2401,6 +2401,45 @@ class TransferRepository:
                     ORDER BY t.id""", terminal)
         return [int(row["id"]) for row in rows]
 
+    async def retire_vacated_directory(self, artifact_id: int, *, root: str, target: str, expected_demand,
+                                       settled=None) -> str:
+        """Remove a completed collection artifact's directory if it is empty,
+        in ONE write transaction that first proves, at its own commit, that
+        the transfer is still completed, no authorized writer of the artifact
+        is live, and its affected outstanding demand is still within
+        ``expected_demand`` (the claims the caller found settled) -- so a
+        claim, a reacquisition or a writer arriving meanwhile keeps it. The
+        directory itself is removed only by ``filesystem.remove_empty_directory``
+        (descriptor-relative, no-follow, empty only). ``settled(db)``: the
+        caller's own proof that those claims are still settled, evaluated in
+        this same transaction (so nothing that unsettles them can commit
+        between that proof and the removal). Returns that outcome, or
+        ``"not_eligible"`` / ``"claimed"`` / ``"unsettled"`` with nothing touched."""
+        from transfers.filesystem import DIRECTORY_REMOVED, remove_empty_directory
+
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            row = await db.fetchone(
+                """SELECT f.torrent_id, f.status, t.status AS transfer_status FROM download_files f
+                   JOIN torrents t ON t.id = f.torrent_id WHERE f.id=?""", (int(artifact_id),))
+            live = await db.fetchone(
+                """SELECT 1 FROM execution_attempts WHERE artifact_id=? AND authorized=1
+                   AND state NOT IN ('succeeded','failed','cancelled','absent')""", (int(artifact_id),))
+            if row is None or row["transfer_status"] != "completed" or row["status"] != "completed" or live:
+                await db.rollback()
+                return "not_eligible"
+            if not await self.hold_demand(db, int(row["torrent_id"]), expected_demand):
+                await db.rollback()
+                return "claimed"
+            if settled is not None and not await settled(db):
+                await db.rollback()
+                return "unsettled"
+            outcome = remove_empty_directory(root, target)
+            if outcome == DIRECTORY_REMOVED:
+                await journal(db, je.directory_retired(transfer_id=int(row["torrent_id"]), artifact_id=int(artifact_id)))
+            await db.commit()
+            return outcome
+
     async def served_transfers(self, demand_ids) -> list[int]:
         """The transfers whose affected demand these demands are part of:
         each one's own transfer, and every transfer an artifact of it was

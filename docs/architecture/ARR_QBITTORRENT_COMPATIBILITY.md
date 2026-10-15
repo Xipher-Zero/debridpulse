@@ -224,7 +224,7 @@ delete anything.
 |---|---|
 | Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed; nothing is removed at a provider. |
 | Unfinished, others need the work | Only this client's demand is withdrawn. |
-| Completed | The delivery is acknowledged. The transfer and its history stay. |
+| Completed | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
 | Failed | Withdrawn; the core's failure policy applies. |
 | Unknown, or another client's | Skipped silently: the answer is the same either way. |
 

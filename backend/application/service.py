@@ -613,11 +613,13 @@ class ApplicationService:
         consented = await self._local_network_consent([address], allow_local_network=allow_local_network)
         # The fallback name comes from the link's path alone: its query may be
         # an indexer's key, and a name is persisted.
-        request_name = safe_name(unquote(PurePosixPath(parts.path).name)) or "usenet-download.nzb"
+        path_name = safe_name(unquote(PurePosixPath(parts.path).name))
+        request_name = path_name or "usenet-download.nzb"
+        served: dict = {}
         try:
             async with aclosing(http_body(
                     address, max_bytes=self.staged_input.max_bytes,
-                    private_lan=direct_link_host(address) in consented)) as body:
+                    private_lan=direct_link_host(address) in consented, facts=served)) as body:
                 payload = await self.staged_input.stage(body)
         except HttpReadRefused as exc:
             raise _submission_failure(*_NZB_LINK_FAILURES.get(exc.reason, _NZB_LINK_UNAVAILABLE),
@@ -637,9 +639,18 @@ class ApplicationService:
         # From here on the payload is admitted exactly as an uploaded one is,
         # and reclaimed by the same owner (``reclaim_staged_input``) if
         # admission never completes.
-        name = safe_name(manifest.name) or request_name.rsplit(".", 1)[0] or "usenet-download"
-        return await self.submit((TransferRequest("nzb", payload, name=request_name),), name=name, source=source,
-                                 demand=demand)
+        # The NZB's own file name, when the link declares one: the name it was
+        # served under (Content-Disposition, as indexers answer), else the
+        # ``.nzb`` file its path names. That names it as an upload's filename
+        # does; a link that declares none keeps the posting's name.
+        declared = safe_name(PurePosixPath(str(served.get("filename") or "").replace("\\", "/")).name)
+        supplied = next((item for item in (declared, path_name) if item.casefold().endswith(".nzb")), "")
+        if supplied:
+            request_name = supplied
+        name = (supplied[:-4] if supplied else "") or safe_name(manifest.name) or request_name.rsplit(".", 1)[0] \
+            or "usenet-download"
+        return await self.submit((TransferRequest("nzb", payload, name=request_name, name_supplied=bool(supplied)),),
+                                 name=name, source=source, demand=demand)
 
     async def _read_staged_nzb(self, payload, *, fallback_name: str):
         """The existing NZB reader's verdict on a staged payload, before

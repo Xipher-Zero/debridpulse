@@ -42,9 +42,87 @@ Owners in the code:
    - **API Key**: the token.
    - **Category**: the profile's category.
    - Leave **Use SSL** to match your listener.
-4. **Filesystem.** *arr must be able to read `import_root`. Remote Path Mapping is
-   *arr's own setting for mapping that path further. DebridPulse copies, links
-   and moves nothing.
+4. **Filesystem.** *arr must be able to read the completed files at the path
+   DebridPulse reports (next section). DebridPulse copies, links and moves
+   nothing.
+
+### Paths: one set of files, two points of view
+
+DebridPulse and *arr usually run in different containers or hosts and see the
+**same** completed files under **different** paths. Four settings are
+involved; they are not interchangeable:
+
+| Setting | Where | What it is |
+|---|---|---|
+| **Download Folder** | DebridPulse → Settings → Downloads | Where DebridPulse writes every download, in DebridPulse's own filesystem view (for example `/download`). |
+| **DP Download Path** | Integration Delivery Profile (Settings → Users & Access) | The same directory, or one beneath the Download Folder, as DebridPulse sees it. |
+| **External Import Path** | the same Integration Delivery Profile | That **same directory as *arr sees it**. DebridPulse replaces the DP Download Path prefix with it and keeps the rest of each path (the release folder and file names). Empty means *arr sees the same path DebridPulse does. |
+| **Root Folder** | *arr → Settings → Media Management | *arr's **final library** (for example `/movies`). It is **not** a download path; never point it at the Download Folder. |
+
+Each completed job is reported to *arr as one folder named after the
+submitted NZB file, without `.nzb` (for example `Release.Name.2026.1080p-GRP/`),
+never after a file inside it (an `.nfo`, `.par2` or `info.txt`), beneath the
+External Import Path. The files in it keep their own names. A second job
+with the same name gets its own folder. *arr's Completed Download Handling then imports from
+there into its Root Folder, moving or copying (hardlinking) the files as its
+own settings say.
+
+A path is only a name: both sides must actually **mount the same storage**,
+and *arr's user must be able to **traverse** every directory down to the files
+and **read** them (and write, for a move-style import). Typing a path creates
+no mount and grants no permission.
+
+**Recommended: translate once, in DebridPulse.** An illustrative example --
+these host paths are examples, not defaults:
+
+| | DebridPulse container | Radarr (another host) |
+|---|---|---|
+| Storage | `/download` (bind mount) | `/Volumes/SABnzbdDATA/AriaNG Downloads` (network share of the same disk) |
+| Setting | Download Folder `/download`; profile DP Download Path `/download`; External Import Path `/Volumes/SABnzbdDATA/AriaNG Downloads` | no Remote Path Mapping |
+| A finished file | `/download/Release.Name.2026.1080p-GRP/Release.Name.2026.1080p-GRP.mkv` | reported and imported as `/Volumes/SABnzbdDATA/AriaNG Downloads/Release.Name.2026.1080p-GRP/Release.Name.2026.1080p-GRP.mkv` |
+
+**Alternative: an *arr Remote Path Mapping.** Use it only when the profile does
+not translate (External Import Path empty) and *arr cannot see DebridPulse's
+path. In *arr → Settings → Download Clients → Remote Path Mappings:
+
+- **Host**: exactly the Host configured for the DebridPulse download client;
+- **Remote Path**: DebridPulse's path (the DP Download Path, e.g. `/download/`);
+- **Local Path**: where *arr sees that directory.
+
+Configure **one** of the two, not both: a mapping applied on top of an
+already-translated path no longer matches anything. Changing either setting
+needs no redownload: DebridPulse reports the new path on *arr's next poll.
+
+### After the import
+
+*arr removes a completed item from its download client once it has imported
+it (Completed Download Handling with "Remove Completed"). That removal is
+DebridPulse's **acknowledgement** of the delivery. Its effect:
+
+- The transfer and its history stay in DebridPulse.
+- If *arr moved the files out, DebridPulse removes the **empty** folder it had
+  created for them -- only once every claim on that transfer is a delivery
+  its client has acknowledged, and only if the folder is empty at that
+  moment. It deletes no file and never empties anything: a copy-style import,
+  a hardlink import or any leftover file keeps the folder and everything in
+  it. Another client's or an operator's own request for the same transfer
+  keeps it too.
+- An item *arr imported but never removed is not acknowledged: its folder
+  stays, and the item leaves *arr's history at the profile's Retention.
+- Folders from before this behaviour, and folders of transfers acknowledged
+  before it existed, are left as they are.
+
+### Troubleshooting
+
+| Symptom | Check |
+|---|---|
+| Queue shows **Downloaded — Waiting to Import**, or *arr reports `No files found are eligible for import in /download/...` | *arr is looking at DebridPulse's own path. Set the profile's External Import Path to the directory as *arr sees it (or add a Remote Path Mapping), then let *arr poll again. No resubmission is needed. |
+| The reported path is right but *arr still cannot import | From *arr's host, list the reported folder: the share or mount must be present, and *arr's user must be able to enter every directory and read the files (write, for a move). |
+| A folder exists but holds no video, or an unexpected file type | Look at the files in the folder: *arr imports only media it recognises. This is the posting's content, not a path problem. |
+| The download client test fails with `404` | No usable integration yet: the profile needs a category, `nzb` among its Source Types, and an active token of an authorized client (above). |
+| Jobs never appear in *arr's queue | The *arr category must match a category of a profile that authorizes this token's client. |
+| Completed downloads stay in *arr's queue | Enable Completed Download Handling and "Remove Completed" in *arr; until it removes them, the deliveries are not acknowledged. |
+| An empty folder remains after import | It is kept if another client or an operator's own request still needs the transfer, if anything is left in it, or if the delivery was not acknowledged. DebridPulse never deletes the folder's contents. |
 
 *arr's **Test** checks:
 
@@ -199,7 +277,7 @@ never authorize DebridPulse to delete anything.
 |---|---|
 | Unfinished, only this client needs the work | The job's demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed; nothing is removed at a provider. |
 | Unfinished, others need the work | Only this client's demand is withdrawn; the work continues. |
-| Completed | The delivery is acknowledged. DebridPulse keeps the transfer and its history. |
+| Completed | The delivery is acknowledged. DebridPulse keeps the transfer and its history; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed (see "After the import"). |
 | Failed | The demand is withdrawn. The core's failure policy applies. |
 | Another client's or an unknown ID | Skipped silently: the answer is the same either way. |
 

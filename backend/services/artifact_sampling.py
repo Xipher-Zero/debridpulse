@@ -1122,7 +1122,7 @@ BODY_CHUNK_BYTES = 1024 * 1024
 
 
 async def http_body(address: str, *, max_bytes: int, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
-                    private_lan: bool = False, chunk_bytes: int = BODY_CHUNK_BYTES):
+                    private_lan: bool = False, chunk_bytes: int = BODY_CHUNK_BYTES, facts: dict | None = None):
     """Stream the complete body of one HTTP(S) resource, read-only, chunk by
     chunk: an async iterator for a durable writer to consume as it arrives.
 
@@ -1136,7 +1136,11 @@ async def http_body(address: str, *, max_bytes: int, timeout_seconds: float = DE
     is as long as the body. A declared length above ``max_bytes`` is refused
     before any byte is delivered; the consumer enforces the bound on the bytes
     it actually receives. Content type is never consulted: what the bytes are
-    is the consumer's question. Any failure raises ``HttpReadRefused``."""
+    is the consumer's question. Any failure raises ``HttpReadRefused``.
+
+    ``facts``: when given, receives ``"filename"`` -- the name the answering
+    response declares for its body (``Content-Disposition``), unverified text
+    for the consumer to judge -- once that response is accepted."""
     if urlsplit(str(address or "")).scheme.casefold() not in SAMPLED_FINGERPRINT_SCHEMES:
         raise HttpReadRefused("unsupported_scheme")
     try:
@@ -1166,6 +1170,10 @@ async def http_body(address: str, *, max_bytes: int, timeout_seconds: float = DE
                     declared = 0
                 if declared > max_bytes:
                     raise HttpReadRefused("too_large", response.status)
+                if facts is not None:
+                    disposition = response.content_disposition
+                    if disposition is not None and disposition.filename:
+                        facts["filename"] = str(disposition.filename)
                 while True:
                     chunk = await response.content.read(max(1, int(chunk_bytes)))
                     if not chunk:

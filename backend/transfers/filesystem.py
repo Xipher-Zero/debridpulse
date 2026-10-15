@@ -662,3 +662,82 @@ def retire_materialization(root: str, plan: MaterializationPlan, footprint: Exec
     except OSError as exc:
         raise TransferError(NormalizedError(Domain.LOCAL_RESOURCE, Category.LOCAL_CLEANUP_FAILED, Stage.CLEANUP,
                                             retryability=Retryability.AFTER_RESOURCE_CHANGE)) from exc
+
+
+# Outcomes of ``remove_empty_directory``.
+DIRECTORY_REMOVED = "removed"
+DIRECTORY_ABSENT = "absent"
+DIRECTORY_NOT_EMPTY = "not_empty"
+DIRECTORY_REFUSED = "refused"
+
+
+def remove_empty_directory(root: str, target: str) -> str:
+    """Remove ``target`` if, at that instant, it is an empty directory
+    DebridPulse owns beneath ``root`` -- never anything else.
+
+    Every component below ``root`` is opened relative to its parent's open
+    descriptor with ``O_DIRECTORY | O_NOFOLLOW``, so no symlink anywhere on
+    the way is followed and no component can be swapped behind a path
+    string. The final name is checked through that parent descriptor
+    (``lstat``: a real directory, on the parent's device -- never a mount
+    point -- owned by this process's user) and removed with
+    ``rmdir(name, dir_fd=parent)``: the kernel refuses a non-empty directory
+    (``ENOTEMPTY``) and never follows or removes a symlink as a directory
+    (``ENOTDIR``). Nothing is ever recursed into, unlinked or emptied.
+
+    Returns ``"removed"``, ``"absent"`` (nothing there, or a path component
+    gone), ``"not_empty"``, or ``"refused"`` (outside ``root``, the root
+    itself, a symlink or non-directory anywhere, another owner or device,
+    a permission error, or a platform without descriptor-relative
+    ``rmdir``/``O_NOFOLLOW``). Never raises for any of those.
+    """
+    if (not hasattr(os, "O_NOFOLLOW") or not hasattr(os, "O_DIRECTORY")
+            or os.rmdir not in os.supports_dir_fd or os.stat not in os.supports_dir_fd
+            or os.open not in os.supports_dir_fd):
+        return DIRECTORY_REFUSED
+    base = os.path.normpath(str(root))
+    path = str(target)
+    # Only an exact, already-normal path: ".." or "." is never resolved
+    # lexically (a lexical ".." after a symlinked component means elsewhere).
+    if os.path.normpath(path) != path:
+        return DIRECTORY_REFUSED
+    if not os.path.isabs(base) or not os.path.isabs(path) or path == base \
+            or not path.startswith(base.rstrip("/") + "/"):
+        return DIRECTORY_REFUSED
+    parts = path[len(base.rstrip("/")) + 1:].split("/")
+    if any(part in {"", ".", ".."} for part in parts):
+        return DIRECTORY_REFUSED
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    try:
+        parent = os.open(base, os.O_RDONLY | os.O_DIRECTORY | getattr(os, "O_CLOEXEC", 0))
+    except OSError:
+        return DIRECTORY_REFUSED
+    try:
+        for part in parts[:-1]:
+            try:
+                child = os.open(part, flags, dir_fd=parent)
+            except FileNotFoundError:
+                return DIRECTORY_ABSENT
+            except OSError:
+                return DIRECTORY_REFUSED          # a symlink (ELOOP), a non-directory, no access
+            os.close(parent)
+            parent = child
+        name = parts[-1]
+        try:
+            facts = os.stat(name, dir_fd=parent, follow_symlinks=False)
+        except FileNotFoundError:
+            return DIRECTORY_ABSENT
+        except OSError:
+            return DIRECTORY_REFUSED
+        if (not stat.S_ISDIR(facts.st_mode) or facts.st_dev != os.fstat(parent).st_dev
+                or facts.st_uid != os.geteuid()):
+            return DIRECTORY_REFUSED
+        try:
+            os.rmdir(name, dir_fd=parent)
+        except FileNotFoundError:
+            return DIRECTORY_ABSENT
+        except OSError as exc:
+            return DIRECTORY_NOT_EMPTY if exc.errno in {errno.ENOTEMPTY, errno.EEXIST} else DIRECTORY_REFUSED
+        return DIRECTORY_REMOVED
+    finally:
+        os.close(parent)

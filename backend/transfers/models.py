@@ -359,9 +359,10 @@ class TransferRequest:
     # ``"item"`` or ``"collection"``; empty when no choice was asked. Recorded
     # at admission, never inferred; not identity.
     acquisition_scope: str = ""
-    # Whether ``name`` is the submitter's own name for the input (an uploaded
-    # file's filename); a name DebridPulse derived (a link's path) is not.
-    # Recorded at admission, never inferred; not identity.
+    # Whether ``name`` is the input's own declared file name (an uploaded
+    # file's filename, or the file name a fetched link was served under or
+    # names in its path); a name DebridPulse made up is not. Recorded at
+    # admission, never inferred later; not identity.
     name_supplied: bool = False
 
 

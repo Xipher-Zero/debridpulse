@@ -4359,6 +4359,35 @@ class TransferEngine:
         if remote:
             await self._cleanup_resources(transfer_id, explicit=True)
 
+    async def retire_vacated_collection(self, transfer_id: int, *, expected_demand, settled=None) -> dict[int, str]:
+        """Remove the empty folder of each completed collection artifact the
+        transfer owns, once its caller has proven that every claim on the
+        transfer (``expected_demand``, re-checked at commit) is a settled
+        delivery. Only a COLLECTION root whose latest writer durably owned it
+        (the same authority every material retirement requires) and that is
+        empty at that instant; contents -- a copy-style import, a leftover --
+        always keep it. ``settled(db)``: the caller's proof that those claims
+        are still settled, re-evaluated inside each removal's own transaction
+        (``repository.retire_vacated_directory``). Observational for the
+        transfer: an outcome per artifact, never a failure, retry or state
+        change."""
+        transfer = await self.repository.get(transfer_id)
+        if transfer is None or transfer.state != TransferState.COMPLETED:
+            return {}
+        outcomes: dict[int, str] = {}
+        async with self._transfer_locks.setdefault(transfer_id, asyncio.Lock()):
+            for artifact in await self.repository.artifacts(transfer_id):
+                previous = await self.repository.previous_writer(artifact.id)
+                if (artifact.state != "completed" or previous is None or not previous.owned
+                        or previous.candidate is None
+                        or previous.candidate.materialization != MaterializationKind.COLLECTION
+                        or not artifact.target):
+                    continue
+                outcomes[artifact.id] = await self.repository.retire_vacated_directory(
+                    artifact.id, root=str(self.root), target=str(artifact.target), expected_demand=expected_demand,
+                    settled=settled)
+        return outcomes
+
     async def _retire_detached_material(self, transfer_id: int) -> None:
         """A DELETED transfer's incomplete material that no writer holds any
         more (a DebridPulse Pause fenced it, or it failed) is still

@@ -235,6 +235,15 @@ def _artifact(event_type, severity, message, *, transfer_id, artifact_id, **fiel
                         transfer_id=transfer_id, provenance=f"download_files:{artifact_id}", **fields)
 
 
+def directory_retired(*, transfer_id, artifact_id) -> JournalEvent:
+    """A completed collection's folder, found empty once every claim on it was
+    a settled delivery, removed. Truthful about what happened: the folder was
+    already empty; nothing inside it was deleted by DebridPulse."""
+    return _artifact("execution.folder_retired", "info",
+                     "Empty download folder removed after its delivery was acknowledged; it held nothing",
+                     transfer_id=transfer_id, artifact_id=artifact_id)
+
+
 def execution_started(*, transfer_id, artifact_id, attempt_id, executor_id, provider_id) -> JournalEvent:
     return JournalEvent("execution", "execution.started", "info", "Download started", "execution_attempt",
                         subject_id=attempt_id, transfer_id=transfer_id, integration_id=executor_id,

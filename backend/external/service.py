@@ -141,6 +141,22 @@ def _live(job: dict | None) -> bool:
     return _visible(job) and projection.get("phase") != "failed"
 
 
+async def _claims_settled(db, demand_ids) -> bool:
+    """Whether every one of these demands belongs to an external job whose
+    CURRENT delivery generation (the newest; not superseded) is
+    acknowledged -- read through ``db``, inside whatever transaction it holds."""
+    ids = sorted({str(item) for item in demand_ids})
+    if not ids:
+        return False
+    rows = await db.fetchall(
+        f"""SELECT j.demand_id FROM external_jobs j
+            JOIN external_deliveries d ON d.job_id = j.id AND d.generation =
+                (SELECT MAX(generation) FROM external_deliveries WHERE job_id = j.id)
+            WHERE j.demand_id IN ({",".join("?" * len(ids))}) AND d.superseded_at IS NULL
+              AND d.acknowledged_at IS NOT NULL""", tuple(ids))
+    return {str(row["demand_id"]) for row in rows} == set(ids)
+
+
 def _admit_mutation(client_id: str) -> None:
     if not external_mutation_limiter.allow(client_id):
         raise ExternalRefused("rate_limited", "Too many requests; slow down", status=429, retryable=True)
@@ -984,8 +1000,45 @@ class ExternalClients:
                 await _audit(db, "external_delivery_acknowledged", "External delivery acknowledged", row,
                              outcome="acknowledged", detail=f"generation {generation}")
                 await db.commit()
+        await self._retire_after_acknowledgement(row)
         view = await self._delivery_view(await self._refresh(row["id"]), include_files=False)
         return {**view, "already_acknowledged": already}
+
+    async def _retire_after_acknowledgement(self, row: dict) -> None:
+        """Once every claim on the job's transfer is settled -- each outstanding
+        demand (its own and any consolidated into it) belongs to an external
+        job whose CURRENT delivery generation is acknowledged -- ask the core
+        to remove the transfer's empty collection folder. Acknowledgement
+        alone decides eligibility, never a file's disappearance; a transfer
+        served through another transfer, a demand from anyone else (an
+        operator's own submission, an unacknowledged client) or a later
+        generation keeps everything. Observational: whatever happens here, the
+        acknowledgement stands and nothing about the job or transfer changes."""
+        try:
+            demand = await self.repository.demand(row["demand_id"])
+            if demand is None or demand["withdrawn_at"] is not None:
+                return
+            transfer_id = int(demand["transfer_id"])
+            async with get_db() as db:
+                transfer = await db.fetchone("SELECT status FROM torrents WHERE id=?", (transfer_id,))
+            if transfer is None or transfer["status"] != "completed":
+                return
+            if (await self._members(transfer_id, "completed"))["foreign"]:
+                return
+            outstanding = frozenset(str(item["id"]) for item in await self.repository.outstanding_demand(transfer_id))
+            if not outstanding:
+                return
+            async with get_db() as db:
+                if not await _claims_settled(db, outstanding):
+                    return
+            # The same proof is made again inside the removal's own
+            # transaction: a newer, unacknowledged generation committed in
+            # between keeps the folder.
+            await self.application.engine.retire_vacated_collection(
+                transfer_id, expected_demand=outstanding,
+                settled=lambda db: _claims_settled(db, outstanding))
+        except Exception:  # noqa: BLE001 - an empty folder is never worth a refused acknowledgement
+            logger.warning("Delivered folder retirement skipped for external job %s", row.get("id"), exc_info=True)
 
     # ── projection ──────────────────────────────────────────────────────────
 

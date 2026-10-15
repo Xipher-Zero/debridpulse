@@ -77,6 +77,10 @@ async def server(monkeypatch):
         path = request.path
         if path == "/posting.nzb":
             return web.Response(body=POSTING, content_type="application/octet-stream")
+        if path == "/api":                              # an indexer's opaque download link
+            disposition = request.query.get("as")
+            return web.Response(body=POSTING, content_type="application/x-nzb", headers=(
+                {"Content-Disposition": f'attachment; filename="{disposition}"'} if disposition else {}))
         if path == "/large.nzb":
             response = web.StreamResponse()
             await response.prepare(request)
@@ -190,11 +194,31 @@ async def test_an_nzb_link_becomes_the_canonical_nzb_request(tmp_path, monkeypat
     assert record.request.kind == "nzb"
     assert isinstance(record.request.payload, StagedPayload)
     assert record.request.name == "posting.nzb"
-    # Named exactly as the existing NZB reader names the posting.
-    from integrations.usenet.nzb import parse
-    assert (await repository.get(result["id"])).name == parse(POSTING, fallback_name="posting.nzb").name
+    # The link names an .nzb file: that is the NZB's own name, as an upload's
+    # filename is (an opaque link keeps the posting's: see below).
+    assert record.request.name_supplied is True
+    assert (await repository.get(result["id"])).name == "posting"
     assert len(seen) == 1  # one fetch: never once to look and again to stage
     assert leftovers(store) == [f"{record.request.payload.id}.input"]
+
+
+@pytest.mark.parametrize("served,expected_request,expected_name,supplied", [
+    ("Release.Name.2026.1080p-GRP.nzb", "Release.Name.2026.1080p-GRP.nzb", "Release.Name.2026.1080p-GRP", True),
+    ("../../etc/evil.nzb", "evil.nzb", "evil", True),         # only a file name, never a path
+    ("notes.txt", "api", "show.part1.rar", False),           # not an NZB file name: not the NZB's
+    (None, "api", "show.part1.rar", False),                   # nothing declared: the posting's name
+])
+async def test_an_opaque_link_is_named_by_the_file_name_it_was_served_under(
+        tmp_path, monkeypatch, server, served, expected_request, expected_name, supplied):
+    base, _seen, _ = server
+    service, _store, repository, provider = await build(tmp_path, monkeypatch)
+    result = await service.submit_nzb_link(f"{base}/api?t=get&id=abc" + (f"&as={served}" if served else ""))
+    [record] = await roots(repository)
+    assert (record.request.name, record.request.name_supplied) == (expected_request, supplied)
+    candidate = (await provider.resolve(record.request)).candidates[0]
+    assert candidate.name == expected_name
+    assert candidate.source_identity.key == "show.part1.rar"     # the posting's identity, unchanged
+    assert result["id"]
 
 
 async def test_link_and_upload_converge_on_the_same_provider_facing_request(tmp_path, monkeypatch, server):
@@ -215,16 +239,14 @@ async def test_link_and_upload_converge_on_the_same_provider_facing_request(tmp_
     assert isinstance(linked.request.payload, StagedPayload) and isinstance(uploaded.request.payload, StagedPayload)
     assert (linked.request.payload.sha256, linked.request.payload.byte_length) == (
         uploaded.request.payload.sha256, uploaded.request.payload.byte_length)
-    # What differs is only who named it: an upload carries the submitter's
-    # own filename, a link's name is derived from its path.
-    assert (linked.request.name_supplied, uploaded.request.name_supplied) == (False, True)
+    # Both carry the NZB's own file name.
+    assert (linked.request.name_supplied, uploaded.request.name_supplied) == (True, True)
     first = (await provider.resolve(linked.request)).candidates[0]
     second = (await provider.resolve(uploaded.request)).candidates[0]
-    for field in ("expected_bytes", "materialization", "source_identity", "endpoints"):
+    for field in ("name", "expected_bytes", "materialization", "source_identity", "endpoints"):
         assert getattr(first, field) == getattr(second, field), field
-    # The same posting: the link is named by it, the upload by its filename.
-    assert first.source_identity.key == first.name.casefold()
-    assert second.name == "posting"
+    # Named by that file; the posting keeps its own identity.
+    assert second.name == "posting" and second.source_identity.key == "show.part1.rar"
     assert first.context["nzb_declared_bytes"] == second.context["nzb_declared_bytes"]
 
 
