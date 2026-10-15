@@ -3649,6 +3649,32 @@ class TransferRepository:
             await self._resource(db, transfer_id, resource, state)
             await db.commit()
 
+    async def inventory_observation(self, transfer_id: int, resource: ProviderResource, state: ResourceState) -> bool:
+        """``resource_observation`` for a binding provider inventory reports,
+        answering -- once its write has committed -- whether this write made a
+        live transfer's bound, unpromoted backup AVAILABLE (it was not
+        before). That is readiness recorded outside a coordinator pass: the
+        caller wakes the coordinator, whose readiness promotion re-reads and
+        re-decides everything. An unchanged AVAILABLE, any other resource or
+        state, or a retired transfer answers ``False``."""
+        terminal = sorted(str(item) for item in TERMINAL_TRANSFER_STATES)
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            before = await db.fetchone(
+                "SELECT state FROM provider_resources WHERE transfer_id=? "
+                "AND (resource_key=? OR (resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
+            binding_id = await self._resource(db, transfer_id, resource, state)
+            became_ready = (state == ResourceState.AVAILABLE
+                            and (before is None or before["state"] != ResourceState.AVAILABLE.value)
+                            and await db.fetchone(
+                                f"""SELECT 1 FROM standby_resources s JOIN torrents t ON t.id=s.transfer_id
+                                    WHERE s.binding_id=? AND s.transfer_id=? AND s.state='bound'
+                                    AND s.promoted_at IS NULL
+                                    AND t.status NOT IN ({",".join("?" * len(terminal))})""",
+                                (binding_id, transfer_id, *terminal)) is not None)
+            await db.commit()
+        return became_ready
+
     async def preparation_idle(self, transfer_id: int, resource: ProviderResource, completed_bytes: int,
                                now: float) -> float:
         """Seconds a PREPARING provider resource has gone without useful

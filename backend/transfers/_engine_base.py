@@ -4553,8 +4553,15 @@ class TransferEngine:
         """Retry durable cleanup intents; this never invents cleanup authority."""
         await self._cleanup_pending()
 
-    async def reconcile_inventory(self):
-        """Missing from an incomplete inventory is never evidence of absence."""
+    async def reconcile_inventory(self, *, on_readiness=None):
+        """Missing from an incomplete inventory is never evidence of absence.
+
+        ``on_readiness``: the caller's scheduler wake, called at once after
+        each committed write that made a live transfer's backup newly
+        AVAILABLE (``repository.inventory_observation``) -- never after the
+        whole scan, which may still be waiting on another provider. It is
+        only a scheduling hint: the coordinator's readiness promotion
+        re-reads and re-decides everything."""
         reports = []
         for provider in self.registry.providers.values():
             if not provider.descriptor.enabled or not isinstance(provider, Inventory):
@@ -4571,7 +4578,16 @@ class TransferEngine:
                      for resource, _state, _pending in await self.repository.resources(transfer.id)}
             for item in snapshot.observations:
                 if item.resource.id in known:
-                    await self.repository.resource_observation(known[item.resource.id], item.resource, item.state)
+                    # A backup this inventory found newly AVAILABLE is
+                    # readiness recorded outside a coordinator pass: its
+                    # commit wakes the coordinator now (a running cycle, and
+                    # the caller's scheduler), not at its next poll or at the
+                    # end of this scan.
+                    if await self.repository.inventory_observation(known[item.resource.id], item.resource,
+                                                                   item.state):
+                        self._resolution_opportunity(known[item.resource.id])
+                        if on_readiness is not None:
+                            on_readiness()
                 elif item.request:
                     # Inventory is evidence that a resource exists, never new
                     # demand for one DebridPulse already bound -- by a live

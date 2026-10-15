@@ -1147,7 +1147,11 @@ class ApplicationService:
     async def reconcile_inventory(self):
         async with self.application_operation():
             before = {item.id for item in await self.repository.active()}
-            errors = await self.engine.reconcile_inventory()
+            # A backup the scan finds newly AVAILABLE wakes the coordinator
+            # as soon as that write commits, so readiness promotion is
+            # evaluated now -- not at its next resource poll, and not after
+            # the rest of the scan.
+            errors = await self.engine.reconcile_inventory(on_readiness=self.resolution_wakeup.set)
             after = await self.repository.active()
             return {"imported": sum(item.id not in before for item in after), "updated": len(after), "errors": [error.as_dict() for error in errors]}
 
