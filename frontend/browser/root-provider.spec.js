@@ -301,3 +301,23 @@ test('an open picker follows the surface refresh: a backup that becomes ready sa
   await page.waitForTimeout(200);
   expect(reads).toBe(closed);
 });
+
+test('a backup retrying after a recoverable failure says Retrying, why and when, and stays switchable', async ({ page }) => {
+  const state = freshState();
+  const debridlink = state.status.providers.find(item => item.provider_id === 'debridlink');
+  Object.assign(debridlink, { status: 'retrying', selectable: true, reason: null,
+    retry_in_seconds: 45, detail: 'Resolution temporarily failed' });
+  const torbox = state.status.providers.find(item => item.provider_id === 'torbox');
+  Object.assign(torbox, { status: 'deferred', selectable: true, reason: null });
+  await routeApis(page, state);
+  await ready(page);
+  await page.locator('#dash-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher').click();
+  const menu = page.locator('.dp-root-provider-menu');
+  const retrying = menu.locator('[data-dp-provider-status="retrying"] .dp-root-provider-status');
+  await expect(retrying).toContainText('Retrying…');
+  await expect(retrying).toContainText('Resolution temporarily failed');
+  await expect(retrying).toContainText('next attempt in 45 s');
+  await expect(menu.locator('[data-dp-provider-status="retrying"] button.dp-root-provider-switch')).toBeEnabled();
+  // Any other deferral keeps its own word.
+  await expect(menu.locator('[data-dp-provider-status="deferred"] .dp-root-provider-status')).toHaveText('Deferred');
+});

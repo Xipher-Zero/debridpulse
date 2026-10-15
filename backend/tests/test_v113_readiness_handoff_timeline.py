@@ -143,8 +143,8 @@ class HeldInventory(ParcelProvider):
         return await super().inventory()
 
 
-async def world(tmp_path, monkeypatch, *, external=False, held=False):
-    fake = FakeRealDebrid(SINGLE, name="Akira", fingerprint=HASH)
+async def world(tmp_path, monkeypatch, *, external=False, held=False, ready=True):
+    fake = FakeRealDebrid(SINGLE, name="Akira", fingerprint=HASH, ready=ready)
     first = preparing_parcel("parcel-a", [(MOVIE, f"Akira/{MOVIE}", MOVIE_BYTES)])
     realdebrid = RealDebridProvider(fake, prepare_backup_torrents=True)
     extra = (HeldInventory(),) if held else ()
@@ -166,21 +166,37 @@ async def operations(w):
     return [row["operation"] for row in await history((await rd_root(w.repository, w.transfer)).id)]
 
 
+def become_ready(w):
+    """Real-Debrid finishes acquiring the selected content remotely."""
+    for torrent in w.fake.torrents.values():
+        torrent.ready = True
+
+
 async def timeline(tmp_path, monkeypatch, *, inventory_offsets=(), during_pass=False, before_inventory=None,
-                   external=False, passes=8, held=False):
+                   external=False, passes=8, held=False, ready=None):
     """Drive the loop. ``inventory_offsets``: seconds after the pass that
     handed the selection over at which provider inventory runs (through the
     application). ``during_pass``: run it inside that very next pass's tail
     instead -- after the loop cleared its wakeup, before it waits.
     ``before_inventory``: an action applied just before the first inventory
-    run. Returns (world, scheduler, marks)."""
-    w = await world(tmp_path, monkeypatch, external=external, held=held)
+    run. ``ready``: when Real-Debrid can deliver once selected -- ``"now"``
+    (at once: the selection pass's own read-back finds it), ``"remote"``
+    (only later, between passes: it becomes ready just before the first
+    inventory run, which is how that readiness reaches DebridPulse), or a
+    number of seconds after the selection pass (an asynchronous transition
+    nothing but the ordinary backup poll observes). Default: ``"remote"``
+    with inventory, ``"now"`` without. Returns (world, scheduler, marks)."""
+    ready = ready if ready is not None else ("remote" if inventory_offsets or during_pass else "now")
+    w = await world(tmp_path, monkeypatch, external=external, held=held, ready=ready == "now")
     vs = VirtualScheduler(w.engine, w.repository, monkeypatch, passes=passes)
     marks = {}
 
     async def inventory():
-        if before_inventory and "inventory" not in marks:
-            await before_inventory(w)
+        if "inventory" not in marks:
+            if ready == "remote":
+                become_ready(w)
+            if before_inventory:
+                await before_inventory(w)
         wakes, reads = vs.wakeup.sets, w.fake.count("torrent_info")
         if w.held is None:
             try:
@@ -210,6 +226,10 @@ async def timeline(tmp_path, monkeypatch, *, inventory_offsets=(), during_pass=F
                 await inventory()                                     # the loop has cleared, not yet waited
             for offset in inventory_offsets:
                 vs.at(now + offset, inventory)
+            if isinstance(ready, (int, float)):
+                async def remote():
+                    become_ready(w)
+                vs.at(now + ready, remote)
         if item["resource_state"] == ResourceState.AVAILABLE.value and "available" not in marks:
             marks["available"], marks["available_by"] = now, "pass"
         if "promoted" not in marks and "readiness_promotion" in await operations(w):
@@ -223,11 +243,15 @@ async def timeline(tmp_path, monkeypatch, *, inventory_offsets=(), during_pass=F
 # -- the coordinator's own observation: unchanged, same pass ----------------------------------------------------
 
 async def test_readiness_the_coordinator_observes_is_acted_on_in_the_same_pass(tmp_path, monkeypatch):
+    # Ledger (transfer 660): a provider ready as soon as it is told what to
+    # deliver is read back in the very pass that handed it the selection --
+    # recorded AVAILABLE and yielded to there -- where it used to wait one
+    # full backup poll (``available - selected == POLL``).
     w, vs, marks = await timeline(tmp_path, monkeypatch)
     assert w.fake.count("add_magnet") == 1 and w.fake.selects() == ["1"]  # select-all of the one file
     assert (await operations(w))[-1] == "readiness_promotion"
     assert "operator_switch" not in await operations(w)
-    assert marks["available_by"] == "pass" and marks["available"] - marks["selected"] == POLL
+    assert marks["available_by"] == "pass" and marks["available"] == marks["selected"]
     assert marks["promoted"] == marks["available"]                       # the very pass that observed READY
     assert vs.wakeup.sets == 0                                            # no inventory, no wake
     assert all(item[2] <= POLL for item in vs.log if item[0] == "wait")

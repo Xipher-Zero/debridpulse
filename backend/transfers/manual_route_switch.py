@@ -68,6 +68,12 @@ from transfers.registry import RoutingDisposition
 CURRENT, PREPARED, PREPARING, DEFERRED, AVAILABLE, FAILED_EARLIER, UNAVAILABLE = (
     "current", "prepared", "preparing", "deferred", "available", "failed_earlier", "unavailable")
 WAITING_FOR_SELECTION = "waiting_for_selection"
+# A deferred backup whose preparation failed recoverably and waits for its
+# retry -- worded "Retrying…", never "Deferred": the backend keeps its real
+# ``deferred`` state and retry schedule. A deferral for a provider "not now"
+# (rate limit, concurrency, quota) or with no failure at all stays DEFERRED.
+RETRYING = "retrying"
+_DEFERRAL_NOT_A_FAILURE = frozenset({Category.RATE_LIMITED, Category.CONCURRENCY_LIMITED, Category.QUOTA_EXCEEDED})
 _UNAVAILABLE_REASONS = {
     RoutingDisposition.DISABLED: "disabled",
     RoutingDisposition.NOT_ENTITLED: "not_entitled",
@@ -196,6 +202,10 @@ def standby_choice(standby: dict, *, upstream_selection: bool = False,
     if state == "creating" or (state == "bound" and resource == ResourceState.PREPARING.value):
         return PREPARING, False
     if state == "deferred":
+        error = standby.get("error")
+        if (error is not None and error.category not in _DEFERRAL_NOT_A_FAILURE
+                and error.retryability == Retryability.BACKOFF):
+            return RETRYING, True
         return DEFERRED, True
     if state == "failed":
         return FAILED_EARLIER, True
@@ -236,6 +246,11 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
                     record, manifest_entries=standby.get("manifest_entries"))) is not None
             entry["status"], entry["selectable"] = standby_choice(
                 standby, upstream_selection=upstream, selection_established=established)
+            if entry["status"] == RETRYING:
+                # When it is next tried, and the failure's normalized wording.
+                entry["retry_in_seconds"] = max(0, int(round(float(standby.get("retry_at") or 0)
+                                                             - engine.clock())))
+                entry["detail"] = standby["error"].message
     return {"transfer_id": int(transfer_id), "current_provider_id": facts["current"], "providers": providers,
             "switchable": root_actionable(facts) and any(entry["selectable"] for entry in providers)}
 

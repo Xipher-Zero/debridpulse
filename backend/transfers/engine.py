@@ -1085,9 +1085,10 @@ class TransferEngine(_RecoveryTransferEngine):
                 await self.repository.observe_standby(item["id"], transfer.id, observed.resource, observed.state,
                                                       self.clock(),
                                                       manifest_entries=None if manifest is None else len(manifest))
-                await self._select_on_standby(transfer.id, item["request_id"], provider, observed)
+                await self._select_on_standby(transfer.id, item["request_id"], provider, observed, item["id"])
 
-    async def _select_on_standby(self, transfer_id: int, request_id: str, provider, observed) -> None:
+    async def _select_on_standby(self, transfer_id: int, request_id: str, provider, observed,
+                                 standby_id: str) -> None:
         """Hand a backup held by a provider that executes only what is
         selected on its own resource (``UpstreamSelection``) the root's
         ESTABLISHED decision (``repository.standby_selection``: every file for
@@ -1097,7 +1098,18 @@ class TransferEngine(_RecoveryTransferEngine):
         decided, for a transfer that may no longer begin work, or for a
         resource that is not still waiting. One provider call per
         observation, read first by the provider itself; a failure changes
-        nothing and the next observation tries again."""
+        nothing and the next observation tries again.
+
+        A selection the provider says it applied (``synchronize_selection``
+        answered ``True``: its resource changed) is read back once, at once
+        -- the same policy as a route's own selection -- and that reading is
+        the backup's observation: a provider ready as soon as it is told what
+        to deliver is recorded AVAILABLE in this pass, so the readiness
+        promotion that follows in the same pass can act on it, instead of the
+        next backup poll. Still preparing, it waits for that ordinary poll; a
+        read that fails, or that names another resource, records nothing.
+        Nothing is ever sent twice here: the next observation's
+        synchronization reads first."""
         if (not isinstance(provider, UpstreamSelection) or observed.error is not None
                 or observed.state != ResourceState.PREPARING or observed.file_manifest is None):
             return
@@ -1110,10 +1122,26 @@ class TransferEngine(_RecoveryTransferEngine):
         if not members:
             return
         try:
-            await provider.synchronize_selection(observed.resource, members, submit=True)
+            submitted = await provider.synchronize_selection(observed.resource, members, submit=True)
         except Exception as exc:
             logger.debug("backup selection provider=%s request=%s: %s", observed.resource.provider_id,
                          request_id, type(exc).__name__)
+            return
+        if not submitted or not await self._live(transfer_id, admission=True):
+            return
+        try:
+            readback = await provider.observe(observed.resource)
+        except Exception as exc:
+            logger.debug("backup selection read-back provider=%s request=%s: %s", observed.resource.provider_id,
+                         request_id, type(exc).__name__)
+            return
+        if (readback.resource.provider_id != observed.resource.provider_id
+                or readback.resource.id != observed.resource.id):
+            return
+        manifest = getattr(readback.file_manifest, "entries", None)
+        await self.repository.observe_standby(standby_id, transfer_id, readback.resource, readback.state,
+                                              self.clock(),
+                                              manifest_entries=None if manifest is None else len(manifest))
 
     @staticmethod
     def _route_evidence(record, route: ProviderRoute) -> str | None:

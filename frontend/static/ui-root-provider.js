@@ -33,6 +33,7 @@
     preparing: 'Preparing…',
     waiting_for_selection: 'Waiting for selection',
     deferred: 'Deferred',
+    retrying: 'Retrying…',
     available: 'Not checked',
     failed_earlier: 'Failed earlier',
     unavailable: 'Unavailable',
@@ -174,10 +175,25 @@
     return menuEl;
   }
 
+  function formatWait(seconds) {
+    const total = Math.max(0, Math.round(seconds));
+    if (total < 60) return total + ' s';
+    const minutes = Math.floor(total / 60);
+    const rest = total % 60;
+    return rest ? minutes + ' min ' + rest + ' s' : minutes + ' min';
+  }
+
   function rowMarkup(item) {
     const label = providerLabel(item.provider_name, item.provider_id);
     const status = STATUS_LABELS[item.status] || STATUS_LABELS.unavailable;
-    const reason = item.reason ? (REASON_LABELS[item.reason] || '') : '';
+    let reason = item.reason ? (REASON_LABELS[item.reason] || '') : '';
+    if (item.status === 'retrying') {
+      // A backup whose preparation failed recoverably: what failed and when
+      // it is tried again, from the read model (never a client clock).
+      const wait = Number(item.retry_in_seconds);
+      const next = Number.isFinite(wait) ? (wait > 0 ? 'next attempt in ' + formatWait(wait) : 'next attempt now') : '';
+      reason = [item.detail || '', next].filter(Boolean).join('; ');
+    }
     let action;
     if (item.status === 'current') {
       action = '<span class="dp-root-provider-current">CURRENT</span>';
