@@ -52,6 +52,24 @@ Owners in the code:
 - the key;
 - that the category exists, with no sorting and no pre-check.
 
+### Not Found until it is usable
+
+Both paths of this dialect answer `404 Not Found` — to every caller, with or
+without a key — until DebridPulse has at least one usable SABnzbd integration:
+a delivery profile with a category, permitting `nzb` (an uploaded NZB; `nzb_link` and `links` do not count), that lists a client
+holding an active Integration token (not revoked, of an enabled Integration
+account). There is no switch: an Admin configures Integration Accounts and
+Integration Delivery Profiles in Settings → Users & Access, and the dialect
+appears or disappears with them on the next request — issuing, rotating or
+revoking a token, disabling an account, or editing or removing a profile.
+
+- A `404` here does not mean DebridPulse is down. *arr's Test reports it as a
+  failed connection; check the profile and token first.
+- The qBittorrent dialect is exposed or hidden on its own, by its own source kinds.
+- Exposure authenticates nobody: every request still needs its own token, and
+  sees only its own client's categories and jobs.
+- Revoking the last qualifying token withdraws nothing; the jobs stay.
+
 ### The key travels in the URL
 
 *arr sends the API key only as the `apikey` query parameter (never as a header).

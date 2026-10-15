@@ -36,7 +36,8 @@ from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME
 from core.config import get_settings as _get_log_settings
 from core.logging_utils import configure_logging, log_startup_banner, sanitize_log_value
 from transfers.staged_input import MAX_STAGED_INPUT_BYTES
-from external.arr import UPLOAD_CEILINGS
+from external.arr import UPLOAD_CEILINGS, adapter_of
+from external.arr import available as adapter_available
 from core.version import read_version
 from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
@@ -179,7 +180,11 @@ class RequestBodyLimitMiddleware:
         headers = {key.lower(): value for key, value in scope.get("headers", [])}
         raw_length = headers.get(b"content-length", b"")
         try:
-            if raw_length and int(raw_length) > limit:
+            # A download-client dialect that is not exposed must not be told
+            # apart by its own upload ceiling: its request goes on to the
+            # authentication boundary's Not Found, its body unread.
+            if raw_length and int(raw_length) > limit and (
+                    (adapter := adapter_of(path)) is None or await adapter_available(adapter)):
                 response = Response(content="Request body too large", status_code=413)
                 await response(scope, receive, send)
                 return

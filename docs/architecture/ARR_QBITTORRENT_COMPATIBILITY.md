@@ -97,6 +97,24 @@ On the DebridPulse side:
 - **`queueing_enabled: false`** is truthful: DebridPulse owns queue order. As a
   result, a **First** priority fails *arr's Test.
 
+### Not Found until it is usable
+
+Both paths of this dialect answer `404 Not Found` — to every caller, with or
+without a key — until DebridPulse has at least one usable qBittorrent integration:
+a delivery profile with a category, permitting `magnet` or `torrent` (`links` and `nzb` do not count), that lists a client
+holding an active Integration token (not revoked, of an enabled Integration
+account). There is no switch: an Admin configures Integration Accounts and
+Integration Delivery Profiles in Settings → Users & Access, and the dialect
+appears or disappears with them on the next request — issuing, rotating or
+revoking a token, disabling an account, or editing or removing a profile.
+
+- A `404` here does not mean DebridPulse is down. *arr's Test reports it as a
+  failed connection; check the profile and token first.
+- The SABnzbd dialect is exposed or hidden on its own, by its own source kinds.
+- Exposure authenticates nobody: every request still needs its own token, and
+  sees only its own client's categories and jobs.
+- Revoking the last qualifying token withdraws nothing; the jobs stay.
+
 ## 3. Calls answered
 
 All are under `/api/v2/` (and, identically, `/api/qbittorrent/api/v2/`).

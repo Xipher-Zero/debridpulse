@@ -30,6 +30,7 @@ restored state would leave no usable Admin (``restored_state_has_usable_admin``)
 from __future__ import annotations
 
 import hashlib
+import json
 import re
 import secrets
 import sqlite3
@@ -1131,6 +1132,29 @@ async def resolve_token(raw: str) -> tuple[Account, str, str] | None:
     if account is None or not account.active or account.role is not Role.INTEGRATION:
         return None
     return account, str(row["id"]), str(row["client_id"] or row["id"])
+
+
+async def any_active_client(client_ids) -> bool:
+    """Whether any of these external clients is currently backed by a token
+    ``resolve_token`` would accept: not revoked, of an active Integration
+    account. Answers only that -- one bounded existence read, no token,
+    verifier or account leaves it. A token's client is its ``client_id``, or
+    its own ID for a token issued before clients existed (as in
+    ``resolve_token``)."""
+    from db.database import get_db
+
+    clients = sorted({str(client) for client in client_ids if client})
+    if not clients:
+        return False
+    async with get_db() as db:
+        row = await db.fetchone(
+            "SELECT 1 FROM account_tokens t JOIN accounts a ON a.id = t.account_id "
+            "WHERE t.revoked_at IS NULL AND COALESCE(t.client_id, t.id) IN (SELECT value FROM json_each(?)) "
+            # ``Account.active`` and the Integration role, as ``resolve_token`` reads them.
+            "AND a.role = 'integration' AND COALESCE(a.enabled, 0) != 0 "
+            "AND COALESCE(a.deleted_at, '') = '' AND COALESCE(a.merged_into, '') = '' "
+            "LIMIT 1", (json.dumps(clients),))
+    return row is not None
 
 
 async def retire_legacy_api_token(path) -> bool:

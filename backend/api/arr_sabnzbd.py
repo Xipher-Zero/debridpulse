@@ -114,7 +114,7 @@ def _config(client_id: str) -> dict:
     pre-check; completed deliveries leave the history after the shortest
     profile retention."""
     profiles = [profile for profile in get_settings().external_delivery.for_client(client_id)
-                if "nzb" in profile.source_kinds and profile.categories]
+                if arr.ADAPTER_SOURCE_KINDS[arr.SABNZBD] & set(profile.source_kinds) and profile.categories]
     roots = [profile.effective_import_root for profile in profiles]
     days = max(1, math.ceil(min(profile.retention_hours for profile in profiles) / 24)) if profiles else 7
     return {"config": {

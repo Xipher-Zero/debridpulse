@@ -35,7 +35,7 @@ from auth.transitions import (
 )
 from core.branding import APP_SHORT_NAME
 from core.config import get_settings
-from external.arr import QUERY_KEY_PATHS
+from external.arr import QUERY_KEY_PATHS, adapter_of, available
 
 
 CallNext = Callable[[Request], Awaitable[Response]]
@@ -270,6 +270,14 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
     """Authentication implementation; caller serializes auth-config writes."""
     _attach_principal(request, Principal.anonymous())
     cfg = get_settings()
+
+    # A download-client dialect no current delivery profile and token make
+    # usable is not exposed: every path of it is the ordinary Not Found, for
+    # every caller and method, before any credential is read or any refusal
+    # names the protocol (``external.arr.available``).
+    adapter = adapter_of(request.url.path)
+    if adapter is not None and not await available(adapter):
+        return JSONResponse(content={"detail": "Not Found"}, status_code=404)
 
     # CORS middleware is authoritative for preflight. OPTIONS carries no
     # application mutation and must reach it before interactive authentication.

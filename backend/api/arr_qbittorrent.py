@@ -44,7 +44,7 @@ router = APIRouter()
 # shapes for the calls *arr makes. *arr reads it to choose content_path
 # (>= 2.6.1), share limits on add (>= 2.8.1) and ``stopped`` (>= 2.11.0).
 WEBAPI_VERSION = "2.15.1"
-TORRENT_KINDS = ("magnet", "torrent")
+TORRENT_KINDS = tuple(sorted(arr.ADAPTER_SOURCE_KINDS[arr.QBITTORRENT]))
 # qBittorrent's own "ETA unknown" value, which *arr reads as no estimate.
 UNKNOWN_ETA = 8640000
 MAX_DELETE_HASHES = 100
