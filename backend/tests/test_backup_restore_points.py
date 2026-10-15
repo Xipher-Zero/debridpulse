@@ -1220,6 +1220,51 @@ async def test_the_pinned_pre_external_backup_restores_with_each_token_its_own_c
     assert created and job["phase"] in {"accepted", "queued", "processing"}
 
 
+# Written by the unchanged build immediately before execution attempts carried
+# their executor's reported sources (4d7c8e45) with its own backup service:
+# one transfer whose execution attempt was recorded running.
+PRE_CONTRIBUTORS_BACKUP = Path(__file__).parent / "fixtures" / "backup-1.0.13-4d7c8e45.zip"
+PRE_CONTRIBUTORS_ATTEMPT = "7b75b754cc884c06b06bc062163eecbf"
+
+
+async def test_the_pinned_pre_contributors_backup_keeps_its_attempts_with_no_reported_sources(served):
+    """The previous build's real restore point, upgraded on its private staged
+    copy only through the canonical bootstrap: every historical execution
+    attempt survives exactly as recorded, the new ``contributors`` column
+    arrives NULL ("not reported") for each, and Details reads them as
+    unknown -- nothing is reconstructed."""
+    app, client, _composed, _calls = served
+    live = backup.schema_version(database.DB_PATH)
+    added = await client.post("/api/admin/backups", content=PRE_CONTRIBUTORS_BACKUP.read_bytes(),
+                              headers={"Content-Type": "application/zip"})
+    assert added.status_code == 200, added.text
+    point = backup.restore_point(added.json()["backup"]["id"])
+    managed = _managed_database(point)
+    before = _digest(managed)
+    with backup._open_frozen(managed) as conn:
+        recorded = backup._fingerprint(conn)
+        assert recorded in backup._UPGRADABLE_SCHEMAS and recorded != live
+        assert "contributors" not in {row[1] for row in conn.execute("PRAGMA table_info(execution_attempts)")}
+        historical = conn.execute("SELECT id, transfer_id, artifact_id, executor_id, state, handle, progress "
+                                  "FROM execution_attempts ORDER BY id").fetchall()
+    assert [row[0] for row in historical] == [PRE_CONTRIBUTORS_ATTEMPT]
+
+    restored = await client.post("/api/admin/backups/restore", json={"id": point.id})
+
+    assert restored.status_code == 200, restored.text
+    assert _digest(managed) == before                       # the restore point itself is never upgraded
+    assert backup.schema_version(database.DB_PATH) == live
+    conn = sqlite3.connect(database.DB_PATH)
+    try:
+        assert conn.execute("SELECT id, transfer_id, artifact_id, executor_id, state, handle, progress "
+                            "FROM execution_attempts ORDER BY id").fetchall() == historical
+        assert conn.execute("SELECT id, contributors FROM execution_attempts").fetchall() == [
+            (PRE_CONTRIBUTORS_ATTEMPT, None)]
+    finally:
+        conn.close()
+    assert await app.state.application.repository.execution_contributors(historical[0][1]) is None
+
+
 async def test_an_unregistered_neighbour_of_the_pinned_schema_is_refused_and_changes_nothing(served, tmp_path):
     """Only the exact pinned predecessor is upgradable: the same backup with a
     schema one column away is an unsupported version, refused before

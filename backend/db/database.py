@@ -1051,6 +1051,11 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # nullable: historical rows stay NULL and are read through the
         # artifact's own FILE target.
         'materialization': 'TEXT',
+        # The sources this attempt's executor reported its data came from
+        # (``ExecutionObservation.contributors``), recorded the first time the
+        # executor reports them and never erased by a later observation.
+        # Additive and nullable: NULL is "not reported" (unknown).
+        'contributors': 'TEXT',
         # The ONE durable material-ownership authority of an attempt: the id
         # of the attempt that established DebridPulse ownership of the
         # artifact's material boundary (itself, when the boundary and every
@@ -1161,7 +1166,7 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'event_journal_index': {'id', 'indexed_through', 'started_at'},
     'download_files': {'candidates', 'execution_attempt_id', 'normalized_error', 'request_id', 'retry_at', 'selected_candidate', 'recovery_failures', 'recovery_refreshes', 'continuation_reservation_expires_at', 'size_knowledge'},
     'execution_attempt_provenance': {'artifact_id', 'candidate_id', 'candidate_source', 'created_at', 'delivered', 'execution_attempt_id', 'history_quality', 'ordinal', 'outcome', 'provider_id', 'route_attempt_id', 'transfer_id', 'updated_at'},
-    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
+    'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'contributors', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
     'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
     'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at', 'preparing_bytes', 'preparing_since'},

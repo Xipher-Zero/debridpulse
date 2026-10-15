@@ -55,7 +55,7 @@ the existing observation machinery to converge.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 import base64
 import hashlib
 from pathlib import Path
@@ -66,8 +66,8 @@ from executors.sabnzbd.client import (
     NATIVE_PRIORITY_PAUSED, PP_REPAIR_ONLY, SabApiError, SabTransportError,
 )
 from executors.sabnzbd.translation import (
-    EXECUTOR_ID, failure, native_activity, native_failure, native_progress, native_state, sanitize,
-    unreachable,
+    EXECUTOR_ID, failure, native_activity, native_contributors, native_failure, native_progress, native_state,
+    sanitize, unreachable,
 )
 from transfers.errors import Category, Domain, Retryability, Stage, TransferError
 from transfers.filesystem import safe_name
@@ -81,6 +81,9 @@ from transfers.models import (
     MaterializationKind, MaterializationResult, MaterializedEntry,
 )
 
+# The observations of a job in history that carry its server report: the job
+# ended (completed or failed), or completed but could not be delivered.
+_ATTRIBUTED_STATES = frozenset({ExecutionState.SUCCEEDED, ExecutionState.FAILED, ExecutionState.UNKNOWN})
 # The canonical request class this executor delivers. Executor-private: core
 # never routes by it, it only asks ``claim()``.
 SUPPORTED_REQUEST_KIND = "nzb"
@@ -465,7 +468,8 @@ class SabnzbdExecutor:
                 if located is None:
                     return ExecutionObservation(handle, ExecutionState.ABSENT)
                 slot, in_history = located
-            return self._observation(handle, slot, in_history, native_name)
+            servers = await self._server_names() if in_history else None
+            return self._observation(handle, slot, in_history, native_name, servers)
         except (SabTransportError, SabApiError) as exc:
             # The job exists and is paused under the token. Uncertain, safe.
             return ExecutionObservation(handle, ExecutionState.UNKNOWN,
@@ -569,6 +573,9 @@ class SabnzbdExecutor:
 
         # Absence is only knowable when BOTH listings were authoritative.
         authoritative = queue.complete and (history is None or history.complete)
+        # The service's server names: read once per batch, and only once a job
+        # has reached history.
+        servers, servers_read = None, False
         for item in permitted:
             found = located.get(self._key(item))
             if found is None:
@@ -582,7 +589,9 @@ class SabnzbdExecutor:
             slot, in_history = found if isinstance(found, tuple) else (found, False)
             bound = self._bind(item, str(_get(slot, "nzo_id") or ""))
             native_name = await self._converge_display_name(bound, slot, in_history)
-            results.append(self._observation(bound, slot, in_history, native_name))
+            if in_history and not servers_read:
+                servers, servers_read = await self._server_names(), True
+            results.append(self._observation(bound, slot, in_history, native_name, servers))
         return ExecutionSnapshot(tuple(results))
 
     @staticmethod
@@ -622,14 +631,35 @@ class SabnzbdExecutor:
         slot, in_history = located
         bound = self._bind(handle, str(_get(slot, "nzo_id") or ""))
         native_name = await self._converge_display_name(bound, slot, in_history)
-        return self._observation(bound, slot, in_history, native_name)
+        servers = await self._server_names() if in_history else None
+        return self._observation(bound, slot, in_history, native_name, servers)
 
     @staticmethod
     def _bound_or_self(handle: ExecutionHandle) -> ExecutionHandle:
         return handle
 
     def _observation(self, handle: ExecutionHandle, slot, in_history: bool,
-                     native_name: str = "") -> ExecutionObservation:
+                     native_name: str = "", servers=None) -> ExecutionObservation:
+        observation = self._native_observation(handle, slot, in_history, native_name)
+        if in_history and observation.state in _ATTRIBUTED_STATES:
+            # Observational only: what the job's own report says about which
+            # servers delivered it rides along, and never decides anything.
+            return replace(observation, contributors=native_contributors(slot, servers))
+        return observation
+
+    async def _server_names(self):
+        """The service's configured servers as ``(keyword, displayname)``,
+        read only for a job that reached history; ``None`` when unreadable,
+        which leaves attribution unknown and changes nothing else."""
+        try:
+            entries = (await self.client.get_config("servers")).get("servers") or []
+        except Exception:  # noqa: BLE001 - attribution is never worth a failed observation
+            return None
+        return tuple((str(entry.get("name") or ""), str(entry.get("displayname") or ""))
+                     for entry in entries if isinstance(entry, dict))
+
+    def _native_observation(self, handle: ExecutionHandle, slot, in_history: bool,
+                            native_name: str = "") -> ExecutionObservation:
         status = str(_get(slot, "status") or "")
         # THE FENCE. A job still carrying the correlation token has not been
         # named yet, and nothing may run under that name, so it is not offered

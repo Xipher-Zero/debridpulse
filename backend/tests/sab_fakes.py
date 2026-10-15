@@ -68,6 +68,9 @@ class FakeJob:
     # in history, and never searchable -- so it can never carry correlation
     # through the queue phase.
     nzb_name: str = ""
+    # The history ``stage_log`` the real history API returns (a list of
+    # ``{"name", "actions"}``), when a test supplies one; ``None`` = absent.
+    stage_log: list | None = None
 
     def _common(self) -> dict:
         return {
@@ -83,7 +86,10 @@ class FakeJob:
 
     def history_slot(self) -> dict:
         """A real history slot: ``name`` plus the uploaded file's ``nzb_name``."""
-        return {**self._common(), "name": self.name, "nzb_name": self.nzb_name}
+        slot = {**self._common(), "name": self.name, "nzb_name": self.nzb_name}
+        if self.stage_log is not None:
+            slot["stage_log"] = self.stage_log
+        return slot
 
     # Retained for callers that predate the queue/history split.
     def slot(self) -> dict:

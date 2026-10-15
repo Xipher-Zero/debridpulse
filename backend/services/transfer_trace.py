@@ -69,6 +69,11 @@ already carry the error (``resolution_attempts.error``,
 ``torrents.normalized_error`` ...); the evidence is already safe before
 persistence and is sanitized again here like every other value. There is no
 separate evidence section, and errors recorded before it existed have none.
+7 is a strict superset of 6: an execution attempt may carry ``contributors``,
+recorded once from its executor's own report (each source's canonical
+identity when exactly attributable, its reported name, the executor's figure
+verbatim and its approximate bytes); NULL is "not reported". Attempts
+recorded before it existed have none.
 """
 from __future__ import annotations
 
@@ -99,7 +104,9 @@ TRACE_FORMAT = "debridpulse.transfer-trace"
 # 4: artifact_material_state rows and per-target material observations.
 # 5: routing decisions on route attempts and held/unroutable root requests.
 # 6: bounded diagnostic_evidence on normalized errors (no new section).
-TRACE_FORMAT_VERSION = 6
+# 7: execution_attempts.contributors -- the sources an attempt's executor
+#    itself reported its data came from (no new section).
+TRACE_FORMAT_VERSION = 7
 # Bounds of the consolidation component (``_component``); hitting one is
 # declared in metadata.closure.component, never silent.
 COMPONENT_MAX_TRANSFERS = 32

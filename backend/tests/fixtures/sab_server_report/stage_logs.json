@@ -1,0 +1,163 @@
+{
+ "sabnzbd_version": "5.1.3",
+ "generated_by": "tests/fixtures/sab_server_report/gen.py (run in the packaged image)",
+ "cases": {
+  "single": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "news.example.net"
+    ]
+   ],
+   "counts": {
+    "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 734003200
+   },
+   "stage_log": [
+    {
+     "name": "Servers",
+     "actions": [
+      "news.example.net=700.0 MB"
+     ]
+    },
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  },
+  "multiple": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "Primary"
+    ],
+    [
+     "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "Backup"
+    ]
+   ],
+   "counts": {
+    "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 1288490188,
+    "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 5242880
+   },
+   "stage_log": [
+    {
+     "name": "Servers",
+     "actions": [
+      "Primary=1.2 GB, Backup=5.0 MB"
+     ]
+    },
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  },
+  "primary_tried_nothing": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "Primary"
+    ],
+    [
+     "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "Fill"
+    ]
+   ],
+   "counts": {
+    "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 734003200
+   },
+   "stage_log": [
+    {
+     "name": "Servers",
+     "actions": [
+      "Fill=700.0 MB"
+     ]
+    },
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  },
+  "duplicate_names": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "news.example.net"
+    ],
+    [
+     "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "news.example.net"
+    ]
+   ],
+   "counts": {
+    "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 314572800,
+    "dp-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb": 2048
+   },
+   "stage_log": [
+    {
+     "name": "Servers",
+     "actions": [
+      "news.example.net=300.0 MB, news.example.net=2 KB"
+     ]
+    },
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  },
+  "awkward_name": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "EU, west=1; fast"
+    ]
+   ],
+   "counts": {
+    "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": 900
+   },
+   "stage_log": [
+    {
+     "name": "Servers",
+     "actions": [
+      "EU, west=1",
+      " fast=900B"
+     ]
+    },
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  },
+  "none": {
+   "servers": [
+    [
+     "dp-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "Primary"
+    ]
+   ],
+   "counts": {},
+   "stage_log": [
+    {
+     "name": "Repair",
+     "actions": [
+      "[x] Quick Check OK"
+     ]
+    }
+   ]
+  }
+ }
+}

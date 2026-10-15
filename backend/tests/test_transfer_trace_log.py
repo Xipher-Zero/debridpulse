@@ -103,7 +103,7 @@ async def test_trace_is_a_complete_transfer_scoped_export_with_metadata_and_inve
     trace = await transfer_trace.build(traced.later.id, traced.application)
     metadata = trace["metadata"]
     assert metadata["requested_transfer_id"] == metadata["primary_transfer_id"] == traced.later.id
-    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 6
+    assert metadata["trace_format"] == "debridpulse.transfer-trace" and metadata["trace_format_version"] == 7
     assert metadata["sanitization"]["applied"] is True and metadata["sanitization"]["replaced_values"] > 0
     assert metadata["generated_at"].endswith("Z") and metadata["application_version"]
     assert re.fullmatch(r"[0-9a-f]{64}", metadata["schema"]["columns_sha256"])
@@ -220,7 +220,7 @@ async def test_trace_exports_diagnostic_evidence_on_the_error_it_explains(traced
                          "(SELECT id FROM transfer_requests WHERE transfer_id=?)", (json.dumps(bypass), traced.later.id))
         await db.commit()
     trace = await transfer_trace.build(traced.later.id, traced.application)
-    assert trace["metadata"]["trace_format_version"] == 6
+    assert trace["metadata"]["trace_format_version"] == 7
     assert not [key for key in trace if "evidence" in key]
     text = json.dumps(trace)
     for secret in ("EVIDENCE-CAPABILITY", "BYPASS-CAPABILITY", "BYPASS-TOKEN", "/d/"):

@@ -4155,7 +4155,7 @@
   // to pick, never a policy. Any other category may be typed.
   const PROFILE_CATEGORY_SUGGESTIONS = Object.freeze([
     ['tv-sonarr', 'Sonarr · qBittorrent'], ['radarr', 'Radarr · qBittorrent'],
-    ['tv', 'Sonarr · SABnzbd'], ['movies', 'Radarr · SABnzbd']]);
+    ['tv', 'Sonarr · Usenet'], ['movies', 'Radarr · Usenet']]);
   const PROFILE_ID_PATTERN = /^[a-z0-9][a-z0-9_.-]{0,63}$/;
   const DEFAULT_RETENTION_HOURS = 168;
 

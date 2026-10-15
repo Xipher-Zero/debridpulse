@@ -1171,6 +1171,23 @@ class MaterializationResult:
 
 
 @dataclass(frozen=True)
+class ExecutionContributor:
+    """One source an executor itself reports this execution's data came from.
+
+    ``identity``: the integration's canonical id for that source, or ``""``
+    when the executor's report could not be attributed to exactly one.
+    ``label``: the source's name as reported. ``reported``: the executor's own
+    figure for what that source delivered, verbatim. ``approximate_bytes``:
+    that figure in bytes, as precise as the report (``None`` when the report
+    carries no amount). Evidence only: never configuration, preference or a
+    mere attempt."""
+    identity: str
+    label: str
+    reported: str = ""
+    approximate_bytes: int | None = None
+
+
+@dataclass(frozen=True)
 class ExecutionObservation:
     handle: ExecutionHandle
     state: ExecutionState
@@ -1189,6 +1206,10 @@ class ExecutionObservation:
     # The same evidence for a COLLECTION: per member file (relative path to
     # the collection root), the exact ranges completely written.
     member_material: tuple[tuple[str, tuple[tuple[int, int], ...]], ...] | None = None
+    # The sources the executor reports this execution's data came from:
+    # ``None`` when it reports nothing (unknown), ``()`` when it reports that
+    # no source delivered any.
+    contributors: tuple[ExecutionContributor, ...] | None = None
 
     @property
     def reports_material(self) -> bool:

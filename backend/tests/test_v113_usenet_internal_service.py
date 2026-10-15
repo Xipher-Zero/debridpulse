@@ -137,9 +137,18 @@ def test_the_image_bundles_the_service_and_publishes_only_the_app_port():
 
 
 def test_no_reverse_proxy_of_the_service_web_ui():
-    main = (REPO / "backend/main.py").read_text(encoding="utf-8")
-    for forbidden in ("sabnzbd", "proxy", "8090"):
-        assert forbidden not in main.lower() or forbidden == "proxy"
+    main = (REPO / "backend/main.py").read_text(encoding="utf-8").lower()
+    # The one SABnzbd-named code the application may route to is DebridPulse's
+    # own *arr compatibility dialect (``api.arr_sabnzbd``): the protocol
+    # answered over DebridPulse's native external contract, never the
+    # internal service. Nothing else names the service or its port.
+    routed = main.replace("from api.arr_sabnzbd import router as arr_sabnzbd_router", "")
+    routed = routed.replace("app.include_router(arr_sabnzbd_router", "")
+    for forbidden in ("sabnzbd", "8090"):
+        assert forbidden not in routed
+    dialect = (REPO / "backend/api/arr_sabnzbd.py").read_text(encoding="utf-8")
+    for forbidden in ("executors.sabnzbd", "executors import sabnzbd", "8090", "SERVICE_HOST"):
+        assert forbidden not in dialect
 
 
 def test_the_image_provides_what_the_service_needs_to_acquire_and_repair():

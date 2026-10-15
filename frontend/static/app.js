@@ -2207,13 +2207,7 @@ async function showDetail(id) {
     const dpShowFilesCard = Boolean(dpDisplayFiles.length || dpMayHaveFileSelection);
     if (modalBody) modalBody.innerHTML = `
       <div class="detail-grid">
-        <div><div class="dk">Status</div><div class="dv">${badge(transferDisplayStatus(t), t)}</div></div>
-        <div class="dp-detail-provider"><div class="dk">Provider</div><div class="dv">${esc(providerPresentation.label)}</div></div>
-        <div><div class="dk">Progress</div><div class="dv">${dpDetailProgress(t)}</div></div>
-        <div><div class="dk">Size</div><div class="dv">${fmtSize(t.size_bytes)}</div></div>
-        <div><div class="dk">Submitted As</div><div class="dv">${sourceLabel(t.source, t.request_kinds)}</div></div>
-        <div><div class="dk">Added</div><div class="dv">${window.downloadsDateMarkup(t.created_at)}</div></div>
-        <div><div class="dk">Completed</div><div class="dv">${window.downloadsDateMarkup(t.completed_at)}</div></div>
+        ${dpDetailFactCells(t, providerPresentation)}
         <div class="dp-detail-original-resource" style="grid-column:${t.requested_by ? '1' : '1/-1'}"><div class="dk">Original Resource</div><div class="dv"></div></div>
         ${dpRequestedByMarkup(t.requested_by)}
         <div style="grid-column:1/-1"><div class="dk">Transfer ID</div><div class="dv">${t.id}</div></div>
@@ -2304,6 +2298,47 @@ async function showDetail(id) {
 // metadata grid beside Original Resource. It says who ASKED; it is not who
 // owns or runs the transfer. The earliest request is always shown; every
 // later one waits behind Details' disclosure chevron, which counts them.
+// The facts above Original Resource, in two columns read row by row: the
+// left column Status, Progress, Submitted As, Completed; the right column
+// Provider, Size, Added -- and, for a Usenet transfer, the servers its own
+// execution evidence names, second, beneath Provider.
+function dpDetailFactCells(t, providerPresentation) {
+  const cell = (label, value, cls) => `<div${cls ? ` class="${cls}"` : ''}><div class="dk">${label}</div><div class="dv">${value}</div></div>`;
+  const status = cell('Status', badge(transferDisplayStatus(t), t));
+  const provider = cell('Provider', esc(providerPresentation.label), 'dp-detail-provider');
+  const progress = cell('Progress', dpDetailProgress(t));
+  const size = cell('Size', fmtSize(t.size_bytes));
+  const submitted = cell('Submitted As', sourceLabel(t.source, t.request_kinds));
+  const added = cell('Added', window.downloadsDateMarkup(t.created_at));
+  const completed = cell('Completed', window.downloadsDateMarkup(t.completed_at));
+  const servers = dpUsenetServersCell(t.usenet_servers);
+  return (servers
+    ? [status, provider, progress, servers, submitted, size, completed, added]
+    : [status, provider, progress, size, submitted, added, completed]).join('');
+}
+// Recorded evidence only: a server the job's own report names, never the
+// configured list. Unknown is said, not guessed.
+function dpUsenetServersCell(evidence) {
+  if (!evidence || typeof evidence !== 'object') return '';
+  const servers = Array.isArray(evidence.servers) ? evidence.servers : [];
+  const label = servers.length > 1 ? 'Usenet Servers' : 'Usenet Server';
+  let value;
+  if (evidence.state === 'known' && servers.length) {
+    value = servers.map(server => {
+      const notes = [];
+      if (server.reported) notes.push('about ' + server.reported + ' of articles delivered');
+      if (!server.attributed) notes.push('reported by name only; not matched to one configured server');
+      if (server.removed) notes.push('no longer configured');
+      const name = esc(server.name || server.recorded_name || 'Unnamed server') + (server.removed ? ' (removed)' : '');
+      return `<span class="dp-detail-usenet-server"${notes.length ? ` title="${esc(notes.join('; '))}"` : ''}>${name}</span>`;
+    }).join(', ');
+  } else if (evidence.state === 'none') {
+    value = '<span class="dp-detail-usenet-server is-unknown" title="The job\'s report names no server that delivered articles">None reported</span>';
+  } else {
+    value = '<span class="dp-detail-usenet-server is-unknown" title="No server report has been recorded for this transfer">Not available</span>';
+  }
+  return `<div class="dp-detail-usenet-servers"><div class="dk">${label}</div><div class="dv">${value}</div></div>`;
+}
 function dpRequestedByMarkup(requested) {
   if (!requested) return '';
   const standing = {disabled: 'Disabled', deleted: 'Deleted', merged: 'Merged'};

@@ -182,6 +182,29 @@ async def test_wipe_removes_populated_canonical_state_child_first(db_path):
 
 
 @pytest.mark.asyncio
+async def test_wipe_removes_execution_attempts_with_their_reported_sources(db_path):
+    """An attempt's recorded sources (``execution_attempts.contributors``) are a
+    column of the attempt: the whole-database wipe removes them with it, child
+    first, and nothing of them survives or strands."""
+    await _seed_canonical_state()
+    async with database.get_db() as db:
+        await db.execute(
+            "INSERT INTO execution_attempts(id,transfer_id,artifact_id,executor_id,handle,state,contributors) "
+            "VALUES('attempt-1',1,10,'sabnzbd','{}','succeeded',?)",
+            ('[{"identity":"abc","label":"Primary","reported":"1.2 GB","approximate_bytes":1288490189}]',))
+        await db.execute("UPDATE download_files SET execution_attempt_id='attempt-1' WHERE id=10")
+        await db.commit()
+
+    result = await db_maintenance.wipe_database(verified_quiesced=True)
+    assert result["ok"] is True
+    assert "execution_attempts" in set(result["wiped_tables"])
+    async with database.get_db() as db:
+        for table in ("execution_attempts", "download_files", "torrents"):
+            assert (await db.fetchall(f"SELECT COUNT(*) AS n FROM {table}"))[0]["n"] == 0, table
+        assert (await db.fetchall("PRAGMA foreign_key_check")) == []
+
+
+@pytest.mark.asyncio
 async def test_wipe_removes_the_transfer_file_selection_intent_child_first(db_path):
     """T13: the transfer-owned selection intent is ordinary application state;
     the wipe removes its entries before its roots, foreign keys enforced."""

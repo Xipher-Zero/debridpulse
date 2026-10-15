@@ -305,6 +305,11 @@ body.light #view-torrents .dp-downloads-bulk-action--resume {
 .dp-detail-resource.is-dismissed + .dp-detail-resource-full,
 body:has(.dp-row-menu) .dp-detail-resource + .dp-detail-resource-full { opacity:0; visibility:hidden; }
 @media (prefers-reduced-motion: reduce) { .dp-detail-resource-full { transition:none; } }
+/* Usenet Server(s) (dpUsenetServersCell, app.js): names from the transfer's
+   own execution evidence; prose that wraps, and an unknown state in the
+   muted text of every other absent fact. */
+.dp-detail-usenet-servers > .dv { min-width:0; overflow-wrap:anywhere; word-break:normal; }
+.dp-detail-usenet-server.is-unknown { color:var(--dp-text-muted, var(--text3)); }
 .dp-detail-route-body { padding:10px 14px 12px; }
 /* Requested By (dpRequestedByMarkup, app.js): who asked for the work, one row
    per requester, as a field of the metadata grid; the rest of its entries open

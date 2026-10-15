@@ -861,4 +861,33 @@ class TransferRepository(_CanonicalTransferRepository):
                 result.get("files"), contributed_refs, contributed_artifacts, associations,
                 transfer_id=transfer_id,
             )
+            result["execution_contributors"] = await self.execution_contributors(transfer_id)
         return result
+
+    async def execution_contributors(self, transfer_id: int) -> list[dict] | None:
+        """The sources each artifact's most recent execution attempt that
+        reported any (``execution_attempts.contributors``) says its data came
+        from, with the attempt it belongs to. ``None`` when no attempt of the
+        transfer reported (unknown); ``[]`` when the reporting attempts name
+        no source. Recorded evidence only -- never configuration."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT e.id, e.artifact_id, e.contributors FROM execution_attempts e
+                   JOIN download_files f ON f.id = e.artifact_id
+                   WHERE f.torrent_id = ? AND e.contributors IS NOT NULL
+                   ORDER BY e.artifact_id, e.created_at DESC, e.rowid DESC""", (int(transfer_id),))
+        latest: dict[int, dict] = {}
+        for row in rows:
+            latest.setdefault(int(row["artifact_id"]), row)
+        if not latest:
+            return None
+        contributors = []
+        for artifact_id, row in sorted(latest.items()):
+            for item in codec.load(row["contributors"], []) or []:
+                if isinstance(item, dict):
+                    contributors.append({"attempt_id": str(row["id"]), "artifact_id": artifact_id,
+                                         "identity": str(item.get("identity") or ""),
+                                         "label": str(item.get("label") or ""),
+                                         "reported": str(item.get("reported") or ""),
+                                         "approximate_bytes": item.get("approximate_bytes")})
+        return contributors

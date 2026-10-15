@@ -1273,9 +1273,13 @@ class TransferRepository(_QualifiedTransferRepository):
             error = codec.dump(observation.error) if observation.error else None
             revoked = observation.error is not None and observation.error.category == Category.OWNERSHIP_CONFLICT
             acquiring = observation.state == ExecutionState.RUNNING and observation.activity.network_active
-            await db.execute("""UPDATE execution_attempts SET state=?,progress=?,error=?,authorized=CASE WHEN ? THEN 0 ELSE authorized END,updated_at=CURRENT_TIMESTAMP WHERE id=?""",
+            # The executor's contributor evidence is kept as first reported:
+            # an observation that reports none leaves it as it is.
+            contributors = (codec.dump(observation.contributors)
+                            if getattr(observation, "contributors", None) is not None else None)
+            await db.execute("""UPDATE execution_attempts SET state=?,progress=?,error=?,authorized=CASE WHEN ? THEN 0 ELSE authorized END,contributors=COALESCE(contributors,?),updated_at=CURRENT_TIMESTAMP WHERE id=?""",
                              (observation.state, codec.dump(replace(observation.progress, acquiring=acquiring)), error,
-                              revoked, handle.attempt_id))
+                              revoked, contributors, handle.attempt_id))
             await db.execute("UPDATE execution_attempt_provenance SET outcome=?,updated_at=CURRENT_TIMESTAMP WHERE execution_attempt_id=?",
                              (self._execution_outcome(observation.state), handle.attempt_id))
             # Only an attempt's arrival at a failed, lost or stopped state is an

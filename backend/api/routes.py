@@ -1229,6 +1229,9 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
     disclosure = _error_disclosure(transfer.error if transfer else None, item.get("error"), application.definitions)
     if disclosure:
         result["error_disclosure"] = disclosure
+    contributors = result.pop("execution_contributors", None)
+    if "usenet" in {result.get(f"{role}_provider_id") for role in ("active", "route", "delivering", "current")}:
+        result["usenet_servers"] = _usenet_servers(contributors)
     principal = getattr(getattr(request, "state", None), "principal", None)
     if principal is not None:
         # What the interface may offer this caller here (a hint; every act is
@@ -1236,6 +1239,39 @@ async def get_torrent(torrent_id: int, application: ApplicationService = Depends
         result["access"] = (await transfer_access(principal, application.repository, [torrent_id]))[torrent_id]
         result["requested_by"] = await _requested_by(application.repository, torrent_id)
     return result
+
+
+def _usenet_servers(contributors) -> dict:
+    """The Usenet servers a transfer's own execution evidence says delivered
+    its articles (``execution_contributors``), each named as the operator
+    names it now -- or as recorded, when the server was since removed.
+    ``state``: ``known``; ``none`` (the report names no server); or
+    ``unavailable`` (nothing reported: still running, recorded before this
+    evidence existed, or unreadable). Never the configured server list."""
+    if contributors is None:
+        return {"state": "unavailable", "servers": []}
+    try:
+        from integrations.usenet.definition import UsenetOptions
+        entry = get_settings().integrations.get("usenet")
+        configured = {server.id: server for server in UsenetOptions.model_validate(
+            getattr(entry, "options", None) or {}).servers}
+    except Exception:  # noqa: BLE001 - naming falls back to the recorded label
+        configured = {}
+    servers, seen = [], set()
+    for item in contributors:
+        identity = str(item.get("identity") or "")
+        key = identity or "label:" + str(item.get("label") or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        server = configured.get(identity) if identity else None
+        current = (str(server.display_name or "").strip() or str(server.host or "").strip()) if server else ""
+        servers.append({"server_id": identity or None, "name": current or str(item.get("label") or ""),
+                        "recorded_name": str(item.get("label") or ""), "attributed": bool(identity),
+                        "removed": bool(identity) and server is None,
+                        "reported": str(item.get("reported") or ""),
+                        "approximate_bytes": item.get("approximate_bytes")})
+    return {"state": "known" if servers else "none", "servers": servers}
 
 
 def _ledger_time(value) -> str | None:
