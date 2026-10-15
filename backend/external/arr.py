@@ -13,20 +13,25 @@ import posixpath
 from external.intake import MAX_NZB_BYTES, MAX_TORRENT_BYTES
 from external.service import ExternalClients, ExternalRefused
 
-SABNZBD_API_PATH = "/api/sabnzbd/api"
-QBITTORRENT_ADD_PATH = "/api/qbittorrent/api/v2/torrents/add"
+# Each dialect answers at its protocol's own default path -- what Sonarr and
+# Radarr call with URL Base blank: SABnzbd's exact ``/api`` (never anything
+# beneath it, which is DebridPulse's native API) and qBittorrent's
+# ``/api/v2/…`` -- and at the DebridPulse-prefixed path earlier installations
+# configured as URL Base. Both are routes of the one adapter callable.
+SABNZBD_API_PATHS = ("/api", "/api/sabnzbd/api")
+QBITTORRENT_ADD_PATHS = ("/api/v2/torrents/add", "/api/qbittorrent/api/v2/torrents/add")
 # The protocol endpoints whose clients can carry the Integration token only as
 # an ``apikey`` query parameter. The authentication boundary verifies that key
-# exactly as a Bearer token, and only on these paths. (The qBittorrent dialect
-# is Bearer-only and is not one of them.)
-QUERY_KEY_PATHS = frozenset({SABNZBD_API_PATH})
+# exactly as a Bearer token, and only on these exact paths. (The qBittorrent
+# dialect is Bearer-only and is not one of them.)
+QUERY_KEY_PATHS = frozenset(SABNZBD_API_PATHS)
 NATIVE_JOBS_PATH = "/api/external/v1/jobs"
 # The request body ceiling of each path that carries an external client's
 # uploaded file: the native external upload ceiling of its kind plus room for
 # its framing -- multipart for a dialect, base64 inside JSON for the native
 # submission (which carries the largest inline kind, a .torrent).
-UPLOAD_CEILINGS = {SABNZBD_API_PATH: MAX_NZB_BYTES + 64 * 1024,
-                   QBITTORRENT_ADD_PATH: MAX_TORRENT_BYTES + 64 * 1024,
+UPLOAD_CEILINGS = {**{path: MAX_NZB_BYTES + 64 * 1024 for path in SABNZBD_API_PATHS},
+                   **{path: MAX_TORRENT_BYTES + 64 * 1024 for path in QBITTORRENT_ADD_PATHS},
                    NATIVE_JOBS_PATH: (MAX_TORRENT_BYTES * 4) // 3 + 64 * 1024}
 
 

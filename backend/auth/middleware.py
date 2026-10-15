@@ -154,7 +154,11 @@ async def _admit_authenticated(
     principal: Principal,
     cfg,
 ) -> Response:
-    if not request.url.path.startswith("/api/") and not permits(
+    # A path outside ``/api/`` is the interface, unless it is the one routed
+    # protocol endpoint there: SABnzbd's exact ``/api``, which its routed
+    # action authorizes like every other.
+    routed = request.url.path.startswith("/api/") or request.url.path in QUERY_KEY_PATHS
+    if not routed and not permits(
         principal, non_route_capability(request.url.path),
     ):
         # The interface and the API documentation are not routed actions, so

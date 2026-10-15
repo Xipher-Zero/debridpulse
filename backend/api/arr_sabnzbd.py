@@ -1,11 +1,13 @@
 """The SABnzbd download-client dialect for Sonarr and Radarr.
 
-Wire syntax only: ``GET|POST /api/sabnzbd/api?mode=…`` answered in SABnzbd's
-JSON shapes, over the native external contract (``external.service``) and the
-shared *arr translation (``external.arr``). The client configures DebridPulse
-as a SABnzbd download client with URL Base ``/api/sabnzbd`` and an Integration
-token as its API key; the authentication boundary verifies that key exactly as
-a Bearer token (``external.arr.QUERY_KEY_PATHS``).
+Wire syntax only: ``GET|POST /api?mode=…`` -- SABnzbd's own path, which
+Sonarr and Radarr call with URL Base blank -- answered in SABnzbd's JSON
+shapes, over the native external contract (``external.service``) and the
+shared *arr translation (``external.arr``). ``/api/sabnzbd/api`` (URL Base
+``/api/sabnzbd``) is the same endpoint. The client configures DebridPulse as a
+SABnzbd download client with an Integration token as its API key; the
+authentication boundary verifies that key exactly as a Bearer token, on those
+two exact paths only (``external.arr.QUERY_KEY_PATHS``).
 
 Only what Sonarr and Radarr call is answered: ``version``, ``get_config``,
 ``addfile``, ``queue``, ``history`` and their ``name=delete``. Everything else
@@ -72,6 +74,9 @@ def _category(params) -> str | None:
     return None if value in ("", "*") else value
 
 
+# SABnzbd's own path, exactly ``/api`` (URL Base blank), and the prefixed one
+# (URL Base ``/api/sabnzbd``): one endpoint (``external.arr.SABNZBD_API_PATHS``).
+@router.api_route("", methods=["GET", "POST"], include_in_schema=False)
 @router.api_route("/sabnzbd/api", methods=["GET", "POST"])
 async def sabnzbd_api(request: Request, application: ApplicationService = Depends(get_application)):
     params = request.query_params

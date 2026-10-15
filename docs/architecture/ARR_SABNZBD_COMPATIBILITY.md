@@ -36,7 +36,9 @@ Owners in the code:
      elsewhere.
 3. **Download client in *arr.** Settings → Download Clients → **SABnzbd**:
    - **Host / Port**: DebridPulse.
-   - **URL Base**: `/api/sabnzbd`.
+   - **URL Base**: blank. *arr then calls SABnzbd's own `/api?mode=…`, which
+     DebridPulse answers. `/api/sabnzbd` still works as URL Base, for
+     installations configured that way; it reaches the same endpoint.
    - **API Key**: the token.
    - **Category**: the profile's category.
    - Leave **Use SSL** to match your listener.
@@ -54,8 +56,9 @@ Owners in the code:
 
 *arr sends the API key only as the `apikey` query parameter (never as a header).
 
-- DebridPulse verifies it exactly as a Bearer token, and **only** on
-  `/api/sabnzbd/api`.
+- DebridPulse verifies it exactly as a Bearer token, and **only** on the two
+  exact paths of this endpoint: `/api` and `/api/sabnzbd/api`. Nothing beneath
+  `/api/` (DebridPulse's own API) accepts it, and neither does `/api/`.
 - No session cookie, password or open-mode access authenticates there.
 - DebridPulse does not log request lines (`uvicorn.access` is held at WARNING),
   and its log sanitizer redacts `apikey=`.

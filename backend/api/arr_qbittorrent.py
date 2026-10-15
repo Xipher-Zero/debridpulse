@@ -1,10 +1,12 @@
 """The qBittorrent download-client dialect for Sonarr and Radarr (Bearer only).
 
-Wire syntax only: ``/api/qbittorrent/api/v2/{section}/{method}`` answered in
-qBittorrent WebAPI 2.15.1 shapes, over the native external contract
-(``external.service``) and the shared *arr translation (``external.arr``).
-The client configures DebridPulse as a qBittorrent download client with URL
-Base ``/api/qbittorrent`` and an Integration token as its **API Key**, which
+Wire syntax only: ``/api/v2/{section}/{method}`` -- qBittorrent's own base,
+which Sonarr and Radarr call with URL Base blank -- answered in qBittorrent
+WebAPI 2.15.1 shapes, over the native external contract (``external.service``)
+and the shared *arr translation (``external.arr``). The prefixed
+``/api/qbittorrent/api/v2/…`` (URL Base ``/api/qbittorrent``) is the same
+endpoint. The client configures DebridPulse as a qBittorrent download client
+with an Integration token as its **API Key**, which
 it sends as ``Authorization: Bearer`` -- the existing authentication boundary
 verifies it like every Bearer token. There is no login, cookie, session or
 key in the URL.
@@ -74,6 +76,9 @@ def _profiles(client_id: str):
             if set(profile.source_kinds) & set(TORRENT_KINDS) and profile.categories]
 
 
+# qBittorrent's own base, ``/api/v2`` (URL Base blank), and the prefixed one
+# (URL Base ``/api/qbittorrent``): one endpoint.
+@router.api_route("/v2/{section}/{method}", methods=["GET", "POST"], include_in_schema=False)
 @router.api_route("/qbittorrent/api/v2/{section}/{method}", methods=["GET", "POST"])
 async def qbittorrent_api(section: str, method: str, request: Request,
                           application: ApplicationService = Depends(get_application)):

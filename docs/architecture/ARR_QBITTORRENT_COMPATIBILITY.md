@@ -70,8 +70,10 @@ On the DebridPulse side:
    - `import_root`: where *arr sees `local_root`, if it mounts it elsewhere.
 3. ***arr** → Settings → Download Clients → **qBittorrent**:
    - **Host / Port**: DebridPulse.
-   - **URL Base**: `/api/qbittorrent`.
-   - **API Key**: the token.
+   - **URL Base**: blank. *arr then calls qBittorrent's own `/api/v2/…`, which
+     DebridPulse answers. `/api/qbittorrent` still works as URL Base, for
+     installations configured that way; it reaches the same endpoint.
+   - **API Key**: the token, which *arr sends as `Authorization: Bearer`.
    - **Username / Password**: empty.
    - **Category**: the profile's category.
    - **Post-Import Category**: empty.
@@ -97,7 +99,7 @@ On the DebridPulse side:
 
 ## 3. Calls answered
 
-All are under `/api/qbittorrent/api/v2/`.
+All are under `/api/v2/` (and, identically, `/api/qbittorrent/api/v2/`).
 
 | Call | Behavior |
 |---|---|
