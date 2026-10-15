@@ -124,8 +124,8 @@ test('the picker distinguishes every provider state and disables what cannot be 
   const rows = menu.locator('.dp-root-provider-row');
   await expect(rows).toHaveCount(4);
   await expect(menu.locator('[data-dp-provider-status="current"] .dp-root-provider-current')).toHaveText('CURRENT');
-  await expect(menu.locator('[data-dp-provider-status="prepared"] .dp-root-provider-status')).toContainText('Prepared');
-  await expect(menu.locator('[data-dp-provider-status="available"] .dp-root-provider-status')).toContainText('Available');
+  await expect(menu.locator('[data-dp-provider-status="prepared"] .dp-root-provider-status')).toContainText('Ready');
+  await expect(menu.locator('[data-dp-provider-status="available"] .dp-root-provider-status')).toContainText('Not checked');
   const disabled = menu.locator('[data-dp-provider-status="unavailable"]');
   await expect(disabled.locator('.dp-root-provider-status')).toContainText('Disabled');
   await expect(disabled.locator('button.dp-root-provider-switch')).toBeDisabled();
@@ -268,4 +268,36 @@ test('an actionable transfer beside a finished one still switches', async ({ pag
   await page.locator('#t-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher').click();
   await page.locator('.dp-root-provider-menu [data-dp-provider-status="prepared"] .dp-root-provider-switch').click();
   await expect.poll(() => state.posts).toEqual([{ provider_id: 'realdebrid', expected_provider_id: 'alldebrid' }]);
+});
+
+test('an open picker follows the surface refresh: a backup that becomes ready says so, focus stays put', async ({ page }) => {
+  const state = freshState();
+  state.status.providers.find(item => item.provider_id === 'realdebrid').status = 'waiting_for_selection';
+  let reads = 0;
+  page.on('request', request => {
+    if (request.method() === 'GET' && /\/api\/torrents\/30\/route$/.test(new URL(request.url()).pathname)) reads += 1;
+  });
+  await routeApis(page, state);
+  await ready(page);
+  await page.locator('#dash-tbody tr[data-torrent-id="30"] .dp-root-provider-launcher').click();
+  const menu = page.locator('.dp-root-provider-menu');
+  const realdebrid = menu.locator('.dp-root-provider-row', { hasText: 'Real-Debrid' });
+  await expect(realdebrid.locator('.dp-root-provider-status')).toHaveText('Waiting for selection');
+  await expect(realdebrid.locator('button.dp-root-provider-switch')).toBeEnabled();
+  await menu.locator('.dp-root-provider-row', { hasText: 'Debrid-Link' }).locator('button').focus();
+  const before = reads;
+
+  state.status.providers.find(item => item.provider_id === 'realdebrid').status = 'prepared';
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')));
+  await expect(realdebrid.locator('.dp-root-provider-status')).toHaveText('Ready');
+  await expect(menu.locator('.dp-root-provider-row', { hasText: 'Debrid-Link' }).locator('button')).toBeFocused();
+  expect(reads - before).toBeGreaterThanOrEqual(1);                 // read on the refresh itself, no poller of its own
+
+  // Closed, nothing reads it any more.
+  await page.keyboard.press('Escape');
+  await expect(menu).toBeHidden();
+  const closed = reads;
+  await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:dashboard-recent-rendered')));
+  await page.waitForTimeout(200);
+  expect(reads).toBe(closed);
 });

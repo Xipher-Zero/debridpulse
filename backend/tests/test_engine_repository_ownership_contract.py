@@ -160,7 +160,11 @@ import re
 from pathlib import Path
 
 _BACKEND = Path(__file__).resolve().parents[1]
-_CLEANUP_STATE_WRITERS = {"cleanup_intent", "claim_cleanup", "renew_cleanup_claim", "cleanup_complete", "cleanup_retry"}
+# ``rearm_retired_cleanup`` (1.0.13): a retired transfer's resource its
+# provider still lists is owed its Delete's cleanup again -- a repository
+# transition like the others, never an engine write.
+_CLEANUP_STATE_WRITERS = {"cleanup_intent", "claim_cleanup", "renew_cleanup_claim", "cleanup_complete", "cleanup_retry",
+                          "rearm_retired_cleanup"}
 
 
 def _production_files():

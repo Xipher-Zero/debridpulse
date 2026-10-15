@@ -3,10 +3,11 @@
 A root whose bound resource its provider still reports PREPARING yields to a
 backup already prepared for it -- before anything executes -- through the one
 route replacement (``replace_root_route`` under ``readiness_promotion``) and
-the one promotion seam. The released route is not a failure. A route the
-operator chose, a route a readiness yield opened, a preferred primary, a
-paused or collection-authority root, or a root past its execution boundary
-never yields. Backups exist only where the operator turned Prepare Backup
+the one promotion seam. The released route is not a failure. A route a
+readiness yield opened, a preferred primary, a paused or collection-authority
+root, or a root past its execution boundary never yields. A route the
+operator chose is no longer pinned forever (1.0.13 ledger): while it is still
+preparing, a backup that becomes ready is promoted once, like any other. Backups exist only where the operator turned Prepare Backup
 Torrents on (here recorded through the repository, as that preparation does);
 with none, nothing changes.
 
@@ -193,17 +194,26 @@ async def test_a_preferred_primary_never_yields(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_a_route_the_operator_chose_never_yields_even_while_it_prepares(tmp_path, monkeypatch):
+async def test_a_route_the_operator_chose_yields_once_to_a_ready_backup_while_it_prepares(tmp_path, monkeypatch):
+    # Ledger: this used to assert the operator's choice was pinned forever,
+    # which left a still-preparing route waiting beside a ready backup.
     lab = await preparing(tmp_path, monkeypatch, "parcel-a", "parcel-b", "parcel-c")
     chosen = offer(lab.providers["parcel-c"], "chosen", ResourceState.PREPARING)
     await switch_root_provider(lab.engine, lab.transfer.id, "parcel-c", expected_provider_id="parcel-a")
     await lab.tick(times=2)
     assert (await lab.root()).resource.id == chosen.id
-    await lab.backup("parcel-b")
+    _standby, backup = await lab.backup("parcel-b")
     await lab.tick(POLL, times=2)
     root = await lab.root()
-    assert root.resource.id == chosen.id
-    assert [row["operation"] for row in await history(root.id)][-1] == "operator_switch"
+    assert root.resource.provider_id == "parcel-b"
+    operations = [row["operation"] for row in await history(root.id)]
+    assert operations[-2:] == ["operator_switch", "readiness_promotion"]
+    # No oscillation: the promoted route is the readiness yield's own, so a
+    # further ready backup never moves it again.
+    await lab.backup("parcel-a")
+    await lab.tick(POLL, times=2)
+    assert (await lab.root()).resource.provider_id == "parcel-b"
+    assert [row["operation"] for row in await history(root.id)].count("readiness_promotion") == 1
 
 
 @pytest.mark.asyncio

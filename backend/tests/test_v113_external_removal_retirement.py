@@ -8,8 +8,9 @@ adapters now ask the canonical owner to also retire a transfer this demand
 served once it is cancelled and needed by nobody, through the existing
 operator delete -- its soft-delete tombstone (history, provenance and every
 demand row stay), authorized against NO outstanding demand and checked in
-its own commit -- with nothing removed at a provider and only DebridPulse's
-own incomplete material reclaimed. Shared work, completed deliveries and
+its own commit -- with only DebridPulse's own incomplete material reclaimed
+and, at a provider, only the resources DebridPulse created or adopted for it
+(``owned_cleanup``; proven in ``test_v113_terminal_resource_ownership``). Shared work, completed deliveries and
 the native external API's cancellation-only withdraw are unchanged.
 """
 from __future__ import annotations

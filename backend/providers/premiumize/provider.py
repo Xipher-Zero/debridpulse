@@ -41,7 +41,7 @@ from transfers.errors import (
 from integrations.usenet import nzb
 from transfers.file_selection import ManifestInvalid, SelectionUnprovable, coordinate_correspondence
 from transfers.models import (
-    BITTORRENT_REQUEST_KINDS, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind,
+    BITTORRENT_REQUEST_KINDS, AvailabilityState, CachePresence, Capability, CleanupAuthority, CleanupDirective, DeliveryKind,
     Endpoint, HealthObservation, IntegrationDescriptor, OutcomeKind, Ownership, ProviderObservation,
     ProviderResource, ResolutionResult, ResolverArtifactIdentityEvidence, ResourceSnapshot, ResourceState,
     SourceEntry, SourceIdentity, TORRENT_FILE_REQUEST_KINDS, TransferCandidate, TransferOutcome, TransferRequest,
@@ -114,7 +114,7 @@ class PremiumizeProvider:
             INTEGRATION_ID, "Premiumize",
             frozenset({Capability.RESOLVE, Capability.REFRESH, Capability.METADATA, Capability.FILE_MANIFEST,
                        Capability.RESOURCE_CREATION, Capability.RESOURCE_LOOKUP, Capability.INVENTORY,
-                       Capability.CLEANUP, Capability.HEALTH}),
+                       Capability.CLEANUP, Capability.HEALTH, Capability.AVAILABILITY}),
             request_types=frozenset({"http", "https", "magnet", "torrent", "nzb"}),
             enabled=client.configured,
             request_priority=(("nzb", NZB_BEFORE_USENET if use_before_usenet else NZB_AFTER_USENET),),
@@ -359,6 +359,23 @@ class PremiumizeProvider:
             unknown = ProviderObservation(value, ResourceState.UNKNOWN, error=exc.error, request=request)
             return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         return ResolutionResult(observed.state, observation=observed, error=observed.error)
+
+    # -- routing readiness ----------------------------------------------------------
+
+    @normalized_boundary(Stage.RESOLUTION)
+    async def availability(self, requests: tuple[TransferRequest, ...]) -> tuple[AvailabilityState, ...]:
+        """Whether Premiumize can deliver each torrent request now without
+        acquiring it: its cache holds the info-hash (``cache/check``, one
+        batched read that creates nothing). ``NOT_READY`` is Premiumize's own
+        answer without it; anything else -- no info-hash, a hoster link, an
+        NZB, a member -- is ``UNKNOWN``. A failed read propagates; routing
+        treats it as unknown."""
+        digests = [self._info_hash(request) for request in requests]
+        asked = tuple(dict.fromkeys(digest for digest in digests if digest))
+        held = dict(zip(asked, await self._call(self.client.cache_check, asked))) if asked else {}
+        return tuple(AvailabilityState.UNKNOWN if digest is None else
+                     AvailabilityState.READY if held[digest] else AvailabilityState.NOT_READY
+                     for digest in digests)
 
     # -- explicit alternative groups: reads and non-productive resolution ---------
 

@@ -907,6 +907,57 @@ TRANSFER_REPOSITORY_SCHEMA = (
     "CREATE INDEX IF NOT EXISTS idx_transfer_demands_account ON transfer_demands(account_id,withdrawn_at)",
 )
 
+# The one total order of readiness evidence (1.0.13): a provider's failure of
+# a root's route and an observation of a resource are each stamped, in the
+# very transaction that writes them, with the next value of one durable
+# monotonic sequence (``transfer_controls`` key ``evidence_seq``). Whether a
+# failure is newer than a readiness observation (``standbys``'
+# ``contradicted``) compares these, never second-resolution timestamps, which
+# tie. Triggers, so every writer of an attempt's error or a binding's state
+# is covered without exception. Created after the columns exist. The seed
+# inside each trigger is conflict-free (an outer statement's conflict policy
+# would override an ``OR IGNORE`` there).
+READINESS_EVIDENCE_TRIGGERS = (
+    "INSERT OR IGNORE INTO transfer_controls(key,value) VALUES('evidence_seq','0')",
+    """CREATE TRIGGER IF NOT EXISTS trg_resolution_attempt_error_seq_insert
+        AFTER INSERT ON resolution_attempts WHEN NEW.error IS NOT NULL
+        BEGIN
+            INSERT INTO transfer_controls(key,value) SELECT 'evidence_seq','0'
+                WHERE NOT EXISTS(SELECT 1 FROM transfer_controls WHERE key='evidence_seq');
+            UPDATE transfer_controls SET value=CAST(value AS INTEGER)+1 WHERE key='evidence_seq';
+            UPDATE resolution_attempts SET error_seq=(
+                SELECT CAST(value AS INTEGER) FROM transfer_controls WHERE key='evidence_seq') WHERE id=NEW.id;
+        END""",
+    """CREATE TRIGGER IF NOT EXISTS trg_resolution_attempt_error_seq_update
+        AFTER UPDATE OF error ON resolution_attempts
+        WHEN NEW.error IS NOT NULL AND NEW.error IS NOT OLD.error
+        BEGIN
+            INSERT INTO transfer_controls(key,value) SELECT 'evidence_seq','0'
+                WHERE NOT EXISTS(SELECT 1 FROM transfer_controls WHERE key='evidence_seq');
+            UPDATE transfer_controls SET value=CAST(value AS INTEGER)+1 WHERE key='evidence_seq';
+            UPDATE resolution_attempts SET error_seq=(
+                SELECT CAST(value AS INTEGER) FROM transfer_controls WHERE key='evidence_seq') WHERE id=NEW.id;
+        END""",
+    """CREATE TRIGGER IF NOT EXISTS trg_provider_resource_observed_seq_insert
+        AFTER INSERT ON provider_resources
+        BEGIN
+            INSERT INTO transfer_controls(key,value) SELECT 'evidence_seq','0'
+                WHERE NOT EXISTS(SELECT 1 FROM transfer_controls WHERE key='evidence_seq');
+            UPDATE transfer_controls SET value=CAST(value AS INTEGER)+1 WHERE key='evidence_seq';
+            UPDATE provider_resources SET observed_seq=(
+                SELECT CAST(value AS INTEGER) FROM transfer_controls WHERE key='evidence_seq') WHERE id=NEW.id;
+        END""",
+    """CREATE TRIGGER IF NOT EXISTS trg_provider_resource_observed_seq_update
+        AFTER UPDATE OF state ON provider_resources
+        BEGIN
+            INSERT INTO transfer_controls(key,value) SELECT 'evidence_seq','0'
+                WHERE NOT EXISTS(SELECT 1 FROM transfer_controls WHERE key='evidence_seq');
+            UPDATE transfer_controls SET value=CAST(value AS INTEGER)+1 WHERE key='evidence_seq';
+            UPDATE provider_resources SET observed_seq=(
+                SELECT CAST(value AS INTEGER) FROM transfer_controls WHERE key='evidence_seq') WHERE id=NEW.id;
+        END""",
+)
+
 TRANSFER_REPOSITORY_COLUMNS = {
     # Pause intent ownership (``TransferRepository.set_pause_and_fence``):
     # every write advances ``generation``; ``holder`` is NULL for an
@@ -914,7 +965,13 @@ TRANSFER_REPOSITORY_COLUMNS = {
     # external client was granted. Existing intents are the operator's.
     'transfer_pause_intents': {'generation': 'INTEGER NOT NULL DEFAULT 0', 'holder': 'TEXT'},
     # Additive for databases created before backup promotion existed.
-    'standby_resources': {'promoted_at': 'REAL'},
+    'standby_resources': {
+        'promoted_at': 'REAL',
+        # How many members the backup's last observed manifest lists (NULL:
+        # none observed yet): the singleton selection rule's fact for a
+        # backup (``TransferRepository.established_selection``).
+        'manifest_entries': 'INTEGER',
+    },
     'torrents': {
         'normalized_error': 'TEXT',
         'lifecycle_epoch': 'INTEGER NOT NULL DEFAULT 0',
@@ -1018,9 +1075,17 @@ TRANSFER_REPOSITORY_COLUMNS = {
         # replaced resource is a new row and starts a fresh epoch.
         'preparing_bytes': 'INTEGER',
         'preparing_since': 'REAL',
+        # Readiness evidence order (``READINESS_EVIDENCE_TRIGGERS``): the
+        # evidence sequence value of this binding's last state write. 0 =
+        # written before the sequence existed.
+        'observed_seq': 'INTEGER NOT NULL DEFAULT 0',
     },
     'resolution_attempts': {
         'result': 'TEXT',
+        # The evidence sequence value of this attempt's last error write
+        # (``READINESS_EVIDENCE_TRIGGERS``). 0 = none, or written before the
+        # sequence existed.
+        'error_seq': 'INTEGER NOT NULL DEFAULT 0',
         # A route that ended on a transient provider-local failure: the
         # engine-clock instant its provider may re-enter this request's
         # automatic competition. NULL for every other ended route.
@@ -1155,7 +1220,7 @@ TRANSFER_REPOSITORY_COLUMNS = {
 
 _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'standby_resources': {'id', 'transfer_id', 'request_id', 'provider_id', 'generation', 'state', 'binding_id', 'error',
-                          'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at', 'promoted_at'},
+                          'attempts', 'retry_at', 'observed_at', 'created_at', 'updated_at', 'promoted_at', 'manifest_entries'},
     'application_events': {'id', 'created_at', 'claimed', 'transfer_id', 'detail', 'kind'},
     'transfer_demands': {'id', 'transfer_id', 'request_id', 'account_id', 'credential_id', 'origin', 'created_at',
                          'withdrawn_at', 'withdrawn_by'},
@@ -1169,9 +1234,9 @@ _TRANSFER_REPOSITORY_REQUIRED_COLUMNS = {
     'execution_attempts': {'artifact_id', 'authorized', 'candidate', 'contributors', 'cleanup_attempts', 'cleanup_error', 'cleanup_retry_at', 'cleanup_state', 'continuation', 'created_at', 'error', 'executor_id', 'handle', 'id', 'material_owner_attempt_id', 'materialization', 'progress', 'progress_at', 'state', 'target_initially_absent', 'transfer_id', 'updated_at', 'writer_generation', 'native_transition_from'},
     'artifact_material_state': {'artifact_id', 'material_generation', 'geometry_version', 'valid_ranges', 'member_ranges', 'destination', 'destination_identity', 'writer_generation', 'checkpoint_at', 'checkpoint_attempt_id', 'created_at', 'updated_at'},
     'postprocess_attempts': {'processor_id', 'paths', 'state', 'transfer_id', 'outcome'},
-    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at', 'preparing_bytes', 'preparing_since'},
+    'provider_resources': {'cleanup_abandoned', 'cleanup_attempts', 'cleanup_authority', 'cleanup_blocked', 'cleanup_claim_token', 'cleanup_claim_until', 'cleanup_error', 'cleanup_retry_at', 'id', 'payload', 'provider_id', 'resource_key', 'state', 'transfer_id', 'updated_at', 'preparing_bytes', 'preparing_since', 'observed_seq'},
     'resolution_attempts': {'created_at', 'error', 'id', 'provider_id', 'request_id', 'result', 'state', 'updated_at', 'reentry_at',
-                            'reconcile_at'},
+                            'reconcile_at', 'error_seq'},
     'route_attempt_provenance': {'candidate_summary', 'created_at', 'history_quality', 'operation', 'ordinal', 'outcome', 'previous_attempt_id', 'request_id', 'resolution_attempt_id', 'routing_decision', 'transfer_id', 'transition_kind', 'transition_reason', 'updated_at'},
     'canonical_candidate_bindings': {'id', 'canonical_artifact_id', 'candidate_id', 'provider_id', 'source_scope', 'source_key', 'role', 'candidate_order', 'created_at', 'updated_at'},
     'canonical_candidate_origins': {'id', 'binding_id', 'contributing_artifact_id', 'contributing_transfer_id', 'request_id', 'resolution_attempt_id', 'discovered_candidate_id', 'created_at'},
@@ -1355,6 +1420,8 @@ async def _init_db_sqlite(path: Path):
         for table, definitions in TRANSFER_REPOSITORY_COLUMNS.items():
             for column, definition in definitions.items():
                 await _ensure_column(db, table, column, definition)
+        for statement in READINESS_EVIDENCE_TRIGGERS:
+            await db.execute(statement)
         await _retire_and_backfill_source_fingerprints(db)
         await _backfill_provider_resource_bindings(db)
         await _normalize_legacy_cleanup_claims(db)

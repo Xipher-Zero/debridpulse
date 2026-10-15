@@ -62,7 +62,7 @@ from transfers import journal_events as je
 from transfers import file_selection as fs
 from transfers._repository_base import (
     _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, _established_children_in_db, _release_selection_poll_wait_in_db,
-    _selection_intent_in_db, _set_selection_intent_in_db,
+    _selection_intent_in_db, _set_selection_intent_in_db, terminal_cleanup_authority,
 )
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
 from transfers.errors import Category, Domain, NormalizedError, Permanence, Retryability, Stage, TransferError
@@ -922,15 +922,24 @@ class TransferRepository(_QualifiedTransferRepository):
     async def standbys(self, transfer_id: int) -> tuple[dict, ...]:
         """Every standby preparation of the transfer, with the resource it
         holds (``resource``), that resource's state (``resource_state``) and
-        whether its provider's own route of the root failed at or after that
-        state was last observed (``contradicted``): a newer failure of the
-        same provider on the root outranks an older readiness observation."""
+        whether its provider's own route of the root failed after that state
+        was last observed (``contradicted``): a newer failure of the same
+        provider on the root outranks an older readiness observation.
+
+        "Newer" is the one total evidence order (``db.database
+        .READINESS_EVIDENCE_TRIGGERS``): the failure's ``error_seq`` against
+        the binding's ``observed_seq``, both stamped in the transaction that
+        wrote them, so a failure and a readiness observation in the same
+        second are never ambiguous. Only evidence written before that order
+        existed (both 0) falls back to its timestamps."""
         async with get_db() as db:
             rows = await db.fetchall(
                 """SELECT s.*, r.payload AS resource_payload, r.state AS resource_state,
                    EXISTS(SELECT 1 FROM resolution_attempts a WHERE a.request_id=s.request_id
                           AND a.provider_id=s.provider_id AND a.error IS NOT NULL
-                          AND a.updated_at>=r.updated_at) AS contradicted
+                          AND (a.error_seq>r.observed_seq
+                               OR (a.error_seq=0 AND r.observed_seq=0 AND a.updated_at>=r.updated_at))
+                   ) AS contradicted
                    FROM standby_resources s LEFT JOIN provider_resources r ON r.id=s.binding_id
                    WHERE s.transfer_id=? ORDER BY s.created_at, s.id""", (transfer_id,))
         found = []
@@ -948,9 +957,18 @@ class TransferRepository(_QualifiedTransferRepository):
         """Claim the one preparation of (root, provider) for a productive
         attempt now: ``(id, attempts so far)``. A new preparation, a deferred
         one whose retry time has passed, or one an interrupted attempt left
-        ``creating`` (reconciled by the attempt, never duplicated: one row per
-        root and provider). ``None`` when the root is not a live root of the
-        transfer or its preparation is already bound, failed or deferred."""
+        ``creating`` (reconciled by the attempt, never duplicated: one live
+        row per root and provider). ``None`` when the root is not a live root
+        of the transfer or its preparation is already bound, failed or
+        deferred.
+
+        A preparation the root's route took over (``promoted_at``) is
+        provenance, never a backup: once that provider no longer holds the
+        root's route (its route ended -- exhausted or released), the provider
+        may cover the root again through the NEXT generation of the same
+        (root, provider) claim, a fresh ``creating`` row with no binding.
+        While the provider still holds the route, nothing is claimed: a
+        provider is never its own root's backup."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             root = await db.fetchone(
@@ -960,14 +978,24 @@ class TransferRepository(_QualifiedTransferRepository):
                 await db.rollback()
                 return None
             row = await db.fetchone(
-                "SELECT id,state,retry_at,attempts FROM standby_resources WHERE request_id=? AND provider_id=? "
-                "AND generation=1", (request_id, provider_id))
-            if row is None:
+                "SELECT id,state,retry_at,attempts,generation,promoted_at FROM standby_resources "
+                "WHERE request_id=? AND provider_id=? ORDER BY generation DESC LIMIT 1", (request_id, provider_id))
+            if row is not None and row["promoted_at"] is not None:
+                route = await db.fetchone(
+                    """SELECT a.provider_id,a.state FROM route_attempt_provenance p
+                       JOIN resolution_attempts a ON a.id=p.resolution_attempt_id
+                       WHERE a.request_id=? AND a.state!='declined' ORDER BY p.ordinal DESC LIMIT 1""",
+                    (request_id,))
+                if route is not None and route["provider_id"] == provider_id and route["state"] not in _ENDED_ROUTE_STATES:
+                    await db.rollback()
+                    return None
+            if row is None or row["promoted_at"] is not None:
                 standby_id = new_identity()
+                generation = 1 if row is None else int(row["generation"]) + 1
                 await db.execute(
                     """INSERT INTO standby_resources(id,transfer_id,request_id,provider_id,generation,state,
-                       created_at,updated_at) VALUES(?,?,?,?,1,'creating',?,?)""",
-                    (standby_id, transfer_id, request_id, provider_id, now, now))
+                       created_at,updated_at) VALUES(?,?,?,?,?,'creating',?,?)""",
+                    (standby_id, transfer_id, request_id, provider_id, generation, now, now))
                 await db.commit()
                 return standby_id, 0
             if row["state"] == "creating" or (row["state"] == "deferred" and float(row["retry_at"]) <= now):
@@ -985,9 +1013,40 @@ class TransferRepository(_QualifiedTransferRepository):
         another live transfer already holds is refused exactly as for any
         binding (``OWNERSHIP_CONFLICT``) and nothing is recorded. ``cleanup``:
         the cleanup intent it gets in the same transaction (a backup found for
-        a transfer that is gone)."""
+        a transfer that is gone).
+
+        Decided in this transaction, whatever the caller saw: a backup of a
+        transfer that is no longer live (its preparation finished after a
+        Delete, a final withdrawal or completion) is still recorded -- the
+        remote object exists -- and owed the cleanup that transfer's end
+        authorizes (``terminal_cleanup_authority``), never left to escape it.
+        A backup the provider answers with an object whose binding on this
+        transfer still owes cleanup is not bound over that removal: the
+        removal stands and this backup ends (``failed``), so nothing re-binds
+        a resource that is being given back. Returns the binding id, or
+        ``""`` when the backup ended so."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            transfer = await db.fetchone("SELECT status,delete_remote FROM torrents WHERE id=?", (transfer_id,))
+            pending = await db.fetchone(
+                "SELECT 1 FROM provider_resources WHERE transfer_id=? AND (resource_key=? OR (resource_key IS NULL AND id=?)) "
+                "AND cleanup_authority IS NOT NULL AND COALESCE(cleanup_abandoned,0)=0",
+                (transfer_id, resource.id, resource.id))
+            live = transfer is not None and str(transfer["status"]) not in {
+                str(item) for item in TERMINAL_TRANSFER_STATES}
+            if pending and cleanup is None and live:
+                error = NormalizedError(Domain.PROVIDER, Category.RESOURCE_STATE_CONFLICT, Stage.RESOLUTION,
+                                        Retryability.NEVER, integration_id=resource.provider_id,
+                                        diagnostic="backup_resource_being_removed")
+                await db.execute(
+                    """UPDATE standby_resources SET state='failed',error=?,attempts=attempts+1,updated_at=?
+                       WHERE id=? AND state='creating'""", (codec.dump(error), now, standby_id))
+                await journal(db, je.standby("failed", transfer_id=transfer_id, standby_id=standby_id,
+                                             provider_id=resource.provider_id, error=error))
+                await db.commit()
+                return ""
+            if cleanup is None and transfer is not None and not live:
+                cleanup = terminal_cleanup_authority(transfer["status"], transfer["delete_remote"])
             try:
                 binding_id = await self._resource(db, transfer_id, resource, state, journaled=False)
                 if cleanup:
@@ -1004,13 +1063,17 @@ class TransferRepository(_QualifiedTransferRepository):
         return binding_id
 
     async def observe_standby(self, standby_id: str, transfer_id: int, resource: ProviderResource,
-                              state: ResourceState, now: float) -> None:
-        """A bound preparation's resource as its provider observes it now."""
+                              state: ResourceState, now: float, *, manifest_entries: int | None = None) -> None:
+        """A bound preparation's resource as its provider observes it now.
+        ``manifest_entries``: how many members the observation's manifest
+        lists, kept (never cleared by an observation without one) so the
+        switch read model can apply the singleton rule without provider I/O."""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             await self._resource(db, transfer_id, resource, state)
-            await db.execute("UPDATE standby_resources SET observed_at=?,updated_at=? WHERE id=?",
-                             (now, now, standby_id))
+            await db.execute("UPDATE standby_resources SET observed_at=?,updated_at=?,"
+                             "manifest_entries=COALESCE(?,manifest_entries) WHERE id=?",
+                             (now, now, manifest_entries, standby_id))
             await db.commit()
 
     async def defer_standby(self, standby_id: str, error: NormalizedError, retry_at: float, now: float) -> None:
@@ -1073,7 +1136,8 @@ class TransferRepository(_QualifiedTransferRepository):
         async with get_db() as db:
             row = await db.fetchone(
                 """SELECT s.id, r.payload FROM standby_resources s JOIN provider_resources r ON r.id=s.binding_id
-                   WHERE s.request_id=? AND s.provider_id=? AND s.state='bound' AND r.cleanup_authority IS NULL
+                   WHERE s.request_id=? AND s.provider_id=? AND s.state='bound' AND s.promoted_at IS NULL
+                     AND r.cleanup_authority IS NULL
                      AND r.state NOT IN ('absent','expired') ORDER BY s.generation DESC LIMIT 1""",
                 (request_id, provider_id))
         return (str(row["id"]), codec.resource(codec.load(row["payload"]))) if row else None
@@ -2559,6 +2623,61 @@ class TransferRepository(_QualifiedTransferRepository):
                 raise _CarryRefused(refused, exc, source) from None
             return migration.logical, migration.provenance
 
+    async def established_selection(self, record, *, manifest_entries: int | None = None
+                                    ) -> list[tuple[str, int]] | str | None:
+        """The root's ESTABLISHED file-selection decision, independent of any
+        provider binding: its live intent's members (``(logical path, size)``;
+        the one intent owner), or -- with no intent -- ``"all"`` for a
+        submission that asked for every file (``selection_mode="all"``) or
+        for a torrent whose content leaves nothing to choose (the one
+        singleton rule, ``fs.unambiguous_selection``: one of the root's own
+        generations settled it ``single_file``, or ``manifest_entries`` -- a
+        provider's manifest of the root -- has exactly one member), or
+        ``None`` while nothing is decided yet (an interactive choice of more
+        than one member still open). Never a subset of its own."""
+        async with get_db() as db:
+            intent = await _selection_intent_in_db(db, record.id)
+            single = intent is None and await db.fetchone(
+                "SELECT 1 FROM transfer_file_selections WHERE request_id=? AND decision=? AND decision_reason=? "
+                "LIMIT 1", (record.id, str(fs.SelectionDecision.ALL), str(fs.DecisionReason.SINGLE_FILE)))
+        if intent is not None:
+            return intent
+        mode = fs.normalize_selection_mode(getattr(record.request, "selection_mode", None))
+        if mode == fs.SELECTION_MODE_ALL or single:
+            return fs.SELECTION_MODE_ALL
+        if manifest_entries is not None and int(manifest_entries) > 0 and fs.unambiguous_selection(manifest_entries):
+            return fs.SELECTION_MODE_ALL
+        return None
+
+    async def standby_selection(self, record, file_manifest) -> tuple[FileManifestEntry, ...] | None:
+        """What a backup of ``record`` held by a provider that executes only
+        what is selected on its own resource (``contracts.UpstreamSelection``)
+        may be handed now, at that provider's own manifest coordinates: the
+        root's established decision (``established_selection``) -- every
+        member for ALL, or exactly the intent's members (mapped by the one
+        intent mapping, ``fs.intent_in_predecessor``; a subset stays that
+        subset) -- or ``None``: nothing decided, an empty or unmappable
+        decision, or no manifest yet. It creates no selection generation: a
+        backup is no route, and the route it may become proves its own."""
+        entries = tuple(getattr(file_manifest, "entries", None) or ())
+        if not entries:
+            return None
+        decision = await self.established_selection(record, manifest_entries=len(entries))
+        if decision is None:
+            return None
+        if decision == fs.SELECTION_MODE_ALL:
+            return entries
+        if not decision:
+            return None
+        listed = [(entry.relative_path, int(entry.expected_bytes or 0)) for entry in entries]
+        try:
+            chosen = fs.intent_in_predecessor(list(decision), listed)
+        except fs.SelectionUnprovable:
+            return None
+        by_member = {(entry.relative_path, int(entry.expected_bytes or 0)): entry for entry in entries}
+        members = tuple(by_member[item] for item in chosen if item in by_member)
+        return members if len(members) == len(chosen) else None
+
     async def upstream_selection(self, record, binding_id: str, file_manifest=None, *, now: float):
         """The members this binding's still-uncommitted generation authorizes,
         at its provider's own manifest coordinates, for a provider that must
@@ -3187,9 +3306,12 @@ class TransferRepository(_QualifiedTransferRepository):
     # (``TransferEngine._readiness_promotion``): never a failure of the
     # released route, never an operator's choice.
     READINESS_PROMOTION = "readiness_promotion"
-    # Root routes that a later readiness-driven yield never moves again: an
-    # operator's explicit choice, and a route a readiness yield itself opened
-    # (anti-flapping by route state, not by a counter).
+    # Root route replacements that pin the replaced root to their target
+    # until it resolves (``begin_pinned_resolution``): an operator's explicit
+    # choice and a readiness yield. Only a route a readiness yield itself
+    # opened is never yielded again (anti-flapping by route state, not by a
+    # counter, ``TransferEngine._readiness_promotion``); an operator's switch
+    # is a choice of route, not a lock against a later readiness yield.
     READINESS_PINNED_OPERATIONS = frozenset({OPERATOR_SWITCH, READINESS_PROMOTION})
 
     async def _root_route_facts(self, db, transfer_ids) -> dict[int, dict]:
@@ -3321,7 +3443,17 @@ class TransferRepository(_QualifiedTransferRepository):
         root work), ``"busy"`` (resolution in flight), ``"stale"`` (another
         transition committed first), ``"writer_live"`` or ``"demand_changed"``
         (outstanding demand is no longer ``expected_demand``, the demand the
-        switch was authorized against)."""
+        switch was authorized against).
+
+        The automatic ``readiness_promotion`` is decided after provider I/O,
+        so its decisive conditions are re-read here, in this commit: a pause
+        of the transfer (any holder) or Pause All committed before it is
+        ``"paused"``, and a root that crossed its execution boundary
+        meanwhile is ``"stale"``. Operator controls serialize against this
+        transaction, so a control committed first always wins and one
+        committed after it applies to the new route. (An operator switch
+        holds its own pause fence here, so the pause re-read is the yield's
+        alone.)"""
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             refusal, row, latest = await self._root_route_replacement(db, request_id, expected_attempt_id,
@@ -3329,6 +3461,16 @@ class TransferRepository(_QualifiedTransferRepository):
             if refusal:
                 await db.rollback()
                 return refusal
+            if operation == self.READINESS_PROMOTION:
+                if await db.fetchone(
+                        """SELECT 1 WHERE EXISTS(SELECT 1 FROM transfer_pause_intents WHERE torrent_id=? AND paused=1)
+                           OR EXISTS(SELECT 1 FROM transfer_controls WHERE key='paused' AND value='1')""",
+                        (int(row["transfer_id"]),)):
+                    await db.rollback()
+                    return "paused"
+                if await self._crossed_execution_boundary(db, request_id):
+                    await db.rollback()
+                    return "stale"
             if not await self.hold_demand(db, int(row["transfer_id"]), expected_demand):
                 await db.rollback()
                 return "demand_changed"
@@ -3376,13 +3518,18 @@ class TransferRepository(_QualifiedTransferRepository):
         route change may replace it: any committed selection generation, any
         member it fanned out, or any download of it or its members."""
         async with get_db() as db:
-            return bool(await db.fetchone(
-                """SELECT 1 WHERE EXISTS(SELECT 1 FROM transfer_file_selections
-                       WHERE request_id=? AND manifest_committed_at IS NOT NULL)
-                   OR EXISTS(SELECT 1 FROM transfer_requests WHERE parent_id=?)
-                   OR EXISTS(SELECT 1 FROM download_files WHERE request_id=?
-                       OR request_id IN (SELECT id FROM transfer_requests WHERE parent_id=?))""",
-                (request_id, request_id, request_id, request_id)))
+            return await self._crossed_execution_boundary(db, request_id)
+
+    @staticmethod
+    async def _crossed_execution_boundary(db, request_id: str) -> bool:
+        """``root_crossed_execution_boundary`` in the caller's session."""
+        return bool(await db.fetchone(
+            """SELECT 1 WHERE EXISTS(SELECT 1 FROM transfer_file_selections
+                   WHERE request_id=? AND manifest_committed_at IS NOT NULL)
+               OR EXISTS(SELECT 1 FROM transfer_requests WHERE parent_id=?)
+               OR EXISTS(SELECT 1 FROM download_files WHERE request_id=?
+                   OR request_id IN (SELECT id FROM transfer_requests WHERE parent_id=?))""",
+            (request_id, request_id, request_id, request_id)))
 
     async def begin_pinned_resolution(self, request_id: str, provider_id: str) -> ResolutionAttempt | None:
         """Adopt the root's open ``operator_switch`` or ``readiness_promotion``

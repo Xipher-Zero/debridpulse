@@ -29,10 +29,11 @@
   const MOUNT_SELECTOR = '[data-dp-root-provider-mount]';
   const STATUS_LABELS = {
     current: 'Current',
-    prepared: 'Prepared',
+    prepared: 'Ready',
     preparing: 'Preparing…',
+    waiting_for_selection: 'Waiting for selection',
     deferred: 'Deferred',
-    available: 'Available',
+    available: 'Not checked',
     failed_earlier: 'Failed earlier',
     unavailable: 'Unavailable',
   };
@@ -51,6 +52,7 @@
   let menuSurface = null;
   let menuTransferId = null;
   let menuStatus = null;
+  let menuRefreshing = false;
   let detailTransferId = null;
   // transferId -> target provider label, while that transfer's one switch
   // request is outstanding.
@@ -379,7 +381,9 @@
   // a DOM node: a refresh that re-renders the row re-anchors it to the new
   // launcher; only when no equivalent launcher exists any more does it close.
   function onSurfaceRendered() {
-    if (!menuEl || menuEl.hidden || (menuTrigger && menuTrigger.isConnected)) return;
+    if (!menuEl || menuEl.hidden) return;
+    refreshOpenMenu();
+    if (menuTrigger && menuTrigger.isConnected) return;
     const live = menuTransferId == null ? null : document.querySelector('[' + TRIGGER_ATTR + '][data-dp-transfer-id="' +
       CSS.escape(String(menuTransferId)) + '"][data-dp-surface="' + CSS.escape(String(menuSurface || '')) + '"]');
     if (live) {
@@ -389,6 +393,36 @@
     } else {
       closeMenu();
     }
+  }
+
+  // While the picker stays open, the surface refresh that re-renders its row
+  // (the existing refresh lifecycle; no poller of its own) also re-reads that
+  // one transfer's provider status, at most one read at a time, and redraws
+  // only what changed -- keeping focus on the row the operator was on.
+  async function refreshOpenMenu() {
+    if (menuRefreshing || menuTransferId == null || switching.has(Number(menuTransferId))) return;
+    const transferId = menuTransferId;
+    menuRefreshing = true;
+    let status;
+    try {
+      status = await readStatus(transferId);
+    } catch (error) {
+      return;
+    } finally {
+      menuRefreshing = false;
+    }
+    if (menuTransferId !== transferId || !menuEl || menuEl.hidden) return;
+    if (JSON.stringify(status) === JSON.stringify(menuStatus)) return;
+    const focused = menuEl.contains(document.activeElement) && document.activeElement.closest('[data-dp-provider-status]');
+    const focusedId = focused && focused.querySelector('[data-dp-provider-id]')
+      ? focused.querySelector('[data-dp-provider-id]').getAttribute('data-dp-provider-id') : null;
+    const hadFocus = menuEl.contains(document.activeElement);
+    menuStatus = status;
+    renderMenu(status);
+    positionMenu();
+    if (!hadFocus) return;
+    const again = focusedId && menuEl.querySelector('[data-dp-provider-id="' + CSS.escape(focusedId) + '"]');
+    (again || actionableButtons()[0] || menuEl).focus({preventScroll: true});
   }
 
   function install() {

@@ -105,6 +105,16 @@ def selection_identity(request_id: str, provider_resource_id: str) -> str:
     ).hex
 
 
+def unambiguous_selection(file_count: int, *, explicit_only: bool = False) -> bool:
+    """THE singleton rule: a manifest with at most one selectable member
+    leaves nothing to choose, so its selection is ALL -- unless it is a
+    collection of independent members (``explicit_only``), which only an
+    explicit Confirm settles whatever its size. A manifest with more than one
+    selectable member is never decided by this rule. The gate, the picker
+    presentation and the root's established selection all read it."""
+    return int(file_count) <= 1 and not explicit_only
+
+
 class SelectionDecision(StrEnum):
     PENDING = "pending"
     EXPLICIT = "explicit"
@@ -442,7 +452,7 @@ def evaluate_gate(state: SelectionWindowState, now: float) -> GateEvaluation:
         # long the operator takes, nothing settles but an explicit Confirm.
         return GateEvaluation(SelectionGate.WAIT_FOR_DECISION)
 
-    if has_manifest and not has_multi:
+    if has_manifest and unambiguous_selection(state.manifest_file_count, explicit_only=state.explicit_only):
         return GateEvaluation(
             SelectionGate.PROCEED, SelectionDecision.ALL, DecisionReason.SINGLE_FILE,
         )
@@ -532,7 +542,7 @@ def file_selection_affordance(
         # A generation exists (torrent/magnet resolution in progress) but no
         # usable manifest has arrived yet.
         return "pending_manifest"
-    if file_count <= 1 and not explicit_only:
+    if unambiguous_selection(file_count, explicit_only=explicit_only):
         # Single-file torrent/magnet: no picker action (Section 6.9). A
         # one-member collection is still the operator's to choose.
         return "none"

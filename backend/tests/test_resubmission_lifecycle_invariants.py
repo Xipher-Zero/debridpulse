@@ -1111,7 +1111,12 @@ async def test_inventory_adoption_of_an_interactive_import_opens_its_generation_
 
 
 @pytest.mark.asyncio
-async def test_inventory_adoption_honours_the_predecessor_cleanup_fence(core):
+async def test_inventory_never_reimports_a_deleted_transfers_resource(core):
+    # Ledger (1.0.13 terminal resource ownership): inventory listing a
+    # resource a deleted transfer bound is evidence of that resource, never new
+    # demand. It used to create an ``unattributed`` inventory transfer while
+    # the predecessor's cleanup was pending; now nothing is admitted -- before,
+    # during or after that cleanup -- and the cleanup itself is untouched.
     a = await resolved_parcel(core, "fp-inv")
     resource = (await core.repository.resources(a.id))[0][0]
     await core.repository.delete(a.id, remote=True, now=core.clock())
@@ -1121,12 +1126,13 @@ async def test_inventory_adoption_honours_the_predecessor_cleanup_fence(core):
         ProviderResource(resource.provider_id, dict(resource.context), Ownership.OBSERVED, id=resource.id),
         ResourceState.AVAILABLE, "Parcel", request=parcel_request("fp-inv", mode="all")),)
     await core.engine.reconcile_inventory()
-    imported = [t for t in await core.repository.active() if t.source == "inventory"]
-    assert imported and await binding(imported[0].id) is None            # not adopted while cleanup can still act
+    assert [t for t in await core.repository.active() if t.source == "inventory"] == []
     assert fenced is core.provider.resources[resource.id]
 
     await core.engine.cleanup_pending()
-    assert await core.repository.predecessor_cleanup_barrier(imported[0].id) is False
+    for _ in range(2):
+        await core.engine.reconcile_inventory()
+    assert [t for t in await core.repository.active() if t.source == "inventory"] == []
 
 
 # --------------------------------------------------------------------------- #

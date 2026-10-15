@@ -969,8 +969,11 @@ class ApplicationService:
         history and provenance stay). The delete is authorized against NO
         outstanding demand and checks that in its own commit, so demand
         admitted or consolidated meanwhile keeps the transfer. Only DP's own
-        incomplete material is reclaimed, never a completed file, and nothing
-        is removed at a provider."""
+        incomplete material is reclaimed, never a completed file; at a
+        provider, every resource DebridPulse created or adopted for it -- the
+        route's and each prepared backup's -- is removed, durably and
+        retryably, never one it only observed or one another transfer
+        still holds."""
         async with self.application_operation():
             settled = await self.engine.withdraw_demand(tuple(demand_ids), by=by)
             retired = []
@@ -980,7 +983,8 @@ class ApplicationService:
                     if transfer is None or transfer.state != TransferState.CANCELLED:
                         continue
                     try:
-                        await self.engine.delete(transfer_id, remote=False, expected_demand=frozenset())
+                        await self.engine.delete(transfer_id, remote=False, expected_demand=frozenset(),
+                                                 owned_cleanup=True)
                     except DemandChanged:
                         continue
                     retired.append(transfer_id)

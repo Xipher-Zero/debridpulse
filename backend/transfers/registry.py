@@ -325,8 +325,11 @@ class IntegrationRegistry:
         # (a stable sort); no READY changes nothing. It never moves a provider
         # whose entitlement is still unknown ahead of anyone, and when the
         # established winner's own entitlement is unknown the decision stays
-        # exactly as premature as it was.
+        # exactly as premature as it was. An explicitly preferred provider
+        # that competes keeps its place: a cache answer never outranks the
+        # operator's own choice.
         if (ready and applicable and self.availability_orders(request)
+                and applicable[0].descriptor.id != request.preferred_provider
                 and entitlement[applicable[0].descriptor.id] is not None):
             prefer = frozenset(provider_id for provider_id in ready if entitlement.get(provider_id) is True)
             applicable.sort(key=lambda provider: provider.descriptor.id not in prefer)

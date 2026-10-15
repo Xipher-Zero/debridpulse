@@ -222,7 +222,7 @@ delete anything.
 
 | Item | Effect |
 |---|---|
-| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed; nothing is removed at a provider. |
+| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed. At a provider, every resource DebridPulse created or adopted for the transfer -- its route's and each prepared backup's -- is removed by a durable, retryable cleanup; a resource it only observed, or one another transfer still holds, is kept. A provider inventory that still lists a removed resource never brings the work back. |
 | Unfinished, others need the work | Only this client's demand is withdrawn. |
 | Completed | The delivery is acknowledged. The transfer and its history stay; once every claim on the transfer is acknowledged, an empty folder DebridPulse created for it is removed, never its contents (`ARR_SABNZBD_COMPATIBILITY.md`, "After the import"). |
 | Failed | Withdrawn; the core's failure policy applies. |

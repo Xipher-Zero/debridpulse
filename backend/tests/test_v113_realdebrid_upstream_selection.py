@@ -823,11 +823,16 @@ async def test_a_backup_prepared_before_any_selection_is_never_ready_and_is_sele
 # -- D: a provider that does not declare the capability is unchanged ----------------------------------------------------
 
 def test_only_a_declaring_provider_s_waiting_backup_is_a_switch_target():
-    from transfers.manual_route_switch import AVAILABLE, PREPARED, PREPARING, standby_choice
+    from transfers.manual_route_switch import PREPARED, PREPARING, WAITING_FOR_SELECTION, standby_choice
 
     waiting = {"state": "bound", "resource_state": ResourceState.PREPARING.value}
     assert standby_choice(waiting) == (PREPARING, False)                  # unchanged without the capability
-    assert standby_choice(waiting, upstream_selection=True) == (AVAILABLE, True)
+    # Ledger (1.0.13): worded for what it is -- waiting for the root's
+    # selection, still selectable -- rather than the cold ``available``;
+    # once the selection is established it is ``preparing`` -- still the
+    # selectable takeover target it always was.
+    assert standby_choice(waiting, upstream_selection=True) == (WAITING_FOR_SELECTION, True)
+    assert standby_choice(waiting, upstream_selection=True, selection_established=True) == (PREPARING, True)
     ready = {"state": "bound", "resource_state": ResourceState.AVAILABLE.value}
     assert standby_choice(ready, upstream_selection=True) == standby_choice(ready) == (PREPARED, True)
     creating = {"state": "creating", "resource_state": None}

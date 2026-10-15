@@ -990,6 +990,37 @@ class DemandChanged(Exception):
     outstanding demand is no longer the demand the act was authorized
     against (another account's demand arrived meanwhile)."""
 
+
+class KnownProviderResource(Exception):
+    """An inventory observation was refused admission, nothing changed: the
+    provider resource it observes is one some DebridPulse transfer has durably
+    bound (``provider_resources.resource_key``) -- live or retired. Inventory
+    is evidence that the resource exists, never new demand for work
+    DebridPulse already holds or retired."""
+
+
+# What ``torrents.delete_remote`` records about a deleted transfer's remote
+# resources (an existing INTEGER column): kept as they are; removed because
+# the operator asked Delete to (any resource it knows, observed ones too); or
+# retired with the final external demand (only what DebridPulse itself
+# created or adopted).
+DELETE_REMOTE_KEEP, DELETE_REMOTE_USER_REQUEST, DELETE_REMOTE_OWNED = 0, 1, 2
+
+
+def terminal_cleanup_authority(status: str, delete_remote) -> str | None:
+    """THE cleanup a resource bound to a transfer that is no longer live is
+    owed: a deleted transfer's by what its Delete recorded
+    (``DELETE_REMOTE_*``); any other ended transfer's (finished, cancelled,
+    consolidated) is surplus DebridPulse owns."""
+    if str(status) == "deleted":
+        mode = int(delete_remote or 0)
+        if mode == DELETE_REMOTE_USER_REQUEST:
+            return CleanupAuthority.USER_REQUEST
+        if mode == DELETE_REMOTE_OWNED:
+            return CleanupAuthority.OWNED
+        return None
+    return CleanupAuthority.OWNED
+
 class TransferRepository:
     async def has_integration_references(self, identity=None):
         """Does anything still DEPEND on this integration's connection?
@@ -2142,7 +2173,8 @@ class TransferRepository:
 
     async def admit(self, requests: tuple[TransferRequest, ...], *, name: str, source: str = "manual", priority=None, deduplicate=True,
                     independent=True, alternative_groups: tuple[int | None, ...] | None = None,
-                    verbatim: tuple[bool, ...] = (), demand: SubmissionDemand | None = None) -> tuple[Transfer, bool]:
+                    verbatim: tuple[bool, ...] = (), demand: SubmissionDemand | None = None,
+                    observed: tuple[ProviderResource, ResourceState] | None = None) -> tuple[Transfer, bool]:
         """Admit one submission under the source's active dedupe identity.
 
         Matching live work (any non-terminal lifecycle, a failed one included:
@@ -2181,7 +2213,19 @@ class TransferRepository:
         transaction whether the submission created the transfer or converged
         on an existing one (which admits no request of its own). A transfer
         created without one (an inventory observation) records an
-        ``unattributed`` demand: nobody owns it and it keeps the work."""
+        ``unattributed`` demand: nobody owns it and it keeps the work.
+
+        ``observed``: the provider resource (and its observed state) an
+        inventory observation is of. Admission and binding are one
+        transition, decided in this same transaction: a NEW transfer is never
+        created for a resource any transfer has durably bound -- live or
+        retired (``KnownProviderResource``, nothing written) -- and the new
+        transfer it does create is bound to that resource in the commit that
+        creates it, so no inventory-created transfer ever exists unbound
+        while another owner can take the resource. Only the
+        predecessor-cleanup fence leaves it unbound (it then waits exactly
+        as a first resolution does). Converging on an existing transfer binds
+        nothing here (``adopt_inventory_resource`` decides that)."""
         fingerprint = requests[0].fingerprint if len(requests) == 1 else ""
         # Routing preferences and display names are not logical source identity.
         # The same accepted request can be resolved through another integration.
@@ -2205,6 +2249,11 @@ class TransferRepository:
             if row:
                 transfer_id, created = int(row["id"]), False
             else:
+                if observed and await db.fetchone(
+                        "SELECT 1 FROM provider_resources WHERE resource_key=? OR (resource_key IS NULL AND id=?) LIMIT 1",
+                        (str(observed[0].id), str(observed[0].id))):
+                    await db.rollback()
+                    raise KnownProviderResource(str(observed[0].id))
                 if priority is None:
                     tail = await db.fetchone(f"SELECT MIN(priority) AS low FROM torrents WHERE {_QUEUE_MEMBER_SQL}")
                     priority = min(0, int(tail["low"])) if tail and tail["low"] is not None else 0
@@ -2251,6 +2300,11 @@ class TransferRepository:
             if created:
                 await journal(db, je.accepted(transfer_id))
                 await db.execute("INSERT INTO application_events(transfer_id,kind) VALUES(?,'accepted')", (transfer_id,))
+            if created and observed and first_root and not await self._predecessor_cleanup_blocks(db, transfer_id):
+                resource, state = observed
+                await self._resource(db, transfer_id, resource, state)
+                await db.execute("UPDATE transfer_requests SET state='waiting',resource=?,error=NULL WHERE id=?",
+                                 (codec.dump(resource), first_root))
             await db.commit()
         return await self.get(transfer_id), created
 
@@ -5034,7 +5088,8 @@ class TransferRepository:
                     "info", "Processing paused" if paused else "Processing resumed", "installation"))
             await db.commit()
 
-    async def delete(self, transfer_id: int, *, remote: bool, now: float = 0, expected_demand=None) -> None:
+    async def delete(self, transfer_id: int, *, remote: bool, now: float = 0, expected_demand=None,
+                     owned_cleanup: bool = False) -> None:
         """Atomically tombstone a transfer and retain responsibility for launched executions.
 
         Delete also permanently retires the transfer's active dedupe identity: the
@@ -5044,7 +5099,16 @@ class TransferRepository:
         outstanding cleanup responsibility, and any file-selection generations all
         remain scoped to this transfer; re-submitting the same source afterwards
         creates a genuinely fresh transfer (see ``admit``).
+
+        ``torrents.delete_remote`` records what this Delete authorizes for the
+        transfer's remote resources -- now and for any found later
+        (``terminal_cleanup_authority``): ``remote`` (the operator's
+        "remove from the provider"), else ``owned_cleanup`` (a retirement by
+        the final external demand: what DebridPulse created or adopted), else
+        nothing.
         """
+        mode = (DELETE_REMOTE_USER_REQUEST if remote else
+                DELETE_REMOTE_OWNED if owned_cleanup else DELETE_REMOTE_KEEP)
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
             if not await self.hold_demand(db, transfer_id, expected_demand):
@@ -5061,11 +5125,11 @@ class TransferRepository:
                     """UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
                         source_fingerprint=COALESCE(source_fingerprint,?), hash=?,
                         updated_at=CURRENT_TIMESTAMP WHERE id=?""",
-                    (int(remote), original, tombstone, transfer_id),
+                    (mode, original, tombstone, transfer_id),
                 )
             else:
                 await db.execute("""UPDATE torrents SET status='deleted',delete_remote=?,lifecycle_epoch=lifecycle_epoch+1,
-                    updated_at=CURRENT_TIMESTAMP WHERE id=?""", (int(remote), transfer_id))
+                    updated_at=CURRENT_TIMESTAMP WHERE id=?""", (mode, transfer_id))
             # Deleting a transfer ends its current file-selection intent; its
             # provider generations' selections stay as history. A later re-add
             # of the same source is a new transfer and chooses afresh.
@@ -5108,6 +5172,64 @@ class TransferRepository:
             row = await db.fetchone("SELECT delete_remote FROM torrents WHERE id=?", (transfer_id,))
         return bool(row and row["delete_remote"])
 
+    async def retired_cleanup_authority(self, transfer_id: int) -> str | None:
+        """The cleanup a resource of this no-longer-live transfer is owed
+        (``terminal_cleanup_authority``); ``None`` for a live transfer."""
+        async with get_db() as db:
+            row = await db.fetchone("SELECT status,delete_remote FROM torrents WHERE id=?", (transfer_id,))
+        if row is None or str(row["status"]) not in {str(state) for state in TERMINAL_TRANSFER_STATES}:
+            return None
+        return terminal_cleanup_authority(row["status"], row["delete_remote"])
+
+    async def historical_binding(self, resource_key: str) -> dict | None:
+        """The most recent binding of a provider resource by ANY transfer --
+        live, finished, cancelled or deleted -- with its transfer's lifecycle:
+        ``binding_id``, ``transfer_id``, ``status``, ``delete_remote``,
+        ``cleanup_authority``, ``cleanup_abandoned``, ``state``, ``payload``.
+        ``None`` when DebridPulse never bound it."""
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT r.id AS binding_id,r.transfer_id,r.state,r.cleanup_authority,
+                          COALESCE(r.cleanup_abandoned,0) AS cleanup_abandoned,r.payload,t.status,t.delete_remote
+                   FROM provider_resources r JOIN torrents t ON t.id=r.transfer_id
+                   WHERE r.resource_key=? OR (r.resource_key IS NULL AND r.id=?)
+                   ORDER BY r.rowid DESC LIMIT 1""", (str(resource_key), str(resource_key)))
+        return dict(row) if row else None
+
+    async def rearm_retired_cleanup(self, binding_id: str, state: ResourceState, authority: str, *,
+                                    now: float) -> bool:
+        """A retired transfer's resource that its provider still lists: owed
+        ``authority`` again (it is still there, whatever an earlier removal
+        answered), recorded as observed -- in one transaction, and only while
+        its transfer is still not live, nothing is owed or claimed for it
+        already, and its cleanup was not abandoned. ``True`` when armed."""
+        terminal = sorted(str(item) for item in TERMINAL_TRANSFER_STATES)
+        async with get_db() as db:
+            await db.execute("BEGIN IMMEDIATE")
+            result = await db.execute(
+                f"""UPDATE provider_resources SET state=?,cleanup_authority=?,cleanup_error=NULL,cleanup_retry_at=0,
+                       updated_at=CURRENT_TIMESTAMP
+                   WHERE id=? AND cleanup_authority IS NULL AND COALESCE(cleanup_abandoned,0)=0
+                   AND (cleanup_claim_token IS NULL OR cleanup_claim_until<=?)
+                   AND transfer_id IN (SELECT id FROM torrents WHERE status IN ({",".join("?" * len(terminal))}))""",
+                (state.value, authority, binding_id, now, *terminal))
+            await db.commit()
+        return result.rowcount == 1
+
+    async def standby_fenced_providers(self, transfer_id: int, request_id: str) -> set[str]:
+        """The providers that must not prepare a backup of this root now: one
+        whose route of the root DebridPulse released (an operator switch or a
+        readiness yield gave its resource back -- a backup would recreate it),
+        and one whose resource on this transfer still owes cleanup (a backup
+        bound to it would be deleted, or overwrite the removal)."""
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT provider_id FROM resolution_attempts WHERE request_id=? AND state='released'
+                   UNION
+                   SELECT provider_id FROM provider_resources WHERE transfer_id=? AND cleanup_authority IS NOT NULL
+                   AND COALESCE(cleanup_abandoned,0)=0""", (str(request_id), int(transfer_id)))
+        return {str(row["provider_id"]) for row in rows}
+
     async def rename(self, transfer_id: int, name: str):
         async with get_db() as db:
             await db.execute("UPDATE torrents SET name=? WHERE id=? AND status!='deleted'", (name, transfer_id))
@@ -5135,13 +5257,23 @@ class TransferRepository:
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            # Decided in this commit: the import is still live work (every
+            # terminal lifecycle -- cancelled included -- refuses; a transfer
+            # cancelled after its admission never gains a binding), and no
+            # other transfer, of any lifecycle, bound this native resource
+            # meanwhile (its history owns it: never re-adopted).
             root = await db.fetchone(
-                """SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
+                f"""SELECT r.id FROM transfer_requests r JOIN torrents t ON t.id=r.transfer_id
                    WHERE r.transfer_id=? AND r.parent_id IS NULL AND r.state IN ('pending','resolving','failed')
-                   AND t.source='inventory' AND t.status NOT IN ('completed','consolidated','deleted')""",
-                (transfer_id,),
+                   AND t.source='inventory'
+                   AND t.status NOT IN ({",".join("?" * len(_TERMINAL_TRANSFER_STATUSES))})""",
+                (transfer_id, *_TERMINAL_TRANSFER_STATUSES),
             )
-            if not root or await self._predecessor_cleanup_blocks(db, transfer_id):
+            held_elsewhere = await db.fetchone(
+                "SELECT 1 FROM provider_resources WHERE transfer_id!=? "
+                "AND (resource_key=? OR (resource_key IS NULL AND id=?)) LIMIT 1",
+                (transfer_id, str(resource.id), str(resource.id)))
+            if not root or held_elsewhere or await self._predecessor_cleanup_blocks(db, transfer_id):
                 await db.rollback()
                 return False
             await self._resource(db, transfer_id, resource, state)

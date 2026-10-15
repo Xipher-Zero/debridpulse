@@ -162,6 +162,7 @@ from transfers.policy import (
 )
 from transfers.registry import IntegrationRegistry
 from transfers.repository import SelectionAuthority, TransferRepository
+from transfers._repository_base import KnownProviderResource, terminal_cleanup_authority
 from transfers.runtime_coordination import ExecutionRuntimeCoordinator
 from transfers.runtime_telemetry import ExecutionThroughputMeter
 
@@ -567,7 +568,8 @@ class TransferEngine:
         return direct_link_host(current.request.payload)
 
     async def submit(self, requests: tuple[TransferRequest, ...], *, name="", source="manual", priority=None, independent=True, deduplicate=True,
-                     alternative_groups: tuple[int | None, ...] | None = None, demand=None):
+                     alternative_groups: tuple[int | None, ...] | None = None, demand=None,
+                     observed=None):
         """Admit a submission. An independent submission of an object whose
         earlier lifecycle is terminal is a NEW lineage (``repository.admit``):
         it never reopens that history, inherits nothing of its routes,
@@ -593,6 +595,7 @@ class TransferEngine:
                          for item, (payload, values) in zip(requests, split))
         transfer, created = await self.repository.admit(requests, name=safe_name(name or requests[0].name or "Transfer"), source=source, priority=priority, deduplicate=deduplicate,
                                                         independent=independent, demand=demand,
+                                                        observed=observed,
                                                         verbatim=tuple(not values for _payload, values in split),
                                                         **({"alternative_groups": alternative_groups} if alternative_groups else {}))
         if created and any(values for _payload, values in split):
@@ -1947,8 +1950,12 @@ class TransferEngine:
             await self.challenges.clear(challenge)
             await self.inputs.clear(challenge.id)
         if not live:
-            if await self.repository.delete_remote_requested(record.transfer_id):
-                await self._cleanup_resources(record.transfer_id, explicit=True)
+            # A creation that answered after its transfer stopped being live
+            # is owed what that transfer's end authorizes.
+            authority = await self.repository.retired_cleanup_authority(record.transfer_id)
+            if authority is not None:
+                await self._cleanup_resources(record.transfer_id,
+                                              explicit=authority == CleanupAuthority.USER_REQUEST)
             return
         await self._secure_root_selection(record, provider, result.observation)
         if result.error:
@@ -4342,14 +4349,15 @@ class TransferEngine:
                 errors.append(error)
         return tuple(errors)
 
-    async def delete(self, transfer_id: int, *, remote=True, expected_demand=None):
+    async def delete(self, transfer_id: int, *, remote=True, expected_demand=None, owned_cleanup=False):
         """``expected_demand``: the outstanding demand the delete was
         authorized against. The tombstone is the decisive write and checks it
         in its own transaction, so it comes first: a refused delete has
         changed nothing, and the transfer's input material is released only
         once it can no longer accept input."""
         challenge = await self.challenges.current(transfer_id)
-        await self.repository.delete(transfer_id, remote=remote, now=self.clock(), expected_demand=expected_demand)
+        await self.repository.delete(transfer_id, remote=remote, now=self.clock(), expected_demand=expected_demand,
+                                     owned_cleanup=owned_cleanup)
         if challenge:
             await self.inputs.clear(challenge.id)
         await self.challenges.clear_transfer(transfer_id)
@@ -4358,6 +4366,11 @@ class TransferEngine:
         await self._retire_detached_material(transfer_id)
         if remote:
             await self._cleanup_resources(transfer_id, explicit=True)
+        elif owned_cleanup:
+            # Retired by its final external demand: every resource of it --
+            # the route's and each backup's -- that DebridPulse created or
+            # adopted is given back; nothing it merely observed.
+            await self._cleanup_resources(transfer_id, explicit=False)
 
     async def retire_vacated_collection(self, transfer_id: int, *, expected_demand, settled=None) -> dict[int, str]:
         """Remove the empty folder of each completed collection artifact the
@@ -4560,13 +4573,37 @@ class TransferEngine:
                 if item.resource.id in known:
                     await self.repository.resource_observation(known[item.resource.id], item.resource, item.state)
                 elif item.request:
-                    transfer = await self.submit((item.request,), name=item.name, source="inventory", independent=False)
-                    # Adoption is the one binding path that never passes through a
-                    # resolution attempt, so it is owned end to end by the
-                    # repository transition (inventory-created imports only,
-                    # fence-honouring) and then normalized by the same post-binding
-                    # selection owner as every other binding.
-                    if await self.repository.adopt_inventory_resource(transfer.id, item.resource, item.state):
+                    # Inventory is evidence that a resource exists, never new
+                    # demand for one DebridPulse already bound -- by a live
+                    # transfer or by one that was deleted, withdrawn or
+                    # finished (its native identity, never its content hash).
+                    # A deleted transfer's resource that is still listed is
+                    # owed again what its Delete authorized.
+                    held = await self.repository.historical_binding(item.resource.id)
+                    if held is not None:
+                        if str(held["status"]) == "deleted":
+                            authority = terminal_cleanup_authority(held["status"], held["delete_remote"])
+                            if authority is not None:
+                                await self.repository.rearm_retired_cleanup(
+                                    held["binding_id"], item.state, authority, now=self.clock())
+                        continue
+                    try:
+                        transfer = await self.submit((item.request,), name=item.name, source="inventory",
+                                                     independent=False, observed=(item.resource, item.state))
+                    except KnownProviderResource:
+                        continue                                  # bound meanwhile: decided at admission
+                    # A transfer this observation created was bound in its own
+                    # admission commit (``repository.admit``): admission and
+                    # binding are one transition, so a resource another owner
+                    # takes meanwhile never leaves an unbound import behind. An
+                    # existing import the observation converged on is adopted
+                    # by the one adoption transition (inventory-created imports
+                    # only, live, fence-honouring). Either is then normalized by
+                    # the same post-binding selection owner as every binding.
+                    root = next((record for record in await self.repository.requests(transfer.id)
+                                 if record.parent_id is None), None)
+                    bound = root is not None and root.resource is not None and root.resource.id == item.resource.id
+                    if bound or await self.repository.adopt_inventory_resource(transfer.id, item.resource, item.state):
                         root = next((record for record in await self.repository.requests(transfer.id)
                                      if record.parent_id is None), None)
                         if root is not None:

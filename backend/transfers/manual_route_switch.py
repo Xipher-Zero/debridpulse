@@ -61,9 +61,13 @@ from transfers.errors import (
 from transfers.models import BITTORRENT_REQUEST_KINDS, ResourceState
 from transfers.registry import RoutingDisposition
 
-# Provider status vocabulary of the one read model.
+# Provider status vocabulary of the one read model. The picker words them
+# Current, Ready (``prepared``), Preparing, Waiting for selection, Deferred,
+# Not checked (``available``: a legitimate claimant nothing has checked for
+# this root), Failed earlier and Unavailable.
 CURRENT, PREPARED, PREPARING, DEFERRED, AVAILABLE, FAILED_EARLIER, UNAVAILABLE = (
     "current", "prepared", "preparing", "deferred", "available", "failed_earlier", "unavailable")
+WAITING_FOR_SELECTION = "waiting_for_selection"
 _UNAVAILABLE_REASONS = {
     RoutingDisposition.DISABLED: "disabled",
     RoutingDisposition.NOT_ENTITLED: "not_entitled",
@@ -158,7 +162,8 @@ def switch_available(registry, facts: dict | None) -> bool:
         entry["selectable"] for entry in provider_choices(registry, facts))
 
 
-def standby_choice(standby: dict, *, upstream_selection: bool = False) -> tuple[str, bool]:
+def standby_choice(standby: dict, *, upstream_selection: bool = False,
+                   selection_established: bool = False) -> tuple[str, bool]:
     """What one TASK3 backup of the root makes an otherwise available target:
     ``(status, selectable)``.
 
@@ -177,14 +182,17 @@ def standby_choice(standby: dict, *, upstream_selection: bool = False) -> tuple[
     target resolves cold, as ``available`` / ``deferred``.
 
     A backup of a provider that executes only what is selected on its own
-    resource (``upstream_selection``) is never selected while it is a
-    backup, so PREPARING is no acquisition in progress there: it waits for
-    the root's selection, which taking it over synchronizes. It is the
-    ``available`` target it would be cold -- never ``prepared``, which it is
-    not."""
+    resource (``upstream_selection``) is handed the root's selection only
+    once that selection is established (``selection_established``;
+    ``TransferRepository.established_selection``). Until then its PREPARING
+    is no acquisition in progress: it is ``waiting_for_selection``. Once
+    established, it is ``preparing``. Either way it stays the selectable
+    target it always was: taking it over synchronizes (or verifies) exactly
+    the selection the route then has, and the one torrent is adopted, never
+    created again."""
     state, resource = standby["state"], standby.get("resource_state")
     if state == "bound" and resource == ResourceState.PREPARING.value and upstream_selection:
-        return AVAILABLE, True
+        return (PREPARING if selection_established else WAITING_FOR_SELECTION), True
     if state == "creating" or (state == "bound" and resource == ResourceState.PREPARING.value):
         return PREPARING, False
     if state == "deferred":
@@ -215,11 +223,19 @@ async def route_providers(engine, transfer_id: int) -> dict | None:
     standbys = {item["provider_id"]: item for item in await engine.repository.standbys(int(transfer_id))
                 if item["request_id"] == facts["root_id"] and item.get("promoted_at") is None}
     providers = provider_choices(engine.registry, facts)
+    record = None
     for entry in providers:
         standby = standbys.get(entry["provider_id"])
         if entry["status"] == AVAILABLE and standby:
-            entry["status"], entry["selectable"] = standby_choice(standby, upstream_selection=isinstance(
-                engine.registry.providers.get(entry["provider_id"]), UpstreamSelection))
+            upstream = isinstance(engine.registry.providers.get(entry["provider_id"]), UpstreamSelection)
+            established = False
+            if upstream:
+                record = record or next((item for item in await engine.repository.requests(int(transfer_id))
+                                         if item.id == facts["root_id"]), None)
+                established = record is not None and (await engine.repository.established_selection(
+                    record, manifest_entries=standby.get("manifest_entries"))) is not None
+            entry["status"], entry["selectable"] = standby_choice(
+                standby, upstream_selection=upstream, selection_established=established)
     return {"transfer_id": int(transfer_id), "current_provider_id": facts["current"], "providers": providers,
             "switchable": root_actionable(facts) and any(entry["selectable"] for entry in providers)}
 

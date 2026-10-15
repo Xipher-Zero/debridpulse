@@ -18,7 +18,7 @@ from dataclasses import replace
 import logging
 
 from transfers import _engine_base, file_selection as fs
-from transfers._repository_base import manifest_child_identity, manifest_member_requests
+from transfers._repository_base import manifest_child_identity, manifest_member_requests, terminal_cleanup_authority
 from transfers.input_required import split_user_supplied
 from transfers._engine_recovery import TransferEngine as _RecoveryTransferEngine
 from transfers.applicability import ApplicabilityUnresolved
@@ -33,11 +33,20 @@ from transfers.policy import provider_attributable, recovery_action
 from transfers.registry import ProviderRoute
 from transfers.models import (
     ActiveCapacity, AvailabilityState, CachePresence, Capability, CleanupAuthority, NormalizedError, Ownership,
-    ResolutionResult,
+    ProviderObservation, ResolutionResult,
     ResourceState,
 )
 
 logger = logging.getLogger(__name__)
+
+# A takeover observation that fails with one of these is no transient read
+# failure: the adapter's answer itself is invalid or unsafe, and the takeover
+# fails closed exactly as before (``_promoted_standby``).
+_TAKEOVER_FAIL_CLOSED = frozenset({
+    Category.INVALID_ADAPTER_RESPONSE, Category.PROVIDER_PROTOCOL_VIOLATION,
+    Category.DESTINATION_BLOCKED, Category.EGRESS_POLICY_VIOLATION, Category.UNSAFE_REDIRECT,
+    Category.TLS_IDENTITY_FAILURE, Category.SECURITY_POLICY_REJECTED,
+})
 
 # The bound on one provider's read-only availability answer while a root is
 # routed; a provider that does not answer in time is UNKNOWN for that decision.
@@ -414,13 +423,13 @@ class TransferEngine(_RecoveryTransferEngine):
 
     @staticmethod
     def _unowned_cleanup(item: dict) -> str | None:
-        """A found creation of a deleted transfer is removed only when the
-        operator asked Delete to remove remote resources (exactly the intent
-        Delete gives every resource it knows); of a transfer whose route
-        ended or that finished, it is surplus DebridPulse owns."""
-        if item["status"] == "deleted":
-            return CleanupAuthority.USER_REQUEST if item["delete_remote"] else None
-        return CleanupAuthority.OWNED
+        """A found creation of a transfer that is no longer live is owed what
+        that transfer's end authorizes (``terminal_cleanup_authority``): a
+        deleted transfer's by what its Delete recorded -- the operator's
+        "remove from the provider", or a retirement by the final external
+        demand (what DebridPulse owns) -- and of a transfer whose route ended
+        or that finished, it is surplus DebridPulse owns."""
+        return terminal_cleanup_authority(item["status"], item["delete_remote"])
 
     async def _settle_uncertain_resolution(self, record, attempt, error: NormalizedError) -> None:
         """Settle a root's open primary creation the provider may have made.
@@ -653,8 +662,12 @@ class TransferEngine(_RecoveryTransferEngine):
                     primary = await self.repository.bound_route_provider(record.id)
                     if not primary:
                         continue
+                    # A provider whose route of this root was released, or
+                    # whose resource here still owes cleanup, prepares no
+                    # backup: it would recreate what was just given back.
+                    fenced = await self.repository.standby_fenced_providers(transfer.id, record.id)
                     for provider in self._standby_providers(record, primary, await self._competition(record)):
-                        if (record.id, provider.descriptor.id) in unsettled:
+                        if (record.id, provider.descriptor.id) in unsettled or provider.descriptor.id in fenced:
                             continue
                         if budget <= 0 or await self.repository.primary_resolution_runnable(self.clock()):
                             return
@@ -893,14 +906,33 @@ class TransferEngine(_RecoveryTransferEngine):
         the ordinary sequential one. ``None`` when there is nothing to take
         over (no live backup, a provider that cannot observe one, or a backup
         the provider reports gone, which is recorded as such): ordinary
-        resolution proceeds. Promotion never chooses a provider."""
+        resolution proceeds. Promotion never chooses a provider.
+
+        The backup's identity is already DebridPulse's (its binding), so an
+        observation that merely fails -- a timeout, a transient or unmapped
+        provider error -- is no proof it is gone and no failure of the route:
+        it is taken over unready (``UNKNOWN``, the error kept as the
+        observation's evidence) and the ordinary observation of a bound
+        resource decides what happens next, under its own budget. An invalid
+        or unsafe adapter answer (``_TAKEOVER_FAIL_CLOSED``) or an answer
+        naming another resource still fails closed."""
         if not isinstance(provider, ResourceLookup):
             return None
         held = await self.repository.promotable_standby(record.id, provider.descriptor.id)
         if held is None:
             return None
         standby_id, resource = held
-        observed = await provider.observe(resource)
+        try:
+            observed = await provider.observe(resource)
+        except Exception as exc:
+            error = exc.error if isinstance(exc, TransferError) else unknown_failure(
+                exc, integration_id=provider.descriptor.id, domain=Domain.PROVIDER, stage=Stage.RESOLUTION,
+                secrets=(str(record.request.payload),))
+            if error.category in _TAKEOVER_FAIL_CLOSED:
+                raise TransferError(error) from None
+            await self.repository.promote_standby(standby_id, self.clock())
+            unknown = ProviderObservation(resource, ResourceState.UNKNOWN, error=error, request=record.resolvable)
+            return ResolutionResult(ResourceState.UNKNOWN, observation=unknown)
         if observed.resource.provider_id != provider.descriptor.id or observed.resource.id != resource.id:
             raise TransferError(self._error(Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION,
                                             domain=Domain.PROVIDER, retryability=Retryability.NEVER))
@@ -974,8 +1006,12 @@ class TransferEngine(_RecoveryTransferEngine):
                 or await repository.collection_route_authority(record.transfer_id)):
             return False
         latest = await repository.latest_root_route(record.id)
+        # A route a readiness yield itself opened is never yielded again
+        # (anti-flapping by route state); an operator's switch is a choice of
+        # route, not a lock: while it still waits for usable material, the
+        # same yield applies to it.
         if (not latest or latest["provider_id"] != current or latest["state"] in {"exhausted", "released"}
-                or latest["operation"] in repository.READINESS_PINNED_OPERATIONS):
+                or latest["operation"] == repository.READINESS_PROMOTION):
             return False
         if await repository.root_crossed_execution_boundary(record.id):
             return False
@@ -1045,8 +1081,39 @@ class TransferEngine(_RecoveryTransferEngine):
                     continue
                 if observed.resource.provider_id != resource.provider_id:
                     continue
+                manifest = getattr(observed.file_manifest, "entries", None)
                 await self.repository.observe_standby(item["id"], transfer.id, observed.resource, observed.state,
-                                                      self.clock())
+                                                      self.clock(),
+                                                      manifest_entries=None if manifest is None else len(manifest))
+                await self._select_on_standby(transfer.id, item["request_id"], provider, observed)
+
+    async def _select_on_standby(self, transfer_id: int, request_id: str, provider, observed) -> None:
+        """Hand a backup held by a provider that executes only what is
+        selected on its own resource (``UpstreamSelection``) the root's
+        ESTABLISHED decision (``repository.standby_selection``: every file for
+        ALL, the operator's subset exactly), so it prepares as any backup does
+        and its own observation can report it ready -- which the one
+        readiness yield then acts on. Nothing is sent while nothing is
+        decided, for a transfer that may no longer begin work, or for a
+        resource that is not still waiting. One provider call per
+        observation, read first by the provider itself; a failure changes
+        nothing and the next observation tries again."""
+        if (not isinstance(provider, UpstreamSelection) or observed.error is not None
+                or observed.state != ResourceState.PREPARING or observed.file_manifest is None):
+            return
+        if not await self._live(transfer_id, admission=True):
+            return
+        record = next((item for item in await self.repository.requests(transfer_id) if item.id == request_id), None)
+        if record is None or record.parent_id is not None:
+            return
+        members = await self.repository.standby_selection(record, observed.file_manifest)
+        if not members:
+            return
+        try:
+            await provider.synchronize_selection(observed.resource, members, submit=True)
+        except Exception as exc:
+            logger.debug("backup selection provider=%s request=%s: %s", observed.resource.provider_id,
+                         request_id, type(exc).__name__)
 
     @staticmethod
     def _route_evidence(record, route: ProviderRoute) -> str | None:
