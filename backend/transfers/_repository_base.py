@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import math
 import time
 from collections import Counter
@@ -456,6 +457,45 @@ def active_execution_projection(row, prefix: str = "") -> tuple[float | None, st
     if exact[0] is None or estimate > exact[0]:
         return estimate, "estimated"
     return min(99.9, exact[0]), exact[1]
+
+
+def active_execution_bytes(row, prefix: str = "") -> tuple[int, int] | None:
+    """``(completed, total)``: the executors' own exact byte counters behind
+    an in-flight percentage of basis ``"bytes"`` (``active_execution_projection``)
+    -- the current, authorized, acquiring writers' figures, never a declared
+    size and never derived from a percentage; ``None`` for any other basis."""
+    if active_execution_projection(row, prefix)[1] != "bytes":
+        return None
+    total = int((row or {}).get(prefix + "execution_total") or 0)
+    completed = int((row or {}).get(prefix + "execution_completed") or 0)
+    return min(max(completed, 0), total), total
+
+
+def effective_progress(status, verified, active_percent, active_basis, active_bytes=None) -> dict:
+    """THE primary progress figure of an unfinished transfer, as DebridPulse
+    shows it (``frontend/static/app.js`` ``progress()``): while the transfer
+    is downloading and nothing is verified yet (no verified percentage, or
+    exactly 0), the current in-flight execution figure; otherwise verified
+    material. ``source`` says which, ``estimated`` whether the in-flight
+    figure is a best-effort estimate; the exact byte counters ride along only
+    with an exact in-flight byte figure. Writers past acquisition
+    (``"processing"``) are no acquisition figure. Verified and in-flight
+    facts stay separate: nothing here is stored as material."""
+    state = str(status or "").strip().lower()
+    figure = {"source": "verified", "estimated": False, "completed_bytes": None, "total_bytes": None}
+    if state == "completed":
+        return {**figure, "percent": 100.0}
+    try:
+        current = float(active_percent) if active_percent is not None else math.nan
+    except (TypeError, ValueError):
+        current = math.nan
+    unverified = verified is None or float(verified) <= 0
+    if state == "downloading" and active_basis != "processing" and math.isfinite(current) and unverified:
+        exact = active_bytes if active_basis == "bytes" else None
+        return {"percent": round(min(max(current, 0.0), 100.0), 1), "source": "execution",
+                "estimated": active_basis == "estimated", "completed_bytes": exact[0] if exact else None,
+                "total_bytes": exact[1] if exact else None}
+    return {**figure, "percent": None if verified is None else round(min(max(float(verified), 0.0), 100.0), 1)}
 
 
 def canonical_artifact_membership_sql(alias: str = "f") -> str:
@@ -2359,6 +2399,23 @@ class TransferRepository:
                                            AND d.withdrawn_at IS NULL
                                       WHERE f.torrent_id=t.id)
                     ORDER BY t.id""", terminal)
+        return [int(row["id"]) for row in rows]
+
+    async def served_transfers(self, demand_ids) -> list[int]:
+        """The transfers whose affected demand these demands are part of:
+        each one's own transfer, and every transfer an artifact of it was
+        consolidated into (``_AFFECTED_DEMAND_SQL``, read the other way)."""
+        ids = json.dumps(sorted({str(item) for item in demand_ids if item}))
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT d.transfer_id AS id FROM transfer_demands d
+                       WHERE d.id IN (SELECT value FROM json_each(:ids))
+                   UNION
+                   SELECT f.torrent_id AS id FROM transfer_demands d
+                       JOIN artifact_consolidations ac ON ac.source_transfer_id=d.transfer_id
+                       JOIN download_files f ON f.id=ac.canonical_artifact_id
+                       WHERE d.id IN (SELECT value FROM json_each(:ids))
+                   ORDER BY id""", {"ids": ids})
         return [int(row["id"]) for row in rows]
 
     @staticmethod

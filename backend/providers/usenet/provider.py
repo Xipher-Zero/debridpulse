@@ -8,7 +8,7 @@ output.
 """
 from __future__ import annotations
 
-from integrations.usenet.nzb import InvalidNzb, parse, read
+from integrations.usenet.nzb import InvalidNzb, parse, read, useful_name
 from transfers.applicability import ProviderApplicability
 from transfers.errors import (
     Category, Confidence, Domain, EvidenceBasis, NormalizedError, Retryability, Stage, TransferError,
@@ -57,7 +57,13 @@ class UsenetProvider:
             raise self._failure(Category.UNSUPPORTED_REQUEST)
         staged, manifest = await self._manifest(request)
 
-        name = safe_name(manifest.name) or safe_name(request.name) or "usenet-download"
+        # The posting itself is named by its first posted file (or, failing
+        # that, by the request); that is its identity. What the transfer is
+        # called is the submitter's own name for the NZB when it supplied one
+        # (an upload's filename, as a Usenet client names a job), never an incidental
+        # member such as a release's .nfo.
+        posting = safe_name(manifest.name) or safe_name(request.name) or "usenet-download"
+        name = (useful_name(request.name) if request.name_supplied else "") or posting
         candidate = TransferCandidate(
             name=name,
             # An NZB is not an addressable endpoint: none is invented.
@@ -70,7 +76,7 @@ class UsenetProvider:
                 CONTEXT_DECLARED_BYTES: manifest.declared_bytes,
             },
             # Usenet is one logical posted resource, not a host-addressed one.
-            source_identity=SourceIdentity("usenet", name.casefold()),
+            source_identity=SourceIdentity("usenet", posting.casefold()),
         )
         return ResolutionResult(ResourceState.AVAILABLE, (candidate,))
 

@@ -469,7 +469,9 @@ async def test_removing_exclusive_active_work_cancels_it_through_the_core(qb, wo
     await world.engine.tick()
     form = {"hashes": HASH.upper(), **({"deleteFiles": delete_files} if delete_files else {})}
     assert (await post(qb, "torrents/delete", **form)).status_code == 200
-    assert (await world.repository.get(transfer_id)).state == TransferState.CANCELLED
+    # Stopped by the core, and -- needed by nobody -- retired from the
+    # ordinary transfer lists by the canonical (soft) delete.
+    assert (await world.repository.get(transfer_id)).state == TransferState.DELETED
     assert await torrents(qb) == []
 
 
@@ -490,9 +492,9 @@ async def test_a_requester_arriving_during_removal_keeps_the_work(qb, world, mon
     transfer_id = await transfer_of((await jobs())[0]["id"])
     original = world.application.withdraw_demand
 
-    async def racing(demand_ids, *, by):
+    async def racing(demand_ids, *, by, **options):
         await world.external.submit(world.clients.r, body("racing-theirs", category="movies"))
-        return await original(demand_ids, by=by)
+        return await original(demand_ids, by=by, **options)
 
     monkeypatch.setattr(world.application, "withdraw_demand", racing)
     assert (await delete(qb, HASH)).status_code == 200

@@ -107,7 +107,8 @@ async def remove(external: ExternalClients, principal, job_id: str) -> str:
       client's interest is satisfied; DebridPulse's transfer and history stay;
     * anything else -> withdraw the job's own demand: the core cancels the
       work only if no other demand still needs it (atomically, at its own
-      commit), and leaves shared work running;
+      commit), and leaves shared work running; work so cancelled, needed by
+      nobody, leaves the ordinary transfer lists (soft delete, history kept);
     * already withdrawn -> nothing.
 
     Another client's or an unknown job is ``job_not_found``."""
@@ -127,5 +128,5 @@ async def remove(external: ExternalClients, principal, job_id: str) -> str:
             await external.acknowledge(principal, job_id, {"delivery_id": delivery["delivery_id"],
                                                            "generation": int(exc.extra["current_generation"])})
         return "acknowledged"
-    await external.withdraw(principal, job_id)
+    await external.withdraw(principal, job_id, retire_unclaimed=True)
     return "withdrawn"

@@ -215,10 +215,16 @@ async def test_link_and_upload_converge_on_the_same_provider_facing_request(tmp_
     assert isinstance(linked.request.payload, StagedPayload) and isinstance(uploaded.request.payload, StagedPayload)
     assert (linked.request.payload.sha256, linked.request.payload.byte_length) == (
         uploaded.request.payload.sha256, uploaded.request.payload.byte_length)
+    # What differs is only who named it: an upload carries the submitter's
+    # own filename, a link's name is derived from its path.
+    assert (linked.request.name_supplied, uploaded.request.name_supplied) == (False, True)
     first = (await provider.resolve(linked.request)).candidates[0]
     second = (await provider.resolve(uploaded.request)).candidates[0]
-    for field in ("name", "expected_bytes", "materialization", "source_identity", "endpoints"):
+    for field in ("expected_bytes", "materialization", "source_identity", "endpoints"):
         assert getattr(first, field) == getattr(second, field), field
+    # The same posting: the link is named by it, the upload by its filename.
+    assert first.source_identity.key == first.name.casefold()
+    assert second.name == "posting"
     assert first.context["nzb_declared_bytes"] == second.context["nzb_declared_bytes"]
 
 

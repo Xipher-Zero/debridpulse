@@ -561,7 +561,9 @@ async def test_removing_exclusive_active_work_cancels_it_through_the_core(sab, w
     removed = await sab.client.request(method, API, params={**params, "value": nzo_id, "del_files": del_files,
                                                             "apikey": sab.key})
     assert removed.json() == {"status": True, "nzo_ids": [nzo_id]}
-    assert (await world.repository.get(transfer_id)).state == TransferState.CANCELLED
+    # Stopped by the core, and -- needed by nobody -- retired from the
+    # ordinary transfer lists by the canonical (soft) delete.
+    assert (await world.repository.get(transfer_id)).state == TransferState.DELETED
     assert await queue(sab) == [] and await history(sab) == []
 
 
@@ -608,11 +610,11 @@ async def test_a_requester_arriving_during_removal_keeps_the_work(sab, world, mo
     transfer_id = await transfer_of(job["id"])
     original = world.application.withdraw_demand
 
-    async def racing(demand_ids, *, by):
+    async def racing(demand_ids, *, by, **options):
         # Another client's demand on the same work lands after the facade
         # read the job and before the core settles the withdrawal.
         await world.external.submit(world.clients.r, body("racing-theirs", category="movies"))
-        return await original(demand_ids, by=by)
+        return await original(demand_ids, by=by, **options)
 
     monkeypatch.setattr(world.application, "withdraw_demand", racing)
     assert (await call(sab, "queue", name="delete", value=job["id"], del_files="1")).json()["status"] is True

@@ -222,7 +222,7 @@ delete anything.
 
 | Item | Effect |
 |---|---|
-| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer, atomically against demand that arrives meanwhile. |
+| Unfinished, only this client needs the work | Its demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed; nothing is removed at a provider. |
 | Unfinished, others need the work | Only this client's demand is withdrawn. |
 | Completed | The delivery is acknowledged. The transfer and its history stay. |
 | Failed | Withdrawn; the core's failure policy applies. |

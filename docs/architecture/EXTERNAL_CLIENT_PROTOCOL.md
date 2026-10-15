@@ -186,7 +186,12 @@ Each job also carries:
 - `reason`;
 - `actionability`: `none`, `wait`, `operator` or `resubmit`;
 - `progress`: `basis=members`, `completed_members`, `total_members`, and
-  `percent` (or `null` when no own figure exists);
+  `percent` (verified material; `null` when no own figure exists). `effective`
+  is the figure DebridPulse shows as its primary bar: `percent`, `source`
+  (`verified`, or `execution` while downloading with nothing verified yet),
+  `estimated`, and the executor's exact `completed_bytes`/`total_bytes` only
+  with an exact in-flight byte figure. An execution figure is activity, never
+  material, and may move back when an attempt is replaced;
 - `error`: category and retryability only;
 - `revision`: increments on every public change;
 - `cursor`: a global change sequence.

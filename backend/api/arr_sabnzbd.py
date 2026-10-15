@@ -39,6 +39,7 @@ from transfers.errors import TransferError
 
 router = APIRouter()
 
+_MIB = 1024 * 1024
 # The most items one history or delete request names.
 MAX_HISTORY_PAGE = 500
 MAX_DELETE_IDS = 100
@@ -173,13 +174,23 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
                                      **({"limit": limit} if limit else {}))
     slots = []
     for index, job in enumerate(listing["jobs"], start=start):
-        percent = (job.get("progress") or {}).get("percent")
+        progress = job.get("progress") or {}
+        # DebridPulse's own primary figure (``effective``): the in-flight
+        # execution while nothing is verified yet, else verified material.
+        effective = progress.get("effective") or {}
+        percent = effective.get("percent", progress.get("percent"))
+        # *arr draws its progress bar from ``mb``/``mbleft`` alone
+        # (``percentage`` is parsed but never read): they carry the
+        # executor's own exact byte counters when DebridPulse shows exactly
+        # those, else SABnzbd's unknown form. Time left is unknown: no speed
+        # or remaining time is invented.
+        total, completed = effective.get("total_bytes"), effective.get("completed_bytes")
+        mb, mbleft = (("%.2f" % (total / _MIB), "%.2f" % (max(0, total - (completed or 0)) / _MIB))
+                      if isinstance(total, int) and total > 0 else ("0.00", "0.00"))
         slots.append({
             "index": index, "nzo_id": job["id"], "filename": _name(job), "cat": job["category"],
             "status": _QUEUE_STATUS.get(job["reason"], "Downloading"), "priority": "Normal",
-            # Sizes and time left are unknown to the external contract:
-            # SABnzbd's own unknown forms, never an invented figure.
-            "mb": "0.00", "mbleft": "0.00", "timeleft": "0:00:00",
+            "mb": mb, "mbleft": mbleft, "timeleft": "0:00:00",
             "percentage": str(int(percent or 0)),
         })
     return {"queue": {"paused": bool(listing["globally_paused"]), "noofslots": len(slots),

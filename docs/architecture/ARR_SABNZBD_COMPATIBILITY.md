@@ -165,9 +165,23 @@ never exposed.
 Further rules:
 
 - **Global pause.** When processing is globally paused, `queue.paused` is true.
-- **Unknown values.** Sizes, speed and time left are not part of the contract.
-  They read `0.00` and `0:00:00`, SABnzbd's unknown forms. `percentage` is the
-  native progress.
+- **Progress is the bar DebridPulse shows.** Sonarr and Radarr draw their queue
+  bar from `mb` and `mbleft` alone (`100 - mbleft / mb * 100`); they parse
+  `percentage` but never read it. While a job is downloading and nothing is
+  verified yet, DebridPulse's own primary bar is the current execution's
+  figure, so:
+  - with the executor's exact byte counters (native Usenet: SABnzbd's own `mb`
+    / `mbleft` for the running job), `mb` and `mbleft` carry them and *arr's
+    bar moves with DebridPulse's;
+  - with only an estimate, or no in-flight figure, `mb` and `mbleft` read
+    `0.00`: *arr draws no bar rather than an invented one;
+  - once anything is verified, or past acquisition (repair, unpack),
+    `percentage` is verified material and `mb`/`mbleft` read `0.00`.
+
+  `percentage` always mirrors the same figure. A NZB's declared size is never
+  used, and no total is derived from a percentage.
+- **Unknown values.** Speed and time left are not part of the contract:
+  `timeleft` reads `0:00:00`, SABnzbd's unknown form.
 - **Completed means verified.** A job is Completed only when its whole delivery
   is committed and re-verified at that poll.
 - **`storage`** is the single delivered file, or the one folder holding every
@@ -183,7 +197,7 @@ never authorize DebridPulse to delete anything.
 
 | Item | Effect |
 |---|---|
-| Unfinished, only this client needs the work | The job's demand is withdrawn. The core cancels the transfer, atomically against demand that arrives meanwhile. |
+| Unfinished, only this client needs the work | The job's demand is withdrawn. The core cancels the transfer and, needed by nobody, removes it from the ordinary Downloads and Dashboard lists (its soft delete: history and provenance stay), each step atomically against demand that arrives meanwhile. Only DebridPulse's own incomplete material is reclaimed; nothing is removed at a provider. |
 | Unfinished, others need the work | Only this client's demand is withdrawn; the work continues. |
 | Completed | The delivery is acknowledged. DebridPulse keeps the transfer and its history. |
 | Failed | The demand is withdrawn. The core's failure policy applies. |

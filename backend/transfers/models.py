@@ -359,6 +359,10 @@ class TransferRequest:
     # ``"item"`` or ``"collection"``; empty when no choice was asked. Recorded
     # at admission, never inferred; not identity.
     acquisition_scope: str = ""
+    # Whether ``name`` is the submitter's own name for the input (an uploaded
+    # file's filename); a name DebridPulse derived (a link's path) is not.
+    # Recorded at admission, never inferred; not identity.
+    name_supplied: bool = False
 
 
 # BitTorrent-class request kinds: a magnet URI, or a torrent metainfo upload

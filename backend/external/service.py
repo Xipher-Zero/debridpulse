@@ -596,13 +596,18 @@ class ExternalClients:
 
     # ── withdrawal ──────────────────────────────────────────────────────────
 
-    async def withdraw(self, principal: Principal, job_id: str) -> dict:
+    async def withdraw(self, principal: Principal, job_id: str, *, retire_unclaimed: bool = False) -> dict:
+        """Withdraw the job's own demand. ``retire_unclaimed`` (a download
+        client's "remove"): the work it served, once cancelled and needed by
+        nobody, also leaves the ordinary transfer lists
+        (``ApplicationService.withdraw_demand``)."""
         row = await self._owned(principal, job_id)
         _admit_mutation(row["client_id"])
         demand = await self.repository.demand(row["demand_id"])
         already = demand is not None and demand["withdrawn_at"] is not None
         if not already:
-            await self.application.withdraw_demand((row["demand_id"],), by=f"external:{row['client_id']}")
+            await self.application.withdraw_demand((row["demand_id"],), by=f"external:{row['client_id']}",
+                                                   retire_unclaimed=retire_unclaimed)
             async with get_db() as db:
                 await db.execute("BEGIN IMMEDIATE")
                 await _audit(db, "external_job_withdrawn", "External job withdrawn by its client", row,
@@ -1105,6 +1110,10 @@ class ExternalClients:
                                       "total_members": members["total"],
                                       "percent": None if transfer is None or status == "consolidated"
                                       else round(float(transfer["progress"] or 0), 1)}
+            if transfer is not None and status != "consolidated":
+                # The figure DebridPulse itself shows as the primary bar
+                # (``percent`` stays verified material alone).
+                projection["progress"]["effective"] = await self._effective_progress(transfer)
         if status in {"completed", "consolidated"}:
             await self._deliverable(job, transfer_id, status, members, plan)
             return plan
@@ -1135,6 +1144,15 @@ class ExternalClients:
             except (TypeError, ValueError):
                 pass
         return plan
+
+    async def _effective_progress(self, transfer) -> dict:
+        from transfers._repository_base import (
+            active_execution_bytes, active_execution_progress_sql, active_execution_projection, effective_progress)
+
+        async with get_db() as db:
+            row = await db.fetchone(active_execution_progress_sql("f.torrent_id = ?"), (int(transfer["id"]),))
+        return effective_progress(transfer["status"], transfer["progress"], *active_execution_projection(row),
+                                  active_execution_bytes(row))
 
     async def _members(self, transfer_id: int, status: str) -> dict:
         """The artifacts that fulfil the job's transfer: its own canonical

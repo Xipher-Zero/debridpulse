@@ -23,6 +23,7 @@ from transfers.errors import (
 )
 from transfers.filesystem import safe_name
 from transfers.manual_queue_move import move_in_queue
+from transfers._repository_base import DemandChanged
 from transfers.models import TransferRequest, TransferState
 from transfers.requests import (
     direct_link_collection_name, direct_link_filename, extract_hash,
@@ -572,7 +573,7 @@ class ApplicationService:
                 except StagedInputError as exc:
                     raise ValueError(str(exc)) from None
         return await self.submit(
-            (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
+            (TransferRequest("nzb", payload, name=filename or f"{name}.nzb", name_supplied=bool(filename)),),
             name=name, source=source, demand=demand)
 
     async def submit_nzb_link(self, url, *, source="direct_link", allow_local_network=False, demand=None):
@@ -947,14 +948,34 @@ class ApplicationService:
             self.execution_wakeup.set()
             return {"ok": True, **await self._publish(transfer_id)}
 
-    async def withdraw_demand(self, demand_ids, *, by: str) -> dict:
+    async def withdraw_demand(self, demand_ids, *, by: str, retire_unclaimed: bool = False) -> dict:
         """Withdraw submitter demand through the canonical engine, which
-        decides each affected transfer's fate by its remaining demand."""
+        decides each affected transfer's fate by its remaining demand.
+
+        ``retire_unclaimed``: a transfer these demands served that is then
+        cancelled and needed by nobody is also removed from the ordinary
+        transfer lists, by the canonical delete (its soft-delete tombstone:
+        history and provenance stay). The delete is authorized against NO
+        outstanding demand and checks that in its own commit, so demand
+        admitted or consolidated meanwhile keeps the transfer. Only DP's own
+        incomplete material is reclaimed, never a completed file, and nothing
+        is removed at a provider."""
         async with self.application_operation():
             settled = await self.engine.withdraw_demand(tuple(demand_ids), by=by)
-            for transfer_id in settled:
+            retired = []
+            if retire_unclaimed:
+                for transfer_id in await self.repository.served_transfers(demand_ids):
+                    transfer = await self.repository.get(transfer_id)
+                    if transfer is None or transfer.state != TransferState.CANCELLED:
+                        continue
+                    try:
+                        await self.engine.delete(transfer_id, remote=False, expected_demand=frozenset())
+                    except DemandChanged:
+                        continue
+                    retired.append(transfer_id)
+            for transfer_id in sorted({*settled, *retired}):
                 await self._publish(transfer_id)
-            return {"ok": True, "cancelled_transfers": settled}
+            return {"ok": True, "cancelled_transfers": settled, "retired_transfers": retired}
 
     async def settle_withdrawn_demand(self) -> list[int]:
         """Apply demand that was withdrawn elsewhere (an account disabled or
