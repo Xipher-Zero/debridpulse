@@ -534,7 +534,7 @@ class ApplicationService:
                              selection_mode=selection_mode),),
             name=name, source=source, demand=demand)
 
-    async def submit_nzb(self, data, filename, *, source="manual_file", demand=None):
+    async def submit_nzb(self, data, filename, *, source="manual_file", demand=None, validate=False):
         """Admit one uploaded NZB through the canonical submission seam.
 
         The application layer deliberately does not interpret the posting: the
@@ -546,19 +546,31 @@ class ApplicationService:
         chunks. A stream is staged straight through to durable storage and the
         request carries the reference, so a large manifest is never assembled
         in memory here or persisted into the request row.
+
+        ``validate``: a submitter that must learn before admission whether the
+        upload is a posting (an external client, which is told success only
+        once its job is admitted) has it staged and read by the existing NZB
+        reader first, exactly as an NZB link is; a refused posting is discarded
+        and raises ``ValueError`` with nothing admitted.
         """
         name = str(filename or "").rsplit(".", 1)[0] or "usenet-download"
-        if isinstance(data, (bytes, bytearray)):
+        if isinstance(data, (bytes, bytearray)) and not validate:
             payload = bytes(data)
             if not payload:
                 raise ValueError("NZB file is empty")
         else:
-            if self.staged_input is None:
+            if self.staged_input is None or (validate and self.nzb_reader is None):
                 raise ValueError("Durable input storage is unavailable")
             try:
-                payload = await self.staged_input.stage(data)
+                payload = (self.staged_input.stage_bytes(bytes(data)) if isinstance(data, (bytes, bytearray))
+                           else await self.staged_input.stage(data))
             except StagedInputError as exc:
                 raise ValueError(str(exc)) from None
+            if validate:
+                try:
+                    await self._read_staged_nzb(payload, fallback_name=str(filename or "upload.nzb"))
+                except StagedInputError as exc:
+                    raise ValueError(str(exc)) from None
         return await self.submit(
             (TransferRequest("nzb", payload, name=filename or f"{name}.nzb"),),
             name=name, source=source, demand=demand)
@@ -616,25 +628,32 @@ class ApplicationService:
             raise _submission_failure(Domain.LOCAL_RESOURCE, Category.LOCAL_IO_FAILURE, Retryability.BACKOFF,
                                       Origin.LOCAL_SYSTEM, 507, exc) from None
 
-        def validated():
-            with self.staged_input.opened(payload) as stream:
-                return self.nzb_reader(stream, fallback_name=request_name)
-
         try:
-            manifest = await asyncio.to_thread(validated)
-        except BaseException as exc:
-            # Refused (or abandoned) before anything could own it.
-            self.staged_input.discard(payload)
-            if isinstance(exc, (ValueError, StagedInputError)):
-                raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER,
-                                          Origin.USER, 400, exc) from None
-            raise
+            manifest = await self._read_staged_nzb(payload, fallback_name=request_name)
+        except (ValueError, StagedInputError) as exc:
+            raise _submission_failure(Domain.REQUEST, Category.INVALID_REQUEST, Retryability.NEVER,
+                                      Origin.USER, 400, exc) from None
         # From here on the payload is admitted exactly as an uploaded one is,
         # and reclaimed by the same owner (``reclaim_staged_input``) if
         # admission never completes.
         name = safe_name(manifest.name) or request_name.rsplit(".", 1)[0] or "usenet-download"
         return await self.submit((TransferRequest("nzb", payload, name=request_name),), name=name, source=source,
                                  demand=demand)
+
+    async def _read_staged_nzb(self, payload, *, fallback_name: str):
+        """The existing NZB reader's verdict on a staged payload, before
+        anything owns it: the posting's manifest, or the reader's
+        ``ValueError`` (or a ``StagedInputError``) with the payload discarded."""
+        def validated():
+            with self.staged_input.opened(payload) as stream:
+                return self.nzb_reader(stream, fallback_name=fallback_name)
+
+        try:
+            return await asyncio.to_thread(validated)
+        except BaseException:
+            # Refused (or abandoned) before anything could own it.
+            self.staged_input.discard(payload)
+            raise
 
     async def submit_meta4(self, data, filename, *, source="manual_file", selection_mode="all", demand=None):
         """Admit one uploaded Metalink4 descriptor through the canonical

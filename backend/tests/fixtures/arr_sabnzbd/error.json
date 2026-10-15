@@ -1,0 +1,10 @@
+{
+  "_source": [
+    "arr parse: sonarr SabnzbdProxy.cs:187-246 (transport exceptions 195-215, CheckForError 222-246), SabnzbdJsonError.cs:5-12; Sabnzbd.cs:416-438 (TestAuthentication substring checks)@57816c149d02f95543973fefb4780c4495f8121c; HttpClient.cs:106-120 (status>=400 -> HttpException), HttpException.cs:17-19 (message has no body)@57816c149d02f95543973fefb4780c4495f8121c",
+    "SAB: api.py:1338-1341 report() error shape; api.py:134-145 _MSG_* constants; interface.py:145-146,248-305 check_apikey (403 PlainText 'API Key Incorrect'/'API Key Required', body empty when api_warnings off: interface.py:470-472)@81f6c280734319b2346b0e9c7a3e896986fb5fcc; tests/test_functional_api.py:231-236 (unknown mode -> status False + error)"
+  ],
+  "json_error": {"status": 200, "body": {"status": false, "error": "not implemented"}, "_arr_effect": "DownloadClientException('Error response received from SABnzbd: not implemented')"},
+  "plain_text_error": {"status": 200, "body": "error: API Key Incorrect", "_arr_effect": "non-JSON body starting with 'error' => failed; 'error: ' stripped; message contains 'API Key Incorrect' => test reports APIKey 'incorrect' (Sabnzbd.cs:424-427)"},
+  "current_sab_auth_failure": {"status": 403, "content_type": "text/plain", "body": "API Key Incorrect", "_arr_effect": "HttpException -> DownloadClientException('Unable to connect to SABnzbd, HTTP request failed: [403:Forbidden] ...'); message lacks 'API Key Incorrect' so TestAuthentication rethrows and Test() reports 'Test was aborted due to an error' (DownloadClientBase.cs:148-162)"},
+  "_facade_hint": "To get arr's specific 'API Key Incorrect/Required' validation text, answer 200 with {\"status\": false, \"error\": \"API Key Incorrect\"} (or plain 'error: API Key Incorrect'). 'not implemented' is the SAB literal _MSG_NOT_IMPLEMENTED (api.py:140, returned by _api_undefined api.py:1086-1087); real SAB returns 403 for auth failures."
+}

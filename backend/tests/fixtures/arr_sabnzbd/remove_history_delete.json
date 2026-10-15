@@ -1,0 +1,10 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:74-83@57816c149d02f95543973fefb4780c4495f8121c; Sabnzbd.cs:199-209 (if not in queue: when deleteData && Completed, arr deletes OutputPath itself via DownloadClientBase.cs:110-140, then calls history delete with archive = (status==Failed ? 0 : 1))",
+    "SAB: api.py:550-593 (archive='0' => permanent remove, else archive; del_files => only removes the INCOMPLETE path of a FAILED job, database.py:598-610; for a job still in post-processing PostProcessor.delete, postproc.py:177-188)@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request_completed": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=history&name=delete&del_files=1&value=sabnzbd_nzb12345&archive=1&apikey=REDACTED&output=json"},
+  "request_failed": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=history&name=delete&del_files=1&value=sabnzbd_nzb12345&archive=0&apikey=REDACTED&output=json"},
+  "response": {"status": 200, "body": {"status": true}},
+  "_arr_effect": "Only CheckForError applies. SAB never deletes completed output on history delete; arr does that itself before the call when deleteData=true and status Completed (SabnzbdFixture.cs:693-770)."
+}

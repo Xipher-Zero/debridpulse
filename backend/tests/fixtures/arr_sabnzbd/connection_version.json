@@ -1,0 +1,19 @@
+{
+  "_source": [
+    "request: sonarr src/NzbDrone.Core/Download/Clients/Sabnzbd/SabnzbdProxy.cs:85-95,162-185@57816c149d02f95543973fefb4780c4495f8121c (identical radarr@df2faa64c75e6081556d11232dc46523e7264ea1)",
+    "response shape: sabnzbd sabnzbd/api.py:876-877 + report() 1313-1362@81f6c280734319b2346b0e9c7a3e896986fb5fcc; tests/data/tavern/api_version.yaml:7-21@81f6c280734319b2346b0e9c7a3e896986fb5fcc",
+    "version value: sabnzbd/version.py:9@81f6c280734319b2346b0e9c7a3e896986fb5fcc ('5.2.0Beta2'); arr test values sonarr SabnzbdFixture.cs:549-577@57816c149d02f95543973fefb4780c4495f8121c"
+  ],
+  "request": {
+    "method": "GET",
+    "url": "http://{host}:{port}/{urlBase}/api?mode=version&apikey=REDACTED&output=json",
+    "headers": {"Accept": "application/json"},
+    "_note": "mode=version is exempt from apikey checking in SAB (interface.py:265-266); arr still appends apikey"
+  },
+  "response": {
+    "status": 200,
+    "headers": {"Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", "Pragma": "no-cache", "Access-Control-Allow-Origin": "*"},
+    "body": {"version": "5.2.0Beta2"}
+  },
+  "_arr_parsing": "Only 'version' is read. Regex (\\d+)\\.(\\d+)\\.(\\d+|x) (Sabnzbd.cs:38); 'develop' => treated as 3.0.0 + warning; unparsable => validation failure; < 0.7.0 => failure. Arr test cases: '0.6.9' fail, '0.7.0','0.8.0','1.0.0','1.0.0RC1','1.1.x' pass, '2.0.0beta1' => >=2.0 path."
+}

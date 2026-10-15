@@ -20,7 +20,7 @@ from typing import Literal
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 # Every source kind the native submit operation accepts (``external.intake``).
-SOURCE_KINDS = ("links", "magnet", "nzb_link", "torrent")
+SOURCE_KINDS = ("links", "magnet", "nzb_link", "nzb", "torrent")
 MAX_PROFILES = 64
 MAX_CATEGORIES = 32
 MAX_CLIENTS = 256
@@ -49,7 +49,7 @@ class DeliveryProfile(BaseModel):
     # The external clients (``account_tokens.client_id``) allowed to use it.
     # Explicit: an empty list admits nobody.
     clients: list[str] = Field(default_factory=list, max_length=MAX_CLIENTS)
-    source_kinds: list[Literal["links", "magnet", "nzb_link", "torrent"]] = Field(
+    source_kinds: list[Literal["links", "magnet", "nzb_link", "nzb", "torrent"]] = Field(
         default_factory=lambda: list(SOURCE_KINDS))
     representation: Literal["shared_path"] = "shared_path"
     # DebridPulse's own view of the shared directory: the download folder or

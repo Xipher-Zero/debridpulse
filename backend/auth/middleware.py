@@ -35,6 +35,7 @@ from auth.transitions import (
 )
 from core.branding import APP_SHORT_NAME
 from core.config import get_settings
+from external.arr import QUERY_KEY_PATHS
 
 
 CallNext = Callable[[Request], Awaitable[Response]]
@@ -232,6 +233,35 @@ async def enforce_general_web_security(
     return await call_next(request)
 
 
+def _protocol_key_refusal(message: str) -> Response:
+    """The download-client protocol's own refusal: *arr reports a rejected key
+    only from this body (HTTP 200), never from a status code."""
+    return JSONResponse(content={"status": False, "error": message}, status_code=200)
+
+
+async def _authenticate_query_key(request: Request, call_next: CallNext, cfg) -> Response:
+    """A download-client protocol endpoint (``QUERY_KEY_PATHS``) whose client
+    can send the Integration token only as an ``apikey`` query parameter (or
+    as a Bearer header). The key is verified exactly as a Bearer token is --
+    the same ``resolve_token``, the same Integration principal -- in every
+    authentication mode. Nothing else authenticates here: no session cookie
+    (so no browser can be made to act through it), no password, and never the
+    open-mode standalone principal."""
+    auth_header = str(request.headers.get("Authorization", "") or "")
+    provided = (_decode_bearer_token(auth_header) if _has_bearer_scheme(auth_header)
+                else str(request.query_params.get("apikey") or "").strip() or None)
+    if provided is None:
+        return _protocol_key_refusal("API Key Required")
+    if len(provided) > 4096 or any(ch.isspace() for ch in provided):
+        return _protocol_key_refusal("API Key Incorrect")
+    resolved = await resolve_token(provided)
+    if resolved is None:
+        return _protocol_key_refusal("API Key Incorrect")
+    principal = Principal.integration_token(*resolved)
+    _attach_principal(request, principal)
+    return await _admit_authenticated(request, call_next, principal, cfg)
+
+
 async def _enforce_authentication_unlocked(request: Request, call_next: CallNext) -> Response:
     """Authentication implementation; caller serializes auth-config writes."""
     _attach_principal(request, Principal.anonymous())
@@ -244,6 +274,9 @@ async def _enforce_authentication_unlocked(request: Request, call_next: CallNext
 
     if is_public_path(request.url.path):
         return await call_next(request)
+
+    if request.url.path in QUERY_KEY_PATHS:
+        return await _authenticate_query_key(request, call_next, cfg)
 
     session_token = session_cookie_token(request)
     if session_token:

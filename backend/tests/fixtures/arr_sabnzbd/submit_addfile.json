@@ -1,0 +1,30 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:46-62 + BuildRequest 162-185@57816c149d02f95543973fefb4780c4495f8121c (radarr identical except cat=MovieCategory, SabnzbdProxy.cs:50@df2faa64c75e6081556d11232dc46523e7264ea1)",
+    "multipart encoding: sonarr src/NzbDrone.Common/Http/HttpRequestBuilder.cs:150-240 (multipart because a FileName/ContentType is set), AddFormUpload 379-394, query ordering CreateUri 82 (QueryParams then SuffixQueryParams)@57816c149d02f95543973fefb4780c4495f8121c",
+    "filename: UsenetClientBase.cs:43 (FileNameBuilder.CleanFileName(title) + '.nzb')@57816c149d02f95543973fefb4780c4495f8121c; example from SabnzbdFixture.cs:303-315@57816c149d02f95543973fefb4780c4495f8121c",
+    "priority: Sabnzbd.cs:43 (RecentTvPriority/OlderTvPriority; enum SabnzbdPriority.cs:5-10: Default=-100,Paused=-2,Low=-1,Normal=0,High=1,Force=2)@57816c149d02f95543973fefb4780c4495f8121c",
+    "success response ids: SabnzbdFixture.cs:144-153@57816c149d02f95543973fefb4780c4495f8121c (Status=true, nzo_ids ['sabznbd_nzo12345'])",
+    "SAB handler: api.py:375-393 (file taken from 'name' or 'nzbfile'; cat, priority, pp, script, nzbname, password); response {'status': res is OK, 'nzo_ids': [...]}@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {
+    "method": "POST",
+    "url": "http://{host}:{port}/{urlBase}/api?mode=addfile&cat=tv&priority=-100&apikey=REDACTED&output=json",
+    "headers": {"Accept": "application/json", "Content-Type": "multipart/form-data; boundary=-------------------------------<ticks-hex>"},
+    "multipart_parts": [
+      {"name": "name", "filename": "Droned.S01E01_Pilot_1080p_WEB-DL-DRONE.nzb", "content_type": "application/x-nzb", "body": "<raw NZB bytes downloaded by arr from the indexer>"}
+    ],
+    "_note": "cat and priority travel in the QUERY STRING, not the form body. No pp, script, nzbname, password are ever sent. Only one multipart part exists. Filename value is illustrative of CleanFileName applied to the fixture title."
+  },
+  "response_success": {"status": 200, "body": {"status": true, "nzo_ids": ["sabznbd_nzo12345"]}},
+  "response_rejected_dup_or_empty": {
+    "status": 200,
+    "body": {"status": false, "nzo_ids": []},
+    "_arr_effect": "CheckForError sees status 'False' -> DownloadClientException('Error response received from SABnzbd: ') (SabnzbdProxy.cs:222-246)"
+  },
+  "_arr_effect": {
+    "download_id": "response.nzo_ids[0] (Sabnzbd.cs:47-52) -> EpisodeGrabbedEvent.DownloadId (DownloadService.cs:191-194)",
+    "empty_ids_or_unparseable_200_body": "DownloadClientRejectedReleaseException 'SABnzbd rejected the NZB for an unknown reason' (Sabnzbd.cs:47-50; SabnzbdProxy.cs:55-59 turns non-JSON into Status=true, Ids=[])",
+    "status_field": "only consulted by CheckForError (status==false => exception); a 'status': true with non-empty nzo_ids is the only success."
+  }
+}

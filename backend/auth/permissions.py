@@ -144,6 +144,9 @@ ACTIONS: dict[str, Capability] = {
     "api.external_routes.request_external_control": _EXT,
     "api.external_routes.get_external_delivery": _EXT,
     "api.external_routes.acknowledge_external_delivery": _EXT,
+    # The SABnzbd download-client dialect for *arr: a translation over the
+    # same external-client operations, nothing more.
+    "api.arr_sabnzbd.sabnzbd_api": _EXT,
     # External delivery profiles: configuration.
     "api.external_routes.get_external_profiles": _A,
     "api.external_routes.put_external_profiles": _A,

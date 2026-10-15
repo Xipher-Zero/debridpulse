@@ -14,7 +14,10 @@ resume. Everything it does goes through an existing owner:
   (``ApplicationService.adjudicated_control``), never through an operator
   route, and only while this job's demand is the transfer's only demand;
 * delivery -- the engine's own delivery-time re-verification
-  (``engine.delivered_material``), confined to the client's profile root.
+  (``engine.delivered_material``), confined to the client's profile root;
+* a protocol without request IDs (the *arr SABnzbd dialect) -- the same
+  admission under a key this owner derives (``submit_live``), and the
+  client's whole visible queue and history (``visible``).
 
 No queue, provider, executor, candidate or deletion authority is exposed.
 """
@@ -118,6 +121,26 @@ def _owns(control: dict | None, hold: dict | None) -> bool:
                 and int(hold["generation"]) == int(control["pause_generation"]))
 
 
+def _visible(job: dict | None) -> bool:
+    """Whether a job is still in its client's view: its demand not withdrawn
+    and its delivery neither acknowledged (even when its material has since
+    gone, which is what an importing client's move looks like) nor expired.
+    A failed job stays visible until its client removes it."""
+    if job is None or not job["demand_id"]:
+        return False
+    projection = json.loads(job["projection"]) if job["projection"] else {}
+    delivery = projection.get("delivery") or {}
+    return (projection.get("phase") != "withdrawn" and delivery.get("acknowledged_at") is None
+            and delivery.get("state") not in {"acknowledged", "expired"})
+
+
+def _live(job: dict | None) -> bool:
+    """Whether a job may still answer an identical live submission: visible
+    and not failed."""
+    projection = json.loads(job["projection"]) if job and job["projection"] else {}
+    return _visible(job) and projection.get("phase") != "failed"
+
+
 def _admit_mutation(client_id: str) -> None:
     if not external_mutation_limiter.allow(client_id):
         raise ExternalRefused("rate_limited", "Too many requests; slow down", status=429, retryable=True)
@@ -203,7 +226,7 @@ class ExternalClients:
             "idempotency": {"required": True, "scope": "client", "max_key_length": _KEY_LIMIT},
             "limits": {"active_jobs": MAX_ACTIVE_JOBS_PER_CLIENT, "mutations_per_minute":
                        external_mutation_limiter.per_peer_limit, "links": intake_owner.MAX_LINKS,
-                       "torrent_bytes": intake_owner.MAX_TORRENT_BYTES},
+                       "torrent_bytes": intake_owner.MAX_TORRENT_BYTES, "nzb_bytes": intake_owner.MAX_NZB_BYTES},
             "refusal_codes": list(REFUSAL_CODES),
         }
 
@@ -214,6 +237,59 @@ class ExternalClients:
         if not isinstance(body, dict):
             raise ExternalRefused("invalid_request", "The request body must be an object")
         key = _key(body.get("idempotency_key"))
+        intent = self._intent(client_id, body, keyed=True)
+        _admit_mutation(client_id)
+        return await self._submit_keyed(principal, client_id, key, intent)
+
+    async def submit_live(self, principal: Principal, body: dict) -> tuple[dict, bool]:
+        """Submit for a client protocol whose caller supplies no request
+        identity (the SABnzbd dialect's ``addfile``): a best-effort
+        accommodation, never exactly-once.
+
+        The idempotency key is derived here, under this owner, from the
+        authenticated client and the exact submitted bytes, category and
+        filename, and carries a sequence number. An identical submission
+        answers the latest job of that identity only while that job is still
+        live for the client -- its demand not withdrawn, not failed, its
+        delivery neither acknowledged nor expired. Otherwise it is a new job
+        under the next sequence number. Concurrent identical submissions
+        serialize on the identity's submission lock, so they resolve to one
+        job and one demand. In-process only: the HTTP contract still requires
+        a caller key."""
+        client_id = client_of(principal)
+        if not isinstance(body, dict):
+            raise ExternalRefused("invalid_request", "The request body must be an object")
+        if "idempotency_key" in body:
+            raise ExternalRefused("invalid_request", "A live submission derives its own identity")
+        intent = self._intent(client_id, body, keyed=False)
+        source = intent["source"]
+        if source.kind != "nzb":
+            raise ExternalRefused("unsupported_source", "Only an uploaded NZB is submitted without a caller key")
+        identity = hashlib.sha256(json.dumps(
+            {"v": 1, "source": source.identity, "category": intent["category"], "filename": source.filename},
+            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        base = f"live:{identity}:"
+        _admit_mutation(client_id)
+        async with _lock(_submission_locks, (client_id, base)):
+            async with get_db() as db:
+                rows = await db.fetchall(
+                    "SELECT * FROM external_jobs WHERE client_id=? AND substr(idempotency_key,1,?)=?",
+                    (client_id, len(base), base))
+            numbered = [(int(row["idempotency_key"][len(base):]), row) for row in rows
+                        if row["idempotency_key"][len(base):].isdigit()]
+            sequence, latest = max(numbered, key=lambda item: item[0], default=(0, None))
+            if latest is not None and latest["intent_digest"] == intent["digest"]:
+                if not latest["demand_id"]:
+                    # A reservation an interruption left: completed under its
+                    # own key, never admitted twice.
+                    return await self._submit_keyed(principal, client_id, latest["idempotency_key"], intent)
+                current = await self._refresh(latest["id"])
+                if _live(current):
+                    logger.info("external live submission replayed: client %s job %s", client_id, current["id"])
+                    return await self._view(current), False
+            return await self._submit_keyed(principal, client_id, f"{base}{sequence + 1}", intent)
+
+    def _intent(self, client_id: str, body: dict, *, keyed: bool) -> dict:
         category = body.get("category")
         if not isinstance(category, str) or not category.strip():
             raise ExternalRefused("unknown_category", "A category is required")
@@ -223,7 +299,8 @@ class ExternalClients:
             raise ExternalRefused("invalid_request", "display_name is at most 256 characters")
         if reference is not None and (not isinstance(reference, str) or len(reference) > 256):
             raise ExternalRefused("invalid_request", "client_reference is at most 256 characters")
-        unknown = set(body) - {"idempotency_key", "category", "source", "display_name", "client_reference"}
+        allowed = {"category", "source", "display_name", "client_reference"} | ({"idempotency_key"} if keyed else set())
+        unknown = set(body) - allowed
         if unknown:
             # Nothing else is part of the contract: no provider, executor,
             # priority, queue position or destination is ever accepted.
@@ -239,7 +316,11 @@ class ExternalClients:
             raise ExternalRefused("source_kind_not_permitted", "This profile does not accept that source kind")
         digest = intake_owner.intent_digest(source, profile_id=profile.id, category_key=category_key(category),
                                             display_name=display_name.strip(), client_reference=reference)
-        _admit_mutation(client_id)
+        return {"source": source, "digest": digest, "category": category.strip(), "profile": profile,
+                "display_name": display_name.strip(), "reference": reference}
+
+    async def _submit_keyed(self, principal: Principal, client_id: str, key: str, intent: dict) -> tuple[dict, bool]:
+        source, digest = intent["source"], intent["digest"]
         async with _lock(_submission_locks, (client_id, key)):
             async with get_db() as db:
                 existing = await db.fetchone(
@@ -255,8 +336,8 @@ class ExternalClients:
                     return await self._view(await self._accept(existing)), True
                 job = existing
             else:
-                job = await self._reserve(principal, client_id, key, digest, source, category.strip(), profile,
-                                          display_name.strip(), reference)
+                job = await self._reserve(principal, client_id, key, digest, source, intent["category"],
+                                          intent["profile"], intent["display_name"], intent["reference"])
             await self._admit(principal, job, source)
             return await self._view(await self._accept(job)), True
 
@@ -301,6 +382,10 @@ class ExternalClients:
                 await application.submit_magnet(source.magnet, source="external", selection_mode="all", demand=demand)
             elif source.kind == "nzb_link":
                 await application.submit_nzb_link(source.url, source="external", demand=demand)
+            elif source.kind == "nzb":
+                # Staged and read by the existing NZB reader before admission.
+                await application.submit_nzb(source.nzb, source.filename, source="external", demand=demand,
+                                             validate=True)
             else:
                 await application.submit_torrent(source.torrent, source.filename, source="external",
                                                  selection_mode="all", demand=demand)
@@ -404,6 +489,52 @@ class ExternalClients:
         return {"jobs": [await self._view(row) for row in rows],
                 "next_cursor": int(rows[-1]["change_seq"]) if rows else int(after),
                 "more": more, "high_water": int(high["n"])}
+
+    async def visible(self, principal: Principal, *, settled: bool, category: str | None = None, start: int = 0,
+                      limit: int = MAX_ACTIVE_JOBS_PER_CLIENT) -> dict:
+        """The client's jobs still in its view (``_visible``), for a client
+        protocol that lists a whole queue or history rather than polling by
+        cursor: unfinished jobs (``settled=False``) oldest first, or finished
+        ones -- completed or failed -- newest first, each finished job with
+        its delivery (files only while available, re-verified now: a listing
+        that offers a path to import from must not repeat a stale one).
+        ``category``, when given, is matched exactly as the job recorded it.
+        The same predicate as ``_visible``. Bounded by ``limit``."""
+        client_id = client_of(principal)
+        owners = await owned_account_ids(principal.account_id)
+        await self._refresh_unsettled(client_id=client_id)
+        phases = ("completed", "failed") if settled else ("accepted", "queued", "processing")
+        marks = ",".join("?" * len(owners))
+        params: list = [client_id, *owners, *phases]
+        where = ""
+        if category is not None:
+            where = " AND category=?"
+            params.append(category)
+        order = "updated_at DESC, id" if settled else "created_at, id"
+        async with get_db() as db:
+            total = await db.fetchone(
+                f"""SELECT COUNT(*) AS n FROM external_jobs WHERE client_id=? AND account_id IN ({marks})
+                    AND demand_id IS NOT NULL AND json_extract(projection,'$.phase') IN (?,?{',?' if not settled else ''})
+                    AND COALESCE(json_extract(projection,'$.delivery.state'),'') NOT IN ('acknowledged','expired')
+                    AND json_extract(projection,'$.delivery.acknowledged_at') IS NULL
+                    {where}""", tuple(params))
+            rows = await db.fetchall(
+                f"""SELECT * FROM external_jobs WHERE client_id=? AND account_id IN ({marks})
+                    AND demand_id IS NOT NULL AND json_extract(projection,'$.phase') IN (?,?{',?' if not settled else ''})
+                    AND COALESCE(json_extract(projection,'$.delivery.state'),'') NOT IN ('acknowledged','expired')
+                    AND json_extract(projection,'$.delivery.acknowledged_at') IS NULL
+                    {where} ORDER BY {order} LIMIT ? OFFSET ?""",
+                (*params, max(0, int(limit)), max(0, int(start))))
+        jobs = []
+        for row in rows:
+            if settled and json.loads(row["projection"] or "{}").get("phase") == "completed":
+                row = await self._refresh(row["id"])
+                view = await self._view(row)
+                view["delivery"] = await self._delivery_view(row, include_files=True)
+            else:
+                view = await self._view(row)
+            jobs.append(view)
+        return {"jobs": jobs, "total": int(total["n"]), "globally_paused": await self.repository.globally_paused()}
 
     async def delivery(self, principal: Principal, job_id: str) -> dict:
         row = await self._owned(principal, job_id)

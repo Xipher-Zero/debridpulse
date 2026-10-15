@@ -23,6 +23,9 @@ MAX_LINK_LENGTH = 8192
 # Decoded bytes of an inline .torrent: well inside the request body ceiling
 # once base64-encoded.
 MAX_TORRENT_BYTES = 8 * 1024 * 1024
+# Decoded bytes of an uploaded NZB: the same native upload ceiling. The staged
+# NZB owner's own ceiling is larger and still applies to what it writes.
+MAX_NZB_BYTES = 8 * 1024 * 1024
 MAX_FILENAME = 255
 
 
@@ -42,6 +45,7 @@ class Intake:
     magnet: str = ""
     url: str = ""
     torrent: bytes = b""
+    nzb: bytes = b""
     filename: str = ""
     # What may be shown and persisted: no query, path, credential or payload.
     summary: dict | None = None
@@ -101,22 +105,19 @@ def normalize(source: object) -> Intake:
             raise IntakeRefused("invalid_source", "an NZB link is an http(s) link")
         return Intake("nzb_link", url=address, identity=address,
                       summary={"kind": "nzb_link", "host": _host(address)})
+    if kind == "nzb":
+        filename = source.get("filename") or "upload.nzb"
+        data = _uploaded(source.get("nzb_base64"), filename, field="nzb_base64", suffix=".nzb",
+                         limit=MAX_NZB_BYTES, what="NZB")
+        # The bytes are interpreted by the existing NZB reader at admission,
+        # never here; the identity is the exact bytes.
+        digest = hashlib.sha256(data).hexdigest()
+        return Intake("nzb", nzb=data, filename=filename, identity=f"nzb:{digest}",
+                      summary={"kind": "nzb", "name": filename[:256]})
     if kind == "torrent":
-        encoded, filename = source.get("torrent_base64"), source.get("filename") or "upload.torrent"
-        if not isinstance(encoded, str) or not encoded:
-            raise IntakeRefused("invalid_source", "torrent_base64 is required")
-        if not isinstance(filename, str) or len(filename) > MAX_FILENAME or "/" in filename or "\\" in filename:
-            raise IntakeRefused("invalid_source", "filename must be a plain file name")
-        if not filename.lower().endswith(".torrent"):
-            raise IntakeRefused("invalid_source", "filename must end in .torrent")
-        if len(encoded) > (MAX_TORRENT_BYTES * 4) // 3 + 4:
-            raise IntakeRefused("source_too_large", "the torrent exceeds the 8 MB external limit", status=413)
-        try:
-            data = base64.b64decode(encoded, validate=True)
-        except (binascii.Error, ValueError):
-            raise IntakeRefused("invalid_source", "torrent_base64 is not base64") from None
-        if not data or len(data) > MAX_TORRENT_BYTES:
-            raise IntakeRefused("invalid_source", "the torrent is empty or too large")
+        filename = source.get("filename") or "upload.torrent"
+        data = _uploaded(source.get("torrent_base64"), filename, field="torrent_base64", suffix=".torrent",
+                         limit=MAX_TORRENT_BYTES, what="torrent")
         try:
             identity = torrent_identity(data)
         except ValueError as exc:
@@ -126,6 +127,27 @@ def normalize(source: object) -> Intake:
                       summary={"kind": "torrent", "info_hash": identity.info_hash,
                                "name": str(identity.name or filename)[:256]})
     raise IntakeRefused("unsupported_source", "unsupported source kind")
+
+
+def _uploaded(encoded, filename, *, field: str, suffix: str, limit: int, what: str) -> bytes:
+    """One inline uploaded file: a plain ``*<suffix>`` name and non-empty
+    base64 bytes within ``limit`` once decoded."""
+    if not isinstance(encoded, str) or not encoded:
+        raise IntakeRefused("invalid_source", f"{field} is required")
+    if not isinstance(filename, str) or len(filename) > MAX_FILENAME or "/" in filename or "\\" in filename:
+        raise IntakeRefused("invalid_source", "filename must be a plain file name")
+    if not filename.lower().endswith(suffix):
+        raise IntakeRefused("invalid_source", f"filename must end in {suffix}")
+    if len(encoded) > (limit * 4) // 3 + 4:
+        raise IntakeRefused("source_too_large", f"the {what} exceeds the {limit // (1024 * 1024)} MB external limit",
+                            status=413)
+    try:
+        data = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError):
+        raise IntakeRefused("invalid_source", f"{field} is not base64") from None
+    if not data or len(data) > limit:
+        raise IntakeRefused("invalid_source", f"the {what} is empty or too large")
+    return data
 
 
 def intent_digest(intake: Intake, *, profile_id: str, category_key: str, display_name: str,

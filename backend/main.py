@@ -17,6 +17,7 @@ from api.auth_config_routes import router as auth_config_router
 from api.auth_routes import router as auth_router
 from api.routes import router
 from api.executor_work import router as executor_work_router
+from api.arr_sabnzbd import router as arr_sabnzbd_router
 from api.external_routes import router as external_router
 from api.file_selection_routes import router as file_selection_router
 from api.operational_downloads import router as operational_downloads_router
@@ -34,6 +35,8 @@ from core.branding import APP_METADATA_TITLE, APP_NAME, APP_SHORT_NAME
 from core.config import get_settings as _get_log_settings
 from core.logging_utils import configure_logging, log_startup_banner, sanitize_log_value
 from transfers.staged_input import MAX_STAGED_INPUT_BYTES
+from external.arr import QUERY_KEY_PATHS
+from external.intake import MAX_NZB_BYTES
 from core.version import read_version
 from db.database import DatabaseMaintenanceActive
 from application.dependencies import get_application
@@ -156,6 +159,10 @@ class RequestBodyLimitMiddleware:
         elif path == BACKUP_PACKAGE_PATH:
             await self.app(scope, receive, send)
             return
+        elif path in QUERY_KEY_PATHS:
+            # A download-client protocol's one uploaded NZB, within the native
+            # external upload ceiling, plus room for its multipart framing.
+            limit = min(self.max_bytes, MAX_NZB_BYTES + 64 * 1024)
         elif path in {
             "/api/settings",
             "/api/settings/validate-alldebrid",
@@ -454,6 +461,7 @@ app.include_router(executor_work_router, prefix="/api")
 app.include_router(file_selection_router, prefix="/api")
 app.include_router(account_router, prefix="/api")
 app.include_router(external_router, prefix="/api")
+app.include_router(arr_sabnzbd_router, prefix="/api")
 app.include_router(router, prefix="/api")
 
 # ── Static files ──────────────────────────────────────────────────────────────

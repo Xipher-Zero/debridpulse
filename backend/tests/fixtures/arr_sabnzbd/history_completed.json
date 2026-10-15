@@ -1,0 +1,34 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:132-146@57816c149d02f95543973fefb4780c4495f8121c (start=0, limit=DownloadClientHistoryLimit default 60: Sabnzbd.cs:110, ConfigService.cs:187-192@57816c149d02f95543973fefb4780c4495f8121c); radarr same (ConfigService.cs:234-239@df2faa64c75e6081556d11232dc46523e7264ea1)",
+    "arr model: SabnzbdHistory.cs:6-12, SabnzbdHistoryItem.cs:5-28@57816c149d02f95543973fefb4780c4495f8121c",
+    "values: SabnzbdFixture.cs:78-92@57816c149d02f95543973fefb4780c4495f8121c (Completed, bytes 1000, category 'tv', nzo_id 'sabnzbd_nzb12345', name, storage '/remote/mount/vv/Droned.S01E01.Pilot.1080p.WEB-DL-DRONE')",
+    "SAB shape: api.py:615-663 (cat OR category, start, limit; limit 0 => cfg.history_limit), database.py:445-505 fetch_history columns, add_active_history api.py:2192-2238; tests/data/tavern/api_history_format.yaml:206-268@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=history&start=0&limit=60&category=tv&apikey=REDACTED&output=json"},
+  "response": {
+    "status": 200,
+    "body": {
+      "history": {
+        "slots": [
+          {
+            "nzo_id": "sabnzbd_nzb12345",
+            "name": "Droned.S01E01.Pilot.1080p.WEB-DL-DRONE",
+            "category": "tv",
+            "status": "Completed",
+            "bytes": 1000,
+            "fail_message": "",
+            "storage": "/remote/mount/vv/Droned.S01E01.Pilot.1080p.WEB-DL-DRONE"
+          }
+        ]
+      }
+    }
+  },
+  "_arr_mapping": [
+    "Completed -> DownloadItemStatus.Completed (Sabnzbd.cs:150-153); TotalSize=bytes, RemainingSize=0, RemainingTime=0 (Sabnzbd.cs:128-130)",
+    "OutputPath = RemapRemoteToLocal(host, storage); then walks every ancestor and, where an ancestor's folder name == history 'name', uses that ancestor (the highest match wins) (Sabnzbd.cs:160-176). SabnzbdFixture.cs:376-391: storage C:\\sorted\\<name>\\SubDir\\file.mkv -> OutputPath C:\\sorted\\<name>. No ancestor match -> storage itself (may be a file) (SabnzbdFixture.cs:421-432).",
+    "No check that storage lies inside the category dir. CompletedDownloadService.cs:309-325 only requires non-empty and an OS-valid local path.",
+    "Status other than Completed/Failed (post-processing: Queued, QuickCheck, Verifying, Repairing, Fetching, Extracting, Moving, Running) -> Downloading (Sabnzbd.cs:154-158); SAB gives storage '' for those (api.py:2213)."
+  ],
+  "_notes": ["Real SAB history slots also carry completed, nzb_name, pp, script, report, url, path, script_line, download_time, postproc_time, stage_log, downloaded, url_info, md5sum, password, duplicate_key, action_line, size, loaded, retry, archive, time_added (tavern yaml:236-264). arr also deserializes nzb_name and download_time (unused)."]
+}

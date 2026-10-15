@@ -1,0 +1,11 @@
+{
+  "_source": [
+    "request: SabnzbdProxy.cs:106-114@57816c149d02f95543973fefb4780c4495f8121c; called only when misc.complete_dir is not rooted AND version >= 2.0 (Sabnzbd.cs:216-234@57816c149d02f95543973fefb4780c4495f8121c)",
+    "arr model: SabnzbdFullStatus.cs:5-11@57816c149d02f95543973fefb4780c4495f8121c (only 'completedir')",
+    "value: SabnzbdFixture.cs:120-123@57816c149d02f95543973fefb4780c4495f8121c ('Y:\\nzbget\\root\\complete' made OS-agnostic)",
+    "SAB: api.py:493-499 (report keyword 'status'), build_status 1654-1749 (info['completedir'] = cfg.complete_dir.get_clipped_path())@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=fullstatus&skip_dashboard=1&apikey=REDACTED&output=json"},
+  "response": {"status": 200, "body": {"status": {"completedir": "/nzbget/root/complete"}}},
+  "_note": "Real SAB returns many more keys under 'status' (build_header + servers etc.); arr reads only status.completedir."
+}

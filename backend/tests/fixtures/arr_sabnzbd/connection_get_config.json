@@ -1,0 +1,37 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:97-104@57816c149d02f95543973fefb4780c4495f8121c",
+    "arr model: SabnzbdCategory.cs:8-66@57816c149d02f95543973fefb4780c4495f8121c (SabnzbdConfig / SabnzbdConfigMisc / SabnzbdCategory / SabnzbdSorter)",
+    "values: sonarr SabnzbdFixture.cs:94-104@57816c149d02f95543973fefb4780c4495f8121c (complete_dir '/remote/mount', category 'tv' dir 'vv'); radarr SabnzbdFixture.cs:93-103@df2faa64c75e6081556d11232dc46523e7264ea1 uses name 'movie'",
+    "SAB defaults: sabnzbd cfg.py:464 (pre_check False), 496 (history_retention '0'), 497 (history_retention_option 'all')@81f6c280734319b2346b0e9c7a3e896986fb5fcc",
+    "SAB shape: api.py:200-203 (keyword 'config'), config.py:1087-1131 (categories/sorters serialize as lists), config.py:513-522 + 635 (category dict = name + order,pp,script,dir,newzbin,priority), config.py:655 (sorter keys)@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {
+    "method": "GET",
+    "url": "http://{host}:{port}/{urlBase}/api?mode=get_config&apikey=REDACTED&output=json"
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "config": {
+        "misc": {
+          "complete_dir": "/remote/mount",
+          "pre_check": false,
+          "history_retention": "0",
+          "history_retention_option": "all"
+        },
+        "categories": [
+          {"name": "tv", "dir": "vv"}
+        ],
+        "sorters": []
+      }
+    }
+  },
+  "_notes": [
+    "Real SAB category objects also carry order, pp, script, newzbin, priority (config.py:635); values omitted here because upstream fixtures do not show them. arr maps priority->int, pp/script->string.",
+    "enable_tv_sorting/tv_categories/enable_movie_sorting/movie_categories/enable_date_sorting/date_categories are public=False in current SAB (cfg.py:508-519) so get_config omits them; arr deserializes them as false/null.",
+    "sorters (SAB>=4.1): objects with name, order, min_size, multipart_label, sort_string, sort_cats[], sort_type[], is_active. An active sorter whose sort_cats contains the arr category (or empty sort_cats) FAILS the arr test (Sabnzbd.cs:484-491, ContainsCategory 523-536).",
+    "A category dir ending in '*' (no job folders) FAILS the test (Sabnzbd.cs:462-469). A configured arr category missing from 'categories' FAILS the test (Sabnzbd.cs:471-480)."
+  ],
+  "_arr_reads": "misc.complete_dir, misc.pre_check, misc.history_retention, misc.history_retention_option, misc.history_retention_number, misc.enable_{tv,movie,date}_sorting, misc.{tv,movie,date}_categories, categories[].name, categories[].dir, sorters[].is_active, sorters[].sort_cats"
+}

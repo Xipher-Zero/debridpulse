@@ -1,0 +1,12 @@
+{
+  "_source": [
+    "arr: NOT USED. Sonarr 57816c149d02f95543973fefb4780c4495f8121c / Radarr df2faa64c75e6081556d11232dc46523e7264ea1 ISabnzbdProxy (SabnzbdProxy.cs:13-25) exposes DownloadNzb, RemoveFromQueue, RemoveFromHistory, GetVersion, GetConfig, GetFullStatus, GetQueue, GetHistory, RetryDownload only; Sabnzbd.cs never calls RetryDownload (no reference in Sabnzbd.cs) and never pauses/resumes/changes priority/moves/changes category.",
+    "SAB shapes: api.py:293-308 (mode=queue&name=pause|resume&value=<ids> -> {'status': bool, 'nzo_ids': [...]}), 719-728 (mode=pause / mode=resume -> {'status': true}), 396-407 (mode=retry&value=<id> -> {'status': true, 'nzo_id': ...}; arr model SabnzbdRetryResponse.cs:5-11)@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "examples": [
+    {"request": "GET /api?mode=pause&apikey=REDACTED&output=json", "response": {"status": true}},
+    {"request": "GET /api?mode=resume&apikey=REDACTED&output=json", "response": {"status": true}},
+    {"request": "GET /api?mode=queue&name=pause&value=<nzo_id>&apikey=REDACTED&output=json", "response": {"status": true, "nzo_ids": ["<nzo_id>"]}},
+    {"request": "GET /api?mode=retry&value=<nzo_id>&apikey=REDACTED&output=json", "response": {"status": true, "nzo_id": "<nzo_id>"}}
+  ]
+}

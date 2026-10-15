@@ -1,0 +1,27 @@
+{
+  "_source": [
+    "values: sonarr SabnzbdFixture.cs:63-76 (Failed, bytes 1000, cat 'tv') and 342-354 (fail_message 'Unpacking failed, write error or disk is full?' => Warning)@57816c149d02f95543973fefb4780c4495f8121c",
+    "arr mapping: Sabnzbd.cs:138-149@57816c149d02f95543973fefb4780c4495f8121c; FailedDownloadService.cs:85-131@57816c149d02f95543973fefb4780c4495f8121c (Failed + grabbed by arr => FailedPending/Failed; message = fail_message)",
+    "SAB: Status constants constants.py:178-195@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=history&start=0&limit=60&category=tv&apikey=REDACTED&output=json"},
+  "response": {
+    "status": 200,
+    "body": {
+      "history": {
+        "slots": [
+          {
+            "nzo_id": "sabnzbd_nzb12345",
+            "name": "Droned.S01E01.Pilot.1080p.WEB-DL-DRONE",
+            "category": "tv",
+            "status": "Failed",
+            "bytes": 1000,
+            "fail_message": "Unpacking failed, write error or disk is full?",
+            "storage": ""
+          }
+        ]
+      }
+    }
+  },
+  "_arr_mapping": "Failed -> DownloadItemStatus.Failed, EXCEPT fail_message exactly (case-insensitive) 'Unpacking failed, write error or disk is full?' -> Warning. 'Deleted' history items are skipped entirely (Sabnzbd.cs:116-119). storage '' and fail_message values beyond the arr fixture are illustrative."
+}

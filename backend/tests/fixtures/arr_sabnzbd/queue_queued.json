@@ -1,0 +1,37 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:116-130@57816c149d02f95543973fefb4780c4495f8121c (start=0, limit=0 from Sabnzbd.cs:57; category only if configured); radarr identical with MovieCategory (SabnzbdProxy.cs:116-130@df2faa64c75e6081556d11232dc46523e7264ea1)",
+    "arr model: SabnzbdQueue.cs:6-16, SabnzbdQueueItem.cs:7-34, SabnzbdQueueTimeConverter.cs:15-28, SabnzbdPriorityTypeConverter.cs:14-21@57816c149d02f95543973fefb4780c4495f8121c",
+    "values: SabnzbdFixture.cs:44-61@57816c149d02f95543973fefb4780c4495f8121c (status, mb=1000, mbleft=10, timeleft=10s, cat 'tv', nzo_id 'sabnzbd_nzb12345', filename) rendered in SAB wire format: mb/mbleft as '%.2f' strings (api.py:1817-1818), timeleft 'H:MM:SS' (misc.py:133-157), priority as name (api.py:1811 + constants.py:142-149), percentage as string (api.py:1821)",
+    "SAB shape: api.py:341-367 (accepts cat OR category, start, limit; limit 0 = all, nzbqueue.py:830), build_queue 1752-1866, header paused 2091; tests/data/tavern/api_queue_format.yaml:41-117@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=queue&start=0&limit=0&category=tv&apikey=REDACTED&output=json"},
+  "response": {
+    "status": 200,
+    "body": {
+      "queue": {
+        "paused": false,
+        "slots": [
+          {
+            "index": 0,
+            "nzo_id": "sabnzbd_nzb12345",
+            "filename": "Droned.S01E01.Pilot.1080p.WEB-DL-DRONE",
+            "cat": "tv",
+            "status": "Queued",
+            "priority": "Normal",
+            "mb": "1000.00",
+            "mbleft": "10.00",
+            "percentage": "99",
+            "timeleft": "0:00:00"
+          }
+        ]
+      }
+    }
+  },
+  "_arr_mapping": "Queued, Grabbing, Propagating -> DownloadItemStatus.Queued (Sabnzbd.cs:85-90; SabnzbdFixture.cs:192-208).",
+  "_notes": [
+    "Real SAB queue object carries many more keys (tavern api_queue_format.yaml:64-117); arr reads only queue.paused, queue.my_home (SAB<2.0 only) and slots[].{status,index,timeleft,mb,filename,priority,cat,mbleft,percentage,nzo_id}; index/percentage parsed but unused.",
+    "percentage '99' is derived from mb/mbleft per api.py:1821, not an upstream literal.",
+    "SAB reports timeleft '0:00:00' for non-active jobs (api.py:1838-1844); the arr fixture test uses 10s for Queued items"
+  ]
+}

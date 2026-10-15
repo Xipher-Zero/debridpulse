@@ -1,0 +1,9 @@
+{
+  "_source": [
+    "SAB handler: sabnzbd api.py:701-716@81f6c280734319b2346b0e9c7a3e896986fb5fcc (accepts name=<url>, pp, script, cat, priority, nzbname, password; response {'status': bool, 'nzo_ids': [...]})",
+    "arr: NOT USED. Neither Sonarr (57816c149d02f95543973fefb4780c4495f8121c) nor Radarr (df2faa64c75e6081556d11232dc46523e7264ea1) SabnzbdProxy defines an addurl call (SabnzbdProxy.cs:13-25 interface); UsenetClientBase.cs:40-91 always downloads the NZB itself and calls AddFromNzbFile -> mode=addfile."
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=addurl&name=<url-encoded NZB URL>&cat=<category>&priority=<int>&apikey=REDACTED&output=json"},
+  "response": {"status": 200, "body": {"status": true, "nzo_ids": ["<nzo_id>"]}},
+  "_note": "Shape derived from api.py:713-714; no upstream literal values. Facade may omit addurl for *arr compatibility."
+}

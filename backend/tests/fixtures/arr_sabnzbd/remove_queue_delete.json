@@ -1,0 +1,10 @@
+{
+  "_source": [
+    "request: sonarr SabnzbdProxy.cs:64-72@57816c149d02f95543973fefb4780c4495f8121c; chosen when the id is still present in mode=queue (Sabnzbd.cs:197-213: RemoveItem first re-reads the queue)",
+    "SAB: api.py:248-258 (del_files via bool_conv; remove_multiple), nzbqueue.py:367-410, nzb/object.py:1525-1553 (del_files=1 deletes the whole incomplete download_path; 0 keeps downloaded data, removes only SAB admin/article files)@81f6c280734319b2346b0e9c7a3e896986fb5fcc"
+  ],
+  "request": {"method": "GET", "url": "http://{host}:{port}/{urlBase}/api?mode=queue&name=delete&del_files=1&value=sabnzbd_nzb12345&apikey=REDACTED&output=json"},
+  "response": {"status": 200, "body": {"status": true, "nzo_ids": ["sabnzbd_nzb12345"]}},
+  "_arr_effect": "Body is only passed through CheckForError: a 'status': false raises DownloadClientException; otherwise ignored (no nzo_ids check). Param order: mode,name,del_files,value then apikey,output.",
+  "_note": "del_files is 1 for every automated removal (DownloadEventHub.cs:92) and for UI removal (QueueController.cs:344 RemoveItem(...,true)); response values follow api.py:257."
+}

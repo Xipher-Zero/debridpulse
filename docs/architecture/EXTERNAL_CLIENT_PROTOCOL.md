@@ -18,6 +18,8 @@ destination.
 Owners in the code:
 
 - `backend/external/service.py`: the contract.
+- `external/arr.py` and `api/arr_sabnzbd.py`: the *arr compatibility adapter
+  (SABnzbd dialect), `ARR_SABNZBD_COMPATIBILITY.md`.
 - `external/intake.py`: source normalization.
 - `external/profiles.py`: delivery profiles.
 - `external/store.py`: schema.
@@ -97,11 +99,12 @@ Owners in the code:
 | `links` | `links`: 1–100 direct links (any scheme the direct-link owner accepts: http(s), ftp/sftp/scp/rsync/WebDAV-style) | `ApplicationService.submit_links` |
 | `magnet` | `magnet` | `submit_magnet` |
 | `nzb_link` | `url` (http/https) | `submit_nzb_link`: guarded fetch, staged, NZB-validated |
+| `nzb` | `nzb_base64` (≤ 8 MB decoded), `filename` (`*.nzb`) | `submit_nzb(validate=True)`: staged, NZB-validated before admission |
 | `torrent` | `torrent_base64` (≤ 8 MB decoded), `filename` (`*.torrent`) | `submit_torrent` |
 
 Not supported in v1:
 
-- NZB or Metalink uploads, link files, Media Downloads as a distinct kind, and
+- Metalink uploads, link files, Media Downloads as a distinct kind, and
   alternate-source rows.
 - Each is refused with `unsupported_source`. No other kind is substituted.
 
@@ -401,6 +404,25 @@ GET  /api/external/v1/jobs/job_…/delivery              → files[].import_path
 POST /api/external/v1/jobs/job_…/delivery/ack {"delivery_id":"dlv_…","generation":1}
 ```
 
+### Live submission (in-process, for a protocol without request IDs)
+
+`ExternalClients.submit_live` serves a client protocol whose caller sends no
+request identity: the SABnzbd dialect's `addfile`.
+
+- **Source kind.** It takes an `nzb` source and no idempotency key.
+- **Derived key.** This owner derives the key from the client and the exact NZB
+  bytes, category and filename, plus a sequence number.
+- **Reuse.** An identical submission answers the latest such job only while that
+  job is still live: not withdrawn, failed, acknowledged or expired. Otherwise it
+  is a new job. Concurrent identical submissions serialize on that identity.
+- **Guarantee.** This is best-effort, not exactly-once.
+- **Reach.** It is not reachable over this HTTP API, which still requires a caller
+  key.
+
+`ExternalClients.visible` lists the client's jobs still in its view: unfinished
+oldest first, finished newest first, with completed deliveries re-verified. An
+adapter needs it to show a whole queue or history.
+
 ## 12. Adapter boundary and the next phase
 
 An adapter translates a client's established protocol onto these operations and
@@ -410,8 +432,8 @@ completed path to `import_path`. It owns no queue or executor semantics and call
 no internal or administrative transfer endpoint. Capability negotiation is
 `GET /capabilities`.
 
-These questions are deliberately left to a separate, read-only *arr compatibility
-characterization; v1 guesses none of them:
+The SABnzbd dialect answers these for SABnzbd (`ARR_SABNZBD_COMPATIBILITY.md`).
+They remain open for any other dialect:
 
 1. Which download-client protocol to emulate (qBittorrent, SABnzbd, NZBGet,
    Transmission, …), and its exact endpoint and credential format (username and
