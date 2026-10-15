@@ -96,6 +96,8 @@ def test_the_role_matrix_over_every_registered_action():
         "api.external_routes.submit_external_job", "api.external_routes.withdraw_external_job",
         # The *arr SABnzbd dialect: a translation over those same operations.
         "api.arr_sabnzbd.sabnzbd_api",
+        # The *arr qBittorrent dialect (Bearer only): likewise.
+        "api.arr_qbittorrent.qbittorrent_api",
     ])
     # Admin holds everything a User does except a User's OWN notification
     # configuration: the global Notifications already cover every Admin

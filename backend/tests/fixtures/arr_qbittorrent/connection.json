@@ -1,0 +1,32 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxySelector.cs (FetchProxy: IsApiSupported then GetApiVersion)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:28-78 (GET /api/v2/app/webapiVersion; 200 -> v2; Version.Parse)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:418-428 (Test: TestConnection, TestCategory, TestPrioritySupport, TestGetTorrents)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:431-470 (version < 1.5 refused; RemovesCompletedDownloads(config) fails the test)"
+  ],
+  "requests": [
+    [
+      "GET",
+      "/api/v2/app/webapiVersion"
+    ],
+    [
+      "GET",
+      "/api/v2/app/preferences"
+    ],
+    [
+      "GET",
+      "/api/v2/torrents/categories"
+    ],
+    [
+      "POST",
+      "/api/v2/torrents/createCategory",
+      "only when the category is missing"
+    ],
+    [
+      "GET",
+      "/api/v2/torrents/info?category=<cat>"
+    ]
+  ],
+  "webapiVersion_response": "2.15.1"
+}

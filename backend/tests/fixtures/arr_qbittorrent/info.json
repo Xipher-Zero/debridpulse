@@ -1,0 +1,53 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:97-108 (GET /api/v2/torrents/info?category=)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentTorrent.cs (fields read)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:218-330 (state mapping; Completed requires content_path != save_path on API >= 2.6.1; CanBeRemoved needs pausedUP/stoppedUP and a met seed limit)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:614-627 (eta 8640000 or out of range = unknown)",
+    "qBittorrent release-5.2.4 src/webui/api/serialize/serialize_torrent.cpp:50-80 (state names)"
+  ],
+  "fields_read": {
+    "hash": "string",
+    "name": "string",
+    "size": "long",
+    "progress": "double 0-1",
+    "eta": "integer",
+    "state": "string",
+    "category": "string",
+    "save_path": "string",
+    "content_path": "string",
+    "ratio": "float",
+    "ratio_limit": "float (-2 global, -1 unlimited)",
+    "seeding_time_limit": "long",
+    "inactive_seeding_time_limit": "long"
+  },
+  "completed_states": [
+    "pausedUP",
+    "stoppedUP",
+    "uploading",
+    "stalledUP",
+    "queuedUP",
+    "forcedUP"
+  ],
+  "warning_states": [
+    "error",
+    "stalledDL",
+    "missingFiles"
+  ],
+  "queued_states": [
+    "queuedDL",
+    "checkingDL",
+    "checkingUP",
+    "checkingResumeData"
+  ],
+  "paused_states": [
+    "stoppedDL",
+    "pausedDL"
+  ],
+  "downloading_states": [
+    "forcedDL",
+    "moving",
+    "downloading"
+  ],
+  "no_failed_state": "no qBittorrent state maps to DownloadItemStatus.Failed; error is a Warning"
+}

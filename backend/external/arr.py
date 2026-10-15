@@ -10,12 +10,24 @@ from __future__ import annotations
 
 import posixpath
 
+from external.intake import MAX_NZB_BYTES, MAX_TORRENT_BYTES
 from external.service import ExternalClients, ExternalRefused
 
+SABNZBD_API_PATH = "/api/sabnzbd/api"
+QBITTORRENT_ADD_PATH = "/api/qbittorrent/api/v2/torrents/add"
 # The protocol endpoints whose clients can carry the Integration token only as
 # an ``apikey`` query parameter. The authentication boundary verifies that key
-# exactly as a Bearer token, and only on these paths.
-QUERY_KEY_PATHS = frozenset({"/api/sabnzbd/api"})
+# exactly as a Bearer token, and only on these paths. (The qBittorrent dialect
+# is Bearer-only and is not one of them.)
+QUERY_KEY_PATHS = frozenset({SABNZBD_API_PATH})
+NATIVE_JOBS_PATH = "/api/external/v1/jobs"
+# The request body ceiling of each path that carries an external client's
+# uploaded file: the native external upload ceiling of its kind plus room for
+# its framing -- multipart for a dialect, base64 inside JSON for the native
+# submission (which carries the largest inline kind, a .torrent).
+UPLOAD_CEILINGS = {SABNZBD_API_PATH: MAX_NZB_BYTES + 64 * 1024,
+                   QBITTORRENT_ADD_PATH: MAX_TORRENT_BYTES + 64 * 1024,
+                   NATIVE_JOBS_PATH: (MAX_TORRENT_BYTES * 4) // 3 + 64 * 1024}
 
 
 def output_location(delivery: dict) -> tuple[str, int] | None:

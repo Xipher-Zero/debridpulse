@@ -18,8 +18,9 @@ destination.
 Owners in the code:
 
 - `backend/external/service.py`: the contract.
-- `external/arr.py` and `api/arr_sabnzbd.py`: the *arr compatibility adapter
-  (SABnzbd dialect), `ARR_SABNZBD_COMPATIBILITY.md`.
+- `external/arr.py`, `api/arr_sabnzbd.py` and `api/arr_qbittorrent.py`: the
+  *arr compatibility adapter (`ARR_SABNZBD_COMPATIBILITY.md`,
+  `ARR_QBITTORRENT_COMPATIBILITY.md`).
 - `external/intake.py`: source normalization.
 - `external/profiles.py`: delivery profiles.
 - `external/store.py`: schema.
@@ -100,7 +101,7 @@ Owners in the code:
 | `magnet` | `magnet` | `submit_magnet` |
 | `nzb_link` | `url` (http/https) | `submit_nzb_link`: guarded fetch, staged, NZB-validated |
 | `nzb` | `nzb_base64` (≤ 8 MB decoded), `filename` (`*.nzb`) | `submit_nzb(validate=True)`: staged, NZB-validated before admission |
-| `torrent` | `torrent_base64` (≤ 8 MB decoded), `filename` (`*.torrent`) | `submit_torrent` |
+| `torrent` | `torrent_base64` (≤ 16 MB decoded, DebridPulse's own torrent upload ceiling), `filename` (`*.torrent`) | `submit_torrent` |
 
 Not supported in v1:
 
@@ -368,7 +369,7 @@ invitation to resubmit silently.
 | `401` | missing, invalid or revoked token |
 | `403` | not an external client credential (`client_credential_required`), or a route outside `external.client` |
 | `404` | `job_not_found`: unknown or another client's job, indistinguishable |
-| `409` | `idempotency_conflict`, `control_conflict`, `delivery_mismatch`, `unknown_generation`, `stale_generation`, `stale_revision` |
+| `409` | `idempotency_conflict`, `control_conflict`, `delivery_mismatch`, `unknown_generation`, `stale_generation`, `stale_revision`, `duplicate_torrent` (live submission only) |
 | `413` / `422` | an invalid, unsupported or refused submission |
 | `429` | `rate_limited`, `client_job_limit`, `control_limit` |
 | `503` | `source_unavailable` or `submission_outcome_unknown` (retry with the same key) |
@@ -407,9 +408,16 @@ POST /api/external/v1/jobs/job_…/delivery/ack {"delivery_id":"dlv_…","genera
 ### Live submission (in-process, for a protocol without request IDs)
 
 `ExternalClients.submit_live` serves a client protocol whose caller sends no
-request identity: the SABnzbd dialect's `addfile`.
+request identity: the SABnzbd dialect's `addfile` and the qBittorrent
+dialect's `torrents/add`.
 
-- **Source kind.** It takes an `nzb` source and no idempotency key.
+- **Source kind.** It takes an `nzb`, `magnet` or `torrent` source and no
+  idempotency key.
+- **Torrent identity.** For a magnet or `.torrent`, the identity is the v1
+  info-hash the intake computed. One client holds at most one visible job per
+  hash: the same hash in the same category answers that job while it is live;
+  while it is visible but failed, or under another category, the submission is
+  refused (`409 duplicate_torrent`); once it has left the view, it is a new job.
 - **Derived key.** This owner derives the key from the client and the exact NZB
   bytes, category and filename, plus a sequence number.
 - **Reuse.** An identical submission answers the latest such job only while that
@@ -420,8 +428,9 @@ request identity: the SABnzbd dialect's `addfile`.
   key.
 
 `ExternalClients.visible` lists the client's jobs still in its view: unfinished
-oldest first, finished newest first, with completed deliveries re-verified. An
-adapter needs it to show a whole queue or history.
+oldest first, finished newest first, with completed deliveries re-verified,
+optionally limited to some source kinds. An adapter needs it to show a whole
+queue, history or torrent list.
 
 ## 12. Adapter boundary and the next phase
 

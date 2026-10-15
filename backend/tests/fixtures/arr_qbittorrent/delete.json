@@ -1,0 +1,11 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:190-202 (POST /api/v2/torrents/delete hashes=<lower hash>; deleteFiles=true only when removeData)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:333-336 (RemoveItem)",
+    "qBittorrent release-5.2.4 src/webui/api/torrentscontroller.cpp:1622-1635 (hashes '|'-separated; empty 200 result)"
+  ],
+  "form": {
+    "hashes": "<40 hex lower>",
+    "deleteFiles": "true"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:221-225",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentLabel.cs",
+    "qBittorrent release-5.2.4 src/webui/api/torrentscontroller.cpp:1938-1955"
+  ],
+  "response_example": {
+    "tv-sonarr": {
+      "name": "tv-sonarr",
+      "savePath": "/imports/tv"
+    }
+  }
+}

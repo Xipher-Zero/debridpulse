@@ -1,0 +1,23 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:146-166 (POST /api/v2/torrents/add, form urls=<magnet>; result 'Fails.' is the only failure body)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:243-284 (category; stopped (>=2.11.0) else paused only for Start/Stop; sequentialDownload, firstLastPiecePrio, contentLayout when set)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:227-241 (ratioLimit/seedingTimeLimit from indexer seed configuration, on add when API >= 2.8.1)",
+    "Sonarr v4.0.18.2971 src/NzbDrone.Core/Download/TorrentClientBase.cs:217-246 (hash = MagnetLink.Parse(url).InfoHash.ToHex(), MonoTorrent 2.0.7)",
+    "Radarr v6.2.1.10461 src/NzbDrone.Core/Download/TorrentClientBase.cs:224 (InfoHashes.V1OrV2, MonoTorrent 3.0.2: V1 ?? V2)",
+    "qBittorrent release-5.2.4 src/webui/api/torrentscontroller.cpp:1263-1281 (success: {success_count, failure_count, pending_count, added_torrent_ids}; nothing added: 409)"
+  ],
+  "form": {
+    "urls": "magnet:?xt=urn:btih:<40 hex>&dn=<name>",
+    "category": "tv-sonarr",
+    "stopped": "false"
+  },
+  "response": {
+    "success_count": 1,
+    "failure_count": 0,
+    "pending_count": 0,
+    "added_torrent_ids": [
+      "<40 hex>"
+    ]
+  }
+}

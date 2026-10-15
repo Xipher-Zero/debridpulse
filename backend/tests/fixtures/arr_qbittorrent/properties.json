@@ -1,0 +1,10 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:110-135 (IsTorrentLoaded after add when share limits (API < 2.8.1), First priority or ForceStart; GetTorrentProperties)"
+  ],
+  "fields_read": {
+    "hash": "string",
+    "save_path": "string",
+    "seeding_time": "long"
+  }
+}

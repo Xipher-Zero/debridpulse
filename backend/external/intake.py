@@ -20,9 +20,10 @@ from transfers.requests import normalize_direct_links, torrent_identity
 
 MAX_LINKS = 100
 MAX_LINK_LENGTH = 8192
-# Decoded bytes of an inline .torrent: well inside the request body ceiling
-# once base64-encoded.
-MAX_TORRENT_BYTES = 8 * 1024 * 1024
+# Decoded bytes of an inline .torrent: the ceiling DebridPulse's own torrent
+# upload holds a metainfo file to (``api.routes.add_torrent_file``). Its
+# base64 form has a request body ceiling of its own (``external.arr``).
+MAX_TORRENT_BYTES = 16 * 1024 * 1024
 # Decoded bytes of an uploaded NZB: the same native upload ceiling. The staged
 # NZB owner's own ceiling is larger and still applies to what it writes.
 MAX_NZB_BYTES = 8 * 1024 * 1024

@@ -1,0 +1,18 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentProxyV2.cs:168-188 (multipart part 'torrents', filename, bytes)",
+    "Sonarr v4.0.18.2971 src/NzbDrone.Core/MediaFiles/TorrentInfo/TorrentFileInfoReader.cs (Torrent.Load(bytes).InfoHash.ToHex())",
+    "Radarr v6.2.1.10461 src/NzbDrone.Core/MediaFiles/TorrentInfo/TorrentFileInfoReader.cs:25 (InfoHashes.V1OrV2.ToHex())"
+  ],
+  "multipart_parts": [
+    {
+      "name": "torrents",
+      "filename": "<release title>.torrent",
+      "body": "<bencoded metainfo>"
+    },
+    {
+      "name": "category",
+      "value": "tv-sonarr"
+    }
+  ]
+}

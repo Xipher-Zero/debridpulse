@@ -74,7 +74,7 @@ REFUSAL_CODES = (
     "idempotency_conflict", "unknown_category", "source_kind_not_permitted", "invalid_source", "unsupported_source",
     "source_too_large", "source_refused", "source_unavailable", "local_network_confirmation_required",
     "acquisition_scope_required", "submission_outcome_unknown", "job_not_found", "control_limit",
-    "control_conflict", "delivery_mismatch", "unknown_generation", "stale_generation",
+    "control_conflict", "delivery_mismatch", "unknown_generation", "stale_generation", "duplicate_torrent",
 )
 
 
@@ -243,19 +243,28 @@ class ExternalClients:
 
     async def submit_live(self, principal: Principal, body: dict) -> tuple[dict, bool]:
         """Submit for a client protocol whose caller supplies no request
-        identity (the SABnzbd dialect's ``addfile``): a best-effort
-        accommodation, never exactly-once.
+        identity (the SABnzbd dialect's ``addfile``, the qBittorrent dialect's
+        ``torrents/add``): a best-effort accommodation, never exactly-once.
 
         The idempotency key is derived here, under this owner, from the
-        authenticated client and the exact submitted bytes, category and
-        filename, and carries a sequence number. An identical submission
-        answers the latest job of that identity only while that job is still
-        live for the client -- its demand not withdrawn, not failed, its
-        delivery neither acknowledged nor expired. Otherwise it is a new job
-        under the next sequence number. Concurrent identical submissions
-        serialize on the identity's submission lock, so they resolve to one
-        job and one demand. In-process only: the HTTP contract still requires
-        a caller key."""
+        authenticated client and an identity of the source this owner proved,
+        and carries a sequence number. Concurrent submissions of one identity
+        serialize on its submission lock, so they resolve to one job and one
+        demand. In-process only: the HTTP contract still requires a caller key.
+
+        * An uploaded NZB: the exact bytes, category and filename. An
+          identical submission answers the latest job of that identity only
+          while that job is still live for the client -- its demand not
+          withdrawn, not failed, its delivery neither acknowledged nor
+          expired. Otherwise it is a new job under the next sequence number.
+        * A magnet or ``.torrent``: its v1 info-hash, which the intake owner
+          computed (never the caller's claim). One client holds at most one
+          visible item per info-hash, as a torrent client does: the same hash
+          in the same category answers that item while it is live; while it is
+          visible but failed, or held under another category, the submission
+          is refused (``duplicate_torrent``) and nothing is admitted or
+          replaced. Once it has left the client's view, the hash is a new
+          job."""
         client_id = client_of(principal)
         if not isinstance(body, dict):
             raise ExternalRefused("invalid_request", "The request body must be an object")
@@ -263,11 +272,13 @@ class ExternalClients:
             raise ExternalRefused("invalid_request", "A live submission derives its own identity")
         intent = self._intent(client_id, body, keyed=False)
         source = intent["source"]
-        if source.kind != "nzb":
-            raise ExternalRefused("unsupported_source", "Only an uploaded NZB is submitted without a caller key")
-        identity = hashlib.sha256(json.dumps(
-            {"v": 1, "source": source.identity, "category": intent["category"], "filename": source.filename},
-            sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        torrent = source.kind in {"magnet", "torrent"}
+        if source.kind != "nzb" and not torrent:
+            raise ExternalRefused("unsupported_source",
+                                  "Only an uploaded NZB, a magnet or a .torrent is submitted without a caller key")
+        document = ({"v": 1, "btih": str(source.summary["info_hash"]).lower()} if torrent else
+                    {"v": 1, "source": source.identity, "category": intent["category"], "filename": source.filename})
+        identity = hashlib.sha256(json.dumps(document, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         base = f"live:{identity}:"
         _admit_mutation(client_id)
         async with _lock(_submission_locks, (client_id, base)):
@@ -278,7 +289,15 @@ class ExternalClients:
             numbered = [(int(row["idempotency_key"][len(base):]), row) for row in rows
                         if row["idempotency_key"][len(base):].isdigit()]
             sequence, latest = max(numbered, key=lambda item: item[0], default=(0, None))
-            if latest is not None and latest["intent_digest"] == intent["digest"]:
+            if torrent and latest is not None and latest["demand_id"]:
+                current = await self._refresh(latest["id"])
+                if _visible(current):
+                    if _live(current) and current["category"] == intent["category"]:
+                        logger.info("external live submission replayed: client %s job %s", client_id, current["id"])
+                        return await self._view(current), False
+                    raise ExternalRefused("duplicate_torrent", "This torrent is already present for this client",
+                                          status=409)
+            elif latest is not None and latest["intent_digest"] == intent["digest"]:
                 if not latest["demand_id"]:
                     # A reservation an interruption left: completed under its
                     # own key, never admitted twice.
@@ -491,14 +510,15 @@ class ExternalClients:
                 "more": more, "high_water": int(high["n"])}
 
     async def visible(self, principal: Principal, *, settled: bool, category: str | None = None, start: int = 0,
-                      limit: int = MAX_ACTIVE_JOBS_PER_CLIENT) -> dict:
+                      limit: int = MAX_ACTIVE_JOBS_PER_CLIENT, kinds: tuple[str, ...] | None = None) -> dict:
         """The client's jobs still in its view (``_visible``), for a client
         protocol that lists a whole queue or history rather than polling by
         cursor: unfinished jobs (``settled=False``) oldest first, or finished
         ones -- completed or failed -- newest first, each finished job with
         its delivery (files only while available, re-verified now: a listing
         that offers a path to import from must not repeat a stale one).
-        ``category``, when given, is matched exactly as the job recorded it.
+        ``category``, when given, is matched exactly as the job recorded it;
+        ``kinds``, when given, limits the listing to those source kinds.
         The same predicate as ``_visible``. Bounded by ``limit``."""
         client_id = client_of(principal)
         owners = await owned_account_ids(principal.account_id)
@@ -510,6 +530,9 @@ class ExternalClients:
         if category is not None:
             where = " AND category=?"
             params.append(category)
+        if kinds is not None:
+            where += f" AND source_kind IN ({','.join('?' * len(kinds)) or 'NULL'})"
+            params.extend(kinds)
         order = "updated_at DESC, id" if settled else "created_at, id"
         async with get_db() as db:
             total = await db.fetchone(

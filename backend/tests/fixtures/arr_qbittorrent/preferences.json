@@ -1,0 +1,20 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrentPreferences.cs (fields read)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:412-416 (RemovesCompletedDownloads)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:71-76 (magnet without &tr= refused unless dht)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:558-590 (TestPrioritySupport: queueing_enabled)"
+  ],
+  "fields_read": {
+    "save_path": "string",
+    "max_ratio_enabled": "bool",
+    "max_ratio": "float",
+    "max_seeding_time_enabled": "bool",
+    "max_seeding_time": "long",
+    "max_inactive_seeding_time_enabled": "bool",
+    "max_inactive_seeding_time": "long",
+    "max_ratio_act": "int 0-3",
+    "queueing_enabled": "bool",
+    "dht": "bool"
+  }
+}

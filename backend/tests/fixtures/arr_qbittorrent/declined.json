@@ -1,0 +1,12 @@
+{
+  "_source": [
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:52-69 (MarkItemAsImported: setCategory when Post-Import Category is set; failure only logged)",
+    "Sonarr v4.0.18.2971 (d41805bbbbaee5f76f8125c5ef1013896416bc5e) src/NzbDrone.Core/Download/Clients/QBittorrent/QBittorrent.cs:71-180 (topPrio for First priority, setForceStart for Force Started, setShareLimits for API < 2.8.1; each failure only logged)"
+  ],
+  "calls": [
+    "/api/v2/torrents/setCategory",
+    "/api/v2/torrents/topPrio",
+    "/api/v2/torrents/setForceStart",
+    "/api/v2/torrents/setShareLimits"
+  ]
+}

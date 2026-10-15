@@ -417,8 +417,8 @@ async def test_the_keyed_native_contract_is_unchanged_and_takes_the_nzb_kind(sab
         await external.submit_live(world.clients.a, {"idempotency_key": "x", "category": "tv", "source": source})
     assert caught.value.code == "invalid_request"
     with pytest.raises(ExternalRefused) as caught:
-        await external.submit_live(world.clients.a, {"category": "tv", "source": {"kind": "magnet", "magnet":
-                                                                                   "magnet:?xt=urn:btih:" + "a" * 40}})
+        await external.submit_live(world.clients.a, {"category": "tv", "source": {"kind": "links", "links":
+                                                                                   ["https://example.com/a.mkv"]}})
     assert caught.value.code == "unsupported_source"
     capabilities = (await sab.client.get("/api/external/v1/capabilities", headers=sab.http.client_headers)).json()
     assert capabilities["limits"]["nzb_bytes"] == MAX_NZB_BYTES and "nzb" in capabilities["source_kinds"]
