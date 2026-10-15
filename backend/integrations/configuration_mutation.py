@@ -24,6 +24,13 @@ class ConfigurationRefused(ValueError):
     an option the connected account is not entitled to)."""
 
 
+class NativeConfigurationRefused(ValueError):
+    """An integration's native apply (``apply_native``) found the saved
+    configuration unusable by the service it configures -- the managed daemon
+    refused it. Raised by that apply; the mutation then restores the previous
+    configuration and reports this as ``ConfigurationRefused``."""
+
+
 @dataclass(frozen=True)
 class SettingsStore:
     """Where the canonical settings document is read, written and published,
@@ -48,6 +55,8 @@ class MutationResult:
     settings: object
     entry: IntegrationSettings
     applied: object = None
+    # What the integration's native apply reported (``apply_native``'s result).
+    native: object = None
 
 
 async def mutate_integration_configuration(
@@ -62,8 +71,11 @@ async def mutate_integration_configuration(
 
     ``apply_native``: an integration's native apply that must run inside the
     same lock, after reconfiguring (the caller's, e.g. aria2's daemon
-    lifecycle). Raises ``InvalidIntegrationOptions`` or
-    ``ConfigurationRefused``; saves nothing then."""
+    lifecycle). If it raises ``NativeConfigurationRefused`` the service
+    refused the configuration just saved: the previous configuration is saved,
+    published and applied again, and ``ConfigurationRefused`` is raised -- the
+    write did not take effect. Raises ``InvalidIntegrationOptions`` or
+    ``ConfigurationRefused``; nothing stays changed then."""
     from integrations.configuration import accept_verification, normalize_settings
     store = store or settings_store()
     integration_id = definition.id
@@ -132,8 +144,22 @@ async def mutate_integration_configuration(
             # under the lock win coherently for the durable revision AND
             # the resulting live/native state together.
             application.configure()
+            native = None
             if apply_native is not None:
-                await apply_native()
+                try:
+                    native = await apply_native()
+                except NativeConfigurationRefused as refusal:
+                    # The service cannot run on what was just saved: restore
+                    # the configuration it ran on, in the same lock, and say so.
+                    store.save(previous)
+                    store.apply(previous)
+                    application.configure()
+                    try:
+                        await apply_native()
+                    except NativeConfigurationRefused:
+                        pass
+                    raise ConfigurationRefused(
+                        f"{refusal}. The previous configuration was kept.") from None
             # An integration that owns external configuration applies it here,
             # inside the same lock, through the generic seam. No integration is
             # named: composition discovered which namespaces have appliers.
@@ -161,4 +187,4 @@ async def mutate_integration_configuration(
         # owner, like the write: no caller's admission is assumed.
         async with application.application_operation():
             await application.refresh_account_entitlement(integration_id)
-    return MutationResult(clean, entry, applied)
+    return MutationResult(clean, entry, applied, native)

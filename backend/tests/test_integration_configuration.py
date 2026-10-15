@@ -131,8 +131,9 @@ def test_persisted_out_of_range_canonical_values_are_clamped_not_fatal():
     raw = {"integrations": {"aria2": {"options": {"split": 999, "operation_timeout_seconds": 1}}},
            "transfer_policy": {"max_concurrent_executions": 99}}
     corrected = clamp_persisted_namespaces(raw, definitions)
-    assert set(corrected) == {"integrations.aria2.split", "integrations.aria2.operation_timeout_seconds",
-                              "transfer_policy.max_concurrent_executions"}
+    assert set(corrected) == {("integrations.aria2.split", "clamped"),
+                              ("integrations.aria2.operation_timeout_seconds", "clamped"),
+                              ("transfer_policy.max_concurrent_executions", "clamped")}
     assert raw["integrations"]["aria2"]["options"]["split"] == 64
     assert raw["integrations"]["aria2"]["options"]["operation_timeout_seconds"] == 5
     assert raw["transfer_policy"]["max_concurrent_executions"] == 20

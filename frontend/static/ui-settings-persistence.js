@@ -241,6 +241,14 @@
     const draft = replayed === undefined ? signature(control) : String(replayed);
     // Not a write at all: this draft is what the server already holds.
     if (!baselines.has(key) || draft === baselines.get(key)) return null;
+    // A draft its own control already knows to be malformed (the format the
+    // field declares) is refused here, in the field's own words, without a
+    // request. Everything else is still the server's to decide.
+    if (control.validity && control.validity.patternMismatch) {
+      present(control, baselines.get(key));
+      report(new Error(control.dataset.invalidMessage || 'That value is not valid.'), control, draft);
+      return null;
+    }
     // The record this control belongs to does not exist yet. The operator has
     // crossed the commit boundary all the same, so THAT DRAFT is remembered
     // and replayed the moment the record acquires its canonical identity --

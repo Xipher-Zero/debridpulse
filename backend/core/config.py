@@ -295,8 +295,12 @@ def load_settings() -> AppSettings:
             legacy_migrated = migrate_legacy_settings(data, definitions)
             if "paused" in data:
                 _legacy_startup_inputs["paused"] = bool(data["paused"])
-            for name in clamp_persisted_namespaces(data, definitions):
-                logger.warning("Config [%s]: value out of range - clamped", name)
+            for name, correction in clamp_persisted_namespaces(data, definitions):
+                # The corrected value is persisted below, so this is reported once.
+                if correction == "clamped":
+                    logger.warning("Config [%s]: value out of range - clamped", name)
+                else:
+                    logger.warning("Config [%s]: stored value is not valid - reset to default", name)
                 legacy_migrated = True
             password_migrated = _migrate_password_settings(data)
             _capture_legacy_credential(data)
@@ -355,7 +359,7 @@ def validate_settings_document(data) -> AppSettings:
     if "paused" in candidate or migrate_legacy_settings(candidate, definitions):
         raise LegacySettingsDocument("configuration requires legacy translation")
     if clamp_persisted_namespaces(candidate, definitions):
-        raise ValueError("configuration holds out-of-range values")
+        raise ValueError("configuration holds out-of-range or invalid values")
     if _migrate_password_settings(candidate):
         raise LegacySettingsDocument("configuration requires password migration")
     loaded = {k: v for k, v in candidate.items() if k in AppSettings.model_fields}

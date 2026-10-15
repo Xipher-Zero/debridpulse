@@ -413,7 +413,9 @@ async def test_aria2_settings_carry_no_daemon_topology_and_tuning_round_trips():
          patch("api.routes.load_settings", return_value=current), \
          patch("api.routes.save_settings", side_effect=lambda cfg: saved.__setitem__("cfg", cfg)), \
          patch("api.routes.apply_settings"), \
-         patch("api.routes.aria2_runtime", SimpleNamespace(ensure_started=AsyncMock(), restart=AsyncMock(), stop=AsyncMock())):
+         patch("api.routes.aria2_runtime", SimpleNamespace(ensure_started=AsyncMock(return_value={"process_running": True}),
+                                                          restart=AsyncMock(), stop=AsyncMock(), last_exit_code=None,
+                                                          pending_restart=lambda: [])):
         result = await routes.patch_integration_configuration(
             "aria2", routes.IntegrationConfigurationUpdate(options={"split": 8, "disk_cache": "32M"}),
             application=application,

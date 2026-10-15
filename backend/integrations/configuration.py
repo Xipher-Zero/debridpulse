@@ -100,25 +100,52 @@ def migrate_legacy_settings(raw: dict, definitions) -> bool:
     return consumed
 
 
-def clamp_persisted_namespaces(raw: dict, definitions) -> list[str]:
-    """Clamp out-of-range numeric values of the persisted canonical namespaces,
-    in place, so a hand-edited or older-schema value can never block startup.
+def _reset_invalid_to_defaults(model, values: dict) -> tuple[dict, list[str]]:
+    """Each stored value the model's own validation refuses (a size aria2
+    cannot parse, an unknown choice, a value of the wrong type), replaced by
+    that field's schema default. Nothing is interpreted or guessed: a value is
+    either valid as it stands or it is the default. Returns the corrected
+    values and the names reset."""
+    fixed, reset = dict(values), []
+    probe = model.model_construct()
+    for name, value in values.items():
+        field = model.model_fields.get(name)
+        if field is None:
+            continue
+        try:
+            model.__pydantic_validator__.validate_assignment(probe, name, value)
+        except ValueError:
+            fixed[name] = field.get_default(call_default_factory=True)
+            reset.append(name)
+    return fixed, reset
 
-    Returns the dotted names of the corrected fields (never their values, which
-    may sit next to secrets).
+
+def clamp_persisted_namespaces(raw: dict, definitions) -> list[tuple[str, str]]:
+    """Correct the persisted canonical namespaces in place, so a hand-edited or
+    older-schema value can never block startup: an out-of-range number is
+    clamped into its schema bounds, and -- for an integration that declares
+    ``reset_invalid_options`` -- any other value its schema refuses is reset to
+    that field's default.
+
+    Returns ``(dotted field name, "clamped" | "reset to default")`` for each
+    corrected field -- never the values, which may sit next to secrets.
     """
-    corrected: list[str] = []
+    corrected: list[tuple[str, str]] = []
 
-    def clamp(namespace, model, label):
+    def clamp(namespace, model, label, *, reset_invalid=False):
         fixed = clamp_to_model_bounds(model, namespace)
-        corrected.extend(f"{label}.{name}" for name in fixed if fixed[name] != namespace[name])
+        corrected.extend((f"{label}.{name}", "clamped") for name in fixed if fixed[name] != namespace[name])
+        if reset_invalid:
+            fixed, reset = _reset_invalid_to_defaults(model, fixed)
+            corrected.extend((f"{label}.{name}", "reset to default") for name in reset)
         return fixed
 
     integrations = raw.get("integrations")
     for definition in definitions:
         entry = integrations.get(definition.id) if isinstance(integrations, dict) else None
         if isinstance(entry, dict) and isinstance(entry.get("options"), dict):
-            entry["options"] = clamp(entry["options"], definition.options_model, f"integrations.{definition.id}")
+            entry["options"] = clamp(entry["options"], definition.options_model, f"integrations.{definition.id}",
+                                     reset_invalid=definition.reset_invalid_options)
     for key, model in (("transfer_policy", TransferSettings), ("execution_runtime_limits", ExecutionRuntimeLimits)):
         if isinstance(raw.get(key), dict):
             raw[key] = clamp(raw[key], model, key)

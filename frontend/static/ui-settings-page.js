@@ -545,6 +545,10 @@
       options.maxlength != null ? `maxlength="${html(options.maxlength)}"` : '',
       options.ariaLabel ? `aria-label="${html(options.ariaLabel)}"` : '',
       options.limitMessage ? `data-limit-message="${html(options.limitMessage)}"` : '',
+      // A format the field declares (``pattern``) and its own wording for a
+      // draft that does not match it; the server still decides everything else.
+      options.pattern ? `pattern="${html(options.pattern)}"` : '',
+      options.invalidMessage ? `data-invalid-message="${html(options.invalidMessage)}"` : '',
     ].filter(Boolean).join(' ');
     const bare =
       `<input class="input" id="${id}" data-setting="${html(key)}" type="${html(type)}" value="${html(value)}" ${attrs}>`;
@@ -2398,7 +2402,8 @@
     return tuningCells(
       tuningGroup(
         input('aria2_max_connection_per_server', 'Connections per Server', aria2.max_connection_per_server ?? 16, {
-          type: 'number', min: 1, max: 32,
+          // aria2's own range: above 16 the download engine refuses to start.
+          type: 'number', min: 1, max: 16, limitMessage: 'Connections per Server can be at most {max}.',
           hint: 'Maximum number of connections a single download can open to the same server.'
         }),
         input('aria2_split', 'Segments per File', aria2.split ?? 16, {
@@ -2406,7 +2411,9 @@
           hint: 'Controls how many parallel segments a single file can use. Actual connections may be limited by the server and split-size settings.'
         }),
         input('aria2_min_split_size', 'Minimum Split Size', aria2.min_split_size || '10M', {
-          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments.'
+          pattern: '[0-9]+[KkMm]?',
+          invalidMessage: 'Minimum Split Size is a whole number with an optional K or M suffix, from 1M to 1024M.',
+          hint: 'Controls how small file sections can become when a download is split. Larger values create fewer parallel segments. From 1M to 1024M.'
         }),
       ),
       tuningGroup(
@@ -2417,12 +2424,16 @@
           aria2.continue_downloads !== false
         ),
         input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
-          hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit.'
+          pattern: '[0-9]+[KkMm]?',
+          invalidMessage: 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K or 2M.',
+          hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit. Bytes per second, with an optional K or M suffix.'
         }),
       ),
       tuningGroup(
         input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
-          hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache.'
+          pattern: '[0-9]+[KkMm]?',
+          invalidMessage: 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K or 64M.',
+          hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache. Takes effect the next time the download engine starts.'
         }),
         selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
           ['trunc', 'Truncate'],

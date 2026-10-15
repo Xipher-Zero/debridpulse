@@ -548,17 +548,41 @@ def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
     return merged
 
 
-async def _apply_aria2_settings(application: ApplicationService) -> None:
+async def _apply_aria2_settings(application: ApplicationService, *, strict: bool = False) -> dict:
     """Ensure the aria2 daemon runs and reapply its native tuning after a
     settings change. Shared by the whole-settings route and the scoped
     integration-configuration route (specification section 9.5) so both
     surfaces give aria2 the same targeted, non-blanket handling -- never
-    ``ApplicationMaintenanceGate`` (specification section 2.6, 6)."""
-    await aria2_runtime.ensure_started()
-    try:
-        await application.integration_admin("aria2").apply_memory_tuning()
-    except Exception as exc:
-        logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
+    ``ApplicationMaintenanceGate`` (specification section 2.6, 6).
+
+    ``strict`` (the scoped route, which changes aria2's own options): a
+    configuration aria2 refuses -- a start that exits on a refused option, or
+    a running daemon answering the live update with a refusal -- raises
+    ``NativeConfigurationRefused``, so the mutation keeps the previous
+    configuration instead of reporting success. Anything else (no daemon by
+    choice, a connection that is not there) is reported, never raised.
+    Returns what actually took effect: whether the daemon runs, and the
+    startup-only options that wait for its next start."""
+    from executors.aria2.client import Aria2ResponseError
+    from executors.aria2.runtime import OPTION_REFUSED_EXIT_CODE
+    from integrations.configuration_mutation import NativeConfigurationRefused
+
+    status = await aria2_runtime.ensure_started()
+    if strict and not status.get("process_running") and aria2_runtime.last_exit_code == OPTION_REFUSED_EXIT_CODE:
+        raise NativeConfigurationRefused(f"aria2 refused this configuration: {status.get('last_error') or 'exit 28'}")
+    applied = False
+    if status.get("process_running"):
+        try:
+            await application.integration_admin("aria2").apply_memory_tuning()
+            applied = True
+        except Aria2ResponseError as exc:
+            if strict:
+                raise NativeConfigurationRefused(f"aria2 refused this configuration: {sanitize_exception(exc)}") from None
+            logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
+        except Exception as exc:
+            logger.warning("Could not apply aria2 memory settings immediately: %s", sanitize_exception(exc))
+    return {"running": bool(status.get("process_running")), "applied": applied,
+            "pending_restart": aria2_runtime.pending_restart()}
 
 
 @router.put("/settings")
@@ -2302,7 +2326,7 @@ async def patch_integration_configuration(
     )
 
     async def apply_aria2():
-        await _apply_aria2_settings(application)
+        return await _apply_aria2_settings(application, strict=True)
 
     try:
         result = await mutate_integration_configuration(
@@ -2317,14 +2341,17 @@ async def patch_integration_configuration(
         raise HTTPException(400, _sanitize_error(exc.__cause__ or exc)) from None
     except ConfigurationRefused as exc:
         raise HTTPException(409, str(exc)) from None
-    clean, applied = result.settings, result.applied
+    clean, applied, runtime = result.settings, result.applied, result.native
     from integrations.configuration import public_integrations
     public = _with_option_availability(public_integrations(clean, application.definitions),
                                        application).get(integration_id, {})
     # A save whose native application failed is reported truthfully: the
     # canonical namespace is saved (it is the desired state) but the operator is
     # never told the service is configured when it is not.
-    return {"ok": True, **public, **({"native": applied.public()} if applied is not None else {})}
+    # The daemon's own outcome (aria2): running, applied live, and what waits
+    # for its next start -- validation success is not reported as more.
+    return {"ok": True, **public, **({"native": applied.public()} if applied is not None else {}),
+            **({"runtime": runtime} if runtime is not None else {})}
 
 
 class IntegrationGroupConfigurationUpdate(BaseModel):

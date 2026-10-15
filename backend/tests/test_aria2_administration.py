@@ -76,7 +76,8 @@ async def test_waiting_count_prevents_restart_even_when_snapshot_window_is_empty
     import executors.aria2.admin as module
 
     runtime = SimpleNamespace(options=Aria2Options(purge_interval_minutes=0, restart_interval_hours=1),
-                              _started_at=1, restart=AsyncMock(), ensure_log_rotation=AsyncMock())
+                              _started_at=1, restart=AsyncMock(), ensure_log_rotation=AsyncMock(),
+                              process_running=True)
     monkeypatch.setattr(module.time, "time", lambda: 5000)
     execution.daemon.get_global_stat = AsyncMock(return_value={"active": 0, "waiting": 1})
     execution.daemon.get_all = AsyncMock(return_value=[])

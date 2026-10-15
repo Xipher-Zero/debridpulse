@@ -38,7 +38,7 @@ def test_effective_settings_numeric_limits_match_server_contract():
         return source[start:start + span]
 
     assert "max: 20" in field("aria2_max_active_downloads")
-    assert "max: 32" in field("aria2_max_connection_per_server")
+    assert "max: 16" in field("aria2_max_connection_per_server")
     assert "max: 168" in field("stuck_download_timeout_hours")
 
     snapshots = field("stats_snapshot_interval_minutes")

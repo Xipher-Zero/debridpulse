@@ -87,7 +87,7 @@ class Aria2Administration:
         return {**await self.client.test(), "diagnostics": await self.memory_diagnostics()}
 
     async def apply_memory_tuning(self):
-        options = build_aria2_global_options(self.runtime.options, include_safety=True)
+        options = build_aria2_global_options(self.runtime.options, include_safety=True, live=True)
         await self.client.change_global_options(options)
         return {"ok": True, "applied": options}
 
@@ -104,6 +104,15 @@ class Aria2Administration:
     async def maintain(self):
         runtime = self.runtime
         aria2 = runtime.options
+        if not runtime.process_running:
+            # A daemon that should be running and is not is recovered through
+            # the existing managed start (``Aria2Runtime.recover``: never one an
+            # operator stopped, never sooner than its backoff). Without a
+            # daemon there is nothing to maintain: the executor's health
+            # already reports it unavailable, so maintenance does not fail.
+            await runtime.recover()
+            if not runtime.process_running:
+                return
         now = time.time()
         housekeeping_interval = max(0, aria2.purge_interval_minutes) * 60
         if housekeeping_interval and now - self._last_housekeeping >= housekeeping_interval:

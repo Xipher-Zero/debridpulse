@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, Optional
 
+from core.logging_utils import sanitize_log_value
 from executors.aria2.client import Aria2Service
 
 logger = logging.getLogger("alldebrid.aria2")
@@ -50,15 +51,28 @@ NATIVE_ACTIVE_DOWNLOADS = 64
 
 # Bound on one diagnostic daemon-identity read (``Aria2Service.session_id``).
 _IDENTITY_READ_SECONDS = 2.0
+# aria2's exit status for an option it refused (its documented exit code 28):
+# the configuration, not the environment, stopped the daemon.
+OPTION_REFUSED_EXIT_CODE = 28
+# How long a daemon that exited before becoming healthy is given to finish
+# writing what it said, before the start is reported.
+_EXIT_OUTPUT_SECONDS = 1.0
+# Managed recovery: after a failed start, maintenance tries again only once
+# this has passed, doubling per consecutive failure up to the ceiling.
+_RECOVERY_FIRST_DELAY_SECONDS = 60.0
+_RECOVERY_MAX_DELAY_SECONDS = 900.0
 
 
-def build_aria2_global_options(options, *, include_safety: bool = False) -> Dict[str, str]:
+def build_aria2_global_options(options, *, include_safety: bool = False, live: bool = False) -> Dict[str, str]:
     """Pure translation of aria2-owned typed tuning into the native aria2
     global-option dict -- no settings access of any kind, and no DebridPulse
     global policy (concurrency or bandwidth) mirrored into native options. It
     is the single tuning mapping owner used by ``Aria2Runtime`` and
     ``Aria2Administration``. The download ceiling is enforced only through the
-    executor's assigned-ceiling operation."""
+    executor's assigned-ceiling operation.
+
+    ``live``: the options a running daemon can change over RPC -- every one
+    except ``STARTUP_ONLY_OPTIONS``, which aria2 would answer OK to and ignore."""
     options_dict: Dict[str, str] = {
         "max-download-result": str(int(options.max_download_result or 50)),
         "keep-unfinished-download-result": "true" if bool(options.keep_unfinished_download_result) else "false",
@@ -82,6 +96,10 @@ def build_aria2_global_options(options, *, include_safety: bool = False) -> Dict
         # makes the daemon refuse to start. A Metalink it fetches is a file,
         # never a download plan.
         options_dict["follow-metalink"] = "false"
+    if live:
+        from executors.aria2.definition import STARTUP_ONLY_OPTIONS
+        for name in STARTUP_ONLY_OPTIONS:
+            options_dict.pop(name, None)
     return options_dict
 
 
@@ -110,6 +128,18 @@ class Aria2Runtime:
         self._stderr_task: Optional[asyncio.Task] = None
         self._lock = asyncio.Lock()
         self._config = Aria2RuntimeConfiguration()
+        # The exit status of the last daemon that exited before becoming
+        # healthy (None once one started), and the native options a running
+        # daemon was started with -- so a startup-only change is reported as
+        # pending until the next start rather than as applied.
+        self._last_exit_code: Optional[int] = None
+        self._started_options: Dict[str, str] = {}
+        # Managed recovery (``recover``): an operator's Stop is respected, and
+        # a failing start is retried no sooner than its backoff allows.
+        self._operator_stopped = False
+        self._start_failures = 0
+        self._next_recovery_at = 0.0
+        self._log_size_at_start = 0
         # The aggregate download ceiling core last assigned to this executor
         # (0 = unlimited). Held here so a daemon (re)start enforces it too.
         self._bandwidth_ceiling = 0
@@ -122,8 +152,29 @@ class Aria2Runtime:
     def configure(self, config: Aria2RuntimeConfiguration) -> None:
         """Injection point: the aria2 integration factory calls this on every
         settings change so this long-lived singleton always acts on current
-        aria2 configuration without ever reading global application settings."""
+        aria2 configuration without ever reading global application settings.
+        A changed configuration may start where the last one failed, so it
+        clears the recovery backoff."""
+        if config != self._config:
+            self._next_recovery_at = 0.0
         self._config = config
+
+    @property
+    def process_running(self) -> bool:
+        return self._is_process_alive()
+
+    @property
+    def last_exit_code(self) -> Optional[int]:
+        return self._last_exit_code
+
+    def pending_restart(self) -> list[str]:
+        """The startup-only options whose configured value the running daemon
+        does not hold yet: they take effect when it next starts."""
+        if not self._is_process_alive():
+            return []
+        from executors.aria2.definition import STARTUP_ONLY_OPTIONS
+        wanted = build_aria2_global_options(self._config.options, include_safety=True)
+        return sorted(name for name in STARTUP_ONLY_OPTIONS if self._started_options.get(name) != wanted.get(name))
 
     def assign_bandwidth_ceiling(self, bytes_per_second: int) -> None:
         self._bandwidth_ceiling = max(0, int(bytes_per_second))
@@ -244,13 +295,29 @@ class Aria2Runtime:
             return await self.status()
         return await self.start()
 
+    async def recover(self) -> Optional[Dict[str, Any]]:
+        """Maintenance's managed recovery of a daemon that should be running
+        and is not: the existing start, under its lock. Never for a daemon an
+        operator stopped or one configured not to auto-start, and after a
+        failure no sooner than its backoff (60 s, doubling to 15 min) -- so an
+        invalid configuration cannot become a restart loop. ``None`` when
+        nothing was attempted."""
+        if self._is_process_alive() or self._operator_stopped or not self._config.options.auto_start:
+            return None
+        if time.monotonic() < self._next_recovery_at:
+            return None
+        logger.info("aria2 is not running; attempting managed recovery")
+        return await self.start()
+
     async def start(self) -> Dict[str, Any]:
         async with self._lock:
             if self._is_process_alive():
                 return await self.status()
+            self._operator_stopped = False
             if not shutil.which("aria2c"):
                 self._last_error = "aria2c binary not found in container"
                 logger.warning("aria2 start skipped: %s", self._last_error)
+                self._record_start_failure()
                 return await self.status()
             try:
                 self._rotate_log_file()
@@ -264,8 +331,12 @@ class Aria2Runtime:
                 env = dict(_os.environ)
                 env["MALLOC_ARENA_MAX"] = "1"
                 env["MALLOC_TRIM_THRESHOLD_"] = "65536"
+                command = self._command()
+                self._log_size_at_start = self._log_size()
+                # This start's own output only: never a previous daemon's.
+                self._last_output.clear()
                 self._process = await asyncio.create_subprocess_exec(
-                    *self._command(),
+                    *command,
                     stdout=asyncio.subprocess.PIPE,
                     stderr=asyncio.subprocess.PIPE,
                     env=env,
@@ -274,7 +345,10 @@ class Aria2Runtime:
                 self._stderr_task = asyncio.create_task(self._drain_stream(self._process.stderr, "stderr"))
                 self._started_at = time.time()
                 self._last_error = ""
+                self._last_exit_code = None
                 await self._wait_until_healthy()
+                self._started_options = build_aria2_global_options(self._config.options, include_safety=True)
+                self._start_failures, self._next_recovery_at = 0, 0.0
                 logger.info("aria2 started on %s (pid %s, session %s)", rpc_url(), self.process_identity()[0],
                             await self._session_identity())
             except BaseException as exc:
@@ -282,11 +356,20 @@ class Aria2Runtime:
                 await self._cleanup_failed_start()
                 if isinstance(exc, asyncio.CancelledError):
                     raise
+                self._record_start_failure()
                 logger.warning("aria2 start failed: %s", exc)
             return await self.status()
 
+    def _record_start_failure(self) -> None:
+        self._start_failures += 1
+        delay = min(_RECOVERY_FIRST_DELAY_SECONDS * 2 ** (self._start_failures - 1), _RECOVERY_MAX_DELAY_SECONDS)
+        self._next_recovery_at = time.monotonic() + delay
+
     async def stop(self) -> Dict[str, Any]:
+        """Stop the daemon. A stop is deliberate: managed recovery leaves the
+        daemon stopped until something starts it again."""
         async with self._lock:
+            self._operator_stopped = True
             try:
                 pid, _ = self.process_identity()
                 logger.info("aria2 stopping (pid %s, session %s)", pid,
@@ -334,7 +417,7 @@ class Aria2Runtime:
 
     async def apply_options(self) -> Dict[str, Any]:
         svc = self._service()
-        options = build_aria2_global_options(self._config.options, include_safety=True)
+        options = build_aria2_global_options(self._config.options, include_safety=True, live=True)
         await svc.change_global_options(options)
         return {"ok": True, "options": options}
 
@@ -359,7 +442,9 @@ class Aria2Runtime:
             "version": version,
             "uptime_seconds": int(time.time() - self._started_at) if self._started_at else 0,
             "last_error": self._last_error or rpc_error,
+            "last_exit_code": self._last_exit_code,
             "last_output": "\n".join(self._last_output),
+            "pending_restart": self.pending_restart(),
             "safety": build_aria2_global_options(aria2, include_safety=True),
         }
 
@@ -368,6 +453,10 @@ class Aria2Runtime:
         last_error = ""
         while time.time() < deadline:
             if self._process and self._process.returncode is not None:
+                self._last_exit_code = self._process.returncode
+                # What the daemon said before it exited may still be unread:
+                # give its readers a bounded moment to reach end of output.
+                await self._settle_output()
                 raise RuntimeError(self._startup_error("aria2 process exited before RPC became healthy"))
             try:
                 await self._service().test()
@@ -388,6 +477,18 @@ class Aria2Runtime:
             text = line.decode("utf-8", errors="replace").strip()
             if text:
                 self._last_output.append(f"{name}: {text}")
+
+    async def _settle_output(self) -> None:
+        tasks = [task for task in (self._stdout_task, self._stderr_task) if task and not task.done()]
+        if tasks:
+            await asyncio.wait(tasks, timeout=_EXIT_OUTPUT_SECONDS)
+
+    def _log_size(self) -> int:
+        try:
+            log_file, _ = self._runtime_paths()
+            return log_file.stat().st_size if log_file.exists() else 0
+        except Exception:
+            return 0
 
     async def _cancel_drain_tasks(self) -> None:
         tasks = [task for task in (self._stdout_task, self._stderr_task) if task]
@@ -419,17 +520,22 @@ class Aria2Runtime:
         self._started_at = 0.0
 
     def _startup_error(self, message: str) -> str:
+        """The failed start, as the daemon reported it: its exit code and what
+        THIS process wrote (sanitized), and the aria2 log only when this start
+        added to it -- otherwise the log holds an earlier run, and says so."""
         log_file, _ = self._runtime_paths()
         details = [message]
         if self._process and self._process.returncode is not None:
             details.append(f"exit code {self._process.returncode}")
         if self._last_output:
-            details.append("process output: " + " | ".join(self._last_output))
+            details.append("process output: " + sanitize_log_value(" | ".join(self._last_output), max_length=600))
         try:
             if log_file.exists():
+                fresh = log_file.stat().st_size > self._log_size_at_start
                 tail = log_file.read_text(encoding="utf-8", errors="replace").splitlines()[-10:]
                 if tail:
-                    details.append("log tail: " + " | ".join(tail))
+                    label = "log tail" if fresh else "earlier aria2 log (this start wrote none)"
+                    details.append(f"{label}: " + sanitize_log_value(" | ".join(tail), max_length=600))
         except Exception as _e:
             logger.debug("aria2 log tail failed: %s", _e)
         return "; ".join(details)

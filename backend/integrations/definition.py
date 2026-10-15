@@ -356,6 +356,12 @@ class IntegrationDefinition:
     # .normalize_settings``): the former name's value moves to the new name
     # unless the new name is already present, and is never written again.
     renamed_options: tuple[tuple[str, str], ...] = ()
+    # Whether a persisted option this integration's schema refuses (a value an
+    # earlier version accepted) is reset to its schema default at load, with a
+    # diagnostic (``integrations.configuration.clamp_persisted_namespaces``),
+    # rather than failing the load. Opt-in: every other namespace keeps
+    # numeric clamping alone.
+    reset_invalid_options: bool = False
     ownership_fields: frozenset[str] = frozenset()
     required_options: frozenset[str] = frozenset()
     # Whether this integration participates before an operator has ever said
