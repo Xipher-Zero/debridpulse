@@ -387,7 +387,14 @@
       <div class="card dp-activity-card">
         <div class="card-header">
           <span class="card-title dp-activity-card-title" data-dp-structural-title="1"><img src="/icons/dp/document.svg" alt="" aria-hidden="true" class="dp-icon dp-activity-title-icon"><span class="dp-activity-heading-copy"><span class="dp-activity-heading">For the Record</span><span class="dp-activity-subtitle">Everything DebridPulse thought was worth mentioning.</span></span></span>
-          <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="DPActivityLog.load()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
+          <div class="dp-activity-header-actions">
+            <label class="dp-activity-live" for="ev-live" data-state="off">
+              <span class="dp-activity-live-label">Auto Refresh</span>
+              <span class="toggle"><input id="ev-live" type="checkbox" role="switch" aria-describedby="ev-live-status"><span class="ttrack" aria-hidden="true"></span></span>
+              <span id="ev-live-status" hidden>Off</span>
+            </label>
+            <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="DPActivityLog.load()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
+          </div>
         </div>
         <div class="dp-activity-search-band">
           <div class="ev-search-row dp-activity-search-row">

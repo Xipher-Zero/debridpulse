@@ -173,3 +173,131 @@ async def test_each_failed_source_of_one_transfer_is_named_not_one_generic_failu
     assert label("https://www.1fichier.com/?abc&token=secret") == "source 3, 1fichier.com"
     assert label("https://user:pw@[::1]:8443/x") == "source 3"
     assert label("https://rapidgator.net/file/x", parent="root") == "rapidgator.net"
+
+
+# ── the Activity Log's live signal: observed from committed state ───────────
+
+def _note(key: str | None = None) -> event_journal.JournalEvent:
+    return event_journal.JournalEvent("configuration", "configuration.changed", "info", "Settings saved",
+                                      "settings", occurrence_key=key)
+
+
+async def test_only_committed_journal_growth_is_announced_and_once_per_observation(tmp_path, monkeypatch):
+    from application import observability as owner
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "observed.sqlite3")
+    await database.init_db()
+    announced: list[tuple[str, dict]] = []
+
+    async def publish(kind, payload):
+        announced.append((kind, payload))
+
+    monkeypatch.setattr(owner, "publish", publish)
+    observer = owner.Observability(repository=None)
+
+    async def newest():
+        async with database.get_db() as db:
+            return await event_journal.latest_id(db)
+
+    await observer.observe_journal()                       # a first observation says where the edge is
+    assert announced == [("activity_journal_changed", {"latest": 0})]
+    announced.clear()
+
+    assert await event_journal.record_now(_note("note:standalone")) is True    # standalone, committed
+    await observer.observe_journal()
+    await observer.observe_journal()                       # nothing new: nothing said again
+    assert announced == [("activity_journal_changed", {"latest": await newest()})]
+
+    async with database.get_db() as writer:                # co-committed: two rows, one transaction
+        await event_journal.record(writer, _note("note:first"))
+        await event_journal.record(writer, _note("note:second"))
+        await observer.observe_journal()                   # still open: invisible, so not announced
+        assert len(announced) == 1
+        await writer.commit()
+    await observer.observe_journal()
+    assert announced[1:] == [("activity_journal_changed", {"latest": await newest()})]
+
+    async with database.get_db() as writer:                # rolled back: never existed, never announced
+        await event_journal.record(writer, _note("note:rolled-back"))
+        await observer.observe_journal()
+        await writer.rollback()
+    assert await event_journal.record_now(_note("note:standalone")) is True   # a replayed occurrence: no row
+    await observer.observe_journal()
+    assert len(announced) == 2
+
+    async with database.get_db() as db:                    # the explicit reset: the newest edge falls
+        await event_journal.clear(db)
+        await db.commit()
+    await observer.observe_journal()
+    assert announced[2:] == [("activity_journal_changed", {"latest": 0})]
+    # Only the newest id travels: no message, detail, name or type.
+    assert all(set(payload) == {"latest"} for _, payload in announced)
+
+
+async def test_the_delivery_cadence_observes_the_journal_while_idle_and_apart_from_its_other_work(
+        tmp_path, monkeypatch):
+    from application import observability as owner
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "idle.sqlite3")
+    await database.init_db()
+    announced: list[str] = []
+
+    async def publish(kind, payload):
+        announced.append(kind)
+
+    class Idle:                                            # no transfer has anything to deliver
+        failing = False
+        asked = 0
+
+        async def pending_events(self):
+            self.asked += 1
+            if self.failing:
+                raise RuntimeError("delivery queue unavailable")
+            return []
+
+    monkeypatch.setattr(owner, "publish", publish)
+    repository = Idle()
+    observer = owner.Observability(repository)
+    await observer.deliver()
+    announced.clear()
+    assert await event_journal.record_now(_note()) is True                    # e.g. a settings save
+    await observer.deliver()
+    assert announced == ["activity_journal_changed"]
+
+    # The observation never holds back the lifecycle deliveries, nor they it.
+    latest_id = event_journal.latest_id
+
+    async def unreadable(db):
+        raise RuntimeError("journal unreadable")
+
+    monkeypatch.setattr(event_journal, "latest_id", unreadable)
+    asked = repository.asked
+    await observer.deliver()
+    assert repository.asked == asked + 1                   # the lifecycle deliveries still ran
+    monkeypatch.setattr(event_journal, "latest_id", latest_id)
+    repository.failing = True
+    assert await event_journal.record_now(_note()) is True
+    with pytest.raises(RuntimeError, match="delivery queue"):
+        await observer.deliver()
+    assert announced == ["activity_journal_changed", "activity_journal_changed"]
+
+
+async def test_a_write_that_comes_with_a_reconfiguration_is_still_announced(tmp_path, monkeypatch):
+    """Configuration replaces the delivery owner (``application.composition``):
+    the new owner's first observation must announce, not absorb, a write
+    committed around that change."""
+    from application import observability as owner
+
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "reconfigured.sqlite3")
+    await database.init_db()
+    announced: list[dict] = []
+
+    async def publish(kind, payload):
+        announced.append(payload)
+
+    monkeypatch.setattr(owner, "publish", publish)
+    await owner.Observability(repository=None).observe_journal()
+    assert await event_journal.record_now(_note()) is True                    # the change's own event
+    await owner.Observability(repository=None).observe_journal()              # the reconfigured owner
+    async with database.get_db() as db:
+        assert announced[-1] == {"latest": await event_journal.latest_id(db)} != announced[0]

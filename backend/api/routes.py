@@ -55,7 +55,7 @@ from auth import accounts
 from auth.middleware import session_record_valid
 from auth.models import AuthMechanism, Principal
 from auth.policy import interactive_auth_enabled
-from auth.permissions import Capability, destruction_precondition, permits, require_destruction, transfer_access
+from auth.permissions import ACTIONS, Capability, destruction_precondition, permits, require_destruction, transfer_access
 from auth.oidc_version import oidc_configuration_version
 from auth.passwords import basic_verification_cache
 from auth.sessions import session_store
@@ -2517,6 +2517,10 @@ async def trigger_deep_sync( application: ApplicationService = Depends(get_appli
 #   ping          — heartbeat every 30 s (keeps the connection alive through proxies)
 #   stats_changed — basic stats object; frontend re-renders stats bar
 #   torrent_updated — {id, status, name}; frontend refreshes the affected row
+#   activity_journal_changed — {latest}; the Activity Log's journal changed.
+#                   Delivered only to a connection whose CURRENT principal may
+#                   read the Activity Log (``_SSE_GATED``): that activity
+#                   occurred is itself information other roles are not given.
 #
 # This requires NO external dependencies (no Redis, no WebSocket library).
 
@@ -2536,18 +2540,48 @@ class _SseSubscriber:
     session: bytes = b""
 
 
+# An event only some roles may receive, by the capability of the one action
+# that reads what it signals. Every other event keeps the stream's own access.
+_SSE_GATED: dict[str, Capability] = {
+    "activity_journal_changed": ACTIONS["api.operational_downloads.list_activity_events"],
+}
+
+
+@dataclass(frozen=True)
+class _SseGatedFrame:
+    """A queued frame that is re-checked against the connection's current
+    principal when it is about to be sent."""
+    capability: Capability
+    text: str
+
+
+def _sse_principal(subscriber: _SseSubscriber) -> Principal | None:
+    """Who the connection streams to NOW: a browser session's principal is
+    re-bound in place by a role change (``session_store``), so it is read from
+    the live session record, never from the connection's opening."""
+    if subscriber.session_token:
+        record = session_store.resolve(subscriber.session_token)
+        return record.principal if record is not None else None
+    return subscriber.principal
+
+
 async def _sse_broadcast(event_type: str, data: dict) -> None:
     """Push an SSE event to every connected client (fire-and-forget).
 
     Every payload is the public projection (``public_payload``): the same
     capability-free fields REST serves to every role allowed to read
-    transfers -- never a stored request, candidate, endpoint or credential."""
+    transfers -- never a stored request, candidate, endpoint or credential.
+    A gated event (``_SSE_GATED``) is queued only for a connection whose
+    current principal holds its capability, and checked again when sent."""
     payload = f"event: {event_type}\ndata: {_json.dumps(public_payload(data))}\n\n"
+    capability = _SSE_GATED.get(event_type)
     dead: list[asyncio.Queue] = []
     async with _sse_lock:
-        for q in _sse_subscribers:
+        for q, subscriber in _sse_subscribers.items():
+            if capability is not None and not permits(_sse_principal(subscriber), capability):
+                continue
             try:
-                q.put_nowait(payload)
+                q.put_nowait(payload if capability is None else _SseGatedFrame(capability, payload))
             except asyncio.QueueFull:
                 dead.append(q)
         for q in dead:
@@ -2608,6 +2642,10 @@ async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
             if frame is _SSE_SESSION_ENDED or not _sse_still_authorized(subscriber):
                 yield "event: session_ended\ndata: {}\n\n"
                 break
+            if isinstance(frame, _SseGatedFrame):
+                if not permits(_sse_principal(subscriber), frame.capability):
+                    continue                     # the role changed after it was queued
+                frame = frame.text
             yield frame
     finally:
         async with _sse_lock:
@@ -2619,7 +2657,8 @@ async def events_stream(request: Request):
     """Server-Sent Events stream for live UI updates.
 
     Connect via:  const es = new EventSource('/api/events/stream');
-    Events:  connected, ping, stats_changed, torrent_updated
+    Events:  connected, ping, stats_changed, torrent_updated, and (to a role
+    that may read the Activity Log) activity_journal_changed
     """
     return StreamingResponse(
         _sse_generator(request),

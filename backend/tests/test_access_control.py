@@ -362,6 +362,81 @@ async def test_revoking_a_session_ends_its_open_stream(monkeypatch):
         await stream.__anext__()
 
 
+# ── the Activity Log's journal signal reaches only roles that read it ───────
+
+def _drain(queue: asyncio.Queue) -> list[str]:
+    frames = []
+    while not queue.empty():
+        frame = queue.get_nowait()
+        frames.append(getattr(frame, "text", frame))
+    return frames
+
+
+async def test_the_journal_signal_reaches_only_a_role_that_reads_the_activity_log(monkeypatch):
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings(auth_password_enabled=True))
+    session_store.clear()
+    reader = ACTIONS["api.operational_downloads.list_activity_events"]
+    subscribers = {"standalone": routes._SseSubscriber(Principal.standalone())}
+    for role in (Role.ADMIN, Role.USER, Role.READONLY):
+        principal = Principal.password_session(account(role.value, account_id=f"{role.value}-id", role=role))
+        token, _ = session_store.create(principal, lifetime_seconds=3600)
+        subscribers[role.value] = routes._SseSubscriber(principal, token, session_store.fingerprint(token))
+    subscribers["integration"] = routes._SseSubscriber(Principal.integration_token(
+        account("automation", account_id="integration-id", role=Role.INTEGRATION), "token-id"))
+    # A session that has ended receives nothing gated, whatever role it held.
+    ended = Principal.password_session(account("gone", account_id="gone-id", role=Role.ADMIN))
+    gone, _ = session_store.create(ended, lifetime_seconds=3600)
+    subscribers["ended-admin"] = routes._SseSubscriber(ended, gone, session_store.fingerprint(gone))
+    session_store.revoke_account("gone-id")
+    queues = {name: asyncio.Queue() for name in subscribers}
+    for name, subscriber in subscribers.items():
+        routes._sse_subscribers[queues[name]] = subscriber
+    try:
+        for queue in queues.values():
+            _drain(queue)                                  # the revocation's own notice
+        await routes._sse_broadcast("activity_journal_changed", {"latest": 41})
+        await routes._sse_broadcast("torrent_updated", {"id": 7, "status": "queued"})
+        received = {name: _drain(queue) for name, queue in queues.items()}
+    finally:
+        for queue in queues.values():
+            routes._sse_subscribers.pop(queue, None)
+
+    journal = {name for name, frames in received.items()
+               if any(frame.startswith("event: activity_journal_changed") for frame in frames)}
+    assert journal == {name for name, subscriber in subscribers.items()
+                       if name != "ended-admin" and permits(subscriber.principal, reader)}
+    assert journal == {"standalone", "admin"}              # ReadOnly, User and Integration: not even a hint
+    frame = next(f for f in received["admin"] if f.startswith("event: activity_journal_changed"))
+    assert json.loads(frame.split("data: ", 1)[1]) == {"latest": 41}
+    # Every other event keeps the stream's own delivery, unchanged.
+    assert {name for name, frames in received.items()
+            if any(frame.startswith("event: torrent_updated") for frame in frames)} == set(subscribers)
+
+
+async def test_a_queued_journal_signal_is_withheld_once_the_role_can_no_longer_read_it(monkeypatch):
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings(auth_password_enabled=True))
+    session_store.clear()
+    admin = account("watcher", account_id="watcher-id", role=Role.ADMIN)
+    principal = Principal.password_session(admin)
+    token, _ = session_store.create(principal, lifetime_seconds=3600)
+    stream = routes._sse_generator(_Connection(principal, token))
+    assert (await stream.__anext__()).startswith("event: connected")
+    try:
+        await routes._sse_broadcast("activity_journal_changed", {"latest": 5})   # queued while Admin
+        session_store.rebind_account(account("watcher", account_id="watcher-id", role=Role.READONLY,
+                                             generation=2))
+        await routes._sse_broadcast("activity_journal_changed", {"latest": 6})   # never queued
+        # The demoted connection is told to reset; the signal queued before
+        # the demotion is not sent.
+        assert (await asyncio.wait_for(stream.__anext__(), 2)).startswith("event: account_changed")
+    finally:
+        await stream.aclose()
+
+
 # ── destructive acts are decided against the demand they were authorized for ─
 
 async def _authorized_then_another_account_submits(repository, transfer_id):

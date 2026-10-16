@@ -580,6 +580,14 @@ async def transfer_events(db, transfer_id: int, limit: int = 50) -> list[dict]:
         (int(transfer_id), int(transfer_id), int(limit)))
 
 
+async def latest_id(db) -> int:
+    """The newest committed journal id (0 for an empty journal): the same
+    newest edge a first page freezes as its ``snapshot``. One rowid seek; on
+    its own connection it can only ever see committed rows."""
+    row = await db.fetchone("SELECT COALESCE(MAX(id), 0) AS id FROM event_journal")
+    return int(row["id"]) if row else 0
+
+
 async def recorded_count(db) -> int:
     """Every committed journal record -- the whole retained history, not a
     page, a search, the index watermark or one transfer's share. One scan of

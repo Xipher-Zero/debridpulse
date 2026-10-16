@@ -2620,6 +2620,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Cold-load / reconnect recovery hook for bounded owners that must
             // re-query authoritative state (e.g. file-selection offers, §40).
+            // The stream's state is also readable (data-dp-pulse) by an owner
+            // that binds after this event.
+            document.documentElement.dataset.dpPulse = 'connected';
             document.dispatchEvent(new CustomEvent('debridpulse:pulse-connected'));
           }
         );
@@ -2632,6 +2635,19 @@ document.addEventListener('DOMContentLoaded', () => {
             let payload = {};
             try { payload = JSON.parse(e.data || '{}'); } catch (_) {}
             document.dispatchEvent(new CustomEvent('debridpulse:file-selection-available',
+              {detail: payload}));
+          }
+        );
+
+        // The Activity Log's journal changed. Carries only the newest committed
+        // id ({latest}); the Activity Log owner decides whether to re-read the
+        // journal itself. The server sends it only to a role that may read it.
+        es.addEventListener(
+          'activity_journal_changed',
+          function(e) {
+            let payload = {};
+            try { payload = JSON.parse(e.data || '{}'); } catch (_) {}
+            document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed',
               {detail: payload}));
           }
         );
@@ -2756,10 +2772,16 @@ document.addEventListener('DOMContentLoaded', () => {
         // session owner confirms and signs the browser out.
         es.addEventListener('session_ended', function() {
           es.close();
+          document.documentElement.dataset.dpPulse = 'lost';
+          document.dispatchEvent(new CustomEvent('debridpulse:pulse-lost'));
           window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
         });
 
         es.onerror = function() {
+          // Owners that present live state stop claiming it until the next
+          // debridpulse:pulse-connected.
+          document.documentElement.dataset.dpPulse = 'lost';
+          document.dispatchEvent(new CustomEvent('debridpulse:pulse-lost'));
           // A refused reconnect is often an ended session or a changed role.
           window.debridPulseAuth.refreshSession({force: true}).catch(()=>{});
           if (!sseOk) {

@@ -62,6 +62,60 @@
   margin-left: auto;
 }
 
+/* The header's right-hand controls: the Auto Refresh island, then Refresh.
+   STRETCH, so the island's outer height is whatever Refresh's is (the shared
+   utility-control recipe sets it), never a number restated here. */
+#view-events .dp-activity-header-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  margin-left: auto;
+}
+
+/* The Auto Refresh island: the canonical Settings island material (divider
+   border, 12px radius) around the label and the shared Settings switch. */
+#view-events .dp-activity-live {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  box-sizing: border-box;
+  border: 1px solid var(--dp-divider);
+  border-radius: 12px;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+#view-events .dp-activity-live-label {
+  color: var(--dp-text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+#view-events .dp-activity-live input:focus-visible + .ttrack {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* On, but the live stream is not connected: the switch says so rather than
+   implying updates are arriving. */
+#view-events .dp-activity-live[data-state="unavailable"] input:checked + .ttrack {
+  background: var(--dp-state-caution);
+}
+
+/* Too narrow for the title and both controls on one line: the controls take
+   their own line, still right-aligned and still one island beside Refresh. */
+@media (max-width: 560px) {
+  #view-events > .dp-activity-card > .card-header {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  #view-events .dp-activity-card-title {
+    flex-basis: 100%;
+  }
+}
+
 #view-events .dp-activity-refresh .dp-utility-icon {
   width: 15px;
   height: 15px;

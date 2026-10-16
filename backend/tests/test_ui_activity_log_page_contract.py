@@ -32,6 +32,62 @@ def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> 
     missing = [selector for selector in required if selector not in css]
     assert not missing, f"Activity rebuild is missing structural selectors: {missing}"
 
+def test_auto_refresh_is_one_island_left_of_refresh_off_by_default_and_never_saved() -> None:
+    import re
+
+    index = read("index.html")
+    css = read("ui-activity-log-page.css")
+    runtime = read("ui-activity-log-runtime.js")
+    header = index[index.index('id="view-events"'):index.index('class="dp-activity-search-band"')]
+    actions = header[header.index('class="dp-activity-header-actions"'):]
+    # The island, then Refresh, side by side in the header's right-hand controls.
+    assert actions.index('class="dp-activity-live"') < actions.index("dp-activity-refresh")
+    island = actions[actions.index('<label class="dp-activity-live"'):actions.index("</label>")]
+    assert re.sub(r"<[^>]+>", "", island.split('<span id="ev-live-status"')[0]).strip() == "Auto Refresh"
+    switch = re.search(r"<input[^>]*>", island).group(0)
+    assert 'id="ev-live"' in switch and 'type="checkbox"' in switch and 'role="switch"' in switch
+    assert "checked" not in switch                         # OFF in the markup ...
+    assert 'for="ev-live"' in island and 'class="toggle"' in island and 'class="ttrack"' in island
+    # ... and nothing remembers it: no storage, no setting, no saved preference.
+    for persisted in ("localStorage", "sessionStorage", "settingsData.activity_log_auto", "PUT", "PATCH"):
+        assert persisted not in runtime
+    assert "document.addEventListener('debridpulse:navigation',()=>{live=false;" in runtime
+    # The island's height is Refresh's, by stretching; its material is the Settings island's.
+    block = css[css.index("#view-events .dp-activity-header-actions {"):]
+    assert "align-items: stretch;" in block[:block.index("}")]
+    live = css[css.index("#view-events .dp-activity-live {"):]
+    live = live[:live.index("}")]
+    assert "border: 1px solid var(--dp-divider);" in live and "border-radius: 12px;" in live
+    assert "height" not in live and "!important" not in live
+
+
+def test_auto_refresh_follows_the_one_stream_and_reads_rows_only_from_the_journal() -> None:
+    app = read("app.js")
+    runtime = read("ui-activity-log-runtime.js")
+    # One application EventSource; it forwards the hint, it renders nothing.
+    assert app.count("new EventSource(") == 1
+    signal = app[app.index("'activity_journal_changed'"):]
+    signal = signal[:signal.index("es.addEventListener(")]
+    assert "debridpulse:activity-journal-changed" in signal and "DPActivityLog" not in signal
+    assert "event-list" not in signal
+    # The owner opens no stream and runs no timer loop of its own; a hint
+    # becomes the ordinary newest-page request, coalesced.
+    assert "EventSource" not in runtime and "setInterval" not in runtime
+    assert "document.addEventListener('debridpulse:activity-journal-changed',hint);" in runtime
+    assert "const kept={cursor,request,nav};restart();void fetchPage({quiet:kept});" in runtime
+    # A failed Auto Refresh restores the page's snapshot, cursors and pager and says nothing.
+    assert "if(quiet){cursor=quiet.cursor;request=quiet.request;nav=quiet.nav;" in runtime
+    # A row is only ever rendered from a GET /events answer.
+    assert runtime.count("render(payload,c);") == 1     # the one call, in fetchPage
+    assert "event?.detail?.latest" in runtime and "items" not in runtime[runtime.index("function hint("):
+                                                                           runtime.index("document.addEventListener('debridpulse:activity-journal-changed'")]
+    # An older page or a newest page read below its top is never replaced.
+    assert "function following(){" in runtime and "nav.page===1" in runtime and "scrollTop<=TOP_SLACK" in runtime
+    # A lost stream is said, not hidden; a reconnect is caught up from the journal.
+    assert "debridpulse:pulse-lost" in runtime and "debridpulse:pulse-connected" in runtime
+    assert "dataset.dpPulse = 'lost'" in app and "dataset.dpPulse = 'connected'" in app
+
+
 def test_activity_log_fills_shell_and_scrolls_only_rebuilt_event_viewport() -> None:
     css = read("ui-activity-log-page.css")
 

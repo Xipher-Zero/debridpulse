@@ -5,6 +5,8 @@ import logging
 from application.consolidation_events import ConsolidationEvents
 from core.config import get_settings
 from core.logging_utils import sanitize_exception
+from db import event_journal
+from db.database import get_db
 from services import account_notifications
 from services.event_bus import publish
 from services.notification_service import NotificationService
@@ -17,8 +19,37 @@ class Observability:
     def __init__(self, repository, consolidation_events=None):
         self.repository = repository
         self.consolidation_events = consolidation_events
+        # The newest committed journal id this instance last observed (None
+        # until its first observation).
+        self._journal_seen: int | None = None
+
+    async def observe_journal(self) -> None:
+        """Say that the Activity Log's journal changed since the last pass.
+
+        Observed on this delivery cadence, not announced by each writer: a
+        journal row commits inside its writer's own transaction, so only a
+        read of committed state on a separate connection proves it exists.
+        Rolled-back and replayed occurrences never move the newest id, so they
+        are never announced; a burst is one announcement, and so is a reset
+        (the newest id falls). An instance's first observation is announced
+        too: configuration builds a new instance, and the write that came with
+        that change must not become a silent starting point (a repeated id is
+        a duplicate the browser ignores). The signal is a hint carrying only
+        that newest id -- the browser reads the journal itself -- and a missed
+        one is recovered by the next change or the browser's reconnect. Its
+        failure never holds back the lifecycle deliveries below."""
+        try:
+            async with get_db() as db:
+                latest = await event_journal.latest_id(db)
+        except Exception as exc:
+            logger.debug("Journal observation skipped: %s", sanitize_exception(exc, max_length=200))
+            return
+        seen, self._journal_seen = self._journal_seen, latest
+        if latest != seen:
+            await publish("activity_journal_changed", {"latest": latest})
 
     async def deliver(self):
+        await self.observe_journal()
         if self.consolidation_events is not None:
             # Hidden post-commit markers become public only after the incoming
             # logical submission has a stable complete/partial disposition.
