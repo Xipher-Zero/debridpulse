@@ -141,6 +141,32 @@ it in Settings → Users & Access → **Integration Delivery Profiles**.
   - deleting the profile;
   - moving its `local_root` or effective `import_root`;
   - removing a client that such a job belongs to.
+- **Retiring dependent jobs.** An Admin may authorize the change anyway by
+  naming the profile in `retire_dependents`. In the same commit that changes the
+  catalog, exactly the jobs the change takes the profile away from are retired:
+  - each job's demand is withdrawn by `administrator:profile_retired`, whichever
+    client issued it and whether or not its token still exists;
+  - the job reads `withdrawn` (`withdrawn_by_administrator`).
+
+  The core then settles the withdrawal as a client's "remove" would:
+  - work nobody else needs is cancelled, and DebridPulse's own provider
+    resources are given back;
+  - shared work, other profiles' claims and native claims keep their work;
+  - no downloaded file is deleted.
+
+  The response adds `retired_jobs`, `settled_jobs` and `cleanup_pending`. A
+  reservation still being admitted is retired when it is accepted. Maintenance
+  finishes any settlement a failure or restart interrupted. It judges that from
+  the core's own state, never from the job's projection: a transfer whose
+  retired demand nobody else replaced and that has not reached its end. The walk
+  is fair and bounded, so one failing transfer never holds others back.
+  `settled_jobs` and `cleanup_pending` count the core settlement only. A job
+  whose refresh fails after its settlement keeps an unsettled projection, and
+  the ordinary bounded refresh converges it. Each job's refresh fails on its
+  own, and its settled work is never cancelled or cleaned up again. A profile recreated
+  later with the same ID inherits nothing: retired jobs are settled.
+  `GET /api/external/profiles/{id}/dependents` gives the current count; the
+  write re-counts at its commit.
 - **Always editable.** Categories, source kinds, retention and added clients
   govern only what is admitted or committed next.
 - **No admission race.** The count and the catalog replacement happen inside one

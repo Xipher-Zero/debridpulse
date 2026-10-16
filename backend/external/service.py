@@ -46,6 +46,9 @@ from transfers.filesystem import member_payload
 from transfers.models import SubmissionDemand
 
 logger = logging.getLogger("debridpulse.external")
+# Who withdrew a job's demand when an Admin retired a delivery profile (or the
+# clients) it served: the durable record of that authorization, per job.
+PROFILE_RETIRED = "administrator:profile_retired"
 
 PROTOCOL = "debridpulse.external/1"
 MAX_ACTIVE_JOBS_PER_CLIENT = 2000
@@ -67,6 +70,10 @@ _FOLDER_RETIREMENT_ASKED_AT = 0.0
 # of the last delivery it offered, or ``None`` to start from the oldest.
 # Process memory only: after a restart the walk simply begins again.
 _FOLDER_RETIREMENT_CURSOR: tuple[float, str, int] | None = None
+# Where the walk over unfinished profile retirements resumes: the last
+# transfer it offered, or ``None`` to start from the lowest. Process memory
+# only (``ExternalClients._settle_pending_retirements``).
+_RETIREMENT_SETTLEMENT_CURSOR: int | None = None
 _KEY_LIMIT = 200
 _TERMINAL = frozenset({"completed", "consolidated", "cancelled", "deleted"})
 _PHASES = ("accepted", "queued", "processing", "completed", "failed", "withdrawn")
@@ -421,21 +428,87 @@ class ExternalClients:
     @staticmethod
     async def profile_dependents(db, profile_id: str, clients=None) -> int:
         """How many of a delivery profile's jobs still depend on it, in the
-        caller's transaction: every reservation not yet accepted (its
-        admission may be in flight) and every accepted job not yet settled --
+        caller's transaction (``profile_dependent_jobs``). The authoritative
+        impact of changing what the profile delivers
+        (``api.external_routes.put_external_profiles``)."""
+        return len(await ExternalClients.profile_dependent_jobs(db, profile_id, clients))
+
+    @staticmethod
+    async def profile_dependent_jobs(db, profile_id: str, clients=None) -> list[dict]:
+        """The delivery profile's jobs that still depend on it, by their
+        durable ownership (``external_jobs.profile_id``), in the caller's
+        transaction: every reservation not yet accepted (its admission may
+        be in flight) and every accepted job not yet settled -- its demand
         not withdrawn, its delivery neither acknowledged nor expired, its work
-        not cancelled or deleted. ``clients``, when given, counts only those
-        clients' jobs. The authoritative impact of changing what the profile
-        delivers (``api.external_routes.put_external_profiles``)."""
+        not cancelled or deleted -- whichever client issued it and whether
+        or not that client's token still exists. ``clients``, when given,
+        only those clients' jobs."""
         clients = None if clients is None else sorted(set(clients))
         if clients == []:
-            return 0
-        where = f" AND client_id IN ({','.join('?' * len(clients))})" if clients else ""
-        row = await db.fetchone(
-            f"""SELECT COUNT(*) AS n FROM external_jobs WHERE profile_id=?
-                AND (demand_id IS NULL OR COALESCE(json_extract(projection,'$.settled'),0)=0){where}""",
+            return []
+        where = f" AND j.client_id IN ({','.join('?' * len(clients))})" if clients else ""
+        return await db.fetchall(
+            f"""SELECT j.id, j.client_id, j.demand_id, j.reserved_demand_id, j.profile_id FROM external_jobs j
+                WHERE j.profile_id=?
+                AND (j.demand_id IS NULL OR COALESCE(json_extract(j.projection,'$.settled'),0)=0)
+                AND NOT EXISTS (SELECT 1 FROM transfer_demands d
+                                WHERE d.id=COALESCE(j.demand_id, j.reserved_demand_id)
+                                  AND d.withdrawn_at IS NOT NULL){where}
+                ORDER BY j.created_at, j.id""",
             (str(profile_id), *(clients or ())))
-        return int(row["n"])
+
+    @staticmethod
+    async def retire_dependents_in(db, jobs: list[dict]) -> list[str]:
+        """An Admin's retirement of these dependent jobs, inside the catalog
+        write's own transaction: each one's demand (or, for a reservation, the
+        demand its admission is reserving, once it exists) is withdrawn by
+        ``PROFILE_RETIRED`` -- the durable, per-job record of the
+        authorization -- and audited. Nothing else is decided here: what the
+        withdrawal means for the work (cancelled only if nobody else needs
+        it) is the core's, after commit (``settle_retired``), and recovered
+        by maintenance if that never runs. Returns the jobs retired."""
+        from transfers._repository_base import TransferRepository as _Repository
+
+        demand_ids = [str(job["demand_id"] or job["reserved_demand_id"]) for job in jobs]
+        await _Repository.withdraw_demand_in(db, demand_ids=demand_ids, by=PROFILE_RETIRED)
+        for job in jobs:
+            await _audit(db, "external_job_retired", "External job retired with its delivery profile", job,
+                         outcome="retired")
+        return [str(job["id"]) for job in jobs]
+
+    async def settle_retired(self, job_ids) -> int:
+        """Apply retired jobs' withdrawn demand through the canonical owner
+        (``ApplicationService.withdraw_demand``, exactly a download client's
+        "remove"): work nobody else needs is cancelled -- its writers stopped,
+        DebridPulse's own provider resources given back -- and leaves the
+        ordinary lists; shared work and completed material stay. Idempotent;
+        a job whose demand does not exist yet (an admission still in flight)
+        is retired when it is accepted. Returns how many were settled."""
+        settled = 0
+        for job_id in job_ids:
+            try:
+                async with get_db() as db:
+                    row = await db.fetchone("SELECT * FROM external_jobs WHERE id=?", (str(job_id),))
+                if row is None or not row["demand_id"]:
+                    continue
+                await self.application.withdraw_demand((row["demand_id"],), by=PROFILE_RETIRED,
+                                                       retire_unclaimed=True)
+            except Exception as exc:  # noqa: BLE001 - maintenance completes it
+                logger.warning("retired external job %s not yet settled: %s", job_id, sanitize_exception(exc))
+                continue
+            settled += 1
+            await self._refresh_settled(row["id"])
+        return settled
+
+    async def _refresh_settled(self, job_id) -> None:
+        """Refresh a job whose core settlement is done. A failure leaves the
+        projection stale but unsettled, so the ordinary refresh owner
+        (``_refresh_unsettled``) converges it on a later pass; the core
+        settlement is never repeated for it (its work has reached its end)."""
+        try:
+            await self._refresh(job_id)
+        except Exception as exc:  # noqa: BLE001 - one job never stops the others
+            logger.warning("settled external job %s refresh failed: %s", job_id, sanitize_exception(exc))
 
     async def _admit(self, principal, job: dict, source) -> None:
         """Admit through the existing submission seam with the job's reserved
@@ -514,8 +587,24 @@ class ExternalClients:
                                  (row["reserved_demand_id"], now, now, row["id"]))
                 await _audit(db, "external_job_accepted", "External job accepted", row,
                              transfer_id=int(demand["transfer_id"]), outcome="accepted")
+                profile = _settings().external_delivery.by_id(row["profile_id"])
+                if profile is None or row["client_id"] not in profile.clients:
+                    # Its admission was in flight when an Admin retired the
+                    # profile (or this client from it): the retirement
+                    # covers it, in this same commit.
+                    await self.retire_dependents_in(db, [dict(row)])
             await db.commit()
+        retired = await self._retired(job["id"])
+        if retired:
+            await self.settle_retired([job["id"]])
         return await self._refresh(job["id"])
+
+    async def _retired(self, job_id: str) -> bool:
+        async with get_db() as db:
+            row = await db.fetchone(
+                """SELECT 1 FROM external_jobs j JOIN transfer_demands d ON d.id=j.demand_id
+                   WHERE j.id=? AND d.withdrawn_by=?""", (str(job_id), PROFILE_RETIRED))
+        return row is not None
 
     # ── reads ───────────────────────────────────────────────────────────────
 
@@ -1162,7 +1251,8 @@ class ExternalClients:
             by = str(demand["withdrawn_by"] or "")
             projection.update(phase="withdrawn", actionability="none", reason=(
                 "withdrawn_by_client" if by.startswith("external:") else
-                "withdrawn_by_administrator" if by in {"account_disabled", "account_deleted"} else "withdrawn"))
+                "withdrawn_by_administrator" if by in {"account_disabled", "account_deleted", PROFILE_RETIRED}
+                else "withdrawn"))
             return plan
         members = await self._members(transfer_id, status)
         if members["total"]:
@@ -1413,10 +1503,74 @@ class ExternalClients:
             await db.commit()
         recovered = await self._recover_interrupted()
         released = await self._reconcile_controls()
+        recovered_retirements = await self._settle_pending_retirements()
         refreshed = await self._refresh_unsettled()
         retired = await self._retire_acknowledged_folders()
         return {"accepted": len(pending), "forgotten": forgotten, "recovered": recovered, "released": released,
-                "refreshed": refreshed, "retired": retired}
+                "refreshed": refreshed, "retired": retired, "profile_retirements": recovered_retirements}
+
+    async def _settle_pending_retirements(self, *, budget: int = REFRESH_BUDGET) -> int:
+        """Profile retirements whose core settlement never finished -- a
+        restart, a failure after the catalog write committed. Eligibility is
+        the core's own state, never the job's projection (a refresh reads a
+        withdrawn demand as settled long before the core acted on it): a
+        transfer one of whose demands an Admin's profile retirement withdrew
+        (the durable intent), that no outstanding demand still needs -- its
+        own or one consolidated into its artifacts, exactly the core's
+        ``unwanted_transfers`` rule -- and that has not reached its end
+        (completed work keeps its delivery; deleted is done). Shared work
+        a surviving demand needs, and completed work, never qualify; a
+        settled one never qualifies again.
+
+        Each is settled by the canonical owner exactly as ``settle_retired``
+        does (``ApplicationService.withdraw_demand``, ``retire_unclaimed``).
+        Fair and bounded: transfers are walked in id order, at most
+        ``budget`` per pass, each pass resuming after the last one it offered
+        and starting over once it reaches the end -- one that keeps failing
+        is attempted again on every walk and never holds the others back; a
+        restart begins the walk again. Returns how many were offered."""
+        global _RETIREMENT_SETTLEMENT_CURSOR
+        terminal = ("completed", "consolidated", "deleted")
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT t.id AS transfer_id,
+                          (SELECT d2.id FROM transfer_demands d2 WHERE d2.transfer_id=t.id AND d2.withdrawn_by=?
+                           ORDER BY d2.id LIMIT 1) AS demand_id
+                   FROM torrents t
+                   WHERE t.id > ? AND t.status NOT IN (?,?,?)
+                     AND EXISTS (SELECT 1 FROM transfer_demands d WHERE d.transfer_id=t.id AND d.withdrawn_by=?)
+                     AND NOT EXISTS (SELECT 1 FROM transfer_demands d
+                                     WHERE d.transfer_id=t.id AND d.withdrawn_at IS NULL)
+                     AND NOT EXISTS (SELECT 1 FROM artifact_consolidations ac
+                                     JOIN download_files f ON f.id=ac.canonical_artifact_id
+                                     JOIN transfer_demands d ON d.transfer_id=ac.source_transfer_id
+                                          AND d.withdrawn_at IS NULL
+                                     WHERE f.torrent_id=t.id)
+                   ORDER BY t.id LIMIT ?""",
+                (PROFILE_RETIRED, int(_RETIREMENT_SETTLEMENT_CURSOR or 0), *terminal, PROFILE_RETIRED, int(budget)))
+        # The end of the walk: the next pass starts over from the lowest.
+        _RETIREMENT_SETTLEMENT_CURSOR = int(rows[-1]["transfer_id"]) if len(rows) == int(budget) else None
+        for row in rows:
+            try:
+                await self.application.withdraw_demand((row["demand_id"],), by=PROFILE_RETIRED, retire_unclaimed=True)
+            except Exception as exc:  # noqa: BLE001 - attempted again on the next walk
+                logger.warning("profile retirement of transfer %s not yet settled: %s", row["transfer_id"],
+                               sanitize_exception(exc))
+                continue
+            # Settled: a stale projection is the ordinary refresh owner's to
+            # converge, never a reason to settle the transfer again.
+            try:
+                async with get_db() as db:
+                    jobs = await db.fetchall(
+                        """SELECT j.id FROM external_jobs j JOIN transfer_demands d ON d.id=j.demand_id
+                           WHERE d.transfer_id=? AND d.withdrawn_by=?""", (row["transfer_id"], PROFILE_RETIRED))
+            except Exception as exc:  # noqa: BLE001 - _refresh_unsettled converges them
+                logger.warning("retired jobs of transfer %s not refreshed: %s", row["transfer_id"],
+                               sanitize_exception(exc))
+                continue
+            for job in jobs:
+                await self._refresh_settled(job["id"])
+        return len(rows)
 
     async def _retire_acknowledged_folders(self, *, budget: int = REFRESH_BUDGET) -> int:
         """The acknowledged-delivery folder retirement, asked again: an

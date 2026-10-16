@@ -4228,33 +4228,82 @@
     }
     if (error?.status === 409 && detail.code === 'profile_in_use') {
       return {code: 'profile_in_use', message: text(detail.message || error.message),
-        affected: Number(detail.affected_jobs || 0)};
+        affected: Number(detail.affected_jobs || 0),
+        profiles: (Array.isArray(detail.profiles) ? detail.profiles : []).map(item => text(item?.id)).filter(Boolean)};
     }
     return {code: text(detail.code || 'error'), message: text(error?.message || 'The profile could not be saved')};
   }
 
-  async function writeCatalog(profiles, revision) {
-    const saved = await request('PUT', '/external/profiles', {expected_revision: revision, profiles}, 15000);
+  async function writeCatalog(profiles, revision, retire = []) {
+    const body = {expected_revision: revision, profiles};
+    if (retire.length) body.retire_dependents = retire;
+    const saved = await request('PUT', '/external/profiles', body, 30000);
     state.profiles = {catalog: {profiles: Array.isArray(saved?.profiles) ? saved.profiles : [],
       revision: Number(saved?.revision || 0)}, error: ''};
     paintUsers();
     return saved;
   }
 
-  async function deleteProfile(profile) {
-    if (!profile || !state.profiles.catalog) return;
-    const confirmed = await window.DPSettingsModal.confirm({
-      title: `Delete the ${profile.id} profile?`,
-      message: 'This removes only the delivery profile. API tokens, jobs, downloads and files are not deleted. '
-        + 'DebridPulse refuses while external jobs still depend on the profile.',
-      confirmLabel: 'Delete Profile',
+  const jobsPhrase = count => `${count} external job${count === 1 ? '' : 's'}`;
+
+  // The server's own outcome of a retiring write, never assumed.
+  function retirementOutcome(saved, done) {
+    const retired = Number(saved?.retired_jobs || 0);
+    if (!retired) return done;
+    return saved?.cleanup_pending
+      ? `${done}; ${jobsPhrase(retired)} retired, cleanup still in progress`
+      : `${done}; ${jobsPhrase(retired)} retired`;
+  }
+
+  // The explicit authorization to retire a profile's dependent jobs, with the
+  // consequence stated before it is given.
+  function confirmRetirement({title, count, confirmLabel}) {
+    return window.DPSettingsModal.confirm({
+      title,
+      message: `This profile is associated with ${jobsPhrase(count)}. Confirming will also retire `
+        + `${count === 1 ? 'that job' : 'those jobs'} and withdraw their claims. Downloads still required by `
+        + 'another client or an independent DP submission are kept; work no one else needs is stopped and '
+        + 'cleaned up by DP’s normal cleanup. Downloaded files are not deleted.',
+      confirmLabel,
       tone: 'danger',
     });
+  }
+
+  async function deleteProfile(profile) {
+    if (!profile || !state.profiles.catalog) return;
+    let count = 0;
+    try {
+      const dependents = await request('GET', `/external/profiles/${encodeURIComponent(profile.id)}/dependents`,
+        undefined, 10000);
+      count = Number(dependents?.affected_jobs || 0);
+    } catch (error) {
+      notify(text(error?.message || 'The profile’s jobs could not be counted'), 'error');
+      return;
+    }
+    const confirmed = count
+      ? await confirmRetirement({title: 'Delete delivery profile?', count, confirmLabel: 'Delete Profile & Retire Jobs'})
+      : await window.DPSettingsModal.confirm({
+        title: `Delete the ${profile.id} profile?`,
+        message: 'This removes only the delivery profile. API tokens, downloads and files are not deleted.',
+        confirmLabel: 'Delete Profile',
+        tone: 'danger',
+      });
     if (!confirmed) return;
     const {profiles, revision} = state.profiles.catalog;
+    const remaining = profiles.filter(item => item.id !== profile.id);
     try {
-      await writeCatalog(profiles.filter(item => item.id !== profile.id), revision);
-      notify('Delivery profile deleted', 'success');
+      let saved;
+      try {
+        saved = await writeCatalog(remaining, revision, count ? [profile.id] : []);
+      } catch (error) {
+        const refusal = profileRefusal(error);
+        // A job arrived after the count: say so, and ask again with its own count.
+        if (refusal.code !== 'profile_in_use' || count) throw error;
+        if (!await confirmRetirement({title: 'Delete delivery profile?', count: refusal.affected,
+          confirmLabel: 'Delete Profile & Retire Jobs'})) return;
+        saved = await writeCatalog(remaining, revision, [profile.id]);
+      }
+      notify(retirementOutcome(saved, 'Delivery profile deleted'), 'success');
     } catch (error) {
       notify(profileRefusal(error).message, 'error');
       await loadProfiles();
@@ -4417,18 +4466,31 @@
       showError(errorNode, '');
       const others = base.profiles.filter(item => item.id !== (existing?.id || profile.id));
       const next = creating ? [...others, profile] : base.profiles.map(item => item.id === existing.id ? profile : item);
+      let saved;
       try {
-        await writeCatalog(next, base.revision);
+        saved = await writeCatalog(next, base.revision);
       } catch (error) {
         const refusal = profileRefusal(error);
         if (refusal.code === 'stale_revision') {
           dialogBody.dataset.stale = '1';
           handle.setActionHidden('reload', false);
         }
-        showError(errorNode, refusal.message);
-        return false;
+        // Changing paths or tokens takes the profile away from unsettled
+        // jobs: only an explicit retirement of exactly those jobs proceeds.
+        if (refusal.code === 'profile_in_use' && !creating && await confirmRetirement({
+          title: 'Save delivery profile?', count: refusal.affected, confirmLabel: 'Save Profile & Retire Jobs'})) {
+          try {
+            saved = await writeCatalog(next, base.revision, [existing.id]);
+          } catch (retry) {
+            showError(errorNode, profileRefusal(retry).message);
+            return false;
+          }
+        } else {
+          showError(errorNode, refusal.message);
+          return false;
+        }
       }
-      notify(creating ? 'Delivery profile created' : 'Delivery profile saved', 'success');
+      notify(retirementOutcome(saved, creating ? 'Delivery profile created' : 'Delivery profile saved'), 'success');
       return true;
     }
 

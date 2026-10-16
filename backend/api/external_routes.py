@@ -107,6 +107,20 @@ class ProfilesUpdate(BaseModel):
     profiles: list[DeliveryProfile] = Field(default_factory=list)
     # The catalog revision this write was based on.
     expected_revision: int = Field(ge=0)
+    # The profiles whose dependent jobs the Admin explicitly authorizes this
+    # write to retire (``profile_in_use`` otherwise): deleting the profile,
+    # moving its roots, or removing clients from it retires exactly the jobs
+    # that change takes it away from.
+    retire_dependents: list[str] = Field(default_factory=list, max_length=256)
+
+
+@router.get("/external/profiles/{profile_id}/dependents")
+async def get_external_profile_dependents(profile_id: str):
+    """How many unsettled external jobs deleting this profile would retire,
+    counted from durable ownership now (the write re-counts at its commit)."""
+    async with get_db() as db:
+        count = await ExternalClients.profile_dependents(db, str(profile_id)[:64])
+    return {"profile": str(profile_id)[:64], "affected_jobs": count}
 
 
 @router.get("/external/profiles")
@@ -137,10 +151,17 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
     A write that would take a profile away from jobs that still depend on it
     -- deleting it, moving its roots, or removing a client -- is refused
     (``409 profile_in_use``) with the affected job count, while any such job
-    is unsettled (``ExternalClients.profile_dependents``). The count and the
-    catalog replacement happen inside one database write transaction, the
-    same one an external reservation takes, so no admission can slip between
-    them."""
+    is unsettled (``ExternalClients.profile_dependent_jobs``) -- unless the
+    Admin named that profile in ``retire_dependents``: then exactly those
+    jobs are retired (their demand withdrawn, ``ExternalClients
+    .retire_dependents_in``) in the same commit that changes the catalog,
+    and settled through the core after it (``settle_retired``; maintenance
+    finishes it after a failure or restart). Nothing else is touched: other
+    claims on the same work keep it, and no file is deleted. The count, the
+    retirement and the catalog replacement happen inside one database write
+    transaction, the same one an external reservation takes, so no admission
+    can slip between them; one already in flight is retired when it is
+    accepted."""
     async with application.application_operation():
         async with config_write_lock():
             previous = get_settings()
@@ -159,16 +180,21 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
                 raise HTTPException(422, {"code": "invalid_profile",
                                           "message": "; ".join(str(item.get("msg")) for item in exc.errors())})
             replaced = {profile.id: profile for profile in catalog.profiles}
+            authorized = set(body.retire_dependents)
+            retired: list[str] = []
             async with get_db() as db:
                 await db.execute("BEGIN IMMEDIATE")
-                in_use = []
+                in_use, retiring = [], []
                 for before in current.external_delivery.profiles:
                     narrowing = _narrowing(before, replaced.get(before.id))
                     if narrowing is None:
                         continue
-                    count = await ExternalClients.profile_dependents(db, before.id, narrowing[1])
-                    if count:
-                        in_use.append({"id": before.id, "change": narrowing[0], "affected_jobs": count})
+                    dependents = await ExternalClients.profile_dependent_jobs(db, before.id, narrowing[1])
+                    if dependents and before.id in authorized:
+                        retiring.extend(dependents)
+                    elif dependents:
+                        in_use.append({"id": before.id, "change": narrowing[0],
+                                       "affected_jobs": len(dependents)})
                 if in_use:
                     await db.rollback()
                     total = sum(item["affected_jobs"] for item in in_use)
@@ -176,9 +202,14 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
                         "code": "profile_in_use", "profiles": in_use, "affected_jobs": total,
                         "message": f"{total} unsettled external job{'s' if total != 1 else ''} still depend"
                                    f"{'s' if total == 1 else ''} on this profile; nothing was changed"})
+                retired = await ExternalClients.retire_dependents_in(db, retiring)
                 current.external_delivery = catalog
                 save_settings(current)
                 apply_settings(current)
                 await db.commit()
             await journal_configuration_change(previous, current)
-    return catalog.model_dump()
+        if not retired:
+            return catalog.model_dump()
+        settled = await ExternalClients(application).settle_retired(retired)
+    return {**catalog.model_dump(), "retired_jobs": len(retired), "settled_jobs": settled,
+            "cleanup_pending": settled < len(retired)}

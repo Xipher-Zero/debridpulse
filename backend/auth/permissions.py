@@ -153,6 +153,7 @@ ACTIONS: dict[str, Capability] = {
     # External delivery profiles: configuration.
     "api.external_routes.get_external_profiles": _A,
     "api.external_routes.put_external_profiles": _A,
+    "api.external_routes.get_external_profile_dependents": _A,
     # Public liveness and installation facts.
     "api.routes.health_check": _P,
     "api.routes.get_version_ep": _P,

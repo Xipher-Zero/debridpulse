@@ -254,7 +254,7 @@ test('Edit prepopulates, keeps other profiles and grants, and a stale write keep
   expect(await catalog(page)).toEqual(saved);
 });
 
-test('the server refuses to take a profile from a job that depends on it, and the page shows its count', async ({page}) => {
+test('a profile jobs depend on is deleted only with its jobs, after an explicit, counted confirmation', async ({page}) => {
   const before = await catalog(page);
   cleanup.push(p => putCatalog(p, before.profiles));
   const folder = await settingsFolder(page);
@@ -270,26 +270,60 @@ test('the server refuses to take a profile from a job that depends on it, and th
   cleanup.push(p => p.request.post(`/api/external/v1/jobs/${jobId}/withdraw`,
     {headers: {Authorization: `Bearer ${client.token}`}}));
   await openUsers(page);
+  const confirmation = page.locator('.dp-modal-overlay [role="alertdialog"]').last();
 
-  // Delete is refused by the server; the profile stays.
+  // Delete states the consequence with the backend's own count; Cancel keeps everything.
   await page.locator('[data-user-action="delete-profile"][data-profile-id="guarded"]').click();
-  await page.locator('.dp-modal-overlay [data-modal-accept]').click();
+  await expect(confirmation).toContainText('Delete delivery profile?');
+  await expect(confirmation).toContainText('associated with 1 external job');
+  await expect(confirmation).toContainText('Downloaded files are not deleted');
+  await expect(confirmation.locator('[data-modal-accept]')).toHaveText('Delete Profile & Retire Jobs');
+  await confirmation.locator('[data-modal-cancel]').last().click();
   await expect(page.locator('[data-profile-row="guarded"]')).toBeVisible();
   expect((await catalog(page)).profiles.map(profile => profile.id)).toContain('guarded');
 
-  // Moving its download path is refused with the server's count; the draft stays.
+  // Moving its download path asks before retiring; declined, the draft and the count stay.
   await page.locator('[data-user-action="edit-profile"][data-profile-id="guarded"]').click();
   const form = dialog(page);
   await form.locator('[data-profile-input="local_root"]').fill(`${folder}/moved`);
   await form.locator('[data-modal-accept]').click();
+  await expect(confirmation.locator('[data-modal-accept]')).toHaveText('Save Profile & Retire Jobs');
+  await confirmation.locator('[data-modal-cancel]').last().click();
   await expect(form.locator('[data-profile-error]')).toContainText('1 unsettled external job');
   await expect(form.locator('[data-profile-input="local_root"]')).toHaveValue(`${folder}/moved`);
-  // What governs only new submissions remains editable.
+  // What governs only new submissions remains editable without retiring anything.
   await form.locator('[data-profile-input="local_root"]').fill(folder);
   await form.locator('[data-profile-input="retention_hours"]').fill('72');
   await form.locator('[data-modal-accept]').click();
   await expect(form).toHaveCount(0);
   expect((await catalog(page)).profiles.find(profile => profile.id === 'guarded').retention_hours).toBe(72);
+
+  // Confirmed: the profile is deleted and its job retired, as the server reports.
+  await page.locator('[data-user-action="delete-profile"][data-profile-id="guarded"]').click();
+  await confirmation.locator('[data-modal-accept]').click();
+  await expect(page.locator('[data-profile-row="guarded"]')).toHaveCount(0);
+  await expect(page.locator('.toast').last()).toContainText('Delivery profile deleted; 1 external job retired');
+  expect((await catalog(page)).profiles.map(profile => profile.id)).not.toContain('guarded');
+  const view = await page.request.get(`/api/external/v1/jobs/${jobId}`,
+    {headers: {Authorization: `Bearer ${client.token}`}});
+  expect((await view.json()).phase).toBe('withdrawn');
+});
+
+test('a profile no job depends on is deleted with the concise confirmation', async ({page}) => {
+  const before = await catalog(page);
+  cleanup.push(p => putCatalog(p, before.profiles));
+  const folder = await settingsFolder(page);
+  const client = await integration(page, `Profiles Plain ${Date.now()}`, 'radarr');
+  cleanup.push(p => p.request.delete(`/api/accounts/${client.id}`));
+  await putCatalog(page, [...before.profiles,
+    {id: 'plain', categories: ['plain-movies'], clients: [client.client], local_root: folder}]);
+  await openUsers(page);
+  await page.locator('[data-user-action="delete-profile"][data-profile-id="plain"]').click();
+  const confirmation = page.locator('.dp-modal-overlay [role="alertdialog"]').last();
+  await expect(confirmation).toContainText('Delete the plain profile?');
+  await expect(confirmation.locator('[data-modal-accept]')).toHaveText('Delete Profile');
+  await confirmation.locator('[data-modal-accept]').click();
+  await expect(page.locator('[data-profile-row="plain"]')).toHaveCount(0);
 });
 
 test('on a short phone viewport the dialog keeps its header and footer and scrolls its own body', async ({page}) => {
