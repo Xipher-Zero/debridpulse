@@ -118,7 +118,7 @@ async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='f
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);syncReset(c);};
 // A page turn within the snapshot (the pager's First, Previous, Next, Last) slides from the page on screen; every other answer is shown in place.
 const from=nav?.page||1,to=nav&&['first','previous','next','last'].includes(request.kind)?pageOf(request.kind,from,payload):from;
-if(to!==from&&window.DPMotion)await window.DPMotion.slide({element:document.getElementById('event-list'),axis:'x',direction:Math.sign(to-from),jump:Math.abs(to-from)>1},()=>{if(search.current(ticket))commit();}).done;else commit();
+if(to!==from&&window.DPMotion)await window.DPMotion.slide({element:document.getElementById('event-list'),axis:'x',direction:Math.sign(to-from),distance:Math.abs(to-from)},()=>{if(search.current(ticket))commit();}).done;else commit();
 if(dirty){dirty=false;schedule();}return payload;}
 catch(error){if(!search.current(ticket))return null;const message=(()=>{try{return sanitizeErrorMsg(error?.message||error);}catch(_){return String(error?.message||error);}})();
 // A Last the server cannot prove leaves the page as it was and says why.

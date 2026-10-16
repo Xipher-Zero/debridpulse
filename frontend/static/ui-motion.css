@@ -1,37 +1,49 @@
 /* DebridPulse navigation and disclosure motion (ui-motion.js).
  *
  * One vocabulary. Navigation slides along the axis of the control that chose
- * it -- across for a page or tab, up and down for the sidebar -- an adjacent
- * step travelling the whole surface, a jump over several a shorter, quicker
- * travel that fades. Only the surface being replaced moves, clipped to its own
- * viewport (its own scoped view transition); everything else stays still and
- * live. */
+ * it -- across for a page or tab, up and down for the sidebar -- and the
+ * farther the destination, the longer and farther it travels: the next
+ * position, two or three, four and more (capped). Distance is said by the
+ * movement itself; the fade is slight. Only the surface being replaced
+ * moves, clipped to its own viewport (its own scoped view transition);
+ * everything else stays still and live. */
 
 :root {
-  --dp-motion-adjacent: 220ms;
-  --dp-motion-jump: 170ms;
+  --dp-motion-adjacent: 280ms;
+  --dp-motion-short: 380ms;
+  --dp-motion-long: 450ms;
   --dp-motion-expand: 250ms;
   --dp-motion-collapse: 200ms;
-  --dp-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
-  --dp-motion-jump-ease: cubic-bezier(0.33, 0, 0.2, 1);
+  --dp-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* A surface sliding now (ui-motion.js scopes its view transition to it):
    the main view region for the sidebar, each page or tab viewport for its own
    pager or tabs. Its own snapshot pair is what moves. */
 
+.dp-motion-surface {
+  --dp-motion-curve: var(--dp-motion-ease);
+}
+
+/* The next position: the two contents travel together, edge to edge. */
 .dp-motion-surface[data-dp-motion-step="adjacent"] {
   --dp-motion-duration: var(--dp-motion-adjacent);
-  --dp-motion-curve: var(--dp-motion-ease);
   --dp-motion-travel: 100%;
   --dp-motion-fade: 1;
 }
 
-.dp-motion-surface[data-dp-motion-step="jump"] {
-  --dp-motion-duration: var(--dp-motion-jump);
-  --dp-motion-curve: var(--dp-motion-jump-ease);
-  --dp-motion-travel: 32%;
-  --dp-motion-fade: 0;
+/* Farther: a longer, farther travel, so the space crossed shows between them
+   -- capped, so the surface is never left empty. */
+.dp-motion-surface[data-dp-motion-step="short"] {
+  --dp-motion-duration: var(--dp-motion-short);
+  --dp-motion-travel: 120%;
+  --dp-motion-fade: 0.9;
+}
+
+.dp-motion-surface[data-dp-motion-step="long"] {
+  --dp-motion-duration: var(--dp-motion-long);
+  --dp-motion-travel: 140%;
+  --dp-motion-fade: 0.85;
 }
 
 /* Forward: the old content leaves toward the start (left, or up) and the

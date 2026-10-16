@@ -756,7 +756,7 @@
     selectTabControl(name, focus);
     const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
     const step = from >= 0 && to >= 0 ? to - from : 0;
-    if (window.DPMotion) window.DPMotion.slide({element: view?.querySelector('.dp-help-scroll'), axis: 'x', direction: Math.sign(step), jump: Math.abs(step) > 1}, showTabPanel);
+    if (window.DPMotion) window.DPMotion.slide({element: view?.querySelector('.dp-help-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
 

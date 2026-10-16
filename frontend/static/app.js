@@ -99,7 +99,7 @@ function nav(el, event) {
   const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;
   const motion = window.DPMotion
     ? window.DPMotion.slide({element: document.getElementById('content'), axis: 'y', direction: chosen ? Math.sign(to - from) : 0,
-                             jump: Math.abs(to - from) > 1}, () => navigateTo(el))
+                             distance: Math.abs(to - from)}, () => navigateTo(el))
     : (navigateTo(el), {settled: Promise.resolve()});
   // Whatever measures the destination's layout may do so again once it is still.
   motion.settled.then(() => document.dispatchEvent(new CustomEvent('debridpulse:navigation-settled',

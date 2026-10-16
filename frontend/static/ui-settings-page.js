@@ -1063,8 +1063,11 @@
         `<label class="dp-settings-inline-toggle" for="${id}">${boolean}</label>`,
         {className: options.className});
     }
+    // A dependent cell (one that states ``disabled`` at all) fades between
+    // its available and unavailable appearance (ui-settings-page.css).
+    const dependent = 'disabled' in options ? ' dp-settings-dependent-field' : '';
     return `
-      <div class="dp-settings-field dp-settings-engine-tuning-toggle-field${options.disabled ? ' is-disabled' : ''}">
+      <div class="dp-settings-field dp-settings-engine-tuning-toggle-field${dependent}${options.disabled ? ' is-disabled' : ''}">
         <label class="form-label" for="${id}">${html(label)}</label>
         <label class="dp-settings-engine-tuning-toggle-control" for="${id}">
           <span class="toggle">
@@ -5013,7 +5016,7 @@
     selectTabControl(name);
     const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
     const step = from >= 0 && to >= 0 ? to - from : 0;
-    if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), jump: Math.abs(step) > 1}, showTabPanel);
+    if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), distance: Math.abs(step)}, showTabPanel);
     else showTabPanel();
   }
 

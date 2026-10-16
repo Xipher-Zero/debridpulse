@@ -553,7 +553,7 @@ async function fetchAndRenderTorrents() {
     const turn = torrentPageTurn === _requestedPage ? _requestedPage - renderedTorrentPage : 0;
     torrentPageTurn = null;
     if (turn && window.DPMotion) {
-      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), jump: Math.abs(turn) > 1},
+      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), distance: Math.abs(turn)},
         () => { if (searchControl().current(ticket)) paint(); }).done;
     } else {
       paint();

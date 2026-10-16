@@ -1148,9 +1148,21 @@
 }
 
 /* A tuning cell whose parent permission is off: visibly deactivated, its
-   stored value kept (ui-settings-page.js projectPrivateLanDependency). */
+   stored value kept (ui-settings-page.js projectPrivateLanDependency). The
+   change fades both ways from the moment the permission's accepted state
+   changes; the control's own enabled state changes at that same moment. */
 #view-settings .dp-settings-field.is-disabled {
   opacity: .45;
+}
+
+#view-settings .dp-settings-dependent-field {
+  transition: opacity 180ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #view-settings .dp-settings-dependent-field {
+    transition: none;
+  }
 }
 
 #view-settings .dp-settings-field.is-disabled label {

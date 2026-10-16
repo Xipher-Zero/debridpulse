@@ -25,7 +25,10 @@
   const reducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : {matches: false};
   const reduced = () => reducedMotion.matches;
   // The one motion vocabulary (ui-motion.css holds the same values as tokens).
-  const TIMING = Object.freeze({adjacent: 220, jump: 170, expand: 250, collapse: 200});
+  const TIMING = Object.freeze({adjacent: 280, short: 380, long: 450, expand: 250, collapse: 200});
+  // How far a navigation goes, by how many positions it moves: the next one,
+  // two or three, or four and more.
+  const reach = distance => (distance >= 4 ? 'long' : distance >= 2 ? 'short' : 'adjacent');
 
   // Per surface: the newest commit asked for. An older one still waiting for
   // its transition to start is dropped, on its own surface only.
@@ -34,12 +37,13 @@
 
   /* Run `commit` as one slide of the surface `element` along `axis` ('x' or
    * 'y'): `direction` +1 for a later destination, -1 for an earlier one (0 or
-   * the same place: no motion), `jump` when it skips over steps. The view
+   * the same place: no motion), `distance` the number of positions it moves
+   * (a farther destination travels longer and farther). The view
    * transition is scoped to that element, so only it is captured and only it
    * moves; the rest of the page stays live and takes input throughout.
    * `done` resolves once the commit has run (the DOM holds the destination);
    * `settled` once the motion has finished or was superseded. */
-  function slide({element, axis = 'x', direction = 0, jump = false}, commit) {
+  function slide({element, axis = 'x', direction = 0, distance = 1}, commit) {
     const token = ++sequence;
     if (element) latest.set(element, token);
     if (!element || !direction || reduced() || typeof element.startViewTransition !== 'function') {
@@ -48,7 +52,7 @@
     }
     element.dataset.dpMotionAxis = axis;
     element.dataset.dpMotionDirection = direction > 0 ? 'forward' : 'backward';
-    element.dataset.dpMotionStep = jump ? 'jump' : 'adjacent';
+    element.dataset.dpMotionStep = reach(Math.abs(distance));
     element.classList.add('dp-motion-surface');
     const transition = element.startViewTransition(() => {
       // A newer slide of this surface took over before this commit ran: the

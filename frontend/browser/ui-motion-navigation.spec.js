@@ -32,6 +32,7 @@ async function boot(page, {width = 1440, height = 900} = {}) {
           t: performance.now(), scope: scopeOf(surface), axis: surface.dataset.dpMotionAxis,
           direction: surface.dataset.dpMotionDirection, step: surface.dataset.dpMotionStep,
           old: style(surface, '::view-transition-old(root)', 'transform'), new: style(surface, '::view-transition-new(root)', 'transform'),
+          size: surface.dataset.dpMotionAxis === 'y' ? surface.getBoundingClientRect().height : surface.getBoundingClientRect().width,
           oldOpacity: Number(style(surface, '::view-transition-old(root)', 'opacity') ?? 1),
           clip: style(surface, '::view-transition-image-pair(root)', 'overflow'),
           durations: [...new Set(motion.map(a => a.effect.getTiming().duration))],
@@ -71,6 +72,8 @@ async function lastSlide(page) {
     durations: [...new Set(mine.flatMap(frame => frame.durations))],
     old: {x: extreme('old', 'x'), y: extreme('old', 'y')}, new: {x: extreme('new', 'x'), y: extreme('new', 'y')},
     minOldOpacity: Math.min(...mine.map(frame => frame.oldOpacity)),
+    // The farthest the leaving content was drawn, as a share of its surface.
+    travel: Math.max(...mine.map(frame => Math.abs(shift(frame.old)[mine[0].axis]) / frame.size)),
     moving: mine.filter(frame => frame.old !== 'none' || frame.new !== 'none').length,
     panels: [...new Set(mine.flatMap(frame => frame.panels))],
     overflow: Math.max(...mine.map(frame => frame.overflow)),
@@ -83,10 +86,15 @@ const noSlide = async page => {
   expect(await page.evaluate(() => window.__frames.length)).toBe(0);
 };
 
+// Distance -> profile: the next position, two or three, four and more.
+const PROFILE = {adjacent: {duration: 280, travel: [0.8, 1.02]}, short: {duration: 380, travel: [1.0, 1.22]},
+                 long: {duration: 450, travel: [1.15, 1.42]}};
+const reach = distance => (distance >= 4 ? 'long' : distance >= 2 ? 'short' : 'adjacent');
+
 function expectSlide(slide, {scope, axis, direction, step}) {
   expect(slide, `a ${scope} slide`).not.toBeNull();
   expect({scope: slide.scope, axis: slide.axis, direction: slide.direction, step: slide.step}).toEqual({scope, axis, direction, step});
-  expect(slide.durations).toEqual([step === 'jump' ? 170 : 220]);
+  expect(slide.durations).toEqual([PROFILE[step].duration]);
   expect(slide.moving).toBeGreaterThanOrEqual(3);                 // drawn travel over several frames
   expect(slide.clip).toEqual(['hidden']);                          // clipped to its own surface
   const sign = direction === 'forward' ? -1 : 1;                    // forward: the old leaves toward the start
@@ -94,8 +102,11 @@ function expectSlide(slide, {scope, axis, direction, step}) {
   expect(Math.sign(slide.new[axis])).toBe(-sign);                  // and the new arrives from the end
   const other = axis === 'x' ? 'y' : 'x';
   expect(slide.old[other]).toBe(0);
-  if (step === 'jump') expect(slide.minOldOpacity).toBeLessThan(0.5);   // the condensed skip fades
-  else expect(slide.minOldOpacity).toBe(1);
+  // Distance is said by travel, capped; the fade is slight (none for the next position).
+  expect(slide.travel).toBeGreaterThanOrEqual(PROFILE[step].travel[0]);
+  expect(slide.travel).toBeLessThanOrEqual(PROFILE[step].travel[1]);
+  if (step === 'adjacent') expect(slide.minOldOpacity).toBe(1);
+  else expect(slide.minOldOpacity).toBeGreaterThanOrEqual(0.84);
 }
 
 // ── Downloads ──────────────────────────────────────────────────────────────
@@ -146,13 +157,13 @@ test('Downloads: a page turn slides only the list, across, by direction and dist
   asked = requests.length;
   await pager.locator('[aria-label="Last page"]').click();
   await expect(current).toHaveText('10');
-  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'long'});
   expect(requests.slice(asked).map(r => r.offset / r.limit + 1)).toEqual([10]);   // no page in between
 
   await clear(page);
   await pager.locator('[aria-label="First page"]').click();
   await expect(current).toHaveText('1');
-  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'backward', step: 'long'});
 
   // A filter, a refresh and a programmatic page change render in place.
   await clear(page);
@@ -206,7 +217,7 @@ test('Activity Log: a page turn slides the list across; Refresh and live updates
   await clear(page);
   await pager.locator('[aria-label="Last page"]').click();
   await expect(current).toHaveText('10');
-  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'long'});
 
   await clear(page);
   await pager.locator('[aria-label="Previous page"]').click();
@@ -216,7 +227,7 @@ test('Activity Log: a page turn slides the list across; Refresh and live updates
   await clear(page);
   await pager.locator('[aria-label="First page"]').click();
   await expect(current).toHaveText('1');
-  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'backward', step: 'long'});
 
   // Refresh and an Auto Refresh re-read are new investigations, shown in place.
   await clear(page);
@@ -253,7 +264,7 @@ test('Settings tabs: click and keyboard slide only the panel, by tab order, neve
   await settingsTab(page, 'maintenance').click();
   await expect(page.locator('.view.active [data-panel="maintenance"]')).toBeVisible();
   slide = await lastSlide(page);
-  expectSlide(slide, {scope: 'settings', axis: 'x', direction: 'forward', step: 'jump'});
+  expectSlide(slide, {scope: 'settings', axis: 'x', direction: 'forward', step: 'long'});
   expect(slide.panels.every(panel => ['downloads', 'maintenance'].includes(panel))).toBe(true);   // no tab in between
 
   // Keyboard: Home is a jump back, ArrowRight one step on; focus and ARIA follow the strip at once.
@@ -262,7 +273,7 @@ test('Settings tabs: click and keyboard slide only the panel, by tab order, neve
   await page.keyboard.press('Home');
   await expect(settingsTab(page, 'sources')).toBeFocused();
   await expect(settingsTab(page, 'sources')).toHaveAttribute('aria-selected', 'true');
-  expectSlide(await lastSlide(page), {scope: 'settings', axis: 'x', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'settings', axis: 'x', direction: 'backward', step: 'long'});
   await clear(page);
   await page.keyboard.press('ArrowRight');
   await expect(settingsTab(page, 'downloads')).toBeFocused();
@@ -299,13 +310,13 @@ test('Help tabs: the same contract; its accordions keep their state', async ({pa
   await page.keyboard.press('End');
   await expect(tabs.last()).toBeFocused();
   const slide = await lastSlide(page);
-  expectSlide(slide, {scope: 'help', axis: 'x', direction: 'forward', step: 'jump'});
+  expectSlide(slide, {scope: 'help', axis: 'x', direction: 'forward', step: 'long'});
   expect(slide.panels.every(panel => [ids[1], ids.at(-1)].includes(panel))).toBe(true);
 
   await clear(page);
   await page.keyboard.press('Home');
   await expect(tabs.first()).toBeFocused();
-  expectSlide(await lastSlide(page), {scope: 'help', axis: 'x', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'help', axis: 'x', direction: 'backward', step: 'long'});
   if (hasAccordion) expect(await accordion.evaluate(node => node.open)).toBe(true);   // untouched by the slide
   expect(await tabs.evaluateAll(list => list.filter(tab => tab.tabIndex === 0).map(tab => tab.dataset.tab))).toEqual([ids[0]]);
 });
@@ -337,7 +348,7 @@ test('Sidebar: the main view slides up or down by the displayed order; chrome st
   await entry(page, 'help').click();                  // over Downloads, Activity Log, Statistics and Settings
   await expect(page.locator('#view-help')).toHaveClass(/\bactive\b/);
   slide = await lastSlide(page);
-  expectSlide(slide, {scope: 'main', axis: 'y', direction: 'forward', step: 'jump'});
+  expectSlide(slide, {scope: 'main', axis: 'y', direction: 'forward', step: 'long'});
   expect(await page.locator('.view.active').evaluateAll(views => views.map(view => view.id))).toEqual(['view-help']);
 
   // Keyboard activation slides too; the active entry, a programmatic change and a reload do not.
@@ -345,7 +356,7 @@ test('Sidebar: the main view slides up or down by the displayed order; chrome st
   await entry(page, 'stats').focus();
   await page.keyboard.press('Enter');
   await expect(page.locator('#view-stats')).toHaveClass(/\bactive\b/);
-  expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'backward', step: 'short'});
   await clear(page);
   await entry(page, 'stats').click();
   await page.evaluate(() => nav(document.querySelector('[data-view="torrents"]')));
@@ -399,7 +410,7 @@ test('Dashboard: the heartbeat route is read from settled cards on arrival; its 
   await settled(page);
   await clear(page);
   await entry(page, 'dashboard').click();
-  expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'backward', step: 'jump'});
+  expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'backward', step: 'long'});
   expect(await route()).toEqual(settledRoute);
 });
 
@@ -418,7 +429,7 @@ test('Statistics: the chart takes its settled size on arrival, and a live re-rea
     return {chart: chart.width, height: chart.height, container: box.clientWidth, containerHeight: box.clientHeight,
             canvas: Math.round(canvas.getBoundingClientRect().width)};
   });
-  for (const [from, step] of [['events', 'adjacent'], ['dashboard', 'jump']]) {
+  for (const [from, step] of [['events', 'adjacent'], ['dashboard', 'short']]) {
     await page.evaluate(view => nav(document.querySelector(`[data-view="${view}"]`)), from);
     await clear(page);
     await page.evaluate(() => {
@@ -434,7 +445,7 @@ test('Statistics: the chart takes its settled size on arrival, and a live re-rea
     version++;
     // A live change arrives while the view is still sliding in.
     await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated')));
-    expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: step === 'jump' ? 'forward' : 'forward', step});
+    expectSlide(await lastSlide(page), {scope: 'main', axis: 'y', direction: 'forward', step});
     await page.waitForFunction(() => !Chart.animator.running(document.getElementById('daily-chart')._ci));
     await expect.poll(() => page.evaluate(() => document.getElementById('daily-chart')._ci.data.datasets[0].data[0])).toBe(version);
     expect(await page.evaluate(() => document.getElementById('daily-chart')._ci === window.__chart)).toBe(true);
@@ -641,7 +652,152 @@ test('Narrow and light: a slide stays inside its surface; nothing overflows the 
   await clear(page);
   await settingsTab(page, 'extraction').evaluate(node => node.click());
   const slide = await lastSlide(page);
-  expectSlide(slide, {scope: 'settings', axis: 'x', direction: 'forward', step: 'jump'});
+  expectSlide(slide, {scope: 'settings', axis: 'x', direction: 'forward', step: 'short'});
   expect(slide.overflow).toBeLessThanOrEqual(0);
   expect(slide.clip).toEqual(['hidden']);                          // the travelling content is clipped to its surface
+});
+
+test('Distance: the next tab, two or three, and four or more travel longer and farther; a newer choice wins mid-slide', async ({page}) => {
+  await boot(page);
+  await page.goto('/');
+  await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
+  await expect(settingsTab(page, 'sources')).toHaveAttribute('aria-selected', 'true');
+  const order = await page.locator('#view-settings.active .dp-settings-tabs [data-tab]').evaluateAll(tabs => tabs.map(tab => tab.dataset.tab));
+  const runs = [];
+  let at = order[0];
+  for (const target of [order[1], order[3], order[0], order.at(-1)]) {   // 1, 2, 3 and 6 positions away
+    await clear(page);
+    await settingsTab(page, target).click();
+    await expect(page.locator(`.view.active [data-panel="${target}"]`)).toBeVisible();
+    const slide = await lastSlide(page);
+    const distance = Math.abs(order.indexOf(target) - order.indexOf(at));
+    expectSlide(slide, {scope: 'settings', axis: 'x', direction: order.indexOf(target) > order.indexOf(at) ? 'forward' : 'backward',
+                        step: reach(distance)});
+    runs.push({distance, step: slide.step, duration: slide.durations[0], travel: slide.travel});
+    at = target;
+  }
+  expect(runs.map(run => run.step)).toEqual(['adjacent', 'short', 'short', 'long']);
+  const [adjacent, short, , long] = runs;
+  expect(adjacent.duration).toBeLessThan(short.duration);
+  expect(short.duration).toBeLessThan(long.duration);
+  expect(adjacent.travel).toBeLessThan(short.travel);                // farther destinations travel farther
+  expect(short.travel).toBeLessThan(long.travel);
+
+  // A newer choice made while a slide runs wins: no queued slide, only source and newest target ever shown.
+  await clear(page);
+  await settingsTab(page, order[0]).click();
+  await page.waitForFunction(() => document.querySelector('.dp-motion-surface'));
+  await settingsTab(page, order[2]).click();
+  await expect(page.locator(`.view.active [data-panel="${order[2]}"]`)).toBeVisible();
+  await settled(page);
+  const frames = await page.evaluate(() => window.__frames);
+  expect([...new Set(frames.flatMap(frame => frame.panels))].every(panel => [order.at(-1), order[0], order[2]].includes(panel))).toBe(true);
+  expect(await page.locator('.view.active [data-panel]:not([hidden])').evaluateAll(p => p.map(x => x.dataset.panel))).toEqual([order[2]]);
+  await page.waitForTimeout(0);
+  expect(await page.evaluate(() => document.querySelector('.dp-motion-surface'))).toBeNull();
+});
+
+// ── The dependent Skip Local Connection Confirmation cell ──────────────────
+/* Settings -> Downloads -> Download Behavior & Limits -> Advanced Settings.
+ * The transfer-policy write is answered by the page with the policy the
+ * server would accept, so the shared backend's network policy never changes. */
+async function openAdvanced(page) {
+  const policy = await page.evaluate(async () => (await window.debridPulseAuth.fetch('/api/transfer-policy')).json());
+  const writes = [];
+  await page.route(url => url.pathname === '/api/transfer-policy', async route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON();
+    writes.push(body);
+    Object.assign(policy, body);
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({ok: true, ...policy})});
+  });
+  await page.evaluate(() => nav(document.querySelector('[data-view="settings"]')));
+  await settingsTab(page, 'downloads').click();
+  const chip = page.locator('.view.active .dp-settings-disclosure[aria-controls="dp-settings-section-body-download-behavior-advanced"]');
+  await chip.click();
+  await expect(chip).toHaveAttribute('aria-expanded', 'true');
+  await page.waitForFunction(() => !document.getElementById('dp-settings-section-body-download-behavior-advanced').getAnimations().length);
+  return {writes, lan: page.locator('#dp-settings-field-private-lan-connections'), skip: page.locator('#dp-settings-field-skip-private-lan-confirmation')};
+}
+const cell = page => page.locator('#dp-settings-field-skip-private-lan-confirmation').locator('xpath=ancestor::div[contains(@class,"dp-settings-field")][1]');
+/* Every frame, from now until the cell's opacity has settled for 80 ms (at
+ * most 1.5 s): its opacity and whether its control is disabled. */
+const fade = page => page.evaluate(() => new Promise(resolve => {
+  const control = document.getElementById('dp-settings-field-skip-private-lan-confirmation');
+  const field = control.closest('.dp-settings-field');
+  const frames = [], end = performance.now() + 1500;
+  let still = null;
+  const sample = () => {
+    const now = performance.now(), opacity = Number(getComputedStyle(field).opacity);
+    frames.push({t: now, opacity, disabled: control.disabled, unavailable: field.classList.contains('is-disabled')});
+    const last = frames.at(-2);
+    still = last && Math.abs(last.opacity - opacity) < 0.001 ? (still ?? now) : null;
+    const moved = frames.some(frame => Math.abs(frame.opacity - frames[0].opacity) > 0.01);
+    if ((moved && still && now - still > 80) || now > end) resolve(frames); else requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}));
+const lanSwitch = page => page.locator('label[for="dp-settings-field-private-lan-connections"].dp-settings-engine-tuning-toggle-control');
+
+test('Skip Local Connection Confirmation fades with Local Network Connections, both ways, as its state changes', async ({page}) => {
+  await boot(page);
+  await page.goto('/');
+  const {writes, lan, skip} = await openAdvanced(page);
+  if (await lan.isChecked()) { await lanSwitch(page).click(); await expect(skip).toBeDisabled(); }
+  const stored = await skip.isChecked();
+  await expect.poll(() => cell(page).evaluate(node => Number(getComputedStyle(node).opacity))).toBeCloseTo(0.45, 2);
+
+  // On: the control is available from the first frame the fade begins, and the fade is 150-220 ms.
+  const up = fade(page);
+  await lanSwitch(page).click();
+  let frames = await up;
+  await expect(lan).toBeChecked();
+  expect(writes.at(-1)).toEqual({private_lan_connections: true});
+  const rising = frames.filter(frame => frame.opacity > 0.46 && frame.opacity < 0.99);
+  expect(rising.length).toBeGreaterThanOrEqual(3);
+  expect(rising.every(frame => frame.disabled === false && frame.unavailable === false)).toBe(true);
+  const firstMove = frames.find(frame => frame.opacity > 0.46), arrived = frames.find(frame => frame.opacity >= 0.999);
+  expect(arrived.t - firstMove.t).toBeGreaterThan(120);
+  expect(arrived.t - firstMove.t).toBeLessThan(260);
+  await expect(skip).toBeEnabled();
+  expect(await skip.isChecked()).toBe(stored);                   // its own stored choice is untouched
+
+  // Off: back to the same unavailable appearance, just as smoothly.
+  const down = fade(page);
+  await lanSwitch(page).click();
+  frames = await down;
+  await expect(lan).not.toBeChecked();
+  const falling = frames.filter(frame => frame.opacity > 0.46 && frame.opacity < 0.99);
+  expect(falling.length).toBeGreaterThanOrEqual(3);
+  expect(falling.every(frame => frame.disabled === true)).toBe(true);
+  expect(frames.at(-1).opacity).toBeCloseTo(0.45, 2);
+  await expect(skip).toBeDisabled();
+  expect(await skip.isChecked()).toBe(stored);
+
+  // A rapid reversal ends in the right state, without a jump in the drawn opacity.
+  const reversal = fade(page);
+  await lanSwitch(page).click();
+  await page.waitForTimeout(60);
+  await lanSwitch(page).click();
+  frames = await reversal;
+  await expect(lan).not.toBeChecked();
+  await expect(skip).toBeDisabled();
+  await expect.poll(() => cell(page).evaluate(node => Number(getComputedStyle(node).opacity))).toBeCloseTo(0.45, 2);
+  const steps = frames.slice(1).map((frame, index) => Math.abs(frame.opacity - frames[index].opacity));
+  expect(Math.max(...steps)).toBeLessThan(0.3);                  // it turns back from where it was drawn
+  expect(writes.slice(-2)).toEqual([{private_lan_connections: true}, {private_lan_connections: false}]);
+});
+
+test('Skip Local Connection Confirmation with reduced motion: its appearance and state change at once', async ({page}) => {
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await boot(page);
+  await page.goto('/');
+  const {lan, skip} = await openAdvanced(page);
+  if (await lan.isChecked()) { await lanSwitch(page).click(); await expect(skip).toBeDisabled(); }
+  await lanSwitch(page).click();
+  await expect(skip).toBeEnabled();
+  expect(await cell(page).evaluate(node => [getComputedStyle(node).transitionDuration, getComputedStyle(node).opacity])).toEqual(['0s', '1']);
+  await lanSwitch(page).click();
+  await expect(skip).toBeDisabled();
+  expect(await cell(page).evaluate(node => getComputedStyle(node).opacity)).toBe('0.45');
 });
