@@ -41,15 +41,69 @@ let torrentPageSize = 25;
 let torrentTotal = 0;
 // The page on screen, and a page turn the pager asked for: only that turn
 // slides (ui-motion.js); a filter, search, size, order or live refresh renders
-// in place.
+// in place. The turn slides at once, before its page is fetched, to its
+// destination drawn as a placeholder (or, already answered, as itself); the
+// authoritative page then crossfades into it.
 let renderedTorrentPage = 1;
-let torrentPageTurn = null;
-// The turn's content already leading off while its page is fetched.
-let torrentPageLead = null;
-function dropTorrentPageLead(how) {
-  const lead = torrentPageLead;
-  torrentPageLead = null;
-  if (lead) lead[how]();
+let torrentPageTurn = null;   // {page, source, motion, shown, paint, ended}
+const torrentTableWrap = () => document.querySelector('#view-torrents .dp-downloads-table-wrap');
+function beginTorrentTurn(page) {
+  const tb = document.getElementById('t-tbody');
+  const turn = {page, source: tb ? tb.innerHTML : '', motion: null, shown: false, paint: null, ended: false};
+  const distance = page - renderedTorrentPage;
+  torrentPageTurn = turn;
+  turn.motion = window.DPMotion.slide({element: torrentTableWrap(), axis: 'x', direction: Math.sign(distance), distance: Math.abs(distance)}, () => {
+    if (turn.ended && !turn.paint) return;
+    if (turn.paint) turn.paint();
+    else { paintTorrentPlaceholder(page); turn.shown = true; }
+  });
+}
+// The turn is over without its page being shown here: a newer intent paints
+// its own answer, or the turn failed. A slide not yet begun is skipped.
+function endTorrentTurn(turn) {
+  if (!turn || turn.ended) return;
+  turn.ended = true;
+  if (torrentPageTurn === turn) torrentPageTurn = null;
+  if (!turn.shown) turn.motion?.skip();
+}
+// Rows shaped like the destination's, nothing in them: as many as that page
+// holds (the server's total and the page size say so), never more than the
+// table shows at once, each the height of a row on screen, every column the
+// width it is drawn now.
+function paintTorrentPlaceholder(page) {
+  const tb = document.getElementById('t-tbody'), wrap = torrentTableWrap();
+  if (!tb) return;
+  const limit = Math.min(Math.max(parseInt(torrentPageSize) || 25, 1), 100);
+  const expected = Math.max(1, Math.min(limit, torrentTotal - (page - 1) * limit));
+  const height = tb.querySelector('tr.dp-downloads-detail-row')?.getBoundingClientRect().height || 56;
+  const head = wrap?.querySelector('thead')?.getBoundingClientRect().height || 0;
+  const fits = wrap ? Math.max(1, Math.ceil((wrap.clientHeight - head) / height)) : expected;
+  const widths = Array.from(wrap?.querySelectorAll('thead th') || [], th => `width:${Math.round(th.getBoundingClientRect().width)}px`);
+  const cell = (index, className, shapes) => `<td${className ? ` class="${className}"` : ''} style="${widths[index] || ''}">${shapes}</td>`;
+  const operable = dpCan('transfers.operate');
+  const row = `<tr class="dp-page-placeholder-row" style="height:${Math.round(height)}px">
+    ${cell(0, 'dp-downloads-name-cell', '<span class="dp-ph dp-ph--title"></span><span class="dp-ph dp-ph--sub"></span>')}
+    ${cell(1, 'sz dp-downloads-provider-cell', '<span class="dp-ph dp-ph--icon"></span><span class="dp-ph dp-ph--chip"></span><span class="dp-ph dp-ph--sub"></span>')}
+    ${cell(2, '', '<span class="dp-ph dp-ph--badge"></span>')}
+    ${cell(3, '', '<span class="dp-ph dp-ph--bar"></span><span class="dp-ph dp-ph--sub"></span>')}
+    ${cell(4, 'sz', '<span class="dp-ph dp-ph--number"></span>')}
+    ${cell(5, 'sz', '<span class="dp-ph dp-ph--number"></span>')}
+    ${operable ? cell(6, '', '<span class="dp-ph dp-ph--button"></span>') + cell(7, 'dp-downloads-select-cell', '<span class="dp-ph dp-ph--box"></span>') : ''}
+  </tr>`;
+  tb.dataset.dpPlaceholder = String(expected);
+  tb.setAttribute('aria-hidden', 'true');
+  tb.innerHTML = row.repeat(Math.min(expected, fits));
+}
+// Whatever replaces a placeholder on screen crossfades into it.
+function replaceTorrentRows(paint) {
+  const tb = document.getElementById('t-tbody');
+  const placeholder = tb && 'dpPlaceholder' in tb.dataset;
+  const commit = () => {
+    if (tb) { delete tb.dataset.dpPlaceholder; tb.removeAttribute('aria-hidden'); }
+    paint();
+  };
+  if (placeholder && window.DPMotion) window.DPMotion.resolve({region: tb, host: torrentTableWrap(), content: () => [tb]}, commit);
+  else commit();
 }
 let _selectedIds = new Set();
 // Each shown row's server-given access (``access.destroy``, ``access.own_requests``), by id.
@@ -340,14 +394,10 @@ function goToTorrentPage(p, {turn = false} = {}) {
   const nextPage = Math.max(1, p);
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
-  torrentPageTurn = turn ? nextPage : null;
-  // The turn answers at once: the page on screen starts leaving its way
-  // while the destination is fetched (ui-motion.js lead).
-  dropTorrentPageLead('cancel');
-  if (turn && nextPage !== renderedTorrentPage && window.DPMotion) {
-    torrentPageLead = window.DPMotion.lead({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'),
-                                            axis: 'x', direction: Math.sign(nextPage - renderedTorrentPage)});
-  }
+  // The turn answers at once: it slides to its destination while that page
+  // is fetched.
+  endTorrentTurn(torrentPageTurn);
+  if (turn && nextPage !== renderedTorrentPage && window.DPMotion) beginTorrentTurn(nextPage);
   searchControl().invalidate();
   // Inert until the requested page is rendered (or its request fails).
   window.DPPager?.pending(document.getElementById('torrent-page-btns'), true);
@@ -562,23 +612,35 @@ async function fetchAndRenderTorrents() {
       if (reorder) paintReorder();
       renderedTorrentPage = _requestedPage;
     };
-    // The page turn the pager asked for slides from the page on screen;
-    // anything else is painted in place.
-    const turn = torrentPageTurn === _requestedPage ? _requestedPage - renderedTorrentPage : 0;
-    torrentPageTurn = null;
-    const lead = turn ? torrentPageLead : null;
-    if (turn) torrentPageLead = null; else dropTorrentPageLead('cancel');
-    if (turn && window.DPMotion) {
-      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), distance: Math.abs(turn), lead},
-        () => { if (searchControl().current(ticket)) paint(); }).done;
+    // The page turn the pager asked for is already sliding to this page: its
+    // placeholder crossfades into it, or -- not yet drawn -- the slide draws
+    // it. Anything else is painted in place.
+    const turn = torrentPageTurn;
+    if (turn && turn.page === _requestedPage) {
+      torrentPageTurn = null;
+      turn.ended = true;
+      if (turn.shown) replaceTorrentRows(paint);
+      else {
+        turn.paint = () => { if (searchControl().current(ticket)) replaceTorrentRows(paint); };
+        await turn.motion.done;
+      }
     } else {
-      paint();
+      endTorrentTurn(turn);
+      replaceTorrentRows(paint);
     }
   } catch (e) {
     if (!searchControl().current(ticket)) return;
-    // The turn did not happen: the page on screen comes back into place.
-    torrentPageTurn = null;
-    dropTorrentPageLead('revert');
+    // The turn did not happen: the page on screen before it comes back, and
+    // stays the page asked for.
+    const turn = torrentPageTurn;
+    if (turn) {
+      endTorrentTurn(turn);
+      torrentPage = renderedTorrentPage;
+      if (turn.shown) replaceTorrentRows(() => {
+        document.getElementById('t-tbody').innerHTML = turn.source;
+        syncDownloadSelectionUi();
+      });
+    }
     window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);
     if (searchControl().fail(ticket, e) === 'retried') return;
     toast(sanitizeErrorMsg(e.message), 'error');

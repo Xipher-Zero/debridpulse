@@ -95,6 +95,49 @@
   from { transform: var(--dp-motion-enter); opacity: var(--dp-motion-fade); }
 }
 
+/* A page turn's destination, drawn before its answer: the shape of its rows,
+   softly out of focus and quiet -- no text, nothing to read, nothing that
+   moves on its own. Each page owner lays the shapes out in its own row
+   structure; ui-motion.js resolve() crossfades them into the real page,
+   fading a still copy (.dp-motion-still) out where they stood. */
+[data-dp-placeholder] {
+  filter: blur(2.5px);
+  opacity: .75;
+  pointer-events: none;
+  user-select: none;
+}
+
+.dp-ph {
+  display: block;
+  height: 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+}
+.dp-ph--title { width: 62%; height: 10px; }
+.dp-ph--sub { width: 34%; height: 7px; margin-top: 7px; }
+.dp-ph--line { width: 70%; }
+.dp-ph--icon { display: inline-block; width: 16px; height: 16px; vertical-align: middle; }
+.dp-ph--chip { display: inline-block; width: 64px; height: 16px; margin-left: 6px; vertical-align: middle; }
+.dp-ph--badge { width: 74px; height: 20px; }
+.dp-ph--bar { width: 100%; height: 6px; }
+.dp-ph--number { width: 46px; }
+.dp-ph--button { width: 62px; height: 24px; border-radius: 6px; }
+.dp-ph--box { width: 14px; height: 14px; border-radius: 3px; }
+.dp-ph--dot { width: 8px; height: 8px; margin-top: 3px; }
+.dp-ph--time { width: 112px; }
+/* Not every row the same: three title lengths, in turn. */
+.dp-page-placeholder-row:nth-child(3n + 2) .dp-ph--title,
+.dp-page-placeholder-row:nth-child(3n + 2) .dp-ph--line { width: 48%; }
+.dp-page-placeholder-row:nth-child(3n) .dp-ph--title,
+.dp-page-placeholder-row:nth-child(3n) .dp-ph--line { width: 76%; }
+
+.dp-motion-still {
+  position: absolute;
+  z-index: 2;
+  margin: 0;
+  pointer-events: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .dp-motion-surface::view-transition-group(*),
   .dp-motion-surface::view-transition-old(*),

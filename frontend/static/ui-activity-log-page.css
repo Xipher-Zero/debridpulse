@@ -218,7 +218,8 @@ body.light #view-events .dp-activity-search-band {
 /* Main-page events receive Activity-specific classes at the presentation
    boundary. Transfer Details keeps the legacy .event-item implementation and
    is therefore insulated from this page contract. */
-#view-events .dp-activity-row {
+#view-events .dp-activity-row,
+#view-events .dp-activity-placeholder-row {
   display: grid;
   grid-template-columns: 8px minmax(0, 1fr) auto;
   align-items: start;

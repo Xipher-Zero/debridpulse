@@ -110,7 +110,7 @@ function expectSlide(slide, {scope, axis, direction, step}) {
 }
 
 // ── Downloads ──────────────────────────────────────────────────────────────
-async function tenPagesOfDownloads(page) {
+async function tenPagesOfDownloads(page, {short = 0} = {}) {
   const requests = [];
   await page.route('**/api/torrents**', route => {
     const url = new URL(route.request().url());
@@ -118,7 +118,7 @@ async function tenPagesOfDownloads(page) {
     const limit = Math.max(1, Number(url.searchParams.get('limit')) || 25);
     const offset = Math.max(0, Number(url.searchParams.get('offset')) || 0);
     requests.push({limit, offset, status: url.searchParams.get('status') || ''});
-    const total = PAGES * limit;
+    const total = PAGES * limit - short;                             // `short`: the last page holds that many fewer
     const items = Array.from({length: Math.max(0, Math.min(limit, total - offset))}, (_, index) => {
       const id = offset + index + 1;
       return {id, name: `Transfer ${id}`, hash: `hash-${id}`, status: 'downloading', progress: 10, size_bytes: 1024,
@@ -802,120 +802,346 @@ test('Skip Local Connection Confirmation with reduced motion: its appearance and
   expect(await cell(page).evaluate(node => getComputedStyle(node).opacity)).toBe('0.45');
 });
 
-// ── Immediate page-turn response (lead-in while the destination is fetched) ──
-/* Every frame from just before `act` until the turn has settled: the surface
- * content's live horizontal offset (as a share of the surface), what it shows
- * first, and whether a slide is running. */
-async function leadFrames(page, surfaceSelector, act, firstRowText) {
-  await page.evaluate(([selector, text]) => {
-    window.__lead = [];
-    window.__leading = true;
+// ── A page turn moves at once, to a placeholder its answer crossfades into ──
+const SURFACES = {
+  downloads: {surface: '#view-torrents .dp-downloads-table-wrap', placeholder: '#t-tbody[data-dp-placeholder]',
+              real: '#t-tbody tr[data-torrent-id]', content: '#t-tbody', pager: '#torrent-page-btns'},
+  activity: {surface: '#event-list', placeholder: '#event-list > .dp-activity-placeholder:not(.dp-motion-still)',
+             real: '#event-list .dp-activity-row', content: '#event-list .dp-activity-row', pager: '#dp-activity-page-btns'},
+};
+/* Every frame from just before `act` until `until()` holds and the turn has
+ * settled: how far the arriving image of the slide is drawn (a share of the
+ * surface; 0 = in place), whether a slide runs, the placeholder's rows (and
+ * the count it stands for), any text, control or tab stop inside it, the real
+ * rows on screen (first label), the crossfade's still copy and content
+ * opacities, whether the pager is held -- and when the page's request was
+ * answered. */
+async function turn(page, kind, act, until) {
+  const at = SURFACES[kind];
+  await page.evaluate(at => {
     const t0 = performance.now();
-    const sample = () => {
-      const surface = document.querySelector(selector), child = surface?.firstElementChild;
-      const m = child && /matrix\(([^)]+)\)/.exec(getComputedStyle(child).transform);
-      const width = surface ? surface.getBoundingClientRect().width : 1;
-      window.__lead.push({t: performance.now() - t0, x: m ? Number(m[1].split(',')[4]) / width : 0,
-        sliding: !!document.querySelector('.dp-motion-surface'), first: surface?.innerText.slice(0, 200) || ''});
-      if (window.__leading) requestAnimationFrame(sample);
+    window.__turn = {t0, frames: [], clickAt: null, on: true};
+    document.addEventListener('pointerdown', () => { window.__turn.clickAt = performance.now() - t0; }, {capture: true, once: true});
+    const x = (el, pseudo) => {
+      let value = null; try { value = getComputedStyle(el, pseudo).transform; } catch (_) {}
+      const m = /matrix\(([^)]+)\)/.exec(value || ''); return m ? Number(m[1].split(',')[4]) / el.getBoundingClientRect().width : 0;
     };
-    window.__clickAt = null;
-    document.addEventListener('pointerdown', () => { window.__clickAt = performance.now() - t0; }, {capture: true, once: true});
+    const sample = () => {
+      const surface = document.querySelector(at.surface), held = document.querySelector(at.placeholder);
+      const still = surface?.querySelector('.dp-motion-still'), real = document.querySelector(at.real), content = document.querySelector(at.content);
+      window.__turn.frames.push({t: performance.now() - t0, sliding: !!surface?.classList.contains('dp-motion-surface'),
+        x: surface ? x(surface, '::view-transition-new(root)') : 0, oldX: surface ? x(surface, '::view-transition-old(root)') : 0,
+        placeholder: held ? held.querySelectorAll('.dp-page-placeholder-row').length : 0, stands: held ? held.dataset.dpPlaceholder : null,
+        hidden: held ? held.getAttribute('aria-hidden') : null, text: held ? held.textContent.trim() : '',
+        stops: held ? held.querySelectorAll('a, button, input, select, textarea, [tabindex]').length : 0,
+        real: real ? (real.dataset.torrentId || real.querySelector('.dp-activity-message')?.textContent || '') : null,
+        reals: document.querySelectorAll(at.real).length,
+        still: still ? Number(getComputedStyle(still).opacity) : null, fade: still?.getAnimations()[0]?.effect.getTiming().duration ?? null,
+        opacity: content && !held ? Number(getComputedStyle(content).opacity) : null,
+        pagerHeld: [...document.querySelectorAll(`${at.pager} button`)].some(button => button.disabled && !button.closest('[hidden]'))});
+      if (window.__turn.on) requestAnimationFrame(sample);
+    };
     requestAnimationFrame(sample);
-  }, [surfaceSelector, firstRowText]);
+  }, at);
   await act();
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-surface, .dp-motion-still'));
+  if (until) await until();
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-surface, .dp-motion-still'));
+  await page.evaluate(() => new Promise(requestAnimationFrame));
+  return page.evaluate(path => {
+    window.__turn.on = false;
+    const answered = performance.getEntriesByType('resource').filter(entry => entry.name.includes(path) && entry.startTime >= window.__turn.t0)
+      .map(entry => entry.responseEnd - window.__turn.t0);
+    return {...window.__turn, answered};
+  }, kind === 'downloads' ? '/api/torrents?' : '/api/events?');
 }
-const stopLead = page => page.evaluate(() => { window.__leading = false; return {frames: window.__lead, clickAt: window.__clickAt}; });
+/* What a recorded turn did: when it first moved, how many slides ran, whether
+ * the arriving image travelled one way only, without stalling, to rest; the
+ * frames that showed a placeholder; when the real page first showed. */
+function summary(record) {
+  const {frames, clickAt} = record;
+  // Visible travel begins when the leaving page is first drawn displaced.
+  const begin = frames.findIndex(frame => frame.sliding && Math.abs(frame.oldX) > 0.002);
+  const moving = begin < 0 ? [] : frames.slice(begin).filter(frame => frame.sliding);
+  const starts = frames.filter((frame, index) => frame.sliding && !(frames[index - 1]?.sliding)).length;
+  const xs = moving.map(frame => frame.x);
+  const oneWay = xs.every((value, index) => index === 0 || Math.abs(value) <= Math.abs(xs[index - 1]) + 1e-6);
+  // A stall: the arriving image drawn at the same place on two frames before it has arrived.
+  const stalls = xs.filter((value, index) => index > 0 && Math.abs(value) > 0.001 && value === xs[index - 1]).length;
+  const held = frames.filter(frame => frame.placeholder > 0);
+  return {firstMove: moving.length ? moving[0].t - clickAt : null, slides: starts, oneWay, stalls,
+          span: moving.length ? moving.at(-1).t - moving[0].t : 0, moving: moving.length, held,
+          slideEnd: moving.length ? moving.at(-1).t : null,
+          // From the first placeholder frame on, a row of the page it left is never shown again.
+          after: held.length ? frames.filter(frame => frame.t >= held[0].t) : []};
+}
+// A placeholder is shapes only: nothing to read, nothing to reach, nothing announced.
+function expectQuietPlaceholder(held) {
+  expect(held.length).toBeGreaterThan(0);
+  expect(held.every(frame => frame.text === '' && frame.stops === 0 && frame.hidden === 'true')).toBe(true);
+}
+// The crossfade: a still copy fading out over the content fading in, 140 ms, no second slide.
+function expectCrossfade(record, s) {
+  const fading = record.frames.filter(frame => frame.still !== null);
+  expect(fading.length).toBeGreaterThanOrEqual(2);
+  expect(new Set(fading.map(frame => frame.fade).filter(Boolean))).toEqual(new Set([140]));
+  const stills = fading.map(frame => frame.still);
+  expect(stills.every((value, index) => index === 0 || value <= stills[index - 1] + 1e-6)).toBe(true);
+  expect(fading.some(frame => frame.opacity !== null && frame.opacity < 0.98), JSON.stringify(fading)).toBe(true);       // the page fades in under it
+  expect(s.slides).toBe(1);
+}
 
-test('Downloads: a page turn moves at once, then shows the authoritative page when it arrives; a failed turn comes back', async ({page}) => {
-  await boot(page);
-  const requests = await tenPagesOfDownloads(page);
-  let delay = 400, fail = false;
+async function slowDownloads(page, options) {
+  const requests = await tenPagesOfDownloads(page, options);
+  const control = {delay: 0, fail: false};
   await page.route('**/api/torrents**', async route => {
     const url = new URL(route.request().url());
     if (url.pathname !== '/api/torrents' || !url.searchParams.has('offset')) return route.fallback();
-    await new Promise(resolve => setTimeout(resolve, delay));
-    if (fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
+    const wait = typeof control.delay === 'function' ? control.delay(url) : control.delay;
+    if (wait) await new Promise(resolve => setTimeout(resolve, wait));
+    if (control.fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
     return route.fallback();
   });
   await page.goto('/');
   await page.evaluate(() => nav(document.querySelector('[data-view="torrents"]')));
-  const pager = page.locator('#torrent-page-btns'), current = pager.locator('.dp-pager-current');
-  await expect(current).toHaveText('1');
+  await expect(page.locator('#torrent-page-btns .dp-pager-current')).toHaveText('1');
   await settled(page);
-  const wrap = '#view-torrents .dp-downloads-table-wrap';
+  return {requests, control, pager: page.locator('#torrent-page-btns'), current: page.locator('#torrent-page-btns .dp-pager-current')};
+}
 
+test('Downloads, 350 ms answer: the turn moves at once and slides without a pause to a blurred page shaped like the destination, then the page crossfades in', async ({page}) => {
+  await boot(page);
+  const {requests, control, pager, current} = await slowDownloads(page);
+  control.delay = 350;
   await clear(page);
   const asked = requests.length;
-  await leadFrames(page, wrap, () => pager.locator('[aria-label="Next page"]').click());
-  // A second click while the turn is pending: the pager is inert, so it asks for nothing more.
-  await page.evaluate(() => document.querySelector('#torrent-page-btns [aria-label="Next page"]')?.click());
-  await expect(current).toHaveText('2');
-  await settled(page);
-  const {frames, clickAt} = await stopLead(page);
-  const moving = frames.find(frame => Math.abs(frame.x) > 0.002);
-  expect(moving.t - clickAt).toBeLessThan(80);                       // moving within a few frames of the click...
-  const arrived = frames.find(frame => frame.sliding);
-  expect(arrived.t - clickAt).toBeGreaterThan(380);                  // ...long before the 400 ms answer arrives
-  const before = frames.filter(frame => frame.t < arrived.t);
-  expect(Math.min(...before.map(frame => frame.x))).toBeGreaterThanOrEqual(-0.081);   // leads left (forward), at most 8%
-  expect(before.every(frame => frame.x <= 0.0001)).toBe(true);
-  expect(before.every(frame => frame.first.includes('Transfer 1\n') || frame.first.includes('Transfer 1'))).toBe(true);   // page 1 until the answer
+  const limit = requests.at(-1).limit;
+  const record = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  const s = summary(record);
+  // Visibly moving within a few frames of the click (the slide's own capture and
+  // ease-in), long before its page is answered: the answer's latency plays no part.
+  expect(s.firstMove).toBeLessThan(150);
+  expect(record.answered[0] - record.clickAt).toBeGreaterThan(340);
+  expect(record.answered[0] - record.clickAt - s.firstMove).toBeGreaterThan(200);
+  expect(s.slides).toBe(1);                                          // one slide, never paused or restarted
+  expect(s.oneWay).toBe(true);
+  expect(s.stalls).toBe(0);
+  expect(s.span).toBeLessThanOrEqual(280 + 50);                      // its own 280 ms, not waiting for the answer
   expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'adjacent'});
-  expect(requests.length - asked).toBe(1);                           // one request, for page 2 only
-  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(requests.at(-1).offset + 1));
-  expect(await page.locator(wrap).evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
+  // While its page is pending: the placeholder, standing for that page's row count, and no page-1 row.
+  expectQuietPlaceholder(s.held);
+  expect(s.held.every(frame => frame.stands === String(limit) && frame.reals === 0 && frame.pagerHeld)).toBe(true);
+  const visible = await page.evaluate(() => { const w = document.querySelector('#view-torrents .dp-downloads-table-wrap'); return w.clientHeight; });
+  expect(s.held[0].placeholder).toBeLessThanOrEqual(limit);
+  expect(s.held[0].placeholder * 40).toBeGreaterThanOrEqual(Math.min(limit * 40, visible - 60));   // it fills what the table shows
+  // The authoritative page crossfades in, during the slide or after it, never with a second one.
+  expectCrossfade(record, s);
+  expect(s.after.filter(frame => frame.reals > 0).every(frame => frame.real === String(limit + 1))).toBe(true);
+  expect(requests.length - asked).toBe(1);                           // only the destination is asked for
+  await expect(page.locator('#t-tbody [data-dp-placeholder], #t-tbody .dp-page-placeholder-row, .dp-motion-still')).toHaveCount(0);
 
-  // A failed turn: the page comes back into place, the pager is usable again.
-  fail = true;
-  await leadFrames(page, wrap, () => pager.locator('[aria-label="Next page"]').click());
-  await expect.poll(() => page.locator(wrap).evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
-  const failed = await stopLead(page);
-  expect(failed.frames.some(frame => frame.x < -0.002)).toBe(true);   // it did move off, and came back
-  await expect(current).toHaveText('2');
-  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(requests.at(-1).offset + 1));
-  fail = false;
-  delay = 0;
-  await pager.locator('[aria-label="Next page"]').click();
-  await expect(current).toHaveText('3');
+  // A slower answer: once the slide has ended the placeholder waits still, then resolves.
+  control.delay = 900;
+  await clear(page);
+  const slow = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('3'));
+  const w = summary(slow);
+  const waiting = w.held.filter(frame => frame.t > w.slideEnd);
+  expect(waiting.length).toBeGreaterThanOrEqual(10);
+  expect(waiting.every(frame => !frame.sliding && frame.x === 0 && frame.placeholder === waiting[0].placeholder)).toBe(true);
+  expectCrossfade(slow, w);
+  expect(w.after.filter(frame => frame.reals > 0).every(frame => frame.real === String(2 * limit + 1))).toBe(true);
 });
 
-test('Activity Log: a page turn moves at once within its snapshot; a refused Last comes back', async ({page}) => {
+test('Downloads, fast answer: no placeholder dwell -- the real page shows as soon as it is answered, during the slide', async ({page}) => {
   await boot(page);
+  const {pager, current} = await slowDownloads(page);
+  const record = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  const s = summary(record);
+  expect(s.slides).toBe(1);
+  expect(s.firstMove).toBeLessThan(150);
+  const shown = record.frames.find(frame => frame.t > record.clickAt && frame.reals > 0 && frame.real !== '1');
+  expect(shown.t - record.answered[0]).toBeLessThan(60);             // within a few frames of its answer
+  expect(shown.t).toBeLessThan(s.slideEnd);                          // ...while the slide still runs
+  expect(s.held.length).toBeLessThanOrEqual(3);                      // never held up behind a placeholder
+});
+
+test('Downloads: a partial last page stands for its known row count; a failed turn crossfades back to the page it left', async ({page}) => {
+  await boot(page);
+  const {requests, control, pager, current} = await slowDownloads(page, {short: 4});
+  const limit = requests.at(-1).limit;
+  control.delay = 350;
+  const last = await turn(page, 'downloads', () => pager.locator('[aria-label="Last page"]').click(), () => expect(current).toHaveText('10'));
+  const s = summary(last);
+  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'long'});
+  expect(s.held.every(frame => frame.stands === String(limit - 4) && frame.placeholder === limit - 4)).toBe(true);
+  await expect(page.locator('#t-tbody tr[data-torrent-id]')).toHaveCount(limit - 4);
+
+  // Failure: the placeholder for page 9 crossfades back into page 10, which stays the page.
+  control.fail = true;
+  await clear(page);
+  const failed = await turn(page, 'downloads', () => pager.locator('[aria-label="Previous page"]').click(),
+                            () => expect(page.locator('#toasts .toast')).toHaveCount(1));
+  const f = summary(failed);
+  expectQuietPlaceholder(f.held);
+  expectCrossfade(failed, f);
+  await expect(current).toHaveText('10');
+  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(9 * limit + 1));
+  await expect(page.locator('#t-tbody [data-dp-placeholder], .dp-page-placeholder-row')).toHaveCount(0);
+  control.fail = false;
+  control.delay = 0;
+  const asked = requests.length;
+  await pager.locator('[aria-label="Previous page"]').click();
+  await expect(current).toHaveText('9');
+  expect(requests.slice(asked).map(r => r.offset / r.limit + 1)).toEqual([9]);
+});
+
+test('Downloads: rapid clicks build no queue; a live refresh never restarts the turn; a newer filter wins over a pending turn', async ({page}) => {
+  await boot(page);
+  const {requests, control, pager, current} = await slowDownloads(page);
+  control.delay = 350;
+  const asked = requests.length;
+  const limit = requests.at(-1).limit;
+  const record = await turn(page, 'downloads', async () => {
+    await pager.locator('[aria-label="Next page"]').click();
+    // Clicks while pending: the pager is held, so nothing more is asked for or queued.
+    await page.evaluate(() => document.querySelectorAll('#torrent-page-btns button').forEach(button => button.click()));
+    await page.waitForTimeout(60);
+    await page.evaluate(() => loadTorrents());                       // a live refresh of the same page meanwhile
+  }, () => expect(current).toHaveText('2'));
+  const s = summary(record);
+  expect(s.slides).toBe(1);
+  expect(s.oneWay).toBe(true);
+  expect(requests.slice(asked).map(r => r.offset / r.limit + 1)).toEqual([2, 2]);   // the turn's page, refreshed; nothing else
+  expect(s.after.filter(frame => frame.reals > 0).every(frame => frame.real === String(limit + 1))).toBe(true);
+
+  // A filter chosen while a turn is pending: its own answer is shown, the turn's (slower) page never is.
+  control.delay = url => (url.searchParams.get('status') ? 50 : 500);
+  await clear(page);
+  await pager.locator('[aria-label="Next page"]').click();
+  await page.waitForTimeout(80);
+  await page.locator('#view-torrents .ftab[data-dp-status="downloading"]').click();
+  await expect(current).toHaveText('1');
+  await page.waitForTimeout(700);                                     // past the turn's own (cancelled) answer
+  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', '1');
+  await expect(current).toHaveText('1');
+  await expect(page.locator('#t-tbody [data-dp-placeholder], .dp-page-placeholder-row, .dp-motion-still')).toHaveCount(0);
+});
+
+async function slowJournal(page) {
   const requests = [];
-  let delay = 400;
+  const control = {delay: 0, refuseLast: false, fail: false};
   await page.route('**/api/events?**', async route => {
     const q = Object.fromEntries(new URL(route.request().url()).searchParams);
     requests.push(q);
-    if (q.limit !== '1') await new Promise(resolve => setTimeout(resolve, delay));
-    if (q.last) return route.fulfill({status: 409, contentType: 'application/json', body: JSON.stringify({detail: {
+    if (q.limit !== '1' && control.delay) await new Promise(resolve => setTimeout(resolve, control.delay));
+    if (q.last && control.refuseLast) return route.fulfill({status: 409, contentType: 'application/json', body: JSON.stringify({detail: {
       code: 'last_page_unavailable', message: 'The last page cannot be found yet.'}})});
+    if (control.fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
     return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(journal(Number(q.limit)).answer(q))});
   });
   await page.goto('/');
   await page.evaluate(() => { settingsData.activity_log_page_size = 50; });
   await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
-  const pager = page.locator('#dp-activity-page-btns'), current = pager.locator('.dp-pager-current');
-  await expect(current).toHaveText('1');
+  await expect(page.locator('#dp-activity-page-btns .dp-pager-current')).toHaveText('1');
+  await settled(page);
+  return {requests, control, pager: page.locator('#dp-activity-page-btns'), current: page.locator('#dp-activity-page-btns .dp-pager-current')};
+}
 
+test('Activity Log, 350 ms answer: the same continuous turn within the frozen snapshot; a full page is known, the last one is not', async ({page}) => {
+  await boot(page);
+  const {requests, control, pager, current} = await slowJournal(page);
+  control.delay = 350;
   await clear(page);
-  await leadFrames(page, '#event-list', () => pager.locator('[aria-label="Next page"]').click());
+  const record = await turn(page, 'activity', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  const s = summary(record);
+  expect(s.firstMove).toBeLessThan(150);
+  expect(record.answered.at(-1) - record.clickAt).toBeGreaterThan(340);
+  expect(record.answered.at(-1) - record.clickAt - s.firstMove).toBeGreaterThan(200);
+  expect([s.slides, s.oneWay, s.stalls], JSON.stringify(record.frames.filter(f => f.sliding))).toEqual([1, true, 0]);
+  expect(s.span).toBeLessThanOrEqual(280 + 50);
+  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'adjacent'});
+  expectQuietPlaceholder(s.held);
+  expect(s.held.every(frame => frame.stands === '50' && frame.reals === 0 && frame.pagerHeld)).toBe(true);   // page 2 of many: a full page
+  expect(s.held.filter(frame => frame.t > s.slideEnd).every(frame => !frame.sliding)).toBe(true);
+  expectCrossfade(record, s);
+  expect(s.after.filter(frame => frame.reals > 0).every(frame => frame.real === 'Event 407')).toBe(true);
+  expect(requests.at(-1)).toMatchObject({snapshot: '457', before: '408'});      // the snapshot's own cursor, as ever
+
+  // Page 9 -> 10, the final page: its row count is not known, so the placeholder claims none.
+  await page.evaluate(() => { const list = document.getElementById('event-list'); list.scrollTop = 0; });
+  control.delay = 0;
+  for (let n = 3; n <= 9; n += 1) { await pager.locator('[aria-label="Next page"]').click(); await expect(current).toHaveText(String(n)); }
+  await settled(page);
+  control.delay = 350;
+  const final = await turn(page, 'activity', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('10'));
+  const f = summary(final);
+  expect(f.held.length).toBeGreaterThan(0);
+  expect(f.held.every(frame => frame.stands === '')).toBe(true);
+  await expect(page.locator('#event-list .dp-activity-row')).toHaveCount(7);
+});
+
+test('Activity Log: a refused Last and a failed turn come back coherently; Auto Refresh hints never restart a turn', async ({page}) => {
+  await boot(page);
+  const {requests, control, pager, current} = await slowJournal(page);
+  control.delay = 350;
+  await pager.locator('[aria-label="Next page"]').click();
   await expect(current).toHaveText('2');
   await settled(page);
-  const {frames, clickAt} = await stopLead(page);
-  const moving = frames.find(frame => Math.abs(frame.x) > 0.002);
-  expect(moving.t - clickAt).toBeLessThan(80);
-  const arrived = frames.find(frame => frame.sliding);
-  expect(arrived.t - clickAt).toBeGreaterThan(380);
-  expect(frames.filter(frame => frame.t < arrived.t).every(frame => frame.first.startsWith('Event 457') || frame.first.includes('Event 457'))).toBe(true);
-  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'adjacent'});
-  expect(requests.at(-1)).toMatchObject({snapshot: '457', before: '408'});      // the same snapshot and cursor as ever
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-still'));
 
-  // Last is refused (409): the page comes back, the pager says why, page 2 stays.
-  await leadFrames(page, '#event-list', () => pager.locator('[aria-label="Last page"]').click());
-  await expect(page.locator('#toasts .toast')).toHaveCount(1);
-  await expect.poll(() => page.locator('#event-list').evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
-  const refused = await stopLead(page);
-  expect(refused.frames.some(frame => frame.x < -0.002)).toBe(true);
+  // Last refused (409): the placeholder crossfades back into page 2, which stays; the pager says why.
+  control.refuseLast = true;
+  const refused = await turn(page, 'activity', () => pager.locator('[aria-label="Last page"]').click(),
+                             () => expect(page.locator('#toasts .toast')).toHaveCount(1));
+  const r = summary(refused);
+  expectQuietPlaceholder(r.held);
+  expectCrossfade(refused, r);
   await expect(current).toHaveText('2');
+  await expect(page.locator('#event-list .dp-activity-row').first().locator('.dp-activity-message')).toHaveText('Event 407');
+  await expect(page.locator('#event-list > .dp-activity-placeholder, .dp-motion-still')).toHaveCount(0);
+
+  // A journal hint while a turn is pending (Auto Refresh on) neither restarts it nor replaces its page.
+  control.refuseLast = false;
+  control.delay = 0;
+  await pager.locator('[aria-label="Previous page"]').click();
+  await expect(current).toHaveText('1');
+  await settled(page);
+  control.delay = 350;
+  await page.evaluate(() => document.documentElement.dataset.dpPulse = 'connected');
+  await page.locator('.dp-activity-live').click();                    // on, following the newest page
+  await settled(page);
+  await page.waitForFunction(() => !document.querySelector('.dp-motion-still'));
+  const asked = requests.length;
+  const hinted = await turn(page, 'activity', async () => {
+    await pager.locator('[aria-label="Next page"]').click();
+    await page.evaluate(() => document.dispatchEvent(new CustomEvent('debridpulse:activity-journal-changed', {detail: {latest: 999}})));
+  }, () => expect(current).toHaveText('2'));
+  expect(summary(hinted).slides).toBe(1);
+  expect(requests.slice(asked).filter(q => q.limit !== '1').map(q => q.before ?? null)).toEqual(['408']);   // only the turn's page
+  await expect(page.locator('#event-list .dp-activity-row').first().locator('.dp-activity-message')).toHaveText('Event 407');
+
+  // A failed turn keeps the existing failure contract: its message replaces the placeholder, nothing stays blurred.
+  await page.locator('.dp-activity-live').click();                    // off
+  control.fail = true;
+  await pager.locator('[aria-label="Next page"]').click();
+  await expect(page.locator('#event-list')).toContainText('Events could not be loaded');
+  await expect(page.locator('#event-list > .dp-activity-placeholder, .dp-motion-still')).toHaveCount(0);
+});
+
+test('Pagination with reduced motion: no travel and no crossfade; the authoritative page still arrives', async ({page}) => {
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await boot(page);
+  const {requests, control, pager, current} = await slowDownloads(page);
+  control.delay = 200;
+  const limit = requests.at(-1).limit;
+  const record = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
+  expect(record.frames.some(frame => frame.sliding || frame.still !== null || frame.x !== 0)).toBe(false);
+  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(limit + 1));
+  await expect(page.locator('#t-tbody [data-dp-placeholder]')).toHaveCount(0);
+  const events = await slowJournal(page);
+  events.control.delay = 200;
+  await events.pager.locator('[aria-label="Next page"]').click();
+  await expect(events.current).toHaveText('2');
+  await expect(page.locator('#event-list .dp-activity-row').first().locator('.dp-activity-message')).toHaveText('Event 407');
+  await expect(page.locator('.dp-motion-surface, .dp-motion-still, #event-list > .dp-activity-placeholder')).toHaveCount(0);
 });

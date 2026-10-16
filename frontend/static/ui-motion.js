@@ -15,6 +15,12 @@
  * element-scoped view transitions, or with reduced motion, the commit simply
  * runs at once.
  *
+ * A page turn slides at once, before its page is fetched: the owner's commit
+ * draws a placeholder shaped like the destination (or the destination itself,
+ * when its answer is already in), and resolve() crossfades the placeholder
+ * into the authoritative page whenever it arrives -- during the slide, which
+ * carries on unchanged, or after it, where the placeholder waits still.
+ *
  * disclose() opens or closes a disclosure body by animating its real height,
  * so the content around it moves with it; the owner keeps aria-expanded and any
  * remembered choice, and decides whether a change is the operator's (animated)
@@ -26,10 +32,7 @@
   const reduced = () => reducedMotion.matches;
   // The one motion vocabulary (ui-motion.css holds the same values as tokens).
   const TIMING = Object.freeze({adjacent: 280, short: 380, long: 450, expand: 250, collapse: 200,
-                                lead: 140, modalEnter: 200, modalExit: 160});
-  // How far a page's content leads off while its destination is fetched: a
-  // share of the surface, capped, so the page is never emptied.
-  const LEAD_SHARE = 0.08;
+                                hydrate: 140, modalEnter: 200, modalExit: 160});
   // How far a navigation goes, by how many positions it moves: the next one,
   // two or three, or four and more.
   const reach = distance => (distance >= 4 ? 'long' : distance >= 2 ? 'short' : 'adjacent');
@@ -46,23 +49,20 @@
    * transition is scoped to that element, so only it is captured and only it
    * moves; the rest of the page stays live and takes input throughout.
    * `done` resolves once the commit has run (the DOM holds the destination);
-   * `settled` once the motion has finished or was superseded. */
-  function slide({element, axis = 'x', direction = 0, distance = 1, lead = null}, commit) {
+   * `settled` once the motion has finished or was superseded; `skip()` ends
+   * the motion at once (the turn it was making did not happen). */
+  function slide({element, axis = 'x', direction = 0, distance = 1}, commit) {
     const token = ++sequence;
     if (element) latest.set(element, token);
     if (!element || !direction || reduced() || typeof element.startViewTransition !== 'function') {
-      if (lead) lead.cancel();
       commit();
-      return {done: Promise.resolve(), settled: Promise.resolve()};
+      return {done: Promise.resolve(), settled: Promise.resolve(), skip() {}};
     }
     element.dataset.dpMotionAxis = axis;
     element.dataset.dpMotionDirection = direction > 0 ? 'forward' : 'backward';
     element.dataset.dpMotionStep = reach(Math.abs(distance));
     element.classList.add('dp-motion-surface');
     const transition = element.startViewTransition(() => {
-      // The old page was captured where its lead had carried it; the new one
-      // is laid out where it belongs.
-      if (lead) lead.cancel();
       // A newer slide of this surface took over before this commit ran: the
       // owner's latest intent is committed by that one, never twice.
       if (latest.get(element) === token) commit();
@@ -77,40 +77,56 @@
       delete element.dataset.dpMotionDirection;
       delete element.dataset.dpMotionStep;
     });
-    return {done: transition.updateCallbackDone, settled};
+    return {done: transition.updateCallbackDone, settled, skip: () => transition.skipTransition()};
   }
 
-  /* A page turn's immediate answer, while its destination is fetched: the
-   * surface's current content starts leaving in the turn's direction at once,
-   * and holds a short way off -- never far enough to empty the surface. The
-   * slide that follows continues from where it is drawn (`slide({lead})`);
-   * `revert()` brings it back (the turn failed), `cancel()` drops it at once
-   * (the content is being replaced anyway). */
-  const NO_LEAD = Object.freeze({cancel() {}, revert() {}});
-  function lead({element, axis = 'x', direction = 0}) {
-    if (!element || !direction || reduced() || typeof element.animate !== 'function') return NO_LEAD;
-    const box = element.getBoundingClientRect();
-    const offset = -Math.sign(direction) * LEAD_SHARE * (axis === 'y' ? box.height : box.width);
-    const to = axis === 'y' ? `translateY(${offset}px)` : `translateX(${offset}px)`;
-    const motions = Array.from(element.children).map(child =>
-      child.animate([{transform: 'none'}, {transform: to}],
-                    {duration: TIMING.lead, easing: 'cubic-bezier(0.2, 0, 0, 1)', fill: 'forwards'}));
-    let done = false;
-    return Object.freeze({
-      cancel() {
-        if (done) return;
-        done = true;
-        motions.forEach(motion => motion.cancel());
-      },
-      revert() {
-        if (done) return;
-        done = true;
-        motions.forEach(motion => {
-          motion.reverse();
-          motion.finished.then(() => motion.cancel(), () => {});
-        });
-      },
+  /* A page turn's authoritative content arriving where its placeholder
+   * stands: `commit` replaces the placeholder `region` (a table body, or an
+   * element) inside the surface `host`, and the two crossfade in place -- a
+   * still copy of the placeholder, drawn exactly where it was, fades out over
+   * `content()` (what the commit put there) fading in. Nothing moves, so a
+   * slide still running carries both on its own timeline. Reduced motion, or
+   * no placeholder on screen: the commit, at once. Resolves once the
+   * crossfade has ended. */
+  function resolve({region, host, content}, commit) {
+    if (!region || !host || !region.isConnected || reduced() || typeof host.animate !== 'function') {
+      commit();
+      return Promise.resolve();
+    }
+    const ghost = still(region, host);
+    commit();
+    host.appendChild(ghost);                       // after the commit, which may empty the host
+    const timing = {duration: TIMING.hydrate, easing: 'cubic-bezier(0.4, 0, 0.2, 1)'};
+    (content() || []).forEach(node => node && node.animate([{opacity: 0}, {opacity: 1}], timing));
+    return ghost.animate([{opacity: 1}, {opacity: 0}], {...timing, fill: 'forwards'}).finished
+      .catch(() => {}).then(() => ghost.remove());
+  }
+  // A still, inert copy of `region`, placed (in `host`'s content box) over it. A table body
+  // keeps its columns: it is copied into a copy of its table, each column at
+  // the width it is drawn.
+  function still(region, host) {
+    let ghost;
+    if (region instanceof HTMLTableSectionElement) {
+      ghost = region.closest('table').cloneNode(false);
+      const body = region.cloneNode(true);
+      const widths = region.rows[0] ? Array.from(region.rows[0].cells, cell => cell.getBoundingClientRect().width) : [];
+      if (body.rows[0]) Array.from(body.rows[0].cells).forEach((cell, index) => { cell.style.width = `${widths[index]}px`; });
+      ghost.style.tableLayout = 'fixed';
+      ghost.append(body);
+    } else {
+      ghost = region.cloneNode(true);
+    }
+    [ghost, ...ghost.querySelectorAll('[id]')].forEach(node => node.removeAttribute('id'));
+    ghost.classList.add('dp-motion-still');
+    ghost.setAttribute('aria-hidden', 'true');
+    ghost.inert = true;
+    const at = region.getBoundingClientRect(), frame = host.getBoundingClientRect();
+    Object.assign(ghost.style, {
+      left: `${at.left - frame.left - host.clientLeft + host.scrollLeft}px`,
+      top: `${at.top - frame.top - host.clientTop + host.scrollTop}px`,
+      width: `${at.width}px`, height: `${at.height}px`,
     });
+    return ghost;
   }
 
   /* A fullscreen modal opening while one of its kind (`selector`) is still
@@ -246,5 +262,5 @@
     motion.onfinish = done;
   }
 
-  window.DPMotion = Object.freeze({slide, lead, disclose, enter, leave, restore, focusOrigin, reduced, TIMING});
+  window.DPMotion = Object.freeze({slide, resolve, disclose, enter, leave, restore, focusOrigin, reduced, TIMING});
 })();

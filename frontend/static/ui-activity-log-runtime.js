@@ -52,10 +52,31 @@ function pageSize(){let value=DEFAULT_PAGE_SIZE;try{value=Number(settingsData?.a
 // nav: the accepted page -- {page, first, oldest, following, pages, lastUnavailable}.
 function restart(){cursor={snapshot:null,windowStart:null};request={};nav=null;investigation++;}
 // One page request within the snapshot; ``page`` is resolved from the accepted answer.
-// A page turn answers at once: the page on screen starts leaving its way while the destination is fetched (ui-motion.js lead).
-let lead=null;
-function dropLead(how){const held=lead;lead=null;if(held)held[how]();}
-function go(target){if(pending||!nav)return;request=target;dropLead('cancel');const way=target.kind==='next'||target.kind==='last'?1:nav.page>1?-1:0;if(way&&window.DPMotion)lead=window.DPMotion.lead({element:document.getElementById('event-list'),axis:'x',direction:way});void fetchPage();}
+// A page turn answers at once: it slides to its destination before that page is
+// fetched, drawn as a placeholder (or, already answered, as itself), and the
+// answer crossfades into it (ui-motion.js). Nothing else slides.
+let turn=null;// {request, source, motion, shown, paint, ended}
+function go(target){if(pending||!nav)return;request=target;const from=nav.page;
+// Where it lands, as far as is known now. Last is the server's own page when the count is known; otherwise the next page
+// when it is the final one, or -- several pages on, how many is not yet known -- the far end (the longest travel).
+const to=target.kind==='next'?from+1:target.kind==='previous'?from-1:target.kind==='first'?1:nav.pages||(nav.following>1?from+4:from+1);
+// Any page but the last is a full page; the last one's rows are not known until it is read.
+const full=target.kind==='previous'||target.kind==='first'||(target.kind==='next'&&nav.following>1);
+endTurn(turn);if(to!==from&&window.DPMotion)beginTurn(target,to-from,full?pageSize():null);void fetchPage();}
+function beginTurn(target,distance,rows){const list=document.getElementById('event-list');if(!list)return;const t={request:target,source:Array.from(list.childNodes),motion:null,shown:false,paint:null,ended:false};turn=t;
+t.motion=window.DPMotion.slide({element:list,axis:'x',direction:Math.sign(distance),distance:Math.abs(distance)},()=>{if(t.ended&&!t.paint)return;if(t.paint)t.paint();else{placeholder(list,rows);t.shown=true;}});}
+// The turn is over without its page being shown here; a slide not yet begun is skipped.
+function endTurn(t){if(!t||t.ended)return;t.ended=true;if(turn===t)turn=null;if(!t.shown)t.motion?.skip();}
+// Rows shaped like events, nothing in them: as many as the destination holds
+// when that is known (never more than the list shows at once), else a modest
+// share of the list -- each the height of a row on screen.
+function placeholder(list,rows){const height=list.querySelector('.dp-activity-row')?.getBoundingClientRect().height||52;const fits=Math.max(1,Math.ceil(list.clientHeight/height));
+const block=document.createElement('div');block.className='dp-activity-placeholder';block.dataset.dpPlaceholder=rows?String(rows):'';block.setAttribute('aria-hidden','true');
+block.innerHTML=`<div class="dp-activity-placeholder-row dp-page-placeholder-row" style="height:${Math.round(height)}px"><span class="dp-ph dp-ph--dot"></span><div class="dp-activity-copy"><span class="dp-ph dp-ph--line"></span><span class="dp-ph dp-ph--sub"></span></div><span class="dp-ph dp-ph--time"></span></div>`.repeat(rows?Math.min(rows,fits):Math.ceil(fits/2));
+list.scrollTop=0;list.replaceChildren(block);}
+// Whatever replaces a placeholder on screen crossfades into it.
+function replace(commit){const list=document.getElementById('event-list'),block=list?.querySelector(':scope > .dp-activity-placeholder');
+if(block&&window.DPMotion)window.DPMotion.resolve({region:block,host:list,content:()=>Array.from(list.children).filter(node=>!node.classList.contains('dp-motion-still'))},commit);else commit();}
 const ACTIONS=Object.freeze({first:()=>go({kind:'first'}),previous:()=>go({kind:'previous',after:nav.first}),next:()=>go({kind:'next',before:nav.oldest}),last:()=>go({kind:'last'})});
 function changed(c){syncReset(c);restart();void fetchPage();}
 function bind(){const c=controls();if(!c||bound)return c;bound=true;
@@ -119,20 +140,20 @@ document.addEventListener('debridpulse:pulse-lost',()=>{hinted=null;syncLive();}
 document.addEventListener('debridpulse:navigation',()=>{live=false;stopFollowing();syncLive();});
 async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',c.timeframe.value||'all');if(c.severity.value)params.set('level',c.severity.value);if(c.category.value)params.set('category',c.category.value);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);syncReset(c);};
-// A page turn within the snapshot (the pager's First, Previous, Next, Last) slides from the page on screen; every other answer is shown in place.
-const from=nav?.page||1,to=nav&&['first','previous','next','last'].includes(request.kind)?pageOf(request.kind,from,payload):from;
-const held=to!==from?lead:null;if(held)lead=null;else dropLead('cancel');
-if(to!==from&&window.DPMotion)await window.DPMotion.slide({element:document.getElementById('event-list'),axis:'x',direction:Math.sign(to-from),distance:Math.abs(to-from),lead:held},()=>{if(search.current(ticket))commit();}).done;else commit();
+// The page turn this request makes is already sliding here: its placeholder crossfades into the page, or -- not yet drawn -- the slide draws it. Every other answer is shown in place.
+const t=turn;if(t&&t.request===request){turn=null;t.ended=true;if(t.shown)replace(commit);else{t.paint=()=>{if(search.current(ticket))replace(commit);};await t.motion.done;}}
+else{endTurn(t);replace(commit);}
 if(dirty){dirty=false;schedule();}return payload;}
 catch(error){if(!search.current(ticket))return null;const message=(()=>{try{return sanitizeErrorMsg(error?.message||error);}catch(_){return String(error?.message||error);}})();
+// The turn did not happen: the page it left comes back.
+const t=turn;endTurn(t);const back=()=>{if(t?.shown)replace(()=>list?.replaceChildren(...t.source));};
 // A Last the server cannot prove leaves the page as it was and says why.
-dropLead('revert');
-if(request.kind==='last'&&error?.status===409&&nav){nav={...nav,lastUnavailable:String(error.detail?.message||message)};setPending(c,false);renderPagination({newer_available:!c.newest.hidden},c);try{toast(nav.lastUnavailable,'warn');}catch(_){}return null;}
+if(request.kind==='last'&&error?.status===409&&nav){back();nav={...nav,lastUnavailable:String(error.detail?.message||message)};setPending(c,false);renderPagination({newer_available:!c.newest.hidden},c);try{toast(nav.lastUnavailable,'warn');}catch(_){}return null;}
 setPending(c,false);
 // An Auto Refresh that fails keeps the page -- and its snapshot, cursors and
 // pager -- as they were and says nothing; the next hint or reconnect tries again.
 if(quiet){cursor=quiet.cursor;request=quiet.request;nav=quiet.nav;dirty=false;return null;}
-if(search.fail(ticket,error)==='retried')return null;renderFailure(c,message);try{toast(message,'error');}catch(_){}return null;}
+if(search.fail(ticket,error)==='retried'){back();return null;}replace(()=>renderFailure(c,message));try{toast(message,'error');}catch(_){}return null;}
 finally{if(search.current(ticket))list?.removeAttribute('aria-busy');}}
 function load(){restart();return fetchPage();}
 window.DPActivityLog=Object.freeze({load,formatTimestamp});
