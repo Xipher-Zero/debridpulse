@@ -207,8 +207,26 @@ Notes on the values:
 - **Failures are a Warning, by *arr's design.** *arr maps no qBittorrent state to
   Failed, and `error` is deliberately a Warning (`QBittorrent.cs:249-252`). A
   terminally failed job therefore stays as a warning until removed.
-- **Unknown values.** Size is `0` until a delivery is committed, and `eta` is
-  qBittorrent's unknown value `8640000`. Neither is invented.
+- **Progress.** *arr reads a torrent as `TotalSize = size` and
+  `RemainingSize = size × (1 − progress)`, and draws its queue bar from those two
+  (`QBittorrent.cs` `GetItems`). It never reads `amount_left` or `completed`. A
+  bar therefore exists only when `size` is known. The figure is DebridPulse's own
+  primary progress, the external job's `progress.effective`: the in-flight
+  execution while nothing is verified yet, otherwise verified material. It is the
+  same figure the SABnzbd dialect reports.
+  - **Exact in-flight bytes**, present only when the canonical projection attaches
+    one exact byte scope: `size` is that total, `progress` is
+    `completed / total`, and `amount_left` and `completed` are the same counters.
+    *arr's bar and remaining size equal DebridPulse's.
+  - **A percentage without exact bytes** (a best-effort estimate, a unit count, or
+    verified material): `progress` carries it, and `size` stays `0`. No total is
+    ever derived from a percentage, so *arr shows no bar: the most it can
+    truthfully be given.
+  - **No figure:** `progress` `0` and `size` `0`.
+  - **Completed:** `size` is the committed delivery's, `progress` `1`,
+    `amount_left` `0`. No in-flight counter outlives acquisition.
+- **Unknown values.** `eta` is qBittorrent's unknown value `8640000`, which *arr
+  reads as no time left known. No speed, ETA, peer or tracker figure is invented.
 - **Import location.** `content_path` is the single delivered file, or the one
   folder holding every delivered file beneath the import root. It always differs
   from `save_path`, as *arr requires. A multi-file delivery loose in the import

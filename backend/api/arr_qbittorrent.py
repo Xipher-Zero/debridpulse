@@ -160,6 +160,37 @@ async def _items(external: ExternalClients, principal, category, hashes: set[str
     return [items[key] for key in sorted(items)]
 
 
+def _unfinished_progress(progress: dict) -> dict:
+    """An unfinished job's progress as *arr reads a torrent: ``TotalSize =
+    size`` and ``RemainingSize = size * (1 - progress)`` -- ``amount_left``
+    and ``completed`` are never read -- so a bar exists only with a byte
+    total. The figure is DebridPulse's own primary one (``effective``: the
+    in-flight execution while nothing is verified yet, else verified
+    material), exactly as the SABnzbd dialect reports it.
+
+    * Exact in-flight bytes (the canonical projection attaches them only for
+      one exact byte scope): ``size`` is that total, ``progress`` the same
+      ``completed / total`` (so *arr's remaining size is the executor's own),
+      and ``amount_left`` / ``completed`` the same counters.
+    * A percentage without exact bytes (an estimate, a unit count, verified
+      material): ``progress`` carries it; ``size`` stays ``0`` -- no total
+      is derived from a percentage -- so *arr shows no bar, the most it can
+      truthfully be given.
+    * No figure: ``progress`` 0 and ``size`` 0, qBittorrent's not-started form."""
+    effective = progress.get("effective") or {}
+    percent = effective.get("percent", progress.get("percent"))
+    total, completed = effective.get("total_bytes"), effective.get("completed_bytes")
+    if (isinstance(total, int) and not isinstance(total, bool) and total > 0
+            and isinstance(completed, int) and not isinstance(completed, bool) and completed >= 0):
+        done = min(completed, total)
+        return {"size": total, "progress": round(done / total, 4), "amount_left": total - done, "completed": done}
+    try:
+        fraction = min(max(float(percent) / 100, 0.0), 1.0) if percent is not None else 0.0
+    except (TypeError, ValueError):
+        fraction = 0.0
+    return {"size": 0, "progress": round(fraction, 4)}
+
+
 def _torrent(job: dict) -> dict:
     """One job as the torrent *arr parses (``QBittorrentTorrent``). No
     speed, seed or tracker figure is reported: none exists. A finished,
@@ -169,22 +200,27 @@ def _torrent(job: dict) -> dict:
     info_hash = str(job["source"]["info_hash"]).lower()
     profile = get_settings().external_delivery.by_id(job["profile_id"])
     save_path = profile.effective_import_root if profile is not None else ""
-    percent = (job.get("progress") or {}).get("percent")
     torrent = {"hash": info_hash, "infohash_v1": info_hash, "infohash_v2": "",
                "name": job["display_name"] or str(job["source"].get("name") or "") or info_hash,
-               "category": job["category"], "save_path": save_path, "content_path": "", "size": 0,
-               "progress": round(float(percent or 0) / 100, 4), "eta": UNKNOWN_ETA, "ratio": 0,
-               "ratio_limit": -2, "seeding_time_limit": -2, "inactive_seeding_time_limit": -2}
+               "category": job["category"], "save_path": save_path, "content_path": "",
+               "eta": UNKNOWN_ETA, "ratio": 0,
+               "ratio_limit": -2, "seeding_time_limit": -2, "inactive_seeding_time_limit": -2,
+               **_unfinished_progress(job.get("progress") or {})}
     if job["phase"] == "failed":
         torrent["state"] = "error"
     elif job["phase"] == "completed":
+        # No in-flight counter outlives acquisition: a completed job's size
+        # is its committed delivery's, or unknown.
+        torrent.pop("amount_left", None)
+        torrent.pop("completed", None)
         location = arr.output_location(job["delivery"])
         if location is None:
             # Downloaded, but not importable now: still being checked.
-            torrent.update(state="checkingUP", progress=1.0)
+            torrent.update(state="checkingUP", progress=1.0, size=0)
         else:
             torrent.update(state="stoppedUP", progress=1.0, eta=0, ratio_limit=0,
-                           save_path=job["delivery"]["import_root"], content_path=location[0], size=location[1])
+                           save_path=job["delivery"]["import_root"], content_path=location[0], size=location[1],
+                           amount_left=0, completed=location[1])
     else:
         torrent["state"] = _STATE.get(job["reason"], "downloading")
     return torrent

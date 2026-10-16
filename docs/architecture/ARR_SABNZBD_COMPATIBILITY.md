@@ -259,7 +259,12 @@ Further rules:
   `percentage` always mirrors the same figure. A NZB's declared size is never
   used, and no total is derived from a percentage.
 - **Unknown values.** Speed and time left are not part of the contract:
-  `timeleft` reads `0:00:00`, SABnzbd's unknown form.
+  `timeleft` reads `0:00:00`, SABnzbd's unknown form. *arr parses `timeleft` as a
+  non-optional `H:M:S` / `D:H:M:S` time span and refuses anything else
+  (`SabnzbdQueueTimeConverter`), so no other unknown representation exists.
+  SABnzbd itself reports `0:00:00` when it has no estimate. The qBittorrent
+  dialect carries the same effective figure and exact bytes in its own fields
+  (`size`, `progress`).
 - **Completed means verified.** A job is Completed only when its whole delivery
   is committed and re-verified at that poll.
 - **`storage`** is the single delivered file, or the one folder holding every
