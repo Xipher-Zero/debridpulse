@@ -415,6 +415,78 @@ async def test_the_journal_signal_reaches_only_a_role_that_reads_the_activity_lo
             if any(frame.startswith("event: torrent_updated") for frame in frames)} == set(subscribers)
 
 
+async def test_the_statistics_signal_reaches_every_statistics_reader_and_carries_nothing(monkeypatch):
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings(auth_password_enabled=True))
+    session_store.clear()
+    subscribers = {"standalone": routes._SseSubscriber(Principal.standalone())}
+    for role in (Role.ADMIN, Role.USER, Role.READONLY):
+        principal = Principal.password_session(account(role.value, account_id=f"{role.value}-id", role=role))
+        token, _ = session_store.create(principal, lifetime_seconds=3600)
+        subscribers[role.value] = routes._SseSubscriber(principal, token, session_store.fingerprint(token))
+    subscribers["integration"] = routes._SseSubscriber(Principal.integration_token(
+        account("automation", account_id="integration-id", role=Role.INTEGRATION), "token-id"))
+    ended = Principal.password_session(account("gone", account_id="gone-id", role=Role.READONLY))
+    gone, _ = session_store.create(ended, lifetime_seconds=3600)
+    subscribers["ended-readonly"] = routes._SseSubscriber(ended, gone, session_store.fingerprint(gone))
+    session_store.revoke_account("gone-id")
+    queues = {name: asyncio.Queue() for name in subscribers}
+    for name, subscriber in subscribers.items():
+        routes._sse_subscribers[queues[name]] = subscriber
+    try:
+        for queue in queues.values():
+            _drain(queue)
+        await routes._sse_broadcast("statistics_changed", {})
+        await routes._sse_broadcast("activity_journal_changed", {"latest": 9})
+        received = {name: _drain(queue) for name, queue in queues.items()}
+    finally:
+        for queue in queues.values():
+            routes._sse_subscribers.pop(queue, None)
+
+    def got(event):
+        return {name for name, frames in received.items() if any(f.startswith(f"event: {event}\n") for f in frames)}
+
+    reader = ACTIONS["api.routes.get_stats_detail"]
+    assert got("statistics_changed") == {name for name, subscriber in subscribers.items()
+                                         if name != "ended-readonly" and permits(subscriber.principal, reader)}
+    assert got("statistics_changed") == {"standalone", "admin", "user", "readonly"}
+    frame = next(f for f in received["readonly"] if f.startswith("event: statistics_changed\n"))
+    assert frame == "event: statistics_changed\ndata: {}\n\n"                 # no id, no count, no detail
+    # The Activity Log's watermark still reaches only who reads the Activity Log.
+    assert got("activity_journal_changed") == {"standalone", "admin"}
+
+
+async def test_the_heartbeat_keeps_its_clock_while_the_stream_is_busy(monkeypatch):
+    """The heartbeat is the browser's clock for figures that age with time
+    alone, so a stream that never falls quiet still carries it."""
+    from api import routes
+
+    monkeypatch.setattr(config, "_settings", config.AppSettings())
+    monkeypatch.setattr(routes, "_SSE_HEARTBEAT_SECONDS", 0.2, raising=False)
+    stream = routes._sse_generator(_Connection(Principal.standalone()))
+    assert (await stream.__anext__()).startswith("event: connected")
+    queue = next(q for q, s in routes._sse_subscribers.items() if s.principal == Principal.standalone())
+
+    async def busy():
+        while True:
+            queue.put_nowait("event: torrent_updated\ndata: {}\n\n")
+            await asyncio.sleep(0.02)
+
+    feeder = asyncio.ensure_future(busy())
+    try:
+        frames = []
+        started = asyncio.get_running_loop().time()
+        while asyncio.get_running_loop().time() - started < 1.0:
+            frames.append(await asyncio.wait_for(stream.__anext__(), 2))
+    finally:
+        feeder.cancel()
+        await stream.aclose()
+    pings = [frame for frame in frames if frame.startswith("event: ping")]
+    assert len(pings) >= 3                                # ~every 0.2 s, between the busy frames
+    assert sum(frame.startswith("event: torrent_updated") for frame in frames) > len(pings)
+
+
 async def test_a_queued_journal_signal_is_withheld_once_the_role_can_no_longer_read_it(monkeypatch):
     from api import routes
 

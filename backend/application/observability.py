@@ -47,6 +47,10 @@ class Observability:
         seen, self._journal_seen = self._journal_seen, latest
         if latest != seen:
             await publish("activity_journal_changed", {"latest": latest})
+            # Statistics counts the journal too (Events Severity), for roles the
+            # Activity Log's own signal never reaches: the same change, said to
+            # them with nothing in it -- not even the id.
+            await publish("statistics_changed", {})
 
     async def deliver(self):
         await self.observe_journal()

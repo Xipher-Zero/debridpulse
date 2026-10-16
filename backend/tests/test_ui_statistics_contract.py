@@ -184,3 +184,38 @@ def test_statistics_supplied_feature_art_is_true_vector_and_registered() -> None
     assert "<image" not in lowered
     assert "data:image" not in lowered
     assert manifest["icons"]["statistics"] == "statistics.svg"
+
+
+def test_statistics_is_live_through_the_one_stream_with_bounded_reads_and_no_toggle() -> None:
+    stats = read(STATS)
+    app = read(APP)
+    index = read(INDEX)
+    # One application EventSource; app.js only forwards neutral hints.
+    assert app.count("new EventSource(") == 1
+    for forwarded in ("'stats_changed'", "'statistics_changed'", "'ping'"):
+        listener = app[app.index(forwarded):]
+        listener = listener[:listener.index("\n        );")]
+        assert "debridpulse:statistics-invalidated" in listener or "debridpulse:pulse-heartbeat" in listener, forwarded
+        assert "loadDetailedStats" not in listener and "/stats/detail" not in listener, forwarded
+    # The heartbeat also ages the Overall & Rolling row, through its own owner, only while shown.
+    ping = app[app.index("'ping'"):]
+    ping = ping[:ping.index("\n        );")]
+    assert "getElementById('view-stats')?.classList.contains('active')" in ping and "loadStats()" in ping
+    # The Statistics owner opens no stream, runs no timer loop, stores nothing.
+    for absent in ("EventSource", "setInterval", "localStorage", "sessionStorage"):
+        assert absent not in stats, absent
+    for listened in ("debridpulse:statistics-invalidated", "debridpulse:pulse-connected",
+                     "debridpulse:pulse-heartbeat", "debridpulse:navigation"):
+        assert f"document.addEventListener('{listened}'" in stats, listened
+    # Admission: one request in flight, measured spacing, a queued re-read never lost.
+    assert "REFRESH_SPACING_MS = 2000, REFRESH_SPACING_MAX_MS = 10000, LATENCY_SPACING_FACTOR = 5" in stats
+    assert "if (inflight) {" in stats and "if (queued) {" in stats
+    # A live re-read moves the existing chart; only an explicit load draws it anew.
+    assert "if (live && canvas._ci) { updateCompletionChart(canvas._ci, daily); return; }" in stats
+    live = stats[stats.index("function updateCompletionChart("):stats.index("function renderCompletionChart(")]
+    assert "destroy" not in live and "new Chart" not in live
+    assert "reducedMotion.matches" in live and "chart.update('none')" in live
+    # No live toggle or control was added to the page.
+    view = index[index.index('id="view-stats"'):]
+    view = view[:view.index('<!--', 1)] if '<!--' in view[1:] else view
+    assert "Auto Refresh" not in view and 'role="switch"' not in view

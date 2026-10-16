@@ -2652,6 +2652,15 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         );
 
+        // Statistics' own inputs changed (the journal). Carries nothing; the
+        // server sends it only to a role that may read Statistics.
+        es.addEventListener(
+          'statistics_changed',
+          function() {
+            document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated'));
+          }
+        );
+
         // Neutral integration-status invalidation. Carries nothing; the
         // provider-status owner re-observes each canonical status endpoint.
         es.addEventListener(
@@ -2682,6 +2691,8 @@ document.addEventListener('DOMContentLoaded', () => {
           'stats_changed',
           function() {
             loadStats().catch(()=>{});
+            // The Statistics owner decides whether it is shown and when to re-read.
+            document.dispatchEvent(new CustomEvent('debridpulse:statistics-invalidated'));
 
             if (
               document
@@ -2757,9 +2768,18 @@ document.addEventListener('DOMContentLoaded', () => {
           }
         );
 
+        // The heartbeat, at least every 30 s however busy the stream: the
+        // clock for figures that change with time alone.
         es.addEventListener(
           'ping',
-          function() {}
+          function() {
+            // Statistics' Overall & Rolling row is this owner's (/stats): its
+            // last-24-hours and last-7-days figures age while the page is open.
+            if (document.getElementById('view-stats')?.classList.contains('active')) {
+              loadStats().catch(()=>{});
+            }
+            document.dispatchEvent(new CustomEvent('debridpulse:pulse-heartbeat'));
+          }
         );
 
         // The account's role changed: its session continues under the new

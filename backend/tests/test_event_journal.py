@@ -188,9 +188,10 @@ async def test_only_committed_journal_growth_is_announced_and_once_per_observati
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "observed.sqlite3")
     await database.init_db()
     announced: list[tuple[str, dict]] = []
+    statistics: list[dict] = []            # Statistics' own, reader-wide signal of the same change
 
     async def publish(kind, payload):
-        announced.append((kind, payload))
+        (statistics.append(payload) if kind == "statistics_changed" else announced.append((kind, payload)))
 
     monkeypatch.setattr(owner, "publish", publish)
     observer = owner.Observability(repository=None)
@@ -232,6 +233,8 @@ async def test_only_committed_journal_growth_is_announced_and_once_per_observati
     assert announced[2:] == [("activity_journal_changed", {"latest": 0})]
     # Only the newest id travels: no message, detail, name or type.
     assert all(set(payload) == {"latest"} for _, payload in announced)
+    # Statistics is told of exactly the same changes, with nothing in it -- not even the id.
+    assert statistics == [{}] * (len(announced) + 1)       # + the first observation cleared above
 
 
 async def test_the_delivery_cadence_observes_the_journal_while_idle_and_apart_from_its_other_work(
@@ -243,7 +246,8 @@ async def test_the_delivery_cadence_observes_the_journal_while_idle_and_apart_fr
     announced: list[str] = []
 
     async def publish(kind, payload):
-        announced.append(kind)
+        if kind != "statistics_changed":   # its pairing is proven above
+            announced.append(kind)
 
     class Idle:                                            # no transfer has anything to deliver
         failing = False
@@ -293,7 +297,8 @@ async def test_a_write_that_comes_with_a_reconfiguration_is_still_announced(tmp_
     announced: list[dict] = []
 
     async def publish(kind, payload):
-        announced.append(payload)
+        if kind == "activity_journal_changed":
+            announced.append(payload)
 
     monkeypatch.setattr(owner, "publish", publish)
     await owner.Observability(repository=None).observe_journal()

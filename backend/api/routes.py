@@ -2514,9 +2514,13 @@ async def trigger_deep_sync( application: ApplicationService = Depends(get_appli
 # listens via EventSource and drops its 15-second polling interval.
 #
 # Event types:
-#   ping          — heartbeat every 30 s (keeps the connection alive through proxies)
+#   ping          — heartbeat at least every 30 s, however busy the stream
+#                   (keeps the connection alive through proxies, and is the
+#                   browser's clock for figures that age with time alone)
 #   stats_changed — basic stats object; frontend re-renders stats bar
 #   torrent_updated — {id, status, name}; frontend refreshes the affected row
+#   statistics_changed — {}; Statistics' own inputs changed (the journal), to
+#                   a role that may read Statistics.
 #   activity_journal_changed — {latest}; the Activity Log's journal changed.
 #                   Delivered only to a connection whose CURRENT principal may
 #                   read the Activity Log (``_SSE_GATED``): that activity
@@ -2544,6 +2548,7 @@ class _SseSubscriber:
 # that reads what it signals. Every other event keeps the stream's own access.
 _SSE_GATED: dict[str, Capability] = {
     "activity_journal_changed": ACTIONS["api.operational_downloads.list_activity_events"],
+    "statistics_changed": ACTIONS["api.routes.get_stats_detail"],
 }
 
 
@@ -2589,6 +2594,8 @@ async def _sse_broadcast(event_type: str, data: dict) -> None:
 
 
 _SSE_ACCOUNT_CHANGED = "event: account_changed\ndata: {}\n\n"
+_SSE_PING = "event: ping\ndata: {}\n\n"
+_SSE_HEARTBEAT_SECONDS = 30
 
 
 def _sse_sessions_ended(fingerprints: frozenset[bytes], account_id: str | None, ended: bool = True) -> None:
@@ -2629,16 +2636,24 @@ async def _sse_generator(request: Request) -> AsyncGenerator[str, None]:
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     async with _sse_lock:
         _sse_subscribers[queue] = subscriber
+    loop = asyncio.get_running_loop()
     try:
         yield "event: connected\ndata: {}\n\n"
+        next_ping = loop.time() + _SSE_HEARTBEAT_SECONDS
         while True:
             if await request.is_disconnected():
                 break
-            try:
-                frame = await asyncio.wait_for(queue.get(), timeout=30)
-            except asyncio.TimeoutError:
-                # Send heartbeat so proxies don't close the connection
-                frame = "event: ping\ndata: {}\n\n"
+            # The heartbeat is due on its own clock, not only after a quiet
+            # spell: proxies keep the connection, and the browser re-reads
+            # figures that change with time alone, even while events stream.
+            frame = _SSE_PING
+            if loop.time() < next_ping:
+                try:
+                    frame = await asyncio.wait_for(queue.get(), timeout=next_ping - loop.time())
+                except asyncio.TimeoutError:
+                    pass
+            if frame is _SSE_PING:
+                next_ping = loop.time() + _SSE_HEARTBEAT_SECONDS
             if frame is _SSE_SESSION_ENDED or not _sse_still_authorized(subscriber):
                 yield "event: session_ended\ndata: {}\n\n"
                 break
@@ -2658,7 +2673,7 @@ async def events_stream(request: Request):
 
     Connect via:  const es = new EventSource('/api/events/stream');
     Events:  connected, ping, stats_changed, torrent_updated, and (to a role
-    that may read the Activity Log) activity_journal_changed
+    that may read it) statistics_changed and activity_journal_changed
     """
     return StreamingResponse(
         _sse_generator(request),

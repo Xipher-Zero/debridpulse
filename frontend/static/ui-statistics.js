@@ -4,6 +4,17 @@
  * ui-statistics-page.css. This runtime owns only Statistics data hydration,
  * dynamic list adaptation, Chart.js rendering, and theme-aware chart paint.
  * It must not construct, reparent, or converge the page shell at runtime.
+ *
+ * Live while shown: every figure, list and the chart come from ONE accepted
+ * GET /stats/detail answer for the selected period. The application's one
+ * stream says when to re-read (debridpulse:statistics-invalidated) and keeps
+ * time (debridpulse:pulse-heartbeat, at least every 30 s), never what to show.
+ * At most one request is in flight; re-reads are spaced by REFRESH_SPACING_MS
+ * (measured), a re-read asked for meanwhile runs once that one settles, and a
+ * period choice or re-entry runs as soon as nothing is in flight. An answer
+ * for a period, view or generation no longer current is never shown. A live
+ * re-read updates the existing chart in place, so a bar moves from its drawn
+ * height; a period choice or re-entry draws it anew.
  */
 (function () {
   'use strict';
@@ -236,7 +247,9 @@
   }
 
   function configureOverflow(card, title, entries) {
-    clearOverflow(card);
+    // A card that still overflows keeps its role and tab stop (so keyboard
+    // focus stays on it across a live re-read); only its counts change.
+    if (entries.length <= MAX_VISIBLE || !card.classList.contains('dp-stats-overflow-card')) clearOverflow(card);
     card._dpStatsOverflowEntries = entries.map(function (entry) { return Object.assign({}, entry); });
     card.dataset.dpStatsOverflowTitle = title;
     bindOverflowCard(card);
@@ -246,12 +259,15 @@
     card.setAttribute('role', 'button');
     card.tabIndex = 0;
     card.setAttribute('aria-label', title + '. Showing top 10. View ' + more + ' more.');
-    const indicator = document.createElement('span');
-    indicator.className = 'dp-stats-more';
-    indicator.textContent = '+ ' + more + ' more';
-    indicator.setAttribute('aria-hidden', 'true');
     const header = card.querySelector(':scope > .card-header');
-    (header || card).appendChild(indicator);
+    let indicator = card.querySelector('.dp-stats-more');
+    if (!indicator) {
+      indicator = document.createElement('span');
+      indicator.className = 'dp-stats-more';
+      indicator.setAttribute('aria-hidden', 'true');
+      (header || card).appendChild(indicator);
+    }
+    indicator.textContent = '+ ' + more + ' more';
   }
 
   function renderBreakdown(definition, input) {
@@ -259,8 +275,8 @@
     if (!body) return;
     const card = body.closest('.list-card');
     const entries = dataEntries(input, definition.kind);
-    clearOverflow(card);
     if (!entries.length) {
+      clearOverflow(card);
       const empty = document.createElement('div');
       empty.className = 'empty';
       empty.textContent = 'No data available.';
@@ -446,9 +462,51 @@
     return text;
   }
 
-  function renderCompletionChart(daily) {
+  const LIVE_TRANSITION_MS = 350;
+  const reducedMotion = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : {matches: false};
+
+  /* A live re-read of the same period, applied to the chart already drawn:
+   * buckets are matched by their server key, so a bucket that stays keeps its
+   * bar and moves from its drawn height to the new one, a new bucket grows
+   * from the baseline in its place and one that left is removed (Chart.js
+   * follows splices of the data array). Only when the surviving buckets'
+   * order changed is the data replaced outright, without a transition. */
+  function updateCompletionChart(chart, daily) {
+    const dataset = chart.data.datasets[0];
+    const keys = daily.map(function (item) { return String(item.date); });
+    const counts = daily.map(function (item) { return item.count || 0; });
+    const held = (dataset.dpFamilies || []).map(function (item) { return String(item.date); });
+    const wanted = new Set(keys);
+    const surviving = held.filter(function (key) { return wanted.has(key); });
+    const inOrder = surviving.join('\u0000') === keys.filter(function (key) { return held.includes(key); }).join('\u0000');
+    const animate = inOrder && !reducedMotion.matches;
+    if (inOrder) {
+      for (let index = held.length - 1; index >= 0; index--) {
+        if (!wanted.has(held[index])) { held.splice(index, 1); dataset.data.splice(index, 1); chart.data.labels.splice(index, 1); }
+      }
+      keys.forEach(function (key, index) {
+        if (held[index] === key) { dataset.data[index] = counts[index]; chart.data.labels[index] = completionBucketLabel(key); return; }
+        held.splice(index, 0, key);
+        dataset.data.splice(index, 0, counts[index]);
+        chart.data.labels.splice(index, 0, completionBucketLabel(key));
+      });
+    } else {
+      chart.data.labels = keys.map(completionBucketLabel);
+      dataset.data = counts;
+    }
+    dataset.dpFamilies = daily;
+    if (animate) {
+      chart.options.animation = {duration: LIVE_TRANSITION_MS, easing: 'easeOutCubic'};
+      chart.update();
+    } else {
+      chart.update('none');
+    }
+  }
+
+  function renderCompletionChart(daily, live) {
     const canvas = document.getElementById('daily-chart');
     if (!canvas || typeof Chart === 'undefined') return;
+    if (live && canvas._ci) { updateCompletionChart(canvas._ci, daily); return; }
     if (canvas._ci) canvas._ci.destroy();
     const themeStyles = getComputedStyle(document.body);
     const gridColor = themeStyles.getPropertyValue('--border').trim();
@@ -475,7 +533,8 @@
           tooltip: {
             mode: 'index',
             displayColors: false,
-            callbacks: {label: function (context) { return completionTooltipLines(daily[context.dataIndex]); }},
+            // The bucket the chart holds NOW: a live re-read replaces it in place.
+            callbacks: {label: function (context) { return completionTooltipLines(datasets[0].dpFamilies[context.dataIndex] || {}); }},
           },
         },
         scales: {
@@ -488,24 +547,104 @@
     applyChartPalette();
   }
 
-  async function loadDetailedStats(period) {
+  // Re-read admission. /stats/detail measured 5-12 ms on a 700-transfer,
+  // 20k-event history and at most ~320 ms (1 Year) on 20k transfers and a
+  // million events: re-reads start at least 2 s apart, or five times the last
+  // answer's own time when that is longer (a slow host spaces itself), never
+  // more than 10 s apart.
+  const REFRESH_SPACING_MS = 2000, REFRESH_SPACING_MAX_MS = 10000, LATENCY_SPACING_FACTOR = 5;
+  // A heartbeat re-reads only when the shown answer is at least this old.
+  const AGING_MS = 25000;
+  let currentPeriod = null;
+  let generation = 0;                 // the period choice / entry an answer must belong to
+  let inflight = false, queued = null, timer = null;
+  let lastStart = 0, lastAccepted = 0, spacing = REFRESH_SPACING_MS;
+
+  const shown = function () { return Boolean(document.getElementById('view-stats')?.classList.contains('active')); };
+
+  function render(stats, period, live) {
+    updatePrimaryMetrics(stats.totals || {}, period);
+    renderBreakdown(BREAKDOWNS[0], stats.torrent_status);
+    renderBreakdown(BREAKDOWNS[1], stats.file_status);
+    renderBreakdown(BREAKDOWNS[2], stats.event_levels);
+    renderBreakdown(BREAKDOWNS[3], stats.transfer_methods);
+    renderCompletionChart(stats.daily_completions || [], live);
+    document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: period, live: live}}));
+  }
+
+  // One request; its answer is shown only if it is still the current one.
+  async function read(explicit, waiters) {
+    const mine = generation, period = currentPeriod;
+    inflight = true;
+    lastStart = Date.now();
+    const started = performance.now();
+    let stats = null, failure = null;
+    try {
+      stats = await api('GET', '/stats/detail?period=' + encodeURIComponent(period));
+    } catch (error) {
+      failure = error;
+    }
+    inflight = false;
+    spacing = Math.min(REFRESH_SPACING_MAX_MS, Math.max(REFRESH_SPACING_MS, LATENCY_SPACING_FACTOR * (performance.now() - started)));
+    const current = mine === generation && (explicit || shown());
+    let accepted = null;
+    if (current && stats) {
+      render(stats, period, !explicit);
+      lastAccepted = Date.now();
+      accepted = stats;
+    } else if (current && failure && explicit) {
+      // A load the operator asked for says why it failed; a live re-read that
+      // fails keeps the last answer on screen and says nothing.
+      toast(sanitizeErrorMsg(failure.message), 'error');
+    }
+    waiters.forEach(function (resolve) { resolve(accepted); });
+    if (queued) {
+      const next = queued;
+      queued = null;
+      admit(next.explicit, next.waiters);
+    }
+    return accepted;
+  }
+
+  // Admit one re-read: never two in flight, live ones spaced, explicit ones
+  // as soon as nothing is in flight.
+  function admit(explicit, waiters) {
+    waiters = waiters || [];
+    if (!explicit && !shown()) { waiters.forEach(function (resolve) { resolve(null); }); return; }
+    if (inflight) {
+      queued = queued || {explicit: false, waiters: []};
+      queued.explicit = queued.explicit || explicit;
+      queued.waiters.push.apply(queued.waiters, waiters);
+      return;
+    }
+    const wait = explicit ? 0 : lastStart + spacing - Date.now();
+    if (wait > 0) {
+      if (!timer) timer = setTimeout(function () { timer = null; admit(false); }, wait);
+      waiters.forEach(function (resolve) { resolve(null); });
+      return;
+    }
+    if (timer) { clearTimeout(timer); timer = null; }
+    void read(explicit, waiters);
+  }
+
+  function invalidated() {
+    if (currentPeriod !== null && shown()) admit(false);
+  }
+
+  // The view or its period changed: nothing already asked for may be shown.
+  function retire() {
+    generation++;
+    if (timer) { clearTimeout(timer); timer = null; }
+    if (queued) { queued.waiters.forEach(function (resolve) { resolve(null); }); queued = null; }
+  }
+
+  function loadDetailedStats(period) {
     const resolved = selectedPeriod(period);
     const chartTitle = document.getElementById('chart-title');
     if (chartTitle) chartTitle.textContent = CHART_FLAVOR[resolved] || 'Completed downloads in the selected period.';
-    try {
-      const stats = await api('GET', '/stats/detail?period=' + encodeURIComponent(resolved));
-      updatePrimaryMetrics(stats.totals || {}, resolved);
-      renderBreakdown(BREAKDOWNS[0], stats.torrent_status);
-      renderBreakdown(BREAKDOWNS[1], stats.file_status);
-      renderBreakdown(BREAKDOWNS[2], stats.event_levels);
-      renderBreakdown(BREAKDOWNS[3], stats.transfer_methods);
-      renderCompletionChart(stats.daily_completions || []);
-      document.dispatchEvent(new CustomEvent('debridpulse:statistics-rendered', {detail: {period: resolved}}));
-      return stats;
-    } catch (error) {
-      toast(sanitizeErrorMsg(error.message), 'error');
-      return null;
-    }
+    retire();
+    currentPeriod = resolved;
+    return new Promise(function (resolve) { admit(true, [resolve]); });
   }
 
   function install() {
@@ -517,4 +656,13 @@
   window.DPStatisticsLifecycle = Object.freeze({load: loadDetailedStats, install});
   install();
   document.addEventListener('debridpulse:theme-changed', applyChartPalette);
+  document.addEventListener('debridpulse:statistics-invalidated', invalidated);
+  // A reconnected stream may have missed changes: re-read once.
+  document.addEventListener('debridpulse:pulse-connected', invalidated);
+  document.addEventListener('debridpulse:pulse-heartbeat', function () {
+    if (Date.now() - lastAccepted >= AGING_MS) invalidated();
+  });
+  document.addEventListener('debridpulse:navigation', function (event) {
+    if (event.detail?.view !== 'stats') retire();
+  });
 })();
