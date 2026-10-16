@@ -136,14 +136,17 @@ async def test_the_route_moving_to_the_backup_provider_takes_over_its_prepared_r
 async def test_promotion_preserves_the_resources_real_ownership(tmp_path, monkeypatch, ownership):
     client = FakeClient()
     primary = FailingPrimary()
-    repository, _registry, engine = await lab(tmp_path, monkeypatch, primary, torbox(client, on=False))
+    # The backup is recorded before the first pass (so nothing is created) on
+    # a TorBox whose Prepare Backup Torrents is on: a backup of a provider
+    # whose policy is off is given back (1.0.13 ledger).
+    repository, _registry, engine = await lab(tmp_path, monkeypatch, primary, torbox(client, on=True))
     transfer = await submitted(engine)
-    await engine.resolve_pending()
     root = await root_of(repository, transfer)
     client.objects[TORRENT]["900"] = torrent(native_id=900)
     held = replace(torbox_resource(TORRENT, "900"), ownership=ownership)
     standby_id, _attempts = await repository.begin_standby(transfer.id, root.id, "torbox", engine.clock())
     await repository.bind_standby(standby_id, transfer.id, held, ResourceState.PREPARING, engine.clock())
+    await engine.resolve_pending()
 
     await fail_over(engine, primary)
 

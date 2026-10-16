@@ -444,8 +444,12 @@ async def test_a_backup_whose_first_observation_failed_stays_owned_observed_and_
 
 
 # -- T3.6 / disable: ON -> OFF and a disabled provider keep the ordinary lifecycle -------------------------
+# Ledger (1.0.13, route-resource retention): OFF used to keep an existing
+# backup bound and observed; Prepare Backup Torrents now also governs what is
+# held, so turning it off gives an existing backup back through the one
+# reclamation. Still: no new backup, nothing else touched.
 
-async def test_t3_6_turning_backups_off_makes_no_new_one_and_keeps_the_existing_one(tmp_path, monkeypatch):
+async def test_t3_6_turning_backups_off_makes_no_new_one_and_gives_the_existing_one_back(tmp_path, monkeypatch):
     clock = Clock()
     client = FakeClient()
     _repository, _registry, engine = await lab(tmp_path, monkeypatch, Primary(), torbox(client, on=True), clock=clock)
@@ -463,10 +467,11 @@ async def test_t3_6_turning_backups_off_makes_no_new_one_and_keeps_the_existing_
 
     assert creates(client) == []                                         # no new backup
     assert await off.standbys(second.id) == ()
-    (kept,) = await off.standbys(first.id)
-    assert kept["state"] == "bound"                                      # the existing one is kept ...
-    assert ("item", TORRENT, native) in client.calls                     # ... and still observed
-    assert not any(call[0] == "delete" for call in client.calls)         # never deleted for being OFF
+    (released,) = await off.standbys(first.id)
+    assert released["state"] == "deferred" and released["binding_id"] is None   # given back ...
+    assert [call for call in client.calls if call[0] == "delete"] == [("delete", TORRENT, native)]  # ... once
+    await off_engine.resolve_pending()
+    assert creates(client) == [] and len([call for call in client.calls if call[0] == "delete"]) == 1
 
 
 # -- P3.9: cleanup authority ---------------------------------------------------------------------------------

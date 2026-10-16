@@ -29,7 +29,11 @@ an old writer alive under a new route and never leaves the root ownerless:
    instead: its material is the old generation's finished work;
 3. one transaction (``TransferRepository.replace_root_route``) that commits
    the replacement only while the route is still the one the operator saw and
-   no writer is live: a newer route or a live writer changes nothing;
+   no writer is live: a newer route or a live writer changes nothing. In the
+   same commit the replaced provider's resource is kept as its backup of the
+   root when that provider's Prepare Backup Torrents allows it
+   (``TransferEngine._retains_replaced_route``), and otherwise given back
+   through the one cleanup owner -- losing the route alone never gives it back;
 4. lift the fence this replacement set -- the intent alone, never an
    operator Resume: no recovery sweep over the decomposition. It sets one
    only when no operator pause (per transfer or Pause All) already fences
@@ -335,7 +339,8 @@ async def switch_root_provider(engine, transfer_id: int, provider_id: str, *, ex
                                                    state="queued" if paused_here else "paused")
         outcome = await repository.replace_root_route(
             root.id, expected_attempt_id=str(latest["id"]), expected_provider_id=str(current),
-            target_provider_id=str(provider_id), expected_demand=expected_demand)
+            target_provider_id=str(provider_id), expected_demand=expected_demand,
+            retain_replaced=engine._retains_replaced_route(root, str(current)), now=engine.clock())
         if outcome != "replaced":
             raise _refusal(Category.RESOURCE_STATE_CONFLICT,
                            retryability=Retryability.BACKOFF if outcome in {"busy", "writer_live"}

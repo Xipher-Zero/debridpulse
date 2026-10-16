@@ -647,6 +647,7 @@ class TransferEngine(_RecoveryTransferEngine):
             transfers = await self.repository.active()
             capacities: dict[tuple[str, str], ActiveCapacity | None] = {}
             await self._observe_standbys(transfers)
+            await self._retire_disallowed_standbys(transfers)
             await self._settle_released_standbys(transfers)
             await self._readiness_promotions(transfers)
             # An interrupted claim nothing proved absent is never attempted
@@ -702,6 +703,16 @@ class TransferEngine(_RecoveryTransferEngine):
                 if provider.descriptor.id != primary
                 and self.registry.entitlement_for(provider, request) is True
                 and self.registry.speculative_preparation_allowed(provider, request)]
+
+    def _retains_replaced_route(self, record, provider_id: str) -> bool:
+        """Whether a root route replaced away from ``provider_id`` keeps that
+        provider's resource as its backup of the root: exactly that provider's
+        own Prepare Backup Torrents policy for the root
+        (``speculative_preparation_allowed``), the same answer that lets it
+        prepare a backup at all. An operator switch and a readiness yield ask
+        the same question; off (or unknown), the resource is given back."""
+        provider = self.registry.providers.get(str(provider_id))
+        return provider is not None and self.registry.speculative_preparation_allowed(provider, record.resolvable)
 
     def _standby_retry_at(self, error: NormalizedError, attempts: int) -> float:
         """When a deferred backup may be tried again: the existing retry
@@ -887,6 +898,34 @@ class TransferEngine(_RecoveryTransferEngine):
                         and item["resource_state"] == ResourceState.ABSENT.value):
                     await self.repository.release_standby(item["id"], self.clock())
 
+    async def _retire_disallowed_standbys(self, transfers) -> None:
+        """A backup its provider no longer allows -- Prepare Backup Torrents
+        turned off since it was prepared, or since a replaced route was kept
+        as one -- is given back through the one reclamation (``_reclaim``:
+        the existing OWNED cleanup authority), never left holding a slot
+        nobody wants. Only what primary work could also take back
+        (``reclaimable_standbys``: DebridPulse's own, nothing already
+        cleaning it up, not known gone) of an enabled provider; a disabled
+        provider's backup is parked, exactly as its observation is. The
+        released claim prepares nothing again while the provider says no."""
+        for transfer in transfers:
+            items = [item for item in await self.repository.standbys(transfer.id)
+                     if item["state"] == "bound" and not item.get("promoted_at") and item["resource"] is not None]
+            if not items:
+                continue
+            records = {record.id: record for record in await self.repository.requests(transfer.id)}
+            retired = []
+            for item in items:
+                provider = self.registry.providers.get(item["provider_id"])
+                record = records.get(item["request_id"])
+                if (provider is None or not provider.descriptor.enabled or record is None
+                        or self.registry.speculative_preparation_allowed(provider, record.resolvable)):
+                    continue
+                retired.extend(held for held in await self.repository.reclaimable_standbys(item["provider_id"])
+                               if held["id"] == item["id"])
+            if retired:
+                await self._reclaim(retired)
+
     async def _reclaim(self, held) -> int:
         """Give back backups through the existing cleanup authority; a slot
         counts as free only once its cleanup confirmed the resource gone.
@@ -987,8 +1026,11 @@ class TransferEngine(_RecoveryTransferEngine):
         request prefers. The target is the first PREPARED backup in the
         canonical competition's own order (``manual_route_switch.route_providers``
         / ``standby_choice``), observed again now. The released route is not
-        a failure: no retry budget, no exhaustion, and its resource is given
-        back only where DebridPulse owns it.
+        a failure: no retry budget, no exhaustion; the replaced resource is
+        kept as its provider's backup when that provider's Prepare Backup
+        Torrents allows it (``_retains_replaced_route``), exactly as an
+        operator switch keeps it, and otherwise given back where DebridPulse
+        owns it.
 
         Decided outside any resolution unit (``_readiness_promotions``), so
         the replaced root is ordinary runnable work of the next pass."""
@@ -1053,7 +1095,8 @@ class TransferEngine(_RecoveryTransferEngine):
             return False
         outcome = await repository.replace_root_route(
             record.id, expected_attempt_id=str(latest["id"]), expected_provider_id=current,
-            target_provider_id=target, operation=repository.READINESS_PROMOTION)
+            target_provider_id=target, operation=repository.READINESS_PROMOTION,
+            retain_replaced=self._retains_replaced_route(record, current), now=self.clock())
         if outcome != "replaced":
             return False
         await self._cleanup_pending()

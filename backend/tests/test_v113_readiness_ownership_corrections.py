@@ -324,7 +324,11 @@ async def standby_rows(request_id, provider_id):
                       "WHERE request_id=? AND provider_id=? ORDER BY generation", (request_id, provider_id))
 
 
-async def test_a_promoted_backup_never_blocks_later_coverage_by_its_provider(tmp_path, monkeypatch):
+@pytest.mark.parametrize("policy", ["off", "on"])
+async def test_a_promoted_backup_never_blocks_later_coverage_by_its_provider(tmp_path, monkeypatch, policy):
+    """Ledger (1.0.13, route-resource retention): with parcel-b's Prepare
+    Backup Torrents on, its replaced route's resource IS that next generation
+    -- kept, bound to the same binding -- instead of a fresh unbound claim."""
     lab, backup = await ready_backup_lab(tmp_path, monkeypatch, "parcel-c")
     await lab.tick(POLL)
     root = await lab.root()
@@ -334,8 +338,18 @@ async def test_a_promoted_backup_never_blocks_later_coverage_by_its_provider(tmp
     assert await repository.begin_standby(lab.transfer.id, root.id, "parcel-b", now) is None
     assert await repository.promotable_standby(root.id, "parcel-b") is None   # provenance, never a backup
     offer(lab.providers["parcel-c"], "chosen", ResourceState.PREPARING)
+    lab.providers["parcel-b"].speculative_preparation_allowed = lambda request: policy == "on"
     await switch_root_provider(lab.engine, lab.transfer.id, "parcel-c", expected_provider_id="parcel-b")
     await lab.tick(times=2)
+    if policy == "on":
+        # The kept resource is the next generation: bound, never a duplicate.
+        assert await repository.begin_standby(lab.transfer.id, root.id, "parcel-b", lab.engine.clock()) is None
+        generations = await standby_rows(root.id, "parcel-b")
+        assert [(row["generation"], row["state"], row["promoted_at"] is not None) for row in generations] == [
+            (1, "bound", True), (2, "bound", False)]
+        assert generations[1]["binding_id"] == generations[0]["binding_id"]
+        assert (await repository.promotable_standby(root.id, "parcel-b"))[1].id == backup.id
+        return
     # parcel-b's route ended: the same (root, provider) claim's next
     # generation, fresh and unbound -- once.
     claimed = await repository.begin_standby(lab.transfer.id, root.id, "parcel-b", lab.engine.clock())

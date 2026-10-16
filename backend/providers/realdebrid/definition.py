@@ -21,9 +21,11 @@ class RealDebridOptions(BaseModel):
     torrent_upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
     # "Prepare Backup Torrents": whether Real-Debrid may also add a magnet or
-    # torrent as a backup source while another provider delivers it. Off by
-    # default: every such torrent occupies one of the account's active slots.
-    prepare_backup_torrents: bool = False
+    # torrent as a backup source while another provider delivers it, and keep
+    # its own torrent as one when a route moves away from it. On by default; a
+    # saved choice (on or off) is kept. Every such torrent occupies one of the
+    # account's active slots, which primary work takes back when it needs one.
+    prepare_backup_torrents: bool = True
     # "Maximum Active Torrents": the operator's own ceiling. Absent (None)
     # follows the account's current Real-Debrid limit; a value only lowers it.
     max_active_torrents: int | None = Field(default=None, ge=1)

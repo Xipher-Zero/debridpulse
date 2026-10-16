@@ -18,9 +18,11 @@ class DebridLinkOptions(BaseModel):
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
     # "Prepare Backup Torrents": whether Debrid-Link may also add a magnet or
     # torrent to the seedbox as a backup source while another provider
-    # delivers it. Off by default. Debrid-Link states no active-torrent
-    # maximum to read, so there is no ceiling to tune: its own refusal is final.
-    prepare_backup_torrents: bool = False
+    # delivers it, and keep its own torrent as one when a route moves away
+    # from it. On by default; a saved choice (on or off) is kept. Debrid-Link
+    # states no active-torrent maximum to read, so there is no ceiling to tune:
+    # its own refusal is final.
+    prepare_backup_torrents: bool = True
 
 
 def canonical_options(settings) -> DebridLinkOptions:

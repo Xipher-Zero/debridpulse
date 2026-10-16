@@ -5308,11 +5308,15 @@ class TransferRepository:
         return result.rowcount == 1
 
     async def standby_fenced_providers(self, transfer_id: int, request_id: str) -> set[str]:
-        """The providers that must not prepare a backup of this root now: one
-        whose route of the root DebridPulse released (an operator switch or a
-        readiness yield gave its resource back -- a backup would recreate it),
-        and one whose resource on this transfer still owes cleanup (a backup
-        bound to it would be deleted, or overwrite the removal)."""
+        """The providers that must not prepare a NEW backup of this root now:
+        one whose route of the root DebridPulse released (an operator switch
+        or a readiness yield), and one whose resource on this transfer still
+        owes cleanup (a backup bound to it would be deleted, or overwrite the
+        removal). A released route's resource kept as that provider's backup
+        (``replace_root_route`` ``retain_replaced``) is no new preparation: it
+        is observed, taken over and reclaimed as the backup it is; once it is
+        given back, the provider prepares nothing again here -- the fence
+        separates a kept resource from a new creation."""
         async with get_db() as db:
             rows = await db.fetchall(
                 """SELECT provider_id FROM resolution_attempts WHERE request_id=? AND state='released'

@@ -236,6 +236,7 @@ async def test_the_last_provider_s_failure_ends_the_transfer_once_with_every_pro
 # -- 11.4: the only remaining claimant is still preparing: wait through the existing route, wake or bound ---------
 
 async def preparing_backup(repository, engine, provider, transfer_id):
+    provider.speculative_preparation_allowed = lambda request: True     # a backup exists only where it is on
     root = await root_of(repository, transfer_id)
     acquiring = provider.parcel("acquiring", state=ResourceState.PREPARING, files=FILES)
     standby_id, _attempts = await repository.begin_standby(transfer_id, root.id, provider.descriptor.id,

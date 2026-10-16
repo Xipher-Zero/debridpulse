@@ -13,9 +13,11 @@ class AllDebridOptions(BaseModel):
     agent: str = APP_SHORT_NAME
     rate_limit_per_minute: int = Field(default=60, ge=0, le=600)
     # "Prepare Backup Torrents": whether AllDebrid may also add a magnet or
-    # torrent as a backup source while another provider delivers it. Off by
-    # default: every such magnet occupies one of AllDebrid's active slots.
-    prepare_backup_torrents: bool = False
+    # torrent as a backup source while another provider delivers it, and keep
+    # its own torrent as one when a route moves away from it. On by default; a
+    # saved choice (on or off) is kept. Every such magnet occupies one of
+    # AllDebrid's active slots, which primary work takes back when it needs one.
+    prepare_backup_torrents: bool = True
     # "Maximum Active Torrents": the operator's own ceiling. Absent (None)
     # follows AllDebrid's documented maximum; a value can only lower it.
     max_active_torrents: int | None = Field(default=None, ge=1, le=30)

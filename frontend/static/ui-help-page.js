@@ -285,7 +285,7 @@
             <p>Switching to another source or service does not always keep the progress already made. Whether a partly finished file can be continued depends on the engine and the source, so a switch may start that file again.</p>`)}
 
           ${accordion('Backup torrents', `
-            <p>Each debrid service has a <b>Prepare Backup Torrents</b> switch, off by default. When it is on, that service also adds torrents another service is delivering, so it is ready to take over if needed. This uses that account's torrent slots and limits. Leave it off unless you want this.</p>`)}
+            <p>Each debrid service has a <b>Prepare Backup Torrents</b> switch. It is on by default for AllDebrid, Debrid-Link, Premiumize and Real-Debrid, and off by default for TorBox, whose torrent limits are tighter. While it is on, that service also adds torrents another service is delivering, so it is ready to take over if needed, and when you switch a download to another service, the torrent it already started is kept as a backup instead of being removed. This uses that account's torrent slots and limits; a new download that needs a slot takes it back first. Turn it off to keep that service's slots for its own downloads: its backups are then removed. A choice you already saved is kept.</p>`)}
 
           ${accordion('Pause, resume, retry, recover and remove', `
             <ul>

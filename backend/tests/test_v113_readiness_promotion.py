@@ -63,8 +63,10 @@ class Lab:
 
     async def backup(self, identity, state=ResourceState.AVAILABLE, *, native=None):
         """``identity`` holds a backup of the root, as the operator's Prepare
-        Backup Torrents preparation records one."""
+        Backup Torrents preparation records one -- so that provider's policy is
+        on (a backup of a provider whose policy is off is given back)."""
         provider = self.providers[identity]
+        provider.speculative_preparation_allowed = lambda request: True
         resource = offer(provider, native or f"backup-{identity}", state)
         provider.responses.clear()                                     # promotion reuses it: never a create
         root = await self.root()

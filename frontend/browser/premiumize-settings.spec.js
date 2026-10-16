@@ -68,7 +68,8 @@ test('the Premiumize card is the API-key premium card with exactly the scoped Ad
   await expect(tuning).toContainText(
     'Try Premiumize first when resolving NZB downloads. Your configured Usenet service remains available as a fallback.');
   const backups = tuning.locator('[data-setting="premiumize_prepare_backup_torrents"]');
-  await expect(backups).not.toBeChecked();
+  // Ledger (1.0.13, route-resource retention): Prepare Backup Torrents is on by default.
+  await expect(backups).toBeChecked();
   await expect(tuning).toContainText('Prepare Backup Torrents');
   for (const toggle of [nzb, backups]) {
     await expect(toggle).toHaveAttribute('data-commit', 'immediate');

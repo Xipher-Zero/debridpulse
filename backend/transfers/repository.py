@@ -3418,7 +3418,7 @@ class TransferRepository(_QualifiedTransferRepository):
 
     async def replace_root_route(self, request_id: str, *, expected_attempt_id: str, expected_provider_id: str,
                                  target_provider_id: str, operation: str = OPERATOR_SWITCH,
-                                 expected_demand=None) -> str:
+                                 expected_demand=None, retain_replaced: bool = False, now: float = 0.0) -> str:
         """THE operator root-route replacement, decided atomically.
 
         The root's current route -- its latest route attempt, which must still
@@ -3429,10 +3429,22 @@ class TransferRepository(_QualifiedTransferRepository):
         for the engine's automatic yield of a still-preparing root -- which
         ordinary resolution then adopts (``begin_pinned_resolution``). Only the target's own earlier
         exhaustion of this root is released (``released`` stays history);
-        no other provider's exhaustion and no other root is touched. The
-        replaced provider resource, when DebridPulse owns its cleanup and it
-        is not already absent, gets the ordinary owned cleanup intent the one
-        cleanup cadence drains. The routes the replaced root route gave its
+        no other provider's exhaustion and no other root is touched.
+
+        Losing the route is not a reason to give the replaced provider
+        resource back. When DebridPulse owns it (CREATED or ADOPTED), it is
+        not already absent and nothing already owes its cleanup, the
+        replaced provider's own Prepare Backup Torrents policy decides
+        (``retain_replaced``, the caller's reading of
+        ``speculative_preparation_allowed`` for the root): allowed, it is kept
+        as that provider's backup of the root -- a new generation of its
+        (root, provider) preparation, ``bound`` to the SAME binding, in this
+        commit (``_retain_replaced``), so it is observed, taken over again
+        and reclaimed exactly as any backup, and never created again; not
+        allowed, it gets the ordinary owned cleanup intent the one cleanup
+        cadence drains. The released route still fences any NEW preparation
+        by that provider (``standby_fenced_providers``). The routes the
+        replaced root route gave its
         members end with it (``released``, history kept). The root holds no
         binding afterwards, so every
         member of the old decomposition generation stops being runnable at
@@ -3504,14 +3516,49 @@ class TransferRepository(_QualifiedTransferRepository):
             resource = codec.resource(codec.load(row["resource"])) if row["resource"] else None
             if resource is not None and resource.ownership in {Ownership.CREATED, Ownership.ADOPTED}:
                 binding = await db.fetchone(
-                    "SELECT state FROM provider_resources WHERE transfer_id=? "
+                    "SELECT id,state,cleanup_authority,COALESCE(cleanup_abandoned,0) AS abandoned "
+                    "FROM provider_resources WHERE transfer_id=? "
                     "AND (resource_key=? OR (resource_key IS NULL AND id=?))", (transfer_id, resource.id, resource.id))
                 if binding and binding["state"] != ResourceState.ABSENT.value:
-                    await self.cleanup_intent(transfer_id, resource.id, CleanupAuthority.OWNED, db=db)
+                    retained = (retain_replaced and binding["cleanup_authority"] is None and not binding["abandoned"]
+                                and await self._retain_replaced(db, transfer_id, request_id,
+                                                                str(expected_provider_id), str(binding["id"]), now))
+                    if not retained:
+                        await self.cleanup_intent(transfer_id, resource.id, CleanupAuthority.OWNED, db=db)
             await db.execute("""UPDATE transfer_requests SET state='pending',resource=NULL,retry_at=0,error=NULL,
                 attempts=0,routing_decision=NULL WHERE id=?""", (request_id,))
             await db.commit()
         return "replaced"
+
+    @staticmethod
+    async def _retain_replaced(db, transfer_id: int, request_id: str, provider_id: str, binding_id: str,
+                               now: float) -> bool:
+        """Keep a replaced root route's resource as its provider's backup of
+        the root, in the replacement's own transaction: the NEXT generation of
+        the (root, provider) preparation, ``bound`` to the resource's one
+        existing binding and never promoted -- the row every backup owner
+        already reads (observation, takeover, capacity reclamation, terminal
+        cleanup). Nothing is created at the provider. Refused (``False``, the
+        caller gives the resource back instead) while that provider already
+        has a live preparation of the root (``creating`` or ``bound``, never
+        promoted): one live backup per root and provider, never two owners of
+        one resource."""
+        live = await db.fetchone(
+            """SELECT 1 FROM standby_resources WHERE request_id=? AND provider_id=? AND promoted_at IS NULL
+               AND state IN ('creating','bound')""", (request_id, provider_id))
+        if live:
+            return False
+        latest = await db.fetchone("SELECT MAX(generation) AS generation FROM standby_resources "
+                                   "WHERE request_id=? AND provider_id=?", (request_id, provider_id))
+        standby_id = new_identity()
+        await db.execute(
+            """INSERT INTO standby_resources(id,transfer_id,request_id,provider_id,generation,state,binding_id,
+               observed_at,created_at,updated_at) VALUES(?,?,?,?,?,'bound',?,?,?,?)""",
+            (standby_id, transfer_id, request_id, provider_id, int((latest or {}).get("generation") or 0) + 1,
+             binding_id, now, now, now))
+        await journal(db, je.standby("retained", transfer_id=transfer_id, standby_id=standby_id,
+                                     provider_id=provider_id))
+        return True
 
     async def root_crossed_execution_boundary(self, request_id: str) -> bool:
         """Whether a root has crossed the boundary after which no automatic

@@ -25,8 +25,12 @@ class TorBoxOptions(BaseModel):
     upload_timeout_seconds: int = Field(default=120, ge=30, le=900)
     host_refresh_interval_hours: int = Field(default=24, ge=1, le=168)
     # "Prepare Backup Torrents": whether TorBox may also add a torrent or
-    # magnet as a backup source while another provider delivers it. Off by
-    # default: every such addition uses TorBox create limits and active slots.
+    # magnet as a backup source while another provider delivers it, and keep
+    # its own torrent as one when a route moves away from it. Off by default,
+    # unlike the other debrid providers: TorBox's create limits and active
+    # slots are restrictive, so backups there are the operator's choice. A
+    # saved choice (on or off) is kept; when on, primary work takes a backup's
+    # slot back when it needs one.
     prepare_backup_torrents: bool = False
     # "Maximum Active Torrents": the operator's own ceiling on active torrent
     # slots. Absent (None) follows the account plan's maximum; a value can

@@ -15,8 +15,10 @@ class PremiumizeOptions(BaseModel):
     use_before_usenet: bool = False
     # "Prepare Backup Torrents": whether Premiumize may also add a torrent or
     # magnet to the account's cloud as a backup source while another provider
-    # delivers it. Off by default: a backup uses the account's resources.
-    prepare_backup_torrents: bool = False
+    # delivers it, and keep its own transfer as one when a route moves away
+    # from it. On by default; a saved choice (on or off) is kept. A backup uses
+    # the account's resources.
+    prepare_backup_torrents: bool = True
     # Operational allowances, never retry policy -- the same DebridPulse
     # conventions every premium provider uses: one ordinary exchange, one
     # torrent or NZB upload, and how often the service catalogue becomes due

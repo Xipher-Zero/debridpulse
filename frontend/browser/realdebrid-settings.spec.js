@@ -168,7 +168,8 @@ test('the Real-Debrid card uses the shipped mark and keeps Additional Settings f
   await expect(tuning.locator('.dp-settings-tuning-grid')).toHaveCount(1);
   await expect(tuning.locator('[data-setting]')).toHaveCount(6);
   const backups = tuning.locator('[data-setting="realdebrid_prepare_backup_torrents"]');
-  await expect(backups).not.toBeChecked();
+  // Ledger (1.0.13, route-resource retention): Prepare Backup Torrents is on by default.
+  await expect(backups).toBeChecked();
   await expect(backups).toHaveAttribute('data-commit', 'immediate');
   const ceiling = tuning.locator('[data-setting="realdebrid_max_active_torrents"]');
   await expect(ceiling).toHaveValue('');

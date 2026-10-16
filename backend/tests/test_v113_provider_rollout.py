@@ -150,15 +150,17 @@ def tb_provider(client=None, *, on=True):
     return provider
 
 
-# -- consent: off by default, per provider, torrents only ------------------------------------------------------
+# -- consent: on by default, per provider, torrents only -------------------------------------------------------
+# Ledger (1.0.13, route-resource retention): the default is on; each
+# provider's own off is kept and never touches another provider.
 
 @pytest.mark.parametrize("identity", ROLLED_OUT)
-async def test_each_provider_is_off_until_its_own_operator_choice(identity):
-    assert [allowed(built(identity), request) for request in (MAGNET, TORRENT, HOSTER, NZB)] == [False] * 4
-    assert [allowed(built(identity, prepare_backup_torrents=True), request)
-            for request in (MAGNET, TORRENT, HOSTER, NZB)] == [True, True, False, False]
-    for other in set(ROLLED_OUT) - {identity}:                # enabling one never enables another
-        assert allowed(built(other), MAGNET) is False
+async def test_each_provider_is_on_by_default_until_its_own_operator_chooses_off(identity):
+    assert [allowed(built(identity), request) for request in (MAGNET, TORRENT, HOSTER, NZB)] == [True, True, False, False]
+    assert [allowed(built(identity, prepare_backup_torrents=False), request)
+            for request in (MAGNET, TORRENT, HOSTER, NZB)] == [False] * 4
+    for other in set(ROLLED_OUT) - {identity}:                # turning one off never turns another off
+        assert allowed(built(other), MAGNET) is True
 
 
 # -- active capacity, as each provider states it ----------------------------------------------------------------

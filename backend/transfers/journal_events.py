@@ -191,6 +191,7 @@ def standby(event: str, *, transfer_id, standby_id, provider_id, error=None) -> 
         "bound": ("info", "Standby provider resource prepared"),
         "failed": ("warning", "Standby provider resource could not be prepared"),
         "promoted": ("info", "Standby provider resource promoted"),
+        "retained": ("info", "Previous provider resource kept as standby"),
     }[event]
     return JournalEvent("resource", f"resource.standby_{event}", severity, _with_error(message, error),
                         "standby_resource", subject_id=standby_id, transfer_id=transfer_id,
