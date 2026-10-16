@@ -168,14 +168,16 @@ def _unfinished_progress(progress: dict) -> dict:
     in-flight execution while nothing is verified yet, else verified
     material), exactly as the SABnzbd dialect reports it.
 
-    * Exact in-flight bytes (the canonical projection attaches them only for
-      one exact byte scope): ``size`` is that total, ``progress`` the same
-      ``completed / total`` (so *arr's remaining size is the executor's own),
-      and ``amount_left`` / ``completed`` the same counters.
-    * A percentage without exact bytes (an estimate, a unit count, verified
-      material): ``progress`` carries it; ``size`` stays ``0`` -- no total
-      is derived from a percentage -- so *arr shows no bar, the most it can
-      truthfully be given.
+    * Exact bytes, which the canonical projection attaches only with the
+      figure they measure -- the executors' counters for one exact in-flight
+      byte scope, or nonzero verified material's own measurement (its DP-valid
+      bytes of the canonical artifacts' total): ``size`` is that total,
+      ``progress`` the same ``completed / total`` (so *arr's remaining size is
+      DebridPulse's), and ``amount_left`` / ``completed`` the same counters.
+    * A percentage without exact bytes (an estimate, a unit count, or
+      verified material without a known total): ``progress`` carries it;
+      ``size`` stays ``0`` -- no total is derived from a percentage -- so
+      *arr shows no bar, the most it can truthfully be given.
     * No figure: ``progress`` 0 and ``size`` 0, qBittorrent's not-started form."""
     effective = progress.get("effective") or {}
     percent = effective.get("percent", progress.get("percent"))

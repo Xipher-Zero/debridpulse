@@ -471,16 +471,23 @@ def active_execution_bytes(row, prefix: str = "") -> tuple[int, int] | None:
     return min(max(completed, 0), total), total
 
 
-def effective_progress(status, verified, active_percent, active_basis, active_bytes=None) -> dict:
+def effective_progress(status, verified, active_percent, active_basis, active_bytes=None,
+                       verified_bytes=None) -> dict:
     """THE primary progress figure of an unfinished transfer, as DebridPulse
     shows it (``frontend/static/app.js`` ``progress()``): while the transfer
     is downloading and nothing is verified yet (no verified percentage, or
     exactly 0), the current in-flight execution figure; otherwise verified
     material. ``source`` says which, ``estimated`` whether the in-flight
-    figure is a best-effort estimate; the exact byte counters ride along only
-    with an exact in-flight byte figure. Writers past acquisition
-    (``"processing"``) are no acquisition figure. Verified and in-flight
-    facts stay separate: nothing here is stored as material."""
+    figure is a best-effort estimate. Byte counters ride along only with the
+    figure they measure: an exact in-flight byte figure carries the
+    executors' counters (``active_bytes``); verified material that is
+    nonzero carries its own measurement (``verified_bytes``,
+    ``verified_material_measure``), and its percentage is then that
+    measurement's -- never combined with an in-flight counter. Nothing
+    verified (exactly 0, "unverified" above) is no measured figure: a writer
+    whose work is not DP material may have acquired much of it. Writers past
+    acquisition (``"processing"``) are no acquisition figure. Verified and
+    in-flight facts stay separate: nothing here is stored as material."""
     state = str(status or "").strip().lower()
     figure = {"source": "verified", "estimated": False, "completed_bytes": None, "total_bytes": None}
     if state == "completed":
@@ -495,7 +502,37 @@ def effective_progress(status, verified, active_percent, active_basis, active_by
         return {"percent": round(min(max(current, 0.0), 100.0), 1), "source": "execution",
                 "estimated": active_basis == "estimated", "completed_bytes": exact[0] if exact else None,
                 "total_bytes": exact[1] if exact else None}
+    if verified_bytes is not None and int(verified_bytes[1]) > 0 and int(verified_bytes[0]) > 0:
+        total = int(verified_bytes[1])
+        completed = min(int(verified_bytes[0]), total)
+        return {**figure, "percent": round(completed / total * 100, 1), "completed_bytes": completed,
+                "total_bytes": total}
     return {**figure, "percent": None if verified is None else round(min(max(float(verified), 0.0), 100.0), 1)}
+
+
+def verified_material_known(artifacts) -> bool:
+    """Whether verified material has a percentage at all: every unfinished
+    canonical artifact's size is known (otherwise it is unavailable, never a
+    fabricated 0%)."""
+    return all(item.state == "completed" or item.size_knowledge != SizeKnowledge.UNKNOWN for item in artifacts)
+
+
+def verified_material_measure(artifacts, valid_bytes) -> tuple[int, int] | None:
+    """THE verified-material measurement of a transfer, ``(completed, total)``
+    in bytes over its canonical artifacts -- the one definition
+    ``torrents.progress`` (``completed / total``) and ``torrents.size_bytes``
+    (``total``) are written from: a completed artifact counts its whole
+    size, any other its DP-valid material (``valid_bytes``, per artifact id)
+    up to its size. ``None`` where the percentage is unavailable
+    (``verified_material_known``). Never an executor's own counter."""
+    if not verified_material_known(artifacts):
+        return None
+    total = sum(item.expected_bytes for item in artifacts)
+    completed = sum(
+        item.expected_bytes if item.state == "completed" else min(item.expected_bytes, valid_bytes.get(item.id, 0))
+        for item in artifacts
+    )
+    return completed, total
 
 
 def canonical_artifact_membership_sql(alias: str = "f") -> str:
@@ -1845,8 +1882,7 @@ class TransferRepository:
             local_path = str(Path(path_source[0].target).parent) if path_source else ""
             # A percentage exists only when every unfinished artifact's size is
             # known; otherwise it is unavailable (NULL), never a fabricated 0%.
-            size_known = all(item.state == "completed" or item.size_knowledge != SizeKnowledge.UNKNOWN
-                             for item in artifacts)
+            size_known = verified_material_known(artifacts)
             await db.execute(
                 """UPDATE torrents SET size_bytes=?,local_path=?,progress=CASE WHEN ? THEN progress ELSE NULL END
                     WHERE id=? AND status NOT IN ('deleted','consolidated')""",
@@ -1855,12 +1891,10 @@ class TransferRepository:
             # Completion is DebridPulse-valid material, never an executor's
             # own percentage: a handoff that keeps all material keeps the
             # figure, and a real rollback lowers it by exactly what was lost.
-            valid_bytes = await self._valid_material_bytes(db, [item.id for item in artifacts])
-            completed = sum(
-                item.expected_bytes if item.state == "completed" else min(item.expected_bytes, valid_bytes.get(item.id, 0))
-                for item in artifacts
-            )
-            progress = (min(100.0, completed / total * 100) if total else 0.0) if size_known else None
+            measure = verified_material_measure(
+                artifacts, await self._valid_material_bytes(db, [item.id for item in artifacts]))
+            progress = None if measure is None else (
+                min(100.0, measure[0] / measure[1] * 100) if measure[1] else 0.0)
 
             should_complete = False
             paused = transfer.paused or await self._globally_paused(db)
@@ -4038,6 +4072,26 @@ class TransferRepository:
             await journal(db, je.continuation(event, transfer_id=transfer_id, artifact_id=artifact_id,
                                               detail=str(fields.get("boundary") or "").replace("_", " ") or None))
             await db.commit()
+
+    async def verified_material(self, transfer_id: int) -> tuple[int, int] | None:
+        """The transfer's verified-material measurement now
+        (``verified_material_measure``), read from one snapshot of the same
+        facts ``aggregate_lifecycle`` writes its progress from: its canonical
+        artifacts and their DP-valid material."""
+        async with get_db() as db:
+            await db.execute("BEGIN")
+            try:
+                rows = await db.fetchall(
+                    f"""SELECT f.id,f.status,f.size_bytes,f.size_knowledge FROM download_files f
+                        WHERE f.torrent_id=? AND {canonical_artifact_membership_sql('f')} ORDER BY f.id""",
+                    (int(transfer_id),))
+                valid = await self._valid_material_bytes(db, [row["id"] for row in rows])
+            finally:
+                await db.rollback()
+        return verified_material_measure(tuple(
+            SimpleNamespace(id=row["id"], state=row["status"], expected_bytes=row["size_bytes"] or 0,
+                            size_knowledge=SizeKnowledge.durable(row["size_bytes"], row["size_knowledge"]))
+            for row in rows), valid)
 
     @staticmethod
     async def _valid_material_bytes(db, artifact_ids) -> dict[int, int]:

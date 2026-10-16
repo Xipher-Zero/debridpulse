@@ -213,16 +213,33 @@ Notes on the values:
   bar therefore exists only when `size` is known. The figure is DebridPulse's own
   primary progress, the external job's `progress.effective`: the in-flight
   execution while nothing is verified yet, otherwise verified material. It is the
-  same figure the SABnzbd dialect reports.
+  same figure the SABnzbd dialect reports. Each kind of figure carries only its
+  own byte counters, so `size`, `progress`, `amount_left` and `completed` always
+  describe one scope (`progress = round(completed / size, 4)`,
+  `amount_left = size − completed`):
+  - **Verified material, nonzero.** A writer that exports material ranges, such
+    as aria2, has its completely written ranges checkpointed into DP-valid
+    material while it downloads, so its progress is verified material, not an
+    in-flight figure. `size` is the transfer's canonical artifacts' total size
+    and `completed` their DP-valid material: a completed artifact counts its
+    whole size, any other its valid material up to its size. This is the
+    measurement DebridPulse's own verified percentage is computed from
+    (`verified_material_measure`, read at the poll). It is never combined with an
+    executor's counter: downloaded but not yet checkpointed bytes are not in it,
+    so it can trail the executor by up to one checkpoint interval. It holds while
+    paused, finalizing, or failed, since the material is what the transfer has.
   - **Exact in-flight bytes**, present only when the canonical projection attaches
-    one exact byte scope: `size` is that total, `progress` is
-    `completed / total`, and `amount_left` and `completed` are the same counters.
-    *arr's bar and remaining size equal DebridPulse's.
-  - **A percentage without exact bytes** (a best-effort estimate, a unit count, or
-    verified material): `progress` carries it, and `size` stays `0`. No total is
-    ever derived from a percentage, so *arr shows no bar: the most it can
-    truthfully be given.
-  - **No figure:** `progress` `0` and `size` `0`.
+    one exact byte scope while nothing is verified yet: `size` is that total,
+    `progress` is `completed / total`, and `amount_left` and `completed` are the
+    executor's counters. *arr's bar and remaining size equal DebridPulse's.
+  - **A percentage without exact bytes** (a best-effort estimate or a unit
+    count): `progress` carries it, and `size` stays `0`. No total is ever derived
+    from a percentage, so *arr shows no bar: the most it can truthfully be given.
+  - **Nothing verified and no in-flight figure** (before a material writer's
+    first checkpoint, a paused or post-acquisition writer whose work is not DP
+    material), **or a member whose size is unknown:** `progress` is the figure,
+    or `0`, and `size` `0`. Nothing verified is not reported as `0` of a total: a
+    writer whose work is not DP material may have acquired much of it.
   - **Completed:** `size` is the committed delivery's, `progress` `1`,
     `amount_left` `0`. No in-flight counter outlives acquisition.
 - **Unknown values.** `eta` is qBittorrent's unknown value `8640000`, which *arr

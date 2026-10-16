@@ -182,9 +182,13 @@ async def _queue(external: ExternalClients, principal, params) -> dict:
         # *arr draws its progress bar from ``mb``/``mbleft`` alone
         # (``percentage`` is parsed but never read): they carry the
         # executor's own exact byte counters when DebridPulse shows exactly
-        # those, else SABnzbd's unknown form. Time left is unknown: no speed
-        # or remaining time is invented.
-        total, completed = effective.get("total_bytes"), effective.get("completed_bytes")
+        # those, else SABnzbd's unknown form -- never verified material's
+        # measurement, whose total is the artifacts' declared sizes (a NZB's
+        # declared size is not what it delivers). Time left is unknown: no
+        # speed or remaining time is invented.
+        executor_bytes = effective.get("source") == "execution"
+        total = effective.get("total_bytes") if executor_bytes else None
+        completed = effective.get("completed_bytes") if executor_bytes else None
         mb, mbleft = (("%.2f" % (total / _MIB), "%.2f" % (max(0, total - (completed or 0)) / _MIB))
                       if isinstance(total, int) and total > 0 else ("0.00", "0.00"))
         slots.append({

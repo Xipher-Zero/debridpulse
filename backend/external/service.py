@@ -1302,7 +1302,8 @@ class ExternalClients:
         async with get_db() as db:
             row = await db.fetchone(active_execution_progress_sql("f.torrent_id = ?"), (int(transfer["id"]),))
         return effective_progress(transfer["status"], transfer["progress"], *active_execution_projection(row),
-                                  active_execution_bytes(row))
+                                  active_execution_bytes(row),
+                                  await self.repository.verified_material(int(transfer["id"])))
 
     async def _members(self, transfer_id: int, status: str) -> dict:
         """The artifacts that fulfil the job's transfer: its own canonical

@@ -215,8 +215,11 @@ Each job also carries:
   `percent` (verified material; `null` when no own figure exists). `effective`
   is the figure DebridPulse shows as its primary bar: `percent`, `source`
   (`verified`, or `execution` while downloading with nothing verified yet),
-  `estimated`, and the executor's exact `completed_bytes`/`total_bytes` only
-  with an exact in-flight byte figure. An execution figure is activity, never
+  `estimated`, and `completed_bytes`/`total_bytes` from the same measurement as
+  `percent`: the executor's exact counters with an exact in-flight byte figure,
+  or verified material's own measurement (DP-valid bytes of the canonical
+  artifacts' total size) when nonzero verified material is the figure; `null`
+  otherwise. The two are never combined. An execution figure is activity, never
   material, and may move back when an attempt is replaced;
 - `error`: category and retryability only;
 - `revision`: increments on every public change;

@@ -257,7 +257,9 @@ Further rules:
     `percentage` is verified material and `mb`/`mbleft` read `0.00`.
 
   `percentage` always mirrors the same figure. A NZB's declared size is never
-  used, and no total is derived from a percentage.
+  used, so verified material's byte measurement (the artifacts' declared sizes,
+  which the qBittorrent dialect carries) is not carried here, and no total is
+  derived from a percentage.
 - **Unknown values.** Speed and time left are not part of the contract:
   `timeleft` reads `0:00:00`, SABnzbd's unknown form. *arr parses `timeleft` as a
   non-optional `H:M:S` / `D:H:M:S` time span and refuses anything else
