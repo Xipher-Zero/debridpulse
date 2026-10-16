@@ -665,4 +665,8 @@
   document.addEventListener('debridpulse:navigation', function (event) {
     if (event.detail?.view !== 'stats') retire();
   });
+  // Arrived on Statistics: the same chart takes its settled container's size.
+  document.addEventListener('debridpulse:navigation-settled', function (event) {
+    if (event.detail?.view === 'stats') document.getElementById('daily-chart')?._ci?.resize();
+  });
 })();

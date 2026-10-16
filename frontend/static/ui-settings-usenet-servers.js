@@ -847,7 +847,9 @@
   function toggleAdvanced(button) {
     const expanded = button.getAttribute('aria-expanded') === 'true';
     const body = document.getElementById(button.getAttribute('aria-controls'));
-    if (body) body.hidden = expanded;
+    // The operator's own toggle: the panel rolls down or up (ui-motion.js).
+    if (body && window.DPMotion) window.DPMotion.disclose(body, !expanded, {animate: true, focusReturn: button});
+    else if (body) body.hidden = expanded;
     button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
     const label = `${expanded ? 'Show' : 'Hide'} advanced acquisition settings`;
     button.title = label;

@@ -718,26 +718,46 @@
   }
 
   function activateTab(name, focus = false) {
+    selectTabControl(name, focus);
+    showTabPanel();
+  }
+
+  function selectTabControl(name, focus = false) {
     if (!TABS.some(([id]) => id === name)) name = 'quickstart';
     state.activeTab = name;
 
-    const view = root();
-    if (!view) return;
-
-    view.querySelectorAll('.dp-help-tab').forEach(tab => {
+    root()?.querySelectorAll('.dp-help-tab').forEach(tab => {
       const active = tab.dataset.tab === name;
       tab.classList.toggle('is-active', active);
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? 0 : -1;
       if (active && focus) tab.focus();
     });
+  }
 
+  // The panel of the tab selected NOW (a later choice made meanwhile wins).
+  function showTabPanel() {
+    const view = root();
+    if (!view) return;
     view.querySelectorAll('.dp-help-panel').forEach(section => {
-      section.hidden = section.dataset.panel !== name;
+      section.hidden = section.dataset.panel !== state.activeTab;
     });
 
     const scroller = view.querySelector('.dp-help-scroll');
     if (scroller) scroller.scrollTop = 0;
+  }
+
+  /* The operator chose a section: the strip changes at once and the panel
+   * slides across from the one on screen, by the tabs' displayed order. */
+  function chooseTab(name, focus = false) {
+    const view = root();
+    const order = Array.from(view?.querySelectorAll('.dp-help-tab') || []).map(tab => tab.dataset.tab);
+    const shown = view?.querySelector('.dp-help-panel:not([hidden])')?.dataset.panel;
+    selectTabControl(name, focus);
+    const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
+    const step = from >= 0 && to >= 0 ? to - from : 0;
+    if (window.DPMotion) window.DPMotion.slide({element: view?.querySelector('.dp-help-scroll'), axis: 'x', direction: Math.sign(step), jump: Math.abs(step) > 1}, showTabPanel);
+    else showTabPanel();
   }
 
   function bindEvents(view) {
@@ -747,7 +767,7 @@
     view.addEventListener('click', event => {
       const tab = event.target.closest('.dp-help-tab');
       if (!tab) return;
-      activateTab(tab.dataset.tab);
+      chooseTab(tab.dataset.tab);
     });
 
     view.addEventListener('keydown', event => {
@@ -759,7 +779,7 @@
       if (event.key === 'Home') index = 0;
       else if (event.key === 'End') index = tabs.length - 1;
       else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
-      activateTab(tabs[index].dataset.tab, true);
+      chooseTab(tabs[index].dataset.tab, true);
     });
   }
 

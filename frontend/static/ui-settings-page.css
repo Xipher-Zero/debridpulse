@@ -859,7 +859,7 @@
   transition: transform .15s ease, color .15s ease;
 }
 
-#view-settings .dp-settings-additional[open] > summary::after {
+#view-settings .dp-settings-additional[open]:not([data-dp-closing]) > summary::after {
   color: var(--dp-accent-purple-bright);
   transform: rotate(90deg);
 }

@@ -39,6 +39,11 @@ let currentOrder = 'queue';
 let torrentPage = 1;
 let torrentPageSize = 25;
 let torrentTotal = 0;
+// The page on screen, and a page turn the pager asked for: only that turn
+// slides (ui-motion.js); a filter, search, size, order or live refresh renders
+// in place.
+let renderedTorrentPage = 1;
+let torrentPageTurn = null;
 let _selectedIds = new Set();
 // Each shown row's server-given access (``access.destroy``, ``access.own_requests``), by id.
 const _rowAccess = new Map();
@@ -297,10 +302,10 @@ function renderTorrentPagination(total, limit, offset) {
   info.textContent = downloadPaginationSummary(n, from, to);
   // The shared DP pager presents; this owner keeps the page arithmetic.
   window.DPPager.render(buttons, {page: current, following: pages - current, actions: {
-    first: () => goToTorrentPage(1),
-    previous: () => goToTorrentPage(current - 1),
-    next: () => goToTorrentPage(current + 1),
-    last: () => goToTorrentPage(pages),
+    first: () => goToTorrentPage(1, {turn: true}),
+    previous: () => goToTorrentPage(current - 1, {turn: true}),
+    next: () => goToTorrentPage(current + 1, {turn: true}),
+    last: () => goToTorrentPage(pages, {turn: true}),
   }});
 }
 function setFilter(element, status) {
@@ -324,10 +329,11 @@ function onTorrentOrderChange(value) {
   clearSelection();
   loadTorrents();
 }
-function goToTorrentPage(p) {
+function goToTorrentPage(p, {turn = false} = {}) {
   const nextPage = Math.max(1, p);
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
+  torrentPageTurn = turn ? nextPage : null;
   searchControl().invalidate();
   // Inert until the requested page is rendered (or its request fails).
   window.DPPager?.pending(document.getElementById('torrent-page-btns'), true);
@@ -527,18 +533,31 @@ async function fetchAndRenderTorrents() {
       return;
     }
     torrentTotal = _total;
-    const tb = document.getElementById('t-tbody');
-    renderTorrentPagination(torrentTotal, _limit, _offset);
-    // A page shown while a reorder is held is a preview: selection is kept.
-    if (!reorder) reconcileDownloadSelection(items);
-    if (!items.length) {
-      tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 8 : 6}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
-      syncDownloadSelectionUi();
+    const paint = () => {
+      const tb = document.getElementById('t-tbody');
+      renderTorrentPagination(torrentTotal, _limit, _offset);
+      // A page shown while a reorder is held is a preview: selection is kept.
+      if (!reorder) reconcileDownloadSelection(items);
+      if (!items.length) {
+        tb.innerHTML = `<tr><td colspan="${dpCan('transfers.operate') ? 8 : 6}"><div class="empty"><div class="empty-icon" aria-hidden="true"></div>${downloadEmptyMessage()}</div></td></tr>`;
+        syncDownloadSelectionUi();
+      } else {
+        tb.innerHTML = items.map(rowMarkup).join('');
+        syncDownloadSelectionUi();
+      }
+      if (reorder) paintReorder();
+      renderedTorrentPage = _requestedPage;
+    };
+    // The page turn the pager asked for slides from the page on screen;
+    // anything else is painted in place.
+    const turn = torrentPageTurn === _requestedPage ? _requestedPage - renderedTorrentPage : 0;
+    torrentPageTurn = null;
+    if (turn && window.DPMotion) {
+      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), jump: Math.abs(turn) > 1},
+        () => { if (searchControl().current(ticket)) paint(); }).done;
     } else {
-      tb.innerHTML = items.map(rowMarkup).join('');
-      syncDownloadSelectionUi();
+      paint();
     }
-    if (reorder) paintReorder();
   } catch (e) {
     if (!searchControl().current(ticket)) return;
     window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);

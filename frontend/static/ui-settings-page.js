@@ -4982,6 +4982,11 @@
   }
 
   function activateTab(name) {
+    selectTabControl(name);
+    showTabPanel();
+  }
+
+  function selectTabControl(name) {
     if (!TABS.some(([id]) => id === name)) name = 'sources';
     state.activeTab = name;
 
@@ -4991,10 +4996,25 @@
       tab.setAttribute('aria-selected', active ? 'true' : 'false');
       tab.tabIndex = active ? '0' : '-1';
     });
+  }
 
+  // The panel of the tab selected NOW (a later choice made meanwhile wins).
+  function showTabPanel() {
     root()?.querySelectorAll('[data-panel]').forEach(section => {
-      section.hidden = section.dataset.panel !== name;
+      section.hidden = section.dataset.panel !== state.activeTab;
     });
+  }
+
+  /* The operator chose a tab: the strip changes at once and the panel slides
+   * across from the one on screen, by the tabs' displayed order. */
+  function chooseTab(name) {
+    const order = Array.from(root()?.querySelectorAll('.dp-settings-tabs [data-tab]') || []).map(tab => tab.dataset.tab);
+    const shown = root()?.querySelector('[data-panel]:not([hidden])')?.dataset.panel;
+    selectTabControl(name);
+    const from = order.indexOf(shown), to = order.indexOf(state.activeTab);
+    const step = from >= 0 && to >= 0 ? to - from : 0;
+    if (window.DPMotion) window.DPMotion.slide({element: root()?.querySelector('.dp-settings-scroll'), axis: 'x', direction: Math.sign(step), jump: Math.abs(step) > 1}, showTabPanel);
+    else showTabPanel();
   }
 
   // A collapsed provider card can only be re-collapsed by un-checking Enable
@@ -5019,19 +5039,40 @@
 
   /* The ONE disclosure behaviour, shared by every canonical disclosure chip.
    * The body is addressed through aria-controls, so the same code serves a
-   * provider card and an executor-tuning card without knowing either. */
-  function setDisclosureExpanded(button, expanded) {
+   * provider card and an executor-tuning card without knowing either. The
+   * operator's own opening or closing rolls the body down or up (`animate`);
+   * a reconciliation with server truth sets it at once. */
+  function setDisclosureExpanded(button, expanded, {animate = false} = {}) {
     if (!button) return;
     const persistKey = String(button.dataset.disclosurePersist || '');
     if (persistKey) disclosureChoices.set(persistKey, !!expanded);
     const body = document.getElementById(button.getAttribute('aria-controls'));
-    if (body) body.hidden = !expanded;
+    if (body && window.DPMotion) window.DPMotion.disclose(body, !!expanded, {animate, focusReturn: button});
+    else if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     const label = `${expanded ? 'Collapse' : 'Expand'} ${button.dataset.disclosureSubject || 'section'}`;
     button.title = label;
     button.setAttribute('aria-label', label);
     button.closest('.dp-settings-provider-card')
       ?.classList.toggle('dp-settings-provider-card--collapsed', !expanded);
+  }
+
+  function toggleAdditional(details, summary) {
+    const body = details.querySelector(':scope > .dp-settings-additional-body');
+    if (!body) { details.open = !details.open; return; }
+    if (!details.open || details.dataset.dpClosing === '1') {
+      delete details.dataset.dpClosing;
+      details.open = true;
+      window.DPMotion.disclose(body, true, {animate: true});
+      return;
+    }
+    details.dataset.dpClosing = '1';
+    window.DPMotion.disclose(body, false, {animate: true, focusReturn: summary, onClosed: () => {
+      if (details.dataset.dpClosing !== '1') return;
+      delete details.dataset.dpClosing;
+      details.open = false;
+      body.hidden = false;           // closed <details> hides it; ready for the next opening
+    }});
   }
 
   /* Render one integration card's presentation from COMMITTED canonical state.
@@ -5094,7 +5135,7 @@
       // the state the server ACCEPTED, never the click.
       const accepted = state.settings?.integrations?.[identity] || {};
       if (accepted.enabled !== false && !accepted.configured) {
-        setDisclosureExpanded(card.querySelector('.dp-settings-disclosure'), true);
+        setDisclosureExpanded(card.querySelector('.dp-settings-disclosure'), true, {animate: true});
       }
       const committed = accepted.enabled !== false;
       notify(`${integrationDisplayName(card, identity)} ${committed ? 'enabled' : 'disabled'}`, 'success');
@@ -5173,7 +5214,7 @@
       else if (event.key === 'End') index = buttons.length - 1;
       else index = (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length;
       const next = buttons[index];
-      activateTab(next.dataset.tab);
+      chooseTab(next.dataset.tab);
       next.focus();
     });
 
@@ -5189,15 +5230,23 @@
     });
 
     view.addEventListener('click', event => {
+      // Additional Settings (a native <details>): its body rolls down as it
+      // opens and up before it closes; `open` stays the one state.
+      const summary = event.target.closest('.dp-settings-additional > summary');
+      if (summary && window.DPMotion) {
+        event.preventDefault();
+        toggleAdditional(summary.parentElement, summary);
+        return;
+      }
       const disclosure = event.target.closest('.dp-settings-disclosure');
       if (disclosure) {
         event.preventDefault();
-        setDisclosureExpanded(disclosure, disclosure.getAttribute('aria-expanded') !== 'true');
+        setDisclosureExpanded(disclosure, disclosure.getAttribute('aria-expanded') !== 'true', {animate: true});
         return;
       }
       const tab = event.target.closest('.dp-settings-tabs [data-tab]');
       if (tab) {
-        activateTab(tab.dataset.tab);
+        chooseTab(tab.dataset.tab);
         return;
       }
 

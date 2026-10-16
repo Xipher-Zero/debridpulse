@@ -220,7 +220,9 @@ def test_sources_panel_consolidates_primary_key_and_collapsed_additional_setting
     assert ".dp-settings-key-present" in page
     assert "text-align: right;" in page
     assert ".dp-settings-additional > summary" in page
-    assert ".dp-settings-additional[open] > summary::after" in page
+    # Open turns the chevron; it turns back as the roll-up begins (ui-motion.js
+    # keeps the element open until the body has rolled away).
+    assert ".dp-settings-additional[open]:not([data-dp-closing]) > summary::after" in page
 
     disclosure = chrome.split(".dp-settings-additional > summary {", 1)[1].split("}", 1)[0]
     assert "justify-content: flex-start;" in disclosure

@@ -1,0 +1,89 @@
+/* DebridPulse navigation and disclosure motion (ui-motion.js).
+ *
+ * One vocabulary. Navigation slides along the axis of the control that chose
+ * it -- across for a page or tab, up and down for the sidebar -- an adjacent
+ * step travelling the whole surface, a jump over several a shorter, quicker
+ * travel that fades. Only the surface being replaced moves, clipped to its own
+ * viewport (its own scoped view transition); everything else stays still and
+ * live. */
+
+:root {
+  --dp-motion-adjacent: 220ms;
+  --dp-motion-jump: 170ms;
+  --dp-motion-expand: 250ms;
+  --dp-motion-collapse: 200ms;
+  --dp-motion-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --dp-motion-jump-ease: cubic-bezier(0.33, 0, 0.2, 1);
+}
+
+/* A surface sliding now (ui-motion.js scopes its view transition to it):
+   the main view region for the sidebar, each page or tab viewport for its own
+   pager or tabs. Its own snapshot pair is what moves. */
+
+.dp-motion-surface[data-dp-motion-step="adjacent"] {
+  --dp-motion-duration: var(--dp-motion-adjacent);
+  --dp-motion-curve: var(--dp-motion-ease);
+  --dp-motion-travel: 100%;
+  --dp-motion-fade: 1;
+}
+
+.dp-motion-surface[data-dp-motion-step="jump"] {
+  --dp-motion-duration: var(--dp-motion-jump);
+  --dp-motion-curve: var(--dp-motion-jump-ease);
+  --dp-motion-travel: 32%;
+  --dp-motion-fade: 0;
+}
+
+/* Forward: the old content leaves toward the start (left, or up) and the
+   destination arrives from the end (right, or below). Backward: the reverse. */
+.dp-motion-surface[data-dp-motion-axis="x"][data-dp-motion-direction="forward"] {
+  --dp-motion-leave: translateX(calc(-1 * var(--dp-motion-travel)));
+  --dp-motion-enter: translateX(var(--dp-motion-travel));
+}
+.dp-motion-surface[data-dp-motion-axis="x"][data-dp-motion-direction="backward"] {
+  --dp-motion-leave: translateX(var(--dp-motion-travel));
+  --dp-motion-enter: translateX(calc(-1 * var(--dp-motion-travel)));
+}
+.dp-motion-surface[data-dp-motion-axis="y"][data-dp-motion-direction="forward"] {
+  --dp-motion-leave: translateY(calc(-1 * var(--dp-motion-travel)));
+  --dp-motion-enter: translateY(var(--dp-motion-travel));
+}
+.dp-motion-surface[data-dp-motion-axis="y"][data-dp-motion-direction="backward"] {
+  --dp-motion-leave: translateY(var(--dp-motion-travel));
+  --dp-motion-enter: translateY(calc(-1 * var(--dp-motion-travel)));
+}
+
+.dp-motion-surface::view-transition-group(root) {
+  animation-duration: var(--dp-motion-duration);
+  animation-timing-function: var(--dp-motion-curve);
+}
+
+.dp-motion-surface::view-transition-image-pair(root) {
+  overflow: hidden;
+}
+
+.dp-motion-surface::view-transition-old(root) {
+  mix-blend-mode: normal;
+  animation: dp-motion-leave var(--dp-motion-duration) var(--dp-motion-curve) both;
+}
+
+.dp-motion-surface::view-transition-new(root) {
+  mix-blend-mode: normal;
+  animation: dp-motion-enter var(--dp-motion-duration) var(--dp-motion-curve) both;
+}
+
+@keyframes dp-motion-leave {
+  to { transform: var(--dp-motion-leave); opacity: var(--dp-motion-fade); }
+}
+
+@keyframes dp-motion-enter {
+  from { transform: var(--dp-motion-enter); opacity: var(--dp-motion-fade); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-motion-surface::view-transition-group(*),
+  .dp-motion-surface::view-transition-old(*),
+  .dp-motion-surface::view-transition-new(*) {
+    animation: none;
+  }
+}

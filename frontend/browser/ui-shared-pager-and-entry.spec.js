@@ -230,6 +230,9 @@ test('every sidebar entry opens Downloads page 1, Settings Services and Help Qui
     const current = downloadsPager(page).locator('.dp-pager-current');
 
     await nav('torrents').click();
+    // The sidebar commits its view as its slide begins: Downloads is entered
+    // (on page 1) before the page is changed from code.
+    await expect(page.locator('#view-torrents')).toHaveClass(/\bactive\b/);
     await page.evaluate(() => goToTorrentPage(4));
     await expect(current).toHaveText('4');
     await page.evaluate(() => loadTorrents());                               // an ordinary refresh

@@ -83,8 +83,30 @@ function renderTopbarActions() {
 }
 
 // ── Nav ────────────────────────────────────────────────────────────────────
-function nav(el) {
+/* A sidebar entry chosen by the operator (a click or its keyboard activation)
+ * moves the main view region up or down toward it, by its place among the
+ * entries this session actually shows; every other call -- start-up, a
+ * redirect, a reset, a test -- changes the view in place. The view itself is
+ * changed by navigateTo(), the same commit either way, so the destination's
+ * entry work (loading, its first page or tab) is exactly as it was. */
+function nav(el, event) {
   if (!el) return;
+  const entries = [...document.querySelectorAll('#sidebar .nav-item[data-view]')]
+    .filter(item => item.getClientRects().length);
+  const from = entries.findIndex(item => item.classList.contains('active'));
+  const to = entries.indexOf(el);
+  const sameView = !!document.getElementById('view-' + el.dataset.view)?.classList.contains('active');
+  const chosen = event?.type === 'click' && from >= 0 && to >= 0 && !sameView;
+  const motion = window.DPMotion
+    ? window.DPMotion.slide({element: document.getElementById('content'), axis: 'y', direction: chosen ? Math.sign(to - from) : 0,
+                             jump: Math.abs(to - from) > 1}, () => navigateTo(el))
+    : (navigateTo(el), {settled: Promise.resolve()});
+  // Whatever measures the destination's layout may do so again once it is still.
+  motion.settled.then(() => document.dispatchEvent(new CustomEvent('debridpulse:navigation-settled',
+    {detail: {view: document.querySelector('.view.active')?.id?.replace(/^view-/, '') || el.dataset.view}})));
+}
+
+function navigateTo(el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   el.classList.add('active');
   const v = el.dataset.view;
@@ -2528,6 +2550,11 @@ document.addEventListener('DOMContentLoaded', () => {
   _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
   document.addEventListener('visibilitychange', syncDashboardSparkPulses);
   new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));
+  // Returning to the Dashboard: the route is read again from the settled cards
+  // (the heartbeat clock and the beats on the strip are untouched).
+  document.addEventListener('debridpulse:navigation-settled', function(event) {
+    if (event.detail?.view === 'dashboard') remeasureDashboardHeartbeat();
+  });
   syncDashboardSparkPulses();
   const isLight = localStorage.getItem('theme') === 'light';
   document.body.classList.toggle('light', isLight);

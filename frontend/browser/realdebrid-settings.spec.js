@@ -64,6 +64,10 @@ async function prepare(page) {
   await page.locator('#view-settings [data-tab="sources"]').click();
   const card = page.locator('.dp-settings-provider-card--realdebrid');
   await card.locator('.dp-settings-disclosure').click();
+  // The card rolls open: its geometry is the opened card's once that settles.
+  await card.locator('.dp-settings-disclosure[aria-expanded="true"]').waitFor();
+  await card.evaluate(node => Promise.all(node.querySelectorAll('.card-body').length
+    ? [...node.querySelectorAll('.card-body')].flatMap(body => body.getAnimations().map(motion => motion.finished)) : []));
   return {card, region: card.locator('[data-realdebrid-connection]'), calls};
 }
 
