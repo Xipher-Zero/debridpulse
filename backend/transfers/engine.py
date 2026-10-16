@@ -723,8 +723,10 @@ class TransferEngine(_RecoveryTransferEngine):
             if observation is not None:
                 # A resource the provider holds is recorded even when it
                 # reports a problem: it is ours to observe and to clean up.
-                await self.repository.bind_standby(standby_id, record.transfer_id, observation.resource,
-                                                   observation.state, self.clock())
+                bound = await self.repository.bind_standby(standby_id, record.transfer_id, observation.resource,
+                                                           observation.state, self.clock())
+                if bound:
+                    await self._select_on_bound_standby(record, provider, observation, standby_id)
                 return True
             raise TransferError(result.error or self._error(
                 Category.INVALID_ADAPTER_RESPONSE, Stage.RESOLUTION, domain=Domain.PROVIDER,
@@ -1086,6 +1088,25 @@ class TransferEngine(_RecoveryTransferEngine):
                                                       self.clock(),
                                                       manifest_entries=None if manifest is None else len(manifest))
                 await self._select_on_standby(transfer.id, item["request_id"], provider, observed, item["id"])
+
+    async def _select_on_bound_standby(self, record, provider, observation, standby_id: str) -> None:
+        """A backup just bound whose creation answer already lists its files
+        and waits for its selection (transfer 661) is handed the root's
+        established selection now, from that answer -- not one backup poll
+        later, which is when its first observation is due. The one selection
+        owner (``_select_on_standby``) decides, sends and reads back exactly
+        as for an observed backup. This pass's readiness promotion has already
+        run, so a read-back that found it AVAILABLE brings the next pass now
+        through the persisted readiness deadline the scheduler honours (the
+        same wake a committed yield uses)."""
+        if not isinstance(provider, UpstreamSelection):
+            return
+        await self._select_on_standby(record.transfer_id, record.id, provider, observation, standby_id)
+        ready = any(item["id"] == standby_id and item["resource_state"] == ResourceState.AVAILABLE.value
+                    for item in await self.repository.standbys(record.transfer_id))
+        if ready:
+            now = self.clock()
+            self.resolution_deadline = now if self.resolution_deadline is None else min(self.resolution_deadline, now)
 
     async def _select_on_standby(self, transfer_id: int, request_id: str, provider, observed,
                                  standby_id: str) -> None:

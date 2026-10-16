@@ -47,6 +47,7 @@ from transfers.models import ResourceState, SubmissionDemand, TransferRequest
 pytestmark = pytest.mark.asyncio
 
 POLL = 30.0                                   # transfer 659's recorded resource_poll_interval
+DEADLINE_WAKE = 0.05                          # the loop's own floor for a readiness deadline due now
 HASH = "3db68b30a953af479c17c396b69c95223e41b741"
 SINGLE = [(1, f"Akira/{MOVIE}", MOVIE_BYTES)]
 T0 = 1_792_101_070.0                          # 659's acceptance instant
@@ -244,15 +245,18 @@ async def timeline(tmp_path, monkeypatch, *, inventory_offsets=(), during_pass=F
 
 async def test_readiness_the_coordinator_observes_is_acted_on_in_the_same_pass(tmp_path, monkeypatch):
     # Ledger (transfer 660): a provider ready as soon as it is told what to
-    # deliver is read back in the very pass that handed it the selection --
-    # recorded AVAILABLE and yielded to there -- where it used to wait one
-    # full backup poll (``available - selected == POLL``).
+    # deliver is read back in the very pass that handed it the selection,
+    # where it used to wait one full backup poll (``available - selected ==
+    # POLL``). Ledger (transfer 661): that pass is now the one that BOUND the
+    # backup (its creation answer already lists the files), and the yield
+    # follows on the readiness deadline that read-back sets -- the
+    # promotion step of that pass had already run.
     w, vs, marks = await timeline(tmp_path, monkeypatch)
     assert w.fake.count("add_magnet") == 1 and w.fake.selects() == ["1"]  # select-all of the one file
     assert (await operations(w))[-1] == "readiness_promotion"
     assert "operator_switch" not in await operations(w)
-    assert marks["available_by"] == "pass" and marks["available"] == marks["selected"]
-    assert marks["promoted"] == marks["available"]                       # the very pass that observed READY
+    assert marks["available_by"] == "pass" and marks["available"] == marks["selected"] == T0   # the bind pass
+    assert marks["promoted"] == marks["available"] + DEADLINE_WAKE        # the next pass, at once
     assert vs.wakeup.sets == 0                                            # no inventory, no wake
     assert all(item[2] <= POLL for item in vs.log if item[0] == "wait")
 

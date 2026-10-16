@@ -2467,8 +2467,11 @@ class TransferRepository:
         (descriptor-relative, no-follow, empty only). ``settled(db)``: the
         caller's own proof that those claims are still settled, evaluated in
         this same transaction (so nothing that unsettles them can commit
-        between that proof and the removal). Returns that outcome, or
-        ``"not_eligible"`` / ``"claimed"`` / ``"unsettled"`` with nothing touched."""
+        between that proof and the removal). A directory another live
+        transfer has material planned in -- at or beneath ``target`` (the same
+        folder reused by a later submission) -- is that transfer's too and is
+        kept (``"claimed"``). Returns that outcome, or ``"not_eligible"`` /
+        ``"claimed"`` / ``"unsettled"`` with nothing touched."""
         from transfers.filesystem import DIRECTORY_REMOVED, remove_empty_directory
 
         async with get_db() as db:
@@ -2483,6 +2486,14 @@ class TransferRepository:
                 await db.rollback()
                 return "not_eligible"
             if not await self.hold_demand(db, int(row["torrent_id"]), expected_demand):
+                await db.rollback()
+                return "claimed"
+            prefix = str(target).rstrip("/") + "/"
+            if await db.fetchone(
+                    f"""SELECT 1 FROM download_files f JOIN torrents t ON t.id=f.torrent_id
+                        WHERE f.torrent_id!=? AND t.status NOT IN ({",".join("?" * len(_TERMINAL_TRANSFER_STATUSES))})
+                        AND (f.local_path=? OR substr(f.local_path,1,?)=?) LIMIT 1""",
+                    (int(row["torrent_id"]), *_TERMINAL_TRANSFER_STATUSES, str(target), len(prefix), prefix)):
                 await db.rollback()
                 return "claimed"
             if settled is not None and not await settled(db):

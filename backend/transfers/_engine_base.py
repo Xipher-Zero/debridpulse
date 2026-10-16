@@ -104,6 +104,7 @@ from collections.abc import Mapping
 from contextlib import asynccontextmanager
 from dataclasses import replace
 import logging
+import os
 from pathlib import Path
 import time
 from weakref import WeakValueDictionary
@@ -353,6 +354,30 @@ class _EvidenceAuth:
 
 # Bound on one executor boundary-discovery answer (it may read source data).
 BOUNDARY_DISCOVERY_SECONDS = 30.0
+
+
+def _vacancy(folder: str) -> str | None:
+    """A cheap look before a folder retirement's write transaction: ``"absent"``
+    when nothing is there, ``"not_empty"`` when a real directory still holds
+    anything -- the removal could only answer the same, so no transaction is
+    spent on it (a retirement retried later costs nothing once its folder is
+    gone or kept). ``None``: go and decide it, with every check, in the
+    transaction (``filesystem.remove_empty_directory``)."""
+    import stat as _stat
+
+    try:
+        facts = os.lstat(folder)
+    except FileNotFoundError:
+        return "absent"
+    except OSError:
+        return None
+    if not _stat.S_ISDIR(facts.st_mode):
+        return None
+    try:
+        with os.scandir(folder) as entries:
+            return "not_empty" if next(entries, None) is not None else None
+    except OSError:
+        return None
 
 
 class TransferEngine:
@@ -4373,32 +4398,69 @@ class TransferEngine:
             await self._cleanup_resources(transfer_id, explicit=False)
 
     async def retire_vacated_collection(self, transfer_id: int, *, expected_demand, settled=None) -> dict[int, str]:
-        """Remove the empty folder of each completed collection artifact the
-        transfer owns, once its caller has proven that every claim on the
-        transfer (``expected_demand``, re-checked at commit) is a settled
-        delivery. Only a COLLECTION root whose latest writer durably owned it
-        (the same authority every material retirement requires) and that is
-        empty at that instant; contents -- a copy-style import, a leftover --
-        always keep it. ``settled(db)``: the caller's proof that those claims
-        are still settled, re-evaluated inside each removal's own transaction
-        (``repository.retire_vacated_directory``). Observational for the
-        transfer: an outcome per artifact, never a failure, retry or state
-        change."""
+        """Remove the empty folders of the transfer's completed material, once
+        its caller has proven that every claim on the transfer
+        (``expected_demand``, re-checked at commit) is a settled delivery:
+
+        * a COLLECTION artifact's own folder;
+        * for members fanned out of a manifest root (FILE material placed
+          beneath the transfer's frozen ``collection_root``, transfer 661):
+          each now-empty folder from a member's own folder up to and
+          including that collection folder, deepest first -- never the
+          download root, never anything outside the collection folder.
+
+        Only material whose latest writer durably owned it (the same
+        authority every material retirement requires), and only a folder
+        empty at that instant: contents -- a copy-style import, a leftover,
+        another member -- always keep it. ``settled(db)``: the caller's proof
+        that those claims are still settled, re-evaluated inside each
+        removal's own transaction (``repository.retire_vacated_directory``),
+        which also keeps a folder another live transfer has material planned
+        in. A folder already gone is ``absent``. Observational for the
+        transfer: an outcome per artifact (a member's is its collection
+        folder's), never a failure, retry or state change."""
         transfer = await self.repository.get(transfer_id)
         if transfer is None or transfer.state != TransferState.COMPLETED:
             return {}
         outcomes: dict[int, str] = {}
+        collection = (Path(self.root) / transfer.collection_root
+                      if transfer.collection_root and not transfer.collection_root_conflict else None)
         async with self._transfer_locks.setdefault(transfer_id, asyncio.Lock()):
+            folders: dict[str, int] = {}                          # folder -> an artifact that proves it
+            members: dict[int, str] = {}                          # member artifact -> its collection folder
             for artifact in await self.repository.artifacts(transfer_id):
                 previous = await self.repository.previous_writer(artifact.id)
                 if (artifact.state != "completed" or previous is None or not previous.owned
-                        or previous.candidate is None
-                        or previous.candidate.materialization != MaterializationKind.COLLECTION
-                        or not artifact.target):
+                        or previous.candidate is None or not artifact.target):
                     continue
-                outcomes[artifact.id] = await self.repository.retire_vacated_directory(
-                    artifact.id, root=str(self.root), target=str(artifact.target), expected_demand=expected_demand,
+                if previous.candidate.materialization == MaterializationKind.COLLECTION:
+                    outcomes[artifact.id] = _vacancy(str(artifact.target)) or await self.repository.retire_vacated_directory(
+                        artifact.id, root=str(self.root), target=str(artifact.target),
+                        expected_demand=expected_demand, settled=settled)
+                    continue
+                if collection is None:
+                    continue
+                target = Path(artifact.target)
+                try:
+                    below = target.parent.relative_to(collection)
+                except ValueError:
+                    continue                                       # not beneath this transfer's folder
+                if ".." in below.parts:
+                    continue
+                folder = target.parent
+                while True:
+                    folders.setdefault(str(folder), artifact.id)
+                    if folder == collection:
+                        break
+                    folder = folder.parent
+                members[artifact.id] = str(collection)
+            done: dict[str, str] = {}
+            for folder in sorted(folders, key=lambda item: item.count("/"), reverse=True):
+                done[folder] = _vacancy(folder) or await self.repository.retire_vacated_directory(
+                    folders[folder], root=str(self.root), target=folder, expected_demand=expected_demand,
                     settled=settled)
+            for artifact_id, folder in members.items():
+                outcomes[artifact_id] = done.get(folder, "absent")
         return outcomes
 
     async def _retire_detached_material(self, transfer_id: int) -> None:

@@ -30,7 +30,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from test_v113_readiness_handoff_timeline import POLL, operations, standby, timeline
+from test_v113_readiness_handoff_timeline import DEADLINE_WAKE, POLL, T0, operations, standby, timeline
 from test_v113_readiness_promotion import history, rows
 from test_v113_realdebrid_upstream_selection import (
     FILES_592, MOVIE, FakeRealDebrid, choose, lab as rd_lab, preparing_parcel, root as rd_root, submit as rd_submit,
@@ -59,8 +59,8 @@ async def test_a_backup_ready_once_selected_is_read_back_and_yielded_in_the_sele
     w, vs, marks = await timeline(tmp_path, monkeypatch, external=external)
     assert w.fake.selects() == ["1"]                                      # DP's select-all, sent once
     assert marks["available_by"] == "pass"
-    assert marks["available"] == marks["selected"]                       # read back in the selection pass
-    assert marks["promoted"] == marks["selected"]                        # and yielded there: no extra poll
+    assert marks["available"] == marks["selected"] == T0                 # read back in the bind pass (661)
+    assert marks["promoted"] == marks["selected"] + DEADLINE_WAKE         # yielded on its deadline: no extra poll
     assert (await operations(w))[-1] == "readiness_promotion"
     assert "operator_switch" not in await operations(w)
 
@@ -133,7 +133,7 @@ async def test_an_uncertain_selection_is_never_sent_again_and_is_recognized_on_t
     in that pass and nothing is re-sent; the next poll's synchronization
     reads first, finds it applied, and the backup is yielded to then."""
     w, vs, marks = await timeline(tmp_path, monkeypatch, passes=6, ready="now", before_inventory=None)
-    assert marks["promoted"] == marks["selected"]                        # control: the ordinary case
+    assert marks["promoted"] == marks["selected"] + DEADLINE_WAKE         # control: the ordinary case
 
     w, vs, marks = await _with_select_failure(tmp_path / "lost", monkeypatch, "lost")
     assert w.fake.selects() == ["1"]                                      # sent once, never repeated

@@ -60,6 +60,13 @@ DELIVERY_RECHECK_SECONDS = 60.0
 # A reservation whose demand never came to exist was never accepted: the
 # caller was never given its ID. It is forgotten after this long.
 RESERVATION_TTL_SECONDS = 24 * 3600
+# When this process last re-offered acknowledged deliveries' folders to their
+# retirement (``ExternalClients._retire_acknowledged_folders``); 0: never.
+_FOLDER_RETIREMENT_ASKED_AT = 0.0
+# Where that traversal resumes: the ``(acknowledged_at, job_id, generation)``
+# of the last delivery it offered, or ``None`` to start from the oldest.
+# Process memory only: after a restart the walk simply begins again.
+_FOLDER_RETIREMENT_CURSOR: tuple[float, str, int] | None = None
 _KEY_LIMIT = 200
 _TERMINAL = frozenset({"completed", "consolidated", "cancelled", "deleted"})
 _PHASES = ("accepted", "queued", "processing", "completed", "failed", "withdrawn")
@@ -1407,8 +1414,52 @@ class ExternalClients:
         recovered = await self._recover_interrupted()
         released = await self._reconcile_controls()
         refreshed = await self._refresh_unsettled()
+        retired = await self._retire_acknowledged_folders()
         return {"accepted": len(pending), "forgotten": forgotten, "recovered": recovered, "released": released,
-                "refreshed": refreshed}
+                "refreshed": refreshed, "retired": retired}
+
+    async def _retire_acknowledged_folders(self, *, budget: int = REFRESH_BUDGET) -> int:
+        """The acknowledged-delivery folder retirement, asked again: an
+        acknowledgement can arrive before the client's import has emptied the
+        folder (or the folder is otherwise kept for now), and nothing else
+        would ever ask again. Each CURRENT acknowledged delivery still inside
+        its own retention window (``expires_at``) is offered to the one
+        retirement owner (``_retire_after_acknowledgement``: every claim
+        settled, re-proven in the removal's own transaction), at most every
+        ``DELIVERY_RECHECK_SECONDS`` per process and at most ``budget`` per
+        pass.
+
+        Fair: the eligible deliveries are walked in one stable order --
+        oldest acknowledgement first, ``(acknowledged_at, job_id,
+        generation)`` -- each pass resuming after the last one it offered and
+        starting over from the oldest once it reaches the end, so every
+        eligible delivery is offered again within ``ceil(eligible / budget)``
+        passes however many newer ones stay eligible; one acknowledged later
+        joins the end of the current walk. Durable acknowledgements alone
+        decide what is asked, so a restart (the walk begins again) converges;
+        a folder already gone or still holding anything costs no write
+        (``_vacancy``). Returns how many were asked."""
+        global _FOLDER_RETIREMENT_ASKED_AT, _FOLDER_RETIREMENT_CURSOR
+        now = _now()
+        if now - _FOLDER_RETIREMENT_ASKED_AT < DELIVERY_RECHECK_SECONDS:
+            return 0
+        _FOLDER_RETIREMENT_ASKED_AT = now
+        after = _FOLDER_RETIREMENT_CURSOR or (float("-inf"), "", 0)
+        async with get_db() as db:
+            rows = await db.fetchall(
+                """SELECT j.*, d.acknowledged_at AS walk_at, d.generation AS walk_generation
+                   FROM external_deliveries d JOIN external_jobs j ON j.id=d.job_id
+                   WHERE d.acknowledged_at IS NOT NULL AND d.superseded_at IS NULL AND d.expires_at>?
+                     AND (d.acknowledged_at, d.job_id, d.generation) > (?, ?, ?)
+                   ORDER BY d.acknowledged_at, d.job_id, d.generation LIMIT ?""",
+                (now, *after, int(budget)))
+        # The end of the walk: the next pass starts over from the oldest.
+        _FOLDER_RETIREMENT_CURSOR = (
+            (float(rows[-1]["walk_at"]), str(rows[-1]["id"]), int(rows[-1]["walk_generation"]))
+            if len(rows) == int(budget) else None)
+        for row in rows:
+            await self._retire_after_acknowledgement(row)
+        return len(rows)
 
     # ── views ───────────────────────────────────────────────────────────────
 
