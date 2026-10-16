@@ -594,6 +594,8 @@ test('the collection selector is keyboard-complete: modal semantics, focus moves
   await page.keyboard.press('Enter');
   await expect.poll(() => state.cancelHit).toBe(1);
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  // Containment is held through the exit fade and released once it has gone.
+  await expect(page.locator('#overlay')).toBeHidden();
   expect(await page.locator('#modal').getAttribute('tabindex')).toBeNull();
 });
 

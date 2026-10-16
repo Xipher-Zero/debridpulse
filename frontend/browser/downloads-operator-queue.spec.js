@@ -231,6 +231,8 @@ test('U1 a Name click opens Details once; a Name-cell drag reorders and never op
   await expect(page.locator('#overlay')).toHaveClass(/\bopen\b/);
   await page.evaluate(() => closeModal());
   await expect(page.locator('#overlay')).not.toHaveClass(/\bopen\b/);
+  // Details covers the page until it has faded away; the raw drag below waits for that.
+  await expect(page.locator('#overlay')).toBeHidden();
 
   // Drag from the blank space of the Name cell: one move, no Details.
   await drag(page, nameCell(page, 4), row(page, 1), {dx: 0.9});

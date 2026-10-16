@@ -52,7 +52,10 @@ function pageSize(){let value=DEFAULT_PAGE_SIZE;try{value=Number(settingsData?.a
 // nav: the accepted page -- {page, first, oldest, following, pages, lastUnavailable}.
 function restart(){cursor={snapshot:null,windowStart:null};request={};nav=null;investigation++;}
 // One page request within the snapshot; ``page`` is resolved from the accepted answer.
-function go(target){if(pending||!nav)return;request=target;void fetchPage();}
+// A page turn answers at once: the page on screen starts leaving its way while the destination is fetched (ui-motion.js lead).
+let lead=null;
+function dropLead(how){const held=lead;lead=null;if(held)held[how]();}
+function go(target){if(pending||!nav)return;request=target;dropLead('cancel');const way=target.kind==='next'||target.kind==='last'?1:nav.page>1?-1:0;if(way&&window.DPMotion)lead=window.DPMotion.lead({element:document.getElementById('event-list'),axis:'x',direction:way});void fetchPage();}
 const ACTIONS=Object.freeze({first:()=>go({kind:'first'}),previous:()=>go({kind:'previous',after:nav.first}),next:()=>go({kind:'next',before:nav.oldest}),last:()=>go({kind:'last'})});
 function changed(c){syncReset(c);restart();void fetchPage();}
 function bind(){const c=controls();if(!c||bound)return c;bound=true;
@@ -118,10 +121,12 @@ async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='f
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);syncReset(c);};
 // A page turn within the snapshot (the pager's First, Previous, Next, Last) slides from the page on screen; every other answer is shown in place.
 const from=nav?.page||1,to=nav&&['first','previous','next','last'].includes(request.kind)?pageOf(request.kind,from,payload):from;
-if(to!==from&&window.DPMotion)await window.DPMotion.slide({element:document.getElementById('event-list'),axis:'x',direction:Math.sign(to-from),distance:Math.abs(to-from)},()=>{if(search.current(ticket))commit();}).done;else commit();
+const held=to!==from?lead:null;if(held)lead=null;else dropLead('cancel');
+if(to!==from&&window.DPMotion)await window.DPMotion.slide({element:document.getElementById('event-list'),axis:'x',direction:Math.sign(to-from),distance:Math.abs(to-from),lead:held},()=>{if(search.current(ticket))commit();}).done;else commit();
 if(dirty){dirty=false;schedule();}return payload;}
 catch(error){if(!search.current(ticket))return null;const message=(()=>{try{return sanitizeErrorMsg(error?.message||error);}catch(_){return String(error?.message||error);}})();
 // A Last the server cannot prove leaves the page as it was and says why.
+dropLead('revert');
 if(request.kind==='last'&&error?.status===409&&nav){nav={...nav,lastUnavailable:String(error.detail?.message||message)};setPending(c,false);renderPagination({newer_available:!c.newest.hidden},c);try{toast(nav.lastUnavailable,'warn');}catch(_){}return null;}
 setPending(c,false);
 // An Auto Refresh that fails keeps the page -- and its snapshot, cursors and

@@ -198,11 +198,24 @@
     const authority = text(active.challenge && active.challenge.authority).trim();
 
     if (!state.overlay) {
-      state.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      // A challenge presented while the previous one is still fading out
+      // inherits that one's return target, not the leaving overlay.
+      state.previousFocus = window.DPMotion ? window.DPMotion.focusOrigin()
+        : document.activeElement instanceof HTMLElement ? document.activeElement : null;
       const overlay = document.createElement('div');
       overlay.className = 'dp-modal-overlay dp-auth-required-overlay';
       overlay.dataset.dpAuthRequiredOverlay = '1';
+      const active = document.activeElement;
+      const handedOver = !!(active && active.closest && active.closest('.dp-auth-required-overlay.is-closing'));
+      if (window.DPMotion) window.DPMotion.enter(overlay, '.dp-auth-required-overlay');
       document.body.appendChild(overlay);
+      if (handedOver) {
+        // Taking over from a challenge that held focus while leaving: this
+        // one holds it until its own field takes it, so the page never has it.
+        overlay.tabIndex = -1;
+        overlay.addEventListener('blur', () => overlay.removeAttribute('tabindex'), {once: true});
+        overlay.focus({preventScroll: true});
+      }
       document.body.classList.add('dp-modal-open');
       document.addEventListener('keydown', handleDocumentKeydown, true);
       state.overlay = overlay;
@@ -304,8 +317,9 @@
 
   function handleDocumentKeydown(event) {
     // Escape is held by the dialog -- nothing beneath it reacts -- and is
-    // inert: passive dismissal never cancels the transfer.
-    if (event.key !== 'Escape' || !state.overlay) return;
+    // inert: passive dismissal never cancels the transfer. A dialog fading
+    // out still holds it until it is gone.
+    if (event.key !== 'Escape' || !document.querySelector('.dp-auth-required-overlay')) return;
     event.preventDefault();
     event.stopPropagation();
   }
@@ -591,20 +605,28 @@
     if (state.active) clearSecretObject(state.active);
     state.active = null;
 
-    document.removeEventListener('keydown', handleDocumentKeydown, true);
-    if (state.overlay) {
-      state.overlay.onkeydown = null;
-      state.overlay.onclick = null;
-      state.overlay.remove();
-      state.overlay = null;
-    }
-    if (!document.querySelector('.dp-modal-overlay')) {
-      document.body.classList.remove('dp-modal-open');
-    }
+    const overlay = state.overlay;
     const previous = state.previousFocus;
+    state.overlay = null;
     state.previousFocus = null;
-    if (previous && previous.isConnected) {
-      try { previous.focus(); } catch (_) {}
+    if (overlay) {
+      overlay.onkeydown = null;
+      overlay.onclick = null;
+      // It fades away in place, still covering the page, holding the keyboard
+      // and the page lock; only once it is gone are they released and focus
+      // returned, once (ui-motion.js leave/restore). A next challenge shown
+      // meanwhile replaces it at once and keeps them.
+      const leaving = window.DPMotion
+        ? window.DPMotion.leave(overlay, overlay.querySelector('.dp-modal-dialog'), previous) : Promise.resolve();
+      leaving.then(() => {
+        if (window.DPMotion) window.DPMotion.restore(overlay, previous);
+        else {
+          overlay.remove();
+          if (previous && previous.isConnected) { try { previous.focus(); } catch (_) {} }
+        }
+        if (!document.querySelector('.dp-modal-overlay')) document.body.classList.remove('dp-modal-open');
+        if (!state.overlay) document.removeEventListener('keydown', handleDocumentKeydown, true);
+      });
     }
     presentNext();
   }

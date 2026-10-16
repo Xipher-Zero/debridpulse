@@ -14,6 +14,9 @@
   --dp-motion-long: 450ms;
   --dp-motion-expand: 250ms;
   --dp-motion-collapse: 200ms;
+  /* Fullscreen modals fade in place (ui-modal-contract.css). */
+  --dp-modal-enter: 200ms;
+  --dp-modal-exit: 160ms;
   --dp-motion-ease: cubic-bezier(0.4, 0, 0.2, 1);
 }
 

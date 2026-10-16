@@ -25,14 +25,24 @@
     if (!activeBackdrop) return;
 
     const opener = activeOpener;
-    activeBackdrop.remove();
+    const target = restoreFocus && opener ? opener : null;
+    // It fades away in place, still covering the page, holding the keyboard
+    // and the page lock; only once it is gone are they released and focus
+    // returned, once (ui-motion.js leave/restore). A document opened
+    // meanwhile replaces it at once and keeps the lock.
+    const backdrop = activeBackdrop;
+    const leaving = window.DPMotion
+      ? window.DPMotion.leave(backdrop, backdrop.querySelector('.dp-dialog'), target) : Promise.resolve();
     activeBackdrop = null;
     activeOpener = null;
-    document.body.classList.remove('dp-help-legal-modal-open');
-
-    if (restoreFocus && opener && document.contains(opener)) {
-      opener.focus();
-    }
+    leaving.then(function () {
+      if (window.DPMotion) window.DPMotion.restore(backdrop, target);
+      else {
+        backdrop.remove();
+        if (target && document.contains(target)) target.focus();
+      }
+      if (!activeBackdrop) document.body.classList.remove('dp-help-legal-modal-open');
+    });
   }
 
   function trapDialogKeydown(event, dialog) {
@@ -224,6 +234,7 @@
     const modal = makeModal(opener);
     activeBackdrop = modal.backdrop;
     document.body.classList.add('dp-help-legal-modal-open');
+    if (window.DPMotion) window.DPMotion.enter(modal.backdrop, '.dp-backdrop');
     document.body.appendChild(modal.backdrop);
     modal.close.focus();
 

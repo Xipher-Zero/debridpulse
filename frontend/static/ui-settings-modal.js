@@ -94,9 +94,10 @@
     return sharedIdentity(element, identity) === Object.keys(identity.attributes).length;
   }
 
-  // The initiating control and the identities of everything it sits under, captured at open.
+  // The initiating control and the identities of everything it sits under, captured at open
+  // (a dialog opened while another is still leaving returns where that one would have).
   function captureFocusOrigin() {
-    const opener = document.activeElement;
+    const opener = window.DPMotion ? window.DPMotion.focusOrigin() : document.activeElement;
     if (!(opener instanceof HTMLElement) || opener === document.body) return null;
     const chain = [];
     for (let node = opener; node && node !== document.body && node !== document.documentElement; node = node.parentElement) {
@@ -172,10 +173,11 @@
     }
   }
 
-  // The one Escape owner and the one focus-trap owner, for the top-most dialog only.
+  // The one Escape owner and the one focus-trap owner, for the top-most dialog only
+  // (a leaving dialog holds the keyboard itself until it has gone).
   function onKeydown(event) {
     const entry = mounted[mounted.length - 1];
-    if (!entry || event.defaultPrevented) return;
+    if (!entry || entry.leaving || event.defaultPrevented) return;
     const overlays = document.querySelectorAll(OVERLAY_SELECTOR);
     if (overlays[overlays.length - 1] !== entry.overlay) return;
     if (event.key === 'Escape') {
@@ -273,12 +275,21 @@
     function settle(accepted) {
       if (settled) return;
       settled = true;
-      mounted.splice(mounted.indexOf(entry), 1);
-      overlay.remove();
-      if (!document.querySelector(OVERLAY_SELECTOR)) document.body.classList.remove(BODY_OPEN_CLASS);
-      if (!mounted.length) document.removeEventListener('keydown', onKeydown);
-      const target = resolveFocusTarget(origin);
-      if (target) target.focus();
+      // It fades away in place, still mounted, covering the page and holding
+      // the keyboard (ui-motion.js leave); its client learns the outcome now.
+      // Only once it has gone are it, the page lock and the key handler
+      // released and focus returned -- once, and never out of a dialog that
+      // has opened meanwhile.
+      entry.leaving = true;
+      const leaving = window.DPMotion ? window.DPMotion.leave(overlay, dialog, resolveFocusTarget(origin)) : Promise.resolve();
+      leaving.then(() => {
+        mounted.splice(mounted.indexOf(entry), 1);
+        const target = resolveFocusTarget(origin);   // where it belongs now, after the exit
+        if (window.DPMotion) window.DPMotion.restore(overlay, target);
+        else { overlay.remove(); if (target) target.focus(); }
+        if (!document.querySelector(OVERLAY_SELECTOR)) document.body.classList.remove(BODY_OPEN_CLASS);
+        if (!mounted.length) document.removeEventListener('keydown', onKeydown);
+      });
       resolveClosed(Object.freeze({accepted: accepted === true}));
     }
 
@@ -341,6 +352,7 @@
 
     if (!mounted.length) document.addEventListener('keydown', onKeydown);
     mounted.push(entry);
+    if (window.DPMotion) window.DPMotion.enter(overlay, `${OVERLAY_SELECTOR}:not(.dp-auth-required-overlay)`);
     document.body.appendChild(overlay);
     document.body.classList.add(BODY_OPEN_CLASS);
     (cancel || dialog).focus();

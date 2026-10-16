@@ -29,7 +29,9 @@ def test_overlay_uses_canonical_dialog_semantics_and_normal_close_paths():
     assert "if (event.target === backdrop) closeModal();" in runtime
     assert "event.key === 'Escape'" in runtime
     assert "event.key !== 'Tab'" in runtime
-    assert "opener.focus();" in runtime
+    # Focus returns to the opener once the dialog has gone (ui-motion.js restore).
+    assert "const target = restoreFocus && opener ? opener : null;" in runtime
+    assert "window.DPMotion.restore(backdrop, target);" in runtime
 
     assert "overflow-y: auto" in css
     assert "max-height: min(86vh, 900px)" in css

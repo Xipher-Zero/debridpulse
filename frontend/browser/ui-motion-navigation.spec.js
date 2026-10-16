@@ -801,3 +801,121 @@ test('Skip Local Connection Confirmation with reduced motion: its appearance and
   await expect(skip).toBeDisabled();
   expect(await cell(page).evaluate(node => getComputedStyle(node).opacity)).toBe('0.45');
 });
+
+// ── Immediate page-turn response (lead-in while the destination is fetched) ──
+/* Every frame from just before `act` until the turn has settled: the surface
+ * content's live horizontal offset (as a share of the surface), what it shows
+ * first, and whether a slide is running. */
+async function leadFrames(page, surfaceSelector, act, firstRowText) {
+  await page.evaluate(([selector, text]) => {
+    window.__lead = [];
+    window.__leading = true;
+    const t0 = performance.now();
+    const sample = () => {
+      const surface = document.querySelector(selector), child = surface?.firstElementChild;
+      const m = child && /matrix\(([^)]+)\)/.exec(getComputedStyle(child).transform);
+      const width = surface ? surface.getBoundingClientRect().width : 1;
+      window.__lead.push({t: performance.now() - t0, x: m ? Number(m[1].split(',')[4]) / width : 0,
+        sliding: !!document.querySelector('.dp-motion-surface'), first: surface?.innerText.slice(0, 200) || ''});
+      if (window.__leading) requestAnimationFrame(sample);
+    };
+    window.__clickAt = null;
+    document.addEventListener('pointerdown', () => { window.__clickAt = performance.now() - t0; }, {capture: true, once: true});
+    requestAnimationFrame(sample);
+  }, [surfaceSelector, firstRowText]);
+  await act();
+}
+const stopLead = page => page.evaluate(() => { window.__leading = false; return {frames: window.__lead, clickAt: window.__clickAt}; });
+
+test('Downloads: a page turn moves at once, then shows the authoritative page when it arrives; a failed turn comes back', async ({page}) => {
+  await boot(page);
+  const requests = await tenPagesOfDownloads(page);
+  let delay = 400, fail = false;
+  await page.route('**/api/torrents**', async route => {
+    const url = new URL(route.request().url());
+    if (url.pathname !== '/api/torrents' || !url.searchParams.has('offset')) return route.fallback();
+    await new Promise(resolve => setTimeout(resolve, delay));
+    if (fail) return route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"busy"}'});
+    return route.fallback();
+  });
+  await page.goto('/');
+  await page.evaluate(() => nav(document.querySelector('[data-view="torrents"]')));
+  const pager = page.locator('#torrent-page-btns'), current = pager.locator('.dp-pager-current');
+  await expect(current).toHaveText('1');
+  await settled(page);
+  const wrap = '#view-torrents .dp-downloads-table-wrap';
+
+  await clear(page);
+  const asked = requests.length;
+  await leadFrames(page, wrap, () => pager.locator('[aria-label="Next page"]').click());
+  // A second click while the turn is pending: the pager is inert, so it asks for nothing more.
+  await page.evaluate(() => document.querySelector('#torrent-page-btns [aria-label="Next page"]')?.click());
+  await expect(current).toHaveText('2');
+  await settled(page);
+  const {frames, clickAt} = await stopLead(page);
+  const moving = frames.find(frame => Math.abs(frame.x) > 0.002);
+  expect(moving.t - clickAt).toBeLessThan(80);                       // moving within a few frames of the click...
+  const arrived = frames.find(frame => frame.sliding);
+  expect(arrived.t - clickAt).toBeGreaterThan(380);                  // ...long before the 400 ms answer arrives
+  const before = frames.filter(frame => frame.t < arrived.t);
+  expect(Math.min(...before.map(frame => frame.x))).toBeGreaterThanOrEqual(-0.081);   // leads left (forward), at most 8%
+  expect(before.every(frame => frame.x <= 0.0001)).toBe(true);
+  expect(before.every(frame => frame.first.includes('Transfer 1\n') || frame.first.includes('Transfer 1'))).toBe(true);   // page 1 until the answer
+  expectSlide(await lastSlide(page), {scope: 'downloads', axis: 'x', direction: 'forward', step: 'adjacent'});
+  expect(requests.length - asked).toBe(1);                           // one request, for page 2 only
+  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(requests.at(-1).offset + 1));
+  expect(await page.locator(wrap).evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
+
+  // A failed turn: the page comes back into place, the pager is usable again.
+  fail = true;
+  await leadFrames(page, wrap, () => pager.locator('[aria-label="Next page"]').click());
+  await expect.poll(() => page.locator(wrap).evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
+  const failed = await stopLead(page);
+  expect(failed.frames.some(frame => frame.x < -0.002)).toBe(true);   // it did move off, and came back
+  await expect(current).toHaveText('2');
+  await expect(page.locator('#t-tbody tr[data-torrent-id]').first()).toHaveAttribute('data-torrent-id', String(requests.at(-1).offset + 1));
+  fail = false;
+  delay = 0;
+  await pager.locator('[aria-label="Next page"]').click();
+  await expect(current).toHaveText('3');
+});
+
+test('Activity Log: a page turn moves at once within its snapshot; a refused Last comes back', async ({page}) => {
+  await boot(page);
+  const requests = [];
+  let delay = 400;
+  await page.route('**/api/events?**', async route => {
+    const q = Object.fromEntries(new URL(route.request().url()).searchParams);
+    requests.push(q);
+    if (q.limit !== '1') await new Promise(resolve => setTimeout(resolve, delay));
+    if (q.last) return route.fulfill({status: 409, contentType: 'application/json', body: JSON.stringify({detail: {
+      code: 'last_page_unavailable', message: 'The last page cannot be found yet.'}})});
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify(journal(Number(q.limit)).answer(q))});
+  });
+  await page.goto('/');
+  await page.evaluate(() => { settingsData.activity_log_page_size = 50; });
+  await page.evaluate(() => nav(document.querySelector('[data-view="events"]')));
+  const pager = page.locator('#dp-activity-page-btns'), current = pager.locator('.dp-pager-current');
+  await expect(current).toHaveText('1');
+
+  await clear(page);
+  await leadFrames(page, '#event-list', () => pager.locator('[aria-label="Next page"]').click());
+  await expect(current).toHaveText('2');
+  await settled(page);
+  const {frames, clickAt} = await stopLead(page);
+  const moving = frames.find(frame => Math.abs(frame.x) > 0.002);
+  expect(moving.t - clickAt).toBeLessThan(80);
+  const arrived = frames.find(frame => frame.sliding);
+  expect(arrived.t - clickAt).toBeGreaterThan(380);
+  expect(frames.filter(frame => frame.t < arrived.t).every(frame => frame.first.startsWith('Event 457') || frame.first.includes('Event 457'))).toBe(true);
+  expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'adjacent'});
+  expect(requests.at(-1)).toMatchObject({snapshot: '457', before: '408'});      // the same snapshot and cursor as ever
+
+  // Last is refused (409): the page comes back, the pager says why, page 2 stays.
+  await leadFrames(page, '#event-list', () => pager.locator('[aria-label="Last page"]').click());
+  await expect(page.locator('#toasts .toast')).toHaveCount(1);
+  await expect.poll(() => page.locator('#event-list').evaluate(node => getComputedStyle(node.firstElementChild).transform)).toBe('none');
+  const refused = await stopLead(page);
+  expect(refused.frames.some(frame => frame.x < -0.002)).toBe(true);
+  await expect(current).toHaveText('2');
+});

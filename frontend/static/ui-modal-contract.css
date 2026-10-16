@@ -481,3 +481,65 @@ body.light .dp-modal-dialog {
   #modal { width: 95vw !important; max-height: 85vh; }
   .detail-grid { grid-template-columns: 1fr !important; }
 }
+
+/* ── Fullscreen modal entry and exit (ui-motion.js) ─────────────────────────
+   Every fullscreen modal fades in place: its overlay -- the backdrop's own
+   dimming and blur, and the panel within it -- rises from transparent from
+   its first frame and falls away when closing, with no movement or scaling.
+   Closing (`is-closing`, DPMotion.leave) keeps the overlay covering the page
+   until it has faded; its owner then removes or hides it. A panel re-rendered
+   or hydrated inside an open overlay does not fade again. */
+#overlay.open,
+.dp-modal-overlay,
+.dp-backdrop {
+  transition: opacity var(--dp-modal-enter) ease-out;
+}
+
+@starting-style {
+  #overlay.open,
+  .dp-modal-overlay,
+  .dp-backdrop {
+    opacity: 0;
+  }
+}
+
+#overlay.is-closing {
+  display: flex;
+}
+
+/* Opened while one of its kind was still fading out: the backdrop simply
+   continues (DPMotion.enter). */
+.dp-modal-overlay.is-continued,
+.dp-backdrop.is-continued {
+  transition: none;
+}
+
+#overlay.is-closing:not(.open),
+.dp-modal-overlay.is-closing,
+.dp-backdrop.is-closing {
+  opacity: 0;
+  transition: opacity var(--dp-modal-exit) ease-in;
+}
+
+/* Transfer Details awaiting its content: the backdrop is up, the shell
+   appears with its content (or, if that is slow, with a loading line). */
+#modal {
+  transition: opacity var(--dp-modal-enter) ease-out;
+}
+
+#modal[data-dp-modal-pending] {
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #overlay.open,
+  #overlay.is-closing:not(.open),
+  .dp-modal-overlay,
+  .dp-modal-overlay.is-closing,
+  .dp-backdrop,
+  .dp-backdrop.is-closing,
+  #modal {
+    transition: none;
+  }
+}

@@ -44,6 +44,13 @@ let torrentTotal = 0;
 // in place.
 let renderedTorrentPage = 1;
 let torrentPageTurn = null;
+// The turn's content already leading off while its page is fetched.
+let torrentPageLead = null;
+function dropTorrentPageLead(how) {
+  const lead = torrentPageLead;
+  torrentPageLead = null;
+  if (lead) lead[how]();
+}
 let _selectedIds = new Set();
 // Each shown row's server-given access (``access.destroy``, ``access.own_requests``), by id.
 const _rowAccess = new Map();
@@ -334,6 +341,13 @@ function goToTorrentPage(p, {turn = false} = {}) {
   if (nextPage !== torrentPage) clearSelection();
   torrentPage = nextPage;
   torrentPageTurn = turn ? nextPage : null;
+  // The turn answers at once: the page on screen starts leaving its way
+  // while the destination is fetched (ui-motion.js lead).
+  dropTorrentPageLead('cancel');
+  if (turn && nextPage !== renderedTorrentPage && window.DPMotion) {
+    torrentPageLead = window.DPMotion.lead({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'),
+                                            axis: 'x', direction: Math.sign(nextPage - renderedTorrentPage)});
+  }
   searchControl().invalidate();
   // Inert until the requested page is rendered (or its request fails).
   window.DPPager?.pending(document.getElementById('torrent-page-btns'), true);
@@ -552,14 +566,19 @@ async function fetchAndRenderTorrents() {
     // anything else is painted in place.
     const turn = torrentPageTurn === _requestedPage ? _requestedPage - renderedTorrentPage : 0;
     torrentPageTurn = null;
+    const lead = turn ? torrentPageLead : null;
+    if (turn) torrentPageLead = null; else dropTorrentPageLead('cancel');
     if (turn && window.DPMotion) {
-      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), distance: Math.abs(turn)},
+      await window.DPMotion.slide({element: document.querySelector('#view-torrents .dp-downloads-table-wrap'), axis: 'x', direction: Math.sign(turn), distance: Math.abs(turn), lead},
         () => { if (searchControl().current(ticket)) paint(); }).done;
     } else {
       paint();
     }
   } catch (e) {
     if (!searchControl().current(ticket)) return;
+    // The turn did not happen: the page on screen comes back into place.
+    torrentPageTurn = null;
+    dropTorrentPageLead('revert');
     window.DPPager?.pending(document.getElementById('torrent-page-btns'), false);
     if (searchControl().fail(ticket, e) === 'retried') return;
     toast(sanitizeErrorMsg(e.message), 'error');

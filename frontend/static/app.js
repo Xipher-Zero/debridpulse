@@ -1971,6 +1971,7 @@ const DPModal = (function () {
   let onCloseCallback = null;
   let focusReturnTarget = null;
   let containFocus = false;
+  let exits = 0;                    // the exit in progress; a reopening supersedes it
 
   function containTab(event) {
     const modal = document.getElementById('modal');
@@ -2003,8 +2004,18 @@ const DPModal = (function () {
 
     activeMode = opts.mode || 'details';
     onCloseCallback = typeof opts.onClose === 'function' ? opts.onClose : null;
-    focusReturnTarget = opts.focusReturn ||
-      (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    // Opened while a dialog is still fading out, it inherits that one's return target.
+    focusReturnTarget = opts.focusReturn || (window.DPMotion ? window.DPMotion.focusOrigin()
+      : document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    exits += 1;                     // a closing shell reopened: it fades back from where it is
+    if (overlay) overlay.classList.remove('is-closing');
+    if (modal) {
+      modal.inert = false;
+      modal.style.height = '';      // a held shell (reveal({hold})) is released with a new opening
+      // `pending`: the shell waits, unseen, for its content (reveal()).
+      if (opts.pending === true) modal.dataset.dpModalPending = '';
+      else delete modal.dataset.dpModalPending;
+    }
 
     if (overlay) { overlay.classList.add('open'); overlay.dataset.dpModalMode = activeMode; }
     if (modal) modal.dataset.dpModalMode = activeMode;
@@ -2039,32 +2050,54 @@ const DPModal = (function () {
     const modal = document.getElementById('modal');
     const footer = document.getElementById('modal-footer');
     const closedMode = activeMode;
+    if (overlay && !overlay.classList.contains('open')) return;   // already closed (or closing)
 
     if (overlay) { overlay.classList.remove('open'); delete overlay.dataset.dpModalMode; }
     if (modal) delete modal.dataset.dpModalMode;
-    if (footer) { footer.hidden = true; footer.innerHTML = ''; }
-
     activeMode = null;
     onCloseCallback = null;
-    if (containFocus) {
-      containFocus = false;
-      document.removeEventListener('keydown', containTab);
-      if (modal) modal.removeAttribute('tabindex');
-    }
     const returnTarget = focusReturnTarget;
     focusReturnTarget = null;
+    // The shell fades away in place, still covering the page and holding the
+    // keyboard; only once it is gone is it put away, Tab containment released
+    // and focus returned, once -- unless it was opened again meanwhile.
+    const exit = ++exits;
+    const leaving = window.DPMotion ? window.DPMotion.leave(overlay, modal, returnTarget) : Promise.resolve();
+    leaving.then(() => {
+      if (exit !== exits) return;
+      if (overlay) overlay.classList.remove('is-closing');
+      if (modal) { modal.inert = false; delete modal.dataset.dpModalPending; modal.style.height = ''; }
+      if (footer) { footer.hidden = true; footer.innerHTML = ''; }
+      if (containFocus) {
+        containFocus = false;
+        document.removeEventListener('keydown', containTab);
+        if (modal) modal.removeAttribute('tabindex');
+      }
+      if (window.DPMotion) window.DPMotion.restore(overlay, returnTarget, {remove: false});
+      else if (returnTarget && typeof returnTarget.focus === 'function') {
+        try { returnTarget.focus({preventScroll: true}); } catch (_) {}
+      }
+    });
 
     if (closedMode === 'details') {
       document.dispatchEvent(new CustomEvent('debridpulse:detail-closed',
         {detail: {reason: reason || null}}));
     }
-    if (returnTarget && typeof returnTarget.focus === 'function') {
-      try { returnTarget.focus({preventScroll: true}); } catch (_) {}
-    }
+  }
+
+  // The pending shell's content has arrived (or is slow): it fades in now.
+  // `hold`: shown before its content, it takes its full height -- the shell's
+  // own max-height -- and keeps it, so the content arriving never resizes it.
+  function reveal({hold = false} = {}) {
+    const modal = document.getElementById('modal');
+    if (!modal || !('dpModalPending' in modal.dataset)) return;
+    if (hold) modal.style.height = getComputedStyle(modal).maxHeight;
+    delete modal.dataset.dpModalPending;
   }
 
   return {
     open,
+    reveal,
     requestModalClose,
     finishClose,
     footer: function () { return document.getElementById('modal-footer'); },
@@ -2191,13 +2224,25 @@ function dpRenderErrorDisclosure(modalBody, t) {
   field.replaceChildren(disclosure);
 }
 
+/* Details opens its backdrop at once and its shell with its content: the
+ * shell stays unseen until the transfer is rendered into it, so it never
+ * appears small and then grows. Only an answer slower than
+ * DETAIL_LOADING_GRACE_MS shows the loading line first -- inside the shell at
+ * its full height, which the content then fills without resizing it.
+ * Each opening is its own: an answer for an earlier one, or one arriving after
+ * the shell was closed or given to another view, is never shown. */
+const DETAIL_LOADING_GRACE_MS = 300;
+let dpDetailOpening = 0;
 async function showDetail(id) {
   const modalTitle = document.getElementById('modal-title');
   const modalBody = document.getElementById('modal-body');
   dpDetailResource = null;
   dpCloseContextMenu(false);
+  const opening = ++dpDetailOpening;
+  const current = () => opening === dpDetailOpening && DPModal.mode === 'details';
 
-  DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details'});
+  DPModal.open({mode: 'details', title: 'Loading…', closeLabel: 'Close details', pending: true});
+  const slow = setTimeout(() => { if (current()) DPModal.reveal({hold: true}); }, DETAIL_LOADING_GRACE_MS);
   const traceButton = document.querySelector('#modal .dp-detail-trace');
   if (traceButton) traceButton.dataset.dpTransferId = String(id);
 
@@ -2208,6 +2253,7 @@ async function showDetail(id) {
 
   try {
     const t = await api('GET',`/torrents/${id}`);
+    if (!current()) return;
 
     if (modalTitle) {
       modalTitle.textContent =
@@ -2303,6 +2349,7 @@ async function showDetail(id) {
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: t}}));
   } catch(e) {
+    if (!current()) return;
     if (modalBody) {
       modalBody.innerHTML =
         `<div class="empty" style="padding:24px">Failed to load details: ${esc(sanitizeErrorMsg(e.message))}</div>`;
@@ -2311,6 +2358,9 @@ async function showDetail(id) {
     toast(sanitizeErrorMsg(e.message),'error');
     document.dispatchEvent(new CustomEvent('debridpulse:detail-rendered',
       {detail: {transferId: Number(id), transfer: null, error: true}}));
+  } finally {
+    clearTimeout(slow);
+    if (current()) DPModal.reveal();
   }
 }
 
