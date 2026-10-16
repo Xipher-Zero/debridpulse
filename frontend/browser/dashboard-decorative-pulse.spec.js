@@ -55,8 +55,10 @@ async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-prefe
         body: 'event: connected\ndata: {}\n\nevent: stats_changed\ndata: {}\n\n'});
     });
   }
-  // The throughput facts: {bps, peak}, read at every poll.
-  await page.route('**/api/execution/throughput', route => route.fulfill({status: 200, contentType: 'application/json',
+  // The throughput facts: {bps, peak}, read at every poll ({fail: true}: the poll fails, as when the server is unreachable).
+  await page.route('**/api/execution/throughput', route => throughput.fail
+    ? route.fulfill({status: 503, contentType: 'application/json', body: '{"detail":"unavailable"}'})
+    : route.fulfill({status: 200, contentType: 'application/json',
     body: JSON.stringify({ok: true, download_bytes_per_second: throughput.bps, sustained_peak_bytes_per_second: throughput.peak,
       max_download_bytes_per_second: 0})}));
   // Only the test moves time, from before the application exists (page-clock.js).
@@ -1042,33 +1044,235 @@ test('Global Pause All while another view is shown: the first frame back is alre
   expect(await page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'))).toBe(true);
 });
 
-test('a hidden document suspends the clock and, shown again, goes on from the heartbeat it had reached without replaying any', async ({page}) => {
+// ── A hidden document: the strip shown again is the one that was never hidden ──
+/* Hide or show the document (the test stands in for the browser's own tab
+ * switch: document.hidden and its visibilitychange), and read the strip in the
+ * same task -- what the first painted frame after it shows. */
+const setHidden = (page, hidden) => page.evaluate(hidden => {
+  Object.defineProperty(document, 'hidden', {configurable: true, get: () => hidden});
+  document.dispatchEvent(new Event('visibilitychange'));
+  return {now: performance.now(), lines: [...document.querySelectorAll('#view-dashboard .dp-card-spark-line')].map(line => line.getAttribute('d'))};
+}, hidden);
+const parse = d => ({points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])])});
+/* Where each heartbeat born at `born` (ms, the page's own clock) must stand at
+ * `now` on each card: its leading edge, from its age alone (the strip's route
+ * from the rendered cards; only complexes wholly inside a card, clear of its
+ * edges, are compared). */
+function expectedLeads(cards, born, now) {
+  const {entries} = route(cards);
+  return cards.map((card, i) => born.map(b => card.width - ((now - b) * SPEED - entries[i]))
+    .filter(x => x > 4 && x + 64 < card.width).sort((p, q) => p - q));
+}
+const drawnLeads = (cards, lines) => lines.map((d, i) => leads(parse(d)).filter(x => x > 4 && x + 64 < cards[i].width).sort((p, q) => p - q));
+/* The same birth instants, each within the 1 ms a timer fires on (a heartbeat
+ * born while hidden takes its due instant exactly; a running timer fires on
+ * the following whole millisecond) -- 0.24 px of travel. */
+function expectSameBirths(actual, expected) {
+  expect(actual.length, `${actual} vs ${expected}`).toBe(expected.length);
+  actual.forEach((born, i) => expect(Math.abs(born - expected[i]), `${actual} vs ${expected}`).toBeLessThanOrEqual(1));
+}
+function expectLeadsAt(actual, expected) {
+  expect(actual.map(card => card.length)).toEqual(expected.map(card => card.length));
+  actual.flat().forEach((x, i) => expect(Math.abs(x - expected.flat()[i])).toBeLessThanOrEqual(0.6));
+}
+/* Two pages, one watched throughout and one hidden for a while, under the same
+ * clock steps and facts: their heartbeats are born at the same instants. */
+async function watchedAndHidden(browser, options = {}) {
+  const watched = await browser.newPage(), hidden = await browser.newPage();
+  const facts = {watched: {...(options.throughput || {bps: 23, peak: 83})}, hidden: {...(options.throughput || {bps: 23, peak: 83})}};
+  await boot(watched, {...options, throughput: facts.watched});
+  await boot(hidden, {...options, throughput: facts.hidden});
+  const origin = {watched: (await heartbeatState(watched)).now, hidden: (await heartbeatState(hidden)).now};
+  const bornSince = async key => (await heartbeatState(key === 'watched' ? watched : hidden)).born.map(born => Math.round(born - origin[key]));
+  const run = async ms => { for (let t = 0; t < ms; t += 500) { await watched.clock.runFor(500); await hidden.clock.runFor(500); } };
+  return {watched, hidden, facts, origin, bornSince, run, close: async () => { await watched.close(); await hidden.close(); }};
+}
+
+for (const [label, away, expired] of [['before any heartbeat leaves the strip', 1000, false], ['long enough for some to leave it', 5000, true],
+                                      ['longer than the whole strip', 30000, true]]) {
+  test(`hidden ${label}: the first frame back holds exactly the heartbeats a watched strip holds, each where its age puts it`, async ({browser}) => {
+    test.setTimeout(120000);
+    const pair = await watchedAndHidden(browser);
+    try {
+      await pair.run(2 * INTERVAL + 1500);                                // two heartbeats on the strip (at 2 s and 4 s)
+      const before = await pair.bornSince('hidden');
+      expectSameBirths(before, [2000, 4000]);
+      await setHidden(pair.hidden, true);
+      expect(await pair.hidden.evaluate(() => [_dashboardHeartbeat.timer, _dashboardHeartbeat.frame])).toEqual([0, 0]);
+      await pair.run(away);
+      const first = await setHidden(pair.hidden, false);
+      const cards = await strip(pair.hidden);
+      // Independently: at a steady 30 BPM a heartbeat is born every 2 s from the strip's start; those whose
+      // trails have not yet left the strip are on it, each at the place its age carries it to.
+      const elapsed = Math.round(first.now - pair.origin.hidden);
+      const lattice = Array.from({length: Math.floor(elapsed / INTERVAL)}, (_, k) => (k + 1) * INTERVAL);
+      const kept = await pair.bornSince('hidden');
+      expectSameBirths(kept, lattice.filter(born => born >= kept[0] - 1));   // born on time, none skipped, none doubled
+      if (expired) expect(kept[0]).toBeGreaterThan(before[0] + 1); else expect(kept.slice(0, 2)).toEqual(before);
+      expectSameBirths(kept, await pair.bornSince('watched'));           // exactly the watched strip's heartbeats
+      expectLeadsAt(drawnLeads(cards, first.lines), expectedLeads(cards, kept.map(b => b + pair.origin.hidden), first.now));
+      expect(drawnLeads(cards, first.lines).flat().length).toBeGreaterThan(0);
+      // And it goes on from there: one step later every heartbeat has moved exactly one step's travel.
+      await pair.watched.clock.runFor(STEP);
+      await pair.hidden.clock.runFor(STEP);
+      expectSameStrip(allLeads(await strip(pair.hidden)), allLeads(await strip(pair.watched)));
+    } finally { await pair.close(); }
+  });
+}
+
+test('hidden while the cadence changes, polls still arriving: the heartbeats due meanwhile are born at the watched strip\'s instants', async ({browser}) => {
+  test.setTimeout(120000);
+  const pair = await watchedAndHidden(browser);
+  try {
+    await pair.run(INTERVAL + 500);
+    await setHidden(pair.hidden, true);
+    pair.facts.watched.bps = pair.facts.hidden.bps = 83;                 // towards 90 BPM while hidden
+    await pair.run(6000);
+    const first = await setHidden(pair.hidden, false);
+    const kept = await pair.bornSince('hidden');
+    expectSameBirths(kept, await pair.bornSince('watched'));
+    expect(new Set(kept).size).toBe(kept.length);
+    expect(intervals(kept).every(gap => gap >= 60000 / 90 - 1)).toBe(true);
+    const cards = await strip(pair.hidden);
+    expectLeadsAt(drawnLeads(cards, first.lines), expectedLeads(cards, kept.map(b => b + pair.origin.hidden), first.now));
+  } finally { await pair.close(); }
+});
+
+test('hidden while the throughput cannot be read: only the heartbeats the clock\'s last facts make, none invented', async ({browser}) => {
+  test.setTimeout(120000);
+  const pair = await watchedAndHidden(browser);
+  try {
+    await pair.run(INTERVAL + 500);
+    await setHidden(pair.hidden, true);
+    pair.facts.watched.fail = pair.facts.hidden.fail = true;           // unreachable for both, watched or not
+    await pair.run(7000);
+    const first = await setHidden(pair.hidden, false);
+    const kept = await pair.bornSince('hidden');
+    expectSameBirths(kept, await pair.bornSince('watched'));
+    // Still the steady 30 BPM of the last facts read: one every 2 s, nothing filled in.
+    expect(intervals(kept).every(gap => Math.abs(gap - INTERVAL) <= 1)).toBe(true);
+    const cards = await strip(pair.hidden);
+    expectLeadsAt(drawnLeads(cards, first.lines), expectedLeads(cards, kept.map(b => b + pair.origin.hidden), first.now));
+  } finally { await pair.close(); }
+});
+
+test('repeated hide and show, with readings and a stats change arriving around each return: no drift, no doubled heartbeat', async ({browser}) => {
+  test.setTimeout(150000);
+  const pair = await watchedAndHidden(browser);
+  try {
+    await pair.run(INTERVAL);
+    // 2.5 s hidden, 0.5 s shown: the 3 s cycle walks across the 2 s cadence, so heartbeats fall due both while
+    // hidden and while shown.
+    for (let cycle = 0; cycle < 12; cycle += 1) {
+      await setHidden(pair.hidden, true);
+      await pair.run(2500);
+      // The return, a throughput reading and a stats re-read (a live change) in the same instant, then frames.
+      await pair.hidden.evaluate(() => { loadRuntimeSpeed(); loadStats(); });
+      await setHidden(pair.hidden, false);
+      await pair.run(500);
+    }
+    const kept = await pair.bornSince('hidden');
+    expectSameBirths(kept, await pair.bornSince('watched'));
+    expect(new Set(kept).size).toBe(kept.length);
+    // Still on the 30 BPM lattice after 12 cycles: no drift accumulates.
+    kept.forEach(born => expect(Math.min(born % INTERVAL, INTERVAL - born % INTERVAL)).toBeLessThanOrEqual(1));
+    expectSameStrip(allLeads(await strip(pair.hidden)), allLeads(await strip(pair.watched)));
+  } finally { await pair.close(); }
+});
+
+test('hidden on another view, then shown and back to the Dashboard by the sidebar: the first frame is the watched strip', async ({browser}) => {
+  test.setTimeout(120000);
+  const pair = await watchedAndHidden(browser);
+  try {
+    await pair.run(INTERVAL + 1500);
+    await leaveDashboard(pair.hidden);
+    await setHidden(pair.hidden, true);
+    await pair.run(5000);
+    await setHidden(pair.hidden, false);
+    await pair.run(500);
+    const first = await returnAndRead(pair.hidden);
+    const now = await pair.hidden.evaluate(() => performance.now());
+    const kept = await pair.bornSince('hidden');
+    expectSameBirths(kept, await pair.bornSince('watched'));
+    const cards = await strip(pair.hidden);
+    expectLeadsAt(drawnLeads(cards, first.lines), expectedLeads(cards, kept.map(b => b + pair.origin.hidden), now));
+  } finally { await pair.close(); }
+});
+
+test('Global Pause All arriving while hidden: the heartbeats due before it are born, none after; the return shows the watched strip', async ({browser}) => {
+  test.setTimeout(120000);
+  const watched = await browser.newPage(), hidden = await browser.newPage();
+  const pauses = {watched: {paused: false}, hidden: {paused: false}};
+  try {
+    await boot(watched, {pause: pauses.watched});
+    await boot(hidden, {pause: pauses.hidden});
+    const origin = {watched: (await heartbeatState(watched)).now, hidden: (await heartbeatState(hidden)).now};
+    const run = async ms => { for (let t = 0; t < ms; t += 500) { await watched.clock.runFor(500); await hidden.clock.runFor(500); } };
+    await run(INTERVAL + 500);
+    await setHidden(hidden, true);
+    await run(3000);                                                     // a heartbeat is due at 4 s, while hidden
+    pauses.watched.paused = pauses.hidden.paused = true;
+    await Promise.all([watched.evaluate(() => loadStats()), hidden.evaluate(() => loadStats())]);
+    await run(2500);
+    await setHidden(hidden, false);
+    const born = async (page, key) => (await heartbeatState(page)).born.map(b => Math.round(b - origin[key]));
+    const kept = await born(hidden, 'hidden');
+    expectSameBirths(kept, await born(watched, 'watched'));
+    expect(kept.some(b => Math.abs(b - 4000) <= 1)).toBe(true);         // due while hidden, before the hold
+    expect(kept.every(b => b <= 4001)).toBe(true);                       // none once held
+  } finally { await watched.close(); await hidden.close(); }
+});
+
+test('hidden for 24 hours at the full 90 BPM, nothing advancing the clock meanwhile: a bounded reconstruction, the strip of this instant, the cadence carrying on', async ({page}) => {
+  test.setTimeout(120000);
+  const facts = {bps: 83, peak: 83};                                     // at the sustained peak: 90 BPM
+  await boot(page, {throughput: facts});
+  await page.clock.runFor(20000);                                        // the cadence has eased to 90 BPM
+  await setHidden(page, true);
+  facts.fail = true;                                                     // no reading reaches the clock while hidden
+  await page.clock.fastForward(24 * 3600 * 1000);                        // one jump: no intermediate advance
+  expect(await page.evaluate(() => _dashboardHeartbeat.advancedAt)).toBeLessThan(await page.evaluate(() => performance.now()) - 86000000);
+  // The return does the whole reconstruction; its cost is read with the real clock around it.
+  const idle = Date.now(); await page.evaluate(() => 0); const overhead = Date.now() - idle;
+  const started = Date.now();
+  const first = await setHidden(page, false);
+  const spent = Date.now() - started - overhead;
+  test.info().annotations.push({type: 'reconstruction-ms', description: String(spent)});
+  console.log(`24 h reconstruction: ${spent} ms (evaluate overhead ${overhead} ms)`);
+  expect(spent).toBeLessThan(250);
+  const state = await heartbeatState(page);
+  const cards = await strip(page);
+  // Bounded: only heartbeats whose trail can still be on the strip -- a few strip transits' worth, never the day's.
+  const end = await page.evaluate(() => _dashboardHeartbeat.route.end);
+  const transit = (end + 2 * 48 + TRAIL) / SPEED;
+  expect(state.born.length).toBeGreaterThan(0);
+  expect(state.born.length).toBeLessThanOrEqual(Math.ceil(transit / (60000 / 90)) + 1);
+  expect(state.born.every(born => first.now - born <= transit)).toBe(true);
+  // On the 90 BPM cadence: one every 666.7 ms, the last no more than one interval ago, none in the future.
+  intervals(state.born).forEach(gap => expect(Math.abs(gap - 60000 / 90)).toBeLessThanOrEqual(0.01));
+  expect(first.now - state.born.at(-1)).toBeLessThan(60000 / 90);
+  expect(first.now - state.born.at(-1)).toBeGreaterThanOrEqual(0);
+  // The first frame: each heartbeat where its age puts it.
+  expectLeadsAt(drawnLeads(cards, first.lines), expectedLeads(cards, state.born, first.now));
+  expect(drawnLeads(cards, first.lines).flat().length).toBeGreaterThan(0);
+  // And the cadence carries on from there, its timer firing on the whole millisecond after each due instant.
+  facts.fail = false;
+  await page.clock.runFor(3000);
+  const after = (await heartbeatState(page)).born.filter(born => born > state.born.at(-1));
+  expect(after.length).toBeGreaterThanOrEqual(4);
+  intervals([state.born.at(-1), ...after]).forEach(gap => expect(Math.abs(gap - 60000 / 90)).toBeLessThanOrEqual(1.01));
+});
+
+test('reduced motion while hidden: shown again, only the still flat baselines', async ({page}) => {
   test.setTimeout(90000);
   await boot(page);
-  const start = (await heartbeatState(page)).now;
-  await page.clock.runFor(2 * INTERVAL + 500);
-  const visibility = hidden => page.evaluate(hidden => {
-    Object.defineProperty(document, 'hidden', {configurable: true, get: () => hidden});
-    document.dispatchEvent(new Event('visibilitychange'));
-  }, hidden);
-  await visibility(true);
-  const hiddenAt = (await heartbeatState(page)).now;
-  const suspended = await heartbeatState(page);
-  expect([suspended.timer, suspended.frame]).toEqual([0, 0]);
-  await page.clock.runFor(9 * INTERVAL + 700);
-  await visibility(false);
-  // Nothing born while hidden, and none of the heartbeats it had is still drawn after its trail left the strip.
-  const back = await heartbeatState(page);
-  expect(back.born.every(born => born <= hiddenAt)).toBe(true);
-  await page.clock.runFor(3 * INTERVAL);
-  const after = (await heartbeatState(page)).born.filter(born => born > hiddenAt);
-  expect(after.length).toBeGreaterThanOrEqual(2);
-  // On the same 30 BPM lattice as before: no burst, no restart.
-  after.forEach(born => {
-    const offset = (born - start) % INTERVAL;
-    expect(Math.min(offset, INTERVAL - offset)).toBeLessThanOrEqual(QUANTUM);
-  });
-  intervals(after).forEach(gap => expect(Math.abs(gap - INTERVAL)).toBeLessThanOrEqual(QUANTUM));
+  await page.clock.runFor(INTERVAL + 1500);
+  await setHidden(page, true);
+  await page.emulateMedia({reducedMotion: 'reduce'});
+  await page.clock.runFor(4000);
+  await setHidden(page, false);
+  await expect.poll(async () => (await strip(page)).every(flat)).toBe(true);
+  expect(await page.evaluate(() => [_dashboardHeartbeat.running, _dashboardHeartbeat.beats.length])).toEqual([false, 0]);
 });
 
 test('repeated navigation adds no clock, frame loop or heartbeat', async ({page}) => {

@@ -1073,9 +1073,9 @@ function updateOperatorTitle(stats) {
  * heartbeat re-timed from the phase it has reached, so a change of throughput
  * moves it earlier or later at once without resetting the clock, bunching,
  * doubling or catching up beats, and never later than one 7 BPM interval;
- * beats already travelling keep their place and speed. Heartbeats run only
- * while the Dashboard is the active view, the document is visible and motion is
- * not reduced.
+ * beats already travelling keep their place and speed. Heartbeats are drawn
+ * only while the Dashboard is the active view of a visible document, and run
+ * only while motion is not reduced.
  *
  * Each heartbeat is drawn once, at its birth, with its own slightly different
  * complex -- overall amplitude, R and S depths, the smaller deflections and its
@@ -1166,6 +1166,8 @@ function syncDashboardHeartbeatPause() {
   const state = _dashboardHeartbeat;
   const held = processingPaused === true;
   if (state.running && held !== state.held) {
+    // Unseen in a hidden document, the heartbeats due before the hold are born first.
+    if (held && state.suspended) advanceDashboardHeartbeat(performance.now());
     state.held = held;
     const last = state.beats[state.beats.length - 1];
     if (held) {
@@ -1174,7 +1176,7 @@ function syncDashboardHeartbeatPause() {
       if (last) last.until = state.nextAt;          // its trail stays as laid out for the heartbeat then due
     } else {
       const now = performance.now();
-      advanceDashboardHeartbeat(now);
+      easeDashboardHeartbeat(now);                  // none was due while held
       state.phase = 1;
       // Not before the held trail leaves the next heartbeat its clearance.
       state.earliest = last
@@ -1310,8 +1312,37 @@ function dashboardHeartbeatFrame(now) {
 }
 
 /* Run the heartbeat clock up to `now`: the cadence eases toward its target
- * and the phase advances by the beats that eased cadence made (its integral). */
+ * and the phase advances by the beats that eased cadence made (its integral).
+ * In a hidden document the clock's timer is suspended, so each heartbeat it
+ * comes due for meanwhile is born here instead, at the very instant its timer
+ * would have fired -- the strip shown again is the one that was never hidden.
+ * Every due instant is stepped through exactly (the cadence carries on from
+ * each), but only a heartbeat that can still be on the strip at `now`, trail
+ * and all, is kept and given its complex: a day hidden at 90 BPM is about
+ * 130,000 steps of this arithmetic alone, a few milliseconds. */
 function advanceDashboardHeartbeat(now) {
+  const state = _dashboardHeartbeat;
+  if (state.suspended && !state.held) {
+    const last = state.beats[state.beats.length - 1];
+    let born = last ? last.born : -Infinity;
+    // Born before this, a heartbeat has left the strip by `now` (its complex is at most 1.32 of 48 px).
+    const kept = state.route
+      ? now - (state.route.end + 2 * DASHBOARD_HEARTBEAT_WIDTH + DASHBOARD_HEARTBEAT_TRAIL) / DASHBOARD_HEARTBEAT_SPEED
+      : -Infinity;
+    for (;;) {
+      const due = state.advancedAt + dashboardHeartbeatWait(state.advancedAt, born);
+      if (due > now) { state.nextAt = due; break; }
+      easeDashboardHeartbeat(due);
+      state.phase = 0;
+      state.earliest = 0;
+      born = due;
+      if (due >= kept) state.beats.push({born: due, shape: dashboardHeartbeatShape()});
+    }
+    if (state.route) liveDashboardHeartbeats(now);   // only those still on the strip
+  }
+  easeDashboardHeartbeat(now);
+}
+function easeDashboardHeartbeat(now) {
   const state = _dashboardHeartbeat;
   const target = dashboardHeartbeatTargetBpm();
   const elapsed = Math.max(0, now - state.advancedAt);
@@ -1321,14 +1352,20 @@ function advanceDashboardHeartbeat(now) {
   state.advancedAt = now;
 }
 
-/* (Re)time the pending heartbeat: when the phase completes at the current
- * cadence, never sooner than one 90 BPM interval after the last one, nor
- * before the clearance a held trail needs (earliest, after a resume). */
+/* How long after `now` the pending heartbeat is due: when the phase completes
+ * at the current cadence, never sooner than one 90 BPM interval after the last
+ * one (born at `lastBorn`), nor before the clearance a held trail needs
+ * (earliest, after a resume). */
+function dashboardHeartbeatWait(now, lastBorn = _dashboardHeartbeat.beats[_dashboardHeartbeat.beats.length - 1]?.born ?? -Infinity) {
+  const state = _dashboardHeartbeat;
+  return Math.max((1 - state.phase) * 60000 / state.bpm,
+    lastBorn + 60000 / DASHBOARD_HEARTBEAT_BPM[1] - now, state.earliest - now, 0);
+}
+
+/* (Re)time the pending heartbeat. */
 function scheduleDashboardHeartbeat(now) {
   const state = _dashboardHeartbeat;
-  const last = state.beats[state.beats.length - 1];
-  const wait = Math.max((1 - state.phase) * 60000 / state.bpm,
-    last ? last.born + 60000 / DASHBOARD_HEARTBEAT_BPM[1] - now : 0, state.earliest - now, 0);
+  const wait = dashboardHeartbeatWait(now);
   clearTimeout(state.timer);
   state.nextAt = now + wait;
   state.timer = setTimeout(dashboardHeartbeat, wait);
@@ -1354,10 +1391,12 @@ function dashboardHeartbeat() {
  * life of the page: another view being selected stops only the painting, so
  * heartbeats are born on time and travel on unseen, and returning shows the
  * strip exactly as it stands now, at once, before the next paint. A hidden
- * document suspends the clock's timer (frames stop with it): on return the
- * clock is run up to now and continues from the fraction of a heartbeat it has
- * reached -- the heartbeats due while hidden are never replayed -- and those
- * whose trails have left the strip are gone. Reduced motion stops it and
+ * document suspends the clock's timer (frames stop with it); every advance of
+ * the clock meanwhile -- each throughput reading, and the return -- births the
+ * heartbeats it came due for at their own instants (advanceDashboardHeartbeat),
+ * so the first frame back draws each where its age has carried it: the strip
+ * that was never hidden, nothing replayed, caught up or started afresh, and
+ * those whose trails have left the strip gone. Reduced motion stops it and
  * leaves the flat baselines, as it always has. Global Pause All needs nothing
  * here: its state reaches syncDashboardHeartbeatPause on every view, so a
  * strip held while unseen has drained by the time it is shown. */
@@ -1387,8 +1426,7 @@ function syncDashboardSparkPulses() {
     Object.assign(state, {suspended: true, timer: 0, frame: 0});
     return;
   } else if (state.suspended) {
-    advanceDashboardHeartbeat(now);
-    state.phase %= 1;
+    advanceDashboardHeartbeat(now);                // the heartbeats due while hidden, born on time
     state.suspended = false;
     if (!state.held) scheduleDashboardHeartbeat(now);
   }

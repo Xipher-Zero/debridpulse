@@ -71,6 +71,31 @@ def test_dashboard_pulse_owner_is_lifecycle_bound():
     assert app.count("syncDashboardHeartbeatPause()") == 3   # loadStats, the held-timer guard, its definition
 
 
+def test_a_hidden_document_keeps_the_strip_by_birthing_due_heartbeats_on_time():
+    app = (STATIC / "app.js").read_text()
+    advance = app[app.index("function advanceDashboardHeartbeat(now) {"):app.index("function easeDashboardHeartbeat(now) {")]
+    # While hidden (timer suspended) each heartbeat due is born at its own instant, from the
+    # scheduler's own rule -- no timer, no frame, nothing else as a source.
+    assert "if (state.suspended && !state.held) {" in advance
+    assert "const due = state.advancedAt + dashboardHeartbeatWait(state.advancedAt, born);" in advance
+    # Every due instant is stepped through exactly; only one that can still be on the strip is kept and
+    # given its complex, and the strip is pruned once, after the next one is timed.
+    assert "if (due >= kept) state.beats.push({born: due, shape: dashboardHeartbeatShape()});" in advance
+    assert advance.count("dashboardHeartbeatShape()") == 1 and advance.count("liveDashboardHeartbeats(") == 1
+    assert advance.index("state.nextAt = due; break;") < advance.index("liveDashboardHeartbeats(now)")
+    for absent in ("setTimeout", "requestAnimationFrame", "api(", "fetch("):
+        assert absent not in advance, absent
+    assert app.count("const wait = dashboardHeartbeatWait(now);") == 1   # the one scheduler rule, also used above
+    # The return no longer drops the heartbeats due while hidden.
+    assert "state.phase %= 1;" not in app
+    sync = app[app.index("function syncDashboardSparkPulses() {"):app.index("function remeasureDashboardHeartbeat() {")]
+    assert "} else if (state.suspended) {\n    advanceDashboardHeartbeat(now);" in sync
+    # A hold is never crossed by a birth: due ones are born before it, none while held.
+    pause = app[app.index("function syncDashboardHeartbeatPause() {"):app.index("function dashboardHeartbeatTargetBpm() {")]
+    assert pause.index("if (held && state.suspended) advanceDashboardHeartbeat(performance.now());") < pause.index("state.held = held;")
+    assert "easeDashboardHeartbeat(now);                  // none was due while held" in pause
+
+
 def test_dashboard_sparkline_curve_has_canonical_rounded_paint():
     css = (STATIC / "ui-dashboard.css").read_text()
     assert "stroke-linecap: round;" in css
