@@ -940,6 +940,21 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 .dp-modal-dialog.dp-account-dialog .dp-account-view[hidden] {
   display: none;
 }
+/* A described choice (the Role selector): its one-sentence description and
+   the help chip that opens the full comparison, beneath the selector. */
+.dp-modal-dialog.dp-users-dialog .dp-users-choice-description {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: -6px;
+  color: var(--dp-text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.dp-modal-dialog.dp-users-dialog .dp-users-choice-description > span {
+  flex: 1 1 auto;
+  min-width: 0;
+}
 
 /* Integration Delivery Profiles: the catalog table's category chips, and
    the profile dialog. The dialog keeps its header and footer and scrolls its

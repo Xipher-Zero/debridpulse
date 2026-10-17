@@ -43,9 +43,9 @@ test('a malformed size is refused at once in the field\'s words, with no request
     if (request.url().includes('/api/integrations/aria2/configuration') && request.method() === 'PATCH') writes.push(request);
   });
   for (const [key, text] of [
-    ['aria2_disk_cache', 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K or 64M.'],
+    ['aria2_disk_cache', 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K, or 64M.'],
     ['aria2_min_split_size', 'Minimum Split Size is a whole number with an optional K or M suffix, from 1M to 1024M.'],
-    ['aria2_lowest_speed_limit', 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K or 2M.'],
+    ['aria2_lowest_speed_limit', 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K, or 2M.'],
   ]) {
     const field = card.locator(`[data-setting="${key}"]`);
     const before = await field.inputValue();

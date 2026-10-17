@@ -44,7 +44,8 @@ def test_effective_settings_numeric_limits_match_server_contract():
     snapshots = field("stats_snapshot_interval_minutes")
     assert "min: 0" in snapshots
     assert "max: 1440" in snapshots
-    assert "Set how often DebridPulse records a statistics snapshot." in snapshots
+    assert ("How often DebridPulse saves a record of download activity and statistics from the previous 24 hours "
+            "to its internal database. These snapshots are not sent as reports.") in snapshots
 
     retention = field("stats_snapshot_keep_days")
     assert "max: 365" in retention

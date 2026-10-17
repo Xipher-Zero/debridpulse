@@ -44,6 +44,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
+  gap: 12px;
 }
 
 #view-settings .dp-executor-work-card > .card-body {

@@ -171,7 +171,7 @@ class HostName(_WriteRule):
             return
         if len(value) > 253 or re.search(r"[\s/@?#\\]", value) or _CONTROL.search(value) or "://" in value:
             raise PydanticCustomError(
-                "setting_host", "Input should be a host name or IP address without a scheme, path or spaces")
+                "setting_host", "Input should be a host name or IP address without a scheme, path, or spaces")
 
 
 def _same(left, right) -> bool:

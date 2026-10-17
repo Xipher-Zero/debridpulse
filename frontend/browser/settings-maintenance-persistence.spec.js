@@ -228,7 +228,9 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
           glow: style.filter, referenceGlow: reference.filter,
           background: style.backgroundImage, referenceBackground: reference.backgroundImage,
           hint: card.querySelector('.dp-settings-card-header-center').textContent.trim(),
-          rail: card.querySelectorAll('.card-header .dp-settings-card-header-controls, .card-header button, .card-header input').length,
+          // The rail operates nothing: its only member is the card's help chip.
+          rail: card.querySelectorAll('.card-header button:not(.dp-settings-help-chip), .card-header input').length,
+          help: Array.from(card.querySelectorAll('.card-header .dp-settings-card-header-controls > *'), node => node.className),
           islands: card.querySelectorAll('.card-body > *').length,
           share: i.width / inner,
           leftGap: i.left - (b.left + parseFloat(bodyStyle.paddingLeft)),
@@ -249,6 +251,7 @@ test('Event Logging is the first card: family chip, file-text glyph, centred hin
       expect(facts.background).toBe(facts.referenceBackground);
       expect(facts.hint).toBe('Configure how many activity log entries are displayed per page.');
       expect(facts.rail).toBe(0);
+      expect(facts.help).toEqual(['dp-settings-help-chip']);
       expect(facts.islands).toBe(1);
       expect(facts.bordered).toBe(true);
       expect(Math.abs(facts.leftGap - facts.rightGap)).toBeLessThan(2);

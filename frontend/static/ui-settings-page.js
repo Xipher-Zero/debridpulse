@@ -716,6 +716,18 @@
 
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
 
+  /* The card's contextual help: one icon-only chip, last in the header rail,
+   * naming the card it explains. It opens that card's read-only explanation
+   * through the help owner (ui-settings-help.js), which presents it in the
+   * canonical dialog shell; the chip itself changes nothing. */
+  function helpChip(topic, subject) {
+    if (!topic) return '';
+    const label = `Help: ${subject}`;
+    const glyph = window.DPIcons?.svg ? window.DPIcons.svg('help', 'dp-settings-help-glyph') : '';
+    return `<button type="button" class="dp-settings-help-chip" data-settings-help="${html(topic)}"
+            aria-label="${html(label)}" data-tooltip="${html(label)}">${glyph}</button>`;
+  }
+
   function card(title, body, options = {}) {
     let titleClass = 'card-title';
     let titleMarkup = html(title);
@@ -734,11 +746,12 @@
      * participates at all. A card that declares none of it renders no rail, so
      * nothing changes for the cards that never had one. */
     const status = options.headerStatus;
-    const rail = (status || options.headerAction)
+    const help = helpChip(options.help, title);
+    const rail = (status || options.headerAction || help)
       ? `<div class="dp-settings-card-header-controls">${
           status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${
           options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
-          options.action || ''}</div>`
+          options.action || ''}${help}</div>`
       : (options.action || '');
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
@@ -768,14 +781,15 @@
     const expanded = options.collapsible && disclosureOpen(persistKey, options.expanded);
     const disclosure = options.collapsible
       ? settingsDisclosure(bodyId, expanded, `${title} sources`, persistKey) : '';
-    const header = options.action || disclosure;
+    const help = helpChip(options.help, title);
+    const header = options.action || disclosure || help;
     return `
       <section class="card dp-settings-group-card dp-large-panel-surface ${options.className || ''}"${
         options.groupId ? ` data-integration-group="${html(options.groupId)}"` : ''}>
         <div class="card-header${header ? ' dp-settings-card-header' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
           ${header ? `<div class="dp-settings-card-header-center"></div>
-          <div class="dp-settings-card-header-controls">${options.action || ''}</div>` : ''}
+          <div class="dp-settings-card-header-controls">${options.action || ''}${help}</div>` : ''}
         </div>
         <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
       </section>`;
@@ -2078,6 +2092,7 @@
       families.map(card => card.markup).join('') + (families.length && providers.length ? PREMIUM_SEPARATOR : '')
         + providers.map(card => card.markup).join(''), {
       className: 'dp-settings-source-group dp-settings-debrid-services',
+      help: 'premium-services',
       titlePrefix: familyIcon('sources', 'crown'),
     });
     // Group identity, label and gate all come from metadata the members
@@ -2098,6 +2113,7 @@
       `<div class="dp-settings-source-box-grid">${members.map(([id, entry]) =>
         sourceProtocolBox(id, SOURCE_BOX_TITLES[id] || entry.presentation?.status_name || id, SOURCE_BOX_COPY[id] || [], entry)).join('')}</div>`, {
       className: 'dp-settings-source-group dp-settings-general-sources',
+      help: 'network-sources',
       titlePrefix: protocolIcon(groupId, true),
       action: groupId ? groupHeaderToggle(groupId, groupLabel, groupEnabled) : '',
       groupId,
@@ -2128,6 +2144,7 @@
           </div>
           <div class="dp-executor-work-header-actions">
             <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
+            ${helpChip('engine-activity', 'Download Engine Activity')}
           </div>
         </div>
         <div class="card-body" data-dp-executor-work-body>
@@ -2191,7 +2208,7 @@
         tuningToggle(
           'rsync_compression',
           'Compression',
-          'Compress data in transit. Rarely helps with archives, video or other already-compressed files.',
+          'Compress data in transit. Rarely helps with archives, video, or other already-compressed files.',
           options.compression === true
         ),
         tuningToggle(
@@ -2215,7 +2232,7 @@
       ),
     ) + tuningCells(
       selectField('rsync_directory_depth', 'Directory Depth', source.directory_depth || 'all', DIRECTORY_DEPTHS,
-        'How far below an rsync folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
+        'How many folder levels below an rsync folder that you add where DebridPulse will search for files. Files in deeper folders are not included.'),
     );
   }
 
@@ -2228,10 +2245,10 @@
       tuningGroup(
         selectField('webdav_directory_depth', 'Directory Depth', options.directory_depth || 'current',
           DIRECTORY_DEPTHS,
-          'How far below a WebDAV folder you add DebridPulse looks for files. Files in deeper folders are not included.'),
+          'How many folder levels below a WebDAV folder that you add where DebridPulse will search for files. Files in deeper folders are not included.'),
         input('webdav_max_files', 'Maximum Files', options.max_files ?? 10000, {
           type: 'number', min: 1, max: 10000,
-          hint: 'The most files one WebDAV folder may hold. A larger folder is not added at all rather than added in part.'
+          hint: 'The maximum number of files DebridPulse will accept from a WebDAV folder. If the folder contains more files than this limit, the entire folder is rejected rather than partially added.'
         }),
         // 0 is "no limit": shown as the empty field's own "No limit", never as
         // a number of seconds (COMMIT_FIELDS ``blank``).
@@ -2432,14 +2449,14 @@
         ),
         input('aria2_lowest_speed_limit', 'Lowest Speed Limit', aria2.lowest_speed_limit || '0', {
           pattern: '[0-9]+[KkMm]?',
-          invalidMessage: 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K or 2M.',
+          invalidMessage: 'Lowest Speed Limit is a whole number with an optional K or M suffix, such as 0, 512K, or 2M.',
           hint: 'Stops a slow connection when its speed falls at or below this value. Set to 0 to disable the limit. Bytes per second, with an optional K or M suffix.'
         }),
       ),
       tuningGroup(
         input('aria2_disk_cache', 'Disk Cache', aria2.disk_cache || '64M', {
           pattern: '[0-9]+[KkMm]?',
-          invalidMessage: 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K or 64M.',
+          invalidMessage: 'Disk Cache is a whole number with an optional K or M suffix, such as 0, 512K, or 64M.',
           hint: 'Amount of memory usable as a shared download cache to reduce disk I/O. Set to 0 to disable the cache. Takes effect the next time the download engine starts.'
         }),
         selectField('aria2_file_allocation', 'File Allocation', aria2.file_allocation || 'falloc', [
@@ -2516,6 +2533,7 @@
       ${downloadBehaviorAdvanced(policy)}
     `, {
       className: 'dp-settings-download-engine-card',
+      help: 'download-behavior',
       titlePrefix: familyIcon('downloads', 'gauge'),
       headerCenter: `<span class="dp-settings-download-engine-header-copy">${html(globalCopy)}</span>`,
     });
@@ -2537,6 +2555,7 @@
         'Downloads supported web-hosted media in its native form, without transcoding.', mediaTuning(s),
         'media'), {
       className: 'dp-settings-source-group dp-executor-tuning-group',
+      help: 'transfer-methods',
       titlePrefix: familyIcon('downloads', 'arrow-left-right'),
     });
 
@@ -2567,7 +2586,8 @@
         type: 'number', min: 0, max: 168,
         hint: 'How long a download can remain stalled before DebridPulse attempts automatic recovery. Set to 0 to disable stalled-download recovery.'
       }),
-    ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert')});
+    ), {className: 'dp-settings-download-recovery-card', titlePrefix: familyIcon('downloads', 'shield-alert'),
+      help: 'disk-recovery'});
 
     return delivery + tuning + recovery + executorWorkCard();
   }
@@ -2652,6 +2672,7 @@
       ${archivePasswordField(s.extraction_password_configured)}
     `, {
       className: 'dp-settings-extraction-card',
+      help: 'automatic-extraction',
       titlePrefix: familyIcon('extraction', 'archive-restore'),
       headerCenter: '<span class="dp-settings-extraction-header-copy">Automatically extract supported archives after a download completes.</span>',
       action: `<label class="dp-settings-extraction-enable" for="${enableId}"><span class="form-label">Enable</span><span class="toggle">
@@ -2836,6 +2857,7 @@
       ))}
     `, {
       className: 'dp-settings-discord-card',
+      help: own ? 'discord-own' : 'discord',
       titlePrefix: familyIcon('notifications', 'message-square'),
       headerCenter: own ? 'Configure your identity, Discord destinations, and alerts for your own downloads.'
         : 'Configure notification identity, delivery destinations, and event alerts.',
@@ -2867,6 +2889,7 @@
       </div>
     `, {
       className: 'dp-settings-statistics-reporting-card',
+      help: own ? 'statistics-reporting-own' : 'statistics-reporting',
       titlePrefix: familyIcon('notifications', 'chart-line'),
       headerCenter: own ? 'Configure where reports of your own activity are sent, how often, and how much they summarize.'
         : 'Configure where reports are sent, how often they are delivered, and how much activity they summarize.',
@@ -3397,7 +3420,7 @@
             action: '<button class="btn btn-ghost btn-sm dp-settings-auth-session-logout" type="button" data-action="logout-session">Log Out Current Session</button>',
           })}
         ${inlineField(lifetimeId, 'Browser Session Lifetime',
-          'How long a browser login remains valid before sign-in is required again.',
+          'How long a browser login remains valid before the session expires and you must sign in again. Signing in starts a new session. Active downloads continue uninterrupted.',
           `<span class="dp-settings-auth-duration-control">
             <input class="input" id="${lifetimeId}" data-setting="auth_session_lifetime_hours" type="number"
                    min="1" max="168" value="${html(a.session_lifetime_hours || 12)}"
@@ -3406,7 +3429,8 @@
           </span>`,
           {className: 'dp-settings-auth-session-lifetime'})}
       </div>
-    `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check')});
+    `, {className: 'dp-settings-auth-status-card', titlePrefix: familyIcon('authentication', 'shield-check'),
+      help: 'auth-status'});
   }
 
   function authenticationPanel(a) {
@@ -3444,6 +3468,7 @@
       <div class="dp-settings-auth-credentials-row">${usernameField}${passwordField}</div>
     `, {
       className: 'dp-settings-username-password-card',
+      help: 'username-password',
       titlePrefix: familyIcon('authentication', 'user-lock'),
       headerCenter: 'Configure local credentials for browser sign-in and HTTP Basic API access.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-auth-header-copy--credentials',
@@ -3513,13 +3538,13 @@
     const scopesField = input('oidc_scopes', 'Scopes', scopes, {
       inline: true,
       placeholder: 'openid profile email',
-      hint: 'Space-separated scopes requested during sign-in.',
+      hint: 'The information DebridPulse requests from your identity provider when you sign in. The usual values are openid profile email, separated by spaces.',
       className: 'dp-settings-oidc-scopes-field',
     });
 
     const groupClaimField = input('oidc_group_claim', 'Group Claim', a.oidc_group_claim || 'groups', {
       inline: true,
-      hint: 'Claim containing group memberships used by group authorization rules.',
+      hint: 'The name of the field your identity provider uses to report which groups a user belongs to. Usually groups.',
       className: 'dp-settings-oidc-group-claim-field',
     });
 
@@ -3534,15 +3559,15 @@
 
     const subjects = fieldClass(textarea('oidc_allowed_subjects', 'Allowed Subjects', lines(a.oidc_allowed_subjects), {
       rows: 3,
-      hint: 'Authorize matching OIDC subject identifiers, one per line.',
+      hint: 'Allow specific users to sign in by entering their unique identity provider subject IDs, one per line, each written as issuer|subject-id. A subject ID is the provider’s own identifier for a user, not a username.',
     }), 'dp-settings-oidc-sandwich');
     const emails = fieldClass(textarea('oidc_allowed_emails', 'Allowed Emails', lines(a.oidc_allowed_emails), {
       rows: 3,
-      hint: 'Authorize verified email addresses, one per line. Requires email_verified=true.',
+      hint: 'Allow users with these verified email addresses to sign in. Enter one address per line. Requires email_verified=true.',
     }), 'dp-settings-oidc-sandwich');
     const groups = fieldClass(textarea('oidc_allowed_groups', 'Allowed Groups', lines(a.oidc_allowed_groups), {
       rows: 3,
-      hint: 'Authorize identities belonging to matching OIDC groups, one per line.',
+      hint: 'Allow users belonging to these identity provider groups to sign in. Enter one group name per line.',
     }), 'dp-settings-oidc-sandwich');
 
     const oidc = card('OpenID Connect', `
@@ -3563,12 +3588,13 @@
         </div>
         <div class="dp-settings-oidc-policy-band">
           <div class="dp-settings-oidc-default-role">${defaultRoleField}</div>
-          <small class="dp-settings-oidc-section-copy">Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.</small>
+          <small class="dp-settings-oidc-section-copy">When enabled, anyone who successfully signs in through your identity provider can access DebridPulse. Turn this off to restrict access using the allowed subjects, email addresses, and groups below; a user must match every list that is filled in.</small>
         </div>
         <div class="dp-settings-oidc-allowlists">${subjects}${emails}${groups}</div>
       </section>
     `, {
       className: 'dp-settings-oidc-card dp-settings-oidc-grouped-card',
+      help: 'oidc',
       titlePrefix: familyIcon('authentication', 'id-card'),
       headerCenter: 'Configure an external identity provider for browser sign-in.',
       headerCenterClass: 'dp-settings-auth-header-copy dp-settings-oidc-header-copy',
@@ -3594,6 +3620,14 @@
    * a refusal is reported as the server words it. */
   const ROLE_LABELS = Object.freeze({admin: 'Admin', user: 'User', readonly: 'ReadOnly User', integration: 'Integration'});
   const HUMAN_ROLES = Object.freeze([['admin', 'Admin'], ['user', 'User'], ['readonly', 'ReadOnly User']]);
+  /* One sentence per selectable role, shown beneath a Role selector. The full
+   * comparison is the User Accounts help (ui-settings-help.js), opened from
+   * beside the selector; neither changes what a role may do. */
+  const ROLE_DESCRIPTIONS = Object.freeze({
+    admin: 'Full control of DebridPulse, including Settings, accounts, maintenance, the Activity Log, and every transfer.',
+    user: 'Adds and operates downloads, and can delete or redirect a transfer only when no other account still needs it.',
+    readonly: 'Views downloads and Statistics, but cannot add, change, or remove anything.',
+  });
 
   const liveAccount = account => !account.deleted_at && !account.merged_into;
   const isIntegration = account => account.role === 'integration';
@@ -3743,6 +3777,7 @@
     const integrations = live.filter(isIntegration);
     const people = card('User Accounts', duplicateNotice(humans) + humanRows(humans), {
       className: 'dp-settings-users-card',
+      help: 'user-accounts',
       titlePrefix: familyIcon('users', 'users'),
       headerCenter: 'People who sign in to DebridPulse, their role, and how they sign in.',
       headerCenterClass: 'dp-settings-auth-header-copy',
@@ -3751,6 +3786,7 @@
     });
     const automation = card('Integration Accounts', integrationBlocks(integrations), {
       className: 'dp-settings-users-card dp-settings-users-integrations-card',
+      help: 'integration-accounts',
       titlePrefix: familyIcon('users', 'key-round'),
       headerCenter: 'Automation that submits downloads through the API. A token is shown once, when it is issued.',
       headerCenterClass: 'dp-settings-auth-header-copy',
@@ -3758,6 +3794,7 @@
     });
     const delivery = card('Integration Delivery Profiles', profileRows(), {
       className: 'dp-settings-delivery-profiles-card',
+      help: 'delivery-profiles',
       titlePrefix: familyIcon('users', 'workflow-users'),
       titleHint: 'Configure how external applications access completed downloads.',
       headerAction: '<button class="btn btn-blue btn-sm" type="button" data-user-action="create-profile">Create Delivery Profile</button>',
@@ -3807,18 +3844,38 @@
 
   const accountById = id => (state.users.accounts || []).find(account => account.id === id) || null;
 
+  const ROLE_FIELD_HELP = Object.freeze({describe: ROLE_DESCRIPTIONS, help: 'user-accounts', helpSubject: 'User Account Roles'});
+
   // One modal body of labelled fields; returns the inputs by name.
   function mountFields(body, intro, fields) {
     body.innerHTML = `${intro ? '<p class="dp-modal-message"></p>' : ''}${fields.map(field => `
       <label class="dp-modal-field"><span class="form-label">${html(field.label)}</span>${
         field.choices
-          ? `<select class="input" data-field="${html(field.name)}">${field.choices.map(([value, label]) =>
+          ? `<select class="input" data-field="${html(field.name)}"${
+              field.describe ? ` aria-describedby="dp-users-${html(field.name)}-description"` : ''}>${field.choices.map(([value, label]) =>
               `<option value="${html(value)}" ${selected(field.value, value)}>${html(label)}</option>`).join('')}</select>`
           : `<input class="input" data-field="${html(field.name)}" type="${html(field.type || 'text')}" maxlength="${html(field.maxlength || 256)}" autocomplete="${html(field.autocomplete || 'off')}" value="${html(field.value || '')}">`}
-      </label>`).join('')}`;
+      </label>${field.describe ? `
+      <div class="dp-users-choice-description">
+        <span id="dp-users-${html(field.name)}-description" data-field-description="${html(field.name)}" aria-live="polite"></span>
+        ${helpChip(field.help, field.helpSubject)}
+      </div>` : ''}`).join('')}`;
     if (intro) body.querySelector('.dp-modal-message').textContent = intro;
     const inputs = {};
     body.querySelectorAll('[data-field]').forEach(control => { inputs[control.dataset.field] = control; });
+    for (const field of fields.filter(entry => entry.describe)) {
+      const control = inputs[field.name];
+      const description = body.querySelector(`[data-field-description="${field.name}"]`);
+      const describe = () => { description.textContent = field.describe[control.value] || ''; };
+      control.addEventListener('change', describe);
+      describe();
+    }
+    // The help opens above this dialog through the same shell, and closing it
+    // returns focus to the chip.
+    body.addEventListener('click', event => {
+      const help = event.target.closest('[data-settings-help]');
+      if (help) window.DPSettingsHelp?.open(help.dataset.settingsHelp);
+    });
     return inputs;
   }
 
@@ -3856,7 +3913,7 @@
         {name: 'display_name', label: 'Display Name'},
         {name: 'username', label: 'Username', autocomplete: 'off'},
         {name: 'password', label: 'Password', type: 'password', maxlength: 4096, autocomplete: 'new-password'},
-        {name: 'role', label: 'Role', choices: HUMAN_ROLES, value: 'user'},
+        {name: 'role', label: 'Role', choices: HUMAN_ROLES, value: 'user', ...ROLE_FIELD_HELP},
       ],
     });
     if (!values) return;
@@ -3878,7 +3935,7 @@
     const values = await fieldsDialog({
       title: `Change Role: ${accountName(account)}`, acceptLabel: 'Change Role',
       intro: 'The new role applies to the account’s next request. Its open browsers reload with the new role; it is not signed out.',
-      fields: [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role}],
+      fields: [{name: 'role', label: 'Role', choices: HUMAN_ROLES, value: account.role, ...ROLE_FIELD_HELP}],
     });
     if (!values || values.role === account.role) return;
     await accountAct(() => request('PATCH', `/accounts/${encodeURIComponent(account.id)}`, {role: values.role}, 10000),
@@ -4307,7 +4364,7 @@
       ? await confirmRetirement({title: 'Delete delivery profile?', count, confirmLabel: 'Delete Profile & Retire Jobs'})
       : await window.DPSettingsModal.confirm({
         title: `Delete the ${profile.id} profile?`,
-        message: 'This removes only the delivery profile. API tokens, downloads and files are not deleted.',
+        message: 'This removes only the delivery profile. API tokens, downloads, and files are not deleted.',
         confirmLabel: 'Delete Profile',
         tone: 'danger',
       });
@@ -4857,6 +4914,7 @@
       </div>
     `, {
       className: 'dp-settings-event-logging-card',
+      help: 'event-logging',
       titlePrefix: familyIcon('maintenance', 'file-text'),
       headerCenter: 'Configure how many activity log entries are displayed per page.',
       headerCenterClass: 'dp-settings-event-logging-header-copy',
@@ -4892,18 +4950,19 @@
         tuningGroup(
           input('stats_snapshot_interval_minutes', 'Statistics Snapshot Interval', s.stats_snapshot_interval_minutes ?? 60, {
             type: 'number', min: 0, max: 1440,
-            hint: 'Set how often DebridPulse records a statistics snapshot.',
+            hint: 'How often DebridPulse saves a record of download activity and statistics from the previous 24 hours to its internal database. These snapshots are not sent as reports.',
             embedAction: fieldUnit('minutes'), controlClass: 'dp-settings-unit-field',
           }),
           input('stats_snapshot_keep_days', 'Statistics Snapshot Retention', s.stats_snapshot_keep_days ?? 30, {
             type: 'number', min: 1, max: 365,
-            hint: 'Delete statistics snapshots older than the configured number of days.',
+            hint: 'How many days DebridPulse keeps its saved statistics snapshots before automatically deleting older records. Snapshots are stored internally and are not currently viewable in the interface.',
             embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
           }),
         ),
       ))}
     `, {
       className: 'dp-settings-backups-retention-card',
+      help: 'backups',
       titlePrefix: familyIcon('maintenance', 'archive'),
       headerCenter: 'Configure automated backups and retention for backups and statistics snapshots.',
       headerCenterClass: 'dp-settings-backups-header-copy',
@@ -4933,6 +4992,7 @@
       </div>
     `, {
       className: 'dp-settings-database-wipe-card',
+      help: 'database-reset',
       titlePrefix: familyIcon('maintenance', 'database-x'),
       headerCenter: 'Configure database safeguards. Perform a destructive database reset when required.',
       headerCenterClass: 'dp-settings-database-wipe-header-copy',
@@ -5304,6 +5364,14 @@
       const tab = event.target.closest('.dp-settings-tabs [data-tab]');
       if (tab) {
         chooseTab(tab.dataset.tab);
+        return;
+      }
+
+      // A help chip only explains: it opens its card's read-only help and
+      // reaches no other handler.
+      const help = event.target.closest('[data-settings-help]');
+      if (help) {
+        window.DPSettingsHelp?.open(help.dataset.settingsHelp);
         return;
       }
 

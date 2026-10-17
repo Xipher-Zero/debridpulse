@@ -394,7 +394,9 @@ test('OIDC Access Control: heading left, Allow Any right, the Default Role islan
     .map(control => [control.dataset.setting || control.id, control.type === 'checkbox' ? control.checked : control.value]));
   const before = await values();
   await expect(access.locator('.dp-settings-oidc-section-copy')).toHaveText(
-    'Choose whether any authenticated OIDC identity is accepted or restrict sign-in to the allowlists below.');
+    'When enabled, anyone who successfully signs in through your identity provider can access DebridPulse. '
+    + 'Turn this off to restrict access using the allowed subjects, email addresses, and groups below; '
+    + 'a user must match every list that is filled in.');
 
   const measure = () => access.evaluate(node => {
     const box = element => element.getBoundingClientRect();

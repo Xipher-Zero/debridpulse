@@ -186,7 +186,7 @@ async def update(account_id: str, change: AccountNotificationUpdate) -> AccountN
     if "discord_avatar_url" in supplied:
         supplied["discord_avatar_url"] = str(supplied["discord_avatar_url"]).strip()
         if not _avatar_acceptable(supplied["discord_avatar_url"]):
-            raise NotificationRefused("The avatar must be a public HTTPS image URL (PNG, JPG, GIF or WEBP)")
+            raise NotificationRefused("The avatar must be a public HTTPS image URL (PNG, JPG, GIF, or WEBP)")
     if "discord_username" in supplied:
         supplied["discord_username"] = str(supplied["discord_username"]).strip()
 

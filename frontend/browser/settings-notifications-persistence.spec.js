@@ -151,9 +151,11 @@ test('both cards render the shared rail: status, then Test, then Enable', async 
     const order = await rail.evaluate(el => [...el.children].map(node => {
       if (node.classList.contains('dp-settings-provider-config-status')) return 'status';
       if (node.classList.contains('dp-settings-header-action')) return 'test';
+      if (node.classList.contains('dp-settings-help-chip')) return 'help';
       return node.querySelector('input[type=checkbox]') ? 'enable' : node.className;
     }));
-    expect(order).toEqual(['status', 'test', 'enable']);
+    // The card's help chip closes the rail, after the participation control.
+    expect(order).toEqual(['status', 'test', 'enable', 'help']);
     await expect(rail.locator('.dp-settings-provider-test')).toHaveText('Test');
   }
 

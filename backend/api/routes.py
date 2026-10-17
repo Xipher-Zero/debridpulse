@@ -101,7 +101,7 @@ _VALIDATION_REQUIREMENTS = {
     "setting_url": "must be an http:// or https:// address",
     "setting_avatar": "must be an http:// or https:// image address that is not an SVG",
     "setting_path": "must be an absolute folder path",
-    "setting_host": "must be a host name or IP address without a scheme, path or spaces",
+    "setting_host": "must be a host name or IP address without a scheme, path, or spaces",
 }
 
 

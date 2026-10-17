@@ -89,6 +89,7 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   }
   await expect(global.locator('[data-action="upload-avatar"]')).toHaveCount(1);
   await expect(global.locator('[data-action="clear-avatar"]')).toHaveCount(1);
+  await expect(global.locator('[data-settings-help="discord"], [data-settings-help="statistics-reporting"]')).toHaveCount(2);
   await shot(admin.page, 'admin-settings-notifications');
   for (const width of [800, 390]) {
     await admin.page.setViewportSize({width, height: 900});
@@ -125,6 +126,19 @@ test('Admin keeps Settings → Notifications unchanged; a User gets their own No
   await expect(view.locator('[data-action="upload-avatar"], [data-action="clear-avatar"]')).toHaveCount(0);
   await expect(view.locator('[data-action="test-discord"]')).toHaveCount(1);
   await expect(view.locator('[data-action="send-report"]')).toHaveCount(1);
+  // The same two cards carry the help of the User's OWN scope, never the
+  // instance-wide explanation the Admin's cards carry.
+  await expect(view.locator('.dp-settings-help-chip')).toHaveCount(2);
+  await expect(view.locator('.dp-settings-discord-card [data-settings-help="discord-own"]')).toHaveCount(1);
+  await expect(view.locator('.dp-settings-statistics-reporting-card [data-settings-help="statistics-reporting-own"]'))
+    .toHaveAttribute('aria-label', 'Help: Statistics Reporting');
+  await view.locator('[data-settings-help="statistics-reporting-own"]').click();
+  const ownHelp = page.locator('.dp-modal-dialog.dp-settings-help-dialog');
+  await expect(ownHelp.locator('.dp-modal-title')).toHaveText('Statistics Reporting');
+  await expect(ownHelp).toContainText('activity attributed to you');
+  await expect(ownHelp).toContainText('An Admin’s destinations are never used.');
+  await page.keyboard.press('Escape');
+  await expect(ownHelp).toHaveCount(0);
   // Disabled and unconfigured until the User chooses otherwise.
   await expect(view.locator('[data-setting="discord_notifications_enabled"]')).not.toBeChecked();
   await expect(view.locator('.dp-settings-discord-card')).toContainText('Unconfigured');

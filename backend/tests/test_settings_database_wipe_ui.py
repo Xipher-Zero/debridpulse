@@ -195,9 +195,11 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
          "Keep at most this many backups. Older excess backups are removed even when they are within the "
          "retention period."),
         ("stats_snapshot_interval_minutes", "min: 0, max: 1440", "minutes",
-         "Set how often DebridPulse records a statistics snapshot."),
+         "How often DebridPulse saves a record of download activity and statistics from the previous 24 hours "
+         "to its internal database. These snapshots are not sent as reports."),
         ("stats_snapshot_keep_days", "min: 1, max: 365", "days",
-         "Delete statistics snapshots older than the configured number of days."),
+         "How many days DebridPulse keeps its saved statistics snapshots before automatically deleting older "
+         "records. Snapshots are stored internally and are not currently viewable in the interface."),
     )
     for key, bounds, unit, hint in expected:
         cell = disclosure.split(f"input('{key}'", 1)[1].split("}),", 1)[0]

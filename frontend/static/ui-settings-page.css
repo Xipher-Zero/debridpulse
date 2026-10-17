@@ -1627,3 +1627,156 @@
 #settings-form .input { width: 100%; }
 #settings-form input[type="number"].input { max-width: 220px; }
 #settings-form textarea.input { max-width: 100%; }
+
+/* ── The ONE Settings help chip ──────────────────────────────────────────
+   Rendered by ui-settings-page.js `helpChip()`, last in a card's header rail
+   (and beside a Role selector in the account dialogs). Icon-only and
+   rectangular, in the neutral control colours of the disclosure chip: it
+   explains a card and operates nothing, so it takes no accent of its own. */
+.dp-settings-help-chip {
+  width: 34px;
+  height: 28px;
+  flex: 0 0 34px;
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--dp-border-default);
+  border-radius: 6px;
+  background: var(--dp-surface-2);
+  color: var(--dp-text-muted);
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background .15s ease;
+}
+
+.dp-settings-help-chip:hover {
+  border-color: var(--dp-border-strong);
+  background: var(--dp-surface-3);
+  color: var(--dp-text-primary);
+}
+
+.dp-settings-help-chip:active {
+  background: var(--dp-surface-1);
+}
+
+.dp-settings-help-chip:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: 2px;
+}
+
+.dp-settings-help-chip .dp-settings-help-glyph {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dp-settings-help-chip {
+    transition: none;
+  }
+}
+
+/* The help dialog (ui-settings-help.js in the canonical dialog shell): the
+   header and Close stay put and the explanation scrolls on a short viewport. */
+.dp-modal-dialog.dp-settings-help-dialog {
+  width: min(680px, 100%);
+  max-height: calc(100dvh - 48px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dp-modal-dialog.dp-settings-help-dialog > .dp-modal-header,
+.dp-modal-dialog.dp-settings-help-dialog > .dp-modal-footer {
+  flex: 0 0 auto;
+}
+
+.dp-modal-dialog.dp-settings-help-dialog > .dp-modal-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dp-settings-help-content {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  color: var(--dp-text-secondary);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.dp-settings-help-section {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+}
+
+.dp-settings-help-heading {
+  margin: 0;
+  color: var(--dp-text-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.dp-settings-help-text {
+  margin: 0;
+}
+
+.dp-settings-help-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+}
+
+/* The role comparison scrolls inside its own region on a narrow viewport, so
+   the dialog itself never widens. */
+.dp-settings-help-table-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid var(--dp-border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.dp-settings-help-table-scroll:focus-visible {
+  outline: 2px solid var(--dp-accent-purple-bright);
+  outline-offset: 2px;
+}
+
+.dp-settings-help-table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.dp-settings-help-table caption {
+  padding: 8px 10px;
+  color: var(--dp-text-primary);
+  font-weight: 700;
+  text-align: left;
+}
+
+.dp-settings-help-table th,
+.dp-settings-help-table td {
+  padding: 7px 10px;
+  border-top: 1px solid var(--dp-border-subtle);
+  text-align: left;
+  vertical-align: top;
+}
+
+.dp-settings-help-table thead th {
+  color: var(--dp-text-primary);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.dp-settings-help-table tbody th {
+  color: var(--dp-text-primary);
+  font-weight: 600;
+}
+
+.dp-settings-help-table td[data-answer="no"] {
+  color: var(--dp-text-muted);
+}
