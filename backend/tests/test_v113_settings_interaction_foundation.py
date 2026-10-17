@@ -752,33 +752,43 @@ def test_the_tuning_grid_is_the_one_fixed_set_grammar():
     """DP 1.0.13 Settings consolidation: ONE grammar for every fixed tuning set.
 
     The region is divided into equal, invisible lanes spanning the usable
-    width -- one lane per cell, each lane's share at full capacity derived from
-    the set's own CARDINALITY -- and a bounded card is centred in each. Below
-    that capacity a lane gives up width down to its own minimum and then the
-    set wraps, left-filling the rows that remain. A lane's minimum is a fact
-    about its OWN cell (a selector cell needs a selector lane); no region names
-    a column count, a breakpoint matrix or a geometry of its own."""
+    width -- one lane per cell up to FIVE to a row (Settings Batch 1, Item 4),
+    each lane's share at full capacity derived from the set's own CARDINALITY
+    -- and a bounded card is centred in each. A cell and a group are laid out
+    at the full width of the lanes they occupy, so a row breaks by real lanes
+    and a group that does not fit moves on whole. Below that capacity a lane
+    gives up width down to its own minimum and the set wraps; every row is
+    centred by the same rule. A lane's minimum is a fact about its OWN cell (a
+    selector cell needs a selector lane); no region names a column count, a
+    breakpoint matrix or a geometry of its own."""
     owners = [p.name for p in MAINTAINED_CSS
               if "dp-settings-tuning-grid" in p.read_text(encoding="utf-8")]
     assert owners == ["ui-settings-page.css"], owners
     grid = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid {")
     assert "display: flex" in grid and "flex-wrap: wrap" in grid
-    assert "justify-content: flex-start" in grid, "rows no longer left-fill"
-    assert "justify-content: center" not in grid, "sparse-row centring returned"
+    assert "justify-content: center" in grid, "rows are not centred"
+    assert "justify-content: flex-start" not in grid, "rows left-fill again"
     assert "grid-template-columns" not in grid, "a whole-grid lane track returned"
-    assert ("--dp-tuning-share: calc((100cqi - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap)) "
+    assert ("--dp-tuning-share: calc((100cqi - (var(--dp-tuning-lanes) - 1) * var(--dp-tuning-gap) - 1px) "
             "/ var(--dp-tuning-lanes));") in grid
-    # Cardinality is declared by the SET, and nothing else varies per set.
-    for lanes in ("1", "2", "3", "4", "5", "6", "7"):
+    # Cardinality is declared by the SET, and nothing else varies per set; a
+    # set larger than five keeps the five-lane default (the row ceiling).
+    for lanes in ("1", "2", "3", "4", "5"):
         assert f'.dp-settings-tuning-grid[data-tuning-lanes="{lanes}"] {{ --dp-tuning-lanes: {lanes};' in SETTINGS_CSS
+    assert "--dp-tuning-lanes: 5;" in grid
+    for lanes in ("6", "7"):
+        assert f'[data-tuning-lanes="{lanes}"]' not in SETTINGS_CSS
     # A cell is a cell wherever it sits -- directly in the region, or inside a
     # relationship group -- so the rule is a descendant one. The cell IS its
-    # lane: from its own minimum up to the equal share, its bounded card
-    # centred in the lane's slack.
+    # lane: laid out at its bounded card (the lane's slack centring it) so a
+    # row breaks by whole lanes; inside a group, members start from their own
+    # minimums and share the group's box.
     cell = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-grid .dp-settings-field {")
     assert "--dp-tuning-lane: max(var(--dp-tuning-cell-min), var(--dp-tuning-share));" in cell
     assert "--dp-tuning-card: min(var(--dp-tuning-lane), var(--dp-tuning-card-max));" in cell
-    assert "flex: 1 1 var(--dp-tuning-cell-min);" in cell and "min-width: var(--dp-tuning-cell-min);" in cell
+    assert "flex: 0 1 var(--dp-tuning-card);" in cell and "min-width: var(--dp-tuning-cell-min);" in cell
+    member = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-group > .dp-settings-field {")
+    assert "flex: 1 1 var(--dp-tuning-cell-min);" in member
     assert "max-width: var(--dp-tuning-card);" in cell, \
         "the card is not bounded, so it stretches edge to edge in its lane"
     assert "margin-inline: calc((var(--dp-tuning-lane) - var(--dp-tuning-card)) / 2);" in cell, \
@@ -823,7 +833,10 @@ def test_a_relationship_group_never_draws_a_broken_outline():
     group = rule(SETTINGS_CSS, "#view-settings .dp-settings-tuning-group {")
     assert "display: contents" not in group and "subgrid" not in group
     assert "display: flex" in group and "flex-wrap: wrap" in group
-    assert "flex: var(--dp-tuning-span) 1 min(100cqi, var(--dp-tuning-group-min));" in group
+    # Laid out at the full width of its lanes (so it moves to the next row
+    # whole), never wider than the region.
+    assert "flex: 0 1 min(100cqi, var(--dp-tuning-group-max));" in group
+    assert "justify-content: center" in group
     assert "min-width: min(100cqi, var(--dp-tuning-group-min));" in group
     assert "max-width: var(--dp-tuning-group-max);" in group
     assert "(var(--dp-tuning-span) - var(--dp-tuning-selectors)) * var(--dp-tuning-lane-min)" in group

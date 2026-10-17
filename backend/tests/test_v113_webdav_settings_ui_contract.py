@@ -145,8 +145,9 @@ def test_selectors_share_one_tuning_geometry_that_reads_values_whole():
     assert ("#view-settings .dp-settings-tuning-grid .dp-settings-field:has(select.input) {\n"
             "  --dp-tuning-cell-min: var(--dp-tuning-select-lane);\n}") in css
     assert ".dp-settings-tuning-grid:has(" not in css
-    for lanes, minimum in (("1", "160px"), ("2", "160px"), ("3", "160px"), ("4", "200px"), ("5", "160px"),
-                           ("6", "140px"), ("7", "120px")):
+    # Settings Batch 1, Item 4: five lanes is the row ceiling; a set of six or
+    # seven keeps the five-lane default and its ordinary 160px minimum.
+    for lanes, minimum in (("1", "160px"), ("2", "160px"), ("3", "160px"), ("4", "200px"), ("5", "160px")):
         assert (f'[data-tuning-lanes="{lanes}"] {{ --dp-tuning-lanes: {lanes}; --dp-tuning-lane-min: {minimum}; }}'
                 in css)
     # No WebDAV-specific width anywhere.

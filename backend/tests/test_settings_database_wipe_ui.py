@@ -189,7 +189,7 @@ def test_the_five_settings_keep_every_unit_range_and_hint_they_had():
     expected = (
         ("backup_interval_hours", "min: 1, max: 168", "hours",
          "Set how often an automatic backup is created."),
-        ("backup_keep_days", "min: 1, max: 90", "days",
+        ("backup_keep_days", "min: 1, max: 365", "days",
          "Delete backup files older than the configured number of days."),
         ("backup_max_retained", "min: 1, max: 365", "backups",
          "Keep at most this many backups. Older excess backups are removed even when they are within the "

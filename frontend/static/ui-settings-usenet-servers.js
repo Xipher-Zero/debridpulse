@@ -76,18 +76,18 @@
     const password = String(fieldValue(card, 'password') || '');
     const payload = {
       host: String(fieldValue(card, 'host') || '').trim(),
-      port: Number(fieldValue(card, 'port') || defaultPort(card)) || defaultPort(card),
+      // An empty port follows the SSL convention; any other value is exactly
+      // what the card shows.
+      port: String(fieldValue(card, 'port') ?? '') === '' ? defaultPort(card) : numberField(card, 'port'),
       ssl: !!fieldValue(card, 'ssl'),
       username: String(fieldValue(card, 'username') || ''),
-      // A server with no connections cannot acquire; DebridPulse's floor is 1
-      // and Enable is the control for switching a server off.
-      connections: Math.min(500, Math.max(1, Number(fieldValue(card, 'connections')) || 8)),
-      priority: Number(fieldValue(card, 'priority') || 0),
-      // Per-server acquisition tuning. The bounds mirror the canonical model,
-      // which is itself never wider than what the download service accepts, so
-      // a saved value can never be silently rewritten underneath the operator.
-      articles_per_request: Math.min(20, Math.max(1, Number(fieldValue(card, 'articles_per_request')) || 2)),
-      timeout_seconds: Math.min(240, Math.max(20, Number(fieldValue(card, 'timeout_seconds')) || 60)),
+      // Exactly what the card shows: a value outside the canonical model's
+      // bounds (the control's own min/max) is refused by the server and the
+      // card says why -- never clamped or replaced underneath the operator.
+      connections: numberField(card, 'connections'),
+      priority: numberField(card, 'priority'),
+      articles_per_request: numberField(card, 'articles_per_request'),
+      timeout_seconds: numberField(card, 'timeout_seconds'),
       // Whatever the card's own Enable control currently says. A draft created
       // with it switched off is created disabled; nothing here asserts
       // participation the operator did not choose.
@@ -97,6 +97,14 @@
     // A blank field is an absent field: the stored credential is preserved.
     if (password) payload.password = password;
     return payload;
+  }
+
+  // A numeric card value read exactly: the plain decimal the card shows is
+  // sent as that number (the server states its bounds); anything else is sent
+  // as the text it is, for the server to refuse -- never guessed into a number.
+  function numberField(card, key) {
+    const raw = String(fieldValue(card, key) ?? '');
+    return /^-?\d+(?:\.\d+)?$/.test(raw) ? Number(raw) : raw;
   }
 
   const serverId = card => String(card.dataset.usenetServerId || '');
@@ -324,8 +332,9 @@
   function committedValue(key, raw) {
     if (BOOLEAN_FIELDS.has(key)) return raw === true || raw === '1';
     if (!NUMERIC_FIELDS.has(key)) return String(raw ?? '');
-    const parsed = parseInt(String(raw), 10);
-    return Number.isNaN(parsed) ? 0 : parsed;
+    // Read exactly, never truncated ("1e3" is not 1): the persistence owner
+    // refused anything that is not a whole number in range before this write.
+    return Number(String(raw));
   }
 
   const recordFrom = (result, id) =>

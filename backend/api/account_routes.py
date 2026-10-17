@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from application.dependencies import get_application
 from application.service import ApplicationService
@@ -37,6 +37,9 @@ def _actor(request: Request) -> str:
 
 
 class AccountCreate(BaseModel):
+    # Strict: a value of the wrong JSON type ("yes" for a boolean) is refused,
+    # never coerced.
+    model_config = ConfigDict(strict=True)
     kind: Literal["local", "integration"]
     role: Literal["admin", "user", "readonly"] | None = None
     username: str | None = Field(default=None, max_length=256)
@@ -45,22 +48,26 @@ class AccountCreate(BaseModel):
 
 
 class AccountUpdate(BaseModel):
+    model_config = ConfigDict(strict=True)
     role: Literal["admin", "user", "readonly", "integration"] | None = None
     enabled: bool | None = None
     display_name: str | None = Field(default=None, max_length=256)
 
 
 class PasswordReset(BaseModel):
+    model_config = ConfigDict(strict=True)
     password: str = Field(min_length=1, max_length=4096)
     username: str | None = Field(default=None, max_length=256)
 
 
 class OwnPassword(BaseModel):
+    model_config = ConfigDict(strict=True)
     current_password: str = Field(max_length=4096)
     new_password: str = Field(min_length=1, max_length=4096)
 
 
 class AccountMerge(BaseModel):
+    model_config = ConfigDict(strict=True)
     target_id: str = Field(min_length=1, max_length=64)
     source_ids: list[Annotated[str, Field(min_length=1, max_length=64)]] = Field(min_length=1, max_length=100)
 

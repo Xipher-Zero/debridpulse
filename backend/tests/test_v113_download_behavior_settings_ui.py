@@ -80,7 +80,10 @@ def test_skip_confirmation_is_a_projection_of_accepted_policy_and_keeps_its_valu
     assert "!!policy.skip_private_lan_confirmation" in advanced  # rendered from its own stored value
     projection = _function("projectPrivateLanDependency")
     assert "policyOf(state.settings).private_lan_connections" in projection
-    assert ".checked" not in projection and "request(" not in projection  # never erases or writes
+    # It READS what the Local Network switch shows (Settings Batch 1, Item 2:
+    # the fade starts on intent), and never sets a checked state or writes.
+    assert ".checked =" not in projection and "request(" not in projection  # never erases or writes
+    assert "control.disabled = !(accepted && shown);" in projection
     assert "projectPrivateLanDependency();" in _function("adoptTransferPolicy")
     assert "#view-settings .dp-settings-field.is-disabled" in CSS
 

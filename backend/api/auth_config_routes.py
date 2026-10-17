@@ -9,7 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from api import auth_routes as interactive_routes
 from auth.accounts import AccountRefused, admin_password_holders, local_credential_status, set_own_local_credential
@@ -56,12 +56,17 @@ logger = logging.getLogger("debridpulse.auth")
 
 
 class OidcVerificationRequest(BaseModel):
-    """Proposed OIDC settings staged only until a real login proves them."""
+    """Proposed OIDC settings staged only until a real login proves them.
+
+    A proven proposal is SAVED (``auth.pending_oidc``), so it meets exactly the
+    rules ``AuthenticationConfigUpdate`` holds the same fields to: strict JSON
+    types, the same lengths, and an HTTPS public origin (checked by the route)."""
+    model_config = ConfigDict(strict=True)
 
     auth_password_enabled: bool | None = None
-    oidc_provider_name: str | None = None
-    oidc_issuer_url: str | None = None
-    oidc_client_id: str | None = None
+    oidc_provider_name: str | None = Field(default=None, max_length=256)
+    oidc_issuer_url: str | None = Field(default=None, max_length=2048)
+    oidc_client_id: str | None = Field(default=None, max_length=2048)
     oidc_client_secret: str | None = Field(default=None, max_length=8192)
     clear_oidc_client_secret: bool = False
     oidc_scopes: list[str] | None = None
@@ -69,12 +74,16 @@ class OidcVerificationRequest(BaseModel):
     oidc_allowed_subjects: list[str] | None = None
     oidc_allowed_emails: list[str] | None = None
     oidc_allowed_groups: list[str] | None = None
-    oidc_group_claim: str | None = None
-    public_base_url: str | None = None
+    oidc_group_claim: str | None = Field(default=None, max_length=256)
+    public_base_url: str | None = Field(default=None, max_length=2048)
     return_to: str = "/settings"
 
 
 class AuthenticationConfigUpdate(BaseModel):
+    # Strict: a value of the wrong JSON type is refused, never coerced. This is
+    # also the rule an authentication value changed through ``PUT /settings``
+    # meets (``api.routes._refuse_invalid_document_changes``).
+    model_config = ConfigDict(strict=True)
     auth_password_enabled: bool | None = None
     auth_username: str | None = Field(default=None, max_length=256)
     auth_password: str | None = Field(default=None, max_length=4096)
@@ -572,6 +581,12 @@ async def verify_pending_oidc_configuration(
             {"detail": "Too many OpenID Connect configuration verifications have been started"},
             status_code=429,
             headers={"Retry-After": "60", "Cache-Control": "no-store"},
+        )
+
+    if proposed.public_base_url is not None and not _valid_public_base_url(proposed.public_base_url):
+        return JSONResponse(
+            {"detail": "External Base URL must be an HTTPS origin in the form https://host[:port]"},
+            status_code=400,
         )
 
     current = get_settings()

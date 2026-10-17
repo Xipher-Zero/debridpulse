@@ -21,7 +21,7 @@ from urllib.parse import urlparse, urlsplit
 from fastapi import Depends, APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, StreamingResponse, Response
 from starlette.background import BackgroundTask
-from pydantic import BaseModel, Field, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from core.branding import APP_SHORT_NAME, REPOSITORY_API_URL
 from core.config import (
@@ -95,6 +95,13 @@ _VALIDATION_REQUIREMENTS = {
     "string_too_long": "must be at most {max_length} characters",
     "missing": "is required",
     "extra_forbidden": "is not a recognised setting",
+    "finite_number": "must be a finite number",
+    "literal_error": "must be one of the offered choices",
+    "setting_choice": "must be {expected}",
+    "setting_url": "must be an http:// or https:// address",
+    "setting_avatar": "must be an http:// or https:// image address that is not an SVG",
+    "setting_path": "must be an absolute folder path",
+    "setting_host": "must be a host name or IP address without a scheme, path or spaces",
 }
 
 
@@ -119,7 +126,10 @@ def _validation_refusal(error: dict) -> dict:
 def _refused(exc: ValidationError) -> HTTPException:
     """A 400 for a refused settings value: the first rule it broke, in words
     (``_validation_refusal``); the full validation detail goes to the log."""
-    logger.info("Settings value refused: %s", _sanitize_error(exc))
+    # Where and which rule -- never the refused value, which may be a secret.
+    logger.info("Settings value refused: %s", "; ".join(
+        f"{'.'.join(str(part) for part in error.get('loc') or ())}: {error.get('type')}"
+        for error in exc.errors(include_url=False, include_input=False, include_context=False)))
     return HTTPException(400, _validation_refusal(exc.errors(include_url=False)[0]))
 
 
@@ -522,7 +532,37 @@ async def version_check():
 
 
 class SettingsUpdate(AppSettings):
+    # Strict: a value of the wrong JSON type ("5", true for a number, 5.5 for
+    # a whole number) is refused, never coerced into some other value.
+    model_config = ConfigDict(strict=True)
     clear_secrets: list[str] = Field(default_factory=list)
+
+
+# The broad document's own flat values -- everything a PUT may change.
+_DOCUMENT_FIELDS = frozenset(AppSettings.model_fields) - {
+    "integrations", "integration_groups", "transfer_policy", "execution_runtime_limits",
+    "external_delivery", "notification_verification", "oidc_client_secret", "oidc_client_secret_clear",
+}
+
+
+def _refuse_invalid_document_changes(merged: dict, previous: AppSettings) -> None:
+    """Every flat value this write CHANGES meets its field's rule
+    (``core.settings_constraints``); untouched stored values are not re-judged.
+    An authentication value changed here meets exactly what the Authentication
+    surface (``PUT /api/auth/config``) requires of it -- this is not a way
+    around it."""
+    from api.auth_config_routes import AuthenticationConfigUpdate, _valid_public_base_url
+    from core.settings_constraints import validate_changes
+    try:
+        validate_changes(AppSettings, merged, previous, names=_DOCUMENT_FIELDS)
+        validate_changes(AuthenticationConfigUpdate, merged, previous, names=_AUTH_COMPAT_SETTINGS_FIELDS)
+    except ValidationError as exc:
+        raise _refused(exc) from None
+    if (merged.get("public_base_url") != previous.public_base_url
+            and not _valid_public_base_url(merged.get("public_base_url"))):
+        raise HTTPException(400, {"message": "Value must be an HTTPS origin.",
+                                  "requirement": "must be an HTTPS origin in the form https://host[:port]",
+                                  "field": "public_base_url"})
 
 
 def _merge_secret_settings(new: SettingsUpdate, previous: AppSettings) -> dict:
@@ -597,6 +637,7 @@ async def update_settings(new: SettingsUpdate, application: ApplicationService =
         async with config_write_lock():
             previous = get_settings()
             merged = _merge_secret_settings(new, previous)
+            _refuse_invalid_document_changes(merged, previous)
             definitions = application.definitions
             from integrations.configuration import normalize_settings
             # The broad document never writes a canonical namespace: those have
@@ -2189,10 +2230,15 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
     the value is persisted (specification section 2.6, 13.3)."""
     if "max_download_bytes_per_second" not in body:
         raise HTTPException(400, "A speed limit is required.")
+    # The namespace's own rule, strictly: a whole number of bytes per second
+    # from 0 (no limit) up -- never a truncated fraction, a boolean, a string,
+    # a negative silently read as "no limit", or a non-finite value.
+    from core.settings_constraints import validate_changes
+    value = body["max_download_bytes_per_second"]
     try:
-        value = max(0, int(body["max_download_bytes_per_second"]))
-    except (TypeError, ValueError):
-        raise HTTPException(400, "Speed limit must be a whole number.") from None
+        validate_changes(ExecutionRuntimeLimits, {"max_download_bytes_per_second": value})
+    except ValidationError as exc:
+        raise _refused(exc) from None
 
     async with application.application_operation():
         # The config-write lock serializes the full desired-write ->
@@ -2225,7 +2271,10 @@ async def patch_execution_runtime_limits(body: dict, application: ApplicationSer
 
 class TransferPolicyUpdate(BaseModel):
     """Partial update of ``transfer_policy``: every operator-tunable field of
-    the canonical namespace, and only through this surface."""
+    the canonical namespace, and only through this surface. Strict: a value of
+    the wrong JSON type is refused, never coerced; the bounds are the
+    namespace's own (``TransferSettings``)."""
+    model_config = ConfigDict(strict=True)
     max_concurrent_executions: int | None = None
     execution_retry_count: int | None = None
     execution_retry_delay_seconds: int | None = None
@@ -2316,6 +2365,9 @@ async def patch_transfer_policy(body: TransferPolicyUpdate, application: Applica
 
 
 class IntegrationConfigurationUpdate(BaseModel):
+    # Strict request envelope; each changed option is validated strictly by
+    # its integration's own schema (``mutate_integration_configuration``).
+    model_config = ConfigDict(strict=True)
     options: dict = Field(default_factory=dict)
     enabled: bool | None = None
     priority: int | None = None
@@ -2391,6 +2443,7 @@ async def patch_integration_configuration(
 
 
 class IntegrationGroupConfigurationUpdate(BaseModel):
+    model_config = ConfigDict(strict=True)
     enabled: bool
 
 
@@ -2913,7 +2966,11 @@ from integrations.usenet.definition import (
 
 class UsenetServerUpdate(BaseModel):
     """One server card's own values. Absent fields are left untouched, and a
-    blank password keeps the stored one unless ``clear_password`` is set."""
+    blank password keeps the stored one unless ``clear_password`` is set.
+    Strict: a value of the wrong JSON type is refused, never coerced; each
+    changed value then meets the server record's own rule
+    (``_mutate_usenet_servers``)."""
+    model_config = ConfigDict(strict=True)
     host: str | None = None
     port: int | None = Field(default=None, ge=1, le=65535)
     ssl: bool | None = None
@@ -2948,7 +3005,7 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
     from core.config import config_write_lock, get_settings, load_settings, save_settings, apply_settings
     from integrations.configuration import accept_verification, normalize_settings, public_integrations
     from integrations.definition import IntegrationSettings
-    from integrations.usenet.definition import UsenetOptions
+    from integrations.usenet.definition import UsenetOptions, UsenetServer
     from integrations.usenet.servers import ServerMutationError
 
     async with application.application_operation():
@@ -2959,6 +3016,13 @@ async def _mutate_usenet_servers(application: ApplicationService, mutate, verifi
             stored = entry.options if isinstance(entry, IntegrationSettings) else {}
             try:
                 updated, payload = mutate(UsenetOptions(**(stored or {})))
+                # Every server value this write changed meets the record's own
+                # rule; untouched stored values are not re-judged.
+                from core.settings_constraints import validate_changes
+                previous_servers = {server.get("id"): server for server in (stored or {}).get("servers", [])
+                                    if isinstance(server, dict)}
+                for server in updated.servers:
+                    validate_changes(UsenetServer, server.model_dump(), previous_servers.get(server.id))
             except ServerMutationError as exc:
                 raise HTTPException(404, "Unknown Usenet server") from None
             except ValidationError as exc:

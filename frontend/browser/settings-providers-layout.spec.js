@@ -165,8 +165,10 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       const grid = await boxOf(card(page).locator('.dp-settings-tuning-grid'));
 
       // DP 1.0.13 Settings consolidation: one lane per cell of the fixed set,
-      // spanning the usable width, with a bounded card centred in each. A
-      // lane is its cell plus the slack centring the card in it.
+      // with a bounded card centred in each. A lane is its cell plus the slack
+      // centring the card in it. Settings Batch 1, Item 4: at most FIVE lanes
+      // to a row -- the set of seven fills one row of five, spanning the usable
+      // width, and continues on the next.
       await expect(card(page).locator('.dp-settings-tuning-grid'))
         .toHaveAttribute('data-tuning-lanes', '7');
       const lanes = await cells(page).evaluateAll(nodes => nodes.map(node => {
@@ -176,8 +178,8 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       expect(lanes.length, 'the set lost a lane').toBe(7);
       expect(Math.max(...lanes) - Math.min(...lanes), 'the lanes are not equal')
         .toBeLessThanOrEqual(1);
-      expect(grid.width - (lanes.reduce((a, b) => a + b, 0) + 6 * 16),
-        'the lanes do not span the usable width').toBeLessThanOrEqual(2);
+      expect(grid.width - (lanes.slice(0, 5).reduce((a, b) => a + b, 0) + 4 * 16),
+        'five lanes do not span the usable width').toBeLessThanOrEqual(2);
 
       for (let i = 0; i < 7; i += 1) {
         const cell = cells(page).nth(i);
@@ -197,8 +199,8 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
           getComputedStyle(el).textAlign)).toBe('center');
       }
 
-      // The lane count drops on its own as the width falls, the rows left-fill
-      // what remains, and nothing scrolls.
+      // The lane count drops on its own as the width falls, every row --
+      // a partial one included -- is centred, and nothing scrolls.
       let seen = [];
       for (const width of [1440, 900, 700, 420]) {
         await page.setViewportSize({width, height: 1000});
@@ -213,19 +215,19 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
             const r = child.getBoundingClientRect();
             const key = Math.round(r.top);
             if (!byTop.has(key)) byTop.set(key, []);
-            byTop.get(key).push(r.left - parseFloat(getComputedStyle(child).marginLeft));
+            const style = getComputedStyle(child);
+            byTop.get(key).push([r.left - parseFloat(style.marginLeft), r.right + parseFloat(style.marginRight)]);
           }
           const rows = Array.from(byTop.values());
-          return {lanes: rows[0].length, rows: rows.map(starts => ({leading: Math.min(...starts) - host.left}))};
+          return {lanes: Math.max(...rows.map(row => row.length)), rows: rows.map(spans => ({
+            leading: Math.min(...spans.map(span => span[0])) - host.left,
+            trailing: host.right - Math.max(...spans.map(span => span[1]))}))};
         });
         seen.push(measured.lanes);
         for (const row of measured.rows) {
-          // Left-filled: the row occupies the FIRST lane. Its bounded card is
-          // centred inside that lane, so the slack is the lane's, not a
-          // sparse-row offset.
-          expect(row.leading,
-            `tuning row does not start at the first lane at ${width}px`)
-            .toBeLessThanOrEqual(2);
+          // Centred: the same slack on both sides of every row.
+          expect(Math.abs(row.leading - row.trailing),
+            `tuning row is not centred at ${width}px`).toBeLessThanOrEqual(2);
         }
         expect(await page.evaluate(() =>
           document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1),
@@ -236,9 +238,9 @@ test.describe('the AllDebrid card header rail carries state, Test and Enable', (
       // the VIEWPORT is deliberately not asserted: the Settings chrome has its
       // own breakpoints, so the region's own width is not a monotonic function
       // of the window's -- and the lane rule answers to the region alone.
-      expect(seen[0], `the set did not hold all seven lanes: ${seen}`).toBe(7);
-      for (const lanes of seen) expect(lanes).toBeLessThanOrEqual(7);
-      expect(Math.min(...seen), `lane count never dropped: ${seen}`).toBeLessThan(7);
+      expect(seen[0], `the set did not hold the five-lane row ceiling: ${seen}`).toBe(5);
+      for (const lanes of seen) expect(lanes).toBeLessThanOrEqual(5);
+      expect(Math.min(...seen), `lane count never dropped: ${seen}`).toBeLessThan(5);
       await page.setViewportSize({width: 1440, height: 1000});
     });
 
@@ -317,6 +319,7 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
       const r = node.getBoundingClientRect();
       const style = getComputedStyle(node);
       return {top: Math.round(r.top), left: r.left - parseFloat(style.marginLeft) - host.left,
+              right: r.right + parseFloat(style.marginRight) - host.left, host: host.width,
               lane: r.width + parseFloat(style.marginLeft) + parseFloat(style.marginRight),
               width: r.width, selector: !!node.querySelector('select.input')};
     });
@@ -361,7 +364,7 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
         .toBeGreaterThan(await widthOf('.dp-settings-download-recovery-card'));
     });
 
-  test('cards stay bounded, rows left-fill their lanes, and nothing scrolls at any width',
+  test('cards stay bounded, rows hold at most five and are centred, and nothing scrolls at any width',
     async ({page}) => {
       for (const width of [1600, 1280, 1024, 860, 700, 520, 400]) {
         await page.setViewportSize({width, height: 1100});
@@ -371,17 +374,20 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
             // Bounded: a card fits its lane, it never stretches edge to edge.
             expect(cell.width, `${label} card stretched at ${width}px`).toBeLessThanOrEqual(240);
           }
-          // Left-filled: every row, including a partial one, begins at the
-          // region's first lane -- there is no sparse-row centring anywhere. A
-          // bounded card centred inside its own lane is the lane's slack.
+          // Settings Batch 1, Item 4: every row -- the first, a partial last
+          // one and any between -- holds at most five cells and is centred by
+          // the same rule: the same slack before its first lane and after its
+          // last.
           const byRow = new Map();
           for (const cell of cells) {
             if (!byRow.has(cell.top)) byRow.set(cell.top, []);
             byRow.get(cell.top).push(cell);
           }
           for (const [, row] of byRow) {
-            expect(Math.min(...row.map(c => c.left)),
-              `${label} row does not start at the first lane at ${width}px`).toBeLessThanOrEqual(2);
+            expect(row.length, `${label} row holds more than five at ${width}px`).toBeLessThanOrEqual(5);
+            const leading = Math.min(...row.map(c => c.left));
+            const trailing = row[0].host - Math.max(...row.map(c => c.right));
+            expect(Math.abs(leading - trailing), `${label} row is not centred at ${width}px`).toBeLessThanOrEqual(2);
           }
         }
         expect(await page.evaluate(() =>
@@ -467,10 +473,11 @@ test.describe('the Downloads tuning collections share one cell grammar', () => {
 
   test('only the Network Sources group that must split withdraws its outline', async ({page}) => {
     const grid = page.locator('[data-executor-tuning="direct"] .dp-settings-tuning-grid');
-    // The group minimums: A 3 x 120 + 2 x 16 = 392px, C 120 + 236 + 16 = 372px,
-    // B 2 x 120 + 16 = 256px. The region is set to a width; each group answers
-    // for itself.
-    for (const [width, whole] of [[400, 'ABC'], [380, 'BC'], [300, 'B'], [240, '']]) {
+    // The group minimums (Settings Batch 1, Item 4: a set of seven keeps the
+    // ordinary 160px lane minimum): A 3 x 160 + 2 x 16 = 512px,
+    // C 160 + 236 + 16 = 412px, B 2 x 160 + 16 = 336px. The region is set to a
+    // width; each group answers for itself.
+    for (const [width, whole] of [[520, 'ABC'], [480, 'BC'], [400, 'B'], [320, '']]) {
       await grid.evaluate((node, value) => { node.style.width = `${value}px`; }, width);
       const groups = await networkGroups(page);
       for (const [name, group] of Object.entries(groups)) {
@@ -657,4 +664,72 @@ test(`no blank band follows a closed terminal Additional Settings disclosure (${
     await summary.click();
   }
 });
+}
+
+/* Settings Batch 1, Item 4 -- every tuning collection on every tab: at most
+ * five cards to a row, a relationship group never split while a row of the
+ * region can hold it (it moves to the next row whole), every row centred by
+ * the same rule, and a relationship outline that is present but quieter than
+ * before (the strong border tone at 58%, was 78%) in both themes. */
+for (const theme of ['dark', 'light']) for (const width of [1920, 1440, 1180]) {
+  test(`${theme} ${width}px: no tuning row holds more than five cards, groups move whole, every row is centred`, async ({page}) => {
+    await isolateExternalFonts(page);
+    await page.addInitScript(value => { try { localStorage.setItem('theme', value); } catch (_) {} }, theme);
+    {
+      await page.setViewportSize({width, height: 1100});
+      for (const tab of ['sources', 'downloads', 'notifications', 'maintenance']) {
+        await page.goto('/');
+        await page.locator('#sidebar .nav-item[data-view="settings"]').click();
+        await expect(page.locator('#view-settings')).toHaveClass(/\bactive\b/);
+        // The tab may still be sliding in; choose it once it is there.
+        await expect.poll(async () => {
+          await page.locator(`#view-settings [data-tab="${tab}"]`).evaluate(button => button.click());
+          return page.locator(`.dp-settings-panel[data-panel="${tab}"]`).isVisible();
+        }).toBe(true);
+        await page.evaluate(() => {
+          document.querySelectorAll('.view.active .dp-settings-disclosure[aria-expanded="false"]').forEach(b => b.click());
+          document.querySelectorAll('.view.active details').forEach(d => { d.open = true; });
+        });
+        await page.waitForFunction(() => ![...document.querySelectorAll('.view.active *')].some(n => n.getAnimations().length));
+        const grids = await page.locator('.view.active .dp-settings-tuning-grid').evaluateAll(nodes => nodes
+          .filter(grid => grid.getBoundingClientRect().width > 0)
+          .map(grid => {
+            const host = grid.getBoundingClientRect();
+            const rows = new Map();
+            for (const cell of grid.querySelectorAll('.dp-settings-field')) {
+              const r = cell.getBoundingClientRect(), style = getComputedStyle(cell);
+              const key = Math.round(r.top);
+              if (!rows.has(key)) rows.set(key, []);
+              rows.get(key).push([r.left - parseFloat(style.marginLeft) - host.left,
+                                  r.right + parseFloat(style.marginRight) - host.left]);
+            }
+            const groups = [...grid.querySelectorAll(':scope > .dp-settings-tuning-group')].map(group => ({
+              span: Number(group.dataset.tuningSpan),
+              rows: new Set([...group.querySelectorAll('.dp-settings-field')].map(c => Math.round(c.getBoundingClientRect().top))).size,
+              outline: getComputedStyle(group).outlineColor,
+            }));
+            return {lanes: Number(grid.dataset.tuningLanes), width: host.width,
+                    rows: [...rows.values()].map(row => ({count: row.length,
+                      leading: Math.min(...row.map(s => s[0])), trailing: host.width - Math.max(...row.map(s => s[1]))})),
+                    groups};
+          }));
+        for (const grid of grids) {
+          const where = `${theme} ${width}px ${tab} (${grid.lanes} cells)`;
+          for (const row of grid.rows) {
+            expect(row.count, `${where}: a row holds ${row.count}`).toBeLessThanOrEqual(5);
+            expect(Math.abs(row.leading - row.trailing), `${where}: a row is not centred`).toBeLessThanOrEqual(2);
+          }
+          // A set of more than five continues on the next row; five or fewer
+          // plain cells fill one row at these widths.
+          if (grid.lanes > 5) expect(grid.rows.length, where).toBeGreaterThan(1);
+          for (const group of grid.groups) {
+            expect(group.rows, `${where}: a group of ${group.span} was split`).toBe(1);
+            // color-mix(var(--dp-border-strong) 58%, transparent)
+            expect(group.outline, where).toMatch(/\/ 0\.58\)$/);
+          }
+        }
+      }
+    }
+    await expect(page.locator('body')).toHaveClass(theme === 'light' ? /\blight\b/ : /^(?!.*\blight\b).*$/);
+  });
 }

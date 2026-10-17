@@ -63,13 +63,19 @@ test('Connections per Server stops at 16, and a server refusal is shown in plain
   const connections = card.locator('[data-setting="aria2_max_connection_per_server"]');
   await expect(connections).toHaveAttribute('max', '16');
   const before = await connections.inputValue();
-  const refused = page.waitForResponse(response => response.url().includes('/api/integrations/aria2/configuration')
-    && response.request().method() === 'PATCH');
+  // Above the control's own bound (the server's): refused in the field's words
+  // before any request (Settings Batch 1, Item 3); the server refuses the same
+  // value on its own (backend/tests/test_aria2_configuration_validation.py).
+  const sent = [];
+  const watch = request => { if (request.url().includes('/api/integrations/aria2/configuration')
+    && request.method() === 'PATCH') sent.push(request.postData()); };
+  page.on('request', watch);
   await connections.fill('20');
   await connections.blur();
-  expect((await refused).status()).toBe(400);
   await expect(page.locator('.toast.error').last()).toHaveText('Connections per Server can be at most 16.');
   await expect(connections).toHaveValue(before);
+  expect(sent).toEqual([]);
+  page.off('request', watch);
   // A well-formed size outside aria2's range passes the field and is refused
   // by the server, in its words.
   const split = card.locator('[data-setting="aria2_min_split_size"]');

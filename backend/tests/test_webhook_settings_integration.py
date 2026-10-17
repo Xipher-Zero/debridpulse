@@ -6,6 +6,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+from fastapi import HTTPException
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 # aiohttp is a real runtime dependency and is installed, so this module must
@@ -81,18 +83,23 @@ class SettingsSaveTests(unittest.IsolatedAsyncioTestCase):
         def fake_apply(cfg):
             saved["applied"] = cfg
 
+        # Settings Batch 1, Item 3: a newly written avatar Discord cannot use (a
+        # data: URI) is REFUSED in words -- it used to be silently cleared while
+        # the save reported success. Nothing is saved or applied. (A STORED one
+        # is still corrected at load by ``validate_and_sanitise``.)
         with patch("api.routes.save_settings", side_effect=fake_save), \
              patch("api.routes.apply_settings", side_effect=fake_apply), \
              patch.object(routes.aria2_runtime, "ensure_started", AsyncMock()), \
              patch.object(routes.aria2_runtime, "restart", AsyncMock()):
-            result = await routes.update_settings(
-                routes.SettingsUpdate(discord_avatar_url="data:image/png;base64,abc123"), application=SimpleNamespace(definitions=(), configuration_admission=lambda: _fake_db_context(None), validate_configuration=AsyncMock(), configure=MagicMock(), integration_admin=MagicMock())
-            )
+            with self.assertRaises(HTTPException) as refused:
+                await routes.update_settings(
+                    routes.SettingsUpdate(discord_avatar_url="data:image/png;base64,abc123"), application=SimpleNamespace(definitions=(), configuration_admission=lambda: _fake_db_context(None), validate_configuration=AsyncMock(), configure=MagicMock(), integration_admin=MagicMock())
+                )
 
-        self.assertTrue(result["ok"])
-        self.assertEqual(result["discord_avatar_url"], "")
-        self.assertEqual(saved["cfg"].discord_avatar_url, "")
-        self.assertEqual(saved["applied"].discord_avatar_url, "")
+        self.assertEqual(refused.exception.status_code, 400)
+        self.assertEqual(refused.exception.detail["field"], "discord_avatar_url")
+        self.assertNotIn("abc123", str(refused.exception.detail))
+        self.assertEqual(saved, {})
 
     async def test_update_settings_persists_reporting_window(self):
         saved = {}

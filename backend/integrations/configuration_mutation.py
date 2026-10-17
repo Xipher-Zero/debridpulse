@@ -12,11 +12,28 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Awaitable, Callable
 
+from pydantic import ValidationError
+
+
 from integrations.definition import IntegrationSettings
 
 
 class InvalidIntegrationOptions(ValueError):
-    """The merged options are not valid for the integration's options model."""
+    """The merged options are not valid for the integration's options model.
+
+    Its message never carries a submitted value -- an option may be a
+    credential or a sensitive URL, and pydantic's own text includes the input.
+    A schema refusal (``refusing``) names only where and which rule; the
+    ``ValidationError`` itself is the exception's cause, which the route words
+    for the operator from its field and requirement alone
+    (``api.routes._refused``)."""
+
+    @classmethod
+    def refusing(cls, exc: ValidationError) -> "InvalidIntegrationOptions":
+        where = "; ".join(
+            f"{'.'.join(str(part) for part in error.get('loc') or ())}: {error.get('type')}"
+            for error in exc.errors(include_url=False, include_input=False, include_context=False))
+        return cls(f"Integration option refused ({where})")
 
 
 class ConfigurationRefused(ValueError):
@@ -102,11 +119,25 @@ async def mutate_integration_configuration(
             existing = current.integrations.get(integration_id)
             was_enabled = bool(getattr(previous.integrations.get(integration_id), "enabled", False))
             existing_options = existing.options if isinstance(existing, IntegrationSettings) else {}
+            # Every option this write CHANGES meets its field's rule exactly --
+            # strictly, never coerced -- while untouched stored options are not
+            # re-judged (``core.settings_constraints``). A clear can only name
+            # one of this integration's own secrets.
+            from core.settings_constraints import validate_changes
+            if set(clear_secrets) - definition.secret_fields:
+                raise InvalidIntegrationOptions("Unknown integration secret clear request")
+            # Only a schema refusal is a refused option: anything else is a
+            # failure of this code, not of the operator's input, and is not
+            # turned into a 400.
+            try:
+                validate_changes(definition.options_model, options or {}, existing_options)
+            except ValidationError as exc:
+                raise InvalidIntegrationOptions.refusing(exc) from exc
             merged_options = {**existing_options, **(options or {})}
             try:
                 validated_options = definition.options_model(**merged_options).model_dump()
-            except Exception as exc:
-                raise InvalidIntegrationOptions(str(exc)) from exc
+            except ValidationError as exc:
+                raise InvalidIntegrationOptions.refusing(exc) from exc
             entry = IntegrationSettings(
                 enabled=(existing.enabled if isinstance(existing, IntegrationSettings) and enabled is None else bool(enabled)),
                 priority=(existing.priority if isinstance(existing, IntegrationSettings) and priority is None else int(priority or 0)),

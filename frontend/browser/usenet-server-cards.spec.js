@@ -1757,11 +1757,24 @@ test.describe('one Usenet server card lays its actions out structurally', () => 
  * never as a validation dump, and nothing is created. */
 test('a new server refused for its port says which field and the bound', async ({page}) => {
   const card = await draftCard(page);
+  const posted = [];
+  page.on('request', request => { if (request.url().endsWith('/api/usenet/servers') && request.method() === 'POST')
+    posted.push(JSON.parse(request.postData() || '{}')); });
   await field(card, 'port').fill('70000');
   await field(card, 'host').fill('news.refused.example');
   await field(card, 'host').blur();
+  // Settings Batch 1, Item 3: the port is refused in its own words when its
+  // field is left, before any request, and returns to its accepted value; a
+  // record made afterwards never carries the refused port.
   const toast = page.locator('.toast.error').last();
-  await expect(toast).toHaveText(/^Could not save .+: Port must be 65535 or less\.$/);
+  await expect(page.locator('.toast.error', {hasText: 'Port must be 65535 or less.'})).toHaveCount(1);
   for (const raw of ['Invalid request value', 'Unprocessable', 'less_than_equal', 'body']) await expect(toast).not.toContainText(raw);
-  expect((await storedServers(page)).some(server => server.host === 'news.refused.example')).toBe(false);
+  await expect(field(card, 'port')).not.toHaveValue('70000');
+  expect(posted.every(body => body.port !== 70000)).toBe(true);
+  expect((await storedServers(page)).some(server => server.port === 70000)).toBe(false);
+  // The server still refuses the value itself, naming the field and the bound.
+  const direct = await page.request.post('/api/usenet/servers', {data: {host: 'news.direct.example', port: 70000}});
+  expect(direct.status()).toBe(422);  // the strict request body's own bound
+  expect((await direct.json()).detail[0].requirement).toBe('must be 65535 or less');
+  await resetServers(page);
 });

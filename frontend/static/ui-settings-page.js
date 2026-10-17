@@ -258,7 +258,8 @@
     stats_reporting_enabled: {scope: 'settings-document', option: 'stats_reporting_enabled', commit: 'immediate'},
     stats_report_webhook_url: {scope: 'settings-document', option: 'stats_report_webhook_url', secret: true},
     stats_report_interval_hours: {scope: 'settings-document', option: 'stats_report_interval_hours'},
-    stats_report_window_hours: {scope: 'settings-document', option: 'stats_report_window_hours'},
+    // A selector whose canonical value is a whole number commits that number.
+    stats_report_window_hours: {scope: 'settings-document', option: 'stats_report_window_hours', integer: true},
 
     // Authentication -- the /auth/config namespace. An ordinary authentication
     // value is an ordinary value: it crosses one of the same two boundaries
@@ -305,7 +306,7 @@
     backup_max_retained: {scope: 'settings-document', option: 'backup_max_retained'},
     stats_snapshot_interval_minutes: {scope: 'settings-document', option: 'stats_snapshot_interval_minutes'},
     stats_snapshot_keep_days: {scope: 'settings-document', option: 'stats_snapshot_keep_days'},
-    activity_log_page_size: {scope: 'settings-document', option: 'activity_log_page_size'},
+    activity_log_page_size: {scope: 'settings-document', option: 'activity_log_page_size', integer: true},
     db_wipe_enabled: {scope: 'settings-document', option: 'db_wipe_enabled', commit: 'immediate'},
   });
 
@@ -317,8 +318,12 @@
   function commitAttributes(key) {
     const declared = COMMIT_FIELDS[key];
     if (!declared) return '';
+    // An empty control that stands for one canonical value (``blank``) says
+    // so, so the persistence owner accepts it as a draft rather than refusing
+    // an empty number as missing.
     return `data-commit="${html(declared.commit || 'changed-blur')}" `
-      + `data-commit-key="${html(key)}" data-commit-scope="${html(declared.scope)}"`;
+      + `data-commit-key="${html(key)}" data-commit-scope="${html(declared.scope)}"`
+      + (declared.blank !== undefined ? ' data-commit-blank' : '');
   }
 
   /* OIDC in the same three-state vocabulary every mechanism KPI uses, plus the
@@ -1005,26 +1010,25 @@
   /* The ONE fixed tuning-set collection.
    *
    * Every tuning region renders the same thing: equal-width invisible layout
-   * lanes spanning the usable width, one lane per cell of the fixed set, with
-   * a bounded card centred in each lane (ui-settings-page.css). The only thing
-   * a region contributes is its own CARDINALITY -- declared here, derived from
-   * the cells it passed -- so no region states a column count, a breakpoint
-   * matrix or a geometry of its own, and none is measured in JavaScript. When
-   * the set can no longer hold its lanes at their accepted minimum the lane
-   * count drops on its own and the cells left-fill the rows that remain.
+   * lanes spanning the usable width, one lane per cell of the fixed set up to
+   * five per row, with a bounded card centred in each lane
+   * (ui-settings-page.css). The only thing a region contributes is its own
+   * CARDINALITY -- declared here, derived from the cells it passed -- so no
+   * region states a column count, a breakpoint matrix or a geometry of its
+   * own, and none is measured in JavaScript. A set larger than five, or one
+   * that can no longer hold its lanes at their accepted minimum, continues on
+   * the next row, and every row is centred.
    *
    * A boolean and a selector are cells of the same shape as a number; none of
    * them is a special layout.
    *
    * ``tuningGroup`` states a RELATIONSHIP between adjacent cells and nothing
    * else -- it is never a cell, so it contributes its MEMBERS to the lane
-   * count rather than one lane. The cell remains the layout unit: at the one
-   * width where the whole set holds its lanes the group is drawn as a light
-   * outline over exactly the lanes its members occupy (a subgrid, so it owns
-   * no track of its own), and at every narrower width it stops being a box at
-   * all (`display: contents`) so its cells rejoin the lanes as ordinary cells
-   * and the outline disappears entirely rather than splitting across rows.
-   * No geometry is measured and no node is ever re-parented. */
+   * count rather than one lane. The cell remains the layout unit: the group
+   * occupies exactly the lanes its members do and moves to the next row whole
+   * when it does not fit what is left of one, drawn as a light outline while
+   * it holds a row of its own width (ui-settings-page.css). No geometry is
+   * measured and no node is ever re-parented. */
   function tuningCells(...cells) {
     const members = cells.flat();
     const lanes = members.reduce((total, markup) => {
@@ -1842,11 +1846,11 @@
               }),
             ),
             input('alldebrid_rate_limit_per_minute', 'API Calls per Minute', allDebridOf(s).rate_limit_per_minute ?? 60, {
-              type: 'number', min: 0, max: 300,
+              type: 'number', min: 0, max: 600,
               hint: 'Limits how many requests DebridPulse sends to AllDebrid each minute. Set to 0 for no local limit.'
             }),
             input('poll_interval_seconds', 'Provider Poll Interval (seconds)', policyOf(s).provider_poll_interval_seconds ?? 30, {
-              type: 'number', min: 10,
+              type: 'number', min: 5, max: 3600,
               hint: 'How often DebridPulse checks AllDebrid for updates to active transfers. Shorter intervals provide faster status updates but increase API traffic.'
             }),
             input('full_sync_interval_minutes', 'Full Sync Interval (minutes)', s.full_sync_interval_minutes ?? 5, {
@@ -2581,11 +2585,11 @@
       input('graceful_stop_timeout_seconds', 'Graceful Stop Timeout (seconds)',
         policy.graceful_stop_timeout_seconds ?? 10, {
           type: 'number', min: 1, max: 60,
-          hint: 'How long DebridPulse allows an active download engine to finish and preserve current work before forcing it to stop.',
+          hint: 'How long DebridPulse waits for an active download engine to stop gracefully, preserving its current progress, before forcing it to stop.',
         }),
       // The two local-network cells are one relationship (the second depends
-      // on the first): the shared tuning relation, drawn only while the set
-      // holds all its lanes.
+      // on the first): the shared tuning relation, drawn while the group is
+      // whole on a row.
       tuningGroup(
         tuningToggle('private_lan_connections', 'Local Network Connections',
           'Allow explicitly entered downloads to connect to private LAN addresses.',
@@ -2598,15 +2602,29 @@
   }
 
   /* The Skip Local Connection Confirmation cell is available only while Local
-   * Network Connections is on -- a projection of ACCEPTED canonical policy,
-   * applied wherever that policy is adopted. Its stored preference is never
-   * changed by this, so re-enabling LAN access restores it as it was. */
+   * Network Connections is on. Two facts, deliberately separate:
+   *
+   *   what it LOOKS like follows what the Local Network switch SHOWS -- the
+   *   operator's latest intent from the moment they flip it, or the accepted
+   *   value it is rolled back to -- so its existing fade begins on the click
+   *   rather than when the server answers;
+   *
+   *   whether it can be USED is a projection of ACCEPTED canonical policy (and
+   *   of the switch still showing it on): it never becomes operable before the
+   *   permission it depends on has been accepted.
+   *
+   * Projected on the switch's change, wherever policy is adopted, and when a
+   * commit of the switch settles (a refused write rolls it back without a
+   * change event). Its stored preference is never changed by this, so
+   * re-enabling LAN access restores it as it was. */
   function projectPrivateLanDependency() {
-    const allowed = !!policyOf(state.settings).private_lan_connections;
+    const accepted = !!policyOf(state.settings).private_lan_connections;
     const control = document.getElementById(fieldId('skip_private_lan_confirmation'));
     if (!control) return;
-    control.disabled = !allowed;
-    control.closest('.dp-settings-field')?.classList.toggle('is-disabled', !allowed);
+    const lan = document.getElementById(fieldId('private_lan_connections'));
+    const shown = lan ? lan.checked : accepted;
+    control.disabled = !(accepted && shown);
+    control.closest('.dp-settings-field')?.classList.toggle('is-disabled', !shown);
   }
 
   /* The two extraction behaviour controls are ONE group.
@@ -3175,14 +3193,16 @@
 
   /* A committed draft in the shape the /auth/config update holds: a boolean, a
    * whole number of hours, a scope list, a line list, or a string. Bounds are
-   * NOT applied here -- the server is the only authority on them, so an
-   * out-of-range value is rejected and the persistence owner rolls the control
-   * back, exactly as every other Settings number behaves. */
+   * NOT applied here: the persistence owner refuses a number outside the
+   * control's declared range (the server's own) before any request, and the
+   * server still decides everything, exactly as every other Settings number
+   * behaves. */
   function authCommittedValue(key, draft) {
     if (AUTH_BOOLEANS.includes(key)) return draft === true || draft === '1';
+    // Read exactly, never truncated ("1e3" is refused, not read as 1): the
+    // persistence owner refused anything else before this write.
     if (key === 'auth_session_lifetime_hours') {
-      const parsed = Number.parseInt(String(draft ?? '').trim(), 10);
-      return Number.isFinite(parsed) ? parsed : 0;
+      return window.DPSettingsPersistence.numberDraft(fieldFor(key), draft).value;
     }
     if (key === 'oidc_scopes') {
       return String(draft ?? '').split(/[\s,]+/).map(value => value.trim()).filter(Boolean);
@@ -4434,7 +4454,8 @@
         representation: 'shared_path',
         local_root: local,
         import_root: imported === local ? '' : imported,
-        retention_hours: Number(controls.retention_hours.value),
+        // Exactly the digits shown: anything else is not a whole number of hours.
+        retention_hours: /^\d+$/.test(controls.retention_hours.value) ? Number(controls.retention_hours.value) : NaN,
       };
     }
 
@@ -4858,7 +4879,7 @@
             embedAction: fieldUnit('hours'), controlClass: 'dp-settings-unit-field',
           }),
           input('backup_keep_days', 'Backup Retention', s.backup_keep_days ?? 7, {
-            type: 'number', min: 1, max: 90,
+            type: 'number', min: 1, max: 365,
             hint: 'Delete backup files older than the configured number of days.',
             embedAction: fieldUnit('days'), controlClass: 'dp-settings-unit-field',
           }),
@@ -5092,9 +5113,11 @@
       // state is not expansion state. Withdrawing a provider does put its
       // configuration away again -- unless the operator has edits in it, which
       // this must never discard.
-      const baseline = providerBaselines.get(card) || [];
-      const dirty = baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
-      if (!enabled && !dirty) setDisclosureExpanded(disclosure, false);
+      // A card the operator's own action has already put away (or is putting
+      // away) is left to finish; converging never restarts that motion.
+      if (!enabled && !providerDirty(card) && disclosure.getAttribute('aria-expanded') === 'true') {
+        setDisclosureExpanded(disclosure, false);
+      }
     }
     const status = providerStatus(enabled, !!entry.configured, !!entry.verified);
     const node = card.querySelector('.dp-settings-provider-config-status');
@@ -5125,32 +5148,57 @@
     if (!identity || !card) return;
     const desired = input.checked;
     input.disabled = true;
+    // The card's disclosure moves with the operator's ACTION, so its existing
+    // motion begins on the click, not when the server answers: withdrawing a
+    // provider puts its (unedited) configuration away; admitting one that has
+    // nothing configured puts its configuration in front of them -- the ONE
+    // automatic expansion in Services. Presentation only: what the provider
+    // IS stays the accepted state below, and a refusal reverses the motion.
+    const disclosure = card.querySelector('.dp-settings-disclosure');
+    const wasExpanded = disclosure?.getAttribute('aria-expanded') === 'true';
+    const configured = !!state.settings?.integrations?.[identity]?.configured;
+    const intended = !desired && !providerDirty(card) ? false : (desired && !configured ? true : wasExpanded);
+    if (disclosure && intended !== wasExpanded) setDisclosureExpanded(disclosure, intended, {animate: true});
     try {
       const result = await request(
         'PATCH', `/integrations/${encodeURIComponent(identity)}/configuration`,
         {enabled: desired}, 15000);
       adoptIntegration(identity, result);
-      renderIntegrationState(card, identity);
-      // The ONE automatic expansion in Services, and it belongs to
-      // the operator's ACTION rather than to rendering: admitting a provider
-      // that has nothing configured leaves it unable to do the job it was just
-      // admitted for, so its configuration is put in front of them. It follows
-      // the state the server ACCEPTED, never the click.
       const accepted = state.settings?.integrations?.[identity] || {};
-      if (accepted.enabled !== false && !accepted.configured) {
-        setDisclosureExpanded(card.querySelector('.dp-settings-disclosure'), true, {animate: true});
+      // A card replaced while this was in flight was rendered from canonical
+      // state already; only this card, still on the page, converges here.
+      if (card.isConnected) {
+        renderIntegrationState(card, identity);
+        // The admission the server ACCEPTED keeps an unconfigured provider's
+        // configuration open (whatever the click predicted about it).
+        if (accepted.enabled !== false && !accepted.configured && disclosure?.getAttribute('aria-expanded') !== 'true') {
+          setDisclosureExpanded(disclosure, true, {animate: true});
+        }
       }
       const committed = accepted.enabled !== false;
       notify(`${integrationDisplayName(card, identity)} ${committed ? 'enabled' : 'disabled'}`, 'success');
     } catch (error) {
-      // Nothing optimistic is left lying: the control and the card return to
-      // the canonical namespace the server last confirmed.
-      renderIntegrationState(card, identity);
+      // Nothing optimistic is left lying: the disclosure turns back from
+      // wherever its motion has it drawn, and the control and the card return
+      // to the canonical namespace the server last confirmed.
+      if (card.isConnected) {
+        if (disclosure && (disclosure.getAttribute('aria-expanded') === 'true') !== wasExpanded) {
+          setDisclosureExpanded(disclosure, wasExpanded, {animate: true});
+        }
+        renderIntegrationState(card, identity);
+      }
       notify(error.message, 'error');
     } finally {
       input.disabled = false;
     }
     try { window.DPProviderStatus?.refresh(); } catch (_) {}
+  }
+
+  // Whether the operator has edits in a provider card that putting it away
+  // must never discard.
+  function providerDirty(card) {
+    const baseline = providerBaselines.get(card) || [];
+    return baseline.some(([el, value]) => el.isConnected && controlSignature(el) !== value);
   }
 
   /* Render one integration GROUP's presentation from COMMITTED canonical
@@ -5225,7 +5273,13 @@
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
     });
 
+    // A commit of the Local Network switch ended (accepted or rolled back).
+    view.addEventListener('dp-settings-settled', event => {
+      if (event.target.id === fieldId('private_lan_connections')) projectPrivateLanDependency();
+    });
+
     view.addEventListener('change', event => {
+      if (event.target.id === fieldId('private_lan_connections')) projectPrivateLanDependency();
       if (event.target.matches('[data-integration-enabled]')) void providerEnableChanged(event.target);
       if (event.target.matches('[data-integration-group-enabled]')) void groupEnableChanged(event.target);
       if (event.target.id === fieldId('public_base_url')) updateOidcCallbackPreview();
@@ -5324,9 +5378,10 @@
    * A checkbox holds a boolean; a number control holds a number -- including a
    * fractional one, because a disk-space guard measured in gigabytes is not an
    * integer and truncating it here would silently save a value the operator did
-   * not choose. A number control that cannot be read as a number is submitted
-   * as one anyway, so the server -- the only authority on a field's bounds --
-   * rejects it and the persistence owner rolls the control back. */
+   * not choose. A number draft reaches this only once the persistence owner has
+   * read it exactly (``DPSettingsPersistence.numberDraft``): anything that is
+   * not exactly a number in the control's range was refused before any request,
+   * so nothing here guesses, truncates or substitutes 0. */
   function committedValue(key, raw) {
     const field = fieldFor(key);
     // A control whose empty state stands for one canonical value (``blank``,
@@ -5334,9 +5389,9 @@
     const blank = COMMIT_FIELDS[key]?.blank;
     if (blank !== undefined && String(raw ?? '').trim() === '') return blank;
     if (field && field.type === 'checkbox') return raw === true || raw === '1';
-    if (!field || field.type !== 'number') return String(raw ?? '');
-    const parsed = Number(String(raw).trim());
-    return Number.isFinite(parsed) ? parsed : 0;
+    if (field && field.type === 'number') return window.DPSettingsPersistence.numberDraft(field, raw).value;
+    if (COMMIT_FIELDS[key]?.integer) return Number(raw);
+    return String(raw ?? '');
   }
 
   /* The WRITABLE whole-settings document: the canonical namespaces are written

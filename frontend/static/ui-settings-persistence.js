@@ -197,13 +197,70 @@
     return template.replace('{max}', control.max);
   }
 
+  /* A control's own visible name, the subject of every refusal it speaks. */
+  function labelOf(control) {
+    return String(control?.labels?.[0]?.textContent || control?.getAttribute?.('aria-label') || '')
+      .replace(/\s+/g, ' ').trim();
+  }
+
+  /* Whether a number control holds whole numbers: it declares no step, or a
+   * whole one (the HTML default step is 1). A decimal control declares its
+   * fractional step. */
+  function wholeNumber(control) {
+    const step = control.getAttribute('step');
+    return step === null || step === '' || (step !== 'any' && Number.isInteger(Number(step)));
+  }
+
+  /* What a number control's draft says, read EXACTLY -- or why it cannot be
+   * written, in the field's own words.
+   *
+   * The draft is the ordinary decimal the operator can see: an optional minus
+   * sign and digits (with a decimal point only where the control holds
+   * fractions). Nothing else is a number here: text the browser could not
+   * read as one ("18EGGS"), exponent or sign syntax ("1e3", "+5"), a fraction
+   * in a whole-number field, an empty field that has no meaning of its own,
+   * and a value outside the control's own declared range (the bounds the
+   * server enforces) are all refused before any request -- never read as 0,
+   * truncated, or rounded into some other value. A control whose emptiness
+   * stands for one canonical value declares it (`data-commit-blank`); its
+   * page commits that value. */
+  function numberDraft(control, draft) {
+    const label = labelOf(control) || 'This value';
+    const whole = wholeNumber(control);
+    const say = rule => ({message: `${label} ${rule}.`});
+    const text = String(draft ?? '');
+    if (control.validity && control.validity.badInput) return say(whole ? 'must be a whole number' : 'must be a number');
+    if (text === '') return control.hasAttribute('data-commit-blank') ? {value: null} : say('is required');
+    if (!(whole ? /^-?\d+$/ : /^-?(?:\d+(?:\.\d*)?|\.\d+)$/).test(text)) {
+      return say(whole ? 'must be a whole number' : 'must be a number');
+    }
+    const value = Number(text);
+    if (!Number.isFinite(value) || (whole && !Number.isSafeInteger(value))) return say('must be a smaller number');
+    const min = control.min === '' ? null : Number(control.min);
+    const max = control.max === '' ? null : Number(control.max);
+    // In exactly the server's words for the bound it broke, so a refusal reads
+    // the same whichever side catches it.
+    if (min !== null && value < min) return say(`must be ${control.min} or more`);
+    if (max !== null && value > max) return {message: limitMessage(control, text) || `${label} must be ${control.max} or less.`};
+    return {value};
+  }
+
+  /* Why a draft cannot be written at all -- known from its own control,
+   * without asking the server -- or '' when it may be sent. */
+  function draftRefusal(control, draft) {
+    if (control.validity && control.validity.patternMismatch) {
+      return control.dataset.invalidMessage || 'That value is not valid.';
+    }
+    if (control.tagName === 'INPUT' && control.type === 'number') return numberDraft(control, draft).message || '';
+    return '';
+  }
+
   /* A refused value in its field's own words -- "<label> <requirement>." --
    * when the server says which rule it broke (the requirement of its
    * structured refusal) and the control has a label; otherwise ''. */
   function refusalMessage(error, control) {
     const detail = Array.isArray(error?.detail) ? error.detail[0] : error?.detail;
-    const label = String(control?.labels?.[0]?.textContent || control?.getAttribute?.('aria-label') || '')
-      .replace(/\s+/g, ' ').trim();
+    const label = labelOf(control);
     return detail && typeof detail === 'object' && detail.requirement && label ? `${label} ${detail.requirement}.` : '';
   }
 
@@ -239,14 +296,23 @@
     // control shows; a replay carries the draft that crossed the boundary
     // earlier, which is not necessarily what it shows now.
     const draft = replayed === undefined ? signature(control) : String(replayed);
-    // Not a write at all: this draft is what the server already holds.
-    if (!baselines.has(key) || draft === baselines.get(key)) return null;
-    // A draft its own control already knows to be malformed (the format the
-    // field declares) is refused here, in the field's own words, without a
-    // request. Everything else is still the server's to decide.
-    if (control.validity && control.validity.patternMismatch) {
+    // Not a write at all: this draft is what the server already holds -- and
+    // nothing else is on its way. While an earlier write of this control is
+    // still in flight the server is ABOUT to hold that one, so returning to
+    // the baseline (switching back before the answer arrives) is the
+    // operator's newest intent and is written behind it on the same lane.
+    if (!baselines.has(key)) return null;
+    if (draft === baselines.get(key) && !dispatched.has(key)) return null;
+    // A draft its own control already knows cannot be written -- the format
+    // the field declares, or a number that is not exactly one in the
+    // control's own range -- is refused here, in the field's own words,
+    // without a request, and the control returns to its accepted value.
+    // Everything else is still the server's to decide.
+    const refusal = draftRefusal(control, draft);
+    if (refusal) {
       present(control, baselines.get(key));
-      report(new Error(control.dataset.invalidMessage || 'That value is not valid.'), control, draft);
+      report(new Error(refusal), control, draft);
+      settled(control);
       return null;
     }
     // The record this control belongs to does not exist yet. The operator has
@@ -319,10 +385,22 @@
     }).finally(() => {
       outstanding -= 1;
       if (dispatched.get(key) === draft) dispatched.delete(key);
+      settled(control);
     });
 
     chains.set(lane, run.catch(() => {}));
     return run;
+  }
+
+  /* A commit of this control has ended -- accepted, refused or superseded --
+   * and the control shows whatever it now converged to. Converging a control
+   * (`present`) raises no `change`, so anything that PROJECTS from a control's
+   * state (a dependent field's presentation) learns of a rollback here, and
+   * only here. */
+  function settled(control) {
+    if (control && control.isConnected) {
+      control.dispatchEvent(new CustomEvent('dp-settings-settled', {bubbles: true}));
+    }
   }
 
   /* Run an owner's own write on a record's lane.
@@ -443,6 +521,7 @@
 
   window.DPSettingsPersistence = Object.freeze({
     defineScope, adopt, baseline, dirty, commit, settle, perform, accept, resume, supersede, refusalMessage,
+    numberDraft,
     pending: () => outstanding,
   });
 })();

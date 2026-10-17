@@ -75,3 +75,96 @@ test('an ordinary settings field commits at its OWN boundary, not on every keyst
       await page.unroute('**/api/settings');
     }
   });
+
+/* Settings Batch 1, Item 2: a provider card's disclosure moves with the
+ * operator's ACTION -- its existing motion begins on the click, not when the
+ * server answers -- and turns back if the server refuses. Debrid-Link's write
+ * is answered by the page itself (from the real public projection), so the
+ * shared backend's participation never changes. */
+async function answerDebridLink(page, {refuse = false} = {}) {
+  const current = await page.evaluate(async () =>
+    (await window.debridPulseAuth.fetch('/api/integrations/debridlink/configuration')).json());
+  const held = [];
+  await page.route(url => url.pathname === '/api/integrations/debridlink/configuration', async route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    const body = route.request().postDataJSON();
+    await new Promise(resolve => held.push({body, resolve}));
+    if (refuse) return route.fulfill({status: 500, contentType: 'application/json',
+      body: JSON.stringify({detail: 'Refused by the test.'})});
+    Object.assign(current, {enabled: body.enabled, configured: false});
+    return route.fulfill({status: 200, contentType: 'application/json', body: JSON.stringify({...current, ok: true})});
+  });
+  return held;
+}
+
+const debridLink = page => page.locator('.dp-settings-provider-card--debridlink');
+const bodyHeight = page => debridLink(page).locator('.dp-settings-disclosure').evaluate(button => {
+  const body = document.getElementById(button.getAttribute('aria-controls'));
+  return body.hidden ? 0 : body.getBoundingClientRect().height;
+});
+const enableLabel = page => debridLink(page).locator('label:has([data-integration-enabled="debridlink"])');
+
+async function startCollapsedAndDisabled(page) {
+  // An injected settings view: Debrid-Link shown disabled and collapsed.
+  const input = debridLink(page).locator('[data-integration-enabled="debridlink"]');
+  if (await input.isChecked()) {
+    const held = await answerDebridLink(page);
+    await enableLabel(page).click();
+    await expect.poll(() => held.length).toBe(1);
+    held[0].resolve();
+    await expect(input).not.toBeChecked();
+    await page.unrouteAll({behavior: 'ignoreErrors'});
+    await isolateExternalFonts(page);
+  }
+  const chip = debridLink(page).locator('.dp-settings-disclosure');
+  if ((await chip.getAttribute('aria-expanded')) === 'true') await chip.click();
+  await expect.poll(() => bodyHeight(page)).toBe(0);
+}
+
+test('admitting an unconfigured provider opens its card from the click, and withdrawing it closes it from the click',
+  async ({page}) => {
+    await startCollapsedAndDisabled(page);
+    const held = await answerDebridLink(page);
+    const chip = debridLink(page).locator('.dp-settings-disclosure');
+
+    await enableLabel(page).click();
+    await expect.poll(() => held.length).toBe(1);
+    // Unanswered, and the card is already opening.
+    await expect(chip).toHaveAttribute('aria-expanded', 'true');
+    await expect.poll(() => bodyHeight(page)).toBeGreaterThan(10);
+    held[0].resolve();
+    await expect(debridLink(page).locator('[data-integration-enabled="debridlink"]')).toBeChecked();
+    await expect(chip).toHaveAttribute('aria-expanded', 'true');
+    // The accepted answer does not restart the motion: the body only grows.
+    const heights = await page.evaluate(() => new Promise(resolve => {
+      const button = document.querySelector('.dp-settings-provider-card--debridlink .dp-settings-disclosure');
+      const body = document.getElementById(button.getAttribute('aria-controls'));
+      const seen = []; const end = performance.now() + 400;
+      const tick = () => { seen.push(body.getBoundingClientRect().height); if (performance.now() < end) requestAnimationFrame(tick); else resolve(seen); };
+      requestAnimationFrame(tick);
+    }));
+    heights.slice(1).forEach((height, index) => expect(height).toBeGreaterThanOrEqual(heights[index] - 0.5));
+
+    await enableLabel(page).click();
+    await expect.poll(() => held.length).toBe(2);
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');   // closing before any answer
+    held[1].resolve();
+    await expect.poll(() => bodyHeight(page)).toBe(0);
+    await expect(debridLink(page).locator('[data-integration-enabled="debridlink"]')).not.toBeChecked();
+  });
+
+test('a refused admission turns the opening card back and leaves the provider as the server holds it',
+  async ({page}) => {
+    await startCollapsedAndDisabled(page);
+    const held = await answerDebridLink(page, {refuse: true});
+    const chip = debridLink(page).locator('.dp-settings-disclosure');
+    await enableLabel(page).click();
+    await expect.poll(() => held.length).toBe(1);
+    await expect(chip).toHaveAttribute('aria-expanded', 'true');
+    held[0].resolve();
+    await expect(chip).toHaveAttribute('aria-expanded', 'false');
+    await expect.poll(() => bodyHeight(page)).toBe(0);
+    await expect(debridLink(page).locator('[data-integration-enabled="debridlink"]')).not.toBeChecked();
+    await expect(debridLink(page).locator('[data-integration-enabled="debridlink"]')).toBeEnabled();
+    await expect(page.locator('#toasts .toast.error').last()).toBeVisible();
+  });

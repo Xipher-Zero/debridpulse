@@ -79,7 +79,7 @@ def test_premium_card_owner_uses_persisted_configured_metadata_and_independent_d
     assert "Verified" in CARDS
     assert "Configuration required" not in CARDS
     assert "Provider configured" not in CARDS
-    assert "const dirty =" in CARDS
+    assert "function providerDirty(card)" in CARDS
     assert "controlSignature(" in CARDS
 
 

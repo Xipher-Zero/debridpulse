@@ -90,21 +90,11 @@ def _validate(cfg) -> List[Tuple[str, str, Any, Any]]:
              avatar, "")
 
     # ── Numeric ranges ────────────────────────────────────────────────────────
-    numeric_bounds = {
-        "full_sync_interval_minutes":     (0, 1440),
-        "backup_keep_days":               (1, 365),
-        "backup_interval_hours":          (1, 168),
-        "backup_max_retained":            (1, 365),
-        "db_backup_keep_days":            (1, 365),
-        "stats_snapshot_interval_minutes":(0, 1440),
-        "stats_snapshot_keep_days":       (1, 365),
-        "stats_report_interval_hours":    (0, 168),
-        "stats_report_window_hours":      (1, 8760),
-        "auth_session_lifetime_hours":    (1, 168),
-        "extract_max_files":              (1, 1_000_000),
-        "extract_max_expanded_gb":        (1, 10_000),
-        "extract_max_compression_ratio":  (1, 100_000),
-    }
+    # The ranges are declared once, on the fields themselves
+    # (``core.settings_constraints.Range(..., clamp_at_load=True)``).
+    from core.config import AppSettings
+    from core.settings_constraints import load_clamped_ranges
+    numeric_bounds = load_clamped_ranges(AppSettings)
     for field, (lo, hi) in numeric_bounds.items():
         val = getattr(cfg, field, None)
         if val is None:

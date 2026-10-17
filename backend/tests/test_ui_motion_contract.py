@@ -78,13 +78,20 @@ def test_only_the_operators_own_navigation_moves_anything() -> None:
 def test_every_settings_disclosure_mechanism_rolls_and_only_the_operators_does() -> None:
     page = read("ui-settings-page.js")
     usenet = read("ui-settings-usenet-servers.js")
-    # 1. The canonical chip: the operator's click and the accepted-enable auto
-    #    open roll; a reconciliation (renderIntegrationState) does not.
+    # 1. The canonical chip: the operator's click and the Enable action's own
+    #    open/close roll -- begun on the click (Settings Batch 1, Item 2), with
+    #    the accepted-enable auto open kept and a refusal turning it back; a
+    #    reconciliation (renderIntegrationState) does not roll, and never
+    #    restarts a motion already going the right way.
     disclosure = page[page.index("function setDisclosureExpanded("):page.index("function renderIntegrationState(")]
     assert "window.DPMotion.disclose(body, !!expanded, {animate, focusReturn: button})" in disclosure
     assert "setDisclosureExpanded(disclosure, disclosure.getAttribute('aria-expanded') !== 'true', {animate: true});" in page
-    assert "setDisclosureExpanded(card.querySelector('.dp-settings-disclosure'), true, {animate: true});" in page
-    assert "if (!enabled && !dirty) setDisclosureExpanded(disclosure, false);" in page
+    enable = page[page.index("async function providerEnableChanged("):page.index("function providerDirty(")]
+    assert enable.index("setDisclosureExpanded(disclosure, intended, {animate: true});") < enable.index("await request(")
+    assert "setDisclosureExpanded(disclosure, true, {animate: true});" in enable
+    assert "setDisclosureExpanded(disclosure, wasExpanded, {animate: true});" in enable
+    assert ("if (!enabled && !providerDirty(card) && disclosure.getAttribute('aria-expanded') === 'true') {\n"
+            "        setDisclosureExpanded(disclosure, false);") in page
     # 2. A Usenet server's Advanced panel, in its own owner.
     assert "window.DPMotion.disclose(body, !expanded, {animate: true, focusReturn: button})" in usenet
     # 3. Additional Settings (<details>): open stays the one state.
@@ -109,10 +116,16 @@ def test_the_dependent_local_connection_cell_fades_only_itself() -> None:
     assert "#view-settings .dp-settings-field.is-disabled {\n  opacity: .45;\n}" in css     # the endpoint is unchanged
     reduced = css[css.index("@media (prefers-reduced-motion: reduce) {\n  #view-settings .dp-settings-dependent-field"):]
     assert "transition: none;" in reduced[:reduced.index("}\n}")]
-    # The functional state and the class change together, from accepted policy.
+    # Settings Batch 1, Item 2: the class (the fade) follows what the Local
+    # Network switch SHOWS, so it starts on the click; the functional state
+    # follows ACCEPTED policy as well, so Skip is never usable early.
     projection = page[page.index("function projectPrivateLanDependency()"):]
     projection = projection[:projection.index("\n  }\n")]
-    assert "control.disabled = !allowed;" in projection and "classList.toggle('is-disabled', !allowed)" in projection
+    assert "const shown = lan ? lan.checked : accepted;" in projection
+    assert "control.disabled = !(accepted && shown);" in projection
+    assert "classList.toggle('is-disabled', !shown)" in projection
+    assert "if (event.target.id === fieldId('private_lan_connections')) projectPrivateLanDependency();" in page
+    assert "view.addEventListener('dp-settings-settled', event => {" in page
 
 
 def test_a_page_turn_slides_at_once_to_a_placeholder_that_its_answer_crossfades_into() -> None:

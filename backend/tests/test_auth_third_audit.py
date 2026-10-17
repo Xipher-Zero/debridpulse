@@ -8,6 +8,7 @@ from types import SimpleNamespace
 
 import pytest
 import pytest_asyncio
+from pydantic import ValidationError
 from fastapi import Request, Response
 
 from account_support import account, account_database, admin_with_password
@@ -51,9 +52,11 @@ async def operator(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_transition_guard_matches_pydantic_false_string_coercion_for_open_mode():
     body = json.dumps({"auth_password_enabled": "false", "auth_oidc_enabled": "false"}).encode()
-    parsed = AuthenticationConfigUpdate.model_validate_json(body)
-    assert parsed.auth_password_enabled is False
-    assert parsed.auth_oidc_enabled is False
+    # Settings Batch 1, Item 3: the route's body model is strict, so the string
+    # is refused (422) before any change; the transition guard, which runs
+    # before it on the raw body, still reads the string exactly as before.
+    with pytest.raises(ValidationError):
+        AuthenticationConfigUpdate.model_validate_json(body)
     rejection = await transitions.settings_transition_rejection(
         _request(body), Principal.password_session(account("operator")), _password_only_settings()
     )
@@ -65,8 +68,11 @@ async def test_transition_guard_matches_pydantic_true_string_for_password_clear(
     body = json.dumps({
         "auth_password_enabled": True, "auth_oidc_enabled": False, "clear_password": "true"
     }).encode()
-    parsed = AuthenticationConfigUpdate.model_validate_json(body)
-    assert parsed.clear_password is True
+    # Settings Batch 1, Item 3: the route's body model is strict, so the string
+    # is refused (422) before any change; the transition guard, which runs
+    # before it on the raw body, still reads the string exactly as before.
+    with pytest.raises(ValidationError):
+        AuthenticationConfigUpdate.model_validate_json(body)
     rejection = await transitions.settings_transition_rejection(
         _request(body), Principal.password_session(operator), _password_only_settings()
     )
@@ -173,8 +179,11 @@ async def test_transition_guard_matches_pydantic_true_string_for_open_mode_confi
         "auth_oidc_enabled": "false",
         "confirm_open_mode": "true",
     }).encode()
-    parsed = AuthenticationConfigUpdate.model_validate_json(body)
-    assert parsed.confirm_open_mode is True
+    # Settings Batch 1, Item 3: the route's body model is strict, so the string
+    # is refused (422) before any change; the transition guard, which runs
+    # before it on the raw body, still reads the string exactly as before.
+    with pytest.raises(ValidationError):
+        AuthenticationConfigUpdate.model_validate_json(body)
     rejection = await transitions.settings_transition_rejection(
         _request(body),
         Principal.password_session(account("operator")),

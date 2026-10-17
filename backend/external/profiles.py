@@ -59,7 +59,8 @@ class DeliveryProfile(BaseModel):
     import_root: str = ""
     # How long a committed delivery is advertised. Expiry withdraws the
     # advertisement; it deletes nothing.
-    retention_hours: int = Field(default=168, ge=1, le=8760)
+    # Strict: "24", 24.0 or true is refused, never read as a whole number.
+    retention_hours: int = Field(default=168, ge=1, le=8760, strict=True)
 
     @field_validator("id")
     @classmethod

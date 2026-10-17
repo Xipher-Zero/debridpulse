@@ -38,12 +38,17 @@ for (const [provider, key, ceiling, text] of [
     const card = await expand(page, provider);
     const field = card.locator(`[data-setting="${key}"]`);
     const before = await field.inputValue();
-    const refused = page.waitForResponse(response => response.url().includes(`/api/integrations/${provider}/configuration`)
-      && response.request().method() === 'PATCH');
+    // Above the control's own bound (the server's): refused in the field's
+    // words before any request (Settings Batch 1, Item 3)...
+    const sent = [];
+    page.on('request', request => { if (request.url().includes(`/api/integrations/${provider}/configuration`)
+      && request.method() === 'PATCH') sent.push(request.postData()); });
     await field.fill(String(ceiling + 200));
     await field.blur();
-    // The real server refuses it, naming the rule it broke.
-    const response = await refused;
+    // ...and the real server refuses the same value on its own, naming the
+    // rule it broke.
+    const response = await page.request.patch(`/api/integrations/${provider}/configuration`,
+      {data: {options: {[key.replace(`${provider}_`, '')]: ceiling + 200}}});
     expect(response.status()).toBe(400);
     expect((await response.json()).detail.requirement).toBe(`must be ${ceiling} or less`);
     const toast = page.locator('.toast.error').last();
@@ -53,6 +58,7 @@ for (const [provider, key, ceiling, text] of [
     }
     // The existing rollback: the value the server holds is shown again.
     await expect(field).toHaveValue(before);
+    expect(sent).toEqual([]);
   });
 }
 
@@ -188,16 +194,24 @@ test('every Request Timeout hint states what it is and its default', async ({ pa
   }
 });
 
-/* A refused value, answered by the real server and worded by its own field. */
+/* A refused value, worded by its own field. Settings Batch 1, Item 3: a value
+ * outside the control's own bound (the server's) is refused before any
+ * request, in the server's own words; `serverRefuses` proves the server
+ * refuses the same value directly. */
 const NEVER = ['validation error', 'Options', 'Settings', 'input_value', 'type=', 'http', '[object Object]', '_seconds'];
-async function refuse(page, card, key, value) {
+async function refuse(page, card, key, value, serverRefuses) {
   const field = card.locator(`[data-setting="${key}"]`);
   const before = await field.inputValue();
-  const answered = page.waitForResponse(response => /\/api\/(integrations\/\w+\/configuration|transfer-policy)$/.test(new URL(response.url()).pathname)
-    && response.request().method() === 'PATCH');
+  const sent = [];
+  const watch = request => { if (/\/api\/(integrations\/\w+\/configuration|transfer-policy)$/.test(new URL(request.url()).pathname)
+    && request.method() === 'PATCH') sent.push(request.postData()); };
+  page.on('request', watch);
   await field.fill(String(value));
   await field.blur();
-  expect((await answered).status()).toBe(400);
+  const direct = await serverRefuses();
+  expect(direct.status()).toBe(400);
+  page.off('request', watch);
+  expect(sent).toEqual([]);
   const toast = page.locator('.toast.error').last();
   await expect(toast).toBeVisible();
   for (const raw of NEVER) await expect(toast).not.toContainText(raw);
@@ -208,10 +222,12 @@ async function refuse(page, card, key, value) {
 test('a refused provider option and a refused transfer-policy value name their field and its bound', async ({ page }) => {
   await openServices(page);
   const torbox = await expand(page, 'torbox');
-  await expect(await refuse(page, torbox, 'torbox_request_timeout_seconds', 1))
+  await expect(await refuse(page, torbox, 'torbox_request_timeout_seconds', 1, () =>
+    page.request.patch('/api/integrations/torbox/configuration', {data: {options: {request_timeout_seconds: 1}}})))
     .toHaveText('Request Timeout (seconds) must be 5 or more.');
   const alldebrid = await expand(page, 'alldebrid');
-  await expect(await refuse(page, alldebrid, 'poll_interval_seconds', 99999))
+  await expect(await refuse(page, alldebrid, 'poll_interval_seconds', 99999, () =>
+    page.request.patch('/api/transfer-policy', {data: {provider_poll_interval_seconds: 99999}})))
     .toHaveText('Provider Poll Interval (seconds) must be 3600 or less.');
 });
 

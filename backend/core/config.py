@@ -3,12 +3,15 @@ import json
 import logging
 import os
 from pathlib import Path
-from typing import List, Literal, Optional
+from typing import Annotated, List, Literal, Optional
 from pydantic import BaseModel, Field, field_validator
 
 from auth.passwords import hash_password
 from core.branding import APP_SHORT_NAME
 from core.secure_files import atomic_write_json
+from core.settings_constraints import (
+    MAX_SAFE_INTEGER, AbsolutePath, AvatarUrl, Choice, HttpUrl, MaxLength, Range,
+)
 from integrations.configuration import clamp_persisted_namespaces, migrate_legacy_settings, normalize_settings
 from external.profiles import ExternalDeliverySettings
 from integrations.definition import IntegrationGroupSettings, IntegrationSettings
@@ -55,14 +58,17 @@ class AppSettings(BaseModel):
     external_delivery: ExternalDeliverySettings = Field(default_factory=ExternalDeliverySettings)
 
     # Logging
-    log_level: str = "INFO"
+    # A field's WRITE rules (``core.settings_constraints``) are what an operator
+    # may change it to; a ``Range`` marked ``clamp_at_load`` is also the bound
+    # stored values are corrected to at load (``core.config_validator``).
+    log_level: Annotated[str, Choice(("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"), casefold=True)] = "INFO"
     log_pretty: bool = False
-    log_format: str = "plain"
+    log_format: Annotated[str, Choice(("plain", "compact"), casefold=True)] = "plain"
 
     # Persistence — SQLite is the only runtime database.
 
     # Download control
-    download_folder: str = "/download"
+    download_folder: Annotated[str, AbsolutePath()] = "/download"
 
     # Discord
     # Section participation. Whether the feature takes part at all is a
@@ -77,10 +83,11 @@ class AppSettings(BaseModel):
     # delivered. Its canonical runtime gate is
     # ``services.notification_service.NotificationService.client()``.
     discord_notifications_enabled: bool = True
-    discord_webhook_url: str = ""
-    discord_webhook_added: str = ""
-    discord_username: str = APP_SHORT_NAME
-    discord_avatar_url: str = ""  # Discord only accepts PNG/JPG/WEBP — SVG rejected
+    discord_webhook_url: Annotated[str, HttpUrl()] = ""
+    discord_webhook_added: Annotated[str, HttpUrl()] = ""
+    # Discord's own limit for a webhook sender name.
+    discord_username: Annotated[str, MaxLength(80)] = APP_SHORT_NAME
+    discord_avatar_url: Annotated[str, AvatarUrl()] = ""  # Discord only accepts PNG/JPG/WEBP — SVG rejected
     discord_notify_added: bool = True
     discord_notify_finished: bool = True
     discord_notify_error: bool = True
@@ -89,45 +96,50 @@ class AppSettings(BaseModel):
     # ── Advanced Extraction ───────────────────────────────────────────────────
     extraction_password: str = ""
 
-    full_sync_interval_minutes: int = 5
+    full_sync_interval_minutes: Annotated[int, Range(0, 1440, clamp_at_load=True)] = 5
 
     # Backups
     backup_enabled: bool = True
-    backup_folder: str = "/app/data/backups"
-    backup_keep_days: int = 7
-    backup_interval_hours: int = 24
+    backup_folder: Annotated[str, AbsolutePath()] = "/app/data/backups"
+    backup_keep_days: Annotated[int, Range(1, 365, clamp_at_load=True)] = 7
+    backup_interval_hours: Annotated[int, Range(1, 168, clamp_at_load=True)] = 24
     # Count retention, independent of age: at most this many restore points.
-    backup_max_retained: int = 7
+    backup_max_retained: Annotated[int, Range(1, 365, clamp_at_load=True)] = 7
 
     # Database maintenance
     db_backup_enabled: bool = True
-    db_backup_folder: str = "/app/data/db-backups"
-    db_backup_keep_days: int = 7
+    db_backup_folder: Annotated[str, AbsolutePath()] = "/app/data/db-backups"
+    db_backup_keep_days: Annotated[int, Range(1, 365, clamp_at_load=True)] = 7
     db_wipe_enabled: bool = False
     db_backup_before_wipe: bool = True
 
     # Post-download extraction
     extract_enabled: bool = False
     extract_delete_archive: bool = True
-    extract_max_concurrent: int = 1
-    extract_max_files: int = 20000
-    extract_max_expanded_gb: float = 250.0
-    extract_max_compression_ratio: float = 1000.0
+    # The Settings control's own range (Concurrent Extractions, 1-8): a new
+    # value outside it is refused; a stored one is left as it is.
+    extract_max_concurrent: Annotated[int, Range(1, 8)] = 1
+    extract_max_files: Annotated[int, Range(1, 1_000_000, clamp_at_load=True)] = 20000
+    extract_max_expanded_gb: Annotated[float, Range(1, 10_000, clamp_at_load=True)] = 250.0
+    extract_max_compression_ratio: Annotated[float, Range(1, 100_000, clamp_at_load=True)] = 1000.0
     discord_notify_extract: bool = True
 
     # ── Statistics & Reporting ────────────────────────────────────────────────
-    stats_snapshot_interval_minutes: int = 60
-    stats_snapshot_keep_days: int = 30
+    stats_snapshot_interval_minutes: Annotated[int, Range(0, 1440, clamp_at_load=True)] = 60
+    stats_snapshot_keep_days: Annotated[int, Range(1, 365, clamp_at_load=True)] = 30
     # Section participation, on the same terms as Discord above: it gates
     # SCHEDULED reporting only, never the stored destination, interval or
     # window, and never Discord. ``stats_report_interval_hours = 0`` remains
     # its own separate cadence fact ("no automatic reports"); the two are not
     # conflated. Defaults to True for the same upgrade reason.
     stats_reporting_enabled: bool = True
-    stats_report_interval_hours: int = 0
-    update_check_interval_hours: int = 12
-    stats_report_window_hours: int = 24
-    stats_report_webhook_url: str = ""
+    stats_report_interval_hours: Annotated[int, Range(0, 168, clamp_at_load=True)] = 0
+    # The Settings control's own range (0 = no update checks, up to a week),
+    # the same as the report interval beside it: a new value outside it is
+    # refused; a stored one is left as it is.
+    update_check_interval_hours: Annotated[int, Range(0, 168)] = 12
+    stats_report_window_hours: Annotated[int, Range(1, 8760, clamp_at_load=True)] = 24
+    stats_report_webhook_url: Annotated[str, HttpUrl()] = ""
 
     # Durable notification verification evidence: ``{subject id: fingerprint}``,
     # exactly the shape and the meaning ``IntegrationSettings.verification``
@@ -145,7 +157,7 @@ class AppSettings(BaseModel):
     # ── Event logging ─────────────────────────────────────────────────────────
     # How many events one Activity Log page shows (50, 100 or 250). It selects
     # a page size only: the event journal itself is kept indefinitely.
-    activity_log_page_size: int = 100
+    activity_log_page_size: Annotated[int, Choice((50, 100, 250))] = 100
 
     # ── Authentication ────────────────────────────────────────────────────────
     # Mechanisms and admission only. Local credentials belong to accounts
@@ -153,7 +165,7 @@ class AppSettings(BaseModel):
     # ``auth_password_hash`` in this file is one-shot startup input
     # (``legacy_credential_input``), never a setting.
     auth_password_enabled: bool = False
-    auth_session_lifetime_hours: int = 12
+    auth_session_lifetime_hours: Annotated[int, Range(1, 168, clamp_at_load=True)] = 12
 
     auth_oidc_enabled: bool = False
     # The role of an account created by its first admitted OIDC sign-in.
@@ -177,9 +189,13 @@ class AppSettings(BaseModel):
     # Minimum free disk space required on the download filesystem. At/below the
     # configured threshold, new dispatch is deferred until the resume hysteresis
     # is satisfied. Transfers already active in an executor are allowed to finish.
-    min_free_disk_gb: float = 0
-    disk_guard_interval_seconds: int = 60
-    disk_guard_resume_hysteresis_gb: float = 0.5
+    # Amounts of space: a new value is a finite, non-negative number; a stored
+    # one is left as it is.
+    min_free_disk_gb: Annotated[float, Range(0)] = 0
+    # The guard never checks more often than every 10 seconds
+    # (``core.scheduler``), so a smaller new value would be silently read as 10.
+    disk_guard_interval_seconds: Annotated[int, Range(10, MAX_SAFE_INTEGER)] = 60
+    disk_guard_resume_hysteresis_gb: Annotated[float, Range(0)] = 0.5
 
     # ── Acquisition preferences ──────────────────────────────────────────────
     # The operator's Preferred Subtitle Language: one language code (a primary

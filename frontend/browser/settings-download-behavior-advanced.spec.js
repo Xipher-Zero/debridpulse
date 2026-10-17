@@ -225,3 +225,117 @@ test('an explicit private-LAN link waits for the per-transfer confirmation; Canc
     expect((await (await page.request.get('/api/transfer-policy')).json()).skip_private_lan_confirmation).toBe(false);
     await page.request.delete(`/api/torrents/${id}`);
   });
+
+/* Settings Batch 1, Item 2: the dependent cell's EXISTING fade begins on the
+ * operator's click, not when the server answers -- while whether Skip can be
+ * USED stays the projection of accepted policy. The real write is held so the
+ * difference between the two moments is observable. */
+const lanSwitch = page => page.locator('label[for="dp-settings-field-private-lan-connections"].dp-settings-engine-tuning-toggle-control');
+const skipCell = page => page.locator('#dp-settings-field-skip-private-lan-confirmation')
+  .locator('xpath=ancestor::div[contains(@class,"dp-settings-field")][1]');
+
+async function openAdvancedLan(page) {
+  await openDownloads(page);
+  await section(page).locator('.dp-settings-disclosure').click();
+  await expect(page.locator('#dp-settings-field-private-lan-connections')).toBeAttached();
+}
+
+/* Hold every transfer-policy write until released (or refuse it). */
+async function holdPolicyWrites(page, {refuse = false} = {}) {
+  const held = [];
+  await page.route(url => url.pathname === '/api/transfer-policy', async route => {
+    if (route.request().method() !== 'PATCH') return route.fallback();
+    await new Promise(resolve => held.push({body: route.request().postDataJSON(), resolve}));
+    if (refuse) return route.fulfill({status: 500, contentType: 'application/json',
+      body: JSON.stringify({detail: 'Refused by the test.'})});
+    return route.continue();
+  });
+  return held;
+}
+
+test('the Skip cell begins its fade on the click and becomes usable only when the server accepts', async ({page}) => {
+  await resetPolicy(page);
+  await openAdvancedLan(page);
+  const skip = page.locator('#dp-settings-field-skip-private-lan-confirmation');
+  await expect(skip).toBeDisabled();
+  const held = await holdPolicyWrites(page);
+
+  await lanSwitch(page).click();
+  await expect.poll(() => held.length).toBe(1);
+  // Before any answer: the cell is no longer drawn unavailable and its fade is
+  // under way -- but the control cannot be used yet.
+  await expect(skipCell(page)).not.toHaveClass(/\bis-disabled\b/);
+  await expect.poll(() => skipCell(page).evaluate(node => Number(getComputedStyle(node).opacity))).toBeGreaterThan(0.6);
+  await expect(skip).toBeDisabled();
+  held[0].resolve();
+  await expect(skip).toBeEnabled();
+
+  // Turning it off makes Skip unusable and starts the fade at once.
+  await lanSwitch(page).click();
+  await expect.poll(() => held.length).toBe(2);
+  await expect(skipCell(page)).toHaveClass(/\bis-disabled\b/);
+  await expect(skip).toBeDisabled();
+  held[1].resolve();
+  await expect.poll(async () => (await (await page.request.get('/api/transfer-policy')).json()).private_lan_connections)
+    .toBe(false);
+});
+
+test('a refused Local Network write turns the dependent cell back to the accepted state', async ({page}) => {
+  await resetPolicy(page);
+  await openAdvancedLan(page);
+  const lan = page.locator('#dp-settings-field-private-lan-connections');
+  const skip = page.locator('#dp-settings-field-skip-private-lan-confirmation');
+  const held = await holdPolicyWrites(page, {refuse: true});
+  await lanSwitch(page).click();
+  await expect.poll(() => held.length).toBe(1);
+  await expect(skipCell(page)).not.toHaveClass(/\bis-disabled\b/);
+  held[0].resolve();
+  // Rolled back: the switch, the cell's appearance and its usability all
+  // return to what the server holds, and nothing is left half-shown.
+  await expect(lan).not.toBeChecked();
+  await expect(skipCell(page)).toHaveClass(/\bis-disabled\b/);
+  await expect(skip).toBeDisabled();
+  await expect.poll(() => skipCell(page).evaluate(node => Number(getComputedStyle(node).opacity))).toBeCloseTo(0.45, 2);
+  await expect(page.locator('#toasts .toast.error').last()).toBeVisible();
+  expect((await (await page.request.get('/api/transfer-policy')).json()).private_lan_connections).toBe(false);
+});
+
+test('switching Local Network back before the answer arrives is written behind it and wins', async ({page}) => {
+  await resetPolicy(page);
+  await openAdvancedLan(page);
+  const lan = page.locator('#dp-settings-field-private-lan-connections');
+  const skip = page.locator('#dp-settings-field-skip-private-lan-confirmation');
+  const held = await holdPolicyWrites(page);
+  await lanSwitch(page).click();
+  await expect.poll(() => held.length).toBe(1);
+  await lanSwitch(page).click();                  // back to the stored value, first write unanswered
+  await expect(skipCell(page)).toHaveClass(/\bis-disabled\b/);
+  held[0].resolve();
+  await expect.poll(() => held.length).toBe(2);   // the reversal is a real write, on the same lane
+  expect(held.map(entry => entry.body)).toEqual([{private_lan_connections: true}, {private_lan_connections: false}]);
+  held[1].resolve();
+  await expect.poll(async () => (await (await page.request.get('/api/transfer-policy')).json()).private_lan_connections)
+    .toBe(false);
+  await expect(lan).not.toBeChecked();
+  await expect(skip).toBeDisabled();
+  await expect(skipCell(page)).toHaveClass(/\bis-disabled\b/);
+  expect(await page.evaluate(() => window.DPSettingsPersistence.baseline(
+    document.getElementById('dp-settings-field-private-lan-connections')))).toBe('0');
+});
+
+test('leaving the tab while the Local Network write is pending shows the accepted state on return', async ({page}) => {
+  await resetPolicy(page);
+  await openAdvancedLan(page);
+  const held = await holdPolicyWrites(page);
+  await lanSwitch(page).click();
+  await expect.poll(() => held.length).toBe(1);
+  await page.locator('#view-settings [data-tab="sources"]').click();
+  held[0].resolve();
+  await expect.poll(async () => (await (await page.request.get('/api/transfer-policy')).json()).private_lan_connections)
+    .toBe(true);
+  await page.locator('#view-settings [data-tab="downloads"]').click();
+  await expect(page.locator('#dp-settings-field-private-lan-connections')).toBeChecked();
+  await expect(page.locator('#dp-settings-field-skip-private-lan-confirmation')).toBeEnabled();
+  await expect(skipCell(page)).not.toHaveClass(/\bis-disabled\b/);
+  await resetPolicy(page);
+});

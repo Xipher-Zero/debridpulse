@@ -7,11 +7,17 @@ universal namespace. ``transfers.runtime_coordination`` owns the global
 allocation and reports the EFFECTIVE (proven enforced) value; executors only
 enforce the ceiling assigned to them. This module owns only the desired side.
 """
+from typing import Annotated
+
 from pydantic import BaseModel, Field
+
+from core.settings_constraints import MAX_SAFE_INTEGER, Range
 
 
 class ExecutionRuntimeLimits(BaseModel):
-    max_download_bytes_per_second: int = Field(default=0, ge=0)
+    # 0 = no limit. A new value is a whole number a client can represent
+    # exactly (``core.settings_constraints``).
+    max_download_bytes_per_second: Annotated[int, Range(le=MAX_SAFE_INTEGER)] = Field(default=0, ge=0)
 
 
 # Migration INPUT only (see ``transfers.settings.LEGACY_INPUT_FIELDS``):

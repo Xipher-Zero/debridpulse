@@ -15,7 +15,11 @@ from __future__ import annotations
 
 from uuid import uuid4
 
+from typing import Annotated
+
 from pydantic import BaseModel, Field
+
+from core.settings_constraints import HostName
 
 from integrations.definition import (
     IntegrationDefinition, IntegrationPresentation, VerificationSubject,
@@ -101,7 +105,9 @@ class UsenetServer(BaseModel):
     # Remove addresses, so editing one card can never disturb another. Never a
     # list index and never derived from the host: two servers may share a host.
     id: str = Field(default_factory=_new_server_id)
-    host: str = ""
+    # A written address is one host name or IP address (``HostName``); a stored
+    # one is left as it is.
+    host: Annotated[str, HostName()] = ""
     port: int = Field(default=563, ge=1, le=65535)
     ssl: bool = True
     username: str = ""

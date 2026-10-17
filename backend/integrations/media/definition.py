@@ -18,7 +18,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, ValidationInfo, field_validator
+
+from core.settings_constraints import is_write
 
 from integrations.definition import IntegrationDefinition, IntegrationPresentation
 
@@ -46,15 +48,21 @@ class MediaOptions(BaseModel):
 
     @field_validator("video_quality", mode="before")
     @classmethod
-    def _known_quality(cls, value):
-        """An absent or unrecognized stored value is High."""
+    def _known_quality(cls, value, info: ValidationInfo):
+        """An absent or unrecognized STORED value is High. A written one is
+        exactly one of the choices -- never read as High."""
+        if is_write(info):
+            return value
         value = str(value or "").strip().casefold()
         return value if value in ("high", "normal", "low") else "high"
 
     @field_validator("video_codec", mode="before")
     @classmethod
-    def _known_codec(cls, value):
-        """An absent or unrecognized stored value is Auto."""
+    def _known_codec(cls, value, info: ValidationInfo):
+        """An absent or unrecognized STORED value is Auto. A written one is
+        exactly one of the choices -- never read as Auto."""
+        if is_write(info):
+            return value
         value = str(value or "").strip().casefold()
         return value if value in ("auto", "av1", "hevc", "h264") else "auto"
 

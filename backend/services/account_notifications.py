@@ -81,7 +81,8 @@ class AccountNotificationUpdate(BaseModel):
     destination is erased only by naming it in ``clear_secrets``.
     """
 
-    model_config = ConfigDict(extra="forbid")
+    # Strict as well: a value of the wrong JSON type is refused, never coerced.
+    model_config = ConfigDict(extra="forbid", strict=True)
 
     discord_notifications_enabled: bool | None = None
     discord_webhook_url: str | None = Field(default=None, max_length=512)
