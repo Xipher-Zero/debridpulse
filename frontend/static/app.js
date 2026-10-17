@@ -1063,16 +1063,16 @@ function updateOperatorTitle(stats) {
  * the card's floor: the area under the very same path, masked by the very same
  * stroke gradient, so it rests faint and brightens and fades with the signal.
  *
- * The cadence is ambient: 7 BPM at rest rising linearly to 90 BPM as the
+ * The cadence is ambient: 3.5 BPM at rest rising linearly to 90 BPM as the
  * aggregate download throughput (the core meter's own 4 s window) reaches the
  * highest sustained rate this installation has shown; with no sustained peak
- * recorded yet it stays at 7. The cadence eases continuously toward that
+ * recorded yet it stays at 3.5. The cadence eases continuously toward that
  * target with a 4 s time constant, and a heartbeat clock advances with it: the
  * next heartbeat comes when its phase completes. The clock is brought up to
  * date at each heartbeat and each throughput reading, and the pending
  * heartbeat re-timed from the phase it has reached, so a change of throughput
  * moves it earlier or later at once without resetting the clock, bunching,
- * doubling or catching up beats, and never later than one 7 BPM interval;
+ * doubling or catching up beats, and never later than one 3.5 BPM interval;
  * beats already travelling keep their place and speed. Heartbeats are drawn
  * only while the Dashboard is the active view of a visible document, and run
  * only while motion is not reduced.
@@ -1084,14 +1084,17 @@ function updateOperatorTitle(stats) {
  *
  * Global Pause All (processingPaused, the projection of the backend's durable
  * pause state that loadStats reads) holds the strip: no heartbeat is started,
- * those on the strip travel on, the last one keeping the trail it had (laid
- * out for the heartbeat then due), and once the strip is clear every line
- * becomes the same flat red, breathing in step (still, under reduced motion).
+ * and the signal settles where it stands -- every complex on the strip eases
+ * flat to the baseline over 700 ms while it travels on, the last one keeping
+ * the trail it had (laid out for the heartbeat then due) -- and once it is flat
+ * every line becomes the same flat red, breathing in step (still, under reduced
+ * motion). Released before it is flat, it rises again from where it was.
  * Resuming restores the cards' colours and starts a heartbeat at once -- but
  * not before the last one's trail leaves it its clearance, nor within one 90
  * BPM interval of it -- and the cadence carries on from the throughput. */
-const DASHBOARD_HEARTBEAT_BPM = [7, 90];
+const DASHBOARD_HEARTBEAT_BPM = [3.5, 90];
 const DASHBOARD_HEARTBEAT_EASE_MS = 4000;      // time constant of the cadence's approach to its target
+const DASHBOARD_HEARTBEAT_SETTLE_MS = 700;     // Global Pause All: the signal settles flat to its baseline over this
 const DASHBOARD_HEARTBEAT_SPEED = 0.24;        // px per ms along the strip
 const DASHBOARD_HEARTBEAT_COMPLEX = [          // [x px from the leading edge, y in the 24-unit viewBox]
   [0, 16], [6, 16], [9, 13.5], [12, 16], [16, 16], [18, 17.5], [22, 2], [26, 23],
@@ -1102,7 +1105,8 @@ const DASHBOARD_HEARTBEAT_CLEARANCE = 16;      // px of resting baseline left be
 const DASHBOARD_HEARTBEAT_TRAIL = 416;         // px: the longest a trail fades over, however far behind the next heartbeat is
 const DASHBOARD_HEARTBEAT_VIEW_HEIGHT = 29.42; // viewBox units in the 38 px line box: 24 units per 31 px, the baseline 16 units down
 const _dashboardHeartbeat = {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: [], route: null,
-  bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0};
+  bytesPerSecond: 0, sustainedPeak: 0, bpm: DASHBOARD_HEARTBEAT_BPM[0], phase: 0, advancedAt: 0, nextAt: 0, earliest: 0,
+  settle: null};                               // the signal's height easing (Global Pause All): {at, from, to, span}
 
 /* One heartbeat's own complex, drawn at its birth, every bound holding however
  * the draws combine. Height: each deflection from the y=16 baseline scales by
@@ -1174,8 +1178,10 @@ function syncDashboardHeartbeatPause() {
       clearTimeout(state.timer);
       state.timer = 0;
       if (last) last.until = state.nextAt;          // its trail stays as laid out for the heartbeat then due
+      settleDashboardHeartbeat(performance.now(), 0);   // it settles flat from where it stands
     } else {
       const now = performance.now();
+      settleDashboardHeartbeat(now, 1);             // not yet flat: it rises again from where it was
       easeDashboardHeartbeat(now);                  // none was due while held
       state.phase = 1;
       // Not before the held trail leaves the next heartbeat its clearance.
@@ -1248,6 +1254,26 @@ function liveDashboardHeartbeats(now) {
   return live;
 }
 
+/* The signal's height at `now` (1 full, 0 flat on the baseline): from where
+ * it was toward where Global Pause All sends it, over a span in proportion to
+ * the distance (700 ms from full to flat) -- moving at once, then easing to
+ * rest (an ease-out). */
+function dashboardHeartbeatHeight(now) {
+  const settle = _dashboardHeartbeat.settle;
+  if (!settle) return 1;
+  const p = Math.min(1, Math.max(0, (now - settle.at) / settle.span));
+  return settle.from + (settle.to - settle.from) * (1 - (1 - p) ** 2);
+}
+function settleDashboardHeartbeat(now, to) {
+  const state = _dashboardHeartbeat;
+  // Already settled flat, though unseen (no frame ran): the strip is clear.
+  if (state.settle?.to === 0 && now - state.settle.at >= state.settle.span) Object.assign(state, {settle: null, beats: []});
+  const from = dashboardHeartbeatHeight(now);
+  state.settle = from === to || !state.beats.length ? null
+    : {at: now, from, to, span: DASHBOARD_HEARTBEAT_SETTLE_MS * Math.abs(to - from)};
+  if (!state.settle && to === 0) state.beats = [];   // nothing standing to settle
+}
+
 /* Draw every card's line for the heartbeats on the strip at `now`. */
 function renderDashboardHeartbeat(now) {
   const {cards} = _dashboardHeartbeat.route;
@@ -1262,7 +1288,8 @@ function renderDashboardHeartbeat(now) {
     const complexes = here.filter(({x, shape}) => x < width && x + shape.width > 0);
     const start = fmt(Math.min(0, complexes[0]?.x ?? 0));
     let d = `M ${start} 16`;
-    for (const {x, shape} of complexes) d += shape.points.map(([dx, y]) => ` L ${fmt(x + dx)} ${fmt(y)}`).join('');
+    const height = dashboardHeartbeatHeight(now);
+    for (const {x, shape} of complexes) d += shape.points.map(([dx, y]) => ` L ${fmt(x + dx)} ${fmt(16 + (y - 16) * height)}`).join('');
     const last = complexes[complexes.length - 1];
     const finish = fmt(Math.max(width, last ? last.x + last.shape.width : 0));
     d += ` L ${finish} 16`;
@@ -1305,9 +1332,16 @@ function renderDashboardHeartbeat(now) {
 }
 
 function dashboardHeartbeatFrame(now) {
-  _dashboardHeartbeat.frame = 0;
+  const state = _dashboardHeartbeat;
+  state.frame = 0;
   renderDashboardHeartbeat(now);
-  if (_dashboardHeartbeat.beats.length) _dashboardHeartbeat.frame = requestAnimationFrame(dashboardHeartbeatFrame);
+  const settle = state.settle;
+  if (settle && now - settle.at >= settle.span) {
+    state.settle = null;
+    // Settled flat: the strip is clear, drawn as the plain baseline.
+    if (settle.to === 0) { state.beats = []; renderDashboardHeartbeat(now); }
+  }
+  if (state.beats.length) state.frame = requestAnimationFrame(dashboardHeartbeatFrame);
   else syncDashboardHeartbeatFlatline();             // a held strip, now clear
 }
 
@@ -1406,7 +1440,7 @@ function syncDashboardSparkPulses() {
     if (!state.running) return;
     clearTimeout(state.timer);
     cancelAnimationFrame(state.frame);
-    Object.assign(state, {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: []});
+    Object.assign(state, {running: false, suspended: false, held: false, timer: 0, frame: 0, beats: [], settle: null});
     renderDashboardHeartbeat(performance.now());   // back to the flat baselines
     syncDashboardHeartbeatFlatline();
     return;

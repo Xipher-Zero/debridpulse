@@ -57,7 +57,8 @@ def test_dashboard_kpi_hover_copy_describes_the_numbers():
 
 def test_dashboard_pulse_owner_is_lifecycle_bound():
     app = (STATIC / "app.js").read_text()
-    assert "const DASHBOARD_HEARTBEAT_BPM = [7, 90];" in app
+    assert "const DASHBOARD_HEARTBEAT_BPM = [3.5, 90];" in app       # idle floor 3.5 BPM: one heartbeat per 17,143 ms
+    assert "const DASHBOARD_HEARTBEAT_SETTLE_MS = 700;" in app
     assert "const DASHBOARD_HEARTBEAT_TRAIL = 416;" in app
     assert "const DASHBOARD_HEARTBEAT_EASE_MS = 4000;" in app
     assert "const DASHBOARD_HEARTBEAT_SPEED = 0.24;" in app
@@ -102,3 +103,21 @@ def test_dashboard_sparkline_curve_has_canonical_rounded_paint():
     css = (STATIC / "ui-dashboard.css").read_text()
     assert "stroke-linecap: round;" in css
     assert "stroke-linejoin: round;" in css
+
+
+def test_global_pause_all_settles_the_signal_where_it_stands_then_the_red_flatline():
+    app = (STATIC / "app.js").read_text()
+    pause = app[app.index("function syncDashboardHeartbeatPause() {"):app.index("function dashboardHeartbeatTargetBpm() {")]
+    # The authoritative hold settles it flat from where it stands; a release turns it back from where it is.
+    assert "settleDashboardHeartbeat(performance.now(), 0);" in pause and "settleDashboardHeartbeat(now, 1);" in pause
+    # Height is drawn from time alone (no timer, no animation callback that could fire stale), applied to
+    # every complex's deflection from the baseline -- the route, the travel and the trails are unchanged.
+    height = app[app.index("function dashboardHeartbeatHeight(now) {"):app.index("function settleDashboardHeartbeat(")]
+    assert "setTimeout" not in height and "requestAnimationFrame" not in height
+    assert "fmt(16 + (y - 16) * height)" in app
+    # Flat: the strip is cleared in the frame that reaches it, so the existing red flatline follows (never before).
+    frame = app[app.index("function dashboardHeartbeatFrame(now) {"):app.index("/* Run the heartbeat clock up to `now`")]
+    assert "if (settle.to === 0) { state.beats = []; renderDashboardHeartbeat(now); }" in frame
+    assert frame.index("state.beats = []") < frame.index("syncDashboardHeartbeatFlatline();")
+    assert app.count("dash-hero--flatline") == 1                    # the one flatline owner (syncDashboardHeartbeatFlatline)
+    assert "settle: null" in app[app.index("if (_dashboardSparkReducedMotion.matches) {"):]

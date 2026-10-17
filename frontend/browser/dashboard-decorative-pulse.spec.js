@@ -4,7 +4,7 @@ const { pauseClockBeforeBoot } = require('./page-clock');
 /* DP 1.0.13 decorative Dashboard ECG strip. The six KPI cards' lines form one
  * virtual strip: rows top to bottom, each row right to left, gaps and row
  * breaks travelled unseen at their real distance. One owner starts the
- * heartbeats, 7 BPM with no throughput up to 90 BPM as download throughput
+ * heartbeats, 3.5 BPM with no throughput up to 90 BPM as download throughput
  * reaches the installation's sustained peak; each travels the whole strip
  * right to left at 0.24 px/ms, so several can be on it at once. Each card's
  * single line is the signal: a flat baseline deformed into the ECG complex
@@ -12,7 +12,7 @@ const { pauseClockBeforeBoot } = require('./page-clock');
  * within 416 px and always before the following heartbeat. The test owns time
  * (page.clock) for timers and animation frames, and the throughput facts:
  * unless a case says otherwise they hold the cadence at 30 BPM (one heartbeat
- * every 2 s), 23/83 of the sustained peak. */
+ * every 2 s): 3.5 + 86.5 x 26.5/86.5 of the sustained peak. */
 
 const SPEED = 0.24;          // px per ms
 const INTERVAL = 2000;       // ms between heartbeats
@@ -20,7 +20,7 @@ const STEP = 50;
 const COMPLEX_POINTS = 15;   // points in one complex, its R peak the 7th (the only point above y=6)
 const TRAIL = 416;           // px: the longest trail
 
-async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-preference', throughput = {bps: 23, peak: 83}, pause, events} = {}) {
+async function boot(page, {width = 1600, height = 900, reducedMotion = 'no-preference', throughput = {bps: 26.5, peak: 86.5}, pause, events} = {}) {
   await page.setViewportSize({width, height});
   // The strip's clock runs for the life of the page once motion is allowed on
   // the shown Dashboard; it is held still until the test owns time.
@@ -375,9 +375,9 @@ test('the heartbeat is its own card\'s accent at full strength in both themes, n
   expect(quiet).toEqual({quiet: true, opacities: quiet.opacities.map(() => 1), body: 0.6, rest: 0.24, lead: 1});
 });
 
-const IDLE = 60000 / 7, FULL = 60000 / 90;   // ms between heartbeats at no throughput and at the sustained peak
+const IDLE = 60000 / 3.5, FULL = 60000 / 90; // ms between heartbeats at no throughput (17,143) and at the sustained peak
 
-for (const [label, throughput, interval] of [['7 BPM', {bps: 0, peak: 42e6}, IDLE], ['90 BPM', {bps: 42e6, peak: 42e6}, FULL]]) {
+for (const [label, throughput, interval] of [['3.5 BPM', {bps: 0, peak: 42e6}, IDLE], ['90 BPM', {bps: 42e6, peak: 42e6}, FULL]]) {
   test(`at ${label} each trail fades to rest in strip distance, within 416 px and just before the following heartbeat`, async ({page}) => {
     test.setTimeout(120000);
     await boot(page, {throughput});
@@ -413,10 +413,10 @@ for (const [label, throughput, interval] of [['7 BPM', {bps: 0, peak: 42e6}, IDL
 
 test('while the cadence changes and across row breaks every trail reaches rest in strip distance just before its follower', async ({page}) => {
   test.setTimeout(120000);
-  const throughput = {bps: 23, peak: 83};
+  const throughput = {bps: 26.5, peak: 86.5};
   await boot(page, {width: 560, height: 1400, throughput});
   await page.clock.runFor(5000);                          // heartbeats at 30 BPM on the strip
-  throughput.bps = 83;                                    // the cadence now eases towards 90 BPM
+  throughput.bps = 86.5;                                  // the cadence now eases towards 90 BPM
   const trails = [];
   let capped = 0, spanned = 0, broken = 0;
   for (let t = 0; t < 16000; t += 100) {
@@ -439,11 +439,11 @@ test('while the cadence changes and across row breaks every trail reaches rest i
   expect(Math.min(...trails)).toBeLessThan(110);         // ... to 96 px near 90 BPM
 });
 
-test('the cadence eases to the throughput between 7 and 90 BPM without bunching, resetting or changing speed', async ({page}) => {
+test('the cadence eases to the throughput between 3.5 and 90 BPM without bunching, resetting or changing speed', async ({page}) => {
   test.setTimeout(300000);
   const throughput = {bps: 0, peak: 42e6};
   await boot(page, {throughput});
-  const rest = await births(page, 2 * IDLE + 1500);                // idle: one heartbeat per 8571 ms
+  const rest = await births(page, 2 * IDLE + 1500);                // idle: one heartbeat per 17,143 ms
   expect(rest.times.length).toBeGreaterThanOrEqual(2);
   intervals(rest.times).forEach(gap => expect(Math.abs(gap - IDLE)).toBeLessThanOrEqual(QUANTUM));
 
@@ -454,11 +454,11 @@ test('the cadence eases to the throughput between 7 and 90 BPM without bunching,
   up.forEach(gap => expect(gap).toBeGreaterThanOrEqual(FULL - QUANTUM));                   // never bunched
   expect(Math.abs(up[up.length - 1] - FULL)).toBeLessThanOrEqual(QUANTUM + 20);
 
-  throughput.bps = 21e6;                                  // half of it: 48.5 BPM, one beat per 1237 ms
+  throughput.bps = 21e6;                                  // half of it: 3.5 + 86.5 / 2 = 46.75 BPM, one beat per 1283 ms
   const half = await births(page, 22000);
-  expect(Math.abs(intervals(half.times).pop() - 60000 / 48.5)).toBeLessThanOrEqual(QUANTUM + 20);
+  expect(Math.abs(intervals(half.times).pop() - 60000 / (3.5 + 86.5 / 2))).toBeLessThanOrEqual(QUANTUM + 20);
 
-  throughput.bps = 0;                                     // idle again: back towards 7 BPM
+  throughput.bps = 0;                                     // idle again: back towards 3.5 BPM
   const falling = await births(page, 22000);
   const down = intervals([half.times[half.times.length - 1], ...falling.times]);
   down.slice(1).forEach((gap, i) => expect(gap).toBeGreaterThanOrEqual(down[i] - 2 * QUANTUM));
@@ -474,6 +474,24 @@ test('the cadence eases to the throughput between 7 and 90 BPM without bunching,
   });
 });
 
+/* The documented cadence law (app.js): the cadence eases toward its target with
+ * a 4 s time constant from the first reading of the new throughput (at most one
+ * 500 ms poll after it changed), and a heartbeat comes when its phase completes
+ * -- so each interval is the inverse of the mean cadence over it, which lies
+ * between the cadence at its two ends. A pending heartbeat is re-timed only at
+ * a reading, so it may land up to one poll off that. Every interval must lie in
+ * that band: no restart, jump, double or postponed heartbeat. */
+const EASE_MS = 4000, POLL_MS = 500;
+function expectEasedIntervals(times, changed, from, to) {
+  const cadence = (t, start) => (t <= start ? from : to + (from - to) * Math.exp(-(t - start) / EASE_MS));
+  times.slice(1).forEach((end, i) => {
+    const begin = times[i], gap = end - begin;
+    const ends = [changed, changed + POLL_MS].flatMap(start => [cadence(begin, start), cadence(end, start)]);
+    expect(gap, `interval ${i}: ${Math.round(gap)} ms`).toBeGreaterThanOrEqual(60000 / Math.max(...ends) - POLL_MS - QUANTUM);
+    expect(gap, `interval ${i}: ${Math.round(gap)} ms`).toBeLessThanOrEqual(60000 / Math.min(...ends) + POLL_MS + QUANTUM);
+  });
+}
+
 test('throughput arriving just after an idle heartbeat brings the next one forward at once, and the cadence rises smoothly', async ({page}) => {
   test.setTimeout(120000);
   const throughput = {bps: 0, peak: 42e6};
@@ -481,14 +499,13 @@ test('throughput arriving just after an idle heartbeat brings the next one forwa
   const seen = {times: [], leads: []};
   while (!seen.times.length) await births(page, STEP, seen);     // an idle heartbeat has just started
   throughput.bps = 42e6;                                        // full sustained throughput from now
+  const changed = await page.evaluate(() => Date.now());
   await births(page, 20000, seen);
   const gaps = intervals(seen.times);
   console.log('idle -> peak intervals (ms):', gaps.join(', '));
-  expect(gaps[0]).toBeLessThan(3500);                           // not the 8571 ms idle interval
-  gaps.slice(1).forEach((gap, i) => {
-    expect(gap).toBeLessThanOrEqual(gaps[i] + 2 * QUANTUM);     // never slower again
-    expect(gap).toBeGreaterThanOrEqual(gaps[i] * 0.45);         // no abrupt jump
-  });
+  expect(gaps[0]).toBeLessThan(3500);                           // not the 17,143 ms idle interval
+  gaps.slice(1).forEach((gap, i) => expect(gap).toBeLessThanOrEqual(gaps[i] + 2 * QUANTUM));   // never slower again
+  expectEasedIntervals(seen.times, changed, 3.5, 90);           // no abrupt jump: each interval as the cadence law allows
   gaps.forEach(gap => expect(gap).toBeGreaterThanOrEqual(FULL - QUANTUM));   // never bunched
   expect(Math.abs(gaps[gaps.length - 1] - FULL)).toBeLessThanOrEqual(QUANTUM + 20);
 });
@@ -499,13 +516,12 @@ test('throughput falling to nothing slows the cadence smoothly to idle, never po
   await boot(page, {throughput});
   const seen = await births(page, 5000);
   throughput.bps = 0;
+  const changed = await page.evaluate(() => Date.now());
   await births(page, 30000, seen);
   const gaps = intervals(seen.times);
   console.log('peak -> idle intervals (ms):', gaps.join(', '));
-  gaps.slice(1).forEach((gap, i) => {
-    expect(gap).toBeGreaterThanOrEqual(gaps[i] - 2 * QUANTUM);  // never faster again
-    expect(gap).toBeLessThanOrEqual(gaps[i] * 2 + QUANTUM);     // no abrupt jump
-  });
+  gaps.slice(1).forEach((gap, i) => expect(gap).toBeGreaterThanOrEqual(gaps[i] - 2 * QUANTUM));   // never faster again
+  expectEasedIntervals(seen.times, changed, 90, 3.5);           // no abrupt jump: each interval as the cadence law allows
   gaps.forEach(gap => expect(gap).toBeLessThanOrEqual(IDLE + QUANTUM));      // never postponed
   expect(gaps[gaps.length - 1]).toBeGreaterThan(6000);
 });
@@ -540,7 +556,7 @@ test('repeatedly changing throughput re-times the pending heartbeat without burs
   expect(checked).toBeGreaterThan(20);
 });
 
-test('without a recorded sustained peak the heartbeat rests at 7 BPM whatever the live speed', async ({page}) => {
+test('without a recorded sustained peak the heartbeat rests at 3.5 BPM whatever the live speed', async ({page}) => {
   test.setTimeout(120000);
   await boot(page, {throughput: {bps: 500e6, peak: null}});
   const seen = await births(page, 3 * IDLE + 500);
@@ -626,11 +642,21 @@ test('each heartbeat has its own bounded complex, kept unchanged across every ca
   expect(Math.max(...peaks) - Math.min(...peaks)).toBeGreaterThan(2);
 });
 
-test('Global Pause All from another session drains the strip, then all six lines breathe one red; resuming starts a heartbeat at once', async ({page}) => {
+/* How far the strip's signal stands off its baseline now (the largest
+ * deflection of any card's line, in viewBox units; 0 is flat), and whether the
+ * red paused presentation is on. */
+const signal = page => page.evaluate(() => ({now: performance.now(),
+  height: Math.max(0, ...[...document.querySelectorAll('#view-dashboard .dp-card-spark-line')]
+    .flatMap(line => [...line.getAttribute('d').matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => Math.abs(Number(m[2]) - 16)))),
+  flatline: document.getElementById('dash-hero').classList.contains('dash-hero--flatline'),
+  born: _dashboardHeartbeat.beats.map(beat => beat.born)}));
+const SETTLE = 700;
+
+test('Global Pause All from another session settles the signal flat where it stands in about 700 ms, then all six lines breathe one red; resuming starts a heartbeat at once', async ({page}) => {
   test.setTimeout(180000);
   const pause = {paused: false}, events = {};
   await boot(page, {pause, events});
-  await page.clock.runFor(INTERVAL + 2500);                          // heartbeats on the strip
+  await page.clock.runFor(INTERVAL + 2500);                          // heartbeats on the strip, mid-route
   const accents = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color));
   const edges = await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => getComputedStyle(card, '::before').backgroundColor));
   const flatline = () => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'));
@@ -638,44 +664,35 @@ test('Global Pause All from another session drains the strip, then all six lines
   pause.paused = true;
   events.emit();                                                    // stats_changed: loadStats reads the pause
   await expect.poll(() => page.evaluate(() => processingPaused)).toBe(true);
-  const confirmed = await page.evaluate(() => Date.now());
-  const observations = [await observe(page)];
-  const inFlight = heartbeats(observations);
-  expect(inFlight.length).toBeGreaterThan(0);
-  expect(await flatline()).toBe(false);
+  const confirmed = await signal(page);
+  const inFlight = heartbeats([await observe(page)]);
+  expect(inFlight.length).toBeGreaterThan(0);                       // complexes stand on the strip, mid-route
+  expect(confirmed.height).toBeGreaterThan(10);
+  expect(confirmed.flatline).toBe(false);
 
-  // Draining: the heartbeats on the strip travel on unchanged, nothing new
-  // starts, the cards keep their colours, the last trail fades within 416 px.
-  let drained = null;
-  for (let t = 0; t < 14000 && drained === null; t += 100) {
-    await page.clock.runFor(100);
-    const observation = await observe(page);
-    observations.push(observation);
-    const lit = observation.cards.some(card => groups(card).length || complexes(card).length);
-    if (lit) {
-      expect(await flatline()).toBe(false);                          // never before the strip is clear
-      expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color))).toEqual(accents);
-      for (const card of observation.cards) for (const group of groups(card)) {
-        const trail = group[5] - group[3];
-        expect(trail).toBeLessThanOrEqual(TRAIL + 0.5);
-      }
-    } else drained = observation.now;
+  // Frame by frame: it settles from the first frame, never rising, still in the
+  // cards' colours, travelling on; flat at about 700 ms, and only then red.
+  const frames = [];
+  let landed = null;
+  for (let t = 0; t < 2000 && landed === null; t += 16) {
+    await page.clock.runFor(16);
+    const frame = await signal(page);
+    frames.push({...frame, t: frame.now - confirmed.now});
+    if (frame.flatline) landed = frames.at(-1);
+    else expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => getComputedStyle(svg).color))).toEqual(accents);
   }
-  expect(drained).not.toBeNull();
-  const all = heartbeats(observations);
-  all.forEach(beat => expect(beat.born).toBeLessThan(confirmed));   // none started after the pause
-  for (const beat of inFlight) {
-    const later = all.find(b => Math.abs(b.born - beat.born) <= 20);
-    later.sightings.forEach(s => s.points.forEach(([x, y], i) => {
-      expect(x).toBeCloseTo(beat.sightings[0].points[i][0], 1);
-      expect(y).toBeCloseTo(beat.sightings[0].points[i][1], 1);
-    }));
-  }
-  // The last one left with the whole trail it had behind it, not sooner.
-  const last = all[all.length - 1];
-  const end = Math.max(...route(observations[0].cards).entries.map((e, i) => e + observations[0].cards[i].width));
-  const lastTrail = stripBeats(observations[0].cards).reduce((a, b) => (a.lead < b.lead ? a : b));
-  expect(drained - last.born).toBeGreaterThanOrEqual((end + lastTrail.lead - lastTrail.end) / SPEED - 120);
+  expect(frames[0].height).toBeLessThan(confirmed.height * 0.99);  // it began at once, visibly ...
+  frames.slice(1).forEach((frame, i) => expect(frame.height).toBeLessThanOrEqual(frames[i].height + 1e-6));   // ... and never rose
+  expect(frames.filter(frame => frame.height > 0.05).every(frame => !frame.flatline)).toBe(true);   // no red while the signal stands
+  expect(landed).not.toBeNull();
+  expect(landed.height).toBe(0);                                   // red only once it is flat ...
+  expect(landed.t).toBeGreaterThanOrEqual(SETTLE - 20);            // ... at about 700 ms,
+  expect(landed.t).toBeLessThanOrEqual(SETTLE + 20);               // not waiting for the strip to drain
+  // Mid-collapse the complexes kept travelling where their age puts them -- no teleport, no clearing.
+  const mid = frames.find(frame => frame.t >= SETTLE / 2);
+  expect(mid.height).toBeGreaterThan(0);
+  expect(mid.born).toEqual(confirmed.born);
+  frames.forEach(frame => expect(frame.born.every(born => born < confirmed.now)).toBe(true));   // none started after the pause
 
   // Paused: flat, one saturated red on all six, breathing in step; nothing starts.
   await expect.poll(flatline).toBe(true);
@@ -693,7 +710,8 @@ test('Global Pause All from another session drains the strip, then all six lines
   expect(await page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dash-hero-stat')].map(card => getComputedStyle(card, '::before').backgroundColor))).toEqual(edges);
   for (let t = 0; t < 5000; t += 250) {
     await page.clock.runFor(250);
-    expect((await strip(page)).every(flat)).toBe(true);
+    expect((await strip(page)).every(flat => flat.points.every(([, y]) => y === 16))).toBe(true);
+    expect((await signal(page)).born).toEqual([]);
   }
 
   // Resumed (the event stream reconnects 10 s after its last event): colours
@@ -708,6 +726,110 @@ test('Global Pause All from another session drains the strip, then all six lines
   const after = await births(page, 2 * INTERVAL + 500);
   expect(after.times[0] - resumed).toBeLessThanOrEqual(QUANTUM);
   intervals(after.times).forEach(gap => expect(Math.abs(gap - INTERVAL)).toBeLessThanOrEqual(QUANTUM));
+});
+
+test('pause, resume and pause again in quick succession: the signal turns back from where it is each time, nothing doubles, no stale red', async ({page}) => {
+  test.setTimeout(120000);
+  const pause = {paused: false};
+  await boot(page, {pause});
+  await page.clock.runFor(INTERVAL + 2500);
+  const set = async paused => { pause.paused = paused; await page.evaluate(() => loadStats()); expect(await page.evaluate(() => processingPaused)).toBe(paused); };
+  await set(true);
+  const start = await signal(page);
+  await page.clock.runFor(300);
+  const low = await signal(page);
+  expect(low.height).toBeLessThan(start.height);
+  expect(low.height).toBeGreaterThan(0);
+  await set(false);                                                 // released before it is flat
+  const rising = [];
+  for (let t = 0; t < 400; t += 16) { await page.clock.runFor(16); rising.push(await signal(page)); }
+  rising.slice(1).forEach((frame, i) => expect(frame.height).toBeGreaterThanOrEqual(rising[i].height - 1e-6));   // it rises again ...
+  expect(rising.at(-1).height).toBeGreaterThan(low.height);
+  rising.forEach(frame => expect(frame.flatline).toBe(false));      // ... never red
+  await set(true);                                                  // and paused once more, from where it stands
+  const again = await signal(page);
+  let flat = null;
+  for (let t = 0; t < 1500 && flat === null; t += 16) {
+    await page.clock.runFor(16);
+    const frame = await signal(page);
+    if (frame.flatline) { flat = frame.now - again.now; expect(frame.height).toBe(0); }   // red only once flat
+    else if (frame.height > 0.05) expect(frame.flatline).toBe(false);
+  }
+  expect(flat).not.toBeNull();
+  expect(flat).toBeLessThanOrEqual(SETTLE + 20);                    // never longer than a full settle
+  // Nothing born while paused, at most the one a release starts at once while it was released.
+  const born = (await signal(page)).born;
+  expect(born).toEqual([]);
+  await page.clock.runFor(3000);
+  expect((await signal(page)).flatline).toBe(true);
+  expect((await signal(page)).born).toEqual([]);
+});
+
+test('hidden or navigated away while it settles, the Dashboard comes back already flat and red, nothing replayed or born', async ({page}) => {
+  test.setTimeout(120000);
+  const pause = {paused: false};
+  await boot(page, {pause});
+  await page.clock.runFor(INTERVAL + 2500);
+  pause.paused = true;
+  await page.evaluate(() => loadStats());
+  const paused = await signal(page);
+  expect(paused.height).toBeGreaterThan(10);
+  await page.clock.runFor(200);                                      // part-way down
+  await setHidden(page, true);
+  expect(await page.evaluate(() => [_dashboardHeartbeat.timer, _dashboardHeartbeat.frame])).toEqual([0, 0]);
+  await page.clock.runFor(3000);
+  const back = await setHidden(page, false);                         // the first frame back
+  expect(back.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16))).toBe(true);
+  const shown = await signal(page);
+  expect([shown.flatline, shown.born]).toEqual([true, []]);
+  // Paused while hidden, settled unseen, then resumed while still hidden: nothing from before rises again.
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  await page.clock.runFor(INTERVAL + 500);
+  pause.paused = true;
+  await setHidden(page, true);
+  await page.evaluate(() => loadStats());
+  const pausedHidden = (await signal(page)).now;
+  await page.clock.runFor(2000);                                     // settled, unseen
+  pause.paused = false;
+  await page.evaluate(() => loadStats());                            // resumed, still hidden
+  const shownAgain = await setHidden(page, false);
+  const stillFlat = shownAgain.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16));
+  expect(stillFlat).toBe(true);                                      // the settled heartbeats stay gone
+  expect((await signal(page)).born.every(born => born > pausedHidden)).toBe(true);
+  pause.paused = true;
+  await page.evaluate(() => loadStats());
+  await page.clock.runFor(1000);
+  // Resumed, then paused again and left for another view mid-settle.
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  await page.clock.runFor(INTERVAL + 500);
+  expect((await signal(page)).height).toBeGreaterThan(10);
+  pause.paused = true;
+  await page.evaluate(() => loadStats());
+  const pausedAgain = await signal(page);
+  await page.clock.runFor(150);
+  await leaveDashboard(page);
+  await page.clock.runFor(2000);
+  const first = await returnAndRead(page);
+  expect(first.flatline).toBe(true);
+  expect(first.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16))).toBe(true);
+  expect((await signal(page)).born.every(born => born < pausedAgain.now)).toBe(true);
+});
+
+test('with reduced motion a confirmed Global Pause All shows the still red flat lines at once, and resuming the plain baselines', async ({page}) => {
+  test.setTimeout(90000);
+  const pause = {paused: false};
+  await boot(page, {pause, reducedMotion: 'reduce'});
+  expect(await page.evaluate(() => _dashboardHeartbeat.running)).toBe(false);
+  pause.paused = true;
+  await page.evaluate(() => loadStats());
+  const red = await signal(page);
+  expect([red.flatline, red.height]).toEqual([true, 0]);              // at once, no settle to animate
+  expect(await page.locator('#view-dashboard .dp-card-spark-line').first().evaluate(line => getComputedStyle(line).animationName)).toBe('none');
+  pause.paused = false;
+  await page.evaluate(() => loadStats());
+  expect((await signal(page)).flatline).toBe(false);
 });
 
 /* Every heartbeat on the strip now, in strip coordinates, with its gradient
@@ -726,7 +848,7 @@ function expectSameTrails(before, after) {
   return matched;
 }
 
-test('Global Pause All at high throughput keeps each heartbeat\'s short trail exactly as it was while the strip drains, and resuming keeps it too', async ({page}) => {
+test('Global Pause All at high throughput keeps each heartbeat\'s short trail exactly as it was while the signal settles, and resuming keeps it too', async ({page}) => {
   test.setTimeout(120000);
   const pause = {paused: false};
   await boot(page, {pause, throughput: {bps: 42e6, peak: 42e6}});
@@ -745,8 +867,8 @@ test('Global Pause All at high throughput keeps each heartbeat\'s short trail ex
   // the trails, read from their gradient stops, lengthens.)
   const shortTrails = snap => snap.beats.forEach(beat => expect(beat.envelope[5] - beat.envelope[3]).toBeLessThan(150));
   shortTrails(after);
-  // Draining: every heartbeat keeps its envelope, frame after frame.
-  for (let t = 0; t < 1000; t += 50) {
+  // Settling: every heartbeat keeps its envelope (where its trail lies along the strip), frame after frame.
+  for (let t = 0; t < 400; t += 50) {
     before = after;
     await page.clock.runFor(50);
     after = await snapshot(page);
@@ -754,7 +876,7 @@ test('Global Pause All at high throughput keeps each heartbeat\'s short trail ex
     shortTrails(after);
     expect(after.beats.length).toBeGreaterThan(0);
   }
-  // Resumed while still draining (past the heartbeat that was due): one starts
+  // Resumed while still settling (past the heartbeat that was due): one starts
   // at once, the trails in flight carry on unchanged, each clear of its follower.
   pause.paused = false;
   await page.evaluate(() => loadStats());
@@ -819,7 +941,7 @@ test('only a confirmed Global Pause All holds the strip: a failed or pending req
   await boot(page, {pause, throughput});
   const flatline = () => page.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'));
   const idle = await births(page, IDLE + 500);
-  expect(idle.times.length).toBe(1);                                 // the 7 BPM heartbeat runs
+  expect(idle.times.length).toBe(1);                                 // the 3.5 BPM heartbeat runs
   expect(await flatline()).toBe(false);
 
   await page.evaluate(() => { pauseProcessing(); });                // the Pause All control
@@ -834,7 +956,7 @@ test('only a confirmed Global Pause All holds the strip: a failed or pending req
   await page.evaluate(() => { pauseProcessing(); });
   await expect.poll(() => answer !== null).toBe(true);               // ... and a request pending, unconfirmed
   const pending = await births(page, 4000);                          // (inside the request's 8 s timeout)
-  expect(pending.times.length).toBeGreaterThanOrEqual(2);            // heartbeats still start (easing up from 7 BPM)
+  expect(pending.times.length).toBeGreaterThanOrEqual(2);            // heartbeats still start (easing up from 3.5 BPM)
   expect(await flatline()).toBe(false);
 
   pause.paused = true;                                               // now confirmed
@@ -1079,7 +1201,7 @@ function expectLeadsAt(actual, expected) {
  * clock steps and facts: their heartbeats are born at the same instants. */
 async function watchedAndHidden(browser, options = {}) {
   const watched = await browser.newPage(), hidden = await browser.newPage();
-  const facts = {watched: {...(options.throughput || {bps: 23, peak: 83})}, hidden: {...(options.throughput || {bps: 23, peak: 83})}};
+  const facts = {watched: {...(options.throughput || {bps: 26.5, peak: 86.5})}, hidden: {...(options.throughput || {bps: 26.5, peak: 86.5})}};
   await boot(watched, {...options, throughput: facts.watched});
   await boot(hidden, {...options, throughput: facts.hidden});
   const origin = {watched: (await heartbeatState(watched)).now, hidden: (await heartbeatState(hidden)).now};
@@ -1126,7 +1248,7 @@ test('hidden while the cadence changes, polls still arriving: the heartbeats due
   try {
     await pair.run(INTERVAL + 500);
     await setHidden(pair.hidden, true);
-    pair.facts.watched.bps = pair.facts.hidden.bps = 83;                 // towards 90 BPM while hidden
+    pair.facts.watched.bps = pair.facts.hidden.bps = 86.5;               // towards 90 BPM while hidden
     await pair.run(6000);
     const first = await setHidden(pair.hidden, false);
     const kept = await pair.bornSince('hidden');
@@ -1213,13 +1335,18 @@ test('Global Pause All arriving while hidden: the heartbeats due before it are b
     await run(3000);                                                     // a heartbeat is due at 4 s, while hidden
     pauses.watched.paused = pauses.hidden.paused = true;
     await Promise.all([watched.evaluate(() => loadStats()), hidden.evaluate(() => loadStats())]);
-    await run(2500);
-    await setHidden(hidden, false);
+    // Read at the hold, before the settle clears the strip: the births due before it, and none after.
     const born = async (page, key) => (await heartbeatState(page)).born.map(b => Math.round(b - origin[key]));
     const kept = await born(hidden, 'hidden');
     expectSameBirths(kept, await born(watched, 'watched'));
     expect(kept.some(b => Math.abs(b - 4000) <= 1)).toBe(true);         // due while hidden, before the hold
     expect(kept.every(b => b <= 4001)).toBe(true);                       // none once held
+    await run(2500);
+    const back = await setHidden(hidden, false);                         // shown again: settled flat and red, nothing born
+    expect(back.lines.every(d => [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].every(m => Number(m[2]) === 16))).toBe(true);
+    expect(await hidden.evaluate(() => document.getElementById('dash-hero').classList.contains('dash-hero--flatline'))).toBe(true);
+    expect(await born(hidden, 'hidden')).toEqual([]);
+    expect(await born(watched, 'watched')).toEqual([]);
   } finally { await watched.close(); await hidden.close(); }
 });
 
