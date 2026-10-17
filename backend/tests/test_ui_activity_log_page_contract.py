@@ -32,7 +32,7 @@ def test_activity_log_keeps_approved_content_with_direct_structural_owners() -> 
     missing = [selector for selector in required if selector not in css]
     assert not missing, f"Activity rebuild is missing structural selectors: {missing}"
 
-def test_auto_refresh_is_one_island_left_of_refresh_off_by_default_and_never_saved() -> None:
+def test_auto_refresh_is_one_island_left_of_refresh_on_by_default_and_kept_for_the_tab_session() -> None:
     import re
 
     index = read("index.html")
@@ -48,10 +48,16 @@ def test_auto_refresh_is_one_island_left_of_refresh_off_by_default_and_never_sav
     assert 'id="ev-live"' in switch and 'type="checkbox"' in switch and 'role="switch"' in switch
     assert "checked" not in switch                         # OFF in the markup ...
     assert 'for="ev-live"' in island and 'class="toggle"' in island and 'class="ttrack"' in island
-    # ... and nothing remembers it: no storage, no setting, no saved preference.
-    for persisted in ("localStorage", "sessionStorage", "settingsData.activity_log_auto", "PUT", "PATCH"):
+    # ... and nothing durable remembers it: no local storage, no setting, no saved preference --
+    # only the tab session's own choice (below).
+    for persisted in ("localStorage", "settingsData.activity_log_auto", "PUT", "PATCH"):
         assert persisted not in runtime
-    assert "document.addEventListener('debridpulse:navigation',()=>{live=false;" in runtime
+    assert runtime.count("sessionStorage.getItem(") == 1 and runtime.count("sessionStorage.setItem(") == 1   # the one choice
+    # On unless switched off: the operator's choice lasts for the tab session (sessionStorage),
+    # restored on every entry, and is nothing the server keeps.
+    assert "document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();" in runtime
+    assert "function chosen(){try{return sessionStorage.getItem(LIVE_CHOICE)!=='off';}catch(_){return true;}}" in runtime
+    assert "live=toggle.checked;choose(live);" in runtime
     # The island's height is Refresh's, by stretching; its material is the Settings island's.
     block = css[css.index("#view-events .dp-activity-header-actions {"):]
     assert "align-items: stretch;" in block[:block.index("}")]

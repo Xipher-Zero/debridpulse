@@ -29,7 +29,13 @@ function journal() {
   return state;
 }
 
-async function open(page, {stream} = {}) {
+/* `startOff`: the operator switched Auto Refresh off earlier in this tab
+ * session (its sessionStorage choice), so the case starts from OFF; a choice
+ * made during the case is kept across its own reloads. */
+async function open(page, {stream, startOff = false} = {}) {
+  if (startOff) await page.addInitScript(() => {
+    if (sessionStorage.getItem('dp-activity-auto-refresh') === null) sessionStorage.setItem('dp-activity-auto-refresh', 'off');
+  });
   await page.route('https://fonts.googleapis.com/**', route =>
     route.fulfill({status: 200, contentType: 'text/css', body: ''}));
   await page.route('**/api/events/stream', stream || (route => route.abort()));
@@ -86,11 +92,11 @@ async function geometry(page) {
   });
 }
 
-test('Auto Refresh: one bordered island left of Refresh, Refresh\'s height, off on every entry, a keyboard switch',
+test('Auto Refresh: one bordered island left of Refresh, Refresh\'s height, on in a new tab session, a keyboard switch',
   async ({page}) => {
     const {requests} = await open(page);
     const toggle = page.locator('#ev-live');
-    await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeChecked();                        // a new tab session starts on
     await expect(page.getByRole('switch', {name: 'Auto Refresh'})).toHaveCount(1);
     await expect(page.locator('.dp-activity-refresh')).toHaveText('Refresh');
     for (const [width, theme] of [[1440, 'dark'], [390, 'light']]) {
@@ -113,27 +119,77 @@ test('Auto Refresh: one bordered island left of Refresh, Refresh\'s height, off 
 
     await toggle.focus();
     await page.keyboard.press('Space');
-    await expect(toggle).toBeChecked();
+    await expect(toggle).not.toBeChecked();
     expect(await page.locator('.dp-activity-live .ttrack').evaluate(node => getComputedStyle(node).outlineStyle))
       .toBe('solid');                                          // visible focus
     await page.keyboard.press('Space');
-    await expect(toggle).not.toBeChecked();
+    await expect(toggle).toBeChecked();
+    expect(requests.length).toBeGreaterThanOrEqual(1);
+  });
 
-    await page.locator('.dp-activity-live').click();
+test('Auto Refresh: the operator\'s choice lasts for the tab session -- other views, inactivity, reloads -- and a new tab session starts on',
+  async ({page}) => {
+    const {requests} = await open(page);
+    const toggle = page.locator('#ev-live');
+    await expect(toggle).toBeChecked();
+    await page.locator('.dp-activity-live').click();           // the operator switches it off
+    await expect(toggle).not.toBeChecked();
     await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
     const before = requests.length;
     await hint(page, 500);
     await settle(page);
     expect(requests.length).toBe(before);                      // nothing fetched while away
     await page.locator('#sidebar .nav-item[data-view="events"]').click();
-    await expect(toggle).not.toBeChecked();                    // every entry starts off
+    await expect(toggle).not.toBeChecked();                    // back: still off
+    // In the background (the document hidden, then shown again): still off, however long it was away.
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {configurable: true, get: () => true});
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await page.evaluate(() => {
+      Object.defineProperty(document, 'hidden', {configurable: true, get: () => false});
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await expect(toggle).not.toBeChecked();
     await page.reload();
     await page.locator('#sidebar .nav-item[data-view="events"]').click();
-    await expect(page.locator('#ev-live')).not.toBeChecked();
+    await expect(page.locator('#ev-live')).not.toBeChecked();  // reloaded, same tab session: still off
+    await page.locator('.dp-activity-live').click();           // and switched back on
+    await page.locator('#sidebar .nav-item[data-view="dashboard"]').click();
+    await page.locator('#sidebar .nav-item[data-view="events"]').click();
+    await expect(page.locator('#ev-live')).toBeChecked();
+    await page.locator('.dp-activity-live').click();           // off once more, then a new tab session
+    expect(await page.evaluate(() => sessionStorage.getItem('dp-activity-auto-refresh'))).toBe('off');
+    const other = await page.context().newPage();
+    try {
+      await open(other);
+      await expect(other.locator('#ev-live')).toBeChecked();   // a new tab session: on again
+      await expect(page.locator('#ev-live')).not.toBeChecked(); // the first tab keeps its own choice
+    } finally { await other.close(); }
   });
 
-test('Auto Refresh: off changes nothing; on, a burst becomes one newest page from the journal', async ({page}) => {
+test('Auto Refresh on from entry: the newest page follows the journal, and switching off freezes it while Refresh still reads', async ({page}) => {
   const {log, requests} = await open(page);
+  await connected(page);
+  await expect(page.locator('.dp-activity-live')).toHaveAttribute('data-state', 'live');
+  log.top = 466;
+  await hint(page, 466);                                       // on by default: one newest page from the journal
+  await expect(rows(page).first()).toHaveText(/Event 466/);
+  const asked = requests.length;
+  await page.locator('.dp-activity-live').click();             // off: the page holds still
+  log.top = 480;
+  await hint(page, 480);
+  await settle(page);
+  expect(requests.length).toBe(asked);
+  expect((await ids(page))[0]).toBe(466);
+  await page.locator('.dp-activity-refresh').click();          // Refresh still reads the journal
+  await expect(rows(page).first()).toHaveText(/Event 480/);
+  // A live update never slides the list.
+  expect(await page.evaluate(() => !!document.querySelector('.dp-motion-surface'))).toBe(false);
+});
+
+test('Auto Refresh: off changes nothing; on, a burst becomes one newest page from the journal', async ({page}) => {
+  const {log, requests} = await open(page, {startOff: true});
   await connected(page);
   log.top = 470;
   await hint(page, 470);                                       // OFF: the page stays as it is
@@ -174,7 +230,7 @@ test('Auto Refresh: off changes nothing; on, a burst becomes one newest page fro
 });
 
 test('Auto Refresh: an older page, or the newest page read below its top, is never replaced', async ({page}) => {
-  const {log, requests} = await open(page);
+  const {log, requests} = await open(page, {startOff: true});
   await connected(page);
   await page.locator('.dp-activity-live').click();
   await expect.poll(() => requests.length).toBe(2);
@@ -213,7 +269,7 @@ test('Auto Refresh: an older page, or the newest page read below its top, is nev
 
 test('Auto Refresh: a lost stream is said, a reconnect is caught up from the journal, and stale or late work never lands',
   async ({page}) => {
-    const {log, requests} = await open(page);
+    const {log, requests} = await open(page, {startOff: true});
     const island = page.locator('.dp-activity-live');
     await connected(page);
     await page.locator('.dp-activity-live').click();
@@ -255,7 +311,7 @@ test('Auto Refresh: app.js forwards the stream\'s journal hint from the one Even
     window.__hints = [];
     document.addEventListener('debridpulse:activity-journal-changed', event => window.__hints.push(event.detail));
   });
-  const {requests} = await open(page, {stream: async route => {
+  const {requests} = await open(page, {startOff: true, stream: async route => {
     await gate;
     await route.fulfill({status: 200, contentType: 'text/event-stream',
       body: 'event: connected\ndata: {}\n\nevent: activity_journal_changed\ndata: {"latest": 457}\n\n'});
@@ -269,7 +325,7 @@ test('Auto Refresh: app.js forwards the stream\'s journal hint from the one Even
 });
 
 test('Auto Refresh: a refresh that fails keeps the page, its pager and its snapshot, and raises no toast', async ({page}) => {
-  const {log, requests} = await open(page);
+  const {log, requests} = await open(page, {startOff: true});
   await connected(page);
   await page.locator('.dp-activity-live').click();
   await expect.poll(() => requests.length).toBe(2);

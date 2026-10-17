@@ -196,6 +196,8 @@ function journal(limit) {
 
 test('Activity Log: a page turn slides the list across; Refresh and live updates never do', async ({page}) => {
   await boot(page);
+  // Auto Refresh switched off earlier in this tab session: the case turns it on itself.
+  await page.addInitScript(() => sessionStorage.setItem('dp-activity-auto-refresh', 'off'));
   const requests = [];
   await page.route('**/api/events?**', route => {
     const q = Object.fromEntries(new URL(route.request().url()).searchParams);
@@ -1082,6 +1084,8 @@ test('Activity Log, 350 ms answer: the same continuous turn within the frozen sn
 
 test('Activity Log: a refused Last and a failed turn come back coherently; Auto Refresh hints never restart a turn', async ({page}) => {
   await boot(page);
+  // Auto Refresh switched off earlier in this tab session: the case turns it on itself.
+  await page.addInitScript(() => sessionStorage.setItem('dp-activity-auto-refresh', 'off'));
   const {requests, control, pager, current} = await slowJournal(page);
   control.delay = 350;
   await pager.locator('[aria-label="Next page"]').click();

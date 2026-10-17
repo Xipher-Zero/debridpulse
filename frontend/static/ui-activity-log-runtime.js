@@ -22,8 +22,11 @@
  * The page size is the Settings value activity_log_page_size; it is not a
  * control on this page.
  *
- * Auto Refresh (#ev-live) is view-local: off whenever the page is entered or
- * reloaded, never saved. On, it follows the journal through the application's
+ * Auto Refresh (#ev-live) is on unless the operator switched it off: the choice
+ * lasts for the browser tab's session (sessionStorage) -- through other views,
+ * reloads and any time the tab is in the background -- and a new tab session
+ * starts on again; it is nothing the server keeps. On, it follows the journal
+ * through the application's
  * one live stream (app.js forwards activity_journal_changed as
  * debridpulse:activity-journal-changed, a hint carrying only the newest
  * committed id): while the newest page is shown from its top, a burst of hints
@@ -45,6 +48,10 @@ let cursor={snapshot:null,windowStart:null},request={},nav=null,pending=false;
 // newer-events probe belongs to.
 const COALESCE_MS=750,TOP_SLACK=4;
 let live=false,timer=null,dirty=false,hinted=null,investigation=0;
+// The operator's Auto Refresh choice for this tab session: on unless switched off (storage unavailable: on).
+const LIVE_CHOICE='dp-activity-auto-refresh';
+function chosen(){try{return sessionStorage.getItem(LIVE_CHOICE)!=='off';}catch(_){return true;}}
+function choose(on){try{sessionStorage.setItem(LIVE_CHOICE,on?'on':'off');}catch(_){}}
 function controls(){const search=document.getElementById('ev-search'),timeframe=document.getElementById('ev-timeframe'),severity=document.getElementById('ev-level'),category=document.getElementById('ev-category'),reset=document.getElementById('ev-reset'),pagination=document.getElementById('dp-activity-pagination'),info=document.getElementById('dp-activity-page-info'),pager=document.getElementById('dp-activity-page-btns'),newest=document.getElementById('ev-newest');return search&&timeframe&&severity&&category&&reset?{search,timeframe,severity,category,reset,pagination,info,pager,newest}:null;}
 function filters(c,text){return Boolean(text||(c.timeframe.value||'all')!=='all'||(c.severity.value||'')!==''||(c.category.value||'')!=='');}
 function syncReset(c){c.reset.hidden=!filters(c,c.search.value.trim());}
@@ -87,7 +94,7 @@ c.severity.addEventListener('change',()=>changed(c));
 c.category.addEventListener('change',()=>changed(c));
 c.reset.addEventListener('click',()=>{search.clear();c.timeframe.value='all';c.severity.value='';c.category.value='';for(const select of [c.timeframe,c.severity,c.category]){try{window.DPDropdowns?.sync(select);}catch(_){}}changed(c);});
 c.newest?.addEventListener('click',()=>{restart();void fetchPage();});
-const toggle=document.getElementById('ev-live');toggle?.addEventListener('change',()=>{live=toggle.checked;stopFollowing();syncLive();if(live)catchUp();});
+const toggle=document.getElementById('ev-live');toggle?.addEventListener('change',()=>{live=toggle.checked;choose(live);stopFollowing();syncLive();if(live)catchUp();});
 document.getElementById('event-list')?.addEventListener('scroll',()=>{if(live&&c.newest&&!c.newest.hidden&&following())schedule();},{passive:true});
 syncReset(c);syncLive();return c;}
 function parseTimestamp(value){if(!value)return null;try{if(typeof parseApiDate==='function')return parseApiDate(value);}catch(_){}const raw=String(value),d=new Date(/[zZ]|[+-]\d\d:\d\d$/.test(raw)?raw:`${raw.replace(' ','T')}Z`);return Number.isNaN(d.getTime())?null:d;}
@@ -136,8 +143,8 @@ function hint(event){const latest=Number(event?.detail?.latest);if(Number.isInte
 document.addEventListener('debridpulse:activity-journal-changed',hint);
 document.addEventListener('debridpulse:pulse-connected',()=>{hinted=null;syncLive();if(live)catchUp();});
 document.addEventListener('debridpulse:pulse-lost',()=>{hinted=null;syncLive();});
-// Every entry to the page, and every departure, starts with Auto Refresh off.
-document.addEventListener('debridpulse:navigation',()=>{live=false;stopFollowing();syncLive();});
+// Every entry to the page restores the session's choice; a departure stops following.
+document.addEventListener('debridpulse:navigation',event=>{live=event.detail?.view==='events'&&chosen();stopFollowing();syncLive();});
 async function fetchPage({quiet=false}={}){const c=bind();if(!c||typeof api!=='function')return null;const ticket=search.request();const params=new URLSearchParams();params.set('limit',String(pageSize()));params.set('timeframe',c.timeframe.value||'all');if(c.severity.value)params.set('level',c.severity.value);if(c.category.value)params.set('category',c.category.value);if(ticket.query)params.set('search',ticket.query);if(cursor.snapshot!==null)params.set('snapshot',String(cursor.snapshot));if(cursor.windowStart!==null)params.set('window_start',String(cursor.windowStart));if(request.before!=null)params.set('before',String(request.before));if(request.after!=null)params.set('after',String(request.after));if(request.kind==='last')params.set('last','true');const list=document.getElementById('event-list');list?.setAttribute('aria-busy','true');setPending(c,true);
 try{const payload=await api('GET',`/events?${params.toString()}`,null,0,{signal:ticket.signal});if(!search.settle(ticket,payload?.search))return null;if(cursor.snapshot===null&&Number.isInteger(payload?.snapshot)){cursor.snapshot=payload.snapshot;cursor.windowStart=Number.isFinite(payload?.window_start)?payload.window_start:null;}const commit=()=>{accept(payload);pending=false;render(payload,c);renderPagination(payload,c);syncReset(c);};
 // The page turn this request makes is already sliding here: its placeholder crossfades into the page, or -- not yet drawn -- the slide draws it. Every other answer is shown in place.
