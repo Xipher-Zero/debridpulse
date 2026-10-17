@@ -179,7 +179,7 @@
       }
 
       view.currentPath.textContent = String(current.path ?? '');
-      view.currentPath.title = String(current.path ?? '');
+      view.currentPath.dataset.tooltip = String(current.path ?? '');
       const selectable = current.selectable === true;
       view.currentState.dataset.selectable = selectable ? 'true' : 'false';
       view.currentState.textContent = selectable
@@ -208,7 +208,7 @@
           row.dataset.path = String(child?.path ?? '');
           row.dataset.accessible = child?.accessible === true ? 'true' : 'false';
           row.disabled = child?.accessible !== true;
-          row.title = String(child?.path ?? '');
+          row.dataset.tooltip = String(child?.path ?? '');
 
           const name = document.createElement('span');
           name.className = 'dp-settings-directory-name';

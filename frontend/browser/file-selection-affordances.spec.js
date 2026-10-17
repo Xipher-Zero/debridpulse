@@ -179,7 +179,8 @@ test('Case A: Dashboard and Downloads render a glyph-only "Choose Files" chip', 
   const dashChip = dashboardChip(page, 501);
   await expect(dashChip).toHaveCount(1);
   await expect(dashChip).toHaveJSProperty('tagName', 'BUTTON');
-  await expect(dashChip).toHaveAttribute('title', 'Choose Files');
+  await expect(dashChip).toHaveAttribute('data-tooltip', 'Choose Files');
+  await expect(dashChip).not.toHaveAttribute('title');
   await expect(dashChip).toHaveAttribute('aria-label', 'Choose Files');
   await expect(dashChip).toHaveText('');   // no visible text
   await expect(dashChip).toHaveClass(/\bdp-file-selection-chip\b/);   // shared green class owns presentation
@@ -190,7 +191,7 @@ test('Case A: Dashboard and Downloads render a glyph-only "Choose Files" chip', 
   await expect(page.locator('#view-torrents')).toHaveClass(/active/);
   await expect(downloadsChip(page, 501)).toHaveCount(1);
   const dlChip = downloadsChip(page, 501);
-  await expect(dlChip).toHaveAttribute('title', 'Choose Files');
+  await expect(dlChip).toHaveAttribute('data-tooltip', 'Choose Files');
   await expect(dlChip).toHaveText('');
 
   // Details Files header shows the exact short-form label.
@@ -210,7 +211,7 @@ test('Case B: "Change Files" wording on all three surfaces', async ({page}) => {
   await boot(page);
 
   const dashChip = dashboardChip(page, 501);
-  await expect(dashChip).toHaveAttribute('title', 'Change Files');
+  await expect(dashChip).toHaveAttribute('data-tooltip', 'Change Files');
   await expect(dashChip).toHaveAttribute('aria-label', 'Change Files');
   await expect(dashChip).toHaveText('');
 

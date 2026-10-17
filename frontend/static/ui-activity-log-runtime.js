@@ -127,7 +127,7 @@ function following(){const list=document.getElementById('event-list');return Boo
 function stopFollowing(){if(timer){clearTimeout(timer);timer=null;}dirty=false;}
 function syncLive(){const input=document.getElementById('ev-live');if(!input)return;input.checked=live;const island=input.closest('.dp-activity-live'),status=document.getElementById('ev-live-status');const state=!live?'off':connected()?'live':'unavailable';
 const text=state==='off'?'Off':state==='live'?'On: new events appear as they are recorded.':'On, but live updates are not connected. Reconnecting; Refresh still loads the newest events.';
-if(island){island.dataset.state=state;if(state==='unavailable')island.title=text;else island.removeAttribute('title');}if(status)status.textContent=text;}
+if(island){island.dataset.state=state;if(state==='unavailable')island.dataset.tooltip=text;else island.removeAttribute('data-tooltip');}if(status)status.textContent=text;}
 function schedule(){if(!timer)timer=setTimeout(()=>{timer=null;catchUp();},COALESCE_MS);}
 // Bring the view up to the journal: a new investigation at the newest event
 // when following, else only say whether newer events exist.

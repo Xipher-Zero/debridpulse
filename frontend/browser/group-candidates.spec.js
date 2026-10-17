@@ -446,7 +446,8 @@ test('Dashboard Recent and Downloads render a compact glyph+count launcher with 
   await expect(recentLauncher.locator('.dp-candidate-chip-count')).toHaveText('3');
   await expect(recentLauncher).not.toContainText('Candidates');
   await expect(recentLauncher).toHaveAttribute('aria-label', /sources are common to every file/);
-  await expect(recentLauncher).toHaveAttribute('title', /common to every file/);
+  await expect(recentLauncher).toHaveAttribute('data-tooltip', /common to every file/);
+  await expect(recentLauncher).not.toHaveAttribute('title');
 
   await page.evaluate(async () => { nav(document.querySelector('[data-view="torrents"]')); await loadTorrents(); });
   const downloadsLauncher = page.locator('#t-tbody tr[data-torrent-id="90"] .dp-group-candidate-launcher');

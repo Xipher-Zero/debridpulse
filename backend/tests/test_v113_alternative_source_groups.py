@@ -284,7 +284,9 @@ def test_the_browser_keeps_tab_rows_intact_and_never_intercepts_the_tab_key():
     html = (root / "index.html").read_text()
     textarea = html[html.index('id="q-transfer-input"'):]
     textarea = textarea[:textarea.index(">")]
-    assert 'title="Paste alternate sources for one item separated by tabs; use new lines for separate items."' in textarea
+    # The hint is the field's DP tooltip (ui-tooltip.js), never a native title.
+    assert 'data-tooltip="Paste alternate sources for one item separated by tabs; use new lines for separate items."' in textarea
+    assert ' title="' not in textarea
     assert "Tab" not in textarea  # no keydown handling of the Tab key
     start = script.index("function classifyDashboardEntries(raw)")
     source = script[start:script.index("\n}\n", start) + 2]

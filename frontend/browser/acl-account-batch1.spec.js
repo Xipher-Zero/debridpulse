@@ -400,7 +400,8 @@ test('the sidebar names the account by its Display Name, never its Actual Name o
     await page.locator('.dp-account-dialog [data-modal-accept]').click();
     await reloaded;
     await expect(name).toHaveText(`Renamed ${run}`);
-    await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toHaveAttribute('title', `Renamed ${run} (User): My Account`);
+    await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).toHaveAttribute('data-tooltip', `Renamed ${run} (User): My Account`);
+    await expect(page.locator('#sidebar-auth-row .dp-sidebar-profile')).not.toHaveAttribute('title');
     await expect(page.locator('#sidebar-auth-row .dp-sidebar-account-role')).toHaveText('User');
     await expect(page).not.toHaveURL(/\/login/);
 

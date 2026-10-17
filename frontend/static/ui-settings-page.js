@@ -1179,7 +1179,7 @@
     const label = `${expanded ? 'Collapse' : 'Expand'} ${subject}`;
     return `<button type="button" class="dp-settings-disclosure" data-disclosure-subject="${html(subject)}"${
             persistKey ? ` data-disclosure-persist="${html(persistKey)}"` : ''}
-            aria-controls="${html(bodyId)}" aria-expanded="${expanded}" title="${html(label)}"
+            aria-controls="${html(bodyId)}" aria-expanded="${expanded}" data-tooltip="${html(label)}"
             aria-label="${html(label)}"><span aria-hidden="true">&rsaquo;</span></button>`;
   }
 
@@ -1298,7 +1298,7 @@
     const premium = !!entry.presentation?.premium;
     const safe = String(identity).replace(/[^a-z0-9_-]/gi, '-');
     const enable = integrationHeaderToggle(identity, enabled, displayName, 'dp-settings-provider-header-enable');
-    const crown = premium ? '<span class="dp-provider-premium" role="img" title="Premium provider" aria-label="Premium provider"></span>' : '';
+    const crown = premium ? '<span class="dp-provider-premium" role="img" data-tooltip="Premium provider" aria-label="Premium provider"></span>' : '';
     const titleMarkup = titlePrefix
       ? `<span class="card-title dp-settings-card-title--with-icon">${titlePrefix}<span class="dp-settings-card-title-text">${html(title)}</span>${crown}</span>`
       : `<span class="card-title">${html(title)}${crown}</span>`;
@@ -1411,7 +1411,7 @@
         <div class="dp-usenet-server-head">
           <span class="dp-usenet-server-name" data-usenet-display-name>${html(name)}</span>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                  title="Edit display name" aria-label="Edit display name for ${html(name)}">
+                  data-tooltip="Edit display name" aria-label="Edit display name for ${html(name)}">
             <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
           </button>
         </div>
@@ -1454,7 +1454,7 @@
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
                   aria-controls="${advancedId}" aria-expanded="false"
-                  title="Show advanced acquisition settings"
+                  data-tooltip="Show advanced acquisition settings"
                   aria-label="Show advanced acquisition settings">
             <span class="dp-usenet-advanced-label">Advanced</span>
             <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
@@ -3639,7 +3639,7 @@
           <thead><tr><th>Account</th><th>Role</th><th>Sign-In</th><th>Status</th><th class="dp-settings-users-actions-head">Actions</th></tr></thead>
           <tbody>${humans.map(account => `
             <tr data-account-row="${html(account.id)}">
-              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" title="Account details">${html(accountName(account))}</button>${
+              <td><button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${html(account.id)}" data-tooltip="Account details">${html(accountName(account))}</button>${
                 account.email ? `<div class="dp-settings-users-detail">${html(account.email)}</div>` : ''}</td>
               <td>${html(ROLE_LABELS[account.role] || account.role)}</td>
               <td class="dp-settings-users-detail">${html(signInMethods(account))}</td>
@@ -3701,7 +3701,7 @@
       return `
         <section class="dp-settings-users-integration" data-account-row="${id}">
           <div class="dp-settings-users-integration-head">
-            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" title="Account details">${html(accountName(account))}</button>
+            <button class="dp-settings-users-name dp-settings-users-name-link" type="button" data-user-action="details" data-account-id="${id}" data-tooltip="Account details">${html(accountName(account))}</button>
             ${accountStatus(account)}
             <div class="dp-settings-users-actions">
               ${account.enabled ? `<button class="btn btn-blue btn-sm" type="button" data-user-action="issue-token" data-account-id="${id}">Issue Token</button>` : ''}
@@ -4404,7 +4404,7 @@
         || '<span class="dp-settings-users-detail">No categories yet.</span>';
       dialogBody.querySelector('[data-profile-suggestions]').innerHTML = PROFILE_CATEGORY_SUGGESTIONS
         .filter(([category]) => !draft.categories.includes(category))
-        .map(([category, label]) => `<button class="btn btn-ghost btn-sm" type="button" data-profile-suggest="${html(category)}" title="${html(label)}">+ ${html(category)}</button>`).join('');
+        .map(([category, label]) => `<button class="btn btn-ghost btn-sm" type="button" data-profile-suggest="${html(category)}" data-tooltip="${html(label)}">+ ${html(category)}</button>`).join('');
     }
 
     function paintClients() {
@@ -5054,7 +5054,7 @@
     else if (body) body.hidden = !expanded;
     button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
     const label = `${expanded ? 'Collapse' : 'Expand'} ${button.dataset.disclosureSubject || 'section'}`;
-    button.title = label;
+    button.dataset.tooltip = label;
     button.setAttribute('aria-label', label);
     button.closest('.dp-settings-provider-card')
       ?.classList.toggle('dp-settings-provider-card--collapsed', !expanded);

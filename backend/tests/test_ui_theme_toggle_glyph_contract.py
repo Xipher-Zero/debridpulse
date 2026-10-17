@@ -17,7 +17,8 @@ def test_static_default_dark_markup_shows_sun_not_moon() -> None:
     button = html[start:html.index("</button>", start)]
     assert 'data-dp-lucide="sun"' in button
     assert 'data-dp-lucide="moon"' not in button
-    assert 'title="Switch to light mode"' in button
+    assert 'data-tooltip="Switch to light mode"' in button   # its DP tooltip (ui-tooltip.js)
+    assert ' title="' not in button                          # never a native one
     assert 'aria-label="Switch to light mode"' in button
 
 

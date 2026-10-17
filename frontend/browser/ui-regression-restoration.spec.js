@@ -98,19 +98,19 @@ test('Archive Passwords empty Backspace does not delete the row or navigate to t
 
 test('Theme toggle glyph shows the target theme, not the current one, on load and after toggling',async({page})=>{
  await ready(page);
- const initial=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ const initial=await page.evaluate(()=>({title:document.getElementById('theme-toggle').dataset.tooltip,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
  expect(initial.isLight).toBe(false);
  expect(initial.title).toBe('Switch to light mode');
  expect(initial.ariaLabel).toBe('Switch to light mode');
  expect(initial.hasCircle).toBe(true); // sun glyph while dark
  await page.click('#theme-toggle');
- const afterLight=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ const afterLight=await page.evaluate(()=>({title:document.getElementById('theme-toggle').dataset.tooltip,ariaLabel:document.getElementById('theme-toggle').getAttribute('aria-label'),hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
  expect(afterLight.isLight).toBe(true);
  expect(afterLight.title).toBe('Switch to dark mode');
  expect(afterLight.ariaLabel).toBe('Switch to dark mode');
  expect(afterLight.hasCircle).toBe(false); // moon glyph while light
  await page.click('#theme-toggle');
- const backToDark=await page.evaluate(()=>({title:document.getElementById('theme-toggle').title,hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
+ const backToDark=await page.evaluate(()=>({title:document.getElementById('theme-toggle').dataset.tooltip,hasCircle:!!document.querySelector('#theme-toggle svg circle'),isLight:document.body.classList.contains('light')}));
  expect(backToDark.isLight).toBe(false);
  expect(backToDark.title).toBe('Switch to light mode');
  expect(backToDark.hasCircle).toBe(true);

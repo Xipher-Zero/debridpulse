@@ -111,7 +111,7 @@
     row.className = 'nav-item dp-sidebar-session-row';
     row.style.flexShrink = '0';
     row.innerHTML = `
-      <button type="button" class="dp-sidebar-logout" aria-label="Log out of DebridPulse" title="Log Out">
+      <button type="button" class="dp-sidebar-logout" aria-label="Log out of DebridPulse" data-tooltip="Log Out">
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 5H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4"></path>
@@ -122,7 +122,7 @@
         <span class="nav-label">Log Out</span>
       </button>
       <span class="dp-sidebar-session-space" aria-hidden="true"></span>
-      <button type="button" class="dp-sidebar-profile" title="My Account">
+      <button type="button" class="dp-sidebar-profile" aria-label="My Account" data-tooltip="My Account">
         <span class="nav-label"><span class="dp-sidebar-account-copy"><span class="dp-sidebar-account-name"></span><span class="dp-sidebar-account-role"></span></span></span>
         <span class="icon" aria-hidden="true">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -155,7 +155,7 @@
       profile.setAttribute('aria-label', display ? `My account: ${display}, ${roleLabel(data.role)}`
         : `My account, ${roleLabel(data.role)}`);
       // A name too long for the row is shown in full here.
-      profile.title = `${display ? `${display} ` : ''}(${roleLabel(data.role)}): My Account`;
+      profile.dataset.tooltip = `${display ? `${display} ` : ''}(${roleLabel(data.role)}): My Account`;
     };
     showAccount('');
     // The account's own Display Name. The session's name is its sign-in (an
@@ -199,7 +199,7 @@
     }
     const pencil = profile.email_self_entered
       ? '<button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit dp-account-email-edit" '
-        + 'title="Edit email" aria-label="Edit email"><img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true"></button>'
+        + 'data-tooltip="Edit email" aria-label="Edit email"><img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true"></button>'
       : '';
     return '<span class="form-label">Email</span>'
       + `<span class="dp-account-email-value"><span class="dp-account-email-address"></span>${pencil}</span>`;

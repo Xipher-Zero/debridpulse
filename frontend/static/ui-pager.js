@@ -72,8 +72,8 @@
       const unavailable = name === 'last' && Boolean(lastUnavailable);
       button.disabled = Boolean(pending) || unavailable;
       button.setAttribute('aria-label', unavailable ? `${label} unavailable: ${lastUnavailable}` : label);
-      if (unavailable) button.title = lastUnavailable;
-      else button.removeAttribute('title');
+      if (unavailable) button.dataset.tooltip = lastUnavailable;
+      else button.removeAttribute('data-tooltip');
       const child = shown[name] ? button : parts.placeholders[name];
       if (parts.slots[name].firstChild !== child) parts.slots[name].replaceChildren(child);
     }

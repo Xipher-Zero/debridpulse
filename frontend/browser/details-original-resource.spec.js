@@ -44,7 +44,8 @@ const open = async (page, id) => {
 };
 const field = page => page.locator('.dp-detail-original-resource .dv');
 const value = page => page.locator('.dp-detail-resource');
-const tip = page => page.locator('.dp-detail-resource-full');
+// The one application tooltip (ui-tooltip.js) that presents the complete URL.
+const tip = page => page.locator('#dp-tooltip');
 const menu = page => page.locator('.dp-row-menu');
 const box = locator => locator.evaluate(node => { const r = node.getBoundingClientRect(); return {x: r.left, y: r.top, width: r.width, height: r.height, right: r.right, bottom: r.bottom}; });
 
@@ -54,7 +55,7 @@ test('the compact row is unchanged and hover shows the complete safe URL, text o
   const plain = await box(page.locator('.dp-detail-original-resource'));
   await expect(field(page)).toHaveText(COMPACT);
   await expect(value(page)).toHaveCount(0);
-  await expect(tip(page)).toHaveCount(0);
+  await expect(tip(page)).toBeHidden();
 
   await open(page, 1);
   await expect(value(page)).toHaveText(COMPACT);
@@ -65,14 +66,23 @@ test('the compact row is unchanged and hover shows the complete safe URL, text o
   await expect(tip(page)).toHaveText(FULL);
   expect(FULL.length).toBeGreaterThan(180);
   await expect(tip(page)).toHaveAttribute('role', 'tooltip');
-  await expect(value(page)).toHaveAttribute('aria-describedby', 'dp-detail-resource-full');
+  await expect(value(page)).toHaveAttribute('aria-describedby', 'dp-tooltip');
+  await expect(value(page)).not.toHaveAttribute('title');               // no native popup beside it
   // Hovering opens no URL, and the row never moved.
   expect(page.url()).toMatch(/\/$/);
   expect(await box(page.locator('.dp-detail-original-resource'))).toEqual(plain);
-  const row = await box(page.locator('.dp-detail-original-resource'));
+  // Beside the value it describes -- just above or below, overlapping it across, never over it -- and
+  // inside the viewport.
+  const at = await box(value(page));
   const shown = await box(tip(page));
-  expect(shown.x).toBeGreaterThanOrEqual(row.x - 0.5);
-  expect(shown.right).toBeLessThanOrEqual(row.right + 0.5);
+  expect(shown.bottom <= at.y + 0.5 || shown.y >= at.bottom - 0.5).toBe(true);
+  expect(Math.min(Math.abs(at.y - shown.bottom), Math.abs(shown.y - at.bottom))).toBeLessThanOrEqual(10);
+  expect(shown.x).toBeLessThan(at.right);
+  expect(shown.right).toBeGreaterThan(at.x);
+  const viewport = page.viewportSize();
+  expect(shown.x).toBeGreaterThanOrEqual(0);
+  expect(shown.right).toBeLessThanOrEqual(viewport.width);
+  expect(shown.bottom).toBeLessThanOrEqual(viewport.height);
   // Leaving hides it.
   await page.mouse.move(2, 2);
   await expect(tip(page)).toBeHidden();
@@ -119,6 +129,35 @@ for (const theme of ['dark', 'light']) {
     await page.screenshot({path: test.info().outputPath(`long-hover-${theme}.png`)});
   });
 }
+
+test('the pointer moves continuously from the value across the gap into the long URL, scrolls it, and leaving the region dismisses it', async ({page}) => {
+  const huge = 'https://files.example/' + Array(160).fill('segment-without-spaces').join('/') + '/file.bin';
+  await boot(page, [detail(8, {original_resource: huge.slice(0, 117) + '…' + huge.slice(-60), original_resource_sanitized_full: huge})]);
+  await open(page, 8);
+  const v = await box(value(page));
+  const start = {x: v.x + Math.min(40, v.width / 2), y: v.y + v.height / 2};
+  await page.mouse.move(start.x, start.y);
+  await expect(tip(page)).toBeVisible();
+  const t = await box(tip(page));
+  expect(Math.min(Math.abs(t.y - v.bottom), Math.abs(v.y - t.bottom))).toBeGreaterThanOrEqual(6);   // there is a gap to cross
+  // A straight path, pixel by pixel, from the value into the tooltip -- through the gap.
+  const end = {x: Math.min(Math.max(start.x, t.x + 20), t.right - 20), y: t.y < v.y ? t.bottom - 20 : t.y + 20};
+  const steps = Math.ceil(Math.abs(end.y - start.y));
+  for (let i = 1; i <= steps; i += 1) {
+    await page.mouse.move(start.x + (end.x - start.x) * i / steps, start.y + (end.y - start.y) * i / steps);
+    expect(await tip(page).isVisible(), `step ${i} of ${steps}`).toBe(true);
+  }
+  await page.mouse.wheel(0, 200);
+  await expect.poll(() => tip(page).evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+  await expect(tip(page)).toBeVisible();
+  // Back again the same way: still shown on the value.
+  for (let i = steps - 1; i >= 0; i -= 1) await page.mouse.move(start.x + (end.x - start.x) * i / steps, start.y + (end.y - start.y) * i / steps);
+  await expect(tip(page)).toBeVisible();
+  // Leaving the value sideways, outside the value, the tooltip and the way between them, dismisses it.
+  const side = Math.max(v.x - 30, 1);
+  for (let x = start.x; x >= side; x -= 4) await page.mouse.move(x, start.y);
+  await expect(tip(page)).toBeHidden();
+});
 
 test('an allowed URL offers Copy URL in the DP menu and copies exactly the approved value, after success', async ({page}) => {
   await boot(page, [detail(5)], {clipboard: 'defer'});

@@ -101,7 +101,7 @@
       <div class="dp-executor-work-item" data-executor-group="${esc(row.filter_group || 'waiting')}">
         <div class="dp-executor-work-item-top">
           <div class="dp-executor-work-identity">
-            <div class="dp-executor-work-name" title="${esc(row.name || '')}">${esc(row.name || 'Execution')}</div>
+            <div class="dp-executor-work-name" data-tooltip="${esc(row.name || '')}">${esc(row.name || 'Execution')}</div>
             <div class="dp-executor-work-owner">${esc(row.executor_name || row.executor_id || '')}</div>
           </div>
           <div class="dp-executor-work-actions">${controls.map(action => actionButton(row, action)).join('')}</div>

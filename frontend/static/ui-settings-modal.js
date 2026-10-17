@@ -225,7 +225,7 @@
       <section class="dp-modal-dialog" role="${role}" aria-modal="true" aria-labelledby="${dialogId}-title">
         <header class="dp-modal-header">
           <div class="dp-modal-title" id="${dialogId}-title"></div>
-          ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" title="Close"></button>' : ''}
+          ${spec.closeControl === true ? '<button class="btn btn-ghost dp-modal-close" type="button" data-modal-close aria-label="Close" data-tooltip="Close"></button>' : ''}
         </header>
         <div class="dp-modal-body"></div>
         <footer class="dp-modal-footer">

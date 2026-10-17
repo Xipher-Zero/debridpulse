@@ -530,9 +530,9 @@ function renderRouteHistory(t) {
     return `<div class="dp-detail-route-row" data-route-relation="${esc(relation.state)}">
       <span class="dp-detail-route-order">${esc(attempt.presentation_ordinal ?? attempt.ordinal ?? '')}</span>
       <span class="dp-detail-route-provider">${esc(provider)}</span>
-      <span class="dp-detail-route-identity" title="${esc(identityTitle)}">${esc(identity)}</span>
+      <span class="dp-detail-route-identity" data-tooltip="${esc(identityTitle)}">${esc(identity)}</span>
       <span class="dp-detail-route-relation">${esc(originLabel(relation.label))}</span>
-      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" title="${esc(outcomeTitle)}">${esc(outcome.label)}</span>
+      <span class="dp-detail-route-outcome" data-route-outcome="${esc(outcome.state)}" data-tooltip="${esc(outcomeTitle)}">${esc(outcome.label)}</span>
     </div>`;
   }).join('')}</div>`;
 }
@@ -777,9 +777,9 @@ function progress(pct, status, activePct, basis) {
       '<div class="prog-lane-fill" style="width:' + activeValue + '%"></div></div>'
     : '';
   const activityLabel = activeOnly || (showStripe && processing)
-    ? '<span class="prog-activity" data-role="execution-unverified" title="' + inFlightTitle + '">not yet verified</span>'
+    ? '<span class="prog-activity" data-role="execution-unverified" data-tooltip="' + inFlightTitle + '">not yet verified</span>'
     : (besideVerified
-      ? '<span class="prog-activity" data-role="execution-progress" title="' + inFlightTitle + '">' +
+      ? '<span class="prog-activity" data-role="execution-progress" data-tooltip="' + inFlightTitle + '">' +
         executionProgressWords(activeValue, basis) + '</span>'
       : (processing ? '<span class="prog-activity" data-role="execution-processing">processing</span>' : ''));
   return '<div class="' + trackCls + '"' + (failed ? ' data-dp-actual-progress="' + actual + '"' : '') + '><div class="prog-fill ' + cls + '" style="' + fillStyle + '"' + attrs + '></div></div>' +
@@ -2061,7 +2061,7 @@ const DPModal = (function () {
     if (closeBtn) {
       const label = opts.closeLabel || 'Close details';
       closeBtn.setAttribute('aria-label', label);
-      closeBtn.title = label;
+      closeBtn.dataset.tooltip = label;
     }
     if (footer) { footer.hidden = true; footer.innerHTML = ''; }
     containFocus = opts.contain === true && Boolean(modal);
@@ -2180,45 +2180,15 @@ function dpRenderOriginalResource(modalBody, t) {
   const field = modalBody?.querySelector('.dp-detail-original-resource .dv');
   if (!field) return;
   if (!full) { field.textContent = t.original_resource || '—'; return; }
+  // The compact value; the complete safe URL is its tooltip (ui-tooltip.js:
+  // on hover or keyboard focus, bounded and scrolling however long the URL,
+  // hidden by Escape or by opening its Copy URL menu).
   const value = document.createElement('span');
   value.className = 'dp-detail-resource';
   value.tabIndex = 0;
-  value.setAttribute('aria-describedby', 'dp-detail-resource-full');
+  value.dataset.tooltip = full;
   value.textContent = t.original_resource || full;
-  const tip = document.createElement('span');
-  tip.className = 'dp-detail-resource-full';
-  tip.id = 'dp-detail-resource-full';
-  tip.setAttribute('role', 'tooltip');
-  tip.textContent = full;
-  // Below the row, or above it when that has more room, never past the
-  // viewport or anything that clips Details; it scrolls within what is left.
-  const place = () => {
-    const row = field.parentElement.getBoundingClientRect();
-    let top = 0, bottom = window.innerHeight;
-    for (let node = field.parentElement.parentElement; node && node !== document.body; node = node.parentElement) {
-      if (getComputedStyle(node).overflowY === 'visible') continue;
-      const clip = node.getBoundingClientRect();
-      top = Math.max(top, clip.top);
-      bottom = Math.min(bottom, clip.bottom);
-    }
-    const below = bottom - row.bottom - 8, above = row.top - top - 8;
-    const up = below < 120 && above > below;
-    tip.classList.toggle('is-above', up);
-    tip.style.maxHeight = `${Math.max(0, Math.min(240, up ? above : below))}px`;
-  };
-  value.addEventListener('pointerenter', place);
-  value.addEventListener('focus', place);
-  // Escape dismisses the tooltip without leaving the value; leaving restores it.
-  value.addEventListener('keydown', event => {
-    if (event.key !== 'Escape' || value.classList.contains('is-dismissed')) return;
-    event.preventDefault();
-    event.stopPropagation();
-    value.classList.add('is-dismissed');
-  });
-  const restore = () => value.classList.remove('is-dismissed');
-  value.addEventListener('blur', restore);
-  field.addEventListener('pointerleave', restore);
-  field.replaceChildren(value, tip);
+  field.replaceChildren(value);
   if (t.original_resource_copy_allowed === true) dpDetailResource = {url: full, node: value};
 }
 document.addEventListener('debridpulse:detail-closed', () => { dpDetailResource = null; });
@@ -2440,12 +2410,12 @@ function dpUsenetServersCell(evidence) {
       if (!server.attributed) notes.push('reported by name only; not matched to one configured server');
       if (server.removed) notes.push('no longer configured');
       const name = esc(server.name || server.recorded_name || 'Unnamed server') + (server.removed ? ' (removed)' : '');
-      return `<span class="dp-detail-usenet-server"${notes.length ? ` title="${esc(notes.join('; '))}"` : ''}>${name}</span>`;
+      return `<span class="dp-detail-usenet-server"${notes.length ? ` data-tooltip="${esc(notes.join('; '))}"` : ''}>${name}</span>`;
     }).join(', ');
   } else if (evidence.state === 'none') {
-    value = '<span class="dp-detail-usenet-server is-unknown" title="The job\'s report names no server that delivered articles">None reported</span>';
+    value = '<span class="dp-detail-usenet-server is-unknown" data-tooltip="The job\'s report names no server that delivered articles">None reported</span>';
   } else {
-    value = '<span class="dp-detail-usenet-server is-unknown" title="No server report has been recorded for this transfer">Not available</span>';
+    value = '<span class="dp-detail-usenet-server is-unknown" data-tooltip="No server report has been recorded for this transfer">Not available</span>';
   }
   return `<div class="dp-detail-usenet-servers"><div class="dk">${label}</div><div class="dv">${value}</div></div>`;
 }
@@ -2605,7 +2575,7 @@ function updateThemeToggle(isLight) {
     throw new Error('DebridPulse icon runtime is unavailable');
   }
   const action = isLight ? 'Switch to dark mode' : 'Switch to light mode';
-  btn.title = action;
+  btn.dataset.tooltip = action;
   btn.setAttribute('aria-label', action);
   window.DPIcons.renderThemeGlyph(!!isLight);
 }
@@ -3096,7 +3066,7 @@ function updateRuntimeStatusBadge(patch) {
 
   // Occupancy and capacity are administrative runtime facts: a caller who
   // cannot read them sees only the live speed, never a stand-in zero.
-  topBadge.title = dpCan('administer') ? 'Active / max — live speed — download speed cap' : 'Live download speed';
+  topBadge.dataset.tooltip = dpCan('administer') ? 'Active / max — live speed — download speed cap' : 'Live download speed';
 
   renderOperatorTitle();
 

@@ -52,6 +52,7 @@ There is no `DPUICorrectionBatch1`, `DPUICorrectionBatch1Final`, or `DPUICorrect
 | Accessibility/dropdowns | owner-page markup | `ui-accessibility-runtime.js` projection only | shared accessibility/dropdown styles |
 | Toasts | shell target | `operator-title.js` presenter; `ui-toast-contract.js` public bridge | `ui-toast-contract.css` |
 | Shared modal | `#overlay`/`#modal`/`#modal-footer` in `index.html` | `app.js` (`DPModal`, `showDetail`, `closeModal`) | `ui-modal-contract.css` |
+| Informational tooltips | each render owner declares `data-tooltip="text"` on the element it describes (never `title`) | `ui-tooltip.js` (`DPTooltip`): the one presenter -- delegated hover/focus, one top-layer element, text only | `ui-components.css` (`.dp-tooltip`) |
 
 ## Downloads ownership (CANON-001 closure)
 
@@ -92,6 +93,8 @@ These are enforced by static tests (`backend/tests/test_ui_runtime_architecture_
 `ui-accessibility-runtime.js` remains a deliberately narrow cross-cutting module for ARIA, keyboard behavior, and universal select/dropdown projection across dynamically rendered controls. Its `MutationObserver` is not a general presentation-repair mechanism.
 
 `operator-title.js` owns canonical icon/toast geometry and is not a runtime loader or DOM-repair layer.
+
+`ui-tooltip.js` presents every application-owned informational tooltip; no owner writes a native `title` tooltip (document titles are not tooltips, and native file pickers and other browser or platform surfaces stay the browser's). It reads only `data-tooltip`, rewrites nothing an owner rendered, and touches the described element only to add, while shown, `aria-describedby` to its one tooltip element; the element's accessible name stays its own (`aria-label` or text).
 
 `ui-settings-archive-passwords.js` fills the archive-password editor rows that `ui-settings-page.js` rendered (label, form-field textarea, editor container, reveal button and hint are all page markup) when the page announces `debridpulse:settings-rendered`; it observes no DOM, creates no scaffold, and hides or rewrites nothing the page rendered.
 

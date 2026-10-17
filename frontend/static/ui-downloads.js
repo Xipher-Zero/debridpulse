@@ -193,7 +193,7 @@ function exactDate(value) {
   return new Intl.DateTimeFormat('en-US', {timeZone: timeZone(), year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', timeZoneName: 'short', hour12: false}).format(d);
 }
 function dateMarkup(value) {
-  return `<span class="dp-downloads-date-value" tabindex="0" title="${esc(exactDate(value))}">${esc(formatDownloadsDate(value))}</span>`;
+  return `<span class="dp-downloads-date-value" tabindex="0" data-tooltip="${esc(exactDate(value))}">${esc(formatDownloadsDate(value))}</span>`;
 }
 
 /* Every list whose date column presents formatDownloadsDate: Downloads and
@@ -518,7 +518,7 @@ function rowMarkup(t) {
   // Admission found this promoted transfer waiting only on restarts nobody
   // confirmed: the operator may reaffirm its place (reaffirmQueue).
   const consent = operable && t.queue_member === true && t.queue_restart_consent === true
-    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" title="Lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">Start Now</button>`
+    ? `<button class="btn btn-warn btn-sm dp-queue-consent" data-default-label="Start Now" data-tooltip="Lower-ranked transfers must restart for this one to start" onclick="event.stopPropagation();reaffirmQueue(${t.id},this)">Start Now</button>`
     : '';
   const nameCell = movable
     ? `<td class="dp-downloads-name-cell" data-queue-drag="true" tabindex="0" aria-label="${name}" aria-describedby="dp-queue-help"><div class="dp-downloads-name-line">
@@ -987,7 +987,7 @@ async function confirmRestart(transfers) {
         entry.className = 'dp-queue-restart-item';
         const name = document.createElement('strong');
         name.className = 'dp-queue-restart-name';
-        name.textContent = name.title = String(item?.display_name || item?.name || 'Transfer');
+        name.textContent = name.dataset.tooltip = String(item?.display_name || item?.name || 'Transfer');
         entry.appendChild(name);
         const progress = restartProgress(item);
         if (progress) {

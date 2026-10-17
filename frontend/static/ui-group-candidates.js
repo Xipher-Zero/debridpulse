@@ -267,7 +267,7 @@
       'data-dp-mode="' + esc(mode) + '" ' +
       (mode === 'artifact' ? 'data-dp-artifact-id="' + esc(String(artifactId)) + '" ' : '') +
       'aria-haspopup="dialog" aria-expanded="false" ' +
-      'title="' + esc(title) + '" ' +
+      'data-tooltip="' + esc(title) + '" ' +
       'aria-label="' + esc(ariaLabel) + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
@@ -286,7 +286,7 @@
     // indicator — not a <button>, no aria-haspopup/aria-expanded, never opens
     // a chooser. common_candidate_count itself is never overwritten.
     return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
-      'title="' + esc(historyTitle) + '" ' +
+      'data-tooltip="' + esc(historyTitle) + '" ' +
       'aria-label="' + esc(total + ' sources were common to every file') + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +
@@ -310,7 +310,7 @@
     const historyTitle = total + ' sources common to every file';
     if (!hasRemainingWork) {
       return '<span class="dp-candidate-chip dp-group-candidate-history" ' +
-        'title="' + esc(historyTitle) + '" ' +
+        'data-tooltip="' + esc(historyTitle) + '" ' +
         'aria-label="' + esc(total + ' sources were common to every file') + '">' +
         glyph() +
         '<span class="dp-candidate-chip-count">' + total + '</span>' +
@@ -321,7 +321,7 @@
       TRIGGER_ATTR + ' data-dp-transfer-id="' + esc(transferId) + '" ' +
       (surface ? 'data-dp-surface="' + esc(surface) + '" ' : '') +
       'aria-haspopup="dialog" aria-expanded="false" ' +
-      'title="' + esc(historyTitle) + '" ' +
+      'data-tooltip="' + esc(historyTitle) + '" ' +
       'aria-label="' + esc('Choose a source for remaining files; ' + total + ' sources are common to every file.') + '">' +
       glyph() +
       '<span class="dp-candidate-chip-count">' + total + '</span>' +

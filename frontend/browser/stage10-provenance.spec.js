@@ -119,7 +119,7 @@ test('Details separates safe original resource, final provider, ordered failover
   await expect(rows.nth(1).locator('.dp-detail-route-order')).toHaveText('9');
   await expect(rows.nth(1)).toContainText('HTTP(S)'); await expect(rows.nth(1)).toContainText('Completed');
   await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveText('https://mirror.example');
-  await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveAttribute('title', 'https://mirror.example/file.bin');
+  await expect(rows.nth(1).locator('.dp-detail-route-identity')).toHaveAttribute('data-tooltip', 'https://mirror.example/file.bin');
   await expect(page.locator('.detail-grid')).not.toContainText('aria2');
   await page.locator('.dp-detail-advanced > summary').click(); await expect(page.locator('.dp-detail-advanced-grid')).toContainText('aria2');
   await page.screenshot({path:'test-results/checkpoint-details-failover-dark-desktop.png', fullPage:true});
@@ -146,10 +146,10 @@ test('Route History projects backend route_identity verbatim and never reconstru
   await expect(identities).toHaveCount(4);
   await expect(identities).toHaveText(['Torrent cache', 'BitTorrent', '1fichier.com', '—']);
   // Hover identity is the backend identity; a logical row exposes no provider capability path.
-  await expect(identities.nth(0)).toHaveAttribute('title', 'Torrent cache');
-  await expect(identities.nth(1)).toHaveAttribute('title', 'BitTorrent');
-  await expect(identities.nth(2)).toHaveAttribute('title', '1fichier.com');
-  await expect(identities.nth(3)).toHaveAttribute('title', '');
+  await expect(identities.nth(0)).toHaveAttribute('data-tooltip', 'Torrent cache');
+  await expect(identities.nth(1)).toHaveAttribute('data-tooltip', 'BitTorrent');
+  await expect(identities.nth(2)).toHaveAttribute('data-tooltip', '1fichier.com');
+  await expect(identities.nth(3)).toHaveAttribute('data-tooltip', '');
   await expect(page.locator('.dp-detail-route-list')).not.toContainText('debrid.it');
 });
 
@@ -219,13 +219,13 @@ test('Route History shows the canonical object source story: original, consolida
   // Provider + safe route identity are still the backend's own projection.
   await expect(rows.nth(3)).toContainText('HTTP & HTTPS');
   await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveText('https://mirrors.tuna.tsinghua.edu.cn');
-  await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveAttribute('title', 'https://mirrors.tuna.tsinghua.edu.cn/releases/ubuntu.iso');
+  await expect(rows.nth(3).locator('.dp-detail-route-identity')).toHaveAttribute('data-tooltip', 'https://mirrors.tuna.tsinghua.edu.cn/releases/ubuntu.iso');
 
   // Unverified sources are visibly distinct from verified ones, and say why.
   const unverified = page.locator('.dp-detail-route-row[data-route-relation="unverified"]');
   await expect(unverified).toHaveCount(2);
   await expect(unverified.nth(0).locator('.dp-detail-route-outcome')).toHaveAttribute('data-route-outcome', 'unverified');
-  await expect(unverified.nth(0).locator('.dp-detail-route-outcome')).toHaveAttribute('title', 'Equivalence unproven: range_ignored');
+  await expect(unverified.nth(0).locator('.dp-detail-route-outcome')).toHaveAttribute('data-tooltip', 'Equivalence unproven: range_ignored');
   const colors = await page.evaluate(() => {
     const color = selector => getComputedStyle(document.querySelector(selector)).color;
     return {verified: color('.dp-detail-route-row[data-route-relation="consolidated"] .dp-detail-route-outcome'),

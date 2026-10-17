@@ -267,7 +267,8 @@ test('My Account shows the bare email; a self-entered one is corrected with the 
     await expect(dialog.locator('.dp-account-email-value')).toHaveText(email);
     await expect(dialog).not.toContainText(/verified/i);
     await expect(pencil).toHaveAttribute('aria-label', 'Edit email');
-    await expect(pencil).toHaveAttribute('title', 'Edit email');
+    await expect(pencil).toHaveAttribute('data-tooltip', 'Edit email');      // its DP tooltip, never a native title
+    await expect(pencil).not.toHaveAttribute('title');
     expect(await pencil.evaluate(node => [...node.classList].sort())).toEqual(
       ['btn', 'btn-ghost', 'btn-sm', 'dp-account-email-edit', 'dp-usenet-name-edit']);
     await expect(pencil.locator('img')).toHaveAttribute('src', '/icons/lucide/pencil.svg');

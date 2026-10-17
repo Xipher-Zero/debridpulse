@@ -102,7 +102,7 @@ test('Recent Activity Date Added shares the Downloads date preference, formatter
  const heading=recent.locator('thead th:has(.dp-date-menu-trigger)');
  await expect(heading).toHaveCount(1);await expect(heading.locator('span').first()).toHaveText('Date Added');
  await expect(heading).toHaveCSS('text-transform','uppercase');
- const cells=scope=>page.locator(`${scope} tr[data-torrent-id]`).evaluateAll(rows=>rows.map(tr=>{const v=tr.querySelector('.dp-downloads-date-value');return {id:tr.dataset.torrentId,text:v?.textContent,exact:v?.getAttribute('title')};}));
+ const cells=scope=>page.locator(`${scope} tr[data-torrent-id]`).evaluateAll(rows=>rows.map(tr=>{const v=tr.querySelector('.dp-downloads-date-value');return {id:tr.dataset.torrentId,text:v?.textContent,exact:v?.getAttribute('data-tooltip')};}));
  const before=await cells('#dash-tbody');
  expect(before.map(c=>c.id)).toEqual(['7703','7701','7702']);
  // Keyboard: the trigger opens the shared menu with the current choices checked.

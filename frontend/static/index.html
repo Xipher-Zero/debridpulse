@@ -17,7 +17,7 @@
   <div class="logo" onclick="nav(document.querySelector('#sidebar .nav-item[data-view=dashboard]'))">
     <img class="logo-icon" src="/logo.svg?v=7" alt="DebridPulse logo">
     <div class="logo-text">
-      <div class="logo-name logo-name-full" title="DebridPulse">Debrid<span>Pulse</span></div>
+      <div class="logo-name logo-name-full" data-tooltip="DebridPulse">Debrid<span>Pulse</span></div>
     </div>
   </div>
   <nav>
@@ -89,14 +89,14 @@
     <a id="update-badge" href="https://github.com/Xipher-Zero/debridpulse/blob/main/CHANGELOG.md"
        target="_blank" rel="noopener" aria-label="Open the DebridPulse changelog"
        style="display:none;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--accent);border-radius:20px;padding:3px 12px;font-size:11px;color:var(--accent);cursor:pointer;text-decoration:none"
-       title="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
+       data-tooltip="Open the DebridPulse changelog">&#128230; <span id="update-badge-version"></span> available</a>
     <template data-requires="administer"><div id="topbar-actions"></div></template>
-    <div id="runtime-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" title="Active / max — live speed — download speed cap">
+    <div id="runtime-speed-badge" style="display:flex;align-items:center;gap:6px;background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:default" data-tooltip="Active / max — live speed — download speed cap">
       <span style="color:var(--green)">&#9660;</span><template data-requires="administer"><span id="runtime-badge-active">0</span><span style="color:var(--text3)">/</span><span id="runtime-badge-max">0</span>
       <span style="color:var(--border);margin:0 2px">|</span></template><span id="runtime-badge-speed" style="color:var(--green)">0 KB/s</span>
       <template data-requires="administer"><span style="color:var(--border);margin:0 2px">|</span>
       <div class="runtime-cap-control">
-        <button id="runtime-cap-toggle" class="runtime-cap-toggle" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleSpeedCapMenu(event)" title="Set download speed cap">
+        <button id="runtime-cap-toggle" class="runtime-cap-toggle" type="button" aria-haspopup="menu" aria-expanded="false" onclick="toggleSpeedCapMenu(event)" data-tooltip="Set download speed cap">
           <span class="dp-speedcap-arrow" aria-hidden="true"><svg class="lucide dp-utility-icon" data-dp-lucide="chevronDown" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></span><span id="runtime-badge-limit">Unlimited</span>
         </button>
         <div id="runtime-cap-menu" class="runtime-cap-menu" role="menu" hidden>
@@ -122,7 +122,7 @@
       </div></template>
     </div>
     <div class="sidebar-theme-control topbar-theme-control">
-      <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" title="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
+      <button type="button" class="theme-toggle" id="theme-toggle" onclick="toggleTheme()" data-tooltip="Switch to light mode" aria-label="Switch to light mode"><svg class="lucide dp-utility-icon" data-dp-lucide="sun" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg></button>
     </div>
   </div>
   <div id="content" class="dashboard-active">
@@ -132,7 +132,7 @@
 
       <!-- ── Hero Status Row ──────────────────────────────────────────────── -->
       <div class="dash-hero" id="dash-hero">
-        <div class="dash-hero-stat" data-c="orange" title="Total Downloads: every transfer currently listed in Downloads.">
+        <div class="dash-hero-stat" data-c="orange" data-tooltip="Total Downloads: every transfer currently listed in Downloads.">
           <div class="dhs-icon"><img src="/icons/dp/card-download.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-total">—</div>
@@ -155,7 +155,7 @@
           <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-0)" d="M 0 16 H 100"></path>
         </svg>
         </div>
-        <div class="dash-hero-stat" data-c="green" title="Completed: transfers that have finished downloading.">
+        <div class="dash-hero-stat" data-c="green" data-tooltip="Completed: transfers that have finished downloading.">
           <div class="dhs-icon"><img src="/icons/dp/card-checkmark.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-completed">—</div>
@@ -178,7 +178,7 @@
           <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-1)" d="M 0 16 H 100"></path>
         </svg>
         </div>
-        <div class="dash-hero-stat" data-c="blue" title="Active Now: transfers in progress: downloading, being prepared, paused or extracting.">
+        <div class="dash-hero-stat" data-c="blue" data-tooltip="Active Now: transfers in progress: downloading, being prepared, paused or extracting.">
           <div class="dhs-icon"><img src="/icons/dp/card-play.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-active">—</div>
@@ -201,7 +201,7 @@
           <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-2)" d="M 0 16 H 100"></path>
         </svg>
         </div>
-        <div class="dash-hero-stat" data-c="yellow" title="Processing: transfers a provider is still preparing before download, or Paused while processing is paused.">
+        <div class="dash-hero-stat" data-c="yellow" data-tooltip="Processing: transfers a provider is still preparing before download, or Paused while processing is paused.">
           <div class="dhs-icon"><img src="/icons/dp/card-clock.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-processing">—</div>
@@ -224,7 +224,7 @@
           <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-3)" d="M 0 16 H 100"></path>
         </svg>
         </div>
-        <div class="dash-hero-stat" data-c="red" id="dash-error-card" onclick="nav(document.querySelector('[data-view=torrents]'));setTimeout(()=>setFilter(document.querySelector('.ftab[onclick*=error]'),'error'),100)" style="cursor:pointer" title="Errors: transfers that stopped with an error.">
+        <div class="dash-hero-stat" data-c="red" id="dash-error-card" onclick="nav(document.querySelector('[data-view=torrents]'));setTimeout(()=>setFilter(document.querySelector('.ftab[onclick*=error]'),'error'),100)" style="cursor:pointer" data-tooltip="Errors: transfers that stopped with an error.">
           <div class="dhs-icon"><img src="/icons/dp/card-error.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val" id="s-error">—</div>
@@ -247,7 +247,7 @@
           <path class="dp-card-spark-line" stroke="url(#dp-card-spark-signal-4)" d="M 0 16 H 100"></path>
         </svg>
         </div>
-        <div class="dash-hero-stat" data-c="purple" title="Total Downloaded: combined size of completed transfers.">
+        <div class="dash-hero-stat" data-c="purple" data-tooltip="Total Downloaded: combined size of completed transfers.">
           <div class="dhs-icon"><img src="/icons/dp/card-disk.svg" alt="" aria-hidden="true" class="dp-icon dp-icon--metric"></div>
           <div class="dhs-body">
             <div class="dhs-val dhs-val--sm" id="s-size">—</div>
@@ -283,13 +283,13 @@
           </div>
           <div class="dp-global-pause-center"><div class="dp-global-pause-title"><svg class="lucide" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></svg><span>PROCESSING PAUSED</span></div><div class="dp-global-pause-copy">New downloads can still be added. They will remain queued until processing is resumed.</div></div>
           <div class="dp-card-header-actions">
-            <template data-requires="administer"><span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" title="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span></template>
+            <template data-requires="administer"><span class="dp-dashboard-action-track"><button class="btn btn-warn btn-sm" id="btn-recover-all" data-default-label="Recover All" onclick="recoverAll(this)" data-tooltip="Check transfers for recoverable work"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Recover All</span></button></span></template>
           </div>
         </div>
         <div style="padding:12px 16px">
           <div class="direct-link-entry">
-            <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="https://example-hoster.com/file/…&#10;magnet:?xt=urn:btih:…" title="Paste alternate sources for one item separated by tabs; use new lines for separate items." oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
-            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" title="Submit links and magnets for provider routing; when empty, choose a transfer file">Add</button></span>
+            <textarea class="input direct-link-input" id="q-transfer-input" rows="2" placeholder="https://example-hoster.com/file/…&#10;magnet:?xt=urn:btih:…" data-tooltip="Paste alternate sources for one item separated by tabs; use new lines for separate items." oninput="resizeDebridLinkInput(this)" onkeydown="if((event.ctrlKey||event.metaKey)&&event.key==='Enter')addDashboardEntries()"></textarea>
+            <span class="dp-dashboard-action-track"><button class="btn btn-primary" id="btn-add-transfer" onclick="addDashboardEntries()" style="padding:9px 20px" data-tooltip="Submit links and magnets for provider routing; when empty, choose a transfer file">Add</button></span>
           </div>
         </div>
       </div>
@@ -336,7 +336,7 @@
             <div class="ftab" data-dp-status="completed" role="tab" aria-selected="false" onclick="setFilter(this,'completed')">Done</div>
             <div class="ftab" data-dp-status="error" role="tab" aria-selected="false" onclick="setFilter(this,'error')">Error</div>
           </div>
-          <button class="btn btn-ghost btn-sm dp-downloads-refresh" data-default-label="Refresh" onclick="loadTorrents()" aria-label="Refresh downloads" title="Refresh downloads"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
+          <button class="btn btn-ghost btn-sm dp-downloads-refresh" data-default-label="Refresh" onclick="loadTorrents()" aria-label="Refresh downloads" data-tooltip="Refresh downloads"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
         </div>
         <div class="dp-downloads-pause-shim">Processing paused. Queued and newly added downloads will not start until processing is resumed.</div>
         <div style="padding:10px 14px 0">
@@ -393,7 +393,7 @@
               <span class="toggle"><input id="ev-live" type="checkbox" role="switch" aria-describedby="ev-live-status"><span class="ttrack" aria-hidden="true"></span></span>
               <span id="ev-live-status" hidden>Off</span>
             </label>
-            <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="DPActivityLog.load()" aria-label="Refresh activity log" title="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
+            <button class="btn btn-ghost btn-sm dp-activity-refresh" data-default-label="Refresh" onclick="DPActivityLog.load()" aria-label="Refresh activity log" data-tooltip="Refresh activity log"><svg class="lucide dp-utility-icon" data-dp-lucide="refresh" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M20 11a8.1 8.1 0 0 0-15.5-2M4 4v5h5"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2M20 20v-5h-5"/></svg><span>Refresh</span></button>
           </div>
         </div>
         <div class="dp-activity-search-band">
@@ -526,7 +526,7 @@
     <div class="modal-hdr dp-card__header">
       <span class="modal-title dp-card__title" id="modal-title">Details</span>
       <template data-requires="administer"><button type="button" class="btn btn-ghost btn-sm dp-detail-trace" onclick="downloadTransferTrace(this)">Transfer Trace Log</button></template>
-      <button type="button" class="btn modal-close dp-detail-close" onclick="closeModal()" aria-label="Close details" title="Close details">
+      <button type="button" class="btn modal-close dp-detail-close" onclick="closeModal()" aria-label="Close details" data-tooltip="Close details">
         <svg class="lucide dp-utility-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
@@ -562,6 +562,7 @@
 <script src="/ui-transfer-source-presentation.js?v=1" defer></script>
 <script src="/ui-file-selection.js?v=1" defer></script>
 <script src="/ui-motion.js?v=1" defer></script>
+<script src="/ui-tooltip.js?v=1" defer></script>
 <script src="/ui-pager.js?v=1" defer></script>
 <script src="/ui-search.js?v=1" defer></script>
 <script src="/ui-downloads.js?v=1" defer></script>

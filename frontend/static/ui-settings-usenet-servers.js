@@ -470,7 +470,7 @@
         <div class="dp-usenet-server-head">
           <span class="dp-usenet-server-name" data-usenet-display-name>New server</span>
           <button type="button" class="btn btn-ghost btn-sm dp-usenet-name-edit" data-usenet-action="rename"
-                  title="Edit display name" aria-label="Edit display name">
+                  data-tooltip="Edit display name" aria-label="Edit display name">
             <img src="/icons/lucide/pencil.svg" alt="" aria-hidden="true">
           </button>
         </div>
@@ -512,7 +512,7 @@
         <div class="dp-usenet-advanced" data-usenet-advanced>
           <button type="button" class="dp-usenet-advanced-toggle" data-usenet-advanced-toggle
                   aria-controls="${advancedId}" aria-expanded="false"
-                  title="Show advanced acquisition settings"
+                  data-tooltip="Show advanced acquisition settings"
                   aria-label="Show advanced acquisition settings">
             <span class="dp-usenet-advanced-label">Advanced</span>
             <span class="dp-usenet-advanced-chevron" aria-hidden="true">&rsaquo;</span>
@@ -852,7 +852,7 @@
     else if (body) body.hidden = expanded;
     button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
     const label = `${expanded ? 'Show' : 'Hide'} advanced acquisition settings`;
-    button.title = label;
+    button.dataset.tooltip = label;
     button.setAttribute('aria-label', label);
   }
 

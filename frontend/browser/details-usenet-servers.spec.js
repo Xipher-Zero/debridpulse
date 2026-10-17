@@ -60,7 +60,8 @@ test('one contributing server sits beneath Provider; the left column is unchange
   const field = page.locator('#modal-body .detail-grid > .dp-detail-usenet-servers');
   await expect(field.locator('.dk')).toHaveCSS('text-transform', 'uppercase');
   await expect(field.locator('.dv')).toHaveText('Primary');
-  await expect(field.locator('.dp-detail-usenet-server')).toHaveAttribute('title', /about 1\.2 GB of articles delivered/);
+  await expect(field.locator('.dp-detail-usenet-server')).toHaveAttribute('data-tooltip', /about 1\.2 GB of articles delivered/);
+  await expect(field.locator('.dp-detail-usenet-server')).not.toHaveAttribute('title');
   await shot(page, 'usenet-server-one');
 });
 
@@ -71,7 +72,7 @@ test('several servers, a removed one and an unattributed name are all said as th
   const field = page.locator('#modal-body .detail-grid > .dp-detail-usenet-servers');
   await expect(field.locator('.dk')).toHaveText('Usenet Servers');
   await expect(field.locator('.dv')).toHaveText('Primary, Backup (removed), news.example.net');
-  await expect(field.locator('.dp-detail-usenet-server').nth(2)).toHaveAttribute('title', /not matched to one configured server/);
+  await expect(field.locator('.dp-detail-usenet-server').nth(2)).toHaveAttribute('data-tooltip', /not matched to one configured server/);
   expect((await columns(page)).right).toEqual(['Provider', 'Usenet Servers', 'Size', 'Added', 'Requested By']);
   await shot(page, 'usenet-servers-many-light');
 });

@@ -110,7 +110,7 @@
   function sourceSlot(identity, {providerId = ''} = {}) {
     if (PROTOCOL_GLYPHS[identityKey(providerId)] && sourceIconMarkup(identity) === sourceSvg('link')) return '';
     const label = sourceIdentityLabel(identity);
-    return `<span class="dp-source-icon-slot" title="${esc(label)}" aria-label="${esc(label)}">${sourceIconMarkup(identity)}</span>`;
+    return `<span class="dp-source-icon-slot" data-tooltip="${esc(label)}" aria-label="${esc(label)}">${sourceIconMarkup(identity)}</span>`;
   }
 
   window.DPTransferSourcePresentation = Object.freeze({

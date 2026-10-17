@@ -103,7 +103,7 @@ test('the brand block has no hover, active, focus or button treatment', async ({
   await open(page);
   const logo = page.locator('#sidebar .logo');
   // Not a control: no role, no tab stop, no tooltip of its own.
-  for (const attribute of ['role', 'tabindex', 'title', 'aria-label', 'href']) {
+  for (const attribute of ['role', 'tabindex', 'title', 'data-tooltip', 'aria-label', 'href']) {
     await expect(logo).not.toHaveAttribute(attribute);
   }
   const look = () => logo.evaluate(node => {

@@ -637,7 +637,7 @@
     const icon = window.DPIcons && typeof window.DPIcons.svg === 'function'
       ? window.DPIcons.svg('folder') : '';
     return '<button type="button" class="dp-file-selection-chip" data-dp-file-selection-chip ' +
-      'data-transfer-id="' + esc(String(item.id)) + '" title="' + esc(label) + '" ' +
+      'data-transfer-id="' + esc(String(item.id)) + '" data-tooltip="' + esc(label) + '" ' +
       'aria-label="' + esc(label) + '">' + icon + '</button>';
   }
 
@@ -657,7 +657,7 @@
       if (affordance === 'choose' || affordance === 'change' || affordance === 'pending_manifest') {
         const label = affordance === 'pending_manifest' ? 'Choose Files' : affordanceLabel(affordance);
         host.innerHTML = '<button type="button" class="btn btn-ghost btn-sm dp-file-selection-entry" ' +
-          'title="' + esc(label) + '">' + esc(label) + '</button>';
+          'data-tooltip="' + esc(label) + '">' + esc(label) + '</button>';
         host.querySelector('.dp-file-selection-entry').addEventListener('click', function () {
           handleAffordanceClick(transferId);
         });
