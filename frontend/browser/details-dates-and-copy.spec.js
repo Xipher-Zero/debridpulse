@@ -89,8 +89,57 @@ test('the three copy corrections, static and dynamic, with search unchanged', as
   await expect(title).toHaveAttribute('aria-label', 'On the Books. 1 download tracked. It behaved.');
   await page.evaluate(() => updateDownloadsTrackedCopy(0));
   await expect(title).toHaveAttribute('aria-label', 'On the Books. 0 downloads tracked. Most of them behaved.');
-  await expect(page.locator('.dp-card-subtitle', {hasText: 'Add links'})).toHaveText('Add links, magnets, torrent, or NZB files to the queue.');
+  // Quick Add's locked 1.0.13 copy: the description and the two-line hint.
+  await expect(page.locator('.dp-card-subtitle', {hasText: 'Submit links'}))
+    .toHaveText('Submit links, files, or other supported resources for download.');
+  await expect(page.locator('#q-transfer-input')).toHaveAttribute('placeholder',
+    'Paste a link, magnet, or other supported resource…\nAdd multiple entries, one per line.');
+  await expect(page.locator('#q-transfer-input')).toHaveAttribute('rows', '2');
   const placeholder = await page.locator('#ev-search').getAttribute('placeholder');
   expect(placeholder).toBe('Search events, names, or transfer ID…');
   expect(placeholder).not.toContain('#');
+});
+
+/* Quick Add's one sizing owner (resizeDebridLinkInput) sizes the field to its
+ * text -- or, while it is empty, to its placeholder -- at whatever width the
+ * field has: nothing below the visible edge, two compact rows on a desktop. */
+test('Quick Add shows its whole placeholder at any width and sizes to typed, multi-line and cleared input', async ({ page }) => {
+  const fits = () => page.locator('#q-transfer-input').evaluate(el => {
+    // The placeholder's own height, measured in a detached mirror of the field.
+    const mirror = el.cloneNode();
+    mirror.removeAttribute('id');
+    mirror.style.height = '0px';
+    mirror.value = el.value || el.placeholder;
+    el.parentElement.appendChild(mirror);
+    const needed = mirror.scrollHeight;
+    mirror.remove();
+    return {height: Math.round(el.getBoundingClientRect().height), visible: el.clientHeight, needed};
+  });
+  const input = page.locator('#q-transfer-input');
+
+  await page.setViewportSize({width: 1440, height: 900});
+  await boot(page);
+  const desktop = await fits();
+  expect(desktop.needed).toBeLessThanOrEqual(desktop.visible);
+  expect(desktop.height, 'two compact rows on a desktop').toBe(62);
+
+  // Narrowing the page re-sizes the empty field to its now-wrapped placeholder.
+  await page.setViewportSize({width: 390, height: 900});
+  await expect.poll(async () => { const f = await fits(); return f.needed <= f.visible; }).toBe(true);
+  const narrowEmpty = await fits();
+  expect(narrowEmpty.height).toBeGreaterThan(62);
+
+  // Typing one short line returns it to two rows; several lines grow it; clearing restores the hint.
+  await input.fill('magnet:?xt=urn:btih:abc');
+  expect((await fits()).height).toBe(62);
+  await input.fill('https://a.example/1\nhttps://a.example/2\nhttps://a.example/3\nhttps://a.example/4');
+  const four = await fits();
+  expect(four.height).toBeGreaterThan(narrowEmpty.height);
+  expect(four.needed).toBeLessThanOrEqual(four.visible);
+  await input.fill('');
+  expect(await fits()).toEqual(narrowEmpty);
+
+  // Back on a desktop the empty field is two compact rows again.
+  await page.setViewportSize({width: 1440, height: 900});
+  await expect.poll(async () => (await fits()).height).toBe(62);
 });

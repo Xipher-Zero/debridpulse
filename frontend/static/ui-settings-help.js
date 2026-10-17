@@ -57,10 +57,37 @@
           'Additional Settings hold that service’s own limits and options; they apply to that service only.',
         ]},
         {heading: 'Usenet', text: [
-          'The Usenet card holds your news servers. Each server keeps its own host, port, SSL setting, credentials, connection count, and priority; a lower priority value is preferred. Download behavior shared by every Usenet server is under Downloads, Transfer Method Settings.',
+          'Usenet uses your configured news servers rather than a debrid account. Open the Usenet card’s help for server configuration and download behavior.',
         ]},
         {heading: 'Related', text: [
           'Direct sources that need no account, such as HTTP, FTP, or rsync links, are configured under Network Sources instead.',
+        ]},
+      ],
+    },
+    usenet: {
+      title: 'Usenet',
+      sections: [
+        {text: [
+          'Usenet downloads NZB content directly from news servers you have an account with. Unlike a debrid service, there is no provider account doing the work: DebridPulse runs its own Usenet download service inside the container, connects to your servers, and assembles the files itself. It is off until you enable it.',
+        ]},
+        {heading: 'News servers', list: [
+          'Each server has a host, a port, and an SSL setting (switching SSL moves an unchanged default port between 563 and 119), plus the username and password for that server. The stored password is never shown; leave the field blank to keep it.',
+          'Connections is how many simultaneous connections DebridPulse may open to that server, from 1 upward; set it no higher than your account allows.',
+          'Priority orders the servers: a lower value is preferred, and 0 is the highest.',
+          'Articles per Request and Server Timeout tune how DebridPulse talks to that server. Each server also has its own Enable; a disabled server is never contacted.',
+        ]},
+        {heading: 'Status and Test', list: [
+          'Usenet is Configured once at least one enabled server has a host and at least one connection, and Verified only when every enabled server has passed a test of its current connection settings.',
+          'A server’s own Test makes a real connection with what its card currently shows, including an unsaved password, and saves nothing. Test in this card’s header tests every saved, enabled server.',
+        ]},
+        {heading: 'Downloads and recovery', list: [
+          'A Usenet download is an ordinary DebridPulse transfer: it counts toward Maximum Concurrent Downloads, can be paused and resumed, and follows the Stalled Download Timeout and download error retries. After a restart DebridPulse finds its Usenet jobs again rather than submitting them twice.',
+          'DebridPulse verifies and repairs the downloaded files, but never unpacks them in the Usenet service; Automatic Extraction handles archives afterwards, as for any download.',
+          'Behavior shared by every server is under Downloads, Transfer Method Settings, Usenet: the article cache, Direct Write, how many times one article is retried on a server before that server is given up for it (not the download retry count), and how long DebridPulse waits for its Usenet service to answer.',
+        ]},
+        {heading: 'NZBs and premium services', list: [
+          'TorBox and Premiumize can also take NZBs. By default an NZB goes to Usenet first; turning on Use TorBox Before Usenet or Use Premiumize Before Usenet in that service’s Additional Settings puts it ahead of Usenet for NZBs.',
+          'If the first service in that order cannot resolve the NZB, the next one is tried.',
         ]},
       ],
     },

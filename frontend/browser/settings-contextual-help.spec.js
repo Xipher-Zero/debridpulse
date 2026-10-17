@@ -28,7 +28,7 @@ async function chooseTab(page, name) {
   await expect(page.locator(`.dp-settings-panel[data-panel="${name}"]`)).toBeVisible();
 }
 
-test('every top-level Settings card has exactly one help chip naming it, and group members have none', async ({page}) => {
+test('every top-level Settings card has exactly one help chip naming it, and of group members only Usenet has one', async ({page}) => {
   await openSettings(page);
   const census = await page.evaluate(() => Array.from(document.querySelectorAll('.dp-settings-panel')).map(panel => ({
     panel: panel.dataset.panel,
@@ -40,7 +40,8 @@ test('every top-level Settings card has exactly one help chip naming it, and gro
         const chips = Array.from(header.querySelectorAll('.dp-settings-help-chip'));
         return {title, labels: chips.map(chip => chip.getAttribute('aria-label')), text: chips.map(chip => chip.textContent.trim())};
       }),
-    memberChips: panel.querySelectorAll('section.card.dp-settings-group-card section.card .dp-settings-help-chip').length,
+    memberChips: Array.from(panel.querySelectorAll('section.card.dp-settings-group-card section.card .dp-settings-help-chip'),
+      chip => chip.getAttribute('aria-label')),
   })));
   expect(census.map(entry => entry.panel).sort()).toEqual([...PANELS].sort());
   const cards = census.flatMap(entry => entry.cards);
@@ -49,7 +50,37 @@ test('every top-level Settings card has exactly one help chip naming it, and gro
     expect(card.labels, card.title).toEqual([`Help: ${card.title}`]);
     expect(card.text, card.title).toEqual(['']);
   }
-  for (const entry of census) expect(entry.memberChips, entry.panel).toBe(0);
+  // Usenet is the one explicit provider exception; no other provider,
+  // protocol tile or transfer-method card has a chip.
+  for (const entry of census) {
+    expect(entry.memberChips, entry.panel).toEqual(entry.panel === 'sources' ? ['Help: Usenet'] : []);
+  }
+});
+
+test('every header rail reads status, then help, then the card’s own controls in their order', async ({page}) => {
+  await openSettings(page);
+  const rails = await page.evaluate(() => Array.from(document.querySelectorAll(
+    '.dp-settings-panel .card-header .dp-settings-help-chip')).map(chip => {
+    const rail = chip.parentElement;
+    const header = rail.closest('.card-header');
+    const kinds = [...rail.children].map(node => node.classList.contains('dp-settings-provider-config-status') ? 'status'
+      : node.classList.contains('dp-settings-help-chip') ? 'help' : 'control');
+    return {label: chip.getAttribute('aria-label'), kinds,
+      rightEdge: kinds.length === 1 ? Math.round(header.getBoundingClientRect().right - chip.getBoundingClientRect().right) : null,
+      paddingRight: Math.round(parseFloat(getComputedStyle(header).paddingRight))};
+  }));
+  expect(rails).toHaveLength(19);
+  for (const rail of rails) {
+    const expected = rail.kinds[0] === 'status' ? 1 : 0;
+    expect(rail.kinds.indexOf('help'), rail.label).toBe(expected);
+    expect(rail.kinds.filter(k => k === 'help'), rail.label).toHaveLength(1);
+    if (rail.rightEdge !== null) expect(rail.rightEdge, rail.label).toBeLessThanOrEqual(rail.paddingRight + 1);
+  }
+  // Representative rails, as established, with help in its new place.
+  const usenet = await page.locator('.dp-settings-provider-card--usenet > .card-header .dp-settings-card-header-controls')
+    .evaluate(el => [...el.children].map(node => node.className.split(' ')[0]));
+  expect(usenet).toEqual(['dp-settings-provider-config-status', 'dp-settings-help-chip', 'dp-settings-header-action',
+    'toggle-row']);
 });
 
 test('a help chip opens its own card’s read-only help; Escape returns focus and nothing is written', async ({page}) => {
@@ -155,4 +186,35 @@ test('at a narrow width the chip stays inside its header and the role table scro
   });
   expect(fit).toEqual({fits: true, scrolls: true});
   await page.keyboard.press('Escape');
+});
+
+test('Usenet has its own help, between its status and Test; Premium Services points to it', async ({page}) => {
+  await openSettings(page);
+  await chooseTab(page, 'sources');
+  const card = page.locator('.dp-settings-provider-card--usenet');
+  const chip = card.locator(':scope > .card-header [data-settings-help="usenet"]');
+  await expect(chip).toHaveAttribute('aria-label', 'Help: Usenet');
+  const enable = card.locator('[data-integration-enabled="usenet"]');
+  const enabled = await enable.isChecked();
+  await chip.focus();
+  await page.keyboard.press('Enter');
+  const dialog = page.locator('.dp-modal-dialog.dp-settings-help-dialog');
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Usenet');
+  await expect(dialog).toContainText('a lower value is preferred, and 0 is the highest');
+  await expect(dialog).toContainText('By default an NZB goes to Usenet first');
+  await expect(dialog.locator('input, select, textarea')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toHaveCount(0);
+  await expect(chip).toBeFocused();
+  // The chip neither toggled the provider nor opened its card.
+  await expect(enable).toBeChecked({checked: enabled});
+  await expect(card.locator(':scope > .card-body')).toBeHidden();
+
+  await page.locator('[data-settings-help="premium-services"]').click();
+  await expect(dialog.locator('.dp-modal-title')).toHaveText('Premium Services');
+  await expect(dialog).toContainText('Usenet uses your configured news servers rather than a debrid account. '
+    + 'Open the Usenet card’s help for server configuration and download behavior.');
+  await expect(dialog).not.toContainText('connection count, and priority');
+  await dialog.locator('[data-modal-close]').click();
+  await expect(dialog).toHaveCount(0);
 });

@@ -1580,9 +1580,11 @@
 @media (max-width:700px) {
   #view-settings .dp-settings-integration-header-enable .tl { font-size:11px; }
   /* Narrow: the copy wraps beneath the title group and the controls, still
-     inside the same canonical header. */
+     inside the same canonical header. The title group keeps its own width and
+     the rail takes the rest, wrapping within it -- a rail wider than the room
+     left wraps onto a second line instead of covering the title. */
   #view-settings .card-header.dp-settings-card-header {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: auto minmax(0, 1fr);
     gap: 10px;
     row-gap: 4px;
   }

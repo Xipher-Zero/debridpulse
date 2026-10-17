@@ -162,9 +162,9 @@ def test_dashboard_has_one_mixed_submission_control():
     assert 'id="q-debrid-links"' not in html
     assert 'id="q-magnet"' not in html
     assert 'id="btn-add-transfer"' in html
-    assert 'https://example-hoster.com/file/' in html
-    assert 'magnet:?xt=urn:btih:' in html
-    assert 'Add links, magnets, torrent, or NZB files to the queue.' in html
+    # The 1.0.13 locked Quick Add copy: the description and the two-line hint.
+    assert 'placeholder="Paste a link, magnet, or other supported resource…&#10;Add multiple entries, one per line."' in html
+    assert 'Submit links, files, or other supported resources for download.' in html
     assert 'when empty, choose a transfer file' in html
     assert 'addDashboardEntries()' in html
     assert "function classifyDashboardEntries" in js

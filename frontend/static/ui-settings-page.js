@@ -716,8 +716,10 @@
 
   const CONFIGURED_SECRET_MASK = '•'.repeat(48);
 
-  /* The card's contextual help: one icon-only chip, last in the header rail,
-   * naming the card it explains. It opens that card's read-only explanation
+  /* The card's contextual help: one icon-only chip in the header rail,
+   * naming the card it explains. Every rail reads status, then help, then the
+   * card's own actions and controls in their established order -- so help sits
+   * at the right edge only when it is the rail's one member. It opens that card's read-only explanation
    * through the help owner (ui-settings-help.js), which presents it in the
    * canonical dialog shell; the chip itself changes nothing. */
   function helpChip(topic, subject) {
@@ -749,9 +751,9 @@
     const help = helpChip(options.help, title);
     const rail = (status || options.headerAction || help)
       ? `<div class="dp-settings-card-header-controls">${
-          status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${
+          status ? `<div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${html(status.tone)}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>` : ''}${help}${
           options.headerAction ? `<div class="dp-settings-header-action">${options.headerAction}</div>` : ''}${
-          options.action || ''}${help}</div>`
+          options.action || ''}</div>`
       : (options.action || '');
     return `
       <section class="card dp-settings-card dp-large-panel-surface ${options.className || ''}">
@@ -789,7 +791,7 @@
         <div class="card-header${header ? ' dp-settings-card-header' : ''}">
           ${header ? `<span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>` : titleMarkup}
           ${header ? `<div class="dp-settings-card-header-center"></div>
-          <div class="dp-settings-card-header-controls">${options.action || ''}${help}</div>` : ''}
+          <div class="dp-settings-card-header-controls">${help}${options.action || ''}</div>` : ''}
         </div>
         <div class="card-body dp-settings-group-body"${options.collapsible ? ` id="${bodyId}"${expanded ? '' : ' hidden'}` : ''}>${body}</div>
       </section>`;
@@ -1309,7 +1311,8 @@
    * Everything about the CONFIGURATION -- credentials, optional tuning behind
    * its disclosure -- stays in the body. The rail therefore never moves when
    * the body grows, shrinks, opens or closes, because it is not in it. */
-  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerAction = ''}) {
+  // ``help`` is the one provider exception (Usenet), in the same rail order.
+  function providerCard(identity, title, body, entry, {className, titlePrefix = '', displayName, headerCopy = '', headerAction = '', help = ''}) {
     const enabled = entry.enabled !== false;
     const configured = !!entry.configured;
     const verified = !!entry.verified;
@@ -1332,7 +1335,7 @@
           <span class="dp-settings-card-title-group">${titleMarkup}${disclosure}</span>
           <div class="dp-settings-card-header-center">${headerCopy ? `<p class="dp-settings-provider-header-copy">${html(headerCopy)}</p>` : ''}</div>
           <div class="dp-settings-card-header-controls"><div class="dp-settings-provider-config-status" role="status" aria-live="polite" data-tone="${status.tone}"${status.text ? '' : ' hidden'}>${html(status.text)}</div>${
-            headerAction ? `<div class="dp-settings-header-action">${headerAction}</div>` : ''}${enable}</div>
+            helpChip(help, title)}${headerAction ? `<div class="dp-settings-header-action">${headerAction}</div>` : ''}${enable}</div>
         </div>
         <div class="card-body" id="${bodyId}" hidden>${body}</div>
       </section>`;
@@ -2001,6 +2004,7 @@
       displayName: 'Usenet',
       headerCopy: 'Download NZB content from configured Usenet news servers.',
       headerAction: providerTestAction('test-usenet'),
+      help: 'usenet',
     });
 
     // Absent means OFF: Debrid-Link participates only once an operator turns
@@ -2143,8 +2147,8 @@
             <span class="dp-executor-work-copy">View current download engine jobs and intervene when something is stuck.</span>
           </div>
           <div class="dp-executor-work-header-actions">
-            <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
             ${helpChip('engine-activity', 'Download Engine Activity')}
+            <button type="button" class="btn btn-ghost btn-sm" data-dp-executor-work-refresh>Refresh</button>
           </div>
         </div>
         <div class="card-body" data-dp-executor-work-body>

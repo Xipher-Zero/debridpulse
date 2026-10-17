@@ -192,7 +192,11 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
      stack. */
   align-items: stretch;
   justify-content: center;
-  flex-wrap: wrap;
+  /* One line while the card has room: the island grows to its content's
+     width, bounded by the card, and only then does a sentence wrap -- it
+     widens before it grows taller. The two settings move onto separate lines
+     only at the narrower widths below. */
+  flex-wrap: nowrap;
   gap: 18px 44px;
   width: max-content;
   /* Bounded by the card, not by a number. The island holds font-sized content
@@ -211,6 +215,13 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 #view-settings .dp-settings-auth-session-row > .dp-settings-inline-field {
   flex: 0 1 auto;
   min-width: 0;
+}
+
+/* The sessions reading is short and keeps its own line; the Browser Session
+   Lifetime sentence is the one that yields width when the card bounds the
+   island. */
+#view-settings .dp-settings-auth-session-row > .dp-settings-auth-session-count {
+  flex-shrink: 0;
 }
 
 /* The logout action lives inside the sessions field, at its trailing edge.
@@ -313,6 +324,10 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row,
   #view-settings .dp-settings-auth-credentials-row {
     gap: 16px 28px;
+  }
+
+  #view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {
+    flex-wrap: wrap;
   }
 }
 
@@ -474,9 +489,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 /* A hint is a sentence, not a single line: bound the informational stack so
    the group's width is decided by how much room its CONTROLS need, not by how
-   long its longest sentence happens to be. */
-#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info,
-#view-settings .dp-settings-auth-session-row .dp-settings-inline-field-info {
+   long its longest sentence happens to be. The session island is not bounded
+   here: its sentences take the width the card gives the island (above). */
+#view-settings .dp-settings-auth-credentials-row .dp-settings-inline-field-info {
   max-width: 200px;
 }
 

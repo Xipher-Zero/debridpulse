@@ -154,8 +154,8 @@ test('both cards render the shared rail: status, then Test, then Enable', async 
       if (node.classList.contains('dp-settings-help-chip')) return 'help';
       return node.querySelector('input[type=checkbox]') ? 'enable' : node.className;
     }));
-    // The card's help chip closes the rail, after the participation control.
-    expect(order).toEqual(['status', 'test', 'enable', 'help']);
+    // Status, then the card's help, then its own controls in their order.
+    expect(order).toEqual(['status', 'help', 'test', 'enable']);
     await expect(rail.locator('.dp-settings-provider-test')).toHaveText('Test');
   }
 

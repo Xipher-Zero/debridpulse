@@ -167,10 +167,17 @@ def test_every_settings_card_declares_exactly_one_help_topic():
         options = PAGE[start:start + 6000].split("help: ", 1)[1].split("\n", 1)[0]
         assert re.match(r"(own \? '[a-z-]+' : '[a-z-]+'|'[a-z-]+')", options), title
     assert "${helpChip('engine-activity', 'Download Engine Activity')}" in PAGE
-    # Group members (provider, protocol and transfer-method cards) carry none.
-    for builder in ("function providerCard(", "function sourceProtocolBox(", "function executorTuningCard("):
+    # Group members (protocol and transfer-method cards) carry none.
+    for builder in ("function sourceProtocolBox(", "function executorTuningCard("):
         body = PAGE.split(builder, 1)[1].split("\n  }\n", 1)[0]
         assert "helpChip" not in body and "help:" not in body, builder
+    # Provider cards carry none either -- except Usenet, the one explicit
+    # exception, which names its own topic.
+    providers = re.findall(r"providerCard\('([a-z]+)'", PAGE)
+    assert set(providers) == {"alldebrid", "realdebrid", "torbox", "usenet", "debridlink", "premiumize"}
+    usenet = PAGE.split("const usenetCard = providerCard('usenet'", 1)[1].split("});", 1)[0]
+    assert "help: 'usenet'," in usenet
+    assert PAGE.count("help: 'usenet'") == 1
 
 
 def test_every_referenced_topic_exists_and_none_is_orphaned():
@@ -179,7 +186,7 @@ def test_every_referenced_topic_exists_and_none_is_orphaned():
         referenced |= {left, right}
     referenced |= set(re.findall(r"helpChip\('([a-z-]+)'", PAGE))
     assert referenced == _topics()
-    assert len(referenced) == 20
+    assert len(referenced) == 21
 
 
 def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():
@@ -188,10 +195,25 @@ def test_the_chip_is_one_icon_only_named_control_in_the_header_rail():
     assert 'aria-label="${html(label)}"' in chip
     assert "window.DPIcons.svg('help', 'dp-settings-help-glyph')" in chip
     assert 'class="dp-settings-help-chip"' in chip
+
+
+def test_every_header_rail_reads_status_then_help_then_its_own_controls():
+    """Status, then Help, then the card's existing actions and controls in
+    their established order -- in every canonical header builder."""
     card = PAGE.split("function card(title, body, options = {}) {", 1)[1].split("\n  }\n", 1)[0]
-    assert "options.action || ''}${help}</div>`" in card
+    rail = card.split("const rail = ", 1)[1].split(";\n", 1)[0]
+    order = [rail.index(token) for token in
+             ("dp-settings-provider-config-status", "${help}", "options.headerAction ?", "options.action || ''")]
+    assert order == sorted(order)
     group = PAGE.split("function groupCard(title, body, options = {}) {", 1)[1].split("\n  }\n", 1)[0]
-    assert "${options.action || ''}${help}</div>" in group
+    assert '<div class="dp-settings-card-header-controls">${help}${options.action || \'\'}</div>' in group
+    provider = PAGE.split("function providerCard(", 1)[1].split("\n  }\n", 1)[0]
+    controls = provider.split('<div class="dp-settings-card-header-controls">', 1)[1].split("</div>\n", 1)[0]
+    order = [controls.index(token) for token in
+             ("dp-settings-provider-config-status", "helpChip(help, title)", "headerAction ?", "${enable}")]
+    assert order == sorted(order)
+    work = PAGE.split("function executorWorkCard() {", 1)[1].split("\n  }\n", 1)[0]
+    assert work.index("helpChip('engine-activity'") < work.index("data-dp-executor-work-refresh")
 
 
 def test_the_help_owner_is_read_only_and_uses_the_canonical_dialog():
@@ -288,3 +310,44 @@ def test_the_reporting_explanation_names_the_implemented_destination():
     own = HELP.split("'statistics-reporting-own': {", 1)[1].split("\n    },\n", 1)[0]
     assert "An Admin’s destinations are never used." in own
     assert "never includes other accounts’ activity" in own
+
+
+# ── Usenet: its own help, true to the provider/executor it explains ────────
+
+def _topic(name: str) -> str:
+    return HELP.split(f"    {name}: {{", 1)[1].split("\n    },\n", 1)[0]
+
+
+def test_premium_services_points_to_the_usenet_help():
+    premium = HELP.split("'premium-services': {", 1)[1].split("\n    },\n", 1)[0]
+    assert ("Usenet uses your configured news servers rather than a debrid account. Open the Usenet card’s help "
+            "for server configuration and download behavior.") in premium
+    assert "connection count, and priority" not in premium
+
+
+def test_the_usenet_help_states_what_the_integration_does():
+    from integrations.usenet import definition as usenet
+    from providers.premiumize.provider import NZB_AFTER_USENET, NZB_BEFORE_USENET
+
+    text = _topic("usenet")
+    assert "title: 'Usenet'," in text
+    # Priority: SAB sorts ascending; the field's own help says the same.
+    assert usenet.PRIORITY_HELP == "Lower values have priority." and usenet.MIN_PRIORITY == 0
+    assert "a lower value is preferred, and 0 is the highest" in text
+    assert usenet.MIN_CONNECTIONS == 1 and "from 1 upward" in text
+    # Off by default; repair without unpacking; extraction stays DP's.
+    assert usenet.definition.default_enabled is False and "It is off until you enable it." in text
+    from executors.sabnzbd.client import PP_REPAIR_ONLY
+    assert PP_REPAIR_ONLY == 1 and "verifies and repairs the downloaded files, but never unpacks them" in text
+    # NZB ordering: native Usenet first by default; the provider toggle puts it ahead.
+    assert (NZB_AFTER_USENET, NZB_BEFORE_USENET) == (-1, 1)
+    assert "By default an NZB goes to Usenet first" in text
+    for label in ("Use TorBox Before Usenet", "Use Premiumize Before Usenet"):
+        assert f"tuningToggle('{label.split()[1].lower()}_use_before_usenet', '{label}'" in PAGE
+        assert label in text
+    # The per-article retry is not the download retry count.
+    assert "(not the download retry count)" in text
+    # No claim the source does not make: no article-level failover between
+    # servers or services, and the bundled service is never named.
+    for unproven in ("missing article", "backup server", "fill server", "failover"):
+        assert unproven not in text.lower(), unproven

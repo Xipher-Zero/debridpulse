@@ -2047,7 +2047,10 @@ tr[draggable="true"]:active { cursor: grabbing; }
   align-items: flex-end;
 }
 .direct-link-input {
-  flex: 1;
+  /* The field takes the row's remaining width; its basis is its own size, so
+     when the entry stacks into a column its height is the one the field's
+     sizing owner (resizeDebridLinkInput) sets rather than a zero basis. */
+  flex: 1 1 auto;
   resize: none;
   min-height: 38px;
   max-height: 110px;

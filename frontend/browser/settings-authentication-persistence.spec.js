@@ -111,8 +111,16 @@ test('session information and its control are one centred island with Log Out in
       const style = getComputedStyle(el);
       return {
         bordered: style.borderTopWidth !== '0px',
-        // Bounded: it does not span the body it sits in.
-        bounded: island.width < parent.width - 40,
+        // Content-bounded: it is as wide as its content needs -- never past the
+        // body's content box -- and it reaches that edge only when the content
+        // is wider, which is when a sentence wraps (it widens before it grows
+        // taller).
+        bounded: island.width <= parent.width - parseFloat(getComputedStyle(body).paddingLeft)
+            - parseFloat(getComputedStyle(body).paddingRight) + 0.5
+          && (island.width < parent.width - 40
+            || (hint => hint.getBoundingClientRect().height
+              > 1.5 * (parseFloat(getComputedStyle(hint).lineHeight) || 1.2 * parseFloat(getComputedStyle(hint).fontSize)))(
+              el.querySelector('.dp-settings-auth-session-lifetime .form-hint'))),
         centred: Math.abs((island.left + island.right) / 2 - (parent.left + parent.right) / 2),
         fields: el.querySelectorAll(':scope > .dp-settings-inline-field').length,
         oneLine: Math.abs(rect(el.children[0]).top - rect(el.children[1]).top) < 3,
@@ -125,7 +133,7 @@ test('session information and its control are one centred island with Log Out in
     });
 
     expect(measured.bordered).toBe(true);
-    expect(measured.bounded, 'the session island stretches across the card').toBe(true);
+    expect(measured.bounded, 'the session island is wider than its content needs').toBe(true);
     expect(measured.centred, 'the session island is not centred').toBeLessThanOrEqual(TOLERANCE);
     expect(measured.fields).toBe(2);
     expect(measured.oneLine).toBe(true);

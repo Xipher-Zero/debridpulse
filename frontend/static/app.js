@@ -1725,16 +1725,25 @@ function resizeDebridLinkInput(input) {
   if (!input) return;
   const styles = window.getComputedStyle(input);
   const lineHeight = parseFloat(styles.lineHeight) || 18;
+  // scrollHeight counts content and padding but not the border, while the
+  // field's height is its border box: the border is added back below.
+  const border = (parseFloat(styles.borderTopWidth) || 0) + (parseFloat(styles.borderBottomWidth) || 0);
   const chrome = (parseFloat(styles.paddingTop) || 0) +
-    (parseFloat(styles.paddingBottom) || 0) +
-    (parseFloat(styles.borderTopWidth) || 0) +
-    (parseFloat(styles.borderBottomWidth) || 0);
+    (parseFloat(styles.paddingBottom) || 0) + border;
   const minimum = Math.ceil((lineHeight * 2) + chrome);
   const maximum = Math.ceil((lineHeight * 5) + chrome);
+  // An empty field is as tall as its placeholder needs: the placeholder is
+  // measured as the field's own text (browsers differ on whether scrollHeight
+  // counts a placeholder), so a hint that wraps on a narrow screen is shown
+  // whole instead of losing its last line below the edge.
+  const placeholder = !input.value && input.placeholder;
+  if (placeholder) input.value = input.placeholder;
   input.style.height = `${minimum}px`;
-  const target = Math.max(minimum, Math.min(input.scrollHeight, maximum));
+  const needed = input.scrollHeight + border;
+  if (placeholder) input.value = '';
+  const target = Math.max(minimum, Math.min(needed, maximum));
   input.style.height = `${target}px`;
-  input.style.overflowY = input.scrollHeight > maximum ? 'auto' : 'hidden';
+  input.style.overflowY = !placeholder && needed > maximum ? 'auto' : 'hidden';
 }
 
 function classifyDashboardEntries(raw) {
@@ -2642,6 +2651,20 @@ document.addEventListener('DOMContentLoaded', () => {
   _dashboardSparkReducedMotion.addEventListener('change', syncDashboardSparkPulses);
   document.addEventListener('visibilitychange', syncDashboardSparkPulses);
   new ResizeObserver(remeasureDashboardHeartbeat).observe(document.getElementById('dash-hero'));
+  // Quick Add sizes to its text, or to its placeholder while empty, and both
+  // wrap with the field's width: size it once now and again whenever that
+  // width changes (a resize, or the Dashboard first being shown). Its own
+  // height changes are ignored, so sizing never re-triggers itself.
+  const quickAdd = document.getElementById('q-transfer-input');
+  if (quickAdd) {
+    let quickAddWidth = -1;
+    new ResizeObserver(() => {
+      const width = quickAdd.clientWidth;
+      if (width === quickAddWidth) return;
+      quickAddWidth = width;
+      resizeDebridLinkInput(quickAdd);
+    }).observe(quickAdd);
+  }
   // Returning to the Dashboard: the route is read again from the settled cards
   // (the heartbeat clock and the beats on the strip are untouched).
   document.addEventListener('debridpulse:navigation-settled', function(event) {
