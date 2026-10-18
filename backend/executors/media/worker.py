@@ -49,6 +49,11 @@ MAX_SPEC_BYTES = 1024 * 1024
 MAX_SUBTITLE_BYTES = 16 * 1024 * 1024
 MAX_DESCRIPTION_CHARS = 16 * 1024
 MAX_DETAIL_CHARS = 300
+# A finalizing helper whose output has not changed for this long has stopped
+# making progress: it is ended rather than waited for without limit. (A
+# lossless copy of a large file may rightly take far longer in total, so the
+# bound is on standing still -- the same span the extraction phase is given.)
+FINALIZATION_STALL_SECONDS = 15 * 60
 PROGRESS_INTERVAL = 0.5
 # The largest approximate component size an estimate may claim (1 PiB).
 MAX_ESTIMATED_BYTES = 1 << 50
@@ -542,16 +547,52 @@ class _Phase:
         return context
 
 
-def _run(argv: list[str]) -> None:
+def _run(argv: list[str], *, output: str | None = None) -> None:
+    """Run one finalization helper to its end. Its stderr is read as it comes
+    and only the tail a failure reports is kept; while it runs, it must keep
+    changing ``output`` -- a helper that stands still for
+    ``FINALIZATION_STALL_SECONDS`` is ended and the finalization fails."""
     try:
-        completed = subprocess.run(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
-                                   stderr=subprocess.PIPE, check=False)
+        process = subprocess.Popen(argv, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
+                                   stderr=subprocess.PIPE)
     except SandboxRefusal:
         raise  # a policy refusal, classified as one -- never a missing runtime
     except OSError as exc:
         raise Failure("runtime_unavailable", str(exc)) from None
-    if completed.returncode != 0:
-        raise Failure("finalization_failed", completed.stderr.decode("utf-8", "replace")[-MAX_DETAIL_CHARS:])
+    tail = bytearray()
+    keep = MAX_DETAIL_CHARS * 4 + 4  # bytes enough for the reported characters
+
+    def drain() -> None:
+        while chunk := process.stderr.read(65536):
+            tail.extend(chunk)
+            del tail[:-keep]
+
+    reader = threading.Thread(target=drain, daemon=True)
+    reader.start()
+    seen, still_since = None, time.monotonic()
+    try:
+        while True:
+            try:
+                returncode = process.wait(timeout=1)
+                break
+            except subprocess.TimeoutExpired:
+                pass
+            try:
+                state = os.stat(output) if output else None
+                mark = (state.st_size, state.st_mtime_ns) if state else None
+            except OSError:
+                mark = None
+            if mark != seen:
+                seen, still_since = mark, time.monotonic()
+            elif time.monotonic() - still_since >= FINALIZATION_STALL_SECONDS:
+                raise Failure("finalization_failed", "finalization stopped making progress")
+    finally:
+        if process.returncode is None:  # stalled, or interrupted: never left running
+            process.kill()
+            process.wait()
+        reader.join(timeout=5)
+    if returncode != 0:
+        raise Failure("finalization_failed", bytes(tail).decode("utf-8", "replace")[-MAX_DETAIL_CHARS:])
 
 
 def _metadata(info: dict) -> dict:
@@ -687,7 +728,7 @@ def acquire(spec: dict, phase: _Phase) -> int:
         if container in MUXERS or len(components) > 1 or subtitle is not None:
             if container not in MUXERS:
                 raise Failure("finalization_failed", "the planned container cannot be finalized losslessly")
-            _run(finalization_argv(tools, container, components, subtitle, _metadata(info), output))
+            _run(finalization_argv(tools, container, components, subtitle, _metadata(info), output), output=output)
         else:
             # A single native file in a container this worker does not rewrite:
             # it IS the final artifact, byte for byte.

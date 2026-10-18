@@ -1039,7 +1039,7 @@ def test_the_worker_reports_every_planned_components_exact_size_before_fetching(
     monkeypatch.setattr(yt_dlp, "YoutubeDL", _PlannedYoutubeDL)
     monkeypatch.setattr(worker, "_emit", events.append)
     monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
-    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    monkeypatch.setattr(worker, "_run", lambda argv, **_: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
     spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
             "target": str(tmp_path / "Clip.mp4"), "tools": {"ffmpeg": "/bin/true"},
             "plan": {"container": "mp4", "formats": ["137", "140"], "extractor": "Youtube", "id": "abc",
@@ -1239,7 +1239,7 @@ def test_the_planned_subtitle_is_fetched_first_as_one_complete_part(tmp_path, mo
     monkeypatch.setattr(yt_dlp, "YoutubeDL", Subtitled)
     monkeypatch.setattr(worker, "_emit", events.append)
     monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
-    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    monkeypatch.setattr(worker, "_run", lambda argv, **_: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
     spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
             "target": str(tmp_path / "Clip.mkv"), "tools": {"ffmpeg": "/bin/true"},
             "plan": {"container": "mkv", "formats": ["137", "140"], "extractor": "Youtube", "id": "abc",
@@ -1599,7 +1599,7 @@ def test_the_worker_announces_each_components_estimated_size_never_as_its_total(
     monkeypatch.setattr(yt_dlp, "YoutubeDL", _EstimatedYoutubeDL)
     monkeypatch.setattr(worker, "_emit", events.append)
     monkeypatch.setattr(worker, "PROGRESS_INTERVAL", 0)
-    monkeypatch.setattr(worker, "_run", lambda argv: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
+    monkeypatch.setattr(worker, "_run", lambda argv, **_: open(argv[-1].removeprefix("file:"), "wb").write(b"muxed"))
     spec = {"url": "https://v.example/watch", "proxy": "http://127.0.0.1:9", "workspace": str(tmp_path / "w"),
             "target": str(tmp_path / "Clip.mp4"), "tools": {"ffmpeg": "/bin/true"},
             "plan": {"container": "mp4", "formats": ["616", "251"], "extractor": "Youtube", "id": "abc",
