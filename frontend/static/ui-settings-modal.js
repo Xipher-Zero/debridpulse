@@ -282,15 +282,18 @@
       // has opened meanwhile.
       entry.leaving = true;
       const leaving = window.DPMotion ? window.DPMotion.leave(overlay, dialog, resolveFocusTarget(origin)) : Promise.resolve();
-      leaving.then(() => {
+      // ``gone``: once it has left, with wherever its own restoration left focus -- so a client that
+      // places focus itself afterwards can tell that from a choice the operator made.
+      const gone = leaving.then(() => {
         mounted.splice(mounted.indexOf(entry), 1);
         const target = resolveFocusTarget(origin);   // where it belongs now, after the exit
         if (window.DPMotion) window.DPMotion.restore(overlay, target);
         else { overlay.remove(); if (target) target.focus(); }
         if (!document.querySelector(OVERLAY_SELECTOR)) document.body.classList.remove(BODY_OPEN_CLASS);
         if (!mounted.length) document.removeEventListener('keydown', onKeydown);
+        return document.activeElement;
       });
-      resolveClosed(Object.freeze({accepted: accepted === true}));
+      resolveClosed(Object.freeze({accepted: accepted === true, gone}));
     }
 
     let accepting = false;
@@ -366,6 +369,7 @@
     cancelLabel = 'Cancel',
     tone = 'warning',
     typedPhrase = '',
+    withExit = false,
   } = {}) {
     const dialog = open({
       role: 'alertdialog',
@@ -392,7 +396,8 @@
         return messageEl;
       },
     });
-    return dialog.closed.then(result => result.accepted);
+    // ``withExit``: the whole outcome, ``{accepted, gone}``, for a client that places focus itself.
+    return withExit ? dialog.closed : dialog.closed.then(result => result.accepted);
   }
 
   /* The single-text-field dialog shape.

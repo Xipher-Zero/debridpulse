@@ -216,8 +216,11 @@ app = FastAPI(
     title=APP_METADATA_TITLE,
     description=(
         "Self-hosted DebridPulse runtime built around the Universal Transfer Core for "
-        "direct links, magnets, and torrent files. The current multi-provider model "
-        "includes AllDebrid and General HTTP(S) acquisition providers with aria2 execution.\n\n"
+        "direct links, magnets, torrent, NZB and Metalink files, and media pages. Its "
+        "acquisition providers are AllDebrid, Real-Debrid, TorBox, Debrid-Link and Premiumize; "
+        "General HTTP(S), FTP/SFTP, SCP, rsync and WebDAV sources; Metalink; Usenet; and Media "
+        "Downloads. Transfers execute through aria2, rsync, the bundled Usenet acquisition "
+        "service, or the Media Downloads executor.\n\n"
         "## API structure\n\n"
         "| Prefix | Description |\n"
         "|--------|-------------|\n"

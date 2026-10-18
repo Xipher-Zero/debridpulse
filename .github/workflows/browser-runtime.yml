@@ -43,7 +43,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: ['1/3', '2/3', '3/3']
+        shard: ['1/6', '2/6', '3/6', '4/6', '5/6', '6/6']
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       PW_SHARD: ${{ matrix.shard }}
@@ -233,7 +233,7 @@ jobs:
           # The full suite runs exactly once. Its exit status is evidence, not the gate:
           # the classification step decides, so evidence is always generated first.
           set +e
-          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --shard="$PW_SHARD" --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
+          NO_COLOR=1 PLAYWRIGHT_JSON_OUTPUT_NAME="$full/results.json" npm test -- --shard="$PW_SHARD" --workers=1 --reporter=line,json 2>&1 | tee "$RUNNER_TEMP/playwright.log"
           test_status=${PIPESTATUS[0]}
           set -e
           echo "$test_status" > "$full/exit_code.txt"

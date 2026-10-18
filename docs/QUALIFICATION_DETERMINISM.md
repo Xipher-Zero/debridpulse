@@ -339,9 +339,14 @@ layers, each collected test exactly once:
   asserted before any test runs. A runtime test proves that a concrete adapter implements the
   neutral contract; a universal invariant belongs in the contract layer.
 
-Each layer is partitioned by module path across independent runners (`DP_TEST_SHARD=k/n`,
+Each layer is partitioned by test node id across independent runners (`DP_TEST_SHARD=k/n`,
 `backend/tests/conftest.py`): a fixed partition, so a layer's shards together run each of its
-tests exactly once, and no two shards share a process, port, file or database.
+tests exactly once, and no two shards share a process, port, file or database. The contract
+layer runs on six runners and the runtime layer on three. The unit is the test, not the module:
+a module whose scale scenarios cost minutes of real work (`test_v113_identity_anchor.py`,
+`test_v113_root_provider_switch_corrective.py`) no longer holds one runner past the budget while
+the others idle -- the reason the contract layer moved from three module-partitioned runners,
+each about 23-26 minutes on hosted runners, to six (1.0.13 WS9, QUAL-001).
 
 A test that needs an executable carries the `real_runtime` marker; nothing else selects it.
 Every layer ends with an accounting step (tests, summed and wall time, slowest cases); **a skip
@@ -351,6 +356,11 @@ would be coverage that silently did not run.
 `Browser Runtime` runs its suite once the same way: Playwright `--shard=k/n` across independent
 runners, each serving its own candidate containers. `fullyParallel` is off, so a spec file never
 splits: the files of one shard share one backend exactly as before, and no two shards share any.
+Each shard runs its files with **one** Playwright worker (`--workers=1`), so no two of them drive
+that one backend at once -- the same isolation the classifier's own bounded runs already use (1.0.13
+WS9, QUAL-002: hosted failures that never reproduced in isolation). The suite runs on **six**
+runners, so one worker's serial time per shard fits the blocking budget (three two-worker runners
+became six one-worker runners).
 
 **Milestone manifests are records, not owners.** A milestone qualification list
 (`post_audit_qualification.txt`, `two_provider_checkpoint_qualification.txt`) is evidence of what

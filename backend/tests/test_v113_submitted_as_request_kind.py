@@ -140,8 +140,9 @@ def test_a_mixed_or_unknown_upload_gets_a_truthful_neutral_label():
 
 
 def test_both_surfaces_use_the_one_formatter_with_the_canonical_fact():
-    details = APP_JS[APP_JS.index('<div class="dk">Submitted As</div>'):]
-    details = details[:details.index("</div>", details.index("dv"))]
+    # Details renders each reading through its one cell helper (1.0.13 ``ebdcb8f5``).
+    details = APP_JS[APP_JS.index("cell('Submitted As',"):]
+    details = details[:details.index("\n")]
     assert "sourceLabel(t.source, t.request_kinds)" in details
     downloads = (STATIC / "ui-downloads.js").read_text(encoding="utf-8")
     assert "sourceLabel(t.source, t.request_kinds)" in downloads

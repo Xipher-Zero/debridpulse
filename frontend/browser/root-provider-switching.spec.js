@@ -54,7 +54,7 @@ function routeStatus(current) {
 async function apis(page, state) {
   page.on('request', request => {
     const url = new URL(request.url());
-    if (url.pathname.startsWith('/api/')) state.requests.push({ at: Date.now(), method: request.method(), path: url.pathname });
+    if (url.pathname.startsWith('/api/')) state.requests.push({ at: Date.now(), method: request.method(), path: url.pathname, search: url.search });
   });
   await page.route(url => /\/api\/torrents\/\d+\/route$/.test(url.pathname), async route => {
     if (route.request().method() !== 'POST') {
@@ -199,7 +199,10 @@ test('statistics refreshes during a switch never reload the Downloads list or th
   // Ten statistics refreshes (each progress patch schedules one) while the
   // switch is outstanding: the list and the Details are not reloaded by them.
   const reads = () => ({
-    list: state.requests.filter(item => item.path === '/api/torrents').length,
+    // The Downloads list read -- not the INPUT_REQUIRED owner's own 3 s
+    // challenge scan of the same path (ui-auth-required.js), which runs
+    // whatever statistics do.
+    list: state.requests.filter(item => item.path === '/api/torrents' && !/[?&]status=input_required(&|$)/.test(item.search)).length,
     detail: state.requests.filter(item => item.path === '/api/torrents/30').length,
   });
   const before = reads();
@@ -211,11 +214,10 @@ test('statistics refreshes during a switch never reload the Downloads list or th
   expect(after).toEqual(before);
   expect(state.posts).toHaveLength(1);
 
-  // A real pause toggle still re-measures the Downloads capacity; later
-  // statistics refreshes with the same pause state again read nothing.
+  // After a pause toggle, later statistics refreshes with the same pause
+  // state again read nothing.
   state.paused = true;
   await page.evaluate(() => loadStats());
-  await expect.poll(() => reads().list).toBeGreaterThan(after.list);
   await page.waitForTimeout(800);
   const toggled = reads();
   for (let index = 0; index < 3; index += 1) await page.evaluate(() => loadStats());

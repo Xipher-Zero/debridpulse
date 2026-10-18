@@ -472,6 +472,56 @@ test('WS2-P1 a confirmed removal leaves focus on a deliberate surviving control;
   await expect(search).toBeFocused();
 });
 
+test('WS2-P1 focus the operator moves while a removal is still settling is left where they put it', async ({ page }) => {
+  // The removal's list reload is held, so it settles only after the confirmation has gone and the operator
+  // has deliberately moved focus to a stable control; that choice is never overridden.
+  await isolateExternalFonts(page);
+  const fixture = await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta')]);
+  await page.goto('/');
+  await openDownloads(page);
+  const chosen = page.locator('.nav-item[data-view="torrents"]');
+  const listReads = fixture.holdListReads();
+  try {
+    await row(page, 1).locator('button.btn-danger').click();
+    await accept(page).click();
+    await expect.poll(() => fixture.snapshot().requests.singleDelete).toEqual([1]);
+    await listReads.parked;                                          // the removal waits on its reload
+    await expect(page.locator('.dp-modal-overlay')).toHaveCount(0);  // the confirmation has gone
+    await chosen.focus();
+    await expect(chosen).toBeFocused();
+  } finally {
+    listReads.release();
+  }
+  await expect(row(page, 1)).toHaveCount(0);                         // the removal has now settled
+  await expect(chosen).toBeFocused();                                // ...and left the operator's choice alone
+});
+
+test('WS2-P1 a removal is complete only once its focus has settled: the caller and the bulk notification follow it', async ({ page }) => {
+  await isolateExternalFonts(page);
+  await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta'), transfer(3, 'Gamma')]);
+  await page.goto('/');
+  await openDownloads(page);
+  // Bulk: where focus is at the moment the settled notification is sent.
+  await page.evaluate(() => {
+    window.__dpBulkSettledFocus = null;
+    document.addEventListener('debridpulse:downloads-bulk-action-settled', () => {
+      window.__dpBulkSettledFocus = document.activeElement?.id || document.activeElement?.tagName;
+    }, {once: true});
+  });
+  await rowCheckbox(page, 3).check();
+  await page.locator('.dp-downloads-bulk-action--delete').click();
+  await accept(page).click();
+  await expect.poll(() => page.evaluate(() => window.__dpBulkSettledFocus)).not.toBeNull();
+  expect(await page.evaluate(() => window.__dpBulkSettledFocus)).toBe('torrent-search');
+  // Single row: where focus is when the removal's own caller resumes.
+  await page.evaluate(() => {
+    const button = document.querySelector('.dp-downloads-detail-row[data-torrent-id="1"] button.btn-danger');
+    window.__dpRemovalExit = deleteT(1, null, button).then(() => document.activeElement?.id || document.activeElement?.tagName);
+  });
+  await accept(page).click();
+  expect(await page.evaluate(() => window.__dpRemovalExit)).toBe('torrent-search');
+});
+
 test('WS2-P1 repeated open/cancel/confirm cycles settle exactly once, never leak a prior target, and always clear the body modal state', async ({ page }) => {
   await isolateExternalFonts(page);
   const fixture = await installDownloadsFixture(page, [transfer(1, 'Alpha'), transfer(2, 'Beta')]);

@@ -10,8 +10,10 @@ It also owns the suite's two layers (docs/QUALIFICATION_DETERMINISM.md):
 (>= 3.4.0, the product minimum), aria2c, the openssl CLI or ffmpeg/ffprobe --
 and runs in the runtime layer, ``-m real_runtime``; everything
 else is the deterministic contract layer, ``-m "not real_runtime"``. ``DP_TEST_SHARD=k/n`` keeps only
-the modules of shard ``k`` of ``n``: a fixed partition by module path, so the
-shards of one layer together run each of its tests exactly once.
+the tests of shard ``k`` of ``n``: a fixed partition by test node id, so the
+shards of one layer together run each of its tests exactly once. (By test, not
+by module: a module whose scale scenarios cost minutes no longer holds one
+shard past the budget while the others idle.)
 """
 import os
 import zlib
@@ -27,9 +29,9 @@ def pytest_configure(config):
         "markers", f"{RUNTIME_MARKER}: drives a real external executable; runs in the runtime layer")
 
 
-def shard_of(module_path: str, shards: int) -> int:
-    """The 1-based shard a test module belongs to: a pure function of its path."""
-    return zlib.crc32(module_path.replace(os.sep, "/").encode("utf-8")) % shards + 1
+def shard_of(node_id: str, shards: int) -> int:
+    """The 1-based shard a test belongs to: a pure function of its node id."""
+    return zlib.crc32(node_id.replace(os.sep, "/").encode("utf-8")) % shards + 1
 
 
 def parse_shard(value: str) -> tuple[int, int] | None:
@@ -49,8 +51,7 @@ def pytest_collection_modifyitems(config, items):
     shard, shards = selected
     kept, dropped = [], []
     for item in items:
-        module = item.nodeid.split("::", 1)[0]
-        (kept if shard_of(module, shards) == shard else dropped).append(item)
+        (kept if shard_of(item.nodeid, shards) == shard else dropped).append(item)
     if dropped:
         config.hook.pytest_deselected(items=dropped)
         items[:] = kept

@@ -303,9 +303,13 @@ def test_the_browser_suite_runs_once_split_by_spec_file_across_runners() -> None
     assert job["timeout-minutes"] == 25 and job["strategy"]["fail-fast"] is False
     shards = job["strategy"]["matrix"]["shard"]
     assert shards == [f"{index}/{len(shards)}" for index in range(1, len(shards) + 1)]
+    assert len(shards) == 6        # one worker each fits the budget only across six (QUAL-002)
     assert job["env"]["PW_SHARD"] == "${{ matrix.shard }}"
     text = _runs(BROWSER_WORKFLOW)
     assert '--list --shard="$PW_SHARD"' in text and 'npm test -- --shard="$PW_SHARD"' in text
+    # One worker per shard (QUAL-002): a shard's spec files never run concurrently
+    # against its one backend, exactly as the classifier's isolated runs already do.
+    assert 'npm test -- --shard="$PW_SHARD" --workers=1 ' in text
     # A spec file never splits across shards: one file shares one backend, as before.
     config = (ROOT / "frontend" / "browser" / "playwright.config.js").read_text(encoding="utf-8")
     assert re.search(r"fullyParallel\s*:\s*false", config)
@@ -355,13 +359,24 @@ def test_the_runtime_layer_runs_aria2_built_by_the_package_image_s_one_script() 
     assert f'bash "$GITHUB_WORKSPACE/{verifier}" "$ARIA2_PATCHED_VERSION"' in asserted
 
 
-def test_the_contract_layer_partition_runs_every_module_exactly_once() -> None:
+def test_the_layer_partition_runs_every_test_exactly_once() -> None:
+    """The partition unit is the test node id (QUAL-001): each test of a module
+    lands in exactly one shard, whatever the shard count."""
     from conftest import parse_shard, shard_of
-    modules = sorted(path.relative_to(ROOT / "backend").as_posix()
-                     for path in (ROOT / "backend" / "tests").glob("test_*.py"))
-    for shards in (1, 2, 3, 5):
-        owners = {module: [k for k in range(1, shards + 1) if shard_of(module, shards) == k] for module in modules}
+    nodes = sorted(f"{path.relative_to(ROOT / 'backend').as_posix()}::{name}"
+                   for path in (ROOT / "backend" / "tests").glob("test_*.py")
+                   for name in re.findall(r"^(?:async )?def (test_\w+)", path.read_text(encoding="utf-8"), re.M))
+    assert len(nodes) > 1000
+    for shards in (1, 2, 3, 5, 6):
+        owners = {node: [k for k in range(1, shards + 1) if shard_of(node, shards) == k] for node in nodes}
         assert all(len(owner) == 1 for owner in owners.values())
+    # A heavy module is spread across shards, never held by one.
+    heavy = [node for node in nodes if node.startswith("tests/test_v113_identity_anchor.py::")]
+    assert len({shard_of(node, 6) for node in heavy}) > 1
+    job = _workflow(TESTS_WORKFLOW)["jobs"]["test"]
+    entries = job["strategy"]["matrix"]["include"]
+    assert sum(1 for entry in entries if entry["layer"] == "contract") == 6
+    assert sum(1 for entry in entries if entry["layer"] == "runtime") == 3
     assert parse_shard("") is None and parse_shard("2/3") == (2, 3)
     for bad in ("0/3", "4/3"):
         with pytest.raises(pytest.UsageError):

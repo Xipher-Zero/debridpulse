@@ -871,7 +871,10 @@ function summary(record) {
   // A stall: the arriving image drawn at the same place on two frames before it has arrived.
   const stalls = xs.filter((value, index) => index > 0 && Math.abs(value) > 0.001 && value === xs[index - 1]).length;
   const held = frames.filter(frame => frame.placeholder > 0);
-  return {firstMove: moving.length ? moving[0].t - clickAt : null, slides: starts, oneWay, stalls,
+  // Rendered frames between the click and the first displaced one: "at once" is
+  // a few frames whatever the machine's speed, which wall-clock ms are not.
+  const framesBefore = moving.length ? frames.filter(frame => frame.t > clickAt && frame.t < moving[0].t).length : null;
+  return {framesBefore, firstMove: moving.length ? moving[0].t - clickAt : null, slides: starts, oneWay, stalls,
           span: moving.length ? moving.at(-1).t - moving[0].t : 0, moving: moving.length, held,
           slideEnd: moving.length ? moving.at(-1).t : null,
           // From the first placeholder frame on, a row of the page it left is never shown again.
@@ -922,9 +925,10 @@ test('Downloads, 350 ms answer: the turn moves at once and slides without a paus
   const s = summary(record);
   // Visibly moving within a few frames of the click (the slide's own capture and
   // ease-in), long before its page is answered: the answer's latency plays no part.
-  expect(s.firstMove).toBeLessThan(150);
+  expect(s.framesBefore).toBeLessThanOrEqual(8);                    // moving within a few frames of the click
   expect(record.answered[0] - record.clickAt).toBeGreaterThan(340);
-  expect(record.answered[0] - record.clickAt - s.firstMove).toBeGreaterThan(200);
+  expect(record.frames.filter(frame => frame.t >= record.clickAt + s.firstMove && frame.t < record.answered[0]).length)
+    .toBeGreaterThanOrEqual(8);                                      // visibly moving for many frames before the answer
   expect(s.slides).toBe(1);                                          // one slide, never paused or restarted
   expect(s.oneWay).toBe(true);
   expect(s.stalls).toBe(0);
@@ -960,9 +964,10 @@ test('Downloads, fast answer: no placeholder dwell -- the real page shows as soo
   const record = await turn(page, 'downloads', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
   const s = summary(record);
   expect(s.slides).toBe(1);
-  expect(s.firstMove).toBeLessThan(150);
+  expect(s.framesBefore).toBeLessThanOrEqual(8);                    // moving within a few frames of the click
   const shown = record.frames.find(frame => frame.t > record.clickAt && frame.reals > 0 && frame.real !== '1');
-  expect(shown.t - record.answered[0]).toBeLessThan(60);             // within a few frames of its answer
+  expect(record.frames.filter(frame => frame.t >= record.answered[0] && frame.t < shown.t).length)
+    .toBeLessThanOrEqual(6);                                         // within a few frames of its answer
   expect(shown.t).toBeLessThan(s.slideEnd);                          // ...while the slide still runs
   expect(s.held.length).toBeLessThanOrEqual(3);                      // never held up behind a placeholder
 });
@@ -1056,9 +1061,10 @@ test('Activity Log, 350 ms answer: the same continuous turn within the frozen sn
   await clear(page);
   const record = await turn(page, 'activity', () => pager.locator('[aria-label="Next page"]').click(), () => expect(current).toHaveText('2'));
   const s = summary(record);
-  expect(s.firstMove).toBeLessThan(150);
+  expect(s.framesBefore).toBeLessThanOrEqual(8);                    // moving within a few frames of the click
   expect(record.answered.at(-1) - record.clickAt).toBeGreaterThan(340);
-  expect(record.answered.at(-1) - record.clickAt - s.firstMove).toBeGreaterThan(200);
+  expect(record.frames.filter(frame => frame.t >= record.clickAt + s.firstMove && frame.t < record.answered.at(-1)).length)
+    .toBeGreaterThanOrEqual(8);                                      // visibly moving for many frames before the answer
   expect([s.slides, s.oneWay, s.stalls], JSON.stringify(record.frames.filter(f => f.sliding))).toEqual([1, true, 0]);
   expect(s.span).toBeLessThanOrEqual(280 + 50);
   expectSlide(await lastSlide(page), {scope: 'activity', axis: 'x', direction: 'forward', step: 'adjacent'});

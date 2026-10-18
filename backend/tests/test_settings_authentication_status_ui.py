@@ -24,9 +24,10 @@ def source(path: Path) -> str:
 def test_session_information_and_control_form_one_centred_bounded_island():
     """Both session readings sit in ONE island beneath the KPI row.
 
-    Same relationship container and the same padding density as the accepted
-    Extraction behaviour island, so the two surfaces speak one visual language.
-    Content-bounded and centred, never a band stretched across the card.
+    Same relationship container as the accepted Extraction behaviour island,
+    with even, tighter top and bottom padding (1.0.13 ``49f04369``: visibly
+    shorter than the KPI cards above it). Content-bounded and centred, never a
+    band stretched across the card.
     """
     css = source(STYLE)
     island = css[css.index("#view-settings .dp-settings-auth-status-card .dp-settings-auth-session-row {"):]
@@ -42,7 +43,7 @@ def test_session_information_and_control_form_one_centred_bounded_island():
     assert "margin: 14px auto 0;" in island
     assert "border: 1px solid var(--dp-divider);" in island
     assert "border-radius: 12px;" in island
-    assert "padding: 16px 22px 17px;" in island
+    assert "padding: 10px 22px;" in island
     assert "gap: 18px 44px;" in island
 
     # Stacked, the island stops being content-bounded: there is one column.

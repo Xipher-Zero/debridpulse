@@ -84,6 +84,15 @@ const strip = page => page.evaluate(() => [...document.querySelectorAll('#view-d
     stops: [...gradient.querySelectorAll('stop')].map(stop => ({role: stop.getAttribute('class'), offset: Number(stop.getAttribute('offset')),
       opacity: Number(getComputedStyle(stop).stopOpacity)}))};
 }));
+/* What the birth and position samplers read (births, observe): each card's
+ * geometry and line points -- exactly the values strip() returns for them --
+ * without reading every gradient stop's computed style on every 50 ms sample. */
+const geometryAndLines = page => page.evaluate(() => [...document.querySelectorAll('#view-dashboard .dp-card-spark')].map(svg => {
+  const d = svg.querySelector('.dp-card-spark-line').getAttribute('d');
+  const box = svg.getBoundingClientRect();
+  return {width: box.width, left: box.left, right: box.right, middle: (box.top + box.bottom) / 2,
+    points: [...d.matchAll(/(-?[\d.]+) (-?[\d.]+)/g)].map(m => [Number(m[1]), Number(m[2])])};
+}));
 /* Each complex drawn on a card's line: its leading edge and its points
  * relative to it (x px, y units). */
 const complexes = card => card.points.flatMap(([, y], i) => (y < 6 ? [i - 6] : []))
@@ -255,16 +264,21 @@ test('a reflow re-measures the strip under the heartbeats already on it, without
 /* Heartbeat births, read where each one enters the route's first card,
  * sampled every STEP ms for `ms`; also each sample's first-card leads. */
 async function births(page, ms, into = {times: [], leads: []}) {
+  // Only the clock draws the strip while this runs (app.js renders it in its
+  // frame; nothing here reflows, hides it or changes motion), so one sample's
+  // after is the next one's before: read once per step, not twice.
+  let cards = await geometryAndLines(page);
   for (let t = 0; t < ms; t += STEP) {
-    const cards = await strip(page);
     const first = cards[route(cards).rows[0][0]];
     const inside = leads(first).filter(x => x < first.width);
     await page.clock.runFor(STEP);
-    const now = (await strip(page))[route(cards).rows[0][0]];
+    const after = await geometryAndLines(page);
+    const now = after[route(cards).rows[0][0]];
     const entered = leads(now).filter(x => x < first.width
       && !inside.some(previous => previous > x && previous - x <= SPEED * (STEP + 16) + 0.01));
     for (const _ of entered) into.times.push(await page.evaluate(() => Date.now()));
     into.leads.push(leads(now).filter(x => x < now.width));
+    cards = after;
   }
   return into;
 }
@@ -568,7 +582,7 @@ test('without a recorded sustained peak the heartbeat rests at 3.5 BPM whatever 
  * where it is: the strip distance it has travelled at 0.24 px/ms). */
 async function observe(page) {
   const now = await page.evaluate(() => Date.now());
-  const cards = await strip(page);
+  const cards = await geometryAndLines(page);
   const {entries} = route(cards);
   const seen = cards.flatMap((card, i) => complexes(card).map(complex =>
     ({...complex, card: i, born: now - (entries[i] + card.width - complex.lead) / SPEED})));
@@ -599,13 +613,13 @@ test('each heartbeat has its own bounded complex, kept unchanged across every ca
   const shapes = new Set(), widths = [], peaks = [];
   for (const beat of beats) {
     const [first] = beat.sightings;
-    // Unchanged in every card and every frame it was seen in.
-    for (const sighting of beat.sightings) {
-      sighting.points.forEach(([x, y], i) => {
-        expect(x).toBeCloseTo(first.points[i][0], 1);
-        expect(y).toBeCloseTo(first.points[i][1], 1);
-      });
-    }
+    // Unchanged in every card and every frame it was seen in: toBeCloseTo(_, 1)'s
+    // own bound (|difference| < 0.05) on every point, asserted once per beat --
+    // a sample of ~1,000 sightings would otherwise be ~30,000 single assertions.
+    const changed = beat.sightings.flatMap((sighting, s) => sighting.points.flatMap(([x, y], i) =>
+      (Math.abs(x - first.points[i][0]) < 0.05 && Math.abs(y - first.points[i][1]) < 0.05
+        ? [] : [{sighting: s, card: sighting.card, point: i, at: [x, y], first: first.points[i]}])));
+    expect(changed).toEqual([]);
     shapes.add(first.points.map(([x, y]) => `${x.toFixed(1)},${y.toFixed(1)}`).join(' '));
     // In order, on the baseline at both ends, each deflection the same way
     // as the established complex and within its bound.

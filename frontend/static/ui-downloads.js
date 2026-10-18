@@ -1137,10 +1137,13 @@ function contextMenu(event) {
 // button after a failure, otherwise the list toolbar's search field. The successor is deliberately NOT a
 // row -- rows are replaced wholesale by every refresh (including the debounced capacity refresh that
 // follows a shrinking table), the toolbar is not. Focus the operator moved elsewhere in the meantime is
-// left alone.
-function settleRemovalFocus(button) {
+// left alone. A confirmation returns focus on its own clock, once it has gone, and to a neighbour of its
+// opener when the opener is busy; where it put focus (``restored``: its ``gone``) is the dialog's choice,
+// not the operator's, so it never stands in for a deliberate surviving control.
+async function settleRemovalFocus(button, restored = null) {
+  const returned = restored ? await restored : null;
   const active = document.activeElement;
-  if (active && active !== document.body && active.isConnected) return;
+  if (active && active !== document.body && active.isConnected && active !== returned) return;
   const retry = button?.isConnected && !button.disabled && button.getClientRects().length ? button : null;
   (retry || document.getElementById('torrent-search'))?.focus();
 }
@@ -1148,6 +1151,7 @@ async function deleteT(id, eventObj, button) {
   eventObj?.stopPropagation();
   const confirmedIds = await confirmDownloadRemoval([id]);
   if (!confirmedIds) return;
+  const restored = removalConfirmationGone;
   const targetId = confirmedIds[0];
   setButtonPending(button, true, 'Deleting…');
   try {
@@ -1156,7 +1160,7 @@ async function deleteT(id, eventObj, button) {
     await loadTorrents();
     loadStats();
   } catch (e) { toast(sanitizeErrorMsg(e.message), 'error'); }
-  finally { setButtonPending(button, false); settleRemovalFocus(button); }
+  finally { setButtonPending(button, false); await settleRemovalFocus(button, restored); }
 }
 async function retryT(id, button) {
   setButtonPending(button, true, 'Retrying…');
@@ -1179,17 +1183,23 @@ async function confirmDownloadRemoval(ids) {
   const confirmed = await modal.confirm({
     title: count === 1 ? 'Remove download?' : `Remove ${count} downloads?`,
     message: count === 1 ? 'Remove this download from Downloads?' : `Remove these ${count} downloads from Downloads?`,
-    confirmLabel: 'Remove', cancelLabel: 'Cancel', tone: 'danger',
+    confirmLabel: 'Remove', cancelLabel: 'Cancel', tone: 'danger', withExit: true,
   });
-  return confirmed ? stableIds : null;
+  removalConfirmationGone = confirmed.accepted ? confirmed.gone : null;
+  return confirmed.accepted ? stableIds : null;
 }
+// The last accepted removal confirmation's ``gone`` (ui-settings-modal.js), read by its caller at once:
+// the dialog is modal, so no other confirmation settles in between.
+let removalConfirmationGone = null;
 async function bulkAction(action, button) {
   if (!_selectedIds.size) return;
   let ids = [..._selectedIds];
+  let restored = null;
   if (action === 'delete') {
     const confirmedIds = await confirmDownloadRemoval(ids);
     if (!confirmedIds) return;
     ids = confirmedIds;
+    restored = removalConfirmationGone;
   }
   const pendingLabels = {delete: 'Deleting…', reset: 'Resetting…', pause: 'Pausing…', resume: 'Resuming…'};
   setButtonPending(button, true, pendingLabels[action] || 'Working…');
@@ -1204,7 +1214,8 @@ async function bulkAction(action, button) {
   } catch (e) { toast(e.message, 'error'); }
   finally {
     setButtonPending(button, false);
-    settleRemovalFocus(button);
+    // Settled means focus has settled too: the notification follows it.
+    await settleRemovalFocus(button, restored);
     document.dispatchEvent(new CustomEvent('debridpulse:downloads-bulk-action-settled', {detail: {action}}));
   }
 }
