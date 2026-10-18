@@ -209,7 +209,9 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   margin: 14px auto 0;
   border: 1px solid var(--dp-divider);
   border-radius: 12px;
-  padding: 16px 22px 17px;
+  /* Compact and even above and below: a reading beneath the KPI cards, so
+     visibly shorter than they are. */
+  padding: 10px 22px;
 }
 
 #view-settings .dp-settings-auth-session-row > .dp-settings-inline-field {
@@ -245,15 +247,18 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
 
 /* A READING, not a control: it states a positive fact about the installation,
    so it takes the positive-state colour and a restrained border, and nothing
-   that would suggest it can be pressed. Its height follows the title/hint
-   stack beside it rather than a number chosen here. */
+   that would suggest it can be pressed. A square tile sized around its count
+   (wider counts widen it and it stays square), centred against the title/hint
+   stack beside it rather than stretched to that stack's height. */
 #view-settings .dp-settings-auth-session-count-value {
-  align-self: stretch;
+  align-self: center;
   min-width: 46px;
+  aspect-ratio: 1;
+  box-sizing: border-box;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 4px 12px;
+  padding: 4px;
   border: 1px solid color-mix(in srgb, var(--dp-state-success) 42%, transparent);
   border-radius: 10px;
   background: var(--dp-surface-2);
@@ -264,12 +269,6 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   font-variant-numeric: tabular-nums;
   cursor: default;
   user-select: none;
-}
-
-/* The tile takes its height from the title/hint stack beside it, so the two
-   read as one line of information rather than a number floating in a box. */
-#view-settings .dp-settings-auth-session-count > .dp-settings-inline-field-control {
-  align-self: stretch;
 }
 
 /* The action needs room to read as separate from the count it sits beside. */
