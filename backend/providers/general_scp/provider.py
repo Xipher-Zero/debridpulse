@@ -63,18 +63,76 @@ class _Source:
         return urlunsplit((scheme, self.authority, self.path if path is None else path, "", ""))
 
 
-def _pattern(raw: str):
+class _Pattern:
+    """One final-component pattern, matched against a whole name without
+    backtracking. Each token is one literal character or ``?`` (any one
+    character); ``*`` splits the tokens into fixed-width segments. The first
+    segment is anchored at the start and the last at the end, and each middle
+    segment takes its leftmost place after the one before -- if any placement
+    matches, that one does -- so a name is scanned at most once, however the
+    pattern and the name are built."""
+
+    __slots__ = ("_first", "_middle", "_last", "_width", "_starred")
+
+    def __init__(self, segments: list[tuple[str | None, ...]]):
+        self._starred = len(segments) > 1
+        self._first, self._last = segments[0], segments[-1]
+        self._middle = tuple(segment for segment in segments[1:-1] if segment)
+        self._width = sum(map(len, segments))
+
+    @staticmethod
+    def _fits(segment: tuple[str | None, ...], name: str, start: int) -> bool:
+        return all(token is None or token == name[start + offset] for offset, token in enumerate(segment))
+
+    @staticmethod
+    def _find(segment: tuple[str | None, ...], name: str, start: int, end: int) -> int:
+        """The leftmost start at or after ``start`` where ``segment`` fits
+        wholly before ``end``, or -1. A segment without ``?`` is a plain
+        substring search; otherwise one left-to-right pass carries, as bits,
+        every segment prefix that ends at the current character."""
+        if None not in segment:
+            return name.find("".join(segment), start, end)
+        masks: dict[str, int] = {}
+        anything = 0
+        for offset, token in enumerate(segment):
+            if token is None:
+                anything |= 1 << offset
+            else:
+                masks[token] = masks.get(token, 0) | 1 << offset
+        complete, state = 1 << (len(segment) - 1), 0
+        for index in range(start, end):
+            state = (state << 1 | 1) & (masks.get(name[index], 0) | anything)
+            if state & complete:
+                return index - len(segment) + 1
+        return -1
+
+    def fullmatch(self, name: str) -> bool:
+        if not self._starred:
+            return len(name) == self._width and self._fits(self._first, name, 0)
+        end = len(name) - len(self._last)
+        if len(name) < self._width or not self._fits(self._first, name, 0) or not self._fits(self._last, name, end):
+            return False
+        start = len(self._first)
+        for segment in self._middle:
+            found = self._find(segment, name, start, end)
+            if found < 0:
+                return False
+            start = found + len(segment)
+        return True
+
+
+def _pattern(raw: str) -> _Pattern:
     """Compile one final-component pattern: raw ``*``/``?`` are wildcards,
     everything else (including any percent-escaped character) is literal."""
-    parts = []
+    segments, segment = [], []
     for token in re.findall(r"%[0-9A-Fa-f]{2}|.", raw, re.S):
         if token == "*":
-            parts.append(".*")
-        elif token == "?":
-            parts.append(".")
+            segments.append(tuple(segment))
+            segment = []
         else:
-            parts.append(re.escape(unquote(token)))
-    return re.compile("".join(parts), re.S)
+            segment.append(None if token == "?" else unquote(token))
+    segments.append(tuple(segment))
+    return _Pattern(segments)
 
 
 def _remote_coordinate(address: str, size: int) -> ResolverArtifactIdentityEvidence:

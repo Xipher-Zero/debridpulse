@@ -14,6 +14,10 @@ at, and credentials never reach the provider (core splits them at admission).
 from __future__ import annotations
 
 import importlib
+import itertools
+import re
+import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
@@ -239,10 +243,63 @@ async def test_a_pattern_or_directory_without_members_is_a_missing_source(url, n
     ("*.iso", "a.iso", True), ("*.iso", "a.iso.part", False), ("file-?.bin", "file-1.bin", True),
     ("file-?.bin", "file-10.bin", False), ("%2A.bin", "*.bin", True), ("%2A.bin", "a.bin", False),
     ("a.b", "axb", False),  # regular-expression characters are literal
+    ("x(y)+*", "x(y)+1", True), ("x(y)+*", "xyy1", False), ("^a$", "^a$", True), ("a|b", "a", False),
+    ("a{2}", "aa", False), ("[ab]", "[ab]", True), ("[ab]", "a", False), ("a\\b*", "a\\b", True),
+    ("file-??.bin", "file-10.bin", True), ("file-??.bin", "file-1.bin", False),
+    ("%3F.txt", "?.txt", True), ("%3f.txt", "?.txt", True), ("%3F.txt", "a.txt", False), ("%2a.bin", "x.bin", False),
+    ("café-*.mkv", "café-1.mkv", True), ("café-*.mkv", "cafe-1.mkv", False), ("??", "é😀", True), ("?", "é😀", False),
+    ("a?b", "a\nb", True), ("*.mkv", "a\nb.mkv", True),  # a wildcard matches any character, a newline included
+    ("*", "anything", True), ("a**b", "ab", True), ("a*a", "a", False), ("a*a", "aa", True),
+    ("*ab*ab*", "xaabxab", True), ("*ab*ab*", "aba", False), ("*a?c*", "xxabcx", True), ("*a?c*", "abbc", False),
+    ("*a?c*?d", "abcabcxd", True), ("*a?c*?d", "abcd", False), ("a.iso*", "xa.iso", False),
 ])
 def test_pattern_matching_is_literal_apart_from_star_and_question_mark(pattern, name, matches) -> None:
     from providers.general_scp.provider import _pattern
     assert bool(_pattern(pattern).fullmatch(name)) is matches
+
+
+def test_pattern_matching_keeps_the_whole_name_wildcard_semantics_exactly() -> None:
+    """Every pattern over ``a``, ``b``, ``*`` and ``?`` up to five tokens, against
+    every name over ``a`` and ``b`` up to six characters, decides exactly as the
+    whole-name wildcard translation does (``*`` any run, ``?`` one character,
+    newlines included). The inputs are small enough for that translation to
+    stay quick."""
+    from providers.general_scp.provider import _pattern
+    names = ["".join(letters) for size in range(7) for letters in itertools.product("ab", repeat=size)]
+    for size in range(1, 6):
+        for tokens in itertools.product("ab*?", repeat=size):
+            pattern = "".join(tokens)
+            expected = re.compile("".join({"*": ".*", "?": "."}.get(token, token) for token in tokens), re.S)
+            matcher = _pattern(pattern)
+            for name in names:
+                assert bool(matcher.fullmatch(name)) is bool(expected.fullmatch(name)), (pattern, name)
+
+
+def test_a_hostile_pattern_or_listing_cannot_stall_the_process() -> None:
+    """A backtracking matcher took about a second for four stars over one
+    255-character name and did not finish five within twenty; it holds the
+    interpreter lock, so it froze the event loop, worker threads and health alike. The check therefore runs in its
+    own process under a hard ceiling, far above what the matcher needs."""
+    script = """
+import asyncio
+from providers.general_scp.provider import ScpProvider, _pattern
+from transfers.errors import Category, TransferError
+from transfers.models import DiscoveredEntry, DiscoveryResult, TransferRequest
+name = "a" * 255
+assert not _pattern("*a" * 7 + "b").fullmatch(name) and _pattern("*a" * 7 + "*").fullmatch(name)
+listing = DiscoveryResult(tuple(DiscoveredEntry(name + str(index), 1) for index in range(10_000)), directory="/pub")
+for pattern in ("*a" * 5 + "b", "*a?" * 80 + "c*"):
+    request = TransferRequest("scp", "scp://files.example.org/pub/" + pattern)
+    try:
+        asyncio.run(ScpProvider().resolve_discovered(request, listing))
+    except TransferError as refused:
+        assert refused.error.category == Category.SOURCE_NOT_FOUND
+    else:
+        raise AssertionError(pattern)
+"""
+    completed = subprocess.run([sys.executable, "-c", script], cwd=ROOT / "backend", capture_output=True, text=True,
+                               timeout=60)
+    assert completed.returncode == 0, completed.stderr
 
 
 @pytest.mark.asyncio
