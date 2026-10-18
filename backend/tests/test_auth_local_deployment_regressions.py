@@ -2,6 +2,7 @@ from pathlib import Path
 
 from fastapi import Request, Response
 import pytest
+import pytest_asyncio
 
 from api.auth_routes import _AUTH_PAGE_STYLE, _state_free_auth_page
 from auth.middleware import enforce_general_web_security
@@ -16,8 +17,11 @@ def _request(
     fetch_site="same-origin",
     server=("debridpulse.local", 8081),
     extra_headers=None,
+    method="POST",
+    path="/login",
+    body=b"",
 ):
-    headers = [(b"host", host.encode())]
+    headers = [(b"host", host.encode())] if host is not None else []
     if origin is not None:
         headers.append((b"origin", origin.encode()))
     if fetch_site is not None:
@@ -28,15 +32,21 @@ def _request(
         "type": "http",
         "asgi": {"version": "3.0"},
         "http_version": "1.1",
-        "method": "POST",
+        "method": method,
         "scheme": scheme,
-        "path": "/login",
-        "raw_path": b"/login",
+        "path": path,
+        "raw_path": path.encode(),
         "query_string": b"",
         "headers": headers,
         "client": ("192.168.226.10", 54321),
         "server": server,
-    })
+    }, _body_stream(body))
+
+
+def _body_stream(body):
+    async def receive():
+        return {"type": "http.request", "body": body, "more_body": False}
+    return receive
 
 
 async def _ok(_request):
@@ -263,3 +273,207 @@ def test_authentication_session_assets_are_packaged_without_settings_or_help_aug
     assert "/auth-ux.js" not in bootstrap
     assert "sidebar-bottom-stack" in ux_style
     assert "window.DPSettingsPage = Object.freeze({load});" in settings
+
+
+# ── Open mode: the standalone Admin answers only at this installation's own
+# authority (PA-AUTHZ-1). A page rebound to a foreign name reaches the private
+# socket without any credential; it must read nothing. The one authority that
+# decides mutations decides these reads, so the two can never disagree. ──────
+
+SENTINEL = "WS2A-ARCHIVE-PW-ONE\nWS2A-ARCHIVE-PW-TWO"
+SOCKET = "http://192.168.226.200:8081"  # the transport authority: the socket's own IP, as uvicorn reports it
+LEGITIMATE_HOSTS = [
+    "192.168.226.200:8081", "127.0.0.1:8081", "[::1]:8081", "[fd00::50]:8081", "localhost:8081",
+    "debridpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081", "app.localhost:8081",
+]
+FOREIGN_HOSTS = [
+    "rebind.attacker.example:8081",   # the DNS-rebinding name
+    "debridpulse:8081",               # single-label, e.g. a Compose service name: not trusted
+    "dp.lan:8081", "nas.mydomain.com:8081",          # ordinary or split-DNS aliases: not trusted
+    "local:8081", "debridpulse.local.attacker.example:8081", "attacker-local:8081",
+    "bad host:8081", "debridpulse.local:notaport",   # malformed
+]
+SENSITIVE_READS = ["/api/settings/extraction-passwords", "/api/settings", "/api/accounts", "/api/admin/backups",
+                   "/api/torrents", "/api/auth/config", "/", "/app.js"]
+
+
+@pytest_asyncio.fixture
+async def open_mode(tmp_path, monkeypatch):
+    """The real application and its whole middleware stack, in the shipped
+    default open mode, holding sentinel archive passwords and one Integration
+    token."""
+    from contextlib import asynccontextmanager
+    from types import SimpleNamespace
+
+    import httpx
+
+    import core.config as config
+    import db.database as database
+    import main
+    from auth import accounts
+    from auth.accounts import DEFAULT_INTEGRATION_ID
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(database, "DB_PATH", tmp_path / "open.db")
+    await database.init_db()
+    monkeypatch.setattr(config, "_settings", config.AppSettings(extraction_password=SENTINEL))
+
+    @asynccontextmanager
+    async def operation():
+        yield
+
+    monkeypatch.setattr(main.app.state, "application", SimpleNamespace(application_operation=operation),
+                        raising=False)
+    _record, token = await accounts.create_token(DEFAULT_INTEGRATION_ID, "rebinding-probe")
+    transport = httpx.ASGITransport(app=main.app, raise_app_exceptions=False)
+    async with httpx.AsyncClient(transport=transport, base_url=SOCKET) as client:
+        yield client, token
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", LEGITIMATE_HOSTS)
+async def test_open_mode_reads_answer_at_this_installations_own_authority(open_mode, host):
+    client, _token = open_mode
+    passwords = await client.get("/api/settings/extraction-passwords", headers={"Host": host})
+    assert passwords.status_code == 200 and passwords.json() == {"passwords": SENTINEL}
+    shell = await client.get("/", headers={"Host": host})
+    asset = await client.get("/app.js", headers={"Host": host})
+    assert shell.status_code == 200 and "<html" in shell.text.casefold()
+    assert asset.status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", FOREIGN_HOSTS)
+async def test_a_rebound_or_foreign_host_reads_nothing_in_open_mode(open_mode, host):
+    client, _token = open_mode
+    for path in SENSITIVE_READS:
+        response = await client.get(path, headers={"Host": host})
+        assert response.status_code == 403, (host, path, response.status_code)
+        assert response.content == b"Forbidden authority", (host, path)
+        assert b"WS2A-ARCHIVE" not in response.content
+
+
+@pytest.mark.asyncio
+async def test_a_forwarded_host_header_neither_grants_nor_removes_authority(open_mode):
+    client, _token = open_mode
+    spoofed = await client.get("/api/settings/extraction-passwords", headers={
+        "Host": "rebind.attacker.example:8081", "X-Forwarded-Host": "debridpulse.local:8081",
+        "Forwarded": "host=debridpulse.local:8081"})
+    assert spoofed.status_code == 403 and b"WS2A-ARCHIVE" not in spoofed.content
+    direct = await client.get("/api/settings/extraction-passwords", headers={
+        "Host": "192.168.226.200:8081", "X-Forwarded-Host": "rebind.attacker.example"})
+    assert direct.status_code == 200 and direct.json() == {"passwords": SENTINEL}
+
+
+@pytest.mark.asyncio
+async def test_public_paths_and_integration_tokens_are_not_authority_bound(open_mode):
+    client, token = open_mode
+    for path in ("/api/health", "/api/version", "/api/auth/status"):
+        assert (await client.get(path, headers={"Host": "rebind.attacker.example:8081"})).status_code == 200, path
+    # An *arr or script container calling by its Compose service name proves a token, never the standalone Admin.
+    import auth.middleware as middleware
+    seen = []
+
+    async def downstream(request):
+        seen.append(request.state.principal)
+        return Response(status_code=200)
+
+    request = _request(method="GET", path="/api/requests", host="debridpulse:8080", fetch_site=None,
+                       server=("172.18.0.4", 8080), extra_headers={"Authorization": f"Bearer {token}"})
+    assert (await middleware.enforce_authentication(request, downstream)).status_code == 200
+    assert [principal.role for principal in seen] == ["integration"]
+    refused = await client.get("/api/settings/extraction-passwords",
+                               headers={"Host": "debridpulse:8080", "Authorization": f"Bearer {token}"})
+    assert refused.status_code == 403 and b"WS2A-ARCHIVE" not in refused.content  # the Integration role's own refusal
+
+
+@pytest.mark.asyncio
+async def test_a_configured_https_public_base_url_keeps_reverse_proxy_reads(open_mode, monkeypatch):
+    client, _token = open_mode
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://download.example.com")
+    proxied = await client.get("/api/settings/extraction-passwords", headers={"Host": "download.example.com"})
+    assert proxied.status_code == 200 and proxied.json() == {"passwords": SENTINEL}
+    other = await client.get("/api/settings/extraction-passwords", headers={"Host": "other.example.com"})
+    assert other.status_code == 403
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", [None, "", "bad host", "debridpulse.local:0", "user@debridpulse.local"])
+async def test_a_missing_or_malformed_host_is_refused_before_open_mode_admission(host, monkeypatch):
+    import auth.middleware as middleware
+    from core.config import AppSettings
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(middleware, "get_settings", lambda: AppSettings())
+    reached = False
+
+    async def downstream(_request):
+        nonlocal reached
+        reached = True
+        return Response(status_code=200)
+
+    request = _request(method="GET", path="/api/settings/extraction-passwords", host=host, fetch_site=None,
+                       server=("192.168.226.200", 8081))
+    response = await middleware.enforce_authentication(request, downstream)
+    assert response.status_code == 403 and response.body == b"Forbidden authority"
+    assert reached is False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("host", ["debridpulse.local:8081", "nas.home.arpa:8081", "dp.internal:8081",
+                                  "app.localhost:8081"])
+async def test_a_same_origin_write_at_a_local_only_name_is_admitted(host, monkeypatch):
+    """Intentional (WS2a decision A): the one authority now admits these
+    names for writes as well as reads; Origin must still equal the Host."""
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    same = _request(host=host, origin=f"http://{host}", server=("192.168.226.200", 8081))
+    assert (await enforce_general_web_security(same, _ok)).status_code == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("host", "origin", "fetch_site", "body"), [
+    ("debridpulse:8081", "http://debridpulse:8081", "same-origin", b"Forbidden authority"),
+    ("dp.lan:8081", "http://dp.lan:8081", "same-origin", b"Forbidden authority"),
+    ("rebind.attacker.example:8081", "http://rebind.attacker.example:8081", "same-origin", b"Forbidden authority"),
+    ("debridpulse.local:8081", "http://rebind.attacker.example:8081", "same-origin", b"Forbidden origin"),
+    ("debridpulse.local:8081", "https://debridpulse.local:8081", "same-origin", b"Forbidden origin"),
+    ("debridpulse.local:8081", "null", "same-origin", b"Forbidden origin"),
+    ("debridpulse.local:8081", "http://rebind.attacker.example:8081", "cross-site", b"Forbidden request context"),
+])
+async def test_untrusted_or_cross_origin_writes_stay_refused(host, origin, fetch_site, body, monkeypatch):
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    request = _request(host=host, origin=origin, fetch_site=fetch_site, server=("192.168.226.200", 8081))
+    response = await enforce_general_web_security(request, _ok)
+    assert response.status_code == 403 and response.body == body
+
+
+@pytest.mark.asyncio
+async def test_open_mode_reverse_proxy_bootstrap_still_reaches_its_route(monkeypatch):
+    """A fresh reverse-proxy deployment's one bootstrap mutation is admitted by
+    the authentication boundary exactly as by the security boundary."""
+    import auth.middleware as middleware
+    from core.config import AppSettings
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(middleware, "get_settings", lambda: AppSettings())
+    proxy = "download.example.com"
+    bootstrap = _request(method="PUT", path="/api/auth/config", host=proxy, origin=f"https://{proxy}",
+                         server=("0.0.0.0", 8080), body=f'{{"public_base_url": "https://{proxy}"}}'.encode())
+    assert (await enforce_general_web_security(bootstrap, _ok)).status_code == 200
+    assert (await middleware.enforce_authentication(bootstrap, _ok)).status_code == 200
+    read = _request(method="GET", path="/api/auth/config", host=proxy, server=("0.0.0.0", 8080))
+    assert (await middleware.enforce_authentication(read, _ok)).status_code == 403
+
+
+@pytest.mark.asyncio
+async def test_authenticated_modes_answer_a_foreign_host_with_their_own_challenge(monkeypatch):
+    """The authority bound applies to the credential-less standalone Admin
+    only; password mode keeps refusing an unauthenticated request as before."""
+    import auth.middleware as middleware
+    from core.config import AppSettings
+
+    monkeypatch.delenv("PUBLIC_BASE_URL", raising=False)
+    monkeypatch.setattr(middleware, "get_settings", lambda: AppSettings(auth_password_enabled=True))
+    request = _request(method="GET", path="/api/settings/extraction-passwords", host="rebind.attacker.example",
+                       fetch_site=None, server=("192.168.226.200", 8081))
+    assert (await middleware.enforce_authentication(request, _ok)).status_code == 401

@@ -155,11 +155,24 @@ def _direct_request_origin(request, authority: tuple[str, int | None]) -> tuple[
     return scheme, host, int(port)
 
 
-def _is_literal_direct_host(host: str) -> bool:
-    if str(host or "").casefold() == "localhost":
+# Special-use names no public DNS delegates, so no remote site can serve a page
+# from one -- the precondition of DNS rebinding: mDNS (RFC 6762), the home
+# network domain (RFC 8375), the private-use ``internal`` TLD and loopback
+# names (RFC 6761). Only something already on the LAN can answer for them.
+_LOCAL_ONLY_NAME_SUFFIXES = (".local", ".home.arpa", ".internal", ".localhost")
+
+
+def _is_direct_host(host: str) -> bool:
+    """A Host naming this installation directly: ``localhost``, a literal IP,
+    or a name under a local-only special-use suffix. A single-label name or any
+    other DNS name is not one, however it resolves."""
+    host = str(host or "").casefold()
+    if host == "localhost" or any(
+        host.endswith(suffix) and len(host) > len(suffix) for suffix in _LOCAL_ONLY_NAME_SUFFIXES
+    ):
         return True
     try:
-        ipaddress.ip_address(str(host or ""))
+        ipaddress.ip_address(host)
     except ValueError:
         return False
     return True
@@ -169,10 +182,11 @@ def trusted_request_origin(request, settings=None) -> tuple[str, str, int] | Non
     """Resolve browser-visible request origin only from intentional authorities.
 
     A configured public base URL is the canonical reverse-proxy authority.
-    Direct access deliberately permits localhost, literal IP authorities, and an
-    authority that exactly matches ASGI's transport-owned ``scope['server']``.
-    Arbitrary DNS Host values are never promoted to trust merely because Origin
-    repeats the same value.
+    Direct access deliberately permits localhost, literal IP authorities, names
+    under the local-only special-use suffixes, and an authority that exactly
+    matches ASGI's transport-owned ``scope['server']``. Any other DNS Host value
+    is never promoted to trust merely because Origin repeats the same value, and
+    no forwarded header is consulted.
     """
     authority = normalized_host_authority(str(request.headers.get("Host", "") or ""))
     if authority is None:
@@ -186,7 +200,7 @@ def trusted_request_origin(request, settings=None) -> tuple[str, str, int] | Non
     if direct_origin is None:
         return None
     _scheme, host, port = direct_origin
-    if _is_literal_direct_host(host):
+    if _is_direct_host(host):
         return direct_origin
 
     server = request.scope.get("server") if hasattr(request, "scope") else None

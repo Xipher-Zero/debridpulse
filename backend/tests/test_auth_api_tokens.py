@@ -40,7 +40,8 @@ def _settings(**updates):
 
 
 def _request(*, path="/api/stats", headers=None):
-    raw_headers = [
+    # Every HTTP/1.1 request names its authority: the one this scope serves.
+    raw_headers = [(b"host", b"pulse.example")] + [
         (str(key).lower().encode("latin-1"), str(value).encode("latin-1"))
         for key, value in (headers or {}).items()
     ]

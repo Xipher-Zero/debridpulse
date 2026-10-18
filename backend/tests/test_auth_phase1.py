@@ -201,7 +201,7 @@ async def test_public_routes_and_open_mode_remain_admitted(monkeypatch):
         "get_settings",
         lambda: _password_settings(enabled=False),
     )
-    open_request = _request("GET", path="/api/stats")
+    open_request = _request("GET", path="/api/stats", headers={"Host": "debridpulse.local"})
     assert (await enforce_password_http_auth(open_request, _ok)).status_code == 200
     # Open mode is the standalone installation's one Admin, not an anonymous tenant.
     assert open_request.state.principal.authenticated is False

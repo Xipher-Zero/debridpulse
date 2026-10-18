@@ -174,7 +174,16 @@ async def _admit_authenticated(
 async def _admit_standalone(request: Request, call_next: CallNext, cfg) -> Response:
     """No interactive authentication: the request acts as the standalone
     installation's one Admin-equivalent principal, never as an anonymous
-    tenant of a multi-user installation."""
+    tenant of a multi-user installation.
+
+    That principal is granted for this installation's own authority only. A
+    browser page rebound to a foreign name carries no credential, so without
+    this check it would read everything the Admin can, Origin or not. The
+    authority is the one the mutation boundary already decides, including its
+    single reverse-proxy bootstrap allowance."""
+    if (trusted_request_origin(request, settings=cfg) is None
+            and public_base_url_bootstrap_origin(request, cfg) is None):
+        return Response(content="Forbidden authority", status_code=403)
     principal = Principal.standalone()
     _attach_principal(request, principal)
     return await _admit_authenticated(request, call_next, principal, cfg)
