@@ -345,3 +345,50 @@ def test_c9_an_external_entity_is_never_resolved():
                b'<segments><segment bytes="1">m@x</segment></segments></file></nzb>')
     with pytest.raises(InvalidNzb):
         read(io.BytesIO(hostile))
+
+
+def test_c9_one_segment_heavy_file_is_released_segment_by_segment():
+    """PA-PARSE-3: a processed segment was cleared but stayed attached to its
+    file until ``</file>``, so one file of a million segments held them all
+    (109 MiB resident against 28 MiB for the same segments spread over a
+    thousand files). Each segment now leaves its parent once counted. A fresh
+    interpreter streams 800,000 segments of ONE file without touching disk;
+    the facts read are the same as for the many-file control. The measure is
+    the Python heap's peak (``tracemalloc``): resident-set peaks survive
+    ``execve`` on Linux, so a child's ``ru_maxrss`` can start at its parent's
+    and hide the growth."""
+    programme = textwrap.dedent(f"""
+        import io, sys, tracemalloc
+        sys.path.insert(0, {str(_backend_dir())!r})
+        from integrations.usenet.nzb import read
+        SEG = b'<segment bytes="7" number="1">a@b</segment>'
+        def stream(files, per_file):
+            yield b'<nzb>'
+            for _ in range(files):
+                yield b'<file subject="&quot;x.bin&quot;"><segments>'
+                for _ in range(per_file // 1000):
+                    yield SEG * 1000
+                yield b'</segments></file>'
+            yield b'</nzb>'
+        class Raw(io.RawIOBase):
+            def __init__(self, parts): self.parts, self.buf = parts, b''
+            def readable(self): return True
+            def readinto(self, b):
+                while len(self.buf) < len(b):
+                    try: self.buf += next(self.parts)
+                    except StopIteration: break
+                n = min(len(b), len(self.buf)); b[:n] = self.buf[:n]; self.buf = self.buf[n:]
+                return n
+        tracemalloc.start()
+        one = read(io.BufferedReader(Raw(stream(1, 800_000)), 1 << 20))
+        grown = tracemalloc.get_traced_memory()[1]
+        tracemalloc.stop()
+        many = read(io.BufferedReader(Raw(stream(800, 1_000)), 1 << 20))
+        print(grown, one.file_count, one.segment_count, one.declared_bytes, one.name,
+              many.file_count, many.segment_count, many.declared_bytes)
+    """)
+    grown, files, segments, declared, name, many_files, many_segments, many_declared = subprocess.run(
+        [sys.executable, "-c", programme], capture_output=True, text=True, check=True).stdout.split()
+    assert (int(files), int(segments), int(declared), name) == (1, 800_000, 5_600_000, "x.bin")
+    assert (int(many_files), int(many_segments), int(many_declared)) == (800, 800_000, 5_600_000)
+    assert int(grown) < 16 * MIB, f"one segment-heavy file peaked at {int(grown) / MIB:.1f} MiB of Python heap"

@@ -154,17 +154,21 @@ def test_tar_members_are_refused_at_the_first_one_past_the_limit(limited):
     assert consumed == 51
 
 
-def test_tar_directories_are_bounded_too(tmp_path, limited):
+@pytest.mark.parametrize("distinct,refusal", [
+    (True, "more than 50 directories"),   # 2,000 different directories
+    (False, "non-file entries"),           # one directory listed 2,000 times: still bounded as entries
+])
+def test_tar_directories_are_bounded_too(tmp_path, limited, distinct, refusal):
     limited(files=50)
     archive = tmp_path / "dirs.tar.gz"
     with tarfile.open(archive, "w:gz") as out:
         for index in range(2000):
-            info = tarfile.TarInfo(f"d{index}")
+            info = tarfile.TarInfo(f"d{index}" if distinct else "d")
             info.type = tarfile.DIRTYPE
             out.addfile(info)
     dest = tmp_path / "dest"
     dest.mkdir()
-    with pytest.raises(ExtractionBudgetExceeded, match="non-file entries"):
+    with pytest.raises(ExtractionBudgetExceeded, match=refusal):
         _extract_tar(archive, dest)
     assert list(dest.iterdir()) == []
 
@@ -266,3 +270,67 @@ def test_listing_text_and_streamed_lines_decide_alike(limited):
 def test_extraction_tool_output_is_kept_only_as_a_short_tail(tmp_path):
     rc, output = extractor._run_tool(_tool("import sys; sys.stdout.write('z' * (32 << 20) + 'END')"))
     assert rc == 0 and output.endswith("END") and len(output) <= 4096
+
+
+# ── PA-PARSE-4: directories are bounded too, never counted as files or bytes ─
+
+def _deep(index: int, depth: int) -> str:
+    return "/".join(f"{index}{level:03d}" for level in range(depth)) + "/f"
+
+
+@pytest.mark.parametrize("build", ["zip_entries", "zip_implied", "tar_implied"])
+def test_the_directories_an_archive_would_create_are_bounded_before_any_is(tmp_path, limited, build):
+    limited(files=5)
+    archive = tmp_path / ("a.zip" if build.startswith("zip") else "a.tar.gz")
+    if build == "zip_entries":
+        archive.write_bytes(_zip({f"d{i}/": b"" for i in range(200)}))
+    elif build == "zip_implied":
+        archive.write_bytes(_zip({_deep(i, 40): b"" for i in range(3)}))
+    else:
+        _tar(archive, {_deep(i, 40): b"" for i in range(3)}, mode="w:gz")
+    dest = tmp_path / "dest"
+    dest.mkdir()
+    with pytest.raises(ExtractionBudgetExceeded, match="more than 5 directories"):
+        extractor._extract_into_directory(archive, dest)
+    assert list(dest.iterdir()) == []
+
+
+def test_a_directory_is_counted_once_however_many_members_share_it(tmp_path, limited):
+    limited(files=50)
+    archive = tmp_path / "a.zip"
+    archive.write_bytes(_zip({f"one/two/three/f{i}.txt": b"x" for i in range(40)}))
+    dest = tmp_path / "dest"
+    extractor._extract_sync(archive, dest)
+    assert len(_files(dest)) == 40  # 3 directories and 40 files: within both budgets
+
+
+def test_the_7z_listing_counts_implied_directories(limited):
+    limited(files=5)
+    listing = "Header\n----------\n" + "".join(
+        f"Path = {_deep(i, 4)}\nSize = 1\nAttributes = A\n\n" for i in range(2))
+    with pytest.raises(ExtractionBudgetExceeded, match="more than 5 directories"):
+        validate_7z_listing(Path(__file__), listing)
+
+
+def test_staged_trees_count_their_directories_live_and_at_commit(tmp_path, limited):
+    limited(files=5)
+    stage = tmp_path / "stage"
+    for index in range(6):
+        (stage / f"d{index}").mkdir(parents=True)
+    with pytest.raises(ExtractionBudgetExceeded, match="more than 5 directories"):
+        safety.validate_staging_tree(stage, Path(__file__))
+    with pytest.raises(ExtractionBudgetExceeded, match="more than 5 directories"):
+        safety.validate_extracted_tree(stage, Path(__file__))
+    (stage / "d5").rmdir()
+    assert safety.validate_extracted_tree(stage, Path(__file__)) == (0, 0, 5)
+
+
+@pytest.mark.asyncio
+async def test_nested_archives_have_only_the_directories_the_job_has_left(tmp_path, limited):
+    limited(files=8, gib=0.01, ratio=100000.0)
+    inner = _zip({_deep(0, 5): b"x"})  # five directories of its own
+    outer = _tar(tmp_path / "outer.tar.xz", {"a/b/c/d/filler.txt": b"x", "a/b/c/d/inner.zip": inner})
+    dest = tmp_path / "dest"
+    ok, message = await SecureExtractor(1).extract_archive(outer, dest, delete_after=False)
+    assert ok is False and "directories" in message  # the outer's four leave four of eight; the inner needs five
+    assert not dest.exists() or _files(dest) == []

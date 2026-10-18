@@ -45,6 +45,9 @@ class ExtractionLimits:
     max_files: int
     max_bytes: int
     max_ratio: float
+    # Directories are bounded by the same configured count as files, counted
+    # separately: never as a file, and never as bytes.
+    max_directories: int
 
 
 # The budget still available to the extraction job running in this thread,
@@ -73,6 +76,7 @@ def configured_limits() -> ExtractionLimits:
         max_files=max_files,
         max_bytes=max(1, int(max_gb * 1024 * 1024 * 1024)),
         max_ratio=max_ratio,
+        max_directories=max_files,
     )
 
 
@@ -121,10 +125,37 @@ def _validate_other_entries(count: int) -> None:
     the same configured count, separately from files, so a listing can never
     grow without limit."""
     cfg = limits()
-    if count > cfg.max_files:
+    if count > cfg.max_directories:
         raise ExtractionBudgetExceeded(
-            f"Archive contains more than {cfg.max_files} non-file entries; limit is {cfg.max_files}"
+            f"Archive contains more than {cfg.max_directories} non-file entries; limit is {cfg.max_directories}"
         )
+
+
+def _validate_directories(count: int) -> None:
+    cfg = limits()
+    if count > cfg.max_directories:
+        raise ExtractionBudgetExceeded(
+            f"Archive creates more than {cfg.max_directories} directories; limit is {cfg.max_directories}"
+        )
+
+
+class _ArchiveDirectories:
+    """The distinct directories an archive's members would create: every
+    directory entry and every directory a member's path implies, counted as
+    they are found and refused at the first one past the budget. Ancestors are
+    walked from the deepest and stop at one already counted, so a member
+    costs at most its own new directories."""
+
+    def __init__(self) -> None:
+        self._seen: set[str] = set()
+
+    def member(self, parts: tuple[str, ...], *, is_dir: bool) -> None:
+        for end in range(len(parts) if is_dir else len(parts) - 1, 0, -1):
+            directory = "/".join(parts[:end])
+            if directory in self._seen:
+                return
+            self._seen.add(directory)
+            _validate_directories(len(self._seen))
 
 
 def validate_member_name(name: str) -> tuple[str, ...]:
@@ -147,13 +178,15 @@ def validate_zip_members(archive: Path, members: Iterable[object]) -> None:
     member_list = list(members)
     file_count = 0
     expanded = 0
+    directories = _ArchiveDirectories()
     for member in member_list:
         name = str(getattr(member, "filename", "") or "")
-        validate_member_name(name)
+        parts = validate_member_name(name)
         unix_mode = int(getattr(member, "external_attr", 0) or 0) >> 16
         if stat.S_ISLNK(unix_mode):
             raise ValueError(f"Unsafe ZIP symlink member: {name!r}")
         is_dir = bool(getattr(member, "is_dir")())
+        directories.member(parts, is_dir=is_dir)
         if not is_dir:
             file_count += 1
             expanded += max(0, int(getattr(member, "file_size", 0) or 0))
@@ -170,15 +203,17 @@ def validate_tar_members(archive: Path, members: Iterable[object]) -> list:
     file_count = 0
     other_count = 0
     expanded = 0
+    directories = _ArchiveDirectories()
     for member in members:
         name = str(getattr(member, "name", "") or "")
-        validate_member_name(name)
+        parts = validate_member_name(name)
         if any(
             bool(getattr(member, method)())
             for method in ("issym", "islnk", "isdev", "isfifo")
             if hasattr(member, method)
         ):
             raise ValueError(f"Unsafe TAR special/link member: {name!r}")
+        directories.member(parts, is_dir=bool(getattr(member, "isdir")()))
         if bool(getattr(member, "isfile")()):
             file_count += 1
             expanded += max(0, int(getattr(member, "size", 0) or 0))
@@ -266,13 +301,15 @@ def validate_7z_listing(archive: Path, output: str | Iterable[str]) -> None:
     other_count = 0
     expanded = 0
     fields: dict[str, str] = {}
+    directories = _ArchiveDirectories()
 
     def finish(record: dict[str, str]) -> None:
         nonlocal file_count, other_count, expanded
         name = record.get("Path", "")
         if not name:
             return
-        validate_member_name(name)
+        parts = validate_member_name(name)
+        directories.member(parts, is_dir=record.get("Attributes", "").startswith("D"))
         if record.get("Attributes", "").startswith("D"):
             other_count += 1
             _validate_other_entries(other_count)
@@ -317,6 +354,7 @@ def validate_staging_tree(root: Path, archive: Path) -> None:
     root = root.resolve()
     file_count = 0
     expanded = 0
+    directories = 0
     for current in root.rglob("*"):
         try:
             mode = current.lstat().st_mode
@@ -325,6 +363,8 @@ def validate_staging_tree(root: Path, archive: Path) -> None:
         if stat.S_ISLNK(mode):
             raise ValueError(f"Extracted archive created a symlink: {current.name!r}")
         if stat.S_ISDIR(mode):
+            directories += 1
+            _validate_directories(directories)
             continue
         if not stat.S_ISREG(mode):
             raise ValueError(f"Extracted archive created a special file: {current.name!r}")
@@ -337,10 +377,12 @@ def validate_staging_tree(root: Path, archive: Path) -> None:
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
 
 
-def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int]:
+def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int, int]:
+    """Validate a staged tree and return its files, bytes and directories."""
     root = root.resolve()
     file_count = 0
     expanded = 0
+    directories = 0
     for current in root.rglob("*"):
         if current.is_symlink():
             raise ValueError(f"Extracted archive created a symlink: {current.name!r}")
@@ -349,6 +391,8 @@ def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int]:
             raise ValueError(f"Extracted path escapes staging directory: {current!s}")
         mode = current.lstat().st_mode
         if stat.S_ISDIR(mode):
+            directories += 1
+            _validate_directories(directories)
             continue
         if not stat.S_ISREG(mode):
             raise ValueError(f"Extracted archive created a special file: {current.name!r}")
@@ -357,7 +401,7 @@ def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int]:
         file_count += 1
         expanded += max(0, int(current.stat().st_size))
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
-    return file_count, expanded
+    return file_count, expanded, directories
 
 
 def _ensure_safe_destination(root: Path, target: Path) -> None:

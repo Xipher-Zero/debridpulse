@@ -563,11 +563,12 @@ def _extract_job_sync(
         configured = configured_limits()
         job_bytes = job_byte_limit(archive)
         for nested in nested_archives[:10]:
-            used_files, used_bytes = validate_extracted_tree(stage, archive)
+            used_files, used_bytes, used_directories = validate_extracted_tree(stage, archive)
             remaining = ExtractionLimits(
                 max_files=configured.max_files - used_files,
                 max_bytes=job_bytes - used_bytes,
                 max_ratio=configured.max_ratio,
+                max_directories=configured.max_directories - used_directories,
             )
             try:
                 with job_limits(remaining):

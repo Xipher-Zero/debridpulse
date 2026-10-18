@@ -87,9 +87,10 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
     """Validate an NZB read from ``stream`` and return its neutral facts.
 
     Bounded: the reader holds one element at a time. A ``segment`` is cleared
-    once its size and message identifier are accounted for, and a ``file`` once
-    its segments have been counted, so nothing accumulates however large the
-    manifest is.
+    and detached from its parent once its size and message identifier are
+    accounted for, and a ``file`` once its segments have been counted, so
+    nothing accumulates however large the manifest -- or any one file in it --
+    is.
 
     Raises ``InvalidNzb`` for anything that is not a structurally complete NZB
     describing at least one file with at least one segment.
@@ -101,6 +102,9 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
     first_name = ""
     root_seen = False
     in_file = False
+    # The elements currently open, outermost first: a finished element's
+    # parent is the one beneath it.
+    open_elements = []
 
     # The same parser the document-tree reader used: it resolves no external
     # entity and performs no network access.
@@ -108,6 +112,7 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
         for event, element in ElementTree.iterparse(stream, events=("start", "end")):
             name = _local(element.tag)
             if event == "start":
+                open_elements.append(element)
                 if not root_seen:
                     root_seen = True
                     if name != "nzb":
@@ -116,6 +121,8 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
                     in_file = True
                     file_segments = 0
                 continue
+            open_elements.pop()
+            parent = open_elements[-1] if open_elements else None
             if name == "segment":
                 declared += _segment_bytes(element)
                 segments += 1
@@ -123,6 +130,8 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
                 if segments > MAX_NZB_SEGMENTS:
                     raise InvalidNzb("NZB manifest declares too many segments")
                 element.clear()
+                if parent is not None:
+                    parent.remove(element)
             elif name == "file":
                 if not file_segments:
                     raise InvalidNzb("NZB manifest declares a file with no segments")
@@ -133,6 +142,8 @@ def read(stream, *, fallback_name: str = "") -> NzbManifest:
                     first_name = _posted_name(element.get("subject") or "")
                 in_file = False
                 element.clear()
+                if parent is not None:
+                    parent.remove(element)
             elif name == "nzb":
                 element.clear()
     except ElementTree.ParseError as exc:
