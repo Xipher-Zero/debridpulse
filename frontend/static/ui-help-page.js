@@ -676,9 +676,9 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p>DebridPulse modifications are Copyright &copy; 2026 Chris Moore and are distributed under the <b>GNU General Public License v2.0 or later</b> (<code>GPL-2.0-or-later</code>).</p>
-          <p>In practical terms, the GPL allows you to use, study, modify, and redistribute DebridPulse under its license conditions. If you distribute a modified version, the GPL's source-code and licensing requirements apply to that distribution. The complete license text is the authority for the exact terms.</p>
-          <p>DebridPulse is provided without warranty as described by the license.</p>
+          <p>DebridPulse is Copyright &copy; 2026 Chris Moore and is distributed under the <b>GNU General Public License v2.0 or later</b> (<code>GPL-2.0-or-later</code>).</p>
+          <p>The GPL permits you to use, study, modify, and redistribute DebridPulse under its terms. If you redistribute DebridPulse or a modified version, applicable licensing and source-code requirements must be followed. The complete license text governs the exact terms.</p>
+          <p class="dp-help-license-warranty"><b>DebridPulse is provided without warranty, as specified in the license.</b></p>
         </div>
 
         <article class="dp-help-inset">
@@ -779,11 +779,46 @@
     else showTabPanel();
   }
 
+  /* A Help accordion rolls its body down as it opens and up before it closes,
+   * through the one disclosure motion owner (DPMotion.disclose) -- the same
+   * way every Settings disclosure moves. The native <details> stays the
+   * state: `open` is set before an opening and cleared only once the closing
+   * motion has finished, so the body is never hidden before it has rolled up,
+   * and a reversal mid-motion simply turns it around from where it is drawn.
+   * Without the motion owner or the Web Animations API the click is left to
+   * the browser, which opens and closes <details> at once. Reduced motion is
+   * the motion owner's to honour: it settles at once. */
+  const canAnimateDisclosure = () => !!window.DPMotion && typeof Element.prototype.animate === 'function';
+
+  function toggleAccordion(details, summary) {
+    const body = details.querySelector(':scope > .dp-help-accordion-body');
+    if (!body) { details.open = !details.open; return; }
+    if (!details.open || details.dataset.dpClosing === '1') {
+      delete details.dataset.dpClosing;
+      details.open = true;
+      window.DPMotion.disclose(body, true, {animate: true});
+      return;
+    }
+    details.dataset.dpClosing = '1';
+    window.DPMotion.disclose(body, false, {animate: true, focusReturn: summary, onClosed: () => {
+      if (details.dataset.dpClosing !== '1') return;
+      delete details.dataset.dpClosing;
+      details.open = false;
+      body.hidden = false;           // a closed <details> hides it; ready for the next opening
+    }});
+  }
+
   function bindEvents(view) {
     if (view.dataset.dpHelpEventsBound === '1') return;
     view.dataset.dpHelpEventsBound = '1';
 
     view.addEventListener('click', event => {
+      const summary = event.target.closest('.dp-help-accordion > summary');
+      if (summary && canAnimateDisclosure()) {
+        event.preventDefault();
+        toggleAccordion(summary.parentElement, summary);
+        return;
+      }
       const tab = event.target.closest('.dp-help-tab');
       if (!tab) return;
       chooseTab(tab.dataset.tab);

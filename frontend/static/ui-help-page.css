@@ -246,15 +246,23 @@
   margin-top: 5px;
 }
 
+/* The six-step flow is one composed group: every row shares the same three
+   columns, the description column has a readable measure rather than the
+   card's whole width, and the group is as wide as that content and centred
+   in the card. It never grows past the card, and narrow screens stack each
+   row (below). */
 #view-help .dp-help-pipeline {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
 }
 
 #view-help .dp-help-pipeline-row {
   display: grid;
-  grid-template-columns: 168px 18px minmax(0, 1fr);
+  grid-template-columns: 168px 18px minmax(0, 68ch);
   gap: 10px;
   align-items: center;
 }
@@ -365,6 +373,13 @@
   flex-direction: column;
   gap: 6px;
   padding: 12px 16px 14px 40px;
+}
+
+/* The warranty statement closes the licence introduction: bold, centred, and
+   set a little apart from the paragraphs above it. */
+#view-help .dp-help-license-warranty {
+  margin-top: 4px;
+  text-align: center;
 }
 
 #view-help .dp-help-license-actions {
