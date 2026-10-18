@@ -204,9 +204,22 @@ async def put_external_profiles(body: ProfilesUpdate, application: ApplicationSe
                                    f"{'s' if total == 1 else ''} on this profile; nothing was changed"})
                 retired = await ExternalClients.retire_dependents_in(db, retiring)
                 current.external_delivery = catalog
-                save_settings(current)
+                # The database commit is the write's one commit point: the
+                # catalog file is written only once the retirement is durable,
+                # so a failed or interrupted commit never leaves a catalog
+                # whose dependents were not retired. The new catalog is
+                # applied before it, while this write still holds the
+                # reservation lock, and withdrawn again if the write does not
+                # complete. An interruption after the commit leaves the
+                # retirement (settled by maintenance) under the unchanged
+                # catalog, which the same write, retried, then replaces.
                 apply_settings(current)
-                await db.commit()
+                try:
+                    await db.commit()
+                    save_settings(current)
+                except BaseException:
+                    apply_settings(previous)
+                    raise
             await journal_configuration_change(previous, current)
         if not retired:
             return catalog.model_dump()
