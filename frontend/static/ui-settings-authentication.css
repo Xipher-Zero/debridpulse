@@ -224,6 +224,15 @@ body.light #view-settings .dp-settings-auth-kpi.dash-hero-stat {
   flex-shrink: 0;
 }
 
+/* The Browser Session Lifetime sentence reads as about two balanced lines: its
+   measure is just over half the sentence's own length, in its own `ch`, so it
+   follows the font rather than a pixel guess, and the island stays compact
+   and centred while the card has room. */
+#view-settings .dp-settings-auth-session-lifetime .form-hint {
+  max-width: 56ch;
+  text-wrap: balance;
+}
+
 /* The logout action lives inside the sessions field, at its trailing edge.
    Being a flex SIBLING of the count is what keeps the two apart: nothing here
    reserves a guessed width for a button whose size the font decides. */
