@@ -40,7 +40,7 @@ from pathlib import Path, PurePosixPath
 from typing import Awaitable, Callable
 
 from executors.media.sandbox import MediaSandbox, public_scope
-from executors.process_ownership import OwnedProcess, ProcessGroupAlive
+from executors.process_ownership import OwnedProcess, ProcessGroupAlive, output_lines
 from integrations.media.outcomes import outcome_error
 from transfers.errors import Category, Domain, NormalizedError, Retryability, Stage, TransferError
 from transfers.filesystem import validate_target
@@ -337,7 +337,7 @@ class MediaExecutor:
     async def _follow(self, run: _Run) -> None:
         """The worker's progress events: per component, never double counted."""
         stream = run.owned.process.stdout
-        while line := await stream.readline():
+        async for line in output_lines(stream):
             try:
                 event = json.loads(line)
             except (ValueError, UnicodeDecodeError):

@@ -40,6 +40,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 _PIPE_CAPACITY = 64 * 1024
+# The longest native output line read as one line (``asyncio``'s own default).
+OUTPUT_LINE_LIMIT = 64 * 1024
+_OUTPUT_CHUNK = 64 * 1024
 # The one-byte identity gate: the child waits here until its group id is
 # durable, then becomes the real program; end-of-file means nobody recorded it.
 # Before it becomes the program it hands back the signal dispositions Python
@@ -57,6 +60,38 @@ _GATE = (
     "    os._exit(125)\n"
     "os.execv(sys.argv[2], sys.argv[3:])\n"
 )
+
+
+async def output_lines(stream, *, limit: int = OUTPUT_LINE_LIMIT, on_overlong=None):
+    """Every complete line a native process writes to ``stream`` (each ending
+    in its newline; a final unterminated one too), read in bounded chunks.
+
+    A line longer than ``limit`` is consumed and dropped whole -- never yielded,
+    in part or in full, so no fragment of it can be taken for a protocol
+    record -- and reported to ``on_overlong``. The stream keeps being read
+    either way: a reader that gave up would leave the writer blocked on a
+    full pipe."""
+    buffer = bytearray()
+    skipping = False
+    while chunk := await stream.read(_OUTPUT_CHUNK):
+        buffer += chunk
+        while (end := buffer.find(b"\n")) >= 0:
+            line = bytes(buffer[:end + 1])
+            del buffer[:end + 1]
+            if skipping:
+                skipping = False
+            elif len(line) > limit:
+                if on_overlong is not None:
+                    on_overlong()
+            else:
+                yield line
+        if len(buffer) > limit:
+            if not skipping and on_overlong is not None:
+                on_overlong()
+            skipping = True
+            buffer.clear()
+    if buffer and not skipping:
+        yield bytes(buffer)
 
 
 class ProcessGroupAlive(Exception):

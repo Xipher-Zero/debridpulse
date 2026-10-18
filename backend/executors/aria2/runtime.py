@@ -11,6 +11,7 @@ from typing import Any, Dict, Optional
 
 from core.logging_utils import sanitize_log_value
 from executors.aria2.client import Aria2Service
+from executors.process_ownership import output_lines
 
 logger = logging.getLogger("alldebrid.aria2")
 
@@ -470,10 +471,10 @@ class Aria2Runtime:
     async def _drain_stream(self, stream, name: str) -> None:
         if not stream:
             return
-        while True:
-            line = await stream.readline()
-            if not line:
-                return
+        def overlong() -> None:
+            self._last_output.append(f"{name}: (an over-long output line was omitted)")
+
+        async for line in output_lines(stream, on_overlong=overlong):
             text = line.decode("utf-8", errors="replace").strip()
             if text:
                 self._last_output.append(f"{name}: {text}")
@@ -514,7 +515,12 @@ class Aria2Runtime:
                     process.kill()
                 except ProcessLookupError:
                     pass
-                await process.wait()
+                try:
+                    # Bounded: this runs under the runtime lock every start,
+                    # stop and restart needs.
+                    await asyncio.wait_for(process.wait(), timeout=5)
+                except asyncio.TimeoutError:
+                    logger.warning("aria2 did not exit within 5s of being killed")
         await self._cancel_drain_tasks()
         self._process = None
         self._started_at = 0.0

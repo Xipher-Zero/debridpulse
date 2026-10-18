@@ -67,7 +67,7 @@ from typing import Awaitable, Callable
 from urllib.parse import unquote, urlsplit
 
 import services
-from executors.process_ownership import OwnedProcess, ProcessGroupAlive, ProcessOwnership
+from executors.process_ownership import OwnedProcess, ProcessGroupAlive, ProcessOwnership, output_lines
 from executors.rsync.translation import (
     ListingUnusable, channel_failure, depth_options, listed_roots, listing_entries, literal_path, native_failure,
 )
@@ -1019,7 +1019,7 @@ class RsyncExecutor:
     async def _follow(self, run: _Run) -> None:
         """Read rsync's own records: the begun record ends the connection phase."""
         stream = run.owned.process.stdout
-        while line := await stream.readline():
+        async for line in output_lines(stream):
             if line.startswith(_BEGUN) and not run.begun:
                 run.begun = True
                 try:

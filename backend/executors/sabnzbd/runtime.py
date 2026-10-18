@@ -19,6 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict
 
+from executors.process_ownership import output_lines
+
 logger = logging.getLogger("debridpulse.usenet")
 
 # Loopback only: the service is reachable from the DebridPulse process and
@@ -283,17 +285,21 @@ class UsenetRuntime:
         fact that a stream ended is worth recording.
         """
         suppressed = 0
+
+        def count() -> None:
+            # The line's CONTENT is discarded, never logged. Only how many
+            # lines were suppressed is kept, so an operator can still tell
+            # that the service was talking when it died without any of what
+            # it said crossing the secret boundary. An over-long line counts
+            # as one too.
+            nonlocal suppressed
+            suppressed += 1
+            self._suppressed_output[name] = suppressed
+
         try:
-            while True:
-                line = await stream.readline()
-                if not line:
-                    return
-                # The line's CONTENT is discarded, never logged. Only how many
-                # lines were suppressed is kept, so an operator can still tell
-                # that the service was talking when it died without any of what
-                # it said crossing the secret boundary.
-                suppressed += 1
-                self._suppressed_output[name] = suppressed
+            async for _line in output_lines(stream, on_overlong=count):
+                count()
+            return
         except asyncio.CancelledError:
             raise
         except Exception:
