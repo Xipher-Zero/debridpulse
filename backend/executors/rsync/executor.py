@@ -48,7 +48,14 @@ reached through the egress guard's authenticated CONNECT (``RSYNC_PROXY``),
 SSH through the one SSH exec channel (``services.ssh_channel``) over a guard
 tunnel opened here. Discovery, evidence and execution share one preparation
 (``_transport``), so none of them can trust, authenticate or route differently.
-Secrets never reach argv, the environment, a file or a diagnostic.
+Secrets never reach argv, a file or a diagnostic. One capability does reach
+the environment, because rsync accepts its proxy nowhere else: a daemon
+route's guard credential (``RSYNC_PROXY``). It admits only that invocation's
+one authorized host and port, still under the guard's own resolution and
+address policy, and is revoked when that invocation's process has ended
+(``DownloaderEgressGuard.proxy_credential`` lease) -- it is never a reusable
+credential. A process running as the same account can read it while the
+invocation lasts.
 """
 from __future__ import annotations
 
@@ -174,6 +181,9 @@ class _Transport:
     status: int | None = None
     status_child: int | None = None
     redactions: tuple[str, ...] = ()
+    # The guard lease a daemon route's credential is bound to: revoked once
+    # the invocation's process has ended (``RsyncExecutor._end_route``).
+    lease: str | None = None
 
     def argv(self, head: list[str], tail: list[str], descriptors: dict[str, int]) -> list[str]:
         return [*head, *self.options(descriptors), "--", *tail]
@@ -232,6 +242,7 @@ class _Run:
     tasks: list = field(default_factory=list)
     sample: tuple[float, int] = (0.0, 0)
     terminal: ExecutionObservation | None = None
+    lease: str | None = None
 
 
 class _Refused(Exception):
@@ -443,10 +454,12 @@ class RsyncExecutor:
             try:
                 await self.egress.ensure_started()
                 # The route carries rsync's own Connection Timeout: the guard's
-                # hop to the server is bounded by it (rsync's --contimeout is not).
+                # hop to the server is bounded by it (rsync's --contimeout is not),
+                # and is leased to this one invocation.
+                lease = uuid.uuid4().hex
                 proxy_host, proxy_port, user, token = self.egress.proxy_credential(
                     remote.address, connect_timeout_seconds=float(cfg.connection_timeout_seconds),
-                    budget=self.descriptor.id, **granted)
+                    budget=self.descriptor.id, lease=lease, **granted)
             except Exception as exc:
                 raise self._failure(Category.EGRESS_POLICY_VIOLATION, stage, domain=Domain.SECURITY) from exc
             extra = {"RSYNC_PROXY": f"{user}:{token}@{proxy_host}:{proxy_port}"}
@@ -462,7 +475,8 @@ class RsyncExecutor:
 
             return _Transport(daemon_options, self.processes.environment(extra), {},
                               stdin=password.encode("utf-8"),
-                              redactions=tuple(value for value in (token, credential.get("password")) if value))
+                              redactions=tuple(value for value in (token, credential.get("password")) if value),
+                              lease=lease)
         if not cfg.python or any(char.isspace() or char in "'\"" for char in cfg.python):
             # rsync splits its remote-shell program on spaces without a shell.
             raise self._failure(Category.INVALID_CONFIGURATION, stage)
@@ -507,6 +521,14 @@ class RsyncExecutor:
                           status_child=status_write,
                           redactions=tuple(value for value in credential.values() if value))
 
+    def _end_route(self, holder) -> None:
+        """Revoke the guard lease of an invocation (a transport or a run)
+        whose process has ended or never started: its credential admits
+        nothing more."""
+        if getattr(holder, "lease", None):
+            self.egress.revoke_proxy_credential(holder.lease)
+            holder.lease = None
+
     # ── bounded invocations: listings and evidence windows ─────────────────
 
     async def _invoke(self, argv_head: list[str], tail: list[str], transport: _Transport, *,
@@ -529,6 +551,7 @@ class RsyncExecutor:
                 fd_argv=lambda descriptors: transport.argv(argv_head, tail, descriptors))
         except BaseException:
             transport.discard()
+            self._end_route(transport)
             raise
         transport.close()
         deadline = time.monotonic() + cfg.connection_timeout_seconds + cfg.transfer_timeout_seconds
@@ -575,6 +598,7 @@ class RsyncExecutor:
                 task.cancel()
             records = self._status(transport.status, status)
             self.processes.forget(identity)
+            self._end_route(transport)
             if interrupted:
                 raise asyncio.CancelledError
         overflow = len(stdout) >= limit
@@ -941,30 +965,32 @@ class RsyncExecutor:
             staging = self._staging(target)
             transport = await self._transport(remote, candidate, submitted, Stage.QUEUE)
             secrets += transport.redactions
-            # A deletion or pause can revoke authority during DNS or egress setup.
-            if not await self._check(handle, authority):
-                transport.discard()
-                return ExecutionObservation(handle, ExecutionState.PAUSED)
+            # Until a started process owns the transport, every way out -- a
+            # refusal, an error, a cancellation -- releases it and its lease.
             try:
+                # A deletion or pause can revoke authority during DNS or egress setup.
+                if not await self._check(handle, authority):
+                    transport.discard()
+                    self._end_route(transport)
+                    return ExecutionObservation(handle, ExecutionState.PAUSED)
                 mode = self._authorized_material(request, target, staging)
-            except BaseException:
-                transport.discard()
-                raise
-            head = self._execution_head(mode, staging)
-            try:
+                head = self._execution_head(mode, staging)
                 owned = await self.processes.spawn(
                     handle.attempt_id, [], env=transport.env, secrets=transport.secrets, stdin=transport.stdin,
                     pass_fds=transport.pass_fds,
                     fd_argv=lambda descriptors: transport.argv(head, [remote.native(), str(target)], descriptors))
             except ProcessGroupAlive:
                 transport.discard()
+                self._end_route(transport)
                 return await self.observe(handle)
             except BaseException:
                 transport.discard()
+                self._end_route(transport)
                 raise
             transport.close()
             run = _Run(owned, target, staging, max(0, int(candidate.expected_bytes or 0)), mode,
-                       transport.status, tuple(value for value in secrets if value), time.monotonic())
+                       transport.status, tuple(value for value in secrets if value), time.monotonic(),
+                       lease=transport.lease)
             self._runs[handle.attempt_id] = run
             run.tasks = [asyncio.ensure_future(self._follow(run)),
                          asyncio.ensure_future(self._pump_stderr(run)),
@@ -1004,7 +1030,7 @@ class RsyncExecutor:
                     return ExecutionObservation(handle, ExecutionState.PAUSED)
             except TransferError as exc:
                 return ExecutionObservation(handle, ExecutionState.UNKNOWN, error=exc.error)
-            del self._runs[handle.attempt_id]
+            self._end_route(self._runs.pop(handle.attempt_id))
             self._finished.pop(handle.attempt_id, None)
             self.processes.forget(handle.attempt_id)
             return await self._start(request, handle, submitted, authority="resume")
@@ -1080,6 +1106,7 @@ class RsyncExecutor:
     async def _terminal(self, handle: ExecutionHandle, run: _Run) -> ExecutionObservation:
         if run.terminal is not None:
             return run.terminal
+        self._end_route(run)                    # its process has ended
         try:
             # A descendant still holding rsync's output open never delays truth.
             await asyncio.wait_for(asyncio.gather(*run.tasks, return_exceptions=True), timeout=5)

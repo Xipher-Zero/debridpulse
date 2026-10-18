@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import shutil
 import time
 from collections import OrderedDict, deque
@@ -16,9 +17,14 @@ from executors.process_ownership import output_lines
 logger = logging.getLogger("alldebrid.aria2")
 
 # The daemon DebridPulse runs listens on loopback only. Its RPC endpoint and
-# secret are constructed here and never come from settings.
+# secret are constructed here and never come from settings. The secret is
+# unpredictable and belongs to this DebridPulse process: the daemon is always
+# this process's own child (a daemon is never adopted), so every start,
+# restart and recovery here, and every client built here, share it, while a
+# new process starts its own daemon under a new one. No other local program
+# can drive the daemon by knowing DebridPulse's source.
 RPC_PORT = 6800
-RPC_SECRET = "debridpulse-internal-aria2-rpc"
+RPC_SECRET = secrets.token_urlsafe(32)
 
 
 def _canonical_aria2_options(cfg):
@@ -207,10 +213,26 @@ class Aria2Runtime:
         aria2 = self._config.options
         log_file = Path(aria2.log_file or "/app/data/aria2/aria2.log")
         session_file = Path(aria2.session_file or "/app/data/aria2/aria2.session")
-        log_file.parent.mkdir(parents=True, exist_ok=True)
-        session_file.parent.mkdir(parents=True, exist_ok=True)
+        # The session aria2 saves holds its jobs' credentials (download and
+        # proxy passwords, signed addresses), and aria2 replaces that file with
+        # its own file mode on every save: a folder created here is private to
+        # this account. (The image's data folder already is: entrypoint.sh.)
+        log_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+        session_file.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         session_file.touch(exist_ok=True)
         return log_file, session_file
+
+    def _clear_session(self) -> None:
+        """Empty the saved session. DebridPulse never loads it -- the database
+        is the source of truth and every job is re-added from it -- so the
+        credentials aria2 saved there are kept no longer than the daemon that
+        saved them runs."""
+        _, session_file = self._runtime_paths()
+        try:
+            if session_file.stat().st_size > 0:
+                session_file.write_text("")
+        except OSError as exc:
+            logger.debug("Session file clear failed (non-critical): %s", exc)
 
     def _log_rotation_settings(self) -> tuple[int, int]:
         aria2 = self._config.options
@@ -282,12 +304,7 @@ class Aria2Runtime:
         # _dispatch_pending_aria2_queue re-queues them within seconds.
         # Loading a stale session (potentially with hundreds of old entries)
         # causes a RAM spike and re-adds GIDs that are already completed/removed.
-        if session_file.exists() and session_file.stat().st_size > 0:
-            try:
-                session_file.write_text("")  # clear so aria2 starts clean
-                logger.debug("Cleared aria2 session file on startup (DB is source of truth)")
-            except Exception as _e:
-                logger.debug("Session file clear failed (non-critical): %s", _e)
+        self._clear_session()
         cmd.extend(f"--{key}={value}" for key, value in options.items())
         return cmd
 
@@ -390,6 +407,8 @@ class Aria2Runtime:
                             self._process.kill()
                 self._started_at = 0.0
                 await self._cancel_drain_tasks()
+                if self._process is None or self._process.returncode is not None:
+                    self._clear_session()       # what the stopped daemon saved on its way out
             except Exception as exc:
                 self._last_error = str(exc)
                 logger.warning("aria2 stop failed: %s", exc)

@@ -27,9 +27,11 @@ pytestmark = pytest.mark.asyncio
 
 def _executor(tmp_path):
     owner = ProcessOwnership(tmp_path / "runtime")
-    return types.SimpleNamespace(
+    executor = types.SimpleNamespace(
         configuration=types.SimpleNamespace(connection_timeout_seconds=600, transfer_timeout_seconds=600),
-        processes=owner, _accepted=RsyncExecutor._accepted, _status=RsyncExecutor._status), owner
+        processes=owner, egress=None, _accepted=RsyncExecutor._accepted, _status=RsyncExecutor._status)
+    executor._end_route = lambda holder: RsyncExecutor._end_route(executor, holder)
+    return executor, owner
 
 
 def _transport(owner, script: str):

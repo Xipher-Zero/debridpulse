@@ -30,6 +30,12 @@ by exactly the same credential, resolution and address checks as a ``CONNECT``
 to the same authority, and is then relayed to the approved address as one
 origin-form request on its own connection.
 
+A native client's credential (``proxy_credential``) is bound to one lease --
+one invocation of that client -- and admits nothing once the lease is revoked
+(``revoke_proxy_credential``): a client that can only be handed its route in
+its environment (rsync's ``RSYNC_PROXY``) holds a capability that ends with
+the invocation, never a reusable one for the guard's lifetime.
+
 A credential may additionally carry a private-LAN grant (signed into the
 credential itself, domain-separated from ungranted credentials). Such a job may
 reach RFC1918 addresses of its one authorized hostname -- and only while the
@@ -88,6 +94,10 @@ _SAME_HOST_USER = re.compile(
 # private-LAN form at all.
 _PUBLIC_SCOPE = re.compile(r"[a-z0-9]{1,64}")
 _PUBLIC_USER = re.compile(re.escape(f"{_PROXY_USER}.{RouteScope.PUBLIC.value}.") + r"([a-z0-9]{1,64})")
+# A native client's route names its lease (one invocation), and the lease's
+# own private-LAN form.
+_LEASE = re.compile(r"[0-9a-f]{32}")
+_LEASE_USER = re.compile(re.escape(f"{_PROXY_USER}.") + r"(lan\.)?lease\.([0-9a-f]{32})")
 # The web ports a public-destination route may reach.
 _PUBLIC_WELL_KNOWN_PORTS = frozenset({80, 443})
 # The marker a private-LAN-granted credential's username carries.
@@ -295,6 +305,8 @@ class DownloaderEgressGuard:
         self._budgets: dict[str, EgressBudget] = {}
         # The public-destination routes that exist right now, by acquisition.
         self._public_scopes: set[str] = set()
+        # The native-client leases that exist right now (``proxy_credential``).
+        self._leases: set[str] = set()
 
     def budget(self, name: str) -> EgressBudget:
         """The named download budget routes may carry (created unlimited)."""
@@ -372,6 +384,12 @@ class DownloaderEgressGuard:
                    f"{str(host).rstrip('.').casefold()}:{int(port)}")
         return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
 
+    def _lease_token(self, lease: str, host: str, port: int, lan: bool = False) -> str:
+        # Domain-separated from every other message: a hostname never contains
+        # "|", and no other message starts with this marker.
+        message = f"{_LAN + '|' if lan else ''}lease|{lease}|{str(host).rstrip('.').casefold()}:{int(port)}"
+        return hmac.new(self._secret, message.encode("utf-8"), hashlib.sha256).hexdigest()
+
     def _public_token(self, scope: str) -> str:
         # Domain-separated from every host-scoped message: a hostname never
         # contains "|", and no host-scoped message starts with this marker.
@@ -428,6 +446,15 @@ class DownloaderEgressGuard:
             if username == (f"{_PROXY_USER}.{_LAN}" if lan else _PROXY_USER):
                 terms = self._verified(password, self._token(host, port, lan))
                 return None if terms is None else (lan, *terms)
+        leased = _LEASE_USER.fullmatch(username)
+        if leased is not None:
+            # Exactly its one authorized authority, and only while the one
+            # invocation it was issued to holds it.
+            lan, lease = bool(leased.group(1)), leased.group(2)
+            if lease not in self._leases:
+                return None
+            terms = self._verified(password, self._lease_token(lease, host, port, lan))
+            return None if terms is None else (lan, *terms)
         public = _PUBLIC_USER.fullmatch(username)
         if public is not None:
             # Any public destination of the one live acquisition this route
@@ -489,7 +516,7 @@ class DownloaderEgressGuard:
 
     def proxy_credential(self, uri: str, *, scope: RouteScope = RouteScope.ENDPOINT,
                          private_lan: bool = False, connect_timeout_seconds: float | None = None,
-                         budget: str | None = None) -> tuple[str, int, str, str]:
+                         budget: str | None = None, lease: str | None = None) -> tuple[str, int, str, str]:
         """``(proxy host, proxy port, user, token)`` for a native client that
         can only be pointed at an authenticated CONNECT proxy and cannot take a
         pre-opened connection (``open_tunnel``). The same signed route-scoped
@@ -499,12 +526,28 @@ class DownloaderEgressGuard:
         route's own Connection Timeout, signed into the credential: the guard's
         connection to the destination is bounded by it (a destination that
         does not answer in time is ``504``). ``budget`` names the download
-        budget (``budget()``) every byte this route delivers draws on."""
+        budget (``budget()``) every byte this route delivers draws on.
+        ``lease`` (32 hex characters, one per invocation) binds the
+        credential to that invocation: it admits its one endpoint only until
+        ``revoke_proxy_credential(lease)``."""
         host, port = _target(uri, private_lan)
         self._proxy_url()
+        if lease is not None:
+            if not _LEASE.fullmatch(str(lease)) or RouteScope(scope) != RouteScope.ENDPOINT:
+                raise ValueError("Invalid egress lease")
+            self._leases.add(lease)
+            user = f"{_PROXY_USER}.{_LAN + '.' if private_lan else ''}lease.{lease}"
+            token = self._terms(self._lease_token(lease, host, port, bool(private_lan)), connect_timeout_seconds,
+                                budget)
+            return _LOOPBACK, self._bound_port, user, token
         user, token = self._credential(host, port, RouteScope(scope), bool(private_lan), connect_timeout_seconds,
                                        budget)
         return _LOOPBACK, self._bound_port, user, token
+
+    def revoke_proxy_credential(self, lease: str | None) -> None:
+        """End a native client's lease: its credential admits nothing more.
+        A tunnel it already opened is the invocation's own and is unaffected."""
+        self._leases.discard(str(lease or ""))
 
     def public_route(self, scope: str, *, budget: str | None = None,
                      connect_timeout_seconds: float | None = None) -> tuple[str, int, str, str]:
