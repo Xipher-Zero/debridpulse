@@ -207,8 +207,13 @@ RUN chmod +x /entrypoint.sh
 
 # Directories - owned by 99:100 by default
 # Override at runtime via PUID / PGID environment variables
+# Only the runtime state is the runtime account's: the database, backups and
+# the Usenet service's own state (/app/data), the configuration (/app/config)
+# and downloads. The application, its frontend, the bundled Usenet service and
+# the license files stay root-owned as they were copied and installed, so the
+# account that runs them can never change them.
 RUN mkdir -p /app/data /app/data/usenet /app/config /download && \
-    chown -R 99:100 /app /download
+    chown -R 99:100 /app/data /app/config /download
 
 # The exact source revision this image was built from, read by the running
 # application's build identity (core.version.read_build_revision).

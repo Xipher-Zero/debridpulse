@@ -207,3 +207,38 @@ def test_container_runtime_declares_trixie_and_rar_codec_notices():
     assert "7zip-rar" in dependency_licenses
     assert "UnRAR restricted freeware" in dependency_licenses
     assert "/usr/share/doc/7zip-rar/unRarLicense.txt" in dependency_licenses
+
+
+def test_every_directly_installed_debian_package_is_in_the_inventory():
+    """Each package the image installs by name has its own row in the direct
+    package table (WS8 PA-PKG-1: ``par2`` and ``unrar`` shipped unlisted)."""
+    dockerfile = (REPO_ROOT / "Dockerfile").read_text()
+    dependency_licenses = (REPO_ROOT / "docs/DEPENDENCY_LICENSES.md").read_text()
+    installs = re.findall(r"apt-get install -y --no-install-recommends \\\n((?:[^\n]*\\\n)+)", dockerfile)
+    # The direct install is the one that also installs DebridPulse's own
+    # aria2 and FFmpeg packages; the other only upgrades base packages.
+    direct = next(block for block in installs if "/tmp/aria2/" in block).split("&&", 1)[0]
+    named = {word for line in direct.splitlines() for word in line.replace("\\", " ").split()
+             if not word.startswith("/") and re.fullmatch(r"[a-z0-9][a-z0-9+.-]*", word)}
+    table = set(re.findall(r"^\| ([a-z0-9][a-z0-9+.-]*) \|", dependency_licenses.split("| Direct package |")[1],
+                           re.M))
+    assert {"par2", "unrar", "rsync", "7zip-rar"} <= named
+    assert named <= table, sorted(named - table)
+    assert "| par2 | GPL-2.0-or-later" in dependency_licenses
+    assert "| unrar | Debian non-free" in dependency_licenses and "unrar-nonfree" in dependency_licenses
+    assert "/usr/share/doc/par2/copyright" in dependency_licenses
+    assert "path-include=/usr/share/doc/unrar/copyright" in dockerfile
+    assert "/usr/share/doc/unrar/copyright" in dependency_licenses
+
+
+def test_deno_is_recorded_as_a_native_runtime_whose_embedded_notices_are_not_established():
+    """WS8 PA-PKG-2: Deno's MIT declaration is not an inventory of what its
+    executable embeds, and the document says so instead of supplying notices."""
+    dependency_licenses = (REPO_ROOT / "docs/DEPENDENCY_LICENSES.md").read_text()
+    note = dependency_licenses.split("### Deno: a native runtime", 1)[1].split("\n## ", 1)[0]
+    for statement in ("V8 `15.0.245.2`", "TypeScript `6.0.3`",
+                      "https://github.com/denoland/deno/blob/v2.9.5/LICENSE.md",
+                      "https://chromium.googlesource.com/v8/v8/+/refs/tags/15.0.245.2/LICENSE",
+                      "have not been\nindependently established", "does not record the\nexecutable as MIT-covered"):
+        assert statement in note, statement
+    assert "| deno | 2.9.5 | MIT |" in dependency_licenses

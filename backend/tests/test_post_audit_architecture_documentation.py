@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -80,7 +81,14 @@ def test_container_default_identity_contract_is_99_100() -> None:
     assert 'PGID="${PGID:-100}"' in entrypoint
     assert "# Directories - owned by 99:100 by default" in dockerfile
     assert "65534:100" not in dockerfile
-    assert "chown -R 99:100 /app /download" in dockerfile
+    # Only the runtime state is the runtime account's (WS8 PA-PKG-3): the
+    # shipped application, frontend, bundled Usenet service and license
+    # files stay root-owned, so the account that runs them cannot change them.
+    assert "chown -R 99:100 /app/data /app/config /download" in dockerfile
+    assert "chown -R 99:100 /app /download" not in dockerfile
+    ownership = [line.strip() for line in dockerfile.splitlines()
+                 if re.search(r"\bchown\b|--chown|\bchmod\b", line) and not line.lstrip().startswith("#")]
+    assert ownership == ["RUN chmod +x /entrypoint.sh", "chown -R 99:100 /app/data /app/config /download"]
 
 
 def test_frontend_docs_state_the_single_owner_invariants_with_no_recorded_deviations() -> None:

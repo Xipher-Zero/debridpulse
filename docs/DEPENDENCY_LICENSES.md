@@ -117,6 +117,25 @@ Their transitive cryptographic/HTTP dependencies are included in the table and
 machine-readable runtime manifest above. Package/license pairs are cross-checked
 against the corresponding upstream/PyPI metadata when the lock is generated.
 
+### Deno: a native runtime, and what its MIT declaration does not cover
+
+The `deno` 2.9.5 wheel is not Python code: it redistributes Deno's native
+runtime, a single statically linked executable (`/usr/local/bin/deno` in the
+image, about 95 MB). That executable reports the components it embeds as
+V8 `15.0.245.2` (`15.0.245.2-rusty`) and TypeScript `6.0.3`
+(`deno --version`). The wheel's one licence file declares MIT for the Deno
+project itself, matching Deno's version-matched upstream licence
+(<https://github.com/denoland/deno/blob/v2.9.5/LICENSE.md>). That MIT
+declaration is Deno's own; it is not an inventory of the components compiled
+into the executable. V8 carries its own BSD-style licence, which it states
+covers V8 and not V8's externally maintained libraries
+(<https://chromium.googlesource.com/v8/v8/+/refs/tags/15.0.245.2/LICENSE>), and
+no other notice for an embedded component ships in the wheel or the image.
+**The complete inventory of components embedded in the Deno executable, their
+notices, and the redistribution obligations they carry have not been
+independently established**; this document therefore does not record the
+executable as MIT-covered as a whole, and supplies no notices on its behalf.
+
 ## Copyleft review — the facts, and what still needs project/licence review
 
 DebridPulse 1.0.13 bundles the Usenet acquisition service (SABnzbd 5.1.3,
@@ -176,6 +195,8 @@ recorded in the image's SBOM attestation.
 | curl | curl |
 | gosu | Apache-2.0 |
 | zstd | BSD-3-Clause |
+| par2 | GPL-2.0-or-later (Debian source package `par2cmdline`) |
+| unrar | Debian non-free (source package `unrar-nonfree`); UnRAR freeware terms |
 | 7zip | LGPL-2.1-or-later and package-specific component terms |
 | 7zip-rar | Debian non-free RAR codec; UnRAR restricted freeware terms |
 | ffmpeg | LGPL-2.1-or-later (DebridPulse's `+dp1` build; no GPL component enabled) |
@@ -209,6 +230,25 @@ configuration refuses `CONFIG_GPL`), so it is LGPL-2.1-or-later; Debian's
 copyright file stays installed at `/usr/share/doc/ffmpeg/copyright`, and the
 package image carries the exact corresponding source (Debian's source package
 plus the build script; `docs/SUPPLY_CHAIN_POLICY.md` section 4b).
+
+`par2` (`0.8.1-3` in the qualified image) performs the bundled Usenet
+service's verification and repair of a posting. It is a separate program the
+service runs; DebridPulse links none of its code. Its Debian copyright file
+(`License: GPL-2+`) stays installed at `/usr/share/doc/par2/copyright`, and
+`SOURCE_OFFER.md` applies to it as to every copyleft-covered binary in the image.
+
+`unrar` (`1:7.1.8-1`, Debian `non-free`) is present only because the bundled
+Usenet service refuses to start acquiring without it; DebridPulse submits every
+posting repair-only, with the service's own unpackers disabled, so it is never
+invoked for DebridPulse work -- DebridPulse owns archive extraction, through
+`7z` and `7zip-rar`. It is not free software: its Debian copyright file states
+the UnRAR freeware licence (the utility "may be freely distributed" and "inside
+of other software packages"; its source "cannot be used to develop RAR
+(WinRAR) compatible archiver and to re-create RAR compression algorithm"), and
+that file is kept in the image at `/usr/share/doc/unrar/copyright` (the Docker
+build re-includes it explicitly). That licence text contains no
+corresponding-source requirement; upstream publishes the source at
+`https://www.rarlab.com/rar_add.htm`.
 
 `7zip-rar` is installed from Debian's `non-free` component solely to provide
 RAR extraction through the external `7z` process. Because the slim base filters
