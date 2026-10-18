@@ -41,8 +41,8 @@ class Capability(StrEnum):
     STATISTICS_SUMMARY = "statistics.summary"
     STATISTICS_READ = "statistics.read"
     TRANSFERS_SUBMIT = "transfers.submit"
-    TRANSFERS_OPERATE = "transfers.operate"  # pause, resume, retry, queue, priority, input, selection
-    TRANSFERS_DESTROY = "transfers.destroy"  # delete, cancel, block, candidate/route switch (+ ownership)
+    TRANSFERS_OPERATE = "transfers.operate"  # pause, resume, retry, queue, priority, input, dismiss a selection
+    TRANSFERS_DESTROY = "transfers.destroy"  # delete, cancel, block, choose files, candidate/route switch (+ ownership)
     DEMAND_OWN = "demand.own"              # list and withdraw one's own demand
     DEMAND_ANY = "demand.any"              # list and withdraw anyone's demand
     METRICS_READ = "metrics.read"          # Prometheus scrape
@@ -198,12 +198,15 @@ ACTIONS: dict[str, Capability] = {
     # every transfer, so it is not Integration's, and ReadOnly has no Quick Add.
     "api.routes.check_torrent_duplicate": _OP,
     "api.routes.bulk_action": _OP,  # each target re-evaluated; delete needs TRANSFERS_DESTROY
-    "api.file_selection_routes.confirm_file_selection": _OP,
+    # Dismissing keeps every file (the default ALL), depriving no one.
     "api.file_selection_routes.dismiss_file_selection": _OP,
     # Transfers: destructive (ownership of every affected demand required).
     "api.routes.delete_torrent": _DES,
     "api.routes.cancel_torrent": _DES,
     "api.routes.block_file": _DES,
+    # Choosing files can leave out files another account's request still
+    # needs, exactly as blocking one does.
+    "api.file_selection_routes.confirm_file_selection": _DES,
     "api.operational_downloads.activate_artifact_candidate": _DES,
     "api.operational_downloads.replace_root_route": _DES,
     # Everything below is Admin: configuration, services and engines,

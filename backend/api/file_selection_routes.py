@@ -18,11 +18,12 @@ from __future__ import annotations
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from application.dependencies import get_application
 from application.service import ApplicationService
+from auth.permissions import require_destruction
 from transfers import file_selection as fs
 
 router = APIRouter()
@@ -123,11 +124,15 @@ def _ineligible_view() -> dict:
 async def confirm_file_selection(
     transfer_id: int,
     body: ConfirmRequest,
+    request: Request,
     application: ApplicationService = Depends(get_application),
 ):
+    # Choosing files can leave out files another account's request needs: the
+    # destructive acts' one ownership rule, re-checked when the choice commits.
+    expected = await require_destruction(request, application.repository, transfer_id)
     try:
         result = await application.confirm_file_selection(
-            transfer_id, body.manifest_id, body.entry_ids,
+            transfer_id, body.manifest_id, body.entry_ids, expected_demand=expected,
         )
     except KeyError:
         raise HTTPException(status_code=404, detail="Transfer not found") from None

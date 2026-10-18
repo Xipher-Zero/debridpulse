@@ -139,10 +139,10 @@ async def verify_local_credentials(
                 )
 
         if verified:
-            password_failure_throttle.record_success(peer)
+            password_failure_throttle.record_success(peer, candidate_user)
             return account
 
-        password_failure_throttle.record_failure(peer)
+        password_failure_throttle.record_failure(peer, candidate_user)
         return None
     finally:
         password_attempt_admission.release(peer)

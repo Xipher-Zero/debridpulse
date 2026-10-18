@@ -61,7 +61,8 @@ from transfers import codec
 from transfers import journal_events as je
 from transfers import file_selection as fs
 from transfers._repository_base import (
-    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, _established_children_in_db, _release_selection_poll_wait_in_db,
+    _ENDED_ROUTE_STATES, _MUTATING_EXECUTION_STATES, DemandChanged, _established_children_in_db,
+    _release_selection_poll_wait_in_db,
     _selection_intent_in_db, _set_selection_intent_in_db, terminal_cleanup_authority,
 )
 from transfers._repository_base import TransferRepository as _QualifiedTransferRepository
@@ -2235,7 +2236,7 @@ class TransferRepository(_QualifiedTransferRepository):
         await _release_selection_poll_wait_in_db(db, request_id, now)
 
     async def confirm_file_selection(
-        self, transfer_id: int, manifest_id: str, entry_ids, *, now: float,
+        self, transfer_id: int, manifest_id: str, entry_ids, *, now: float, expected_demand=None,
     ) -> "fs.SelectionCommandResult":
         """Durably commit an explicit file subset, or lose the race to materialization.
 
@@ -2245,9 +2246,16 @@ class TransferRepository(_QualifiedTransferRepository):
         ``BEGIN IMMEDIATE`` write lock on ``transfer_file_selections`` is the sole
         correctness authority for the Confirm-vs-materialization race. Confirm
         never reports success once the executable manifest is committed.
+
+        ``expected_demand`` is the demand the choice was authorized against
+        (``None``: an Admin's unconditional act); demand that arrived since
+        refuses it under the same write lock, changing nothing.
         """
         async with get_db() as db:
             await db.execute("BEGIN IMMEDIATE")
+            if not await self.hold_demand(db, transfer_id, expected_demand):
+                await db.rollback()
+                raise DemandChanged(transfer_id)
             row = await self._selection_by_manifest(db, transfer_id, str(manifest_id))
             if not row:
                 await db.rollback()

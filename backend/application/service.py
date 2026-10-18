@@ -1030,11 +1030,11 @@ class ApplicationService:
     async def file_selection_offers(self):
         return await self.repository.active_file_selection_offers(now=self.engine.clock())
 
-    async def confirm_file_selection(self, transfer_id, manifest_id, entry_ids):
+    async def confirm_file_selection(self, transfer_id, manifest_id, entry_ids, *, expected_demand=None):
         async with self.application_operation():
             await self.require(transfer_id)
             result = await self.repository.confirm_file_selection(
-                transfer_id, manifest_id, entry_ids, now=self.engine.clock(),
+                transfer_id, manifest_id, entry_ids, now=self.engine.clock(), expected_demand=expected_demand,
             )
             if result.outcome == "confirmed":
                 # The repository transaction settled the decision and, in the same

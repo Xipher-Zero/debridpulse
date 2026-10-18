@@ -7,7 +7,11 @@ from typing import Any
 
 from core.branding import APP_NAME, APP_SHORT_NAME, REPOSITORY_URL
 
-_MAGNET_RE = re.compile(r"magnet:\?xt=urn:btih:([0-9a-zA-Z]{32,40})[^\s\"']*", re.IGNORECASE)
+# A whole magnet URI, whatever order its parameters come in: any of them --
+# trackers above all, whose URLs commonly carry a private passkey -- may be a
+# credential, so the URI is shown only as its info-hash hint (or not at all).
+_MAGNET_RE = re.compile(r"magnet:\?[^\s\"']*", re.IGNORECASE)
+_MAGNET_BTIH_RE = re.compile(r"(?:^|[?&])xt=urn:btih:([0-9a-zA-Z]{32,40})(?=&|$)", re.IGNORECASE)
 _WEBHOOK_URL_RE = re.compile(
     r"https?://(?:canary\.|ptb\.)?(?:discord(?:app)?\.com)/api/webhooks/[^\s\"']+",
     re.IGNORECASE,
@@ -26,6 +30,11 @@ def _short_hash(value: str) -> str:
     return f"{value[:8]}..."
 
 
+def _magnet_hint(match: re.Match) -> str:
+    btih = _MAGNET_BTIH_RE.search(match.group(0)[len("magnet:"):])
+    return f"<magnet:{_short_hash(btih.group(1).lower())}>" if btih else "<magnet>"
+
+
 def sanitize_log_value(value: Any, max_length: int = 300) -> str:
     """Return a short, log-safe string with secrets and long URLs redacted."""
     if value is None:
@@ -34,7 +43,7 @@ def sanitize_log_value(value: Any, max_length: int = 300) -> str:
     msg = _CREDENTIAL_URL_RE.sub(r"\1<redacted>\3", msg)
     msg = _AUTH_HEADER_RE.sub(r"\1<redacted>", msg)
     msg = _WEBHOOK_URL_RE.sub("<webhook-url>", msg)
-    msg = _MAGNET_RE.sub(lambda m: f"<magnet:{_short_hash(m.group(1).lower())}>", msg)
+    msg = _MAGNET_RE.sub(_magnet_hint, msg)
     msg = _SENSITIVE_QUERY_RE.sub(r"\1<redacted>", msg)
     msg = _LONG_URL_RE.sub("<url>", msg)
     return (msg[:max_length] + "...") if len(msg) > max_length else msg

@@ -55,3 +55,24 @@ def test_startup_banner_uses_logger_and_expected_links(caplog):
     assert "https://github.com/Xipher-Zero/debridpulse" in caplog.text
     assert "buymeacoffee.com" not in caplog.text
     assert "discord.gg" not in caplog.text
+
+
+import pytest  # noqa: E402
+
+PASSKEY = "PASSKEY0123456789"
+
+
+@pytest.mark.parametrize("raw,shown", [
+    # The reproduced shape: the tracker (and its passkey) before ``xt=``.
+    ("magnet:?dn=movie.mkv&tr=https%3A%2F%2Ftracker.example.org%2F" + PASSKEY + "%2Fannounce&xt=urn:btih:" + "d" * 40,
+     "<magnet:dddddddd...>"),
+    ("magnet:?tr=https://tracker.example.org/" + PASSKEY + "/announce&xt=urn:btih:" + "f" * 40, "<magnet:ffffffff...>"),
+    ("magnet:?xt=urn:btih:" + "E" * 40 + "&tr=https%3A%2F%2Ft.example%2F" + PASSKEY, "<magnet:eeeeeeee...>"),
+    ("MAGNET:?xt=urn:btih:" + "A" * 32 + "&tr=udp://t.example/" + PASSKEY, "<magnet:aaaaaaaa...>"),  # base32 hash
+    ("magnet:?xt=urn:btmh:1220" + "a" * 64 + "&tr=udp://t.example/" + PASSKEY, "<magnet>"),  # no v1 info-hash
+    ("magnet:?dn=only-a-name&tr=udp://t.example/" + PASSKEY, "<magnet>"),
+])
+def test_every_magnet_form_is_shown_only_as_its_info_hash_hint(raw, shown):
+    safe = sanitize_log_value(f"Failed {raw} today")
+    assert safe == f"Failed {shown} today"
+    assert PASSKEY not in safe and "tracker" not in safe

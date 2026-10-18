@@ -77,3 +77,18 @@ def test_ftp_and_sftp_present_the_safe_submitted_resource_not_a_filename(kind, p
     value = _safe_original_resource(_request(kind, payload, "a-filename-only"))
     assert value == expected
     assert "secret" not in value
+
+
+def test_a_magnet_whose_tracker_comes_first_keeps_its_passkey_out_of_details():
+    """PA-AUTHZ-2: every reader of Details -- ReadOnly included -- receives
+    the one projection; whatever order the magnet's parameters come in, its
+    serialized form carries the info-hash hint and never a tracker URL."""
+    import json
+
+    passkey = "PASSKEY0123456789"
+    magnet = ("magnet:?dn=movie.mkv&tr=https%3A%2F%2Ftracker.example.org%2F" + passkey
+              + "%2Fannounce&xt=urn:btih:" + "d" * 40)
+    raw = {"id": 3, "status": "downloading", "request": _request("magnet", magnet, "movie.mkv")}
+    result = _public_transfer_presentation(raw, definitions)
+    assert result["original_resource"] == "<magnet:dddddddd...>"
+    assert passkey not in json.dumps(result) and "tracker.example.org" not in json.dumps(result)

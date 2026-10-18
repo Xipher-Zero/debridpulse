@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from auth.passwords import BasicVerificationCache, hash_password, verify_password
 from auth.throttle import FailureThrottle
 
@@ -144,3 +146,79 @@ def test_settings_hold_no_local_credential():
 
     assert not {"auth_username", "auth_password", "auth_password_hash"} & set(AppSettings.model_fields)
     assert "auth_password_hash" not in AppSettings(auth_password_hash=hash_password("secret")).model_dump()
+
+
+def test_a_success_clears_only_its_own_identitys_failures_from_that_peer():
+    """PA-AUTHZ-3: guessing one account's password and then signing in as
+    another account from the same peer keeps the guesses' delay."""
+    throttle = FailureThrottle(free_failures=2, base_delay_seconds=0.25, max_delay_seconds=2.0)
+    peer = "192.0.2.7"
+    for _ in range(5):
+        throttle.record_failure(peer, "admin")
+    delay = throttle.delay_for(peer)
+    assert delay == 1.0
+    throttle.record_success(peer, "alice")
+    assert throttle.delay_for(peer) == delay
+
+    # A user's own mistypes are cleared by their own success, as before.
+    throttle.record_failure(peer, "alice")
+    throttle.record_failure(peer, "alice")
+    assert throttle.delay_for(peer) == 2.0
+    throttle.record_success(peer, "alice")
+    assert throttle.delay_for(peer) == delay
+    assert throttle.delay_for("192.0.2.8") == 0  # another peer is unaffected
+
+
+def test_attributed_failures_stay_bounded_and_overflow_is_never_cleared_by_a_success():
+    throttle = FailureThrottle(free_failures=0, base_delay_seconds=1.0, max_delay_seconds=64.0, max_identities=2)
+    peer = "192.0.2.9"
+    for name in ("a", "b", "c", "d", "e"):
+        throttle.record_failure(peer, name)
+    assert len(throttle._entries[peer].failures) == 3  # two attributed identities and the overflow
+    assert throttle.delay_for(peer) == 16.0
+    for name in ("c", "d", "e"):
+        throttle.record_success(peer, name)
+    assert throttle.delay_for(peer) == 16.0
+    throttle.record_success(peer, "a")
+    throttle.record_success(peer, "b")
+    assert throttle.delay_for(peer) == 4.0  # three overflowed failures remain, no lockout beyond the window
+
+
+def test_failures_still_recover_after_the_window(monkeypatch):
+    import auth.throttle as module
+
+    now = [1000.0]
+    monkeypatch.setattr(module.time, "monotonic", lambda: now[0])
+    throttle = FailureThrottle(free_failures=0, base_delay_seconds=1.0, reset_after_seconds=300)
+    throttle.record_failure("p", "admin")
+    assert throttle.delay_for("p") == 1.0
+    now[0] += 301
+    assert throttle.delay_for("p") == 0
+
+
+@pytest.mark.asyncio
+async def test_signing_in_as_your_own_account_does_not_reset_the_peers_guesses(tmp_path, monkeypatch):
+    """The reproduced sequence through the real verifier: wrong ``admin``
+    guesses, then a valid sign-in as the guesser's own User account."""
+    from types import SimpleNamespace
+
+    from account_support import account_database
+    from auth import accounts
+    from auth.accounts import Role
+    from auth.manager import verify_local_credentials
+    from auth.throttle import password_failure_throttle
+
+    await account_database(tmp_path, monkeypatch)
+    await accounts.create_local_account("alice", "alicepw", role=Role.USER)
+    cfg = SimpleNamespace(auth_password_enabled=True)
+    request = SimpleNamespace(client=SimpleNamespace(host="192.0.2.10"))
+    password_failure_throttle.clear()
+    try:
+        for _ in range(4):
+            assert await verify_local_credentials(request, "admin", "guess", settings=cfg) is None
+        held = password_failure_throttle.delay_for("192.0.2.10")
+        assert held > 0
+        assert (await verify_local_credentials(request, "alice", "alicepw", settings=cfg)).username == "alice"
+        assert password_failure_throttle.delay_for("192.0.2.10") == held
+    finally:
+        password_failure_throttle.clear()

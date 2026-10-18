@@ -6,14 +6,32 @@ from dataclasses import dataclass
 from typing import Callable
 
 
+# Failures beyond a peer's attributed identities: counted, and cleared by no
+# success, since no single identity can vouch for them.
+_UNATTRIBUTED = object()
+
+
 @dataclass(slots=True)
 class _FailureState:
-    failures: int
+    failures: dict
     last_failure: float
+
+    @property
+    def total(self) -> int:
+        return sum(self.failures.values())
 
 
 class FailureThrottle:
-    """Bounded in-memory increasing-delay throttle with automatic recovery."""
+    """Bounded in-memory increasing-delay throttle with automatic recovery.
+
+    The delay grows with every failure from one key (a transport peer), but
+    each failure is attributed to the identity it tried: a success clears
+    only the failures of the identity that succeeded, never another
+    identity's guesses from the same peer. There is no lockout -- failures
+    recover after ``reset_after_seconds`` -- and state stays finite: at most
+    ``max_entries`` keys of at most ``max_identities`` attributed identities
+    each.
+    """
 
     def __init__(
         self,
@@ -23,33 +41,47 @@ class FailureThrottle:
         free_failures: int = 2,
         base_delay_seconds: float = 0.25,
         max_delay_seconds: float = 2.0,
+        max_identities: int = 16,
     ):
         self.max_entries = max(1, int(max_entries))
         self.reset_after_seconds = max(1.0, float(reset_after_seconds))
         self.free_failures = max(0, int(free_failures))
         self.base_delay_seconds = max(0.0, float(base_delay_seconds))
         self.max_delay_seconds = max(self.base_delay_seconds, float(max_delay_seconds))
+        self.max_identities = max(1, int(max_identities))
         self._entries: OrderedDict[str, _FailureState] = OrderedDict()
 
     def delay_for(self, key: str) -> float:
         now = time.monotonic()
         state = self._fresh_state(str(key or "unknown"), now)
-        if state is None or state.failures <= self.free_failures:
+        failures = 0 if state is None else state.total
+        if failures <= self.free_failures:
             return 0.0
-        exponent = state.failures - self.free_failures - 1
+        exponent = failures - self.free_failures - 1
         return min(self.max_delay_seconds, self.base_delay_seconds * (2 ** exponent))
 
-    def record_failure(self, key: str) -> None:
+    def record_failure(self, key: str, identity: str = "") -> None:
         now = time.monotonic()
         normalized = str(key or "unknown")
-        state = self._fresh_state(normalized, now)
-        failures = 1 if state is None else state.failures + 1
-        self._entries[normalized] = _FailureState(failures=failures, last_failure=now)
+        state = self._fresh_state(normalized, now) or _FailureState(failures={}, last_failure=now)
+        attributed = str(identity or "")[:256]
+        if attributed not in state.failures and len(state.failures) >= self.max_identities:
+            attributed = _UNATTRIBUTED
+        state.failures[attributed] = state.failures.get(attributed, 0) + 1
+        state.last_failure = now
+        self._entries[normalized] = state
         self._entries.move_to_end(normalized)
         self._prune(now)
 
-    def record_success(self, key: str) -> None:
-        self._entries.pop(str(key or "unknown"), None)
+    def record_success(self, key: str, identity: str = "") -> None:
+        """Clear the failures ``identity`` itself accrued from ``key``."""
+        normalized = str(key or "unknown")
+        state = self._entries.get(normalized)
+        if state is None:
+            return
+        state.failures.pop(str(identity or "")[:256], None)
+        if not state.failures:
+            self._entries.pop(normalized, None)
 
     def clear(self) -> None:
         self._entries.clear()
