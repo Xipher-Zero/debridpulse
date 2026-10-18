@@ -86,9 +86,17 @@ body.light .logo-name span { color: #7c3aed; }
   position: relative;
   z-index: 2;
 }
+/* A section heading is centred on the icon rail, not on the labels: its left
+   edge is placed at the rail's centre (the same inset and icon size every
+   navigation icon uses) and it is shifted back by half its own width, so the
+   alignment follows the rail at every sidebar width. The start padding equals
+   the trailing letter-spacing, so the visible letters, not the box, are
+   centred. Only the heading moves; the icons and labels do not. */
 .nav-group {
-  padding: 13px 23px 7px;
-  margin: 0;
+  width: max-content;
+  padding: 13px 0 7px .075em;
+  margin: 0 0 0 calc(var(--dp-sidebar-item-inset) + var(--dp-sidebar-icon-size) / 2);
+  transform: translateX(-50%);
   color: #858aa8;
   font-size: 10px;
   font-weight: 600;
@@ -358,7 +366,6 @@ body.light .theme-toggle {
 @media (max-width: 1180px) {
   :root { --dp-shell-sidebar: 220px; --dp-shell-x: 22px; --dp-sidebar-item-inset: 18px; }
   .logo { padding-left: 18px; }
-  .nav-group { padding-left: 18px; }
 }
 
 /* Wherever the navigation icons form the left rail (the expanded sidebar and

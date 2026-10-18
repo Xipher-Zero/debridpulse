@@ -129,7 +129,7 @@
         </div>
 
         <div class="dp-help-copy dp-help-copy--lead dp-help-prose">
-          <p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Monitor</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>
+          <p>The sidebar has three groups: <b>Queue</b> (<b>Dashboard</b> and <b>Downloads</b>), <b>Review</b> (<b>Activity Log</b> and <b>Statistics</b>) and <b>System</b> (<b>Settings</b> and <b>Help &amp; License</b>). The number beside Downloads counts downloads that are still in progress, waiting or paused; failed and finished ones are not counted.</p>
           <p>What you see depends on your role. Settings, the Activity Log and the controls marked <b>Admin only</b> below appear only for an Admin; a <b>User</b> sees <b>Notifications</b> in place of Settings, and a <b>ReadOnly User</b> can look but not change anything.</p>
         </div>
 
