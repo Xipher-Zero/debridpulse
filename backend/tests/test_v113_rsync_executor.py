@@ -14,6 +14,7 @@ import os
 import signal
 import stat
 import subprocess
+import sys
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -54,6 +55,19 @@ def _loopback_destinations(monkeypatch):
     monkeypatch.setattr(executor_module, "validate_resolved_public_destination", validated)
 
 
+def _program(argv) -> list[str]:
+    """The program argv behind the owner's identity gate: a native start is
+    exactly ``python -I -S -c <gate> <fd> <program> <argv...>`` -- never a
+    shell -- and the gate execs ``<program>`` with ``<argv...>`` unchanged.
+    The spy patches ``asyncio`` itself, so it also sees execs that are not
+    DebridPulse's (the fixture SSH server's own shell); those pass as they are."""
+    argv = [str(item) for item in argv]
+    if argv[:5] != [sys.executable, "-I", "-S", "-c", ownership_module._GATE]:
+        return argv
+    assert argv[5].isdigit() and os.path.basename(argv[6]) == os.path.basename(argv[7]), argv[:8]
+    return argv[7:]
+
+
 @pytest.fixture
 def spawned(monkeypatch):
     """Every native argv and environment the executor hands the OS."""
@@ -61,7 +75,7 @@ def spawned(monkeypatch):
     real = ownership_module.asyncio.create_subprocess_exec
 
     async def record(*argv, **kwargs):
-        calls.append((list(argv), dict(kwargs.get("env") or {}), kwargs))
+        calls.append((_program(argv), dict(kwargs.get("env") or {}), kwargs))
         return await real(*argv, **kwargs)
 
     monkeypatch.setattr(ownership_module.asyncio, "create_subprocess_exec", record)
@@ -683,7 +697,7 @@ def _argv(monkeypatch):
     real = asyncio.create_subprocess_exec
 
     async def record(*argv, **kwargs):
-        seen.append([str(item) for item in argv])
+        seen.append(_program(argv))
         return await real(*argv, **kwargs)
 
     monkeypatch.setattr("executors.process_ownership.asyncio.create_subprocess_exec", record)

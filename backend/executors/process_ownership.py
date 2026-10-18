@@ -20,6 +20,11 @@ One DebridPulse execution attempt owns at most one native process group:
 * The process runs in its own session (no controlling terminal, so nothing can
   prompt) with a minimal environment: no inherited DebridPulse configuration,
   no operator shell state, and an empty private home.
+* The group's identity is durable before its program runs. The child first
+  waits at a one-byte gate; DebridPulse records its group id and only then
+  opens the gate. If recording fails, or DebridPulse dies before it opens the
+  gate -- even without any cleanup running -- the gate reads end-of-file and
+  the child exits having done nothing, so no live group is ever unidentified.
 """
 from __future__ import annotations
 
@@ -28,11 +33,30 @@ import fcntl
 import hashlib
 import json
 import os
+import shutil
 import signal
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
 _PIPE_CAPACITY = 64 * 1024
+# The one-byte identity gate: the child waits here until its group id is
+# durable, then becomes the real program; end-of-file means nobody recorded it.
+# Before it becomes the program it hands back the signal dispositions Python
+# changed at its own start (as ``subprocess`` does for every child), so the
+# program starts exactly as it would have without the gate.
+_GATE = (
+    "import os, signal, sys\n"
+    "for name in ('SIGPIPE', 'SIGXFSZ'):\n"
+    "    if hasattr(signal, name):\n"
+    "        signal.signal(getattr(signal, name), signal.SIG_DFL)\n"
+    "gate = int(sys.argv[1])\n"
+    "opened = os.read(gate, 1) == b'1'\n"
+    "os.close(gate)\n"
+    "if not opened:\n"
+    "    os._exit(125)\n"
+    "os.execv(sys.argv[2], sys.argv[3:])\n"
+)
 
 
 class ProcessGroupAlive(Exception):
@@ -132,15 +156,33 @@ class ProcessOwnership:
             standard_input = self._pipe(stdin, pipes) if stdin is not None else asyncio.subprocess.DEVNULL
             if fd_argv is not None:
                 argv = fd_argv(descriptors)
+            program = shutil.which(str(argv[0]), path=env.get("PATH")) if argv else None
+            if program is None:
+                raise FileNotFoundError(argv[0] if argv else "")
+            gate, opener = os.pipe()
+            pipes.append(gate)
+            pipes.append(opener)
             os.ftruncate(lock, 0)
             os.write(lock, json.dumps({"attempt": str(attempt_id)}).encode("utf-8"))
             process = await asyncio.create_subprocess_exec(
-                *argv, stdin=standard_input, stdout=asyncio.subprocess.PIPE,
+                sys.executable, "-I", "-S", "-c", _GATE, str(gate), program, *argv,
+                stdin=standard_input, stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE, env=env, cwd=str(self.home), start_new_session=True,
-                pass_fds=(lock, *pipes, *pass_fds), close_fds=True)
-            # The group id is recorded only once it exists; the lock proves it.
-            os.ftruncate(lock, 0)
-            os.pwrite(lock, json.dumps({"attempt": str(attempt_id), "group": process.pid}).encode("utf-8"), 0)
+                pass_fds=(lock, gate, *pipes[:-2], *pass_fds), close_fds=True)
+            try:
+                # The group id is recorded while the child still waits at the
+                # gate; the lock proves the group, the record names it.
+                os.ftruncate(lock, 0)
+                os.pwrite(lock, json.dumps({"attempt": str(attempt_id), "group": process.pid}).encode("utf-8"), 0)
+            except BaseException:
+                # Unrecorded: the gate stays shut (closing it below is its
+                # end-of-file) and the group, which has run nothing, is ended.
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                raise
+            os.write(opener, b"1")
             return OwnedProcess(str(attempt_id), process, process.pid)
         finally:
             for descriptor in pipes:
@@ -151,13 +193,29 @@ class ProcessOwnership:
 
     @staticmethod
     def _pipe(value: bytes, pipes: list[int]) -> int:
-        """A pipe already holding ``value`` and closed for writing."""
+        """A pipe already holding ``value`` and closed for writing.
+
+        Nothing reads it until the child runs, so it is filled without ever
+        blocking: a pipe the kernel granted too small for ``value`` (as it
+        does under its per-user pipe quota) is enlarged if the kernel allows,
+        and otherwise refused -- never a wait the child cannot end."""
         if len(value) > _PIPE_CAPACITY:
             raise ValueError("transient secret exceeds one pipe")
         read, write = os.pipe()
         pipes.append(read)
         try:
-            os.write(write, value)
+            os.set_blocking(write, False)
+            try:
+                if fcntl.fcntl(write, fcntl.F_GETPIPE_SZ) < len(value):
+                    fcntl.fcntl(write, fcntl.F_SETPIPE_SZ, len(value))
+            except OSError:
+                pass
+            written = 0
+            while written < len(value):
+                try:
+                    written += os.write(write, value[written:])
+                except BlockingIOError:
+                    raise ValueError("transient secret exceeds the pipe the system granted") from None
         finally:
             os.close(write)
         return read
