@@ -246,6 +246,32 @@ def _open_frozen(path: Path) -> sqlite3.Connection:
     return sqlite3.connect(f"file:{quote(str(path))}?immutable=1", uri=True)
 
 
+def _defined_objects(conn: sqlite3.Connection) -> list[tuple]:
+    """The schema objects the fingerprint does not name -- every explicitly
+    defined index, trigger and view, exactly as SQLite holds them. Tables and
+    their own constraints are left to the fingerprint: a table an upgrade
+    altered legitimately keeps a different definition text."""
+    return sorted(conn.execute(
+        "SELECT type, name, tbl_name, sql FROM sqlite_master "
+        "WHERE type IN ('index', 'trigger', 'view') AND sql IS NOT NULL"))
+
+
+def _check_defined_objects(staged: Path, action: str) -> None:
+    """A staged database restores only with exactly the running database's
+    indexes, triggers and views: one it does not create (or lacks) would
+    change how the restored state behaves although its fingerprint matches."""
+    from db.database import DB_PATH
+
+    try:
+        with closing(_open_frozen(staged)) as restored, closing(sqlite3.connect(str(DB_PATH), timeout=30)) as live:
+            live.execute("PRAGMA query_only=1")
+            same = _defined_objects(restored) == _defined_objects(live)
+    except sqlite3.Error:
+        raise _invalid(action) from None
+    if not same:
+        raise _invalid(action)
+
+
 def schema_version(db_path: Path) -> str:
     """The exact schema identity of a live (possibly WAL) database."""
     with closing(sqlite3.connect(str(db_path), timeout=30)) as conn:
@@ -477,7 +503,7 @@ def _new_point_id() -> str:
 
 
 async def _create_locked(point_id: str | None = None) -> RestorePoint:
-    from core.config import CONFIG_PATH, get_settings, save_settings
+    from core.config import CONFIG_PATH, config_write_lock, get_settings, save_settings
     from db.database import DB_PATH
 
     try:
@@ -489,19 +515,25 @@ async def _create_locked(point_id: str | None = None) -> RestorePoint:
     staging = folder / f"{_STAGING_PREFIX}{uuid.uuid4().hex}"
     try:
         staging.mkdir(mode=0o700)
-        if not CONFIG_PATH.exists():
-            # A configuration that was never persisted is the effective one;
-            # the canonical writer records it so the backup is complete.
-            save_settings(get_settings())
-        _copy_private(CONFIG_PATH, staging / _CONFIG_MEMBER)
-        await asyncio.to_thread(_sqlite_backup, DB_PATH, staging / DB_PATH.name)
-        files = [_CONFIG_MEMBER, DB_PATH.name]
-        for ext in _AVATAR_EXTENSIONS:
-            avatar = CONFIG_PATH.parent / f"avatar.{ext}"
-            if avatar.exists():
-                _copy_private(avatar, staging / avatar.name)
-                files.append(avatar.name)
-                break
+        # One generation: the configuration and the database are captured
+        # under the configuration write lock, which every configuration write
+        # holds across its own database commit, so no such write can land
+        # between the two copies. Transfers are not paused; a configuration
+        # write simply waits for the copies.
+        async with config_write_lock():
+            if not CONFIG_PATH.exists():
+                # A configuration that was never persisted is the effective one;
+                # the canonical writer records it so the backup is complete.
+                save_settings(get_settings())
+            _copy_private(CONFIG_PATH, staging / _CONFIG_MEMBER)
+            await asyncio.to_thread(_sqlite_backup, DB_PATH, staging / DB_PATH.name)
+            files = [_CONFIG_MEMBER, DB_PATH.name]
+            for ext in _AVATAR_EXTENSIONS:
+                avatar = CONFIG_PATH.parent / f"avatar.{ext}"
+                if avatar.exists():
+                    _copy_private(avatar, staging / avatar.name)
+                    files.append(avatar.name)
+                    break
         with closing(_open_frozen(staging / DB_PATH.name)) as conn:
             recorded = _fingerprint(conn)
         _write_manifest(staging, {
@@ -972,12 +1004,16 @@ class StagedRestore:
     moves: list[tuple[str, str]] = field(default_factory=list)
     # The staged copy was upgraded from the restore point's own schema.
     upgraded: bool = False
+    # A failed swap whose reversal failed too: neither state is whole, and the
+    # journal and every displaced file are kept for the reversal at startup.
+    unresolved: bool = False
 
     def validate(self) -> None:
         # Exact, always: an upgraded copy is checked against the running schema
         # only -- the schema its restore point recorded is the one it left.
         _check_database(self.database, None if self.upgraded else self.manifest["schema_version"],
                         self.live_schema, "restore")
+        _check_defined_objects(self.database, "restore")
         _check_config(self.config, "restore")
         _check_usable_admin(self.database, self.config, "restore")
 
@@ -1015,7 +1051,11 @@ class StagedRestore:
             for directory in {Path(target).parent for _source, target in self.moves}:
                 _fsync_directory(directory)
         except OSError:
-            _reverse(done)
+            try:
+                _reverse(done)
+            except OSError:
+                self.unresolved = True
+                raise
             self._discard()
             raise
 
@@ -1032,8 +1072,10 @@ class StagedRestore:
         self._discard()
 
     def discard(self) -> None:
-        """Abandon a staged restore that was never activated."""
-        self._discard()
+        """Abandon a staged restore that was never activated (or whose swap
+        was fully reversed). An unresolved swap is never discarded."""
+        if not self.unresolved:
+            self._discard()
 
     def _discard(self) -> None:
         from db.database import DB_PATH

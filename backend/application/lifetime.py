@@ -210,6 +210,14 @@ async def restore_backup(state, point_id: str) -> dict:
                             raise RuntimeError("a pre-restore execution is still live")
                         await asyncio.to_thread(staged.activate)
                 except Exception as exc:
+                    if staged is not None and staged.unresolved:
+                        # Part of the restored state is in place and the
+                        # previous state could not be put back: nothing is
+                        # reopened on it or reported as unchanged. The journal
+                        # kept beside the database reverses it at the next start.
+                        logger.critical("Restore failed and could not be reversed; restart DebridPulse to put "
+                                        "the previous state back: %s", sanitize_exception(exc))
+                        raise
                     if staged is not None:
                         staged.discard()
                     logger.warning("Restore refused before activation: %s", sanitize_exception(exc))
