@@ -15,7 +15,9 @@ After successful extraction the source archive is deleted.
 from __future__ import annotations
 
 import asyncio
+import collections
 import concurrent.futures
+import functools
 import logging
 import os
 import re
@@ -23,20 +25,32 @@ import shutil
 import stat
 import subprocess
 import tempfile
+import threading
 import time
-import tarfile
 import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Iterable, List, Optional, Tuple
 
 from services.extraction_safety import (
+    MAX_LISTING_LINE_CHARS,
+    ExtractionBudgetExceeded,
+    ExtractionLimits,
+    configured_limits,
     copy_limited,
+    is_tar,
+    job_byte_limit,
+    job_limits,
+    open_tar,
     staged_external_extract,
+    validate_extracted_tree,
     validate_staging_tree,
     validate_7z_listing,
     validate_tar_members,
     validate_zip_members,
 )
+
+# The most of an external tool's own output kept for a diagnostic.
+_TOOL_OUTPUT_TAIL_BYTES = 4096
 
 logger = logging.getLogger("alldebrid.extractor")
 
@@ -149,7 +163,7 @@ def _run_tool(
 
     started = time.monotonic()
     try:
-        with tempfile.TemporaryFile(mode="w+t", encoding="utf-8") as capture:
+        with tempfile.TemporaryFile() as capture:
             process = subprocess.Popen(
                 cmd,
                 stdout=capture,
@@ -175,8 +189,10 @@ def _run_tool(
 
             process.wait(timeout=10)
             capture.flush()
-            capture.seek(0)
-            output = capture.read().strip()
+            # Only the tail is a diagnostic; the output itself is never held.
+            size = capture.seek(0, os.SEEK_END)
+            capture.seek(max(0, size - _TOOL_OUTPUT_TAIL_BYTES))
+            output = capture.read().decode("utf-8", errors="replace").strip()
             if guard_error:
                 return -1, f"Extraction safety limit: {guard_error}"
             if timed_out:
@@ -240,9 +256,8 @@ def _extract_zip(archive: Path, dest: Path) -> None:
 
 
 def _extract_tar(archive: Path, dest: Path) -> None:
-    with tarfile.open(archive, "r:*") as tf:
-        members = tf.getmembers()
-        validate_tar_members(archive, members)
+    with open_tar(archive, "r:*") as tf:
+        members = validate_tar_members(archive, tf)
         tf.extractall(dest, members=members, filter="data")
 
 
@@ -337,6 +352,56 @@ def _seven_zip_type_switches(archive: Path) -> list[str]:
     raise ValueError(f"Unsupported 7-Zip input format: {archive.name}")
 
 
+def _list_7z(cmd: List[str], archive: Path, timeout: int = 300) -> Tuple[int, str]:
+    """Run a 7-Zip technical listing, validating it AS IT IS EMITTED.
+
+    Lines are read one bounded line at a time and handed straight to the
+    listing validator, which keeps only what it needs; a listing over budget
+    stops the tool at once. Only a listing the tool completed with status 0
+    is ever accepted. Returns the status and a short output tail."""
+    kwargs = {}
+    if os.name == "posix":
+        kwargs["preexec_fn"] = lambda: os.nice(10)
+    tail: collections.deque[str] = collections.deque(maxlen=8)
+    process = subprocess.Popen(
+        cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, encoding="utf-8", **kwargs,
+    )
+    timer = threading.Timer(timeout, process.kill)
+
+    def lines():
+        while True:
+            line = process.stdout.readline(MAX_LISTING_LINE_CHARS + 1)
+            if not line:
+                return
+            tail.append(line[-200:])
+            yield line
+
+    refusal: ValueError | None = None
+    timer.start()
+    try:
+        try:
+            validate_7z_listing(archive, lines())
+        except ExtractionBudgetExceeded:
+            raise
+        except ValueError as exc:
+            # Decided by the tool's status: an unsafe listing it completed is
+            # refused; a listing it failed is not authoritative either way.
+            refusal = exc
+            for _line in lines():
+                pass
+        rc = process.wait()
+    except BaseException:
+        process.kill()
+        process.wait()
+        raise
+    finally:
+        timer.cancel()
+        process.stdout.close()
+    if rc == 0 and refusal is not None:
+        raise refusal
+    return int(rc), "".join(tail)
+
+
 def _preflight_7z(archive: Path, binary: str, candidates: list[str]) -> None:
     last_output = ""
     type_switches = _seven_zip_type_switches(archive)
@@ -345,10 +410,9 @@ def _preflight_7z(archive: Path, binary: str, candidates: list[str]) -> None:
         if pw:
             cmd.append(f"-p{pw}")
         cmd.append(str(archive))
-        rc, output = _run_tool(cmd, timeout=300)
+        rc, output = _list_7z(cmd, archive, timeout=300)
         last_output = output
         if rc == 0:
-            validate_7z_listing(archive, output)
             return
     raise RuntimeError(
         f"{binary} could not safely inspect {archive.name}: {last_output[-160:]}"
@@ -430,17 +494,17 @@ def _extract_into_directory(archive: Path, dest: Path) -> None:
         _extract_7z(archive, dest)
     elif s in _GZ_EXTS:
         # Could be a .gz that is NOT a tar — check magic bytes via tarfile
-        if tarfile.is_tarfile(str(archive)):
+        if is_tar(archive):
             _extract_tar(archive, dest)
         else:
             _extract_gz_single(archive, dest)
     elif s in _BZ2_EXTS:
-        if tarfile.is_tarfile(str(archive)):
+        if is_tar(archive):
             _extract_tar(archive, dest)
         else:
             _extract_bz2_single(archive, dest)
     elif s in _XZ_EXTS:
-        if tarfile.is_tarfile(str(archive)):
+        if is_tar(archive):
             _extract_tar(archive, dest)
         else:
             _extract_xz_single(archive, dest)
@@ -459,6 +523,67 @@ def _extract_sync(archive: Path, dest: Path) -> list[Path]:
         dest,
         lambda stage: _extract_into_directory(archive, stage),
     )
+
+
+def _extract_job_sync(
+    archive: Path,
+    dest: Path,
+    *,
+    extract_into,
+    extract_child,
+    delete_nested: bool,
+) -> list[Path]:
+    """One extraction job: ``archive`` and the nested archives it contains,
+    under ONE budget measured against the original input, committed ONCE.
+
+    Nested archives are extracted inside the job's own staging tree before
+    anything is committed, each under what the job has left, so no nested
+    archive can write past the job's budget and a budget violation anywhere
+    commits nothing at all. An ordinary failure of one nested archive (a
+    corrupt or password-protected inner archive) is logged and leaves it as a
+    file, as before; a budget violation is the job's failure, never hidden by
+    a success."""
+
+    def run(stage: Path) -> None:
+        extract_into(archive, stage)
+        nested_archives = sorted(
+            (
+                candidate
+                for candidate in stage.rglob("*")
+                if len(candidate.relative_to(stage).parts) > 1
+                and not candidate.is_symlink()
+                and candidate.is_file()
+                and is_archive(candidate)
+            ),
+            key=lambda candidate: (len(candidate.relative_to(stage).parts), str(candidate)),
+        )
+        if not nested_archives:
+            return
+        logger.info("Found %d nested archive(s) inside %s", len(nested_archives), archive.name)
+        configured = configured_limits()
+        job_bytes = job_byte_limit(archive)
+        for nested in nested_archives[:10]:
+            used_files, used_bytes = validate_extracted_tree(stage, archive)
+            remaining = ExtractionLimits(
+                max_files=configured.max_files - used_files,
+                max_bytes=job_bytes - used_bytes,
+                max_ratio=configured.max_ratio,
+            )
+            try:
+                with job_limits(remaining):
+                    extract_child(nested, nested.parent)
+            except ExtractionBudgetExceeded:
+                raise
+            except Exception as nested_error:
+                logger.warning("Nested extraction failed for %s: %s", nested, nested_error)
+                continue
+            if delete_nested:
+                try:
+                    nested.unlink(missing_ok=True)
+                except OSError as cleanup_error:
+                    logger.warning("Nested archive cleanup failed for %s: %s", nested, cleanup_error)
+
+    return staged_external_extract(archive, dest, run)
 
 
 # ---------------------------------------------------------------------------
@@ -515,45 +640,20 @@ class Extractor:
                     if attempt > 0:
                         logger.info("Retrying extraction of %s (attempt %d)", archive, attempt + 1)
                     logger.info("Extracting %s → %s", archive, dest)
+                    # Nested extraction is provenance-bound and job-bound: only
+                    # archives this job itself extracted, inside its own staging,
+                    # under its one budget (``_extract_job_sync``).
                     created_files = await loop.run_in_executor(
-                        self._executor, _extract_sync, archive, dest
+                        self._executor,
+                        functools.partial(
+                            _extract_job_sync, archive, dest,
+                            extract_into=_extract_into_directory, extract_child=_extract_sync,
+                            delete_nested=delete_after,
+                        ),
                     )
                     if created is not None:
                         # Provenance: exactly what this operation wrote.
                         created.extend(Path(item) for item in created_files)
-                    # Nested extraction is provenance-bound: inspect only archive
-                    # files committed by this extraction operation. Never walk the
-                    # surrounding download tree where unrelated transfers live.
-                    try:
-                        dest_root = dest.resolve()
-                        nested_archives = []
-                        for written in created_files:
-                            candidate = Path(written)
-                            try:
-                                relative = candidate.resolve().relative_to(dest_root)
-                            except (OSError, ValueError):
-                                continue
-                            if len(relative.parts) > 1 and is_archive(candidate):
-                                nested_archives.append(candidate)
-                        if nested_archives:
-                            logger.info("Found %d nested archive(s) inside %s",
-                                        len(nested_archives), archive.name)
-                            for nested in nested_archives[:10]:
-                                try:
-                                    nested_files = await loop.run_in_executor(
-                                        self._executor, _extract_sync, nested, nested.parent
-                                    )
-                                    if created is not None:
-                                        created.extend(Path(item) for item in nested_files)
-                                    if delete_after:
-                                        nested.unlink(missing_ok=True)
-                                        logger.debug("Removed nested archive %s", nested)
-                                except Exception as ne:
-                                    logger.warning(
-                                        "Nested extraction failed for %s: %s", nested, ne
-                                    )
-                    except Exception as ne_scan:
-                        logger.debug("Nested archive scan failed: %s", ne_scan)
                     if delete_after and archive.exists():
                         archive.unlink()
                         logger.debug("Deleted archive: %s", archive)

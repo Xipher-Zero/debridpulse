@@ -9,22 +9,22 @@ probe before DebridPulse has established the intended container type.
 from __future__ import annotations
 
 import asyncio
-import concurrent.futures
+import functools
 import logging
 import lzma
 import shutil
 import subprocess
-import tarfile
 import tempfile
 from pathlib import Path
 from typing import List, Optional, Tuple
 
 from services.extraction_safety import (
     copy_limited,
+    open_tar,
     staged_external_extract,
     validate_tar_members,
 )
-from postprocessors.archive.extractor import Extractor, _extract_sync, _suffix, is_archive
+from postprocessors.archive.extractor import Extractor, _extract_into_directory, _extract_job_sync, _suffix
 
 logger = logging.getLogger("debridpulse.extractor_secure")
 
@@ -37,9 +37,8 @@ def _extract_validated_tar(
     *,
     budget_archive: Path,
 ) -> None:
-    with tarfile.open(tar_path, "r:") as archive:
-        members = archive.getmembers()
-        validate_tar_members(budget_archive, members)
+    with open_tar(tar_path, "r:") as archive:
+        members = validate_tar_members(budget_archive, archive)
         archive.extractall(dest, members=members, filter="data")
 
 
@@ -98,13 +97,18 @@ def _extract_composite_into_stage(archive: Path, stage: Path) -> None:
         intermediate.unlink(missing_ok=True)
 
 
+def _extract_secure_into(archive: Path, stage: Path) -> None:
+    if _suffix(archive) in _COMPOSITE_TAR_EXTS:
+        _extract_composite_into_stage(archive, stage)
+    else:
+        _extract_into_directory(archive, stage)
+
+
 def _extract_secure_sync(archive: Path, dest: Path) -> list[Path]:
-    if _suffix(archive) not in _COMPOSITE_TAR_EXTS:
-        return _extract_sync(archive, dest)
     return staged_external_extract(
         archive,
         dest,
-        lambda stage: _extract_composite_into_stage(archive, stage),
+        lambda stage: _extract_secure_into(archive, stage),
     )
 
 
@@ -132,63 +136,19 @@ class SecureExtractor(Extractor):
                             attempt + 1,
                         )
                     logger.info("Extracting %s → %s", archive, dest)
+                    # The outer archive and its nested archives are one job:
+                    # one budget against the original input, one commit.
                     created_files = await loop.run_in_executor(
                         self._executor,
-                        _extract_secure_sync,
-                        archive,
-                        dest,
+                        functools.partial(
+                            _extract_job_sync, archive, dest,
+                            extract_into=_extract_secure_into, extract_child=_extract_secure_sync,
+                            delete_nested=delete_after,
+                        ),
                     )
                     if created is not None:
                         # Provenance: exactly what this operation wrote.
                         created.extend(Path(item) for item in created_files)
-
-                    try:
-                        dest_root = dest.resolve()
-                        nested_archives = []
-                        for written in created_files:
-                            candidate = Path(written)
-                            try:
-                                relative = candidate.resolve().relative_to(dest_root)
-                            except (OSError, ValueError):
-                                continue
-                            if len(relative.parts) > 1 and is_archive(candidate):
-                                nested_archives.append(candidate)
-                        if nested_archives:
-                            logger.info(
-                                "Found %d nested archive(s) inside %s",
-                                len(nested_archives),
-                                archive.name,
-                            )
-                            for nested in nested_archives[:10]:
-                                try:
-                                    nested_files = await loop.run_in_executor(
-                                        self._executor,
-                                        _extract_secure_sync,
-                                        nested,
-                                        nested.parent,
-                                    )
-                                    if created is not None:
-                                        created.extend(Path(item) for item in nested_files)
-                                except Exception as nested_error:
-                                    logger.warning(
-                                        "Nested extraction failed for %s: %s",
-                                        nested,
-                                        nested_error,
-                                    )
-                                    continue
-
-                                if delete_after:
-                                    try:
-                                        nested.unlink(missing_ok=True)
-                                        logger.debug("Removed nested archive %s", nested)
-                                    except OSError as cleanup_error:
-                                        logger.warning(
-                                            "Nested archive cleanup failed for %s: %s",
-                                            nested,
-                                            cleanup_error,
-                                        )
-                    except Exception as scan_error:
-                        logger.debug("Nested archive scan failed: %s", scan_error)
 
                     # Extraction success and source cleanup are separate truths.
                     # A cleanup failure must not relabel already-materialized data

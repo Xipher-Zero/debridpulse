@@ -10,12 +10,34 @@ from __future__ import annotations
 import os
 import shutil
 import stat
+import tarfile
 import tempfile
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import BinaryIO, Callable, Iterable
+from typing import BinaryIO, Callable, Iterable, Iterator
 
 from core.config import get_settings
+
+# The longest path the filesystem can create (Linux ``PATH_MAX``): a member
+# name past it can never be materialized, so it is refused before anything is.
+MAX_MEMBER_NAME_BYTES = 4096
+# One TAR metadata record (a PAX extended header or a GNU long name/link)
+# holds a path, a link target and a few attributes. Python's tarfile reads a
+# record whole into memory before any member is seen, so a record is refused
+# past this size, and the records of one archive past this many bytes per
+# admissible entry.
+MAX_TAR_METADATA_RECORD_BYTES = 1024 * 1024
+TAR_METADATA_BYTES_PER_ENTRY = 8 * 1024
+# One line of a 7-Zip technical listing: ``Path = `` and a longest path.
+MAX_LISTING_LINE_CHARS = MAX_MEMBER_NAME_BYTES + 64
+
+
+class ExtractionBudgetExceeded(ValueError):
+    """A resource budget refusal: too many entries, too many bytes, too much
+    amplification or too much metadata. Within one extraction job it is a
+    job-wide safety violation, never an ordinary per-archive parse failure."""
 
 
 @dataclass(frozen=True)
@@ -25,7 +47,24 @@ class ExtractionLimits:
     max_ratio: float
 
 
-def limits() -> ExtractionLimits:
+# The budget still available to the extraction job running in this thread,
+# set only by ``job_limits`` for a nested archive the job extracts.
+_JOB_LIMITS: ContextVar[ExtractionLimits | None] = ContextVar("extraction_job_limits", default=None)
+
+
+@contextmanager
+def job_limits(remaining: ExtractionLimits) -> Iterator[None]:
+    """Run one step of an extraction job under the job's REMAINING budget, so
+    every check of that step -- listing, metadata, streamed bytes, live
+    staging and the staged tree -- counts against what the job has left."""
+    token = _JOB_LIMITS.set(remaining)
+    try:
+        yield
+    finally:
+        _JOB_LIMITS.reset(token)
+
+
+def configured_limits() -> ExtractionLimits:
     cfg = get_settings()
     max_files = max(1, int(getattr(cfg, "extract_max_files", 20_000) or 20_000))
     max_gb = max(0.001, float(getattr(cfg, "extract_max_expanded_gb", 250.0) or 250.0))
@@ -35,6 +74,20 @@ def limits() -> ExtractionLimits:
         max_bytes=max(1, int(max_gb * 1024 * 1024 * 1024)),
         max_ratio=max_ratio,
     )
+
+
+def limits() -> ExtractionLimits:
+    """The budget that applies here: the running job's remaining budget, or
+    the configured one."""
+    return _JOB_LIMITS.get() or configured_limits()
+
+
+def job_byte_limit(archive: Path) -> int:
+    """The most one extraction job may write in total for ``archive``: the
+    configured expanded-size limit, or its amplification limit measured
+    against the ORIGINAL input, whichever is smaller."""
+    cfg = configured_limits()
+    return min(cfg.max_bytes, max(1, int(_archive_size(archive) * cfg.max_ratio)))
 
 
 def _archive_size(archive: Path) -> int:
@@ -49,21 +102,34 @@ def validate_budget(*, archive: Path, file_count: int, expanded_bytes: int) -> N
     file_count = max(0, int(file_count))
     expanded_bytes = max(0, int(expanded_bytes))
     if file_count > cfg.max_files:
-        raise ValueError(
+        raise ExtractionBudgetExceeded(
             f"Archive contains {file_count} files; limit is {cfg.max_files}"
         )
     if expanded_bytes > cfg.max_bytes:
-        raise ValueError(
+        raise ExtractionBudgetExceeded(
             f"Archive expands to {expanded_bytes} bytes; limit is {cfg.max_bytes}"
         )
     ratio = expanded_bytes / _archive_size(archive)
     if expanded_bytes and ratio > cfg.max_ratio:
-        raise ValueError(
+        raise ExtractionBudgetExceeded(
             f"Archive expansion ratio {ratio:.1f}:1 exceeds limit {cfg.max_ratio:.1f}:1"
         )
 
 
+def _validate_other_entries(count: int) -> None:
+    """Entries that are not files (directories and the like) are bounded by
+    the same configured count, separately from files, so a listing can never
+    grow without limit."""
+    cfg = limits()
+    if count > cfg.max_files:
+        raise ExtractionBudgetExceeded(
+            f"Archive contains more than {cfg.max_files} non-file entries; limit is {cfg.max_files}"
+        )
+
+
 def validate_member_name(name: str) -> tuple[str, ...]:
+    if len(str(name or "").encode("utf-8", "surrogateescape")) > MAX_MEMBER_NAME_BYTES:
+        raise ValueError("Unsafe archive member path: longer than the filesystem allows")
     normalized = str(name or "").replace("\\", "/")
     relative = PurePosixPath(normalized)
     parts = tuple(part for part in relative.parts if part not in {"", "."})
@@ -94,11 +160,17 @@ def validate_zip_members(archive: Path, members: Iterable[object]) -> None:
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
 
 
-def validate_tar_members(archive: Path, members: Iterable[object]) -> None:
-    member_list = list(members)
+def validate_tar_members(archive: Path, members: Iterable[object]) -> list:
+    """Validate TAR members AS THEY ARE READ and return them. Pass the open
+    archive itself: each header is checked when it is read, and an archive
+    over budget is refused at the first member past it, never after its
+    whole member list has been loaded."""
+    cfg = limits()
+    accepted = []
     file_count = 0
+    other_count = 0
     expanded = 0
-    for member in member_list:
+    for member in members:
         name = str(getattr(member, "name", "") or "")
         validate_member_name(name)
         if any(
@@ -110,7 +182,51 @@ def validate_tar_members(archive: Path, members: Iterable[object]) -> None:
         if bool(getattr(member, "isfile")()):
             file_count += 1
             expanded += max(0, int(getattr(member, "size", 0) or 0))
+            if file_count > cfg.max_files or expanded > cfg.max_bytes:
+                validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
+        else:
+            other_count += 1
+            _validate_other_entries(other_count)
+        accepted.append(member)
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
+    return accepted
+
+
+class _BoundedTarInfo(tarfile.TarInfo):
+    """A TAR header whose metadata records are size-checked before tarfile
+    reads them into memory (through tarfile's own ``tarinfo`` hook)."""
+
+    def _proc_member(self, archive):
+        if self.type in (tarfile.GNUTYPE_LONGNAME, tarfile.GNUTYPE_LONGLINK,
+                         tarfile.XHDTYPE, tarfile.XGLTYPE, tarfile.SOLARIS_XHDTYPE):
+            archive.metadata_bytes += self.size
+            if self.size > MAX_TAR_METADATA_RECORD_BYTES or archive.metadata_bytes > archive.metadata_limit:
+                raise ExtractionBudgetExceeded("Archive metadata exceeds the safe limit")
+        return super()._proc_member(archive)
+
+
+class _BoundedTarFile(tarfile.TarFile):
+    tarinfo = _BoundedTarInfo
+    metadata_bytes = 0
+
+    @property
+    def metadata_limit(self) -> int:
+        return 2 * limits().max_files * TAR_METADATA_BYTES_PER_ENTRY
+
+
+def open_tar(path: Path, mode: str = "r:*") -> tarfile.TarFile:
+    """Open a TAR archive for reading with bounded header metadata."""
+    return _BoundedTarFile.open(path, mode)
+
+
+def is_tar(path: Path) -> bool:
+    """``tarfile.is_tarfile`` through the bounded reader: its probe reads the
+    first header, metadata records included. A metadata refusal propagates."""
+    try:
+        with open_tar(path):
+            return True
+    except tarfile.TarError:
+        return False
 
 
 def copy_limited(source: BinaryIO, output: BinaryIO, *, archive: Path) -> int:
@@ -124,7 +240,7 @@ def copy_limited(source: BinaryIO, output: BinaryIO, *, archive: Path) -> int:
             break
         written += len(chunk)
         if written > byte_limit:
-            raise ValueError(
+            raise ExtractionBudgetExceeded(
                 f"Archive expansion exceeded safe limit after {written} bytes"
             )
         output.write(chunk)
@@ -132,33 +248,61 @@ def copy_limited(source: BinaryIO, output: BinaryIO, *, archive: Path) -> int:
     return written
 
 
-def validate_7z_listing(archive: Path, output: str) -> None:
-    """Validate `7z l -slt` member metadata before external extraction."""
-    text = str(output or "").replace("\r\n", "\n")
-    if "----------" not in text:
-        raise ValueError("Archive listing did not contain member metadata")
-    records = text.split("----------", 1)[1].strip().split("\n\n")
+_LISTING_FIELDS = frozenset({"Path", "Attributes", "Size"})
+
+
+def validate_7z_listing(archive: Path, output: str | Iterable[str]) -> None:
+    """Validate `7z l -slt` member metadata before external extraction.
+
+    ``output`` is the listing's lines AS THEY ARE EMITTED (or the whole text).
+    Each line is bounded, each record keeps only the fields it needs, and the
+    member counts and bytes are checked as records complete, so an oversized
+    listing is refused at the first line or record past a limit -- never
+    after the whole of it has been held."""
+    lines = output.splitlines(keepends=True) if isinstance(output, str) else output
+    cfg = limits()
+    started = False
     file_count = 0
+    other_count = 0
     expanded = 0
-    for record in records:
-        fields: dict[str, str] = {}
-        for line in record.splitlines():
-            if " = " in line:
-                key, value = line.split(" = ", 1)
-                fields[key.strip()] = value.strip()
-        name = fields.get("Path", "")
+    fields: dict[str, str] = {}
+
+    def finish(record: dict[str, str]) -> None:
+        nonlocal file_count, other_count, expanded
+        name = record.get("Path", "")
         if not name:
-            continue
+            return
         validate_member_name(name)
-        attrs = fields.get("Attributes", "")
-        is_dir = attrs.startswith("D")
-        if not is_dir:
-            try:
-                size = max(0, int(fields.get("Size", "0") or 0))
-            except ValueError as exc:
-                raise ValueError(f"Invalid archive member size for {name!r}") from exc
-            file_count += 1
-            expanded += size
+        if record.get("Attributes", "").startswith("D"):
+            other_count += 1
+            _validate_other_entries(other_count)
+            return
+        try:
+            size = max(0, int(record.get("Size", "0") or 0))
+        except ValueError as exc:
+            raise ValueError(f"Invalid archive member size for {name!r}") from exc
+        file_count += 1
+        expanded += size
+        if file_count > cfg.max_files or expanded > cfg.max_bytes:
+            validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
+
+    for raw in lines:
+        if len(raw) > MAX_LISTING_LINE_CHARS:
+            raise ExtractionBudgetExceeded("Archive listing line exceeds the safe limit")
+        line = raw.rstrip("\r\n")
+        if not started:
+            started = line == "----------"
+            continue
+        if not line.strip():
+            finish(fields)
+            fields = {}
+        elif " = " in line:
+            key, value = line.split(" = ", 1)
+            if key.strip() in _LISTING_FIELDS:
+                fields[key.strip()] = value.strip()
+    if not started:
+        raise ValueError("Archive listing did not contain member metadata")
+    finish(fields)
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
 
 
@@ -193,7 +337,7 @@ def validate_staging_tree(root: Path, archive: Path) -> None:
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
 
 
-def validate_extracted_tree(root: Path, archive: Path) -> None:
+def validate_extracted_tree(root: Path, archive: Path) -> tuple[int, int]:
     root = root.resolve()
     file_count = 0
     expanded = 0
@@ -213,6 +357,7 @@ def validate_extracted_tree(root: Path, archive: Path) -> None:
         file_count += 1
         expanded += max(0, int(current.stat().st_size))
     validate_budget(archive=archive, file_count=file_count, expanded_bytes=expanded)
+    return file_count, expanded
 
 
 def _ensure_safe_destination(root: Path, target: Path) -> None:

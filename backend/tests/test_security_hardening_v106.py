@@ -102,12 +102,10 @@ def test_7zip_composite_formats_keep_nested_mode_but_exclude_xz():
 
 
 def test_7zip_preflight_uses_same_strict_parser_policy():
-    with patch("postprocessors.archive.extractor._run_tool", return_value=(0, "listing")) as run_tool, patch(
-        "postprocessors.archive.extractor.validate_7z_listing"
-    ):
+    with patch("postprocessors.archive.extractor._list_7z", return_value=(0, "")) as list_7z:
         _preflight_7z(Path("payload.7z"), "7z", [""])
 
-    command = run_tool.call_args.args[0]
+    command = list_7z.call_args.args[0]
     assert "-t7z" in command
     assert "-t*:r" not in command
 
