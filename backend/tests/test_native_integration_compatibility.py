@@ -527,11 +527,17 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
         service = AllDebridService("api-key")
         responses = ["", '{"status":"success","data":{"ok":true}}']
 
+        class FakeBody:
+            def __init__(self, body):
+                self.body = body.encode()
+            async def read(self, n=-1):
+                chunk, self.body = self.body[:n], self.body[n:]
+                return chunk
+
         class FakeResponse:
             def __init__(self, body):
-                self.body = body
+                self.content = FakeBody(body)
                 self.status = 200
-            async def text(self): return self.body
             async def __aenter__(self): return self
             async def __aexit__(self, *a): return False
 
@@ -542,8 +548,9 @@ class AllDebridServiceTests(unittest.IsolatedAsyncioTestCase):
             async def __aexit__(self, *a): return False
 
         with patch("providers.alldebrid.client.aiohttp.ClientSession", FakeSession):
-            with self.assertRaises(Exception):
+            with self.assertRaises(Exception) as ctx:
                 await service._post("https://api.example", "magnet/status")
+        self.assertIn("empty response", str(ctx.exception))
         self.assertEqual(len(responses), 1)
 
     def test_decode_json_body_reports_invalid_payload(self):

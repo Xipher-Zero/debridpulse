@@ -37,6 +37,12 @@ API_V4  = "https://api.alldebrid.com/v4"
 API_V41 = "https://api.alldebrid.com/v4.1"
 
 TIMEOUT = aiohttp.ClientTimeout(total=30)
+# A native response is decoded only up to this size, the bound every other
+# debrid client keeps: a complete account status or host inventory is far
+# smaller, so anything larger is malformed, not data.
+MAX_RESPONSE_BYTES = 16 * 1024 * 1024
+# The most one read of a response body asks for.
+_READ_CHUNK_BYTES = 64 * 1024
 
 
 class AllDebridAPIError(Exception):
@@ -46,6 +52,40 @@ class AllDebridAPIError(Exception):
         self.code = str(code or "UNKNOWN")
         self.message = str(message or "")
         super().__init__(f"AllDebrid [{self.code}]: {self.message}")
+
+
+async def _bounded_body(stream: aiohttp.StreamReader) -> bytes:
+    """The whole (decoded) body: read until it ends, or until it is past
+    ``MAX_RESPONSE_BYTES`` -- all an oversized answer needs to show. One read
+    returns only what has arrived so far, never the body. A failure before
+    the end raises, so a partial body is never taken for an answer; the
+    request's total timeout bounds every read here."""
+    body = bytearray()
+    while len(body) <= MAX_RESPONSE_BYTES:
+        chunk = await stream.read(min(_READ_CHUNK_BYTES, MAX_RESPONSE_BYTES + 1 - len(body)))
+        if not chunk:
+            break
+        body += chunk
+    return bytes(body)
+
+
+async def _response_text(response: aiohttp.ClientResponse, endpoint: str) -> str:
+    """The text of one AllDebrid answer, never a redirect's and never more
+    than ``MAX_RESPONSE_BYTES``. Redirects are not followed: following one
+    would replay the request -- its body included -- to wherever the
+    ``Location`` points and take that origin's answer as AllDebrid's."""
+    if 300 <= response.status < 400:
+        raise Exception(
+            f"AllDebrid returned an unexpected payload for {endpoint}: a redirect (HTTP {response.status}), "
+            "which is never followed"
+        )
+    body = await _bounded_body(response.content)
+    if len(body) > MAX_RESPONSE_BYTES:
+        raise Exception(f"AllDebrid returned an unexpected payload for {endpoint}: an oversized response")
+    try:
+        return body.decode("utf-8")
+    except UnicodeDecodeError:
+        raise Exception(f"AllDebrid returned invalid JSON for {endpoint}: not UTF-8") from None
 
 
 class AllDebridService:
@@ -66,11 +106,11 @@ class AllDebridService:
             raise Exception(f"AllDebrid returned an empty response for {endpoint}")
         try:
             result = json.loads(payload)
-        except json.JSONDecodeError as exc:
-            snippet = payload[:160].replace("\n", " ").replace("\r", " ")
+        except json.JSONDecodeError:
+            # The body itself is never echoed: it is not AllDebrid's to vouch for.
             raise Exception(
-                f"AllDebrid returned invalid JSON for {endpoint}: {snippet or '<empty>'}"
-            ) from exc
+                f"AllDebrid returned invalid JSON for {endpoint} ({len(payload)} characters)"
+            ) from None
         if not isinstance(result, dict):
             raise Exception(f"AllDebrid returned unexpected payload type for {endpoint}")
         return result
@@ -81,11 +121,10 @@ class AllDebridService:
         url = f"{base}/{endpoint}"
         await self._rate_limiter.acquire()
         async with aiohttp.ClientSession(headers=self._headers()) as session:
-            async with session.post(url, data=data or {}, timeout=TIMEOUT) as response:
-                body = await response.text()
+            async with session.post(url, data=data or {}, timeout=TIMEOUT, allow_redirects=False) as response:
                 if response.status >= 500:
                     raise Exception(f"AllDebrid HTTP {response.status} for {endpoint}")
-                result = self._decode_json_body(body, endpoint)
+                result = self._decode_json_body(await _response_text(response, endpoint), endpoint)
         if result.get("status") != "success":
             err = result.get("error", {})
             code = err.get("code", "UNKNOWN") if isinstance(err, dict) else "UNKNOWN"
@@ -98,9 +137,9 @@ class AllDebridService:
         url = f"{API_V4}/{endpoint}"
         try:
             async with aiohttp.ClientSession(headers=self._headers()) as s:
-                async with s.post(url, data=form,
+                async with s.post(url, data=form, allow_redirects=False,
                                   timeout=aiohttp.ClientTimeout(total=120)) as resp:
-                    result = self._decode_json_body(await resp.text(), endpoint)
+                    result = self._decode_json_body(await _response_text(resp, endpoint), endpoint)
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             raise Exception(f"Network error uploading: {e}")
         if result.get("status") != "success":
