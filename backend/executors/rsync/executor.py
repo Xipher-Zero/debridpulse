@@ -557,10 +557,26 @@ class RsyncExecutor:
             await self.processes.terminate(owned, identity, grace=1.0)
             await asyncio.wait_for(asyncio.gather(*pumps, return_exceptions=True), timeout=5)
         finally:
+            interrupted = False
+            if owned.process.returncode is None or self.processes.alive(identity):
+                # Cancelled or failed mid-run: the group is ended while its
+                # output is still drained, and this invocation does not exit
+                # until that bounded termination has finished -- a cancellation
+                # arriving meanwhile is held and passed on afterwards. A group
+                # not proven gone keeps its marker.
+                stopping = asyncio.ensure_future(self.processes.terminate(owned, identity, grace=1.0))
+                while not stopping.done():
+                    try:
+                        await asyncio.shield(stopping)
+                    except asyncio.CancelledError:
+                        interrupted = True
+                stopping.result()
             for task in pumps:
                 task.cancel()
             records = self._status(transport.status, status)
             self.processes.forget(identity)
+            if interrupted:
+                raise asyncio.CancelledError
         overflow = len(stdout) >= limit
         return owned.process.returncode, bytes(stdout), bytes(stderr), records, overflow
 
